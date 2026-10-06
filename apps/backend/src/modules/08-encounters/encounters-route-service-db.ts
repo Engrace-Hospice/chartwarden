@@ -923,7 +923,34 @@ export function createDbEncounterRouteService(
       vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
       mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
       carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
+      addenda: await addendumRowsFor(t, encounterId),
     };
+  }
+
+  /** GAP-027 — the encounter's addenda, oldest first; the UI enables edit/finalize/sign off this status. */
+  async function addendumRowsFor(t: DbClient, encounterId: string) {
+    const rows = await t
+      .select({
+        id: ADDENDUM.id,
+        status: ADDENDUM.status,
+        reason: ADDENDUM.reason,
+        authoredByUserId: ADDENDUM.authoredByMembershipId,
+        createdAt: ADDENDUM.createdAt,
+        signedAt: ADDENDUM.signedAt,
+        version: ADDENDUM.version,
+      })
+      .from(ADDENDUM)
+      .where(eq(ADDENDUM.encounterId, encounterId))
+      .orderBy(asc(ADDENDUM.createdAt), asc(ADDENDUM.id));
+    return rows.map((a) => ({
+      id: a.id,
+      status: a.status as "draft" | "finalized" | "signed",
+      reason: a.reason,
+      authoredByUserId: a.authoredByUserId,
+      createdAt: iso(a.createdAt) ?? "",
+      signedAt: iso(a.signedAt),
+      version: Number(a.version),
+    }));
   }
 
   async function carePlanLinkRowsFor(t: DbClient, encounterId: string) {

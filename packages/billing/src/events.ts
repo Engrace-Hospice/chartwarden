@@ -205,6 +205,9 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       claimId: id,
       claimLineId: id,
       revenueCode: id,
+      patientId: id,
+      serviceFrom: isoDate,
+      serviceTo: isoDate,
       serviceDate: isoDate,
       days: Type.Integer(),
       finalizedAt: isoInstant,
@@ -376,8 +379,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description:
       "Route 22 trigger / stale auto-trigger at claim assembly (HETS 270/271 worker pickup).",
-    payloadSchema: Type.Object({ patientId: id, asOfServiceDate: isoDate }),
-    declaredConsumers: [],
+    payloadSchema: Type.Object({ patientId: id, providerEntityId: id, asOfServiceDate: isoDate }),
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {

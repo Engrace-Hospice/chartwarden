@@ -224,6 +224,8 @@ jobs:
                 test:m7:consent-wiring:live",
             }
           - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
+          # GAP-027 — GET /encounters/:id `addenda[]` through the real route + Drizzle service + RLS.
+          - { name: "M8 addenda read", scripts: "test:m8:addenda-read:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
           # The HOPE spec registry / CMS spec import / answer engine suites landed on main after the
@@ -581,6 +583,8 @@ jobs:
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live test:m25:manual-match:live",
             }
+          # M25 denial read `version` -> If-Match transition loop through the real routes + RLS.
+          - { name: "M25 denial version", scripts: "test:m25:denial-version:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {

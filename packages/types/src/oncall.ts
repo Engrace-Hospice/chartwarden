@@ -481,9 +481,10 @@ export const M19_SUBSCRIBED_EVENT_NAMES = [
   "m17.visit.no_show_detected",
   "m17.visit.assigned",
   "m18.evv.late_check_out_detected",
-  // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
+  // GAP-058 — routed AND bound (`consumers/m8-encounter-signed-binding.ts`): M8 declares `m19` on it.
   "m36.notification.delivery_failed",
   "m8.encounter.signed",
+  // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m11.order.verbal_expired_unsigned",
   "m5.patient.deceased",
 ] as const;

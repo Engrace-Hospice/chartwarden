@@ -47,6 +47,8 @@ export interface DenialWorklistItem {
   readonly agingBucketLabel: AgingBucketLabel;
   readonly dollarValue: string;
   readonly taxonomyStatus: string;
+  /** Row version — the `If-Match` value the denial PATCH/close/reopen transitions require (§2.5). */
+  readonly version: number;
 }
 
 export interface AppealSummary {

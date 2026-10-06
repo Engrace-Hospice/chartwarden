@@ -32,6 +32,19 @@ export interface DocumentTagInput {
   readonly tagValue: string | null;
 }
 
+/** GAP-068 — the bytes of one upload. The route decodes them; the service verifies size/MIME/digest. */
+export interface UploadedContent {
+  readonly bytes: Uint8Array;
+  readonly mimeType: string;
+  /** Optional caller-declared SHA-256 (lowercase hex); verified against the server-computed digest. */
+  readonly sha256Hex?: string;
+}
+
+export interface UploadVersionArgs {
+  readonly title?: string;
+  readonly content: UploadedContent;
+}
+
 export interface UploadDocumentArgs {
   readonly patientId: string | null;
   readonly admissionId: string | null;
@@ -43,6 +56,7 @@ export interface UploadDocumentArgs {
   /** F-060 — `UploadDocumentRequest` has always declared `tags[]`; the route parsed it and passed it
    *  to nothing, so a document could never actually be BORN with the tags its contract accepts. */
   readonly tags: readonly DocumentTagInput[];
+  readonly content: UploadedContent;
 }
 
 export interface DocumentProvenanceMetadata {
@@ -218,6 +232,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     documentId: string,
+    args: UploadVersionArgs,
   ): Promise<VersionView>;
   getDocument(organizationId: OrgId, documentId: string): Promise<DocumentView>;
   listVersions(
@@ -647,7 +662,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       docs.set(id, rec);
       return toDocView(rec);
     },
-    async uploadVersion(organizationId, _actor, documentId) {
+    async uploadVersion(organizationId, _actor, documentId, _args) {
       const r = loadDoc(organizationId, documentId);
       const versionNumber = r.versions.length + 1;
       const v = {

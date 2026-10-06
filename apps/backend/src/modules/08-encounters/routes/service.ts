@@ -265,6 +265,22 @@ export interface EncounterView {
   readonly vitals?: Record<string, unknown> | null;
   readonly mileage?: Record<string, unknown> | null;
   readonly carePlanLinks?: readonly CarePlanLinkResult[];
+  /** The encounter's addenda, oldest first (single-read only; §4.1 route 2 — GAP-027). */
+  readonly addenda?: readonly AddendumSummary[];
+}
+
+/**
+ * One addendum as the encounter workspace view projects it. `authoredByUserId` is the AUTHOR's membership
+ * (GAP-028) — shown read-only by the UI; the UI never sends an author identity back.
+ */
+export interface AddendumSummary {
+  readonly id: string;
+  readonly status: AddendumState;
+  readonly reason: string;
+  readonly authoredByUserId: string;
+  readonly createdAt: string;
+  readonly signedAt: string | null;
+  readonly version: number;
 }
 
 /** One live care-plan link as the encounter workspace view projects it (`GET /encounters/:id`). */
@@ -722,6 +738,9 @@ interface EncounterRecord {
       id: string;
       status: AddendumState;
       version: number;
+      reason: string;
+      createdAt: string;
+      signedAt: string | null;
       selections: readonly SelectionSectionInput[];
       /** The membership that authored this addendum (the caller who created it). */
       authoredByUserId: string;
@@ -1007,7 +1026,19 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
 
     async getEncounter(organizationId, encounterId) {
-      return toView(load(organizationId, encounterId));
+      const r = load(organizationId, encounterId);
+      return {
+        ...toView(r),
+        addenda: [...r.addenda.values()].map((a) => ({
+          id: a.id,
+          status: a.status,
+          reason: a.reason,
+          authoredByUserId: a.authoredByUserId,
+          createdAt: a.createdAt,
+          signedAt: a.signedAt,
+          version: a.version,
+        })),
+      };
     },
 
     async updateSelections(organizationId, encounterId, ifVersion, input) {
@@ -1374,6 +1405,9 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         id,
         status: "draft",
         version: 0,
+        reason: args.reason,
+        createdAt: now(),
+        signedAt: null,
         selections: [],
         authoredByUserId: args.authorMembershipId,
       });
@@ -1441,7 +1475,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         at: args.at,
       });
       a.status = t.to;
-      return { status: "signed", signedAt: now() };
+      a.signedAt = now();
+      return { status: "signed", signedAt: a.signedAt };
     },
 
     async listEncounters(organizationId, filters = {}) {

@@ -74,6 +74,12 @@ export interface ValidateClaimInput {
   readonly trigger: schema.ValidationRun["trigger"];
   /** Optional §2.5 If-Match guard against a concurrently-modified claim (stale → 412). */
   readonly expectedVersion?: number;
+  /**
+   * The run id the caller already minted (the route stamps it on the claim and on the queued job; the
+   * worker passes it through). Omitted → the repository mints one. Carrying it keeps the claim's
+   * `latest_validation_run_id` pointer and the persisted `validation_run` row the same id.
+   */
+  readonly validationRunId?: string;
 }
 
 export interface ValidationRunView {
@@ -109,6 +115,15 @@ export interface ClaimValidationServicePorts {
 
 export interface ClaimValidationService {
   validateClaim(actor: BillingWriteActor, input: ValidateClaimInput): Promise<ValidationRunView>;
+  /**
+   * The same validation on a CALLER-PROVIDED tx — the entry the `validation-run` worker uses, because it
+   * already runs inside its own per-job `withOrgContext` and must not open a nested transaction.
+   */
+  validateClaimInTx(
+    tx: BillingTx,
+    actor: BillingWriteActor,
+    input: ValidateClaimInput,
+  ): Promise<ValidationRunView>;
 }
 
 /**
@@ -163,154 +178,159 @@ export function buildClaimValidationService(
     return allOverridable ? "overrides_required" : "failures_present";
   };
 
+  const validateClaimInTx = async (
+    tx: BillingTx,
+    actor: BillingWriteActor,
+    input: ValidateClaimInput,
+  ): Promise<ValidationRunView> => {
+    assertNotAiActor(actor);
+    const claimRepo = new repositories.ClaimRepository(tx);
+    const claim = await claimRepo.findById(input.claimId);
+    if (!claim || claim.organizationId !== actor.organizationId) throw new NotFoundError("claim");
+    if (claim.state !== "validating" && claim.state !== "ready") {
+      throw new ConflictError(
+        `a claim in state '${claim.state}' cannot be validated (assembly must place it in 'validating')`,
+      );
+    }
+    if (input.expectedVersion !== undefined && input.expectedVersion !== claim.version) {
+      throw new WardenXError(
+        "VERSION_CONFLICT",
+        `the claim was modified concurrently (current version ${claim.version})`,
+        412,
+      );
+    }
+
+    // Materialize the aggregate context + tenant overlays, then run the FROZEN rule set (pure).
+    const { context, overlays } = await contextPort.build(tx, actor, claim);
+    const overriddenKeys = await overriddenKeysForClaim(tx, claim.id);
+
+    const startedAt = now();
+    const results = registry.runRules(context, overlays ?? {});
+    const completedAt = now();
+    const summary = summarizeRuleRun(results, regulatoryKeys, overriddenKeys);
+    const outcome = runOutcome(results, summary, overriddenKeys);
+
+    // Idempotency (§2.6): sha256 over the materialized context + the claim version.
+    const runInputHash = createHash("sha256")
+      .update(`${claim.version}:${JSON.stringify(context)}`)
+      .digest("hex");
+
+    const runRepo = new repositories.ValidationRunRepository(tx);
+    const existing = await runRepo.findByIdempotency(claim.id, input.trigger, runInputHash);
+    if (existing) {
+      const priorFailures = await new repositories.ValidationResultRepository(
+        tx,
+      ).listFailuresForRun(existing.id);
+      return {
+        validationRunId: existing.id,
+        claimId: claim.id,
+        trigger: existing.trigger,
+        outcome: existing.outcome,
+        rulesExecuted: existing.rulesExecuted,
+        rulesPassed: existing.rulesPassed,
+        rulesFailed: existing.rulesFailed,
+        rulesWarn: existing.rulesWarn,
+        rulesInfo: existing.rulesInfo,
+        blockingFailures: summary.blockingFailures,
+        failedRuleKeys: priorFailures.map((f) => f.ruleKey),
+        claimState: claim.state,
+        idempotentReplay: true,
+      };
+    }
+
+    const rulesInfo = results.filter((r) => resultOutcome(r) === "info").length;
+    const run = await runRepo.append({
+      ...(input.validationRunId ? { id: input.validationRunId } : {}),
+      organizationId: actor.organizationId,
+      claimId: claim.id,
+      trigger: input.trigger,
+      outcome,
+      runInputHash,
+      rulesExecuted: results.length,
+      rulesPassed: summary.passedCount,
+      rulesFailed: summary.failedCount,
+      rulesWarn: summary.warningCount,
+      rulesInfo,
+      startedAt,
+      completedAt,
+      durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
+      initiatedByMembershipId: actor.actorKind === "user" ? actor.membershipId : null,
+    });
+
+    await new repositories.ValidationResultRepository(tx).appendBatch(
+      results.map((r) => ({
+        organizationId: actor.organizationId,
+        validationRunId: run.id,
+        ruleKey: r.ruleKey,
+        ruleVersion: registry.getRule(r.ruleKey)?.version ?? 1,
+        severity: r.severity,
+        outcome: resultOutcome(r),
+        remediation: (r.annotations ?? {}) as schema.NewValidationResult["remediation"],
+      })),
+    );
+
+    const failedRuleKeys = results.filter((r) => resultOutcome(r) === "fail").map((r) => r.ruleKey);
+
+    // Drive the claim lifecycle in the SAME transaction.
+    let currentVersion = claim.version;
+    if (claim.state === "ready") {
+      const revalidated = await claimStateService.applyInTx(tx, actor, {
+        claimId: claim.id,
+        expectedVersion: currentVersion,
+        event: "revalidate",
+        context: { validationRunId: run.id },
+        extra: { validationRunId: run.id, trigger: input.trigger },
+      });
+      currentVersion = revalidated.claim.version;
+    }
+
+    let claimState: ClaimState;
+    if (summary.blockingFailures === 0) {
+      const event = summary.overriddenCount > 0 ? "overrides_applied" : "validation_passed";
+      const passed = await claimStateService.applyInTx(tx, actor, {
+        claimId: claim.id,
+        expectedVersion: currentVersion,
+        event,
+        unresolvedBlockingFailures: 0,
+        context: { validationRunId: run.id },
+        extra: { validationRunId: run.id },
+      });
+      claimState = passed.toState;
+    } else {
+      const failed = await claimStateService.applyInTx(tx, actor, {
+        claimId: claim.id,
+        expectedVersion: currentVersion,
+        event: "validation_failed",
+        context: { validationRunId: run.id },
+        extra: { validationRunId: run.id, failedRuleKeys },
+      });
+      claimState = failed.toState;
+    }
+
+    return {
+      validationRunId: run.id,
+      claimId: claim.id,
+      trigger: run.trigger,
+      outcome: run.outcome,
+      rulesExecuted: run.rulesExecuted,
+      rulesPassed: run.rulesPassed,
+      rulesFailed: run.rulesFailed,
+      rulesWarn: run.rulesWarn,
+      rulesInfo: run.rulesInfo,
+      blockingFailures: summary.blockingFailures,
+      failedRuleKeys,
+      claimState,
+      idempotentReplay: false,
+    };
+  };
+
   return {
-    async validateClaim(actor, input) {
-      assertNotAiActor(actor);
+    validateClaimInTx,
+    validateClaim(actor, input) {
       return withOrgContext<BillingTx, ValidationRunView>(
         db,
         { organizationId: actor.organizationId, userId: actor.userId },
-        async (tx) => {
-          const claimRepo = new repositories.ClaimRepository(tx);
-          const claim = await claimRepo.findById(input.claimId);
-          if (!claim || claim.organizationId !== actor.organizationId)
-            throw new NotFoundError("claim");
-          if (claim.state !== "validating" && claim.state !== "ready") {
-            throw new ConflictError(
-              `a claim in state '${claim.state}' cannot be validated (assembly must place it in 'validating')`,
-            );
-          }
-          if (input.expectedVersion !== undefined && input.expectedVersion !== claim.version) {
-            throw new WardenXError(
-              "VERSION_CONFLICT",
-              `the claim was modified concurrently (current version ${claim.version})`,
-              412,
-            );
-          }
-
-          // Materialize the aggregate context + tenant overlays, then run the FROZEN rule set (pure).
-          const { context, overlays } = await contextPort.build(tx, actor, claim);
-          const overriddenKeys = await overriddenKeysForClaim(tx, claim.id);
-
-          const startedAt = now();
-          const results = registry.runRules(context, overlays ?? {});
-          const completedAt = now();
-          const summary = summarizeRuleRun(results, regulatoryKeys, overriddenKeys);
-          const outcome = runOutcome(results, summary, overriddenKeys);
-
-          // Idempotency (§2.6): sha256 over the materialized context + the claim version.
-          const runInputHash = createHash("sha256")
-            .update(`${claim.version}:${JSON.stringify(context)}`)
-            .digest("hex");
-
-          const runRepo = new repositories.ValidationRunRepository(tx);
-          const existing = await runRepo.findByIdempotency(claim.id, input.trigger, runInputHash);
-          if (existing) {
-            const priorFailures = await new repositories.ValidationResultRepository(
-              tx,
-            ).listFailuresForRun(existing.id);
-            return {
-              validationRunId: existing.id,
-              claimId: claim.id,
-              trigger: existing.trigger,
-              outcome: existing.outcome,
-              rulesExecuted: existing.rulesExecuted,
-              rulesPassed: existing.rulesPassed,
-              rulesFailed: existing.rulesFailed,
-              rulesWarn: existing.rulesWarn,
-              rulesInfo: existing.rulesInfo,
-              blockingFailures: summary.blockingFailures,
-              failedRuleKeys: priorFailures.map((f) => f.ruleKey),
-              claimState: claim.state,
-              idempotentReplay: true,
-            };
-          }
-
-          const rulesInfo = results.filter((r) => resultOutcome(r) === "info").length;
-          const run = await runRepo.append({
-            organizationId: actor.organizationId,
-            claimId: claim.id,
-            trigger: input.trigger,
-            outcome,
-            runInputHash,
-            rulesExecuted: results.length,
-            rulesPassed: summary.passedCount,
-            rulesFailed: summary.failedCount,
-            rulesWarn: summary.warningCount,
-            rulesInfo,
-            startedAt,
-            completedAt,
-            durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
-            initiatedByMembershipId: actor.actorKind === "user" ? actor.membershipId : null,
-          });
-
-          await new repositories.ValidationResultRepository(tx).appendBatch(
-            results.map((r) => ({
-              organizationId: actor.organizationId,
-              validationRunId: run.id,
-              ruleKey: r.ruleKey,
-              ruleVersion: registry.getRule(r.ruleKey)?.version ?? 1,
-              severity: r.severity,
-              outcome: resultOutcome(r),
-              remediation: (r.annotations ?? {}) as schema.NewValidationResult["remediation"],
-            })),
-          );
-
-          const failedRuleKeys = results
-            .filter((r) => resultOutcome(r) === "fail")
-            .map((r) => r.ruleKey);
-
-          // Drive the claim lifecycle in the SAME transaction.
-          let currentVersion = claim.version;
-          if (claim.state === "ready") {
-            const revalidated = await claimStateService.applyInTx(tx, actor, {
-              claimId: claim.id,
-              expectedVersion: currentVersion,
-              event: "revalidate",
-              context: { validationRunId: run.id },
-              extra: { validationRunId: run.id, trigger: input.trigger },
-            });
-            currentVersion = revalidated.claim.version;
-          }
-
-          let claimState: ClaimState;
-          if (summary.blockingFailures === 0) {
-            const event = summary.overriddenCount > 0 ? "overrides_applied" : "validation_passed";
-            const passed = await claimStateService.applyInTx(tx, actor, {
-              claimId: claim.id,
-              expectedVersion: currentVersion,
-              event,
-              unresolvedBlockingFailures: 0,
-              context: { validationRunId: run.id },
-              extra: { validationRunId: run.id },
-            });
-            claimState = passed.toState;
-          } else {
-            const failed = await claimStateService.applyInTx(tx, actor, {
-              claimId: claim.id,
-              expectedVersion: currentVersion,
-              event: "validation_failed",
-              context: { validationRunId: run.id },
-              extra: { validationRunId: run.id, failedRuleKeys },
-            });
-            claimState = failed.toState;
-          }
-
-          return {
-            validationRunId: run.id,
-            claimId: claim.id,
-            trigger: run.trigger,
-            outcome: run.outcome,
-            rulesExecuted: run.rulesExecuted,
-            rulesPassed: run.rulesPassed,
-            rulesFailed: run.rulesFailed,
-            rulesWarn: run.rulesWarn,
-            rulesInfo: run.rulesInfo,
-            blockingFailures: summary.blockingFailures,
-            failedRuleKeys,
-            claimState,
-            idempotentReplay: false,
-          };
-        },
+        (tx) => validateClaimInTx(tx, actor, input),
       );
     },
   };

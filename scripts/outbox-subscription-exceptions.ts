@@ -129,8 +129,8 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m19",
     kind: "no-handler",
     reason:
-      "M19's `consumers/` decides on the M17 no-show and the M18 late check-out (the M36 delivery-failure trigger is now bound — see bindings.ts — and dropped from here). These two are §4.8 triage-context inputs with no decider written; declaring them would defer events other modules are already waiting on and produce no handler. Ends with M19 Phase 2.",
-    events: ["m5.patient.deceased", "m8.encounter.signed", "m11.order.verbal_expired_unsigned"],
+      "M19's `consumers/` decides on the M17 no-show, the M18 late check-out, the M36 delivery-failure trigger and (GAP-058) `m8.encounter.signed` -> `documented`. These two are §4.8 triage-context inputs with no decider written; declaring them would defer events other modules are already waiting on and produce no handler. Ends with M19 Phase 2.",
+    events: ["m5.patient.deceased", "m11.order.verbal_expired_unsigned"],
   },
   {
     module: "m20",
@@ -174,12 +174,14 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m23",
     kind: "self-consumption",
     reason:
-      "All four are M23's OWN events, consumed by M23's `consumers/submit-requests.ts` staged-submission worker. `M23_UPSTREAM_SUBSCRIPTIONS` is by construction the INBOUND half — what other modules send M23 — so a self-consumed topic is correctly absent from it while the catalog correctly declares it. The two describe different things.",
+      "All six are M23's OWN events, consumed by M23's `outbox-consumers/submit-requests.ts` outbox→BullMQ bridges (the four staged-submission topics, plus — GAP-070 — `validation_started` / `refresh_requested`, which feed the `validation-run` / `eligibility.refresh` workers). `M23_UPSTREAM_SUBSCRIPTIONS` is by construction the INBOUND half — what other modules send M23 — so a self-consumed topic is correctly absent from it while the catalog correctly declares it. The two describe different things.",
     events: [
       "m23.claim.submit_requested",
       "m23.claim.submission_failed",
       "m23.noe.submit_requested",
       "m23.notr.submit_requested",
+      "m23.claim.validation_started",
+      "m23.eligibility.refresh_requested",
     ],
   },
   {

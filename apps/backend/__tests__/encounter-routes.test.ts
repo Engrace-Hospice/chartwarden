@@ -1178,6 +1178,30 @@ describe("GAP-028 — M8 author ABAC (is_author / is_author_or_supervisor / is_a
     }
   });
 
+  it("GET /encounters/:id lists the addenda with server status, reason and author (GAP-027)", async () => {
+    const { app } = makeServer();
+    const id = await finalizedBy(app, RN);
+    expect((await sign(app, id, RN)).statusCode).toBe(200);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/addenda`,
+      headers: RN2,
+      payload: { reason: "late clarification of the evening pain plan" },
+    });
+    const addendumId = created.json().id as string;
+    const read = await app.inject({ method: "GET", url: `/api/v1/encounters/${id}`, headers: RN });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().addenda).toEqual([
+      expect.objectContaining({
+        id: addendumId,
+        status: "draft",
+        reason: "late clarification of the evening pain plan",
+        authoredByUserId: "rn_2",
+        signedAt: null,
+      }),
+    ]);
+  });
+
   it("an addendum is attributed to the CALLER, not the parent's author", async () => {
     const { app, backend } = makeServer();
     const id = await finalizedBy(app, RN);

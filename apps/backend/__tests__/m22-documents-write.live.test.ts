@@ -17,7 +17,9 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbDocumentBackend } from "../src/modules/22-documents/documents-route-service-db";
+import { createServerUploadService } from "../src/modules/22-documents/routes/server-upload";
 import { createVerifiedUploadService } from "../src/modules/22-documents/routes/verified-upload";
+import { createInMemoryObjectStore } from "../src/modules/22-documents/seams/store";
 import type { ObjectStorePort } from "../src/modules/22-documents/seams/store";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -789,5 +791,36 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         statusCode: 404,
       },
     );
+  });
+
+  it("GAP-068: single-request upload stores the object and commits document + v1 + v2 with verified size/hash", async () => {
+    const mem = createInMemoryObjectStore();
+    const uploads = createServerUploadService({ db: handle.db, objects: mem.store });
+    const backend = createDbDocumentBackend(handle.db, {}, uploads).service;
+    const pdf = new TextEncoder().encode("%PDF-1.7 gap-068 live");
+    const doc = await backend.uploadDocument(ORG_A as never, ACTOR, {
+      patientId: PATIENT,
+      admissionId: null,
+      retentionClass: "clinical_record",
+      aggregateType: "other",
+      aggregateId: null,
+      title: "GAP-068 upload",
+      patientFacing: false,
+      tags: [{ tagKind: "free", tagKey: "gap068", tagValue: null }],
+      content: { bytes: pdf, mimeType: "application/pdf" },
+    });
+    expect(mem.objects.size).toBe(1);
+    const v1 = await backend.listVersions(ORG_A as never, doc.id, undefined, 10);
+    expect(v1.items).toHaveLength(1);
+    expect(v1.items[0]).toMatchObject({ versionNumber: 1, byteSize: pdf.byteLength });
+    const next = await backend.uploadVersion(ORG_A as never, ACTOR, doc.id, {
+      content: { bytes: pdf, mimeType: "application/pdf" },
+    });
+    expect(next.versionNumber).toBe(2);
+    await expect(
+      backend.uploadVersion(ORG_B as never, ACTOR, doc.id, {
+        content: { bytes: pdf, mimeType: "application/pdf" },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

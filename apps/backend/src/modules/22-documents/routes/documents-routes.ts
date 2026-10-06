@@ -56,12 +56,14 @@ import {
   TemplateListQuerySchema,
   TemplateParamsSchema,
   TemplateVersionParamsSchema,
+  UPLOAD_BODY_LIMIT_BYTES,
   UploadDocumentRequest,
   UploadVersionRequest,
   VersionListQuerySchema,
   VersionParamsSchema,
   parse,
 } from "./documents-typebox";
+import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor } from "./service";
 import type { SignedUrlService } from "./signed-url-service";
 
@@ -207,27 +209,37 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   }
 
   // 1 — upload new document (creates document + version v1).
-  app.post("/api/v1/documents", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const { organizationId, actor } = actorOf(request);
-    const body = parse(UploadDocumentRequest, request.body);
-    const res = await service.uploadDocument(organizationId, actor, {
-      patientId: body.patientId ?? null,
-      admissionId: body.admissionId ?? null,
-      retentionClass: body.retentionClass,
-      aggregateType: body.aggregateType,
-      aggregateId: body.aggregateId ?? null,
-      title: body.title,
-      patientFacing: body.patientFacing ?? false,
-      // F-060 — the contract has always accepted `tags[]` here; the handler parsed it and passed it
-      // to nothing, so the array was validated and discarded on every upload.
-      tags: (body.tags ?? []).map((t) => ({
-        tagKind: t.tagKind,
-        tagKey: t.tagKey,
-        tagValue: t.tagValue ?? null,
-      })),
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/documents",
+    { preHandler: [UPLOAD, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+    async (request, reply) => {
+      const { organizationId, actor } = actorOf(request);
+      const body = parse(UploadDocumentRequest, request.body);
+      const res = await service.uploadDocument(organizationId, actor, {
+        patientId: body.patientId ?? null,
+        admissionId: body.admissionId ?? null,
+        retentionClass: body.retentionClass,
+        aggregateType: body.aggregateType,
+        aggregateId: body.aggregateId ?? null,
+        title: body.title,
+        patientFacing: body.patientFacing ?? false,
+        // F-060 — the contract has always accepted `tags[]` here; the handler parsed it and passed it
+        // to nothing, so the array was validated and discarded on every upload.
+        tags: (body.tags ?? []).map((t) => ({
+          tagKind: t.tagKind,
+          tagKey: t.tagKey,
+          tagValue: t.tagValue ?? null,
+        })),
+        // GAP-068 — the bytes; size/MIME/magic/digest are verified by the service, never trusted from here.
+        content: {
+          bytes: decodeBase64Content(body.contentBase64),
+          mimeType: body.mimeType,
+          ...(body.sha256Hex ? { sha256Hex: body.sha256Hex } : {}),
+        },
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 7 — list documents (static path before the :id routes; filtered + cursor-paginated).
   app.get(
@@ -254,12 +266,23 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 2 — upload new version of an existing document.
-  app.post("/api/v1/documents/:id/versions", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const { organizationId, actor } = actorOf(request);
-    parse(UploadVersionRequest, request.body);
-    const res = await service.uploadVersion(organizationId, actor, docIdOf(request));
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/documents/:id/versions",
+    { preHandler: [UPLOAD, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+    async (request, reply) => {
+      const { organizationId, actor } = actorOf(request);
+      const body = parse(UploadVersionRequest, request.body);
+      const res = await service.uploadVersion(organizationId, actor, docIdOf(request), {
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        content: {
+          bytes: decodeBase64Content(body.contentBase64),
+          mimeType: body.mimeType,
+          ...(body.sha256Hex ? { sha256Hex: body.sha256Hex } : {}),
+        },
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 4 — list version history (cursor-paginated).
   app.get(

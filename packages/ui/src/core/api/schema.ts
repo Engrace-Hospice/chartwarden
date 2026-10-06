@@ -38332,6 +38332,8 @@ export interface operations {
                             /** @description Decimal string (numeric column) — never a float */
                             dollarValue: string;
                             taxonomyStatus: string;
+                            /** @description Row version — send as If-Match on denial transitions */
+                            version: number;
                         }[];
                         nextCursor: string | null;
                     };
@@ -38377,6 +38379,8 @@ export interface operations {
                         /** @description Decimal string (numeric column) — never a float */
                         dollarValue: string;
                         taxonomyStatus: string;
+                        /** @description Row version — send as If-Match on denial transitions */
+                        version: number;
                     };
                 };
             };
@@ -40103,10 +40107,13 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: string;
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    contentBase64: string;
+                    sha256Hex?: string;
                     tags?: {
                         tagKind: "free" | "structured";
                         tagKey: string;
@@ -40491,6 +40498,9 @@ export interface operations {
             content: {
                 "application/json": {
                     title?: string;
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    contentBase64: string;
+                    sha256Hex?: string;
                 };
             };
         };
@@ -40898,6 +40908,15 @@ export interface operations {
                                 goalId: string | null;
                                 interventionId: string | null;
                             }[];
+                            addenda?: {
+                                id: string;
+                                status: "draft" | "finalized" | "signed";
+                                reason: string;
+                                authoredByUserId: string;
+                                createdAt: string;
+                                signedAt: string | null;
+                                version: number;
+                            }[];
                         }[];
                     };
                 };
@@ -41002,6 +41021,15 @@ export interface operations {
                             problemId: string | null;
                             goalId: string | null;
                             interventionId: string | null;
+                        }[];
+                        addenda?: {
+                            id: string;
+                            status: "draft" | "finalized" | "signed";
+                            reason: string;
+                            authoredByUserId: string;
+                            createdAt: string;
+                            signedAt: string | null;
+                            version: number;
                         }[];
                     };
                 };
@@ -42128,6 +42156,15 @@ export interface operations {
                                 goalId: string | null;
                                 interventionId: string | null;
                             }[];
+                            addenda?: {
+                                id: string;
+                                status: "draft" | "finalized" | "signed";
+                                reason: string;
+                                authoredByUserId: string;
+                                createdAt: string;
+                                signedAt: string | null;
+                                version: number;
+                            }[];
                         }[];
                     };
                 };
@@ -42183,6 +42220,15 @@ export interface operations {
                                 problemId: string | null;
                                 goalId: string | null;
                                 interventionId: string | null;
+                            }[];
+                            addenda?: {
+                                id: string;
+                                status: "draft" | "finalized" | "signed";
+                                reason: string;
+                                authoredByUserId: string;
+                                createdAt: string;
+                                signedAt: string | null;
+                                version: number;
                             }[];
                         }[];
                     };
@@ -49041,6 +49087,15 @@ export interface operations {
                                 problemId: string | null;
                                 goalId: string | null;
                                 interventionId: string | null;
+                            }[];
+                            addenda?: {
+                                id: string;
+                                status: "draft" | "finalized" | "signed";
+                                reason: string;
+                                authoredByUserId: string;
+                                createdAt: string;
+                                signedAt: string | null;
+                                version: number;
                             }[];
                         }[];
                     };

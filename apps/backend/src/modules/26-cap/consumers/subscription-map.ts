@@ -4,7 +4,10 @@
 // its handler when the live inbound relay lands; until then these are forward-declared (registered, inert).
 export const M26_SUBSCRIPTION_MAP = {
   // M25 — the authoritative paid-amount source: every accrual cent traces to an 835 remittance line.
-  "m25.remittance.advice_posted": "record-accrual-line",
+  // GAP-075: the per-line posting events (patient + integer cents + service dates), not the advice-level
+  // `advice_posted` rollup, which carries none of those facts.
+  "m25.remittance.claim_paid": "record-accrual-line",
+  "m25.remittance.claim_partial_paid": "record-accrual-line",
   // M23 — claim corrections produce reversal/adjustment accrual lines.
   "m23.claim.replaced": "record-reversal-line",
   "m23.claim.voided": "record-reversal-line",

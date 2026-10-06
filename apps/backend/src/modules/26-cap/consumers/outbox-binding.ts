@@ -29,6 +29,10 @@
 // amount field under any of the three names `handleClaimReversed` reads (F-131's own note, confirmed
 // still true here) — so they are correctly BOUND (routed, catalog-agreeing) while still functionally
 // inert until a future pass widens THEIR payloads the same way.
+// GAP-075/077 (2026-10): the original `m25.remittance.advice_posted` binding is replaced by M25's per-line
+// `claim_paid` / `claim_partial_paid` events (the advice rollup carries no patient or per-claim amount), the
+// dispatcher envelope's `organizationId` is merged into every payload (no catalogued payload carries it), and
+// `m23.claim.line_finalized` now has a producer (M23's remittance consumer) and a payload both sides agree on.
 import { type CapConsumerStore, dispatchM26UpstreamEvent } from "./index";
 import type { M26SubscribedTopic } from "./subscription-map";
 
@@ -44,7 +48,8 @@ export const BOUND_TOPICS: readonly M26SubscribedTopic[] = [
   "m23.claim.line_finalized",
   "m23.claim.replaced",
   "m23.claim.voided",
-  "m25.remittance.advice_posted",
+  "m25.remittance.claim_paid",
+  "m25.remittance.claim_partial_paid",
   "m25.remittance.claim_recouped",
   "m5.patient.deceased",
   "m6.revocation.created",
@@ -67,7 +72,15 @@ export function buildM26UpstreamConsumer(store: CapConsumerStore) {
     eventTypes: BOUND_TOPICS,
     async handle(event: OutboxEventToConsume): Promise<void> {
       await dispatchM26UpstreamEvent(
-        { topic: event.eventType, payload: (event.payload ?? {}) as Record<string, unknown> },
+        {
+          topic: event.eventType,
+          // GAP-075: the tenant lives on the dispatcher envelope, not in any catalogued payload — merge
+          // it in LAST so a payload can never name a different org than the row was delivered under.
+          payload: {
+            ...((event.payload ?? {}) as Record<string, unknown>),
+            organizationId: event.organizationId,
+          },
+        },
         store,
       );
     },

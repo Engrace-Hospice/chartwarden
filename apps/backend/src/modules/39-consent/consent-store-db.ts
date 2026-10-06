@@ -166,10 +166,12 @@ export function createDbConsentStore(db: DbClient): ConsentStore {
     },
 
     async isPatientDeceased(_args) {
-      // M5 owns the truth; D13 post-death scope arrives via the `m5.patient.deceased` OUTBOX consumer
-      // (M39-T08), NOT a PatientReader call (PatientReader exposes no deceased signal — see
-      // consumed-seams.ts). That consumer + its M1 infra are not yet wired, so this returns false —
-      // the same shape the in-memory slice gives a patient absent from its deceased set.
+      // M5 owns the truth and M39 learns of a death by PUSH (spec §4.6 / §7.7): the bound
+      // `m5.patient.deceased` consumer (`./m5-patient-deceased-consumer`, GAP-110) flips every active
+      // non-survives-death consent to `expired` in the same delivery, and `pickGoverning` lets only an
+      // `active` row govern — so the D13 termination is already the row's status. `PatientReader` exposes no
+      // deceased signal (see consumed-seams.ts), hence no per-call pull. What this probe still answers
+      // `false` for is the survives-death consents the cascade deliberately leaves active (D13).
       return false;
     },
   };

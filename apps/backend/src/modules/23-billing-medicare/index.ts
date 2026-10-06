@@ -68,7 +68,12 @@ export {
   buildDrizzleSequestrationPolicyService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
-export { buildM23BootAssemblyService } from "./services/boot-assembly";
+export {
+  type M23BootAssemblyPorts,
+  buildM23BootAssemblySeams,
+  buildM23BootAssemblyService,
+} from "./services/boot-assembly";
+export type { ProviderCcnPort } from "./routes/write-service";
 
 // §3.7 / §8.4 — the M4 destruction-registry `billing_record` eraser. Registered over the Phase-0 deny-stub by
 // the composition root's `registerModuleErasers` hook; M23 cannot import the M1 bootstrap registry, so the
@@ -113,11 +118,23 @@ export {
   buildM23SubmissionQueuePort,
   buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
+  registerM23DomainWorkers,
+  registerM23PortalHealthWorker,
   registerM23Workers,
   registerM23LaunchWorkers,
+  registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23LaunchJobs,
+  scheduleM23WatchJobs,
+  buildClaimValidationRunner,
+  buildM23ValidationRunner,
+  buildM23WorkQueueEnqueuePort,
+  buildNoticeWindowPort,
 } from "./jobs/index";
+export { M23_PLATFORM_JOB_ID, wireM23Tenancy } from "./wiring";
+export { buildClaimValidationContextPort } from "./services/claim-validation-context-port";
+export { buildClaimStateService } from "./services/claim-state-service";
+export { buildClaimValidationService } from "./services/claim-validation-service";
 
 export {
   createM23LaunchGateway,
@@ -128,6 +145,7 @@ export type { M23LaunchGatewayConfig } from "./jobs/launch-gateway";
 export {
   buildM23OutboxBackedSubmissionGate,
   buildM23SubmissionRequestConsumer,
+  buildM23WorkRequestConsumer,
   M23_SUBMISSION_REQUEST_EVENTS,
 } from "./outbox-consumers/submit-requests";
 

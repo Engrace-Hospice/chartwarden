@@ -117,7 +117,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
-        "apps/backend/__tests__/encounter-routes.test.ts"
+        "apps/backend/__tests__/encounter-routes.test.ts",
+        "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts"
       ],
       "directRoutesReferenced": 33
     },
@@ -304,6 +305,7 @@
       "routes": 32,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
       "directRoutesReferenced": 31

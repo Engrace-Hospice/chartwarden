@@ -11,11 +11,13 @@ import { createCapEraser, createInMemoryCapRedactStore } from "../erasers/cap-er
 import { runCapYearClose, runNightlyProjection, runPsrVarianceWatchdog } from "../jobs/m26-jobs";
 
 describe("M26 §4.4 consumer dispatch", () => {
-  it("subscribes the nine upstream topics", () => {
-    expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.advice_posted");
+  it("subscribes the ten upstream topics", () => {
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.claim_paid");
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.claim_partial_paid");
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).not.toContain("m25.remittance.advice_posted");
     expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m23.claim.line_finalized");
     expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.claim_recouped");
-    expect(M26_UPSTREAM_SUBSCRIPTIONS).toHaveLength(9);
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).toHaveLength(10);
   });
 
   it("routes m25.remittance.claim_recouped → recordAccrualLine with a negative reversal amount (F-163)", async () => {
@@ -72,7 +74,7 @@ describe("M26 §4.4 consumer dispatch", () => {
     expect(store.recordAccrualLine).not.toHaveBeenCalled();
   });
 
-  it("routes remittance.advice_posted → recordAccrualLine with the paid amount (D4)", async () => {
+  it("routes m25.remittance.claim_paid → recordAccrualLine with the paid amount (D4)", async () => {
     const calls: unknown[] = [];
     const store: CapConsumerStore = {
       ...createInMemoryCapConsumerStore(),
@@ -83,7 +85,7 @@ describe("M26 §4.4 consumer dispatch", () => {
     };
     const r = await dispatchM26UpstreamEvent(
       {
-        topic: "m25.remittance.advice_posted",
+        topic: "m25.remittance.claim_paid",
         payload: {
           organizationId: "o1",
           patientId: "p1",
@@ -116,8 +118,11 @@ describe("M26 §4.4 consumer dispatch", () => {
           organizationId: "o1",
           patientId: "p1",
           claimLineId: "cl1",
-          revCode: "0656",
+          revenueCode: "0656",
           days: 3,
+          serviceFrom: "2025-01-01",
+          serviceTo: "2025-01-03",
+          finalizedAt: "2025-02-01T00:00:00Z",
         },
       },
       store,
@@ -130,8 +135,11 @@ describe("M26 §4.4 consumer dispatch", () => {
           organizationId: "o1",
           patientId: "p1",
           claimLineId: "cl2",
-          revCode: "0651",
+          revenueCode: "0651",
           days: 3,
+          serviceFrom: "2025-01-01",
+          serviceTo: "2025-01-03",
+          finalizedAt: "2025-02-01T00:00:00Z",
         },
       },
       store,

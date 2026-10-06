@@ -420,7 +420,7 @@ export function createS3ObjectStore(
     new Error(`m22 s3 object store: '${op}' failed with HTTP ${status} for ${bucket}/${objectKey}`);
 
   return {
-    async putObject({ bucket, objectKey, bytes }) {
+    async putObject({ bucket, objectKey, bytes, mimeType }) {
       const sha256Hex = sigV4Sha256Hex(bytes);
       const res = await signedFetch({
         method: "PUT",
@@ -428,7 +428,12 @@ export function createS3ObjectStore(
         objectKey,
         query: [],
         payload: bytes,
-        extraHeaders: { "content-type": "application/octet-stream" },
+        extraHeaders: mimeType
+          ? {
+              "content-type": mimeType,
+              "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
+            }
+          : { "content-type": "application/octet-stream" },
       });
       if (!res.ok) throw opError("putObject", res.status, bucket, objectKey);
       return { sha256Hex };

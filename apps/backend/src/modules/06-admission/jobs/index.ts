@@ -29,6 +29,8 @@ export const M6_QUEUES = {
   emitFormRequest: "m6.admission.emit_form_request",
   /** Scheduled (every 15 min): move overdue windows to alert severity; emit metrics. */
   windowAlert: "m6.admission.window_alert",
+  /** Cron (hourly; each org is evaluated on its own local date): complete ACTIVE benefit periods whose last covered day has passed and publish `m6.election.period_ended` (GAP-025). */
+  periodAutoEnd: "m6.admission.period_auto_end",
 } as const;
 
 export type M6QueueName = (typeof M6_QUEUES)[keyof typeof M6_QUEUES];
@@ -39,6 +41,7 @@ export const M6_JOB_SCHEDULES = {
   f2fDueNotify: "0 6 * * *", // daily 06:00 org TZ
   ctiSignatureNotify: "0 6 * * *", // daily 06:00 org TZ
   windowAlert: "*/15 * * * *", // every 15 minutes
+  periodAutoEnd: "5 * * * *", // hourly; idempotent, so each org is caught shortly after ITS local midnight
 } as const;
 
 /**

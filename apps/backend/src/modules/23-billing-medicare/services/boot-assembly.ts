@@ -154,6 +154,32 @@ export function buildM23BootDiagnosesSeam(port?: M7ClaimDiagnosesReader): Diagno
     : { forRange: () => unbound("DiagnosisSequenceReader") };
 }
 
+/** The injected reader ports the boot assembly binds over (every absent port stays a fail-closed deny-stub). */
+export interface M23BootAssemblyPorts {
+  readonly outbox?: AssemblyOutboxPort;
+  readonly providerCcn?: ProviderCcnPort;
+  /** F-121 (#251) — M6's `claimAssemblyRangeContextForOrg`, injected by the composition root. Absent
+   *  (e.g. in a unit test that only exercises the earlier `patientPayer` gate), the five M6 seams stay
+   *  the fail-closed `unbound()` deny-stubs below. */
+  readonly m6ClaimRange?: M6ClaimRangeReader;
+  /** F-122 (#251) — M8's two new range-shaped seam functions, injected by the composition root. Absent,
+   *  `billableEncounters`/`signedEncounters` stay their fail-closed `unbound()` deny-stubs below. */
+  readonly m8BillableEncounters?: M8BillableEncountersReader;
+  readonly m8SignedEncounters?: M8SignedEncountersReader;
+  /** F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read, injected by the
+   *  composition root. Absent, `evvCompliance` stays its fail-closed `unbound()` deny-stub below. */
+  readonly m8EncounterVisitIds?: M8EncounterVisitIdsReader;
+  readonly m18Compliance?: M18ComplianceStatesReader;
+  /** F-209 (#251) — M7's `claimDiagnosesForOrg`, injected by the composition root. Absent, `diagnoses`
+   *  stays its fail-closed `unbound()` deny-stub below (an unbound sequence must never read as "no
+   *  diagnoses" — that would silently fail `icd10_sequencing` on real data). */
+  readonly m7ClaimDiagnoses?: M7ClaimDiagnosesReader;
+  /** F-213 (#252) — the M5 residence-range + M40 facility-kind ports behind
+   *  `mdm.resolveClinicalParticipants().placeOfService`. Absent, `placeOfService` stays `null`
+   *  (line Q-code falls to Q5009 honestly). */
+  readonly placeOfService?: PlaceOfServicePorts;
+}
+
 /**
  * Build the boot-time claim-assembly service over the RLS-enforced primary `db`. Four reader methods are
  * bound to real data (this file's header); every other cross-module reader seam is a fail-closed deny-stub
@@ -161,33 +187,10 @@ export function buildM23BootDiagnosesSeam(port?: M7ClaimDiagnosesReader): Diagno
  * optional `outbox` threads the catalog-validating tx publisher through for when the remaining seams bind
  * (the still-unbound M6 readers throw before the emit is reached today).
  */
-export function buildM23BootAssemblyService(
+export function buildM23BootAssemblySeams(
   db: BillingDb,
-  ports: {
-    readonly outbox?: AssemblyOutboxPort;
-    readonly providerCcn?: ProviderCcnPort;
-    /** F-121 (#251) — M6's `claimAssemblyRangeContextForOrg`, injected by the composition root. Absent
-     *  (e.g. in a unit test that only exercises the earlier `patientPayer` gate), the five M6 seams stay
-     *  the fail-closed `unbound()` deny-stubs below. */
-    readonly m6ClaimRange?: M6ClaimRangeReader;
-    /** F-122 (#251) — M8's two new range-shaped seam functions, injected by the composition root. Absent,
-     *  `billableEncounters`/`signedEncounters` stay their fail-closed `unbound()` deny-stubs below. */
-    readonly m8BillableEncounters?: M8BillableEncountersReader;
-    readonly m8SignedEncounters?: M8SignedEncountersReader;
-    /** F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read, injected by the
-     *  composition root. Absent, `evvCompliance` stays its fail-closed `unbound()` deny-stub below. */
-    readonly m8EncounterVisitIds?: M8EncounterVisitIdsReader;
-    readonly m18Compliance?: M18ComplianceStatesReader;
-    /** F-209 (#251) — M7's `claimDiagnosesForOrg`, injected by the composition root. Absent, `diagnoses`
-     *  stays its fail-closed `unbound()` deny-stub below (an unbound sequence must never read as "no
-     *  diagnoses" — that would silently fail `icd10_sequencing` on real data). */
-    readonly m7ClaimDiagnoses?: M7ClaimDiagnosesReader;
-    /** F-213 (#252) — the M5 residence-range + M40 facility-kind ports behind
-     *  `mdm.resolveClinicalParticipants().placeOfService`. Absent, `placeOfService` stays `null`
-     *  (line Q-code falls to Q5009 honestly). */
-    readonly placeOfService?: PlaceOfServicePorts;
-  } = {},
-): ClaimAssemblyService {
+  ports: M23BootAssemblyPorts = {},
+): ClaimAssemblySeams {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
     async publish() {
       unbound("AssemblyOutboxPort");
@@ -207,7 +210,7 @@ export function buildM23BootAssemblyService(
   // each stays its own fail-closed `unbound()` stub (RULE 4).
   const m6Range = ports.m6ClaimRange ? buildM23AdmissionRangeAdapters(ports.m6ClaimRange) : null;
 
-  const seams: ClaimAssemblySeams = {
+  return {
     // REAL (#250) — see this file's header for the exact per-seam accounting.
     patientPayer: buildM23PatientPayerAdapter(),
     admission: m6Range?.admission ?? { resolveForRange: () => unbound("AdmissionContextReader") },
@@ -258,6 +261,12 @@ export function buildM23BootAssemblyService(
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };
+}
 
-  return buildClaimAssemblyService(db, seams);
+/** Build the boot-time claim-assembly service (the route's `POST /claims/assemble`) over those seams. */
+export function buildM23BootAssemblyService(
+  db: BillingDb,
+  ports: M23BootAssemblyPorts = {},
+): ClaimAssemblyService {
+  return buildClaimAssemblyService(db, buildM23BootAssemblySeams(db, ports));
 }

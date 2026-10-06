@@ -1,9 +1,11 @@
 // GAP-073 — manual match + adjustment override commands, driven over a scripted fake transaction (no DB).
 // The fake serves each awaited chain from a per-table queue, so the assertions pin WHAT is written, not the
 // ORM call shape. Live RLS / partition behaviour is covered by the live suite.
+import { Value } from "@sinclair/typebox/value";
 import { schema } from "@wardenx/db";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { M25_OUTBOX_EVENTS } from "../../events-by-m25";
 import type { M25WriteActor } from "../actor";
 import { buildRemittanceCommands } from "../remittance-commands-drizzle";
 import type { ClaimFactsPort, RemittanceAuditPort } from "../remittance-ports";
@@ -251,6 +253,36 @@ describe("manualMatch", () => {
       eventName: "m25.remittance.claim_partial_paid",
       payload: { paidAmount: "40.00", adjustedAmount: "60.00" },
     });
+  });
+
+  it.each([
+    ["m25.remittance.claim_paid", "100.00"],
+    ["m25.remittance.claim_partial_paid", "40.00"],
+  ] as const)(
+    "%s carries the catalogued per-claim cap facts (patientId, cents, null dates)",
+    async (eventName, paid) => {
+      arrange({ ...unmatchedLine, clp04TotalPaymentAmount: paid });
+      await cmds().manualMatch(actor, LINE, { proposedClaimId: CLAIM, reason: REASON });
+      const event = emitted.find((e) => e.eventName === eventName);
+      const def = M25_OUTBOX_EVENTS.find((d) => d.eventName === eventName);
+      expect(event).toBeDefined();
+      expect(event?.payload).toMatchObject({
+        patientId: PATIENT,
+        paidAmountCents: Math.round(Number(paid) * 100),
+        serviceFrom: null,
+        serviceTo: null,
+      });
+      expect(Value.Check(def?.payloadSchema as never, event?.payload)).toBe(true);
+    },
+  );
+
+  it("emits a null patientId (still catalog-valid) when the claim carries none", async () => {
+    claimRow = { id: CLAIM, providerEntityId: PE, patientId: undefined as unknown as string };
+    arrange();
+    await cmds().manualMatch(actor, LINE, { proposedClaimId: CLAIM, reason: REASON });
+    const def = M25_OUTBOX_EVENTS.find((d) => d.eventName === "m25.remittance.claim_paid");
+    expect(emitted[0]?.payload).toMatchObject({ patientId: null });
+    expect(Value.Check(def?.payloadSchema as never, emitted[0]?.payload)).toBe(true);
   });
 
   it("emits claim_denied with the line's CARC codes for a zero payment", async () => {

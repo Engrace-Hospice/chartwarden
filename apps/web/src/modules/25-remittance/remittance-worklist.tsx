@@ -15,9 +15,12 @@ import {
 // posted/queued/failed advices and the manual-match backlog of unmatched lines. Reads are org-scoped
 // server-side (RLS); the server is the only authz point (ADR-0030) — this gates nav visibility only. Lantern:
 // WorkQueueLayout + KpiStrip + No-Line table + §6.6 StatusPill via remittance-status.ts; CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { BillingTabs } from "../../shell/billing-tabs";
+import { useSession } from "../../shell/session";
+import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { MANUAL_MATCH_DRAFT_ACTION, ManualMatchModal } from "./manual-match-modal";
 import { MATCH_STATE_TONE, PARSE_STATUS_TONE, humanize, money, toneOf } from "./remittance-status";
 
 interface AdviceRow {
@@ -48,6 +51,9 @@ export function RemittanceWorklist(): JSX.Element {
   const [advicePage, setAdvicePage] = useState(1);
   const [advicePageSize, setAdvicePageSize] = useState(10);
   const [backlogPage, setBacklogPage] = useState(1);
+  const [matching, setMatching] = useState<LineRow | null>(null);
+  const session = useSession();
+  const reopenChecked = useRef(false);
   const [backlogPageSize, setBacklogPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +76,15 @@ export function RemittanceWorklist(): JSX.Element {
     setUnmatched(unmatchedRes.error ? [] : (unmatchedRes.data?.items ?? []));
     setLoading(false);
   }, [client]);
+
+  // Coming back from /step-up: reopen the line whose typed claim id + rationale was stashed (once).
+  useEffect(() => {
+    if (reopenChecked.current || unmatched.length === 0) return;
+    reopenChecked.current = true;
+    const id = findStepUpDraftResourceId(session, MANUAL_MATCH_DRAFT_ACTION);
+    const line = id ? unmatched.find((l) => l.id === id) : undefined;
+    if (line) setMatching(line);
+  }, [unmatched, session]);
 
   useEffect(() => {
     void load();
@@ -133,286 +148,311 @@ export function RemittanceWorklist(): JSX.Element {
   const hasActiveFilters = searchQuery !== "" || parseFilter !== "";
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Billing / Remittances">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Monitor received ERA envelopes, parse health, posted dollars, and manual-match backlog.
-          </div>
-          <div style={{ marginTop: "0.75rem" }}>
-            <BillingTabs />
-          </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="835 Advices"
-            value={loading || error ? "—" : advices.length}
-            detail="Received envelopes"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="Posted"
-            value={loading || error ? "—" : posted}
-            detail="Parsed and posted"
-            tone="success"
-            accentColor="var(--color-success)"
-          />
-          <KpiCard
-            label="Unmatched Lines"
-            value={loading || error ? "—" : unmatched.length}
-            detail="Manual-match backlog"
-            tone={unmatched.length > 0 ? "warning" : "neutral"}
-            accentColor={
-              unmatched.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-          />
-          <KpiCard
-            label="Failed Parses"
-            value={loading || error ? "—" : failed}
-            detail="Need file review"
-            tone={failed > 0 ? "danger" : "neutral"}
-            accentColor={failed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={parseFilter === "failed"}
-            onSelect={() => {
-              setParseFilter("failed");
-              setAdvicePage(1);
-            }}
-          />
-          <KpiCard
-            label="Paid"
-            value={loading || error ? "—" : money(totalPaid)}
-            detail="Advice total"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-        </KpiStrip>
-      }
-      filters={
-        <div style={filterPanelStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Billing / Remittances">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Monitor received ERA envelopes, parse health, posted dollars, and manual-match
+              backlog.
             </div>
-          ) : null}
-          <div style={filterRowStyle}>
-            <label className="wx-search-field">
-              <Glyph name="search" size={16} />
-              <input
-                type="search"
-                placeholder="Search payer, method, claim, amount..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setAdvicePage(1);
-                  setBacklogPage(1);
-                }}
-                aria-label="Search remittance"
-              />
-            </label>
-            <label style={filterLabelStyle}>
-              <span style={mutedStyle}>Parse</span>
-              <select
-                aria-label="Filter by parse status"
-                value={parseFilter}
-                onChange={(e) => {
-                  setParseFilter(e.target.value);
-                  setAdvicePage(1);
-                }}
-                style={selectStyle}
-              >
-                {parseOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {hasActiveFilters ? (
-              <Button
-                size="sm"
-                tone="tertiary"
-                onClick={() => {
-                  setSearchQuery("");
-                  setParseFilter("");
-                  setAdvicePage(1);
-                  setBacklogPage(1);
-                }}
-              >
-                Clear
-              </Button>
+            <div style={{ marginTop: "0.75rem" }}>
+              <BillingTabs />
+            </div>
+          </PageHeader>
+        }
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="835 Advices"
+              value={loading || error ? "—" : advices.length}
+              detail="Received envelopes"
+              tone="info"
+              accentColor="var(--color-primary)"
+            />
+            <KpiCard
+              label="Posted"
+              value={loading || error ? "—" : posted}
+              detail="Parsed and posted"
+              tone="success"
+              accentColor="var(--color-success)"
+            />
+            <KpiCard
+              label="Unmatched Lines"
+              value={loading || error ? "—" : unmatched.length}
+              detail="Manual-match backlog"
+              tone={unmatched.length > 0 ? "warning" : "neutral"}
+              accentColor={
+                unmatched.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+            />
+            <KpiCard
+              label="Failed Parses"
+              value={loading || error ? "—" : failed}
+              detail="Need file review"
+              tone={failed > 0 ? "danger" : "neutral"}
+              accentColor={failed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+              selected={parseFilter === "failed"}
+              onSelect={() => {
+                setParseFilter("failed");
+                setAdvicePage(1);
+              }}
+            />
+            <KpiCard
+              label="Paid"
+              value={loading || error ? "—" : money(totalPaid)}
+              detail="Advice total"
+              tone="neutral"
+              accentColor="var(--color-outline-variant)"
+            />
+          </KpiStrip>
+        }
+        filters={
+          <div style={filterPanelStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
             ) : null}
-            <span style={mutedStyle}>
-              {filteredAdvices.length} of {advices.length} advices · {filteredBacklog.length} of{" "}
-              {unmatched.length} unmatched
-            </span>
-          </div>
-        </div>
-      }
-      table={
-        loading ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.75rem",
-              padding: "0 1.5rem 1.5rem",
-            }}
-          >
-            <section>
-              <h2 style={sectionTitle}>835 envelopes</h2>
-              {filteredAdvices.length === 0 ? (
-                <EmptyState
-                  title="No remittances"
-                  description={
-                    hasActiveFilters
-                      ? "No 835 advice matches these filters."
-                      : "No 835 advices have been received yet."
-                  }
-                  action={
-                    hasActiveFilters ? (
-                      <Button
-                        tone="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setSearchQuery("");
-                          setParseFilter("");
-                          setAdvicePage(1);
-                        }}
-                      >
-                        Clear filters
-                      </Button>
-                    ) : undefined
-                  }
+            <div style={filterRowStyle}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
+                <input
+                  type="search"
+                  placeholder="Search payer, method, claim, amount..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setAdvicePage(1);
+                    setBacklogPage(1);
+                  }}
+                  aria-label="Search remittance"
                 />
-              ) : (
-                <div style={{ width: "100%", overflowX: "auto" }}>
-                  <table style={tableStyle}>
-                    <thead>
-                      <tr style={headerRowStyle}>
-                        <th style={headStyle}>Received</th>
-                        <th style={headStyle}>Payer</th>
-                        <th style={headStyle}>Method</th>
-                        <th style={headNumStyle}>Paid</th>
-                        <th style={headStyle}>Parse</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedAdvices.map((a) => (
-                        <tr key={a.id} style={rowStyle}>
-                          <td style={tdDateStyle}>{new Date(a.receivedAt).toLocaleDateString()}</td>
-                          <td style={cellStyle}>{humanize(a.payerKind)}</td>
-                          <td style={cellStyle}>{humanize(a.paymentMethod)}</td>
-                          <td style={tdNumStyle}>{money(a.totalPaymentAmount)}</td>
-                          <td style={cellStyle}>
-                            <StatusPill
-                              label={humanize(a.parseStatus)}
-                              tone={toneOf(PARSE_STATUS_TONE, a.parseStatus)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <OffsetPagination
-                    page={activeAdvicePage}
-                    pageSize={advicePageSize}
-                    totalItems={filteredAdvices.length}
-                    onPageChange={setAdvicePage}
-                    onPageSizeChange={(next) => {
-                      setAdvicePageSize(next);
-                      setAdvicePage(1);
-                    }}
-                    pageSizeOptions={PAGE_SIZES}
-                    noun="advices"
+              </label>
+              <label style={filterLabelStyle}>
+                <span style={mutedStyle}>Parse</span>
+                <select
+                  aria-label="Filter by parse status"
+                  value={parseFilter}
+                  onChange={(e) => {
+                    setParseFilter(e.target.value);
+                    setAdvicePage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  {parseOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {hasActiveFilters ? (
+                <Button
+                  size="sm"
+                  tone="tertiary"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setParseFilter("");
+                    setAdvicePage(1);
+                    setBacklogPage(1);
+                  }}
+                >
+                  Clear
+                </Button>
+              ) : null}
+              <span style={mutedStyle}>
+                {filteredAdvices.length} of {advices.length} advices · {filteredBacklog.length} of{" "}
+                {unmatched.length} unmatched
+              </span>
+            </div>
+          </div>
+        }
+        table={
+          loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.75rem",
+                padding: "0 1.5rem 1.5rem",
+              }}
+            >
+              <section>
+                <h2 style={sectionTitle}>835 envelopes</h2>
+                {filteredAdvices.length === 0 ? (
+                  <EmptyState
+                    title="No remittances"
+                    description={
+                      hasActiveFilters
+                        ? "No 835 advice matches these filters."
+                        : "No 835 advices have been received yet."
+                    }
+                    action={
+                      hasActiveFilters ? (
+                        <Button
+                          tone="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSearchQuery("");
+                            setParseFilter("");
+                            setAdvicePage(1);
+                          }}
+                        >
+                          Clear filters
+                        </Button>
+                      ) : undefined
+                    }
                   />
-                </div>
-              )}
-            </section>
+                ) : (
+                  <div style={{ width: "100%", overflowX: "auto" }}>
+                    <table style={tableStyle}>
+                      <thead>
+                        <tr style={headerRowStyle}>
+                          <th style={headStyle}>Received</th>
+                          <th style={headStyle}>Payer</th>
+                          <th style={headStyle}>Method</th>
+                          <th style={headNumStyle}>Paid</th>
+                          <th style={headStyle}>Parse</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedAdvices.map((a) => (
+                          <tr key={a.id} style={rowStyle}>
+                            <td style={tdDateStyle}>
+                              {new Date(a.receivedAt).toLocaleDateString()}
+                            </td>
+                            <td style={cellStyle}>{humanize(a.payerKind)}</td>
+                            <td style={cellStyle}>{humanize(a.paymentMethod)}</td>
+                            <td style={tdNumStyle}>{money(a.totalPaymentAmount)}</td>
+                            <td style={cellStyle}>
+                              <StatusPill
+                                label={humanize(a.parseStatus)}
+                                tone={toneOf(PARSE_STATUS_TONE, a.parseStatus)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <OffsetPagination
+                      page={activeAdvicePage}
+                      pageSize={advicePageSize}
+                      totalItems={filteredAdvices.length}
+                      onPageChange={setAdvicePage}
+                      onPageSizeChange={(next) => {
+                        setAdvicePageSize(next);
+                        setAdvicePage(1);
+                      }}
+                      pageSizeOptions={PAGE_SIZES}
+                      noun="advices"
+                    />
+                  </div>
+                )}
+              </section>
 
-            <section>
-              <h2 style={sectionTitle}>Manual-match backlog</h2>
-              {filteredBacklog.length === 0 ? (
-                <EmptyState
-                  title="Nothing to match"
-                  description={
-                    searchQuery
-                      ? "No unmatched line matches this search."
-                      : "Every posted line is matched to a claim."
-                  }
-                  action={
-                    searchQuery ? (
-                      <Button
-                        tone="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setSearchQuery("");
-                          setBacklogPage(1);
-                        }}
-                      >
-                        Clear search
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              ) : (
-                <div style={{ width: "100%", overflowX: "auto" }}>
-                  <table style={tableStyle}>
-                    <thead>
-                      <tr style={headerRowStyle}>
-                        <th style={headStyle}>Received</th>
-                        <th style={headNumStyle}>Charge</th>
-                        <th style={headNumStyle}>Paid</th>
-                        <th style={headStyle}>State</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedBacklog.map((l) => (
-                        <tr key={l.id} style={rowStyle}>
-                          <td style={tdDateStyle}>{new Date(l.receivedAt).toLocaleDateString()}</td>
-                          <td style={tdNumStyle}>{money(l.clp03TotalChargeAmount)}</td>
-                          <td style={tdNumStyle}>{money(l.clp04TotalPaymentAmount)}</td>
-                          <td style={cellStyle}>
-                            <StatusPill
-                              label={humanize(l.matchState)}
-                              tone={toneOf(MATCH_STATE_TONE, l.matchState)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <OffsetPagination
-                    page={activeBacklogPage}
-                    pageSize={backlogPageSize}
-                    totalItems={filteredBacklog.length}
-                    onPageChange={setBacklogPage}
-                    onPageSizeChange={(next) => {
-                      setBacklogPageSize(next);
-                      setBacklogPage(1);
-                    }}
-                    pageSizeOptions={PAGE_SIZES}
-                    noun="lines"
+              <section>
+                <h2 style={sectionTitle}>Manual-match backlog</h2>
+                {filteredBacklog.length === 0 ? (
+                  <EmptyState
+                    title="Nothing to match"
+                    description={
+                      searchQuery
+                        ? "No unmatched line matches this search."
+                        : "Every posted line is matched to a claim."
+                    }
+                    action={
+                      searchQuery ? (
+                        <Button
+                          tone="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSearchQuery("");
+                            setBacklogPage(1);
+                          }}
+                        >
+                          Clear search
+                        </Button>
+                      ) : undefined
+                    }
                   />
-                </div>
-              )}
-            </section>
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                ) : (
+                  <div style={{ width: "100%", overflowX: "auto" }}>
+                    <table style={tableStyle}>
+                      <thead>
+                        <tr style={headerRowStyle}>
+                          <th style={headStyle}>Received</th>
+                          <th style={headNumStyle}>Charge</th>
+                          <th style={headNumStyle}>Paid</th>
+                          <th style={headStyle}>State</th>
+                          <th style={headStyle}>Match</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedBacklog.map((l) => (
+                          <tr key={l.id} style={rowStyle}>
+                            <td style={tdDateStyle}>
+                              {new Date(l.receivedAt).toLocaleDateString()}
+                            </td>
+                            <td style={tdNumStyle}>{money(l.clp03TotalChargeAmount)}</td>
+                            <td style={tdNumStyle}>{money(l.clp04TotalPaymentAmount)}</td>
+                            <td style={cellStyle}>
+                              <StatusPill
+                                label={humanize(l.matchState)}
+                                tone={toneOf(MATCH_STATE_TONE, l.matchState)}
+                              />
+                            </td>
+                            <td style={cellStyle}>
+                              <Button
+                                size="sm"
+                                tone="secondary"
+                                aria-label={`Match line ${money(l.clp04TotalPaymentAmount)} to claim`}
+                                onClick={() => setMatching(l)}
+                              >
+                                Match
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <OffsetPagination
+                      page={activeBacklogPage}
+                      pageSize={backlogPageSize}
+                      totalItems={filteredBacklog.length}
+                      onPageChange={setBacklogPage}
+                      onPageSizeChange={(next) => {
+                        setBacklogPageSize(next);
+                        setBacklogPage(1);
+                      }}
+                      pageSizeOptions={PAGE_SIZES}
+                      noun="lines"
+                    />
+                  </div>
+                )}
+              </section>
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {matching ? (
+        <ManualMatchModal
+          line={matching}
+          onClose={() => setMatching(null)}
+          onMatched={() => void load()}
+        />
+      ) : null}
+    </>
   );
 }
 

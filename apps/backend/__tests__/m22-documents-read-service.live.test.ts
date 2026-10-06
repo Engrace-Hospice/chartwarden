@@ -151,7 +151,7 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     });
   });
 
-  it("uploadDocument fail-closes DEGRADED rather than persisting a document with unverified bytes", async () => {
+  it("uploadDocument fail-closes DEGRADED when this suite binds no object store (GAP-068: bound-store round-trip is the write suite)", async () => {
     // GAP-086 — this case used to assert the opposite: that `uploadDocument` INSERTs the document + its v1
     // version and round-trips through the RLS-scoped read. That was true when it was written and is not
     // anymore. Uploads were since moved behind `createVerifiedUploadService`, which presigns, then inspects
@@ -173,6 +173,7 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
           title: "Smoke upload",
           patientFacing: false,
           tags: [],
+          content: { bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]), mimeType: "application/pdf" },
         },
       ),
     ).rejects.toMatchObject({ name: "DegradedError" });

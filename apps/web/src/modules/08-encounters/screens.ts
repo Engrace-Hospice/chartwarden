@@ -28,8 +28,8 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //   • Care-plan links — `POST .../care-plan-links` parses a body, DISCARDS it, persists nothing and
 //     returns the ENCOUNTER's id as `linkId`; `DELETE` is a documented no-op. A control over that would
 //     report a link that does not exist (the F-007 rule). Filed separately.
-//   • Addenda authoring — the post-signature correction path; the same composer shape against
-//     `.../addenda/:id/selections`, once the addendum lifecycle surface exists to reach it from.
+//   • (Addenda authoring is NOT deferred any more — GAP-027: the encounter detail screen's addenda panel
+//     edits, finalizes and signs an addendum; see addendum-panel.tsx.)
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignatureQueue = lazy(() =>

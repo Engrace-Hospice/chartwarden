@@ -117,6 +117,10 @@ export interface ObjectStorePort {
     readonly bucket: string;
     readonly objectKey: string;
     readonly bytes: Uint8Array;
+    /** Optional stored Content-Type (a user upload keeps its verified MIME; renders default to octet-stream).
+     *  When set, the store ALSO enforces the SHA-256 server-side (`x-amz-checksum-sha256`), so the object is
+     *  verifiable by `inspectObject` exactly like a presigned upload. */
+    readonly mimeType?: string;
   }): Promise<{ readonly sha256Hex: string }>;
   /** Presign a checksum-enforced direct PUT. The returned headers MUST accompany the client upload. */
   presignUpload(args: {

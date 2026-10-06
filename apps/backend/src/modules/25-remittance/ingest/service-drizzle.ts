@@ -210,13 +210,26 @@ export function buildDrizzleM25IngestService(
         // and M33's date-bucketed measures. The 835's receipt instant is the posting instant.
         postedAt: advice.receivedAt.toISOString(),
       };
+      // GAP-075 — the per-claim accrual facts M26 records (see `capAccrualFacts` in events-by-m25.ts).
+      // Resolved only for the two outcomes that carry paid money; the patient comes from the payer-routed
+      // claim-match seam, honestly `null` when it cannot be sited.
+      const capFacts = async () => ({
+        patientId:
+          (await claimCandidates.patientIdForClaim(
+            actor.organizationId,
+            match.claimId as string,
+          )) ?? null,
+        paidAmountCents: Math.round(claim.totalPayment * 100),
+        serviceFrom: claim.serviceFrom ?? null,
+        serviceTo: claim.serviceTo ?? null,
+      });
       if (outcome === "paid") {
         await outbox.publish(tx, {
           eventName: "m25.remittance.claim_paid",
           organizationId: actor.organizationId,
           aggregateKind: "remittance_line",
           aggregateId: line.id,
-          payload: { ...eventBase, paidAmount: money(claim.totalPayment) },
+          payload: { ...eventBase, paidAmount: money(claim.totalPayment), ...(await capFacts()) },
         });
       } else if (outcome === "partial_paid") {
         await outbox.publish(tx, {
@@ -228,6 +241,7 @@ export function buildDrizzleM25IngestService(
             ...eventBase,
             paidAmount: money(claim.totalPayment),
             adjustedAmount: money(claim.totalCharge - claim.totalPayment),
+            ...(await capFacts()),
           },
         });
       } else if (outcome === "denied") {
@@ -604,7 +618,7 @@ export function buildDrizzleM25IngestService(
                 totalPaymentAmount: advice.totalPaymentAmount,
                 postedLineCount,
                 unmatchedLineCount,
-                postedAt: new Date(0).toISOString(),
+                postedAt: advice.receivedAt.toISOString(),
               },
             });
             return { outcome: finalStatus, postedLineCount, unmatchedLineCount };

@@ -8,6 +8,12 @@ import {
   handleRemittancePosted,
   isRemittanceTopic,
 } from "../consumers/handlers";
+import {
+  type BillingDb,
+  type BillingWriteActor,
+  type WriteOutboxPort,
+  buildClaimStateService,
+} from "../services/claim-state-service";
 // M23's live `m25.remittance.claim_*` consumer — the 835 → claim-adjudication feedback loop (§2.4 /
 // architecture §11.A, task 55). GAP-037.
 //
@@ -25,12 +31,7 @@ import {
 // PURE `handleRemittancePosted` in `../consumers/handlers`; the write is the module's own
 // `ClaimStateService`, which owns reducer + `claim_state_history` append + §4.10 emission in ONE
 // transaction. Event names are STRING literals — no M25 import, no new `dependsOn` edge.
-import {
-  type BillingDb,
-  type BillingWriteActor,
-  type WriteOutboxPort,
-  buildClaimStateService,
-} from "../services/claim-state-service";
+import { buildClaimLineFinalizedEmissions } from "./claim-line-finalized";
 
 export const M23_REMITTANCE_CONSUMER = {
   consumerName: "m23.m25-remittance",
@@ -176,6 +177,26 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                           : "denied",
                   },
                 });
+                // GAP-077 — a paid / partially-paid claim finalizes its inpatient (0655/0656) lines: tell
+                // M26's 20% cap. Same transaction as the transition, so the signal commits with the fact.
+                if (
+                  deps.outbox &&
+                  (plan.transition === "remittance_paid" ||
+                    plan.transition === "remittance_partial_paid")
+                ) {
+                  const lines = await new repositories.ClaimLineRepository(tx).listForClaim(
+                    plan.claimId,
+                  );
+                  for (const emission of buildClaimLineFinalizedEmissions({
+                    organizationId,
+                    claimId: plan.claimId,
+                    patientId: claim.patientId,
+                    lines,
+                    finalizedAt: plan.postedAt ?? new Date().toISOString(),
+                  })) {
+                    await deps.outbox.publish(tx, emission);
+                  }
+                }
                 return { applied: true };
               },
             );

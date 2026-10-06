@@ -46,6 +46,7 @@ import { createDbRecordsRequestService } from "./records-request/records-request
 import { createDbRecordsRequestFaxStore } from "./records-request/records-request-fax-db";
 import { registerRecordsRequestRoutes } from "./records-request/records-request-routes";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
+import { createServerUploadService } from "./routes/server-upload";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 import { createVerifiedUploadService } from "./routes/verified-upload";
 import { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
@@ -59,10 +60,9 @@ import {
  * M22L-T01 — mount the M22 document routes over the PRODUCTION Drizzle read backend + ABAC/object
  * resolvers (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are
  * live (document library + detail, version ledger, intake batch/classification/job/candidate/review,
- * form-template catalog + overlays + fills); metadata/review writes are live, while upload/version creation
- * and signed-URL presigning stay typed `DegradedError` refusals until M22's object-storage
- * adapter is unwired, and a presign resolving to a URL nothing can serve is a download failure a clinician
- * reads as data loss (a WORKING one would hand out PHI from a store with no BAA gate). Replaces the
+ * form-template catalog + overlays + fills); metadata/review writes are live, and upload/version creation
+ * (GAP-068) and signed-URL presigning run over the bound MinIO/S3 store, answering a typed `DegradedError`
+ * 503 only when MINIO_* is unset. Replaces the
  * in-memory clinical-core scaffold mount for M22.
  */
 export function mountDocumentRoutes(
@@ -72,11 +72,26 @@ export function mountDocumentRoutes(
   writeback: ExtractionWritebackDeps = {},
   intake?: DocLensIntakeEnqueue,
 ): void {
-  const backend = createDbDocumentBackend(db, writeback);
   // F-238 — requesting a prospect's older records (cover sheet + code); the upload route links by hand.
   const recordsRequests = createDbRecordsRequestService(db);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
+  // GAP-068 — `POST /documents` + `/documents/:id/versions` store bytes through the SAME bound object store
+  // as the presigned flow. No MINIO_* -> upload answers 503 (nothing stored). No malware scanner
+  // implementation exists in this repo, so `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` makes a missing scanner
+  // fail the upload closed (503) rather than store unscanned bytes; unset, it is parity with the presigned
+  // flow (content-type/magic-byte/size/SHA-256 verified, no AV engine).
+  const uploads = createServerUploadService({
+    db,
+    objects,
+    scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
+    referralReader: {
+      canAccessReferral(input) {
+        return getSeam("ReferralReader").canAccessReferral(input);
+      },
+    },
+  });
+  const backend = createDbDocumentBackend(db, writeback, uploads);
   _registerM22Abac({ resolver: backend.abacResolver });
   _registerM22Routes(app, {
     service: backend.service,
@@ -285,6 +300,13 @@ export {
 } from "./abac-predicates";
 export { type DocumentRouteDeps, registerDocumentRoutes } from "./routes/documents-routes";
 export { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
+export {
+  type DocumentContentScanner,
+  type ServerUploadService,
+  createServerUploadService,
+  decodeBase64Content,
+  verifyUploadContent,
+} from "./routes/server-upload";
 export {
   type InitiateVerifiedUploadInput,
   MAX_DOCUMENT_UPLOAD_BYTES,

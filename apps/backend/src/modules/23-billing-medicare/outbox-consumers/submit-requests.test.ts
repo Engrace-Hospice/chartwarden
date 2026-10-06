@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildM23SubmissionRequestConsumer } from "./submit-requests";
+import {
+  buildM23OutboxBackedSubmissionGate,
+  buildM23SubmissionRequestConsumer,
+  buildM23WorkRequestConsumer,
+} from "./submit-requests";
+
+const eventBase = {
+  organizationId: "org-1",
+  aggregateKind: "claim",
+  aggregateId: "claim-1",
+  attemptCount: 1,
+  createdAt: new Date(),
+};
 
 describe("M23 submission outbox bridge", () => {
   it("enriches a claim job with its trusted outbox organization and deduplicates by submission", async () => {
@@ -73,5 +85,114 @@ describe("M23 submission outbox bridge", () => {
         },
       ],
     ]);
+  });
+});
+
+describe("M23 work-request outbox bridge (GAP-070)", () => {
+  const capture = () => {
+    const calls: unknown[] = [];
+    return {
+      calls,
+      port: {
+        async enqueue(...args: unknown[]) {
+          calls.push(args);
+        },
+      },
+    };
+  };
+
+  it("turns a committed route validation request into a validation-run job keyed by its run id", async () => {
+    const { calls, port } = capture();
+    await buildM23WorkRequestConsumer(port as never).handle({
+      ...eventBase,
+      id: "event-3",
+      eventType: "m23.claim.validation_started",
+      payload: { claimId: "claim-1", validationRunId: "run-1", trigger: "manual_re_run" },
+    });
+    expect(calls).toEqual([
+      [
+        "validation-run",
+        "run-1",
+        {
+          organizationId: "org-1",
+          claimId: "claim-1",
+          validationRunId: "run-1",
+          trigger: "manual_re_run",
+        },
+      ],
+    ]);
+  });
+
+  it("does not echo the revalidate worker's own validation_started back into a job (no loop)", async () => {
+    const { calls, port } = capture();
+    await buildM23WorkRequestConsumer(port as never).handle({
+      ...eventBase,
+      id: "event-4",
+      eventType: "m23.claim.validation_started",
+      payload: {
+        claimId: "claim-1",
+        validationRunId: "run-2",
+        trigger: "re_validation_after_correction",
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("turns an eligibility refresh request into an eligibility.refresh job carrying the provider entity", async () => {
+    const { calls, port } = capture();
+    await buildM23WorkRequestConsumer(port as never).handle({
+      ...eventBase,
+      id: "event-5",
+      eventType: "m23.eligibility.refresh_requested",
+      payload: { patientId: "p-1", providerEntityId: "pe-1", asOfServiceDate: "2026-10-05" },
+    });
+    expect(calls).toEqual([
+      [
+        "eligibility.refresh",
+        "p-1:2026-10-05:event-5",
+        {
+          organizationId: "org-1",
+          patientId: "p-1",
+          providerEntityId: "pe-1",
+          asOfServiceDate: "2026-10-05",
+        },
+      ],
+    ]);
+  });
+
+  it("rejects a refresh request that lacks the provider entity (never fabricates one)", async () => {
+    const { port } = capture();
+    await expect(
+      buildM23WorkRequestConsumer(port as never).handle({
+        ...eventBase,
+        id: "event-6",
+        eventType: "m23.eligibility.refresh_requested",
+        payload: { patientId: "p-1", asOfServiceDate: "2026-10-05" },
+      }),
+    ).rejects.toThrow(/providerEntityId/);
+  });
+});
+
+describe("M23 outbox-backed submission gate", () => {
+  it("accepts validation-run when its capability is on and refuses eligibility.refresh while HETS is unbound", async () => {
+    const gate = buildM23OutboxBackedSubmissionGate({
+      "claim.submit": false,
+      "validation-run": true,
+      "eligibility.refresh": false,
+    });
+    await expect(gate.enqueue("validation-run", "k1", {})).resolves.toEqual({
+      jobId: "outbox:k1",
+    });
+    await expect(gate.enqueue("eligibility.refresh", "k2", {})).rejects.toMatchObject({
+      statusCode: 503,
+    });
+    await expect(gate.enqueue("claim.submit", "k3", {})).rejects.toMatchObject({
+      statusCode: 503,
+    });
+  });
+
+  it("keeps the boolean form working for the submission queues", async () => {
+    const gate = buildM23OutboxBackedSubmissionGate(true);
+    await expect(gate.enqueue("noe.submit", "k", {})).resolves.toEqual({ jobId: "outbox:k" });
   });
 });

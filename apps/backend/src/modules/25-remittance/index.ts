@@ -133,6 +133,15 @@ export {
   type M25EdiReceivedConsumerBinding,
   buildM25EdiReceivedConsumer,
 } from "./outbox-consumers/live-binding";
+export {
+  type M23ClaimRejectedConsumerBinding,
+  buildM23ClaimRejectedConsumer,
+} from "./outbox-consumers/m23-claim-rejected";
+export {
+  type M18EvvAggregatorRejectedConsumerBinding,
+  buildM18EvvAggregatorRejectedConsumer,
+} from "./outbox-consumers/m18-evv-aggregator-rejected";
+export { buildDrizzleDenialSeedStore } from "./outbox-consumers/denial-seed-store-drizzle";
 
 // §3.7 / §8.4 — the M4 `remittance` destruction eraser (PR-ledger per-patient erase; the line history rolls
 // off via the M4 partition manager). Registered over the Phase-0 deny-stub via the injected registerEraser

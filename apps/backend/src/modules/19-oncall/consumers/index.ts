@@ -25,6 +25,7 @@ export * from "./bindings";
 export * from "./inbound-trigger";
 export * from "./m17-no-show";
 export * from "./m18-late-checkout";
+export * from "./m8-encounter-signed-binding";
 export * from "./m36-delivery-failed";
 export * from "./roster-sync-debounce";
 export * from "./trigger-context";

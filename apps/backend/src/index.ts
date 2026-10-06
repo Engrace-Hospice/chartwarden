@@ -546,6 +546,7 @@ import {
   buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
   buildDrizzleVendorSessionBindReader,
+  buildOncallEncounterSignedConsumer,
   buildOncallRosterSyncDebounceConsumer,
   buildOncallTriggerConsumers,
   createDrizzleInboundTriggerPorts,
@@ -657,13 +658,21 @@ import {
 // fail-closed-unbound at boot (RULE 4), so Phase-0 containment disables their construction; the assembly
 // reader seams + the live MAC/X12 binds are follow-ups.
 import {
+  type M23BootAssemblyPorts,
   M23_OUTBOX_EVENTS,
+  M23_PLATFORM_JOB_ID,
+  type ProviderCcnPort,
+  buildClaimStateService,
+  buildClaimValidationContextPort,
+  buildClaimValidationRunner,
+  buildClaimValidationService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
+  buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -675,17 +684,25 @@ import {
   buildM23SubmissionQueuePort,
   buildM23SubmissionRequestConsumer,
   buildM23TaxonomyUnmappedCodeObservedConsumer,
+  buildM23ValidationRunner,
+  buildM23WorkQueueEnqueuePort,
+  buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildNoticeWindowPort,
   createDrizzleBillingEraseStore,
   createM23LaunchGateway,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   registerBillingErasers,
   registerM23AbacPredicates,
-  registerM23CronWorkers,
+  registerM23DomainWorkers,
   registerM23LaunchWorkers,
+  registerM23PortalHealthWorker,
   registerM23PublishedSeams,
+  registerM23WatchCronWorkers,
   scheduleM23Jobs,
+  scheduleM23WatchJobs,
+  wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -733,10 +750,13 @@ import {
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
+  buildDrizzleDenialSeedStore,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
+  buildM23ClaimRejectedConsumer,
   buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
@@ -757,7 +777,9 @@ import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-bind
 // Drizzle read/write services. The write service's transactional outbox publisher binds at boot; the §4.3
 // published-seam impls + the §4.8 BullMQ workers + the §3.7 eraser land in P4 (the M27 deferred posture).
 import {
+  type M26WorkerAlertPort,
   M26_OUTBOX_EVENTS,
+  M26_PLATFORM_JOB_ID,
   buildDrizzleM26ReadService,
   buildDrizzleM26WriteService,
   createDrizzleCapRedactStore,
@@ -767,6 +789,7 @@ import {
   registerM26CronWorkers,
   registerM26PublishedSeams,
   scheduleM26Jobs,
+  wireM26Tenancy,
 } from "./modules/26-cap/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
@@ -1067,6 +1090,7 @@ import {
   M39_OUTBOX_EVENTS,
   M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
+  buildM39PatientDeceasedConsumer,
   buildM39WorkerDeps,
   createConsentInternalNotesCipher,
   createDbConsentStore,
@@ -1711,6 +1735,8 @@ export function wireModuleSeams(
   // for the cron fan-out; inert until the M2 active-org enumerator binds (issue #107, item 5). The
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
+  wireM26Tenancy(); // GAP-076 — allowlist the cron job id so the cap crons may enter withPlatformContext
+  wireM23Tenancy(); // M23 — allowlist the cron job id so the NOE/NOTR window-watch + eligibility stale-watch fan-outs may enter withPlatformContext
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
@@ -2409,6 +2435,80 @@ function buildFirstAdminAcceptanceService(deps: {
   };
 }
 
+/**
+ * The M23 reader ports the claim assembly (route) AND the validation-run worker (GAP-070) both read through.
+ * One builder so the route and the worker see the same facts. `provider_entity` is M1-owned (arch:tables), so
+ * the CCN reader lives here in the composition root and is shared by the write-service's control-number
+ * derivation and the assembly's `mdm.resolveProviderEntity`.
+ */
+function buildM23AssemblyPorts(db: DbClient): {
+  readonly providerCcn: ProviderCcnPort;
+  readonly assemblyPorts: Omit<M23BootAssemblyPorts, "outbox" | "providerCcn">;
+} {
+  const providerCcn: ProviderCcnPort = {
+    async ccnForProviderEntity(tx: unknown, organizationId: string, providerEntityId: string) {
+      const [provider] = await (tx as DbClient)
+        .select({ ccn: schema.providerEntities.ccn })
+        .from(schema.providerEntities)
+        .where(
+          and(
+            eq(schema.providerEntities.id, providerEntityId),
+            eq(schema.providerEntities.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
+      return provider.ccn;
+    },
+  };
+  const assemblyPorts: Omit<M23BootAssemblyPorts, "outbox" | "providerCcn"> = {
+    // F-121 (#251) — M6's range-shaped seam function, bound directly (M6 needs no per-request
+    // handle; it opens its own withOrgContext, the admissionSchedulingContextForOrg pattern).
+    m6ClaimRange: {
+      forRange: (orgId, patientId, range) =>
+        claimAssemblyRangeContextForOrg(db, orgId, patientId, range),
+    },
+    // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
+    m7ClaimDiagnoses: {
+      forRange: (orgId, patientId, range) => claimDiagnosesForOrg(db, orgId, patientId, range),
+    },
+    // F-122 (#251) — M8's two new range-shaped seam functions, same org-explicit binding.
+    m8BillableEncounters: {
+      inRange: (orgId, providerEntityId, patientId, range) =>
+        billableEncountersInRangeForOrg(db, orgId, providerEntityId, patientId, range),
+    },
+    m8SignedEncounters: {
+      inRange: (orgId, patientId, range) =>
+        signedEncounterSnapshotsInRangeForOrg(db, orgId, patientId, range),
+    },
+    // F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read.
+    m8EncounterVisitIds: {
+      forEncounters: (orgId, encounterIds) => encounterVisitIdsForOrg(db, orgId, encounterIds),
+    },
+    m18Compliance: {
+      forVisits: (orgId, visitIds) => complianceStatesForVisitsForOrg(db, orgId, visitIds),
+    },
+    // F-213 (#252) - mdm placeOfService: M5's effective-dated address history (the registered
+    // PatientAddressReader seam, resolved lazily per call so boot registration order never
+    // matters) + M40's merge-resolved facility.kind. M23 imports neither module.
+    placeOfService: {
+      residence: {
+        residencesBetween: (orgId, patientId, from, to) =>
+          (getSeam("PatientAddressReader") as PatientAddressReader).residencesBetween(
+            orgId,
+            patientId,
+            from,
+            to,
+          ),
+      },
+      facilityKinds: {
+        kindsFor: (facilityIds) => facilityKindsForIds(db, facilityIds),
+      },
+    },
+  };
+  return { providerCcn, assemblyPorts };
+}
+
 export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
@@ -2518,6 +2618,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
   const m23RevalidateEnqueue = buildM23RevalidateEnqueuePort(queueConnection);
+  // GAP-070 — the `validation-run` / `eligibility.refresh` producer (queue connection only; no launch gateway).
+  const m23WorkQueues = queueConnection ? buildM23WorkQueueEnqueuePort(queueConnection) : null;
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
@@ -3640,26 +3742,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `provider_entity` is M1-owned (arch:tables), so BOTH the write-service's control-number
           // derivation and the assembly-service's `mdm.resolveProviderEntity` bind the SAME `ProviderCcnPort`
           // instance here, rather than each module reading the schema directly.
-          const m23ProviderCcn = {
-            async ccnForProviderEntity(
-              tx: unknown,
-              organizationId: string,
-              providerEntityId: string,
-            ) {
-              const [provider] = await (tx as DbClient)
-                .select({ ccn: schema.providerEntities.ccn })
-                .from(schema.providerEntities)
-                .where(
-                  and(
-                    eq(schema.providerEntities.id, providerEntityId),
-                    eq(schema.providerEntities.organizationId, organizationId),
-                  ),
-                )
-                .limit(1);
-              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
-              return provider.ccn;
-            },
-          };
+          const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
+            buildM23AssemblyPorts(dbHandle.db);
           mountM23Routes(app, {
             // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
             // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
@@ -3673,64 +3757,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
-              jobs: buildM23OutboxBackedSubmissionGate(m23SubmissionQueues !== null),
+              jobs: buildM23OutboxBackedSubmissionGate({
+                "claim.submit": m23SubmissionQueues !== null,
+                "noe.submit": m23SubmissionQueues !== null,
+                "notr.submit": m23SubmissionQueues !== null,
+                // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
+                "validation-run": m23WorkQueues !== null,
+                // HETS 270/271 is unbound (no clearinghouse client / M5 MBI-unlock seam): refuse rather
+                // than accept an eligibility request no worker can complete.
+                "eligibility.refresh": false,
+              }),
               providerCcn: m23ProviderCcn,
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               providerCcn: m23ProviderCcn,
-              // F-121 (#251) — M6's range-shaped seam function, bound directly (M6 needs no per-request
-              // handle; it opens its own withOrgContext, the admissionSchedulingContextForOrg pattern).
-              m6ClaimRange: {
-                forRange: (orgId, patientId, range) =>
-                  claimAssemblyRangeContextForOrg(dbHandle.db, orgId, patientId, range),
-              },
-              // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
-              m7ClaimDiagnoses: {
-                forRange: (orgId, patientId, range) =>
-                  claimDiagnosesForOrg(dbHandle.db, orgId, patientId, range),
-              },
-              // F-122 (#251) — M8's two new range-shaped seam functions, same org-explicit binding.
-              m8BillableEncounters: {
-                inRange: (orgId, providerEntityId, patientId, range) =>
-                  billableEncountersInRangeForOrg(
-                    dbHandle.db,
-                    orgId,
-                    providerEntityId,
-                    patientId,
-                    range,
-                  ),
-              },
-              m8SignedEncounters: {
-                inRange: (orgId, patientId, range) =>
-                  signedEncounterSnapshotsInRangeForOrg(dbHandle.db, orgId, patientId, range),
-              },
-              // F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read.
-              m8EncounterVisitIds: {
-                forEncounters: (orgId, encounterIds) =>
-                  encounterVisitIdsForOrg(dbHandle.db, orgId, encounterIds),
-              },
-              m18Compliance: {
-                forVisits: (orgId, visitIds) =>
-                  complianceStatesForVisitsForOrg(dbHandle.db, orgId, visitIds),
-              },
-              // F-213 (#252) - mdm placeOfService: M5's effective-dated address history (the registered
-              // PatientAddressReader seam, resolved lazily per call so boot registration order never
-              // matters) + M40's merge-resolved facility.kind. M23 imports neither module.
-              placeOfService: {
-                residence: {
-                  residencesBetween: (orgId, patientId, from, to) =>
-                    (getSeam("PatientAddressReader") as PatientAddressReader).residencesBetween(
-                      orgId,
-                      patientId,
-                      from,
-                      to,
-                    ),
-                },
-                facilityKinds: {
-                  kindsFor: (facilityIds) => facilityKindsForIds(dbHandle.db, facilityIds),
-                },
-              },
+              ...m23AssemblyPorts,
             }),
           });
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -4167,6 +4209,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   }
   app.addHook("onClose", async () => {
     await Promise.all(m23RevalidateEnqueue.queues.map((queue) => queue.close()));
+    await Promise.all((m23WorkQueues?.queues ?? []).map((queue) => queue.close()));
   });
   if (m24SubmissionQueues) {
     app.addHook("onClose", async () => {
@@ -4839,88 +4882,114 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M27 cron-schedule registration failed");
     }
     app.log.info({ queues: m27Workers.length }, "M27 §4.8 BullMQ cost-report workers constructed");
-    // ── M23 §4.8 Billing workers (claim/NOE/NOTR submit[.retry], eligibility refresh, validation-run,
-    // revalidate consumer) + the cron consumers (999/277CA ack pulls, NOE/NOTR window-watch, eligibility
-    // stale-watch, MAC-portal health) — same worker-runner shape. buildM23WorkerDeps binds only the
-    // connection + db; every infra/seam/x12/portal port stays fail-closed-unbound at boot (RULE 4 — the typed
-    // thunks in m23-jobs.ts throw only when a JOB RUNS, so boot stays green). The live binds (transactional
-    // outbox, x12-837-client generation, MAC-portal HTTP, HETS eligibility, the M2 active-org / MAC-jurisdiction
-    // enumerators for the cron fan-out, the validation-runner → claim-validation-service, the M36 alert router)
-    // are follow-ups.
-    let m23Workers: Worker[] = [];
-    if (m23LaunchGateway) {
-      // F-161 (#248) — the §4.9 MAC-portal-health/window-watch alert routing, over the live M36
-      // AlertEmitter seam (the M27 `WX-PR-013` pattern). Was never bound: every real
-      // `alerts.dispatch()` call threw `unboundWorkerPort`.
-      const m23AlertEmitter = getSeam("AlertEmitter") as {
-        emit(
-          orgId: string,
-          input: {
-            eventType: string;
-            payload: Record<string, unknown>;
-            severity: string;
-            correlationId: string;
-          },
-        ): Promise<unknown>;
-      };
-      const m23WorkerDeps = buildM23WorkerDeps({
-        connection: queueConnection,
-        db: dbHandle.db,
-        outbox: m23OutboxPublisher,
-        alerts: {
-          dispatch: async ({ alertCode, severity, organizationId, payload }) => {
-            await m23AlertEmitter.emit(organizationId, {
-              eventType: alertCode,
-              payload,
-              severity,
-              correlationId: `m23-cron:${alertCode}`,
-            });
-          },
+    // ── M23 §4.8 Billing workers. THREE tiers, by what each needs (GAP-069 / GAP-070):
+    //   1. queue connection only (here, always): `eligibility.refresh`, `validation-run`, `revalidate.consumer`
+    //      and the three per-org watchdog crons (NOE/NOTR window-watch, eligibility stale-watch). They do no
+    //      X12/MAC-portal I/O, so they must NOT sit behind the launch gateway — they did not exist at all before
+    //      (registerM23Workers had no caller), so revalidation jobs piled up unconsumed and every watch tick threw
+    //      `unboundWorkerPort`.
+    //   2. + the launch gateway: claim/NOE/NOTR submit[.retry], the 999/277CA ack pulls and MAC-portal health.
+    //   3. HETS 270/271 (`hets`) stays UNBOUND: there is no clearinghouse client and no M5 MBI-unlock seam in
+    //      this codebase yet, so the `eligibility.refresh` job fails closed when it runs and the route-side gate
+    //      below keeps refusing eligibility checks (503) rather than accepting work that cannot complete.
+    const m23AlertEmitter = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
         },
+      ): Promise<unknown>;
+    };
+    const m23ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M23_PLATFORM_JOB_ID,
+      reason: "M23 §4.8 watchdog cron fan-out (active-org enumeration)",
+    });
+    const m23ClaimSeamPorts = buildM23AssemblyPorts(dbHandle.db);
+    const m23ValidationRunner = buildM23ValidationRunner({
+      db: dbHandle.db,
+      outbox: m23OutboxPublisher,
+      seams: buildM23BootAssemblySeams(dbHandle.db, {
+        outbox: m23OutboxPublisher,
+        providerCcn: m23ClaimSeamPorts.providerCcn,
+        ...m23ClaimSeamPorts.assemblyPorts,
+      }),
+      eligibilityBound: false,
+    });
+    const m23CoreWorkerDeps = buildM23WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m23OutboxPublisher,
+      // F-161 (#248) — the §4.9 window-watch/portal-health alert routing, over the live M36 AlertEmitter
+      // seam (the M27 `WX-PR-013` pattern).
+      alerts: {
+        dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+          await m23AlertEmitter.emit(organizationId, {
+            eventType: alertCode,
+            payload,
+            severity,
+            correlationId: `m23-cron:${alertCode}`,
+          });
+        },
+      },
+      activeOrgs: m23ActiveOrgs,
+      noticeWindow: buildNoticeWindowPort(),
+      validationRunner: m23ValidationRunner,
+      // F-153 (#248) — the real target resolver for the `revalidate.consumer` worker.
+      revalidationTargets: buildDrizzleRevalidationTargetResolver(),
+      // The revalidate consumer's `validation-run` fan-out producer (GAP-070).
+      enqueue: m23WorkQueues?.port,
+    });
+    let m23Workers: Worker[] = [
+      ...registerM23DomainWorkers(m23CoreWorkerDeps),
+      ...registerM23WatchCronWorkers(m23CoreWorkerDeps),
+    ];
+    if (m23LaunchGateway) {
+      const m23LaunchWorkerDeps = buildM23WorkerDeps({
+        ...m23CoreWorkerDeps,
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
         jurisdictions: {
           listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }],
         },
-        // F-153 (#248) — the real target resolver for the `revalidate.consumer` worker (was fail-closed
-        // unbound; every job would have thrown the moment it ran).
-        revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       });
       m23Workers = [
-        ...registerM23LaunchWorkers(m23WorkerDeps),
-        // F-161 (#248) — `registerM23CronWorkers` (NOE/NOTR window-watch, eligibility-stale-watch,
-        // and MAC-portal health) was never called anywhere in this file — only the narrower
-        // `registerM23LaunchWorkers` (claim/NOE/NOTR submit + the two ack-pull crons) was wired, so
-        // all four of these crons were unregistered and never ran a single tick in any deployment.
-        // Their remaining unbound ports (`noticeWindow`/`hets`/`activeOrgs`/`validationRunner`) stay
-        // RULE-4 fail-closed and throw only when a job actually runs.
-        ...registerM23CronWorkers(m23WorkerDeps),
+        ...m23Workers,
+        // claim/NOE/NOTR submit[.retry] + the two ack-pull crons (F-161: the portal-health cron was never
+        // registered either, so it never ran a tick in any deployment).
+        ...registerM23LaunchWorkers(m23LaunchWorkerDeps),
+        ...registerM23PortalHealthWorker(m23LaunchWorkerDeps),
       ];
-      attachDlqAlertsToAll(m23Workers, "m23");
-      app.addHook("onClose", async () => {
-        await Promise.all(m23Workers.map((worker) => worker.close()));
-      });
-      try {
-        // F-161 (#248) — `scheduleM23Jobs` is a superset of `scheduleM23LaunchJobs` (it schedules the
-        // same `ackPull999`/`ackPull277ca` repeat patterns plus the 4 crons `scheduleM23LaunchJobs`
-        // never covered) — BullMQ dedupes an identical repeat pattern re-added to the same queue, but
-        // there is no reason to call both; this one call now covers all six.
-        const m23ScheduleQueues = await scheduleM23Jobs(queueConnection);
-        app.addHook("onClose", async () => {
-          await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
-        });
-      } catch (err) {
-        app.log.error(err, "M23 cron schedule registration failed");
-      }
-      app.log.info(
-        { queues: m23Workers.length },
-        "M23 launch submission + cron workers constructed",
-      );
     } else {
       app.log.warn(
         "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
       );
     }
+    attachDlqAlertsToAll(m23Workers, "m23");
+    app.addHook("onClose", async () => {
+      await Promise.all(m23Workers.map((worker) => worker.close()));
+    });
+    try {
+      // The watchdog schedules need only the tier-1 workers above. With the launch gateway,
+      // `scheduleM23Jobs` is the superset (the same watch patterns + ack pulls + portal health) — BullMQ
+      // dedupes an identical repeat pattern re-added to the same queue.
+      const m23ScheduleQueues = m23LaunchGateway
+        ? await scheduleM23Jobs(queueConnection)
+        : await scheduleM23WatchJobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M23 cron schedule registration failed");
+    }
+    app.log.info(
+      { queues: m23Workers.length },
+      "M23 domain + watchdog (+ launch) workers constructed",
+    );
     // ── M24 §4.9 Billing-Medicaid workers (WX-PR-011: claim submit + poll over the per-state adapter
     // registry) — same worker-runner shape as M23. Requires BOTH the Oregon launch-gateway (real HTTP,
     // env-gated) AND the credential resolver (the §8.7 cipher port) — RULE 4: either absent, no workers
@@ -5081,7 +5150,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       jobId: M25_PLATFORM_JOB_ID,
       reason: "M25 §4.8 cron fan-out (active-org enumeration)",
     });
-    const m25AlertEmitter = getSeam("AlertEmitter") as {
+    const platformAlertEmitter = getSeam("AlertEmitter") as {
       emit(
         orgId: string,
         input: {
@@ -5094,7 +5163,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     };
     const m25Alerts: M25WorkerAlertPort = {
       dispatch: async ({ alertCode, severity, organizationId, payload }) => {
-        await m25AlertEmitter.emit(organizationId, {
+        await platformAlertEmitter.emit(organizationId, {
           eventType: alertCode,
           payload,
           severity,
@@ -5124,12 +5193,31 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
 
     // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R
-    // watchdog). Constructed over the same Valkey connection + db; the M2 active-org enumerator + the M36
-    // alert router stay on their fail-closed/no-op defaults until bound (a cron tick fails closed, never at
-    // import — the M25 deferred-bind posture). Idempotent recompute/close via the §2.6 unique constraints.
+    // watchdog). GAP-076: the M2 active-org enumerator and the M36 AlertEmitter-backed alert router are
+    // bound (as every peer cron module does) — left on the fail-closed/no-op defaults every tick threw
+    // "enumerator not bound", so the projection, the D8 cap-year auto-close and the PS&R watchdog never
+    // ran. Idempotent recompute/close via the §2.6 unique constraints.
+    const m26ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M26_PLATFORM_JOB_ID,
+      reason: "M26 §4.8 cap cron fan-out (active-org enumeration)",
+    });
+    const m26Alerts: M26WorkerAlertPort = {
+      dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+        await platformAlertEmitter.emit(organizationId, {
+          eventType: alertCode,
+          payload,
+          severity,
+          correlationId: `m26-cron:${alertCode}`,
+        });
+      },
+    };
     const m26Workers = registerM26CronWorkers({
       connection: queueConnection,
       db: dbHandle.db,
+      activeOrgs: m26ActiveOrgs,
+      alerts: m26Alerts,
     });
     attachDlqAlertsToAll(m26Workers, "m26");
     app.addHook("onClose", async () => {
@@ -6285,6 +6373,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // reconciliation itself runs on the separate scheduled drain worker registered above — see
           // `consumers/roster-sync-debounce.ts`'s own header.
           buildOncallRosterSyncDebounceConsumer({ db: dbHandle.db }),
+          // M19 §2.2.1 / D8 (GAP-058) — `m8.encounter.signed` advances the linked triage call
+          // `documented_pending_encounter → documented`. `decideEncounterSigned` existed since M19-T05 with no
+          // production caller and M8 declared no m19 consumer, so `markDocumented` — the only edge into
+          // `documented` — never ran and every call stayed parked. Same publisher/no-alerts posture as the
+          // trigger consumers above.
+          buildOncallEncounterSignedConsumer({ db: dbHandle.db, outbox: m19OutboxPublisher }),
           ...buildFieldSafetyConsumers({
             db: dbHandle.db,
             policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
@@ -6297,6 +6391,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }),
           ...(m23SubmissionQueues
             ? [buildM23SubmissionRequestConsumer(m23SubmissionQueues.port)]
+            : []),
+          // GAP-070 — the committed `validation_started` / `refresh_requested` request → BullMQ job bridge
+          // for the two queues that need no launch gateway (their workers are built above, gated only on a
+          // queue connection).
+          ...(m23WorkQueues
+            ? [
+                buildM23WorkRequestConsumer({
+                  enqueue: async (queueName, jobId, payload) => {
+                    await m23WorkQueues.port.enqueue(queueName, jobId, payload);
+                  },
+                }),
+              ]
             : []),
           ...(m24SubmissionQueues
             ? [buildM24SubmissionRequestConsumer(m24SubmissionQueues.port)]
@@ -6402,6 +6508,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m6OutboxPublisher,
           }),
           buildM39ConsentRenderConsumer(dbHandle.db),
+          // M39 §7.7 / D13 (GAP-110) — `m5.patient.deceased` expires the decedent's active non-survives-death
+          // consents (one `m39.consent.expired` each, same tx). Until bound, the evaluator's death probe was a
+          // permanent `false` and a consent that should have ended at death kept authorizing PHI egress.
+          buildM39PatientDeceasedConsumer({ db: dbHandle.db, outbox: m39OutboxPublisher }),
           // M22 §4.11 (GAP-023/024/038) — the LIVE render handshake. Every `*.document_requested` row was
           // written by a source module and drained by NOBODY: the decider, the two gates, the renderer and
           // (since GAP-095) the Drizzle document-row store all existed, but no binding ever joined them, so
@@ -6865,6 +6975,43 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               },
             }),
           ),
+          // GAP-072 — M25 is the declared consumer of `m23.claim.rejected` and
+          // `m18.evv.aggregator_rejected`; both factories existed and were tested but were never
+          // constructed, so every rejection stayed `pending` (re-deferred each 30 minutes) and the denial
+          // worklist was never seeded. Same real M38 CARC lookup as the 835 path; an unmapped code
+          // degrades honestly to `unmapped` (never a guessed category).
+          ...(() => {
+            const denialSeedStore = buildDrizzleDenialSeedStore(dbHandle.db);
+            const denialTerminology = {
+              async lookup(carcCode: string) {
+                const concept = await (
+                  getSeam("TerminologyProvider") as {
+                    lookup(
+                      system: string,
+                      code: string,
+                    ): Promise<{ properties?: Record<string, unknown> } | null>;
+                  }
+                ).lookup("carc", carcCode);
+                if (!concept) return null;
+                const category = concept.properties?.category;
+                return { category: typeof category === "string" ? category : "unmapped" };
+              },
+            };
+            return [
+              buildM23ClaimRejectedConsumer({
+                db: dbHandle.db,
+                seedStore: denialSeedStore,
+                outbox: m25OutboxPublisher,
+                terminology: denialTerminology,
+              }),
+              buildM18EvvAggregatorRejectedConsumer({
+                db: dbHandle.db,
+                seedStore: denialSeedStore,
+                outbox: m25OutboxPublisher,
+                terminology: denialTerminology,
+              }),
+            ];
+          })(),
           // GAP-037 — the other half of that pipeline. M25's ingest consumer above posts the 835 and
           // publishes `m25.remittance.claim_paid` / `_partial_paid` / `_denied` / `_recouped`, all four
           // declaring `m23` as a consumer. M23 had none: every posting row sat `pending` and no claim

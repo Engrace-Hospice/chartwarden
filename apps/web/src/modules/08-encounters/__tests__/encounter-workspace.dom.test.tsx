@@ -129,6 +129,54 @@ describe("Encounter workspace web workflow", () => {
     expect(screen.queryByText("No active Care Plan items")).toBeNull();
   });
 
+  it("renders the addenda the server returns on a signed encounter, with their actions", async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters/{encounterId}")
+        return {
+          data: {
+            ...encounter,
+            status: "signed",
+            signedAt: "2026-09-01T10:00:00Z",
+            addenda: [
+              {
+                id: "add-1",
+                status: "finalized",
+                reason: "Correction to the recorded pain score",
+                authoredByUserId: "mem-9",
+                createdAt: "2026-09-02T10:00:00Z",
+                signedAt: null,
+                version: 1,
+              },
+            ],
+          },
+        };
+      if (path === "/api/v1/encounters/{encounterId}/cosignature")
+        return { data: { status: null } };
+      if (path === "/api/v1/patients/{id}")
+        return {
+          data: {
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            mrn: "MRN1",
+            status: "active",
+          },
+        };
+      if (path === "/api/v1/internal/care-plan/relevant-elements")
+        return { data: { problems: [], goals: [], interventions: [], redacted: false } };
+      if (path === "/api/v1/encounters/{encounterId}/selections")
+        return { data: { sections: [], layer1Preview: "", version: 1 } };
+      return { data: { assessments: [] } };
+    });
+    const ok = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    renderEncounter({ GET: get, PATCH: ok, POST: ok });
+
+    expect(await screen.findByText("Correction to the recorded pain score")).toBeTruthy();
+    expect(screen.getByText("mem-9")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign addendum" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Edit draft" })).toBeNull();
+  });
+
   it("persists documentation, vitals, care-plan links, and finalize through M8 APIs", async () => {
     const get = vi.fn(async (path: string) => {
       if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };

@@ -639,6 +639,18 @@ async function preflightClaimSubmit(
   return result.error ? { error: result.error } : { to: result.state };
 }
 
+/** A stable RFC-4122-shaped uuid derived from a seed (sha256 → v4 layout), so replays collapse to one id. */
+export function deterministicUuid(seed: string): string {
+  const hex = createHash("sha256").update(seed).digest("hex").slice(0, 32).split("");
+  hex[12] = "4";
+  hex[16] = ["8", "9", "a", "b"][Number.parseInt(hex[16] ?? "0", 16) % 4] as string;
+  const h = hex.join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/** The NOE/NOTR filing window (days). `m23.{noe,notr}.window_warning` reports how far into it a notice is. */
+const NOTICE_WINDOW_DAYS = 5;
+
 /** Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). */
 function daysToTarget(targetDate: string, now: Date): number {
   const target = new Date(`${targetDate}T00:00:00.000Z`).getTime();
@@ -1100,7 +1112,7 @@ async function runNotrSubmit(
  * `eligibility_check` row (append-only; outcome codec mapped at the repo boundary), and emit
  * `m23.eligibility.checked`.
  */
-async function runEligibilityRefresh(
+export async function runEligibilityRefresh(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: EligibilityRefreshJob,
@@ -1137,11 +1149,15 @@ async function runEligibilityRefresh(
     organizationId: job.organizationId,
     aggregateKind: "patient",
     aggregateId: job.patientId,
+    // The §4.10 catalog shape (`checkId`, `checkedAt`, `staleAt`) — the real catalog-validating publisher
+    // refuses a payload missing any of them, which would roll the freshly-appended check back.
     payload: {
+      checkId: row.id,
       patientId: job.patientId,
-      eligibilityCheckId: row.id,
-      outcome: result.outcome,
       asOfServiceDate: job.asOfServiceDate,
+      outcome: result.outcome,
+      checkedAt: row.checkedAt.toISOString(),
+      staleAt: result.staleAt.toISOString(),
     },
   });
 }
@@ -1172,7 +1188,7 @@ async function runValidationRun(
  * `validation-run` per target with trigger `re_validation_after_correction`. Idempotent on (event_id, claim_id)
  * via the {@link M23_IDEMPOTENCY_KEYS.revalidateConsumer} dedupe key so redelivery is a no-op.
  */
-async function runRevalidateConsumer(
+export async function runRevalidateConsumer(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: RevalidateConsumerJob,
@@ -1190,7 +1206,8 @@ async function runRevalidateConsumer(
   for (const { claimId } of targets) {
     const claim = await claims.findById(claimId);
     if (!claim || (claim.state !== "validating" && claim.state !== "ready")) continue;
-    const validationRunId = `${job.eventId}:${claimId}`; // deterministic per (event, claim) — idempotent
+    // Deterministic per (event, claim) — idempotent — and a real uuid: it becomes `validation_run.id`.
+    const validationRunId = deterministicUuid(`${job.eventId}:${claimId}`);
     await enqueue.enqueue("validation-run", `${job.organizationId}:${claimId}:${job.eventId}`, {
       organizationId: job.organizationId,
       claimId,
@@ -1355,7 +1372,7 @@ async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
  * stamp `window_breached_at` (the fail-closed {@link NoticeWindowPort}) + emit `m23.noe.window_breached` and the
  * §4.9 system-locked alert. Pure day math + the candidate repo are real; the breach stamp is the one lazy seam.
  */
-async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
+export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -1387,7 +1404,7 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               payload: {
                 noeId: noe.id,
                 admissionId: noe.admissionId,
-                windowTargetAt: noe.windowTargetAt,
+                breachedAt: now.toISOString(),
               },
             });
             await alertsOf(deps).dispatch({
@@ -1405,7 +1422,7 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               payload: {
                 noeId: noe.id,
                 admissionId: noe.admissionId,
-                daysToTarget: days,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
               },
             });
             await alertsOf(deps).dispatch({
@@ -1415,7 +1432,7 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               payload: {
                 noeId: noe.id,
                 admissionId: noe.admissionId,
-                daysToTarget: days,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
               },
             });
           }
@@ -1426,7 +1443,7 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 }
 
 /** `notr.window-watch` (§4.8 cron): the NOTR twin of {@link runNoeWindowWatch}. */
-async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
+export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -1455,7 +1472,11 @@ async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               organizationId,
               aggregateKind: "notr",
               aggregateId: notr.id,
-              payload: { notrId: notr.id, windowTargetAt: notr.windowTargetAt },
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                breachedAt: now.toISOString(),
+              },
             });
             await alertsOf(deps).dispatch({
               alertCode: "m23.notr.window_breached",
@@ -1469,13 +1490,21 @@ async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               organizationId,
               aggregateKind: "notr",
               aggregateId: notr.id,
-              payload: { notrId: notr.id, daysToTarget: days },
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
             });
             await alertsOf(deps).dispatch({
               alertCode: "m23.notr.window_warning",
               severity: "warn",
               organizationId,
-              payload: { notrId: notr.id, daysToTarget: days },
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
             });
           }
         }
@@ -1489,7 +1518,7 @@ async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
  * past `stale_at` and emit `m23.eligibility.expired` + the §4.9 alert per affected patient (the row is
  * append-only, so "marking stale" is the emitted signal, not a row mutation — the next refresh appends a fresh row).
  */
-async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<void> {
+export async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
@@ -1502,10 +1531,12 @@ async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<void> {
         const checks = new EligibilityCheckRepository(tx);
         const outbox = outboxOf(deps);
         const stale = await checks.listStaleForOrg(organizationId, now);
-        const seenPatients = new Set<string>();
         for (const check of stale) {
-          if (seenPatients.has(check.patientId)) continue;
-          seenPatients.add(check.patientId);
+          // The table is append-only: an older stale row is superseded by a fresher check, and a patient
+          // whose LATEST check is current is not expired — only the latest row decides (and it is unique
+          // per patient, so no further de-duplication is needed).
+          const latest = await checks.findLatestForPatient(organizationId, check.patientId);
+          if (latest && latest.id !== check.id) continue;
           await outbox.publish(tx, {
             eventName: "m23.eligibility.expired",
             organizationId,
@@ -1513,8 +1544,7 @@ async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<void> {
             aggregateId: check.patientId,
             payload: {
               patientId: check.patientId,
-              eligibilityCheckId: check.id,
-              staleAt: check.staleAt.toISOString(),
+              lastCheckedAt: check.checkedAt.toISOString(),
             },
           });
           await alertsOf(deps).dispatch({
@@ -1714,6 +1744,95 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
   ];
 }
 
+/**
+ * The three §4.8 WORK queues that need no X12 / MAC-portal infrastructure: `eligibility.refresh`,
+ * `validation-run` and `revalidate.consumer` (GAP-070). The composition root constructs them whenever a queue
+ * connection exists — NOT behind the launch gateway, which only the submission workers need. Before this nothing
+ * built a Worker for any of them (the registrar that did had no caller), so revalidation jobs piled up in the
+ * queue and every validation/eligibility request was refused with 503.
+ */
+export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
+  const orgWorker = <D extends { organizationId: string }>(
+    queue: string,
+    concurrency: number,
+    run: (tx: BillingDb, workerDeps: M23WorkerDeps, data: D) => Promise<void>,
+  ): Worker =>
+    new Worker(
+      queue,
+      async (job) => {
+        const data = job.data as D;
+        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        await withOrgContext(
+          deps.db,
+          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          (tx) => run(tx as unknown as BillingDb, deps, data),
+        );
+      },
+      { connection: deps.connection, concurrency },
+    );
+  return [
+    orgWorker<EligibilityRefreshJob>(
+      M23_QUEUES.eligibilityRefresh,
+      M23_QUEUE_PARAMS.eligibilityRefresh.concurrency,
+      runEligibilityRefresh,
+    ),
+    orgWorker<ValidationRunJob>(
+      M23_QUEUES.validationRun,
+      M23_QUEUE_PARAMS.validationRun.concurrency,
+      runValidationRun,
+    ),
+    orgWorker<RevalidateConsumerJob>(
+      M23_QUEUES.revalidateConsumer,
+      M23_QUEUE_PARAMS.revalidateConsumer.concurrency,
+      runRevalidateConsumer,
+    ),
+  ];
+}
+
+/**
+ * The per-org watchdog crons that need only the database, the outbox, the alert router and the active-org
+ * enumerator (GAP-069): NOE window-watch, NOTR window-watch and eligibility stale-watch. Separate from the
+ * ack-pull / portal-health crons (which need the MAC portal) so a deployment without the launch gateway still
+ * watches its filing windows.
+ */
+export function registerM23WatchCronWorkers(deps: M23WorkerDeps): Worker[] {
+  const cron = (queue: string, concurrency: number, run: () => Promise<void>): Worker =>
+    new Worker(queue, async () => run(), {
+      connection: deps.connection,
+      concurrency,
+      lockDuration: M23_CRON_LOCK_DURATION_MS,
+    });
+  return [
+    cron(M23_CRON_QUEUES.noeWindowWatch, M23_QUEUE_PARAMS.noeWindowWatch.concurrency, () =>
+      runNoeWindowWatch(deps),
+    ),
+    cron(M23_CRON_QUEUES.notrWindowWatch, M23_QUEUE_PARAMS.notrWindowWatch.concurrency, () =>
+      runNotrWindowWatch(deps),
+    ),
+    cron(
+      M23_CRON_QUEUES.eligibilityStaleWatch,
+      M23_QUEUE_PARAMS.eligibilityStaleWatch.concurrency,
+      () => runEligibilityStaleWatch(deps),
+    ),
+  ];
+}
+
+/** The MAC-portal health cron (needs the portal transport; the composition root builds it behind the launch gateway). */
+export function registerM23PortalHealthWorker(deps: M23WorkerDeps): Worker[] {
+  const portalBreaker = new Map<string, MacPortalBreakerState>();
+  return [
+    new Worker(
+      M23_CRON_QUEUES.macPortalHealth,
+      async () => runMacPortalHealth(deps, portalBreaker),
+      {
+        connection: deps.connection,
+        concurrency: M23_QUEUE_PARAMS.macPortalHealth.concurrency,
+        lockDuration: M23_CRON_LOCK_DURATION_MS,
+      },
+    ),
+  ];
+}
+
 /** Launch slice: one claim submission worker plus the 999/277CA reconciliation workers. */
 export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
   if (!deps.x12 || !deps.macPortal || !deps.outbox || !deps.jurisdictions) {
@@ -1770,7 +1889,6 @@ export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
  */
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;
-  const portalBreaker = new Map<string, MacPortalBreakerState>();
   const cron = (queue: string, concurrency: number, run: () => Promise<void>): Worker =>
     new Worker(queue, async () => run(), {
       connection,
@@ -1785,20 +1903,8 @@ export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
     cron(M23_CRON_QUEUES.ackPull277ca, M23_QUEUE_PARAMS.ackPull277ca.concurrency, () =>
       runAckPull277ca(deps),
     ),
-    cron(M23_CRON_QUEUES.noeWindowWatch, M23_QUEUE_PARAMS.noeWindowWatch.concurrency, () =>
-      runNoeWindowWatch(deps),
-    ),
-    cron(M23_CRON_QUEUES.notrWindowWatch, M23_QUEUE_PARAMS.notrWindowWatch.concurrency, () =>
-      runNotrWindowWatch(deps),
-    ),
-    cron(
-      M23_CRON_QUEUES.eligibilityStaleWatch,
-      M23_QUEUE_PARAMS.eligibilityStaleWatch.concurrency,
-      () => runEligibilityStaleWatch(deps),
-    ),
-    cron(M23_CRON_QUEUES.macPortalHealth, M23_QUEUE_PARAMS.macPortalHealth.concurrency, () =>
-      runMacPortalHealth(deps, portalBreaker),
-    ),
+    ...registerM23WatchCronWorkers(deps),
+    ...registerM23PortalHealthWorker(deps),
   ];
 }
 
@@ -1854,6 +1960,48 @@ export async function scheduleM23Jobs(connection: ConnectionOptions): Promise<Qu
     queues.push(queue);
   }
   return queues;
+}
+
+/** Schedule only the three watchdog crons (window-watch x2, eligibility stale-watch). */
+export async function scheduleM23WatchJobs(connection: ConnectionOptions): Promise<Queue[]> {
+  const schedules: readonly [
+    M23CronQueueName,
+    string,
+    (typeof M23_QUEUE_PARAMS)[keyof typeof M23_QUEUE_PARAMS],
+  ][] = [
+    [
+      M23_CRON_QUEUES.noeWindowWatch,
+      M23_JOB_SCHEDULES.noeWindowWatch,
+      M23_QUEUE_PARAMS.noeWindowWatch,
+    ],
+    [
+      M23_CRON_QUEUES.notrWindowWatch,
+      M23_JOB_SCHEDULES.notrWindowWatch,
+      M23_QUEUE_PARAMS.notrWindowWatch,
+    ],
+    [
+      M23_CRON_QUEUES.eligibilityStaleWatch,
+      M23_JOB_SCHEDULES.eligibilityStaleWatch,
+      M23_QUEUE_PARAMS.eligibilityStaleWatch,
+    ],
+  ];
+  return Promise.all(
+    schedules.map(async ([name, pattern, params]) => {
+      const queue = new Queue(name, { connection });
+      await queue.add(
+        "scheduled",
+        {},
+        {
+          repeat: { pattern },
+          attempts: params.attempts,
+          backoff: params.backoff,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        },
+      );
+      return queue;
+    }),
+  );
 }
 
 /** Schedule only the launch acknowledgment reconciliation ticks. */
@@ -1920,14 +2068,11 @@ export function buildM23WorkerDeps(deps: {
   };
 }
 
-// TODO(integrator — the still-missing infra/seam ports the typed throws above name):
-//   • the live transactional-outbox dispatcher (`deps.outbox`, bindCallerModule('m23')) — every §4.10 m23.* emit.
-//   • the x12-837-client sidecar (`deps.x12`) + the MAC-portal transport (`deps.macPortal`,
-//     x12-837-client/mac-portal/<juris>.ts) — until bound, claim/noe/notr submit + ack-pull + portal-health fail closed.
-//   • the HETS 270/271 seam (`deps.hets`) — unlocks the M5 MbiUnlockReader MBI + zeroes it; MBI never persists (§3.6).
-//   • the noe-notr-state-service window-breach stamp (`deps.noticeWindow`) + the M23 claim-validation-service
-//     runner (`deps.validationRunner`) + the revalidation-target resolver (`deps.revalidationTargets`).
-//   • the JobEnqueuePort producer (`deps.enqueue`) for the revalidate consumer's validation-run fan-out.
-//   • the M2 active-org enumerator (`deps.activeOrgs`) + the MAC-jurisdiction enumerator (`deps.jurisdictions`)
-//     under withPlatformContext; register the M23 cron jobIds in the @wardenx/tenancy PLATFORM_CONTEXT_ALLOWLIST.
-//   • the §4.9 M36 alert router (`deps.alerts`) — the M23_ALERT_RULES typed alerts ship as defs + fire through M36.
+// STILL UNBOUND (these throw only when a job runs, RULE 4):
+//   • the HETS 270/271 seam (`deps.hets`) — needs a clearinghouse client plus an M5 MBI-unlock seam, neither of
+//     which exists yet; the MBI must never persist (§3.6). The route-side gate refuses eligibility checks (503)
+//     until it is bound, so no request is accepted that this worker cannot complete.
+//   • the x12-837-client sidecar (`deps.x12`) + MAC-portal transport (`deps.macPortal`) outside the launch
+//     gateway, and the MAC-jurisdiction enumerator beyond the single launch jurisdiction.
+// BOUND in the composition root (apps/backend/src/index.ts): outbox, alerts (M36), activeOrgs (M23 platform job),
+// noticeWindow, validationRunner, revalidationTargets and the validation-run/eligibility enqueue producer.

@@ -10,7 +10,9 @@ import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
+import { completeActiveElectionPeriod } from "../election-period-completion";
 import {
+  activePeriodsPastEndForOrg,
   ctiSignatureDueRowsForOrg,
   f2fDueRowsForOrg,
   f2fWindowMissedCandidatesForOrg,
@@ -298,6 +300,45 @@ export async function runF2fWindowMissedScanCron(deps: M6WorkerDeps): Promise<vo
 }
 
 /**
+ * Hourly benefit-period auto-end (GAP-025, spec §2.3.2 "period auto-ended at midnight on its endDate").
+ * For each active org, completes every ACTIVE period whose last covered day is before the org's local
+ * date and publishes `m6.election.period_ended` (M23's revalidate consumer re-checks the claims the
+ * period covered). Idempotent: the status-guarded UPDATE in the shared helper means a replayed tick, or a
+ * discharge racing the tick, emits at most one event per period.
+ */
+export async function runElectionPeriodAutoEndCron(deps: M6WorkerDeps): Promise<void> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+
+  for (const { organizationId } of orgs) {
+    await withOrgContext(
+      deps.db,
+      // "" — this tick UPDATEs `election_period`, an audited table: a synthetic uuid would 23503 on the
+      // audit trigger's `user` FK (see the F-178b note on the window-missed scan above).
+      { organizationId, userId: "" },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+        const orgTimeZone = await organizationTimezone(t, organizationId);
+        const today = localDateInTimeZone(now, orgTimeZone);
+        const due = await activePeriodsPastEndForOrg(t, organizationId, today);
+        for (const period of due) {
+          await completeActiveElectionPeriod(
+            t,
+            { outbox: deps.outbox, now: () => now },
+            {
+              organizationId,
+              period,
+              cause: "next_period",
+              endDate: period.scheduledEndAt,
+            },
+          );
+        }
+      },
+    );
+  }
+}
+
+/**
  * Construct the currently-live M6 cron workers.
  */
 export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
@@ -313,6 +354,11 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
     }),
 
     new Worker(M6_QUEUES.windowAlert, async () => runF2fWindowMissedScanCron(deps), {
+      connection: deps.connection,
+      concurrency: 1,
+    }),
+
+    new Worker(M6_QUEUES.periodAutoEnd, async () => runElectionPeriodAutoEndCron(deps), {
       connection: deps.connection,
       concurrency: 1,
     }),
@@ -335,6 +381,10 @@ export async function scheduleM6Jobs(connection: ConnectionOptions): Promise<Que
     {
       name: M6_QUEUES.windowAlert,
       pattern: M6_JOB_SCHEDULES.windowAlert,
+    },
+    {
+      name: M6_QUEUES.periodAutoEnd,
+      pattern: M6_JOB_SCHEDULES.periodAutoEnd,
     },
   ] as const;
 

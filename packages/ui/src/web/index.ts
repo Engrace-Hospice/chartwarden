@@ -20,6 +20,8 @@ export type {
   DataTableProps,
 } from "./components/data-table";
 export { DegradedBanner } from "./components/degraded-banner";
+export { InlineAlert } from "./components/inline-alert";
+export type { InlineAlertProps } from "./components/inline-alert";
 export { EmptyState } from "./components/empty-state";
 export type { EmptyStateProps } from "./components/empty-state";
 export { EntityLookupField } from "./components/entity-lookup-field";

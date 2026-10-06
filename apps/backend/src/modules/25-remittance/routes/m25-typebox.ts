@@ -179,6 +179,7 @@ export const DenialWorklistItemSchema = Type.Object({
   agingBucketLabel: Type.String(),
   dollarValue: Type.String({ description: "Decimal string (numeric column) — never a float" }),
   taxonomyStatus: Type.String(),
+  version: Type.Integer({ description: "Row version — send as If-Match on denial transitions" }),
 });
 export const DenialWorklistPageSchema = pageOf(DenialWorklistItemSchema);
 

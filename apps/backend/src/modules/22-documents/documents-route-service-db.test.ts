@@ -17,7 +17,7 @@ const ACTOR = {
   membershipId: "66666666-6666-4666-8666-666666666666",
 };
 
-describe("production document upload containment", () => {
+describe("production document upload without an object store (GAP-068: the only remaining 503)", () => {
   const service = createDbDocumentRouteService(UNTOUCHED_DB);
 
   it("rejects a new document before creating placeholder metadata", async () => {
@@ -31,6 +31,7 @@ describe("production document upload containment", () => {
         retentionClass: "clinical_record",
         patientFacing: false,
         tags: [],
+        content: { bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]), mimeType: "application/pdf" },
       }),
     ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
   });
@@ -41,6 +42,9 @@ describe("production document upload containment", () => {
         "11111111-1111-4111-8111-111111111111",
         ACTOR,
         "44444444-4444-4444-8444-444444444444",
+        {
+          content: { bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]), mimeType: "application/pdf" },
+        },
       ),
     ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
   });

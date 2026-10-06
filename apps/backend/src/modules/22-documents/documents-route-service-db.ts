@@ -9,8 +9,9 @@
 // tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
-// publish (§2.5 optimistic concurrency, 412), and render retry. Binary upload/version creation returns a typed
-// 503 until object bytes + verified size/hash can commit safely. One route write emits a producer outbox
+// publish (§2.5 optimistic concurrency, 412), and render retry. Binary upload/version creation (GAP-068) runs
+// through ./routes/server-upload.ts over the bound object store (verified size/SHA-256, one transaction); it
+// returns a typed 503 only when no object store is configured. One route write emits a producer outbox
 // event: review completion publishes `m22.extraction.commit_requested` (F-235, ./extraction/
 // writeback-commit-db.ts), so this backend takes an OPTIONAL publisher + candidate-value cipher; without them a
 // review whose approved fields would write back refuses (503) instead of completing with nothing written.
@@ -23,8 +24,8 @@
 // audit triggers through `app.user_id`, and `actor.membershipId` fills the `*_by_membership_id` columns
 // that used to take a hardcoded sentinel.
 //
-// The signed-URL STORAGE PRESIGNER is deliberately NOT built here — the M22 storage adapter is unwired;
-// the barrel (`index.ts`) binds the throwing `DegradedError` stub. This module supplies only the read
+// The signed-URL STORAGE PRESIGNER is not built here — the barrel (`index.ts`) binds the S3 adapter's
+// presigner (or a typed `DegradedError` when MINIO_* is unset). This module supplies only the read
 // resolvers (`abacResolver` over document owner-facts, `objectResolver` over version object-keys).
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
@@ -49,6 +50,7 @@ import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
 import { type CursorPage, paginate } from "./routes/concurrency";
+import type { ServerUploadService } from "./routes/server-upload";
 import type {
   DocumentRouteService,
   DocumentView,
@@ -111,13 +113,25 @@ const withOrgAs = <T>(
 
 /**
  * The production, RLS-backed DocumentRouteService. Reads and metadata/review writes are real; binary
- * upload/version creation fails closed with 503 until object storage is bound.
+ * upload/version creation delegates to the server-upload service and fails closed (503) without object storage.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbDocumentRouteService(
   db: DbClient,
   writeback: ExtractionWritebackDeps = {},
+  uploads: ServerUploadService | null = null,
 ): DocumentRouteService {
+  /** GAP-068 — upload needs the object store; absent -> the one remaining 503 (never a fake success). */
+  function requireUploads(): ServerUploadService {
+    if (!uploads) {
+      throw new DegradedError(
+        "document-storage",
+        "document upload is unavailable: no object-storage adapter is bound (MINIO_* is not configured)",
+      );
+    }
+    return uploads;
+  }
+
   async function loadDocRow(
     tx: DbClient,
     organizationId: OrgId,
@@ -216,7 +230,7 @@ export function createDbDocumentRouteService(
       );
   }
 
-  return {
+  const service: DocumentRouteService = {
     // ── Document reads ─────────────────────────────────────────────────────────────────────────────
     async getDocument(organizationId, documentId) {
       return withOrg(db, organizationId, (tx) => loadDocRow(tx, organizationId, documentId));
@@ -611,17 +625,18 @@ export function createDbDocumentRouteService(
     },
 
     // ── Document writes (append-only version ledger; no producer outbox) ─────────────────────────────
-    async uploadDocument() {
-      throw new DegradedError(
-        "document-storage",
-        "uploads are unavailable until object bytes, verified byte size, and SHA-256 persistence are bound",
-      );
+    async uploadDocument(organizationId, actor, args) {
+      const committed = await requireUploads().createDocument(organizationId, actor, args);
+      return service.getDocument(organizationId, committed.documentId);
     },
-    async uploadVersion() {
-      throw new DegradedError(
-        "document-storage",
-        "new versions are unavailable until object bytes, verified byte size, and SHA-256 persistence are bound",
+    async uploadVersion(organizationId, actor, documentId, args) {
+      const committed = await requireUploads().createVersion(
+        organizationId,
+        actor,
+        documentId,
+        args,
       );
+      return service.getVersion(organizationId, committed.documentId, committed.versionId);
     },
     async patchDocument(organizationId, actor, documentId, patch) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
@@ -1131,6 +1146,7 @@ export function createDbDocumentRouteService(
       });
     },
   };
+  return service;
 }
 
 /**
@@ -1245,13 +1261,14 @@ export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectRe
 export function createDbDocumentBackend(
   db: DbClient,
   writeback: ExtractionWritebackDeps = {},
+  uploads: ServerUploadService | null = null,
 ): {
   service: DocumentRouteService;
   abacResolver: DocumentAbacResolver;
   objectResolver: SignedUrlObjectResolver;
 } {
   return {
-    service: createDbDocumentRouteService(db, writeback),
+    service: createDbDocumentRouteService(db, writeback, uploads),
     abacResolver: createDbDocumentAbacResolver(db),
     objectResolver: createDbSignedUrlObjectResolver(db),
   };

@@ -47,23 +47,37 @@ export interface CapConsumerStore {
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const cents = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
 
-/** m25.remittance.advice_posted → record a paid accrual line (D4: paid amount is the accrual basis). */
+/**
+ * m25.remittance.claim_paid / claim_partial_paid → record a paid accrual line (D4: paid amount is the
+ * accrual basis). GAP-075: the advice-level `advice_posted` event carries no patient and no per-claim
+ * amount, so this reads the per-line posting events, which M25 emits with `patientId`, integer
+ * `paidAmountCents` and the 835's service dates. `cap_beneficiary_accrual_line.service_from`/`.service_to`
+ * are NOT NULL, so a line whose payer omitted the optional DTM dates is refused rather than fabricated
+ * (the `handleClaimReversed` posture). The tenant comes from the dispatcher envelope, merged into `p` by
+ * the binding (`outbox-binding.ts`) — never from a payload that does not carry it.
+ */
 export async function handleRemittancePosted(
   store: CapConsumerStore,
   p: Record<string, unknown>,
 ): Promise<{ recorded: boolean }> {
+  const organizationId = str(p.organizationId);
   const patientId = str(p.patientId);
-  const sourceId = str(p.remittanceLineId ?? p.remittanceAdviceId);
-  if (!patientId || !sourceId) return { recorded: false };
+  const sourceId = str(p.remittanceLineId);
+  const serviceFrom = str(p.serviceFrom);
+  const serviceTo = str(p.serviceTo);
+  const postedAt = str(p.postedAt);
+  if (!organizationId || !patientId || !sourceId || !serviceFrom || !serviceTo || !postedAt) {
+    return { recorded: false };
+  }
   return store.recordAccrualLine({
-    organizationId: str(p.organizationId),
+    organizationId,
     patientId,
     sourceKind: "remittance",
     sourceId,
-    amountCents: cents(p.paidAmountCents ?? p.totalPaymentAmountCents),
-    serviceFrom: str(p.serviceFrom ?? p.serviceFromDate),
-    serviceTo: str(p.serviceTo ?? p.serviceThruDate),
-    postedAt: str(p.postedAt ?? p.productionDate ?? new Date(0).toISOString()),
+    amountCents: cents(p.paidAmountCents),
+    serviceFrom,
+    serviceTo,
+    postedAt,
   });
 }
 
@@ -100,25 +114,45 @@ export async function handleClaimReversed(
   });
 }
 
-/** m23.claim.line_finalized (rev 0655/0656) → record an inpatient day line for the 20% cap. */
+/**
+ * m23.claim.line_finalized (rev 0655/0656) → record an inpatient day line for the 20% cap. GAP-077: the
+ * catalogued payload is `{claimId, claimLineId, revenueCode, patientId, serviceFrom, serviceTo, days,
+ * finalizedAt}` (M23 emits it when a paid/partially-paid claim's 835 posts); the tenant comes from the
+ * dispatcher envelope. A payload without a service period or a positive day count is refused.
+ */
 export async function handleInpatientDay(
   store: CapConsumerStore,
   p: Record<string, unknown>,
 ): Promise<{ recorded: boolean }> {
-  const revCode = str(p.revCode);
+  const revCode = str(p.revenueCode);
   if (revCode !== "0655" && revCode !== "0656") return { recorded: false };
+  const organizationId = str(p.organizationId);
   const patientId = str(p.patientId);
-  const sourceId = str(p.claimLineId ?? p.claimId);
-  if (!patientId || !sourceId) return { recorded: false };
+  const sourceId = str(p.claimLineId);
+  const serviceFrom = str(p.serviceFrom);
+  const serviceTo = str(p.serviceTo);
+  const postedAt = str(p.finalizedAt);
+  const days = cents(p.days);
+  if (
+    !organizationId ||
+    !patientId ||
+    !sourceId ||
+    !serviceFrom ||
+    !serviceTo ||
+    !postedAt ||
+    days <= 0
+  ) {
+    return { recorded: false };
+  }
   return store.recordInpatientDay({
-    organizationId: str(p.organizationId),
+    organizationId,
     patientId,
     sourceId,
     revCode,
-    days: cents(p.days),
-    serviceFrom: str(p.serviceFrom),
-    serviceTo: str(p.serviceTo),
-    postedAt: str(p.postedAt ?? new Date(0).toISOString()),
+    days,
+    serviceFrom,
+    serviceTo,
+    postedAt,
   });
 }
 

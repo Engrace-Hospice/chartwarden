@@ -1037,7 +1037,11 @@ export function buildDrizzleM23WriteService(
           organizationId: actor.organizationId,
           aggregateKind: "patient",
           aggregateId: args.patientId,
-          payload: { patientId: args.patientId, asOfServiceDate: args.asOfServiceDate },
+          payload: {
+            patientId: args.patientId,
+            providerEntityId: args.providerEntityId,
+            asOfServiceDate: args.asOfServiceDate,
+          },
         });
         return { jobId, patientId: args.patientId, asOfServiceDate: args.asOfServiceDate };
       });

@@ -109,11 +109,19 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
       postedAt: new Date().toISOString(),
     };
     const shape = { aggregateKind: "remittance_line", aggregateId: line.id };
+    // GAP-075 — the per-claim cap facts the catalog now REQUIRES on both paid outcomes. A manual match has no
+    // 835 service dates in hand, so they are honestly null (M26 skips a dateless line rather than invent one).
+    const capFacts = {
+      patientId: claim.patientId ?? null,
+      paidAmountCents: Math.round(line.paid * 100),
+      serviceFrom: null,
+      serviceTo: null,
+    };
     if (outcome === "paid") {
       await emit(tx, actor, {
         ...shape,
         eventName: "m25.remittance.claim_paid",
-        payload: { ...base, paidAmount: money(line.paid) },
+        payload: { ...base, ...capFacts, paidAmount: money(line.paid) },
       });
     } else if (outcome === "partial_paid") {
       await emit(tx, actor, {
@@ -121,6 +129,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
         eventName: "m25.remittance.claim_partial_paid",
         payload: {
           ...base,
+          ...capFacts,
           paidAmount: money(line.paid),
           adjustedAmount: money(line.charge - line.paid),
         },

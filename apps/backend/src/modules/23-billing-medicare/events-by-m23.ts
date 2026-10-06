@@ -59,7 +59,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A claim entered VALIDATING; a validation_run was enqueued against the current claim state.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id, trigger: str }),
-    declaredConsumers: [],
+    // GAP-070: m23 consumes its own request (the outbox bridge that creates the validation-run job).
+    declaredConsumers: ["m23"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -277,6 +278,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       claimId: id,
       claimLineId: id,
       revenueCode: str,
+      // GAP-077 — the facts M26's inpatient 20% cap accrual (`handleInpatientDay`) reads. M23 emits this
+      // for each 0655/0656 claim_line when the 835 pays the claim; the tenant is the envelope's, never a
+      // payload field. `serviceFrom`/`serviceTo` are the line's own service dates (ISO dates).
+      patientId: id,
+      serviceFrom: str,
+      serviceTo: str,
       serviceDate: isoInstant,
       days: int,
       finalizedAt: isoInstant,
@@ -504,8 +511,13 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description:
       "A HETS 270/271 refresh was requested (route 22 or stale-at-assembly); drives the eligibility.refresh worker.",
-    payloadSchema: Type.Object({ patientId: id, asOfServiceDate: isoInstant }),
-    declaredConsumers: [],
+    payloadSchema: Type.Object({
+      patientId: id,
+      providerEntityId: id,
+      asOfServiceDate: isoInstant,
+    }),
+    // GAP-070: m23 consumes its own request (the outbox bridge that creates the eligibility.refresh job).
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {

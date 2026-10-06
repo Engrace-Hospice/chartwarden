@@ -369,6 +369,7 @@ export function buildDrizzleM25ReadService(
       agingBucketLabel: agingBucketLabel(r.agingBucketDays),
       dollarValue: r.dollarValue,
       taxonomyStatus: r.taxonomyStatus,
+      version: r.version,
     };
   }
   function toAppealSummary(r: typeof AC.$inferSelect): AppealSummary {
