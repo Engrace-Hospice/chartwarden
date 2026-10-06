@@ -210,3 +210,36 @@ export function buildRequiredProviderEntityCcnResolver(
     return ccn;
   };
 }
+
+/**
+ * The provider identity a HETS 270's 2100B loop needs — the hospice's NPI + legal name (M23 §4.4). Lives here
+ * because `provider_entity` is M1-owned; M23's HETS port consumes it as its `HetsProviderPort`. Opens its own
+ * org-context transaction (a worker has no ambient tx) and returns null for an id outside the org.
+ */
+export function buildProviderEligibilityIdentityReader(db: DbClient): {
+  providerForEligibility(
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<{ readonly npi: string; readonly organizationName: string } | null>;
+} {
+  return {
+    async providerForEligibility(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select({
+            npi: schema.providerEntities.npi,
+            legalName: schema.providerEntities.legalName,
+          })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return row ? { npi: row.npi, organizationName: row.legalName } : null;
+      });
+    },
+  };
+}

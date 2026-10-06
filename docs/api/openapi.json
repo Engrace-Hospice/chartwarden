@@ -46806,6 +46806,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "mbi_invalid",
+                                "type": "string"
+                              },
+                              {
                                 "const": "indeterminate",
                                 "type": "string"
                               },
@@ -46894,6 +46898,417 @@
         }
       }
     },
+    "/api/v1/billing/eligibility/hospice-periods": {
+      "get": {
+        "operationId": "getApiV1BillingEligibilityHospiceperiods",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "hetsConfigured",
+                    "patientId",
+                    "checkId",
+                    "asOfServiceDate",
+                    "outcome",
+                    "checkedAt",
+                    "staleAt",
+                    "stale",
+                    "synthetic",
+                    "hospiceHistoryReturned",
+                    "hospiceElectionOpen",
+                    "hospiceHistoryTruncated",
+                    "hospicePeriods",
+                    "nextPeriodNumber",
+                    "nextPeriodBasis",
+                    "lastAttempt"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "available",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_check_on_file",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hets_not_configured",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hetsConfigured": {
+                      "type": "boolean"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "checkId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "asOfServiceDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "active_part_a",
+                              "type": "string"
+                            },
+                            {
+                              "const": "inactive_part_a",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mbi_invalid",
+                              "type": "string"
+                            },
+                            {
+                              "const": "indeterminate",
+                              "type": "string"
+                            },
+                            {
+                              "const": "error",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checkedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "staleAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stale": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "synthetic": {
+                      "type": "boolean"
+                    },
+                    "hospiceHistoryReturned": {
+                      "type": "boolean"
+                    },
+                    "hospiceElectionOpen": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hospiceHistoryTruncated": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hospicePeriods": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "periodNumber",
+                          "startDate",
+                          "endDate",
+                          "hospiceNpi",
+                          "revocationOrDischargeDate",
+                          "revocationCode",
+                          "daysUsed"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "election",
+                                "type": "string"
+                              },
+                              {
+                                "const": "benefit_period",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "periodNumber": {
+                            "anyOf": [
+                              {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "endDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hospiceNpi": {
+                            "anyOf": [
+                              {
+                                "pattern": "^\\d{10}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revocationOrDischargeDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revocationCode": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "0",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "1",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "3",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "daysUsed": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextPeriodNumber": {
+                      "anyOf": [
+                        {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextPeriodBasis": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "computed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "election_open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "election_status_uncertain",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unbilled_election",
+                              "type": "string"
+                            },
+                            {
+                              "const": "history_truncated",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastAttempt": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "checkId",
+                            "outcome",
+                            "checkedAt",
+                            "reason"
+                          ],
+                          "properties": {
+                            "checkId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "active_part_a",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "inactive_part_a",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "mbi_invalid",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "indeterminate",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "error",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/eligibility/latest": {
       "get": {
         "operationId": "getApiV1BillingEligibilityLatest",
@@ -46952,6 +47367,10 @@
                             },
                             {
                               "const": "inactive_part_a",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mbi_invalid",
                               "type": "string"
                             },
                             {

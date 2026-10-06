@@ -130,6 +130,11 @@ export {
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
+  buildHetsEligibilityPort,
+  createM23HetsTransport,
+  m23HetsConfigFromEnv,
+  type HetsProviderPort,
+  type M23HetsConfig,
 } from "./jobs/index";
 export { M23_PLATFORM_JOB_ID, wireM23Tenancy } from "./wiring";
 export { buildClaimValidationContextPort } from "./services/claim-validation-context-port";

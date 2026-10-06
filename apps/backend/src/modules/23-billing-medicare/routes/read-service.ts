@@ -321,6 +321,66 @@ export interface EligibilityCheckView {
   readonly staleAt: string;
 }
 
+/** One hospice election (NOE) or billed benefit period from the latest HETS 271 (CG §7.16). No MBI. */
+export interface HospicePeriodView {
+  readonly kind: "election" | "benefit_period";
+  /** Lifetime benefit-period ordinal (oldest = 1); null for NOE rows or when HETS history is not complete. */
+  readonly periodNumber: number | null;
+  readonly startDate: string;
+  readonly endDate: string | null;
+  readonly hospiceNpi: string | null;
+  readonly revocationOrDischargeDate: string | null;
+  /** HETS revocation code: 0 open spell, 1 NOTR, 2 NOTR + occurrence 42, 3 claim occurrence 23. */
+  readonly revocationCode: "0" | "1" | "2" | "3" | null;
+  readonly daysUsed: number | null;
+}
+
+/** Why `nextPeriodNumber` is (or is not) known — see `deriveHospiceHistory` in `@wardenx/x12-837-client`. */
+export type NextPeriodBasis =
+  | "computed"
+  | "election_open"
+  | "election_status_uncertain"
+  | "unbilled_election"
+  | "history_truncated";
+
+/**
+ * `GET /billing/eligibility/hospice-periods` — the beneficiary's cross-hospice hospice history from the latest
+ * RESOLVED HETS check (the readmission screen's benefit-period confirmation). `status`:
+ *   - `available`           a resolved (Part A active/inactive) check is on file — the fields below are its;
+ *   - `no_check_on_file`    HETS is configured but no resolved check exists yet (see `lastAttempt`);
+ *   - `hets_not_configured` no resolved check AND this deployment has no HETS transport bound.
+ */
+export interface HospicePeriodsView {
+  readonly status: "available" | "no_check_on_file" | "hets_not_configured";
+  readonly hetsConfigured: boolean;
+  readonly patientId: string;
+  readonly checkId: string | null;
+  readonly asOfServiceDate: string | null;
+  readonly outcome: EligibilityOutcome | null;
+  readonly checkedAt: string | null;
+  readonly staleAt: string | null;
+  /** `staleAt` has passed (the 30-day freshness window lapsed). null when no check. */
+  readonly stale: boolean | null;
+  /** The check came from the dev/test SANDBOX transport — synthetic, never real CMS data. */
+  readonly synthetic: boolean;
+  /** HETS returned a hospice section on the check (false for checks recorded before hospice parsing). */
+  readonly hospiceHistoryReturned: boolean;
+  /** true = an open election (Medicare rejects a new NOE); false = none open; null = not determinable. */
+  readonly hospiceElectionOpen: boolean | null;
+  readonly hospiceHistoryTruncated: boolean | null;
+  readonly hospicePeriods: readonly HospicePeriodView[];
+  /** The benefit period a new election on the check's as-of date would start, or null (see `nextPeriodBasis`). */
+  readonly nextPeriodNumber: number | null;
+  readonly nextPeriodBasis: NextPeriodBasis | null;
+  /** The most recent attempt when it is newer than the resolved check (e.g. a later HETS error). */
+  readonly lastAttempt: {
+    readonly checkId: string;
+    readonly outcome: EligibilityOutcome;
+    readonly checkedAt: string;
+    readonly reason: string | null;
+  } | null;
+}
+
 export interface RuleConfigView {
   readonly ruleConfigId: string;
   readonly organizationId: string;
@@ -464,6 +524,7 @@ export interface M23ReadRouteService {
     actor: M23ReadActor,
     patientId: string,
   ): Promise<EligibilityCheckView | null>;
+  getHospicePeriods(actor: M23ReadActor, patientId: string): Promise<HospicePeriodsView>;
 
   // ── rule-config library ──
   listRuleConfigs(

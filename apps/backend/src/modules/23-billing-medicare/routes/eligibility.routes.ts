@@ -8,6 +8,11 @@
 // gates `billing.eligibility.check`. Both compose the M5 base `caseload_or_scope` predicate over the patient
 // (§4.6 catalog default) + the §D13 AI-block on the mutating check + `Idempotency-Key`. NO MBI digit on any
 // field (D13 / §3.6 / §8.7). Org/actor/membership binding is ALWAYS server-side.
+//
+// `GET /billing/eligibility/hospice-periods` serves the readmission screen: the beneficiary's cross-hospice
+// hospice election / benefit-period history from the latest resolved HETS 271 + the computed next benefit
+// period (null when HETS cannot settle it). Same `billing.eligibility.read` + `caseload_or_scope` gate as the
+// other eligibility reads — an intake/admissions role that drives readmission needs that grant.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { CheckEligibilityBodySchema, PatientQuerySchema, parse } from "./billing-typebox";
@@ -59,6 +64,17 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
       const actor = actorOf(request);
       const { patientId } = parse(PatientQuerySchema, request.query);
       return { items: await readService.listEligibilityChecks(actor, patientId) };
+    },
+  );
+
+  // GET /billing/eligibility/hospice-periods?patientId= — the latest resolved check's hospice history.
+  app.get(
+    "/api/v1/billing/eligibility/hospice-periods",
+    { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "eligibility_check" } } },
+    async (request) => {
+      const actor = actorOf(request);
+      const { patientId } = parse(PatientQuerySchema, request.query);
+      return readService.getHospicePeriods(actor, patientId);
     },
   );
 
