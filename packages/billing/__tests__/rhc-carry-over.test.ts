@@ -245,6 +245,7 @@ describe("computeRhcCarryOver — a transfer-in's sending hospice span (8xC, ch.
     expect(r.chain).toEqual([
       expect.objectContaining({
         source: "internal",
+        kind: "sending_hospice",
         start: "2026-01-20",
         end: "2026-02-15",
         hospiceNpi: OTHER_NPI,

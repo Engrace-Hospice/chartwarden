@@ -491,4 +491,36 @@ describe("Readmission screen — RHC carry-over across hospices (HETS)", () => {
     expect(await screen.findByText(/50 carry over \(readmitted within 60 days\)/)).toBeTruthy();
     expect(screen.getByText(/no recent HETS check is on file/)).toBeTruthy();
   });
+
+  const rhcLineOnRequirements = async (): Promise<HTMLElement> => {
+    await screen.findByRole("heading", { name: "Previous episode" });
+    cont();
+    const seq = (await screen.findByLabelText(/Benefit period number/)) as HTMLInputElement;
+    await waitFor(() => expect(seq.value).toBe("2"));
+    cont();
+    const title = await screen.findByText("Routine home care day count continues");
+    return title.closest("li") as HTMLElement;
+  };
+
+  it("the Requirements RHC line uses the merged HETS carry-over, not M6's own count", async () => {
+    mount(
+      `/admissions/${ADM}/readmit`,
+      "/admissions/:id/readmit",
+      <Readmission />,
+      makeClient({ hets: hetsView }),
+    );
+    const line = await rhcLineOnRequirements();
+    expect(line.textContent).toMatch(
+      /57 earlier hospice days carry over \(our stays \+ other hospices via HETS\), so this stay starts at day 58 \(3 days left/,
+    );
+    expect(line.textContent).not.toMatch(/\b50 earlier/);
+  });
+
+  it("the Requirements RHC line falls back to M6's count when no HETS carry-over is loaded", async () => {
+    mount(`/admissions/${ADM}/readmit`, "/admissions/:id/readmit", <Readmission />, makeClient());
+    const line = await rhcLineOnRequirements();
+    expect(line.textContent).toMatch(
+      /Readmitted within 60 days: 50 earlier hospice days carry over, so this stay starts at day 51/,
+    );
+  });
 });

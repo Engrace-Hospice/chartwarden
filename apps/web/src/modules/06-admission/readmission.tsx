@@ -153,9 +153,11 @@ export function Readmission(): JSX.Element {
     if (suggested !== null) setPeriod((p) => (p.sequence ? p : emptyBenefitPeriodDraft(suggested)));
   }, [suggested]);
 
+  const carry = rhcCarryOverOf(hets);
   const checklist = useMemo(
-    () => (loadedPlan ? requirementChecklist(loadedPlan, (d) => (d ? fmtDate(d) : "—")) : []),
-    [loadedPlan],
+    () =>
+      loadedPlan ? requirementChecklist(loadedPlan, (d) => (d ? fmtDate(d) : "—"), carry) : [],
+    [loadedPlan, carry],
   );
 
   if (previousAdmission === null || plan === null) return <LoadingSpinner />;

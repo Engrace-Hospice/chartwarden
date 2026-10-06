@@ -216,7 +216,7 @@ export interface HippsCalculationRhcCarryOver {
   daysSinceLastCare: number | null;
   chain: readonly {
     source: "internal" | "hets";
-    kind: "stay" | "election" | "benefit_period";
+    kind: "stay" | "sending_hospice" | "election" | "benefit_period";
     start: string;
     end: string;
     endAssumed: boolean;

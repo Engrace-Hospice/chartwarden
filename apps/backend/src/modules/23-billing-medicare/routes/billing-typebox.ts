@@ -301,7 +301,7 @@ export const RhcCarryOverSchema = Type.Object({
   chain: Type.Array(
     Type.Object({
       source: lit(["internal", "hets"] as const),
-      kind: lit(["stay", "election", "benefit_period"] as const),
+      kind: lit(["stay", "sending_hospice", "election", "benefit_period"] as const),
       start: isoDate(),
       end: isoDate(),
       endAssumed: Type.Boolean(),

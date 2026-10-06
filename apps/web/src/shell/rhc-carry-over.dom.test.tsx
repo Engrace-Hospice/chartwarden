@@ -83,6 +83,27 @@ describe("rhcCarryOverModel", () => {
     expect(m.rows[0]?.source).toBe("Other hospice (HETS), unbilled election");
     expect(m.rows[0]?.dates).toBe("2026-02-01 – 2026-02-15 (end assumed)");
   });
+
+  it("labels a transfer-in's sending hospice span from our transfer record", () => {
+    const m = rhcCarryOverModel(
+      carry({
+        chain: [
+          {
+            source: "internal",
+            kind: "sending_hospice",
+            start: "2026-01-01",
+            end: "2026-03-09",
+            endAssumed: false,
+            countedDays: 68,
+            hospiceNpi: "1234567893",
+            ref: null,
+          },
+        ],
+      }),
+      fmt,
+    );
+    expect(m.rows[0]?.source).toBe("Sending hospice (transfer-in record, NPI 1234567893)");
+  });
 });
 
 describe("RhcCarryOverSummary", () => {

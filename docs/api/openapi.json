@@ -46091,6 +46091,10 @@
                                                     "type": "string"
                                                   },
                                                   {
+                                                    "const": "sending_hospice",
+                                                    "type": "string"
+                                                  },
+                                                  {
                                                     "const": "election",
                                                     "type": "string"
                                                   },
@@ -48201,6 +48205,10 @@
                                     "anyOf": [
                                       {
                                         "const": "stay",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "sending_hospice",
                                         "type": "string"
                                       },
                                       {

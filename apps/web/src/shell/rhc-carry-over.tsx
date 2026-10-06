@@ -10,13 +10,22 @@ export type RhcCarryOverBasis = "internal_only" | "hets_merged" | "hets_stale";
 
 export interface RhcCarryOverSpan {
   source: "internal" | "hets";
-  kind: "stay" | "election" | "benefit_period";
+  /** `sending_hospice` = a transfer-in's sending hospice, from our transfer record (not HETS). */
+  kind: "stay" | "sending_hospice" | "election" | "benefit_period";
   start: string;
   end: string;
   endAssumed: boolean;
   countedDays: number;
   hospiceNpi: string | null;
   ref: string | null;
+}
+
+/** Who the counted days belong to, and where we know them from. */
+function spanSourceLabel(s: RhcCarryOverSpan): string {
+  const npi = s.hospiceNpi ? `, NPI ${s.hospiceNpi}` : "";
+  if (s.kind === "sending_hospice") return `Sending hospice (transfer-in record${npi})`;
+  if (s.source === "internal") return "Our stay";
+  return `Other hospice (HETS${npi})${s.kind === "election" ? ", unbilled election" : ""}`;
 }
 
 /** The server's carry-over shape (hospice-periods `rhcCarryOver`, claim `pricing.hipps.rhcCarryOver`). */
@@ -69,10 +78,7 @@ export function rhcCarryOverModel(
         : `${plural(carry.priorDays, "earlier hospice day")} carry over: this stay starts at RHC day ${carry.startsAtDay}, with ${plural(carry.highRateDaysRemaining, "high-rate day")} left.`;
   const rows = carry.chain.map((s, i) => ({
     key: `${s.source}-${s.start}-${i}`,
-    source:
-      s.source === "internal"
-        ? "Our stay"
-        : `Other hospice (HETS${s.hospiceNpi ? `, NPI ${s.hospiceNpi}` : ""})${s.kind === "election" ? ", unbilled election" : ""}`,
+    source: spanSourceLabel(s),
     dates: `${fmt(s.start)} – ${fmt(s.end)}${s.endAssumed ? " (end assumed)" : ""}`,
     days: plural(s.countedDays, "day"),
   }));

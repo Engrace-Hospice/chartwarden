@@ -6,6 +6,7 @@
 // Medicare counts benefit periods per BENEFICIARY across every hospice (Claims Processing Manual ch. 11 §20.1.6), so
 // our history's suggestion is only a starting point: the number is confirmed against HETS / ELGA / ELGH. An
 // unconfirmed or edited number is a WARNING, never a block.
+import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 
 export type BenefitPeriodSource =
   | "hets_confirmed"
@@ -184,11 +185,14 @@ export interface ChecklistItem {
 /**
  * The requirements checklist of the chosen period: what this admission owes, in the order staff meet it. The
  * certification line follows the period number (418.22(c)); the F2F line appears from period 3 (418.22(a)(4));
- * the NOE line says when it is held for the prior election's close-out.
+ * the NOE line says when it is held for the prior election's close-out. The RHC line uses the merged carry-over
+ * (our stays + other hospices via HETS, `GET /billing/eligibility/hospice-periods?electionDate=`) when it is
+ * loaded, and M6's own count of our stays otherwise.
  */
 export function requirementChecklist(
   plan: BenefitPeriodPlan,
   fmt: (iso: string | null | undefined) => string,
+  carry: RhcCarryOver | null = null,
 ): ChecklistItem[] {
   const r = plan.requirements;
   const items: ChecklistItem[] = [
@@ -243,14 +247,34 @@ export function requirementChecklist(
     detail: `A0220 = ${fmt(r.hopeAdmissionA0220)}; the HOPE update-visit clock restarts.`,
     tone: "info",
   });
-  if (plan.rhc.applies)
-    items.push({
+  const rhc = rhcChecklistItem(plan, carry);
+  if (rhc) items.push(rhc);
+  return items;
+}
+
+/** The RHC day-count line: the merged HETS carry-over when loaded, else M6's count of our own stays. */
+function rhcChecklistItem(
+  plan: BenefitPeriodPlan,
+  carry: RhcCarryOver | null,
+): ChecklistItem | null {
+  if (carry) {
+    if (carry.priorDays === 0) return null;
+    const sources =
+      carry.basis === "internal_only" ? "our stays" : "our stays + other hospices via HETS";
+    return {
       key: "rhc",
       title: "Routine home care day count continues",
-      detail: `Readmitted within 60 days: ${plan.rhc.priorHospiceDays} earlier hospice days carry over, so this stay starts at day ${plan.rhc.startsAtDay} (${plan.rhc.highRateDaysRemaining} days left at the day 1–60 rate).`,
-      tone: "info",
-    });
-  return items;
+      detail: `${carry.priorDays} earlier hospice days carry over (${sources}), so this stay starts at day ${carry.startsAtDay} (${carry.highRateDaysRemaining} days left at the day 1–60 rate).`,
+      tone: carry.basis === "hets_stale" ? "warning" : "info",
+    };
+  }
+  if (!plan.rhc.applies) return null;
+  return {
+    key: "rhc",
+    title: "Routine home care day count continues",
+    detail: `Readmitted within 60 days: ${plan.rhc.priorHospiceDays} earlier hospice days carry over, so this stay starts at day ${plan.rhc.startsAtDay} (${plan.rhc.highRateDaysRemaining} days left at the day 1–60 rate).`,
+    tone: "info",
+  };
 }
 
 /** The prior election's close-out line for the previous-episode summary. */

@@ -118,7 +118,8 @@ export interface RhcCountedSpan {
   readonly endAssumed: boolean;
   readonly countedDays: number;
   readonly hospiceNpi: string | null;
-  readonly kind: "stay" | "election" | "benefit_period";
+  /** `sending_hospice` = a transfer-in's sending hospice span recorded by us (`atOtherHospice`). */
+  readonly kind: "stay" | "sending_hospice" | "election" | "benefit_period";
   readonly ref: string | null;
 }
 
@@ -163,7 +164,7 @@ function internalSpans(stays: readonly RhcInternalStay[]): Span[] {
     .filter((s): s is RhcInternalStay & { start: IsoDate } => s.start !== null)
     .map((s) => ({
       source: "internal",
-      kind: "stay",
+      kind: s.atOtherHospice ? "sending_hospice" : "stay",
       start: toEpochDay(s.start),
       end: s.end ? toEpochDay(s.end) : null,
       endAssumedFromDaysUsed: false,

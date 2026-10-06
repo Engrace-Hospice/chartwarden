@@ -31574,7 +31574,7 @@ export interface operations {
                                     daysSinceLastCare: number | null;
                                     chain: {
                                         source: "internal" | "hets";
-                                        kind: "stay" | "election" | "benefit_period";
+                                        kind: "stay" | "sending_hospice" | "election" | "benefit_period";
                                         /** Format: date */
                                         start: string;
                                         /** Format: date */
@@ -32164,7 +32164,7 @@ export interface operations {
                             daysSinceLastCare: number | null;
                             chain: {
                                 source: "internal" | "hets";
-                                kind: "stay" | "election" | "benefit_period";
+                                kind: "stay" | "sending_hospice" | "election" | "benefit_period";
                                 /** Format: date */
                                 start: string;
                                 /** Format: date */
