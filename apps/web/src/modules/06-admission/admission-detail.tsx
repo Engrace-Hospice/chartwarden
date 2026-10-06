@@ -200,6 +200,9 @@ export function AdmissionDetail(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const detailSession = useSession();
+  const hasPermission = (key: string): boolean =>
+    detailSession?.permissions?.includes(key) ?? false;
   const [admission, setAdmission] = useState<AdmissionDetailView | null>(null);
   const [readiness, setReadiness] = useState<AdmissionReadiness | null>(null);
   const [periods, setPeriods] = useState<SummaryRow[]>([]);
@@ -945,6 +948,15 @@ export function AdmissionDetail(): JSX.Element {
                   label={stateLabel(admission.state)}
                   tone={ADMISSION_TONE[admission.state] ?? "neutral"}
                 />
+                {hasPermission("transfer.in") ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admissions/${admission.id}/transfer-in`)}
+                    style={ghostBtn}
+                  >
+                    Record transfer-in
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setCeremony("activate")}
@@ -1250,6 +1262,16 @@ export function AdmissionDetail(): JSX.Element {
               {canActivate ? (
                 <button type="button" onClick={() => setCeremony("activate")} style={primaryBtn}>
                   Activate
+                </button>
+              ) : null}
+              {(admission.state === "active" || admission.state === "on_hold") &&
+              hasPermission("discharge.death") ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admissions/${admission.id}/death`)}
+                  style={ghostBtn}
+                >
+                  Record death
                 </button>
               ) : null}
             </div>

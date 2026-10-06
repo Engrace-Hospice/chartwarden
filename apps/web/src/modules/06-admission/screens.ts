@@ -32,6 +32,13 @@ const ReferralDetail = lazy(() =>
 const ReferralInbox = lazy(() =>
   import("./referral-inbox").then((m) => ({ default: m.ReferralInbox })),
 );
+const DeathPronouncement = lazy(() =>
+  import("./death-pronouncement").then((m) => ({ default: m.DeathPronouncement })),
+);
+const DischargeCosign = lazy(() =>
+  import("./discharge-cosign").then((m) => ({ default: m.DischargeCosign })),
+);
+const TransferIn = lazy(() => import("./transfer-in").then((m) => ({ default: m.TransferIn })));
 const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -102,6 +109,30 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Election & Certification",
       requiredPermission: "election.read",
       screen: PatientElectionCert,
+    },
+    {
+      // Death & Pronouncement (WARDENX_UI_DEATH_PRONOUNCEMENT) — launched from the admission detail.
+      id: "admission.death-pronouncement",
+      path: "/admissions/:id/death",
+      title: "Death & Pronouncement",
+      requiredPermission: "discharge.death",
+      screen: DeathPronouncement,
+    },
+    {
+      // Transfer-in (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER, separate entry) — pre-activation intake.
+      id: "admission.transfer-in",
+      path: "/admissions/:id/transfer-in",
+      title: "Transfer-in",
+      requiredPermission: "transfer.in",
+      screen: TransferIn,
+    },
+    {
+      // For-cause discharge medical-director cosign (route 40). The server also applies the MD ABAC.
+      id: "admission.discharge-cosign",
+      path: "/discharges/:id/cosign",
+      title: "Cosign for-cause discharge",
+      requiredPermission: "discharge.cosign_for_cause",
+      screen: DischargeCosign,
     },
   ],
 };
