@@ -41,6 +41,13 @@
 //   - A billed HETS period with no end but a days-used count ends at start + daysUsed − 1.
 //   - A TRUNCATED HETS history (the 180-row cap) whose chain reaches its oldest row is a LOWER bound.
 //   - A stale HETS check is still merged (basis `hets_stale`); the caller decides how to warn.
+// BOUNDED INPUT (the HETS rows are an EXTERNAL response — treated as untrusted):
+//   - a row whose start is unparseable or outside [Medicare's 1965-07-30 start, election + the 4-month HETS look-ahead]
+//     is ignored; an unparseable / out-of-range / inverted end is treated as unknown (closed conservatively); a
+//     non-integer or absurd days-used count is ignored — each class raises one aggregated warning;
+//   - at most the HETS maximum of 360 rows (180 NOEs + 180 billed periods) is considered, the most recent first;
+//   - every span is clipped to end the day before the new election before merging, and the day attribution is
+//     interval arithmetic — the work is O(n log n)-ish in the row count and independent of a span's LENGTH.
 import type { IsoDate } from "../contracts";
 import { fromEpochDay, toEpochDay } from "../domain/dates";
 import { RHC_HIGH_TIER_LAST_DAY } from "./calculator";
@@ -49,6 +56,14 @@ import { RHC_HIGH_TIER_LAST_DAY } from "./calculator";
 export const RHC_CARRY_OVER_MAX_GAP_DAYS = 60;
 /** Two hospices may share exactly one day (the transfer day); a longer overlap is the same stay. */
 const SAME_STAY_MIN_OVERLAP_DAYS = 2;
+/** Medicare began 1965-07-30 (no hospice day can precede it); the floor of a sane HETS date. */
+export const RHC_EARLIEST_SANE_DATE: IsoDate = "1965-07-30";
+/** HETS answers up to four months past the request date; the ceiling of a sane HETS date past the election. */
+export const RHC_HETS_LOOK_AHEAD_DAYS = 124;
+/** HETS returns at most 180 NOEs + 180 billed periods (HETS2024-1); more rows than this is a malformed answer. */
+export const RHC_HETS_MAX_ROWS = 360;
+/** A days-used count beyond a century is not a hospice benefit period. */
+const MAX_SANE_DAYS_USED = 36_500;
 
 export type RhcCarryOverSource = "internal" | "hets";
 export type RhcCarryOverBasis = "internal_only" | "hets_merged" | "hets_stale";
@@ -102,7 +117,10 @@ export type RhcCarryOverWarningCode =
   | "hets_unbilled_election"
   | "hets_end_from_days_used"
   | "hets_history_truncated"
-  | "hets_stale";
+  | "hets_stale"
+  | "hets_row_ignored"
+  | "hets_end_ignored"
+  | "hets_rows_capped";
 
 export interface RhcCarryOverWarning {
   readonly code: RhcCarryOverWarningCode;
@@ -159,43 +177,116 @@ const overlapDays = (a: Span, b: Span): number => {
   return Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start) + 1);
 };
 
-function internalSpans(stays: readonly RhcInternalStay[]): Span[] {
-  return stays
-    .filter((s): s is RhcInternalStay & { start: IsoDate } => s.start !== null)
-    .map((s) => ({
-      source: "internal",
-      kind: s.atOtherHospice ? "sending_hospice" : "stay",
-      start: toEpochDay(s.start),
-      end: s.end ? toEpochDay(s.end) : null,
-      endAssumedFromDaysUsed: false,
-      hospiceNpi: s.atOtherHospice ? (s.hospiceNpi ?? null) : null,
-      ref: s.ref ?? null,
-      priority: 0,
-      ownStay: s.atOtherHospice !== true,
-    }));
+/** The epoch day of a strict `YYYY-MM-DD`, or null when it is not one (never NaN, never a throw). */
+function safeEpochDay(iso: unknown): number | null {
+  if (typeof iso !== "string") return null;
+  try {
+    const day = toEpochDay(iso);
+    return Number.isInteger(day) ? day : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A sane end for a span starting on `start`: parseable, in range and not before the start; else null. */
+function saneEnd(end: unknown, start: number, maxDay: number): number | null {
+  const day = safeEpochDay(end);
+  return day !== null && day >= start && day <= maxDay ? day : null;
+}
+
+function internalSpans(stays: readonly RhcInternalStay[], maxDay: number): Span[] {
+  return stays.flatMap((s): Span[] => {
+    const start = safeEpochDay(s.start);
+    if (start === null) return [];
+    return [
+      {
+        source: "internal",
+        kind: s.atOtherHospice ? "sending_hospice" : "stay",
+        start,
+        end: saneEnd(s.end, start, maxDay),
+        endAssumedFromDaysUsed: false,
+        hospiceNpi: s.atOtherHospice ? (s.hospiceNpi ?? null) : null,
+        ref: s.ref ?? null,
+        priority: 0,
+        ownStay: s.atOtherHospice !== true,
+      },
+    ];
+  });
+}
+
+/** A HETS row with its dates parsed and bounded (see the header's BOUNDED INPUT). */
+interface SaneHetsRow {
+  readonly kind: RhcHetsPeriod["kind"];
+  readonly start: number;
+  readonly end: number | null;
+  readonly daysUsed: number | null;
+  readonly hospiceNpi: string | null;
+}
+
+/** Parse, bound and cap the external HETS rows; warn once per class of row it had to drop or repair. */
+function saneHetsRows(
+  periods: readonly RhcHetsPeriod[],
+  minDay: number,
+  maxDay: number,
+  warn: (w: RhcCarryOverWarning) => void,
+): SaneHetsRow[] {
+  let ignored = 0;
+  let endsIgnored = 0;
+  const rows: SaneHetsRow[] = [];
+  for (const p of periods) {
+    const start = safeEpochDay(p.startDate);
+    if (start === null || start < minDay || start > maxDay) {
+      ignored += 1;
+      continue;
+    }
+    const end = p.endDate === null ? null : saneEnd(p.endDate, start, maxDay);
+    if (p.endDate !== null && end === null) endsIgnored += 1;
+    const daysUsed =
+      typeof p.daysUsed === "number" &&
+      Number.isInteger(p.daysUsed) &&
+      p.daysUsed > 0 &&
+      p.daysUsed <= MAX_SANE_DAYS_USED
+        ? p.daysUsed
+        : null;
+    rows.push({ kind: p.kind, start, end, daysUsed, hospiceNpi: p.hospiceNpi ?? null });
+  }
+  if (ignored > 0) {
+    warn({
+      code: "hets_row_ignored",
+      message: `${ignored} HETS hospice record(s) were ignored: the start date is unreadable or outside ${RHC_EARLIEST_SANE_DATE} … ${fromEpochDay(maxDay)}.`,
+    });
+  }
+  if (endsIgnored > 0) {
+    warn({
+      code: "hets_end_ignored",
+      message: `${endsIgnored} HETS hospice record(s) had an unreadable or impossible end date; each is treated as having no end (the conservative reading).`,
+    });
+  }
+  if (rows.length <= RHC_HETS_MAX_ROWS) return rows;
+  warn({
+    code: "hets_rows_capped",
+    message: `HETS returned ${rows.length} hospice records, more than its ${RHC_HETS_MAX_ROWS}-record maximum; only the ${RHC_HETS_MAX_ROWS} most recent were counted.`,
+  });
+  return [...rows].sort((a, b) => b.start - a.start).slice(0, RHC_HETS_MAX_ROWS);
 }
 
 function hetsSpans(
-  hets: RhcHetsHistory,
+  rows: readonly SaneHetsRow[],
   recorded: readonly Span[],
   ownNpis: ReadonlySet<string>,
 ): Span[] {
   // Only OUR stays can make a HETS row a duplicate; a recorded other-hospice span (a transfer-in's sending
   // hospice) overlapping a HETS row is that hospice's own record — both are kept and their days merge.
   const internal = recorded.filter((s) => s.ownStay);
-  const billed: Span[] = hets.periods
+  const billed: Span[] = rows
     .filter((p) => p.kind === "benefit_period")
     .map((p) => {
-      const start = toEpochDay(p.startDate);
-      const fromDaysUsed =
-        p.endDate === null && typeof p.daysUsed === "number" && p.daysUsed > 0
-          ? start + p.daysUsed - 1
-          : null;
+      const fromDaysUsed = p.end === null && p.daysUsed !== null ? p.start + p.daysUsed - 1 : null;
       return {
         source: "hets",
         kind: "benefit_period",
-        start,
-        end: p.endDate ? toEpochDay(p.endDate) : fromDaysUsed,
+        start: p.start,
+        end: p.end ?? fromDaysUsed,
         endAssumedFromDaysUsed: fromDaysUsed !== null,
         hospiceNpi: p.hospiceNpi,
         ref: null,
@@ -206,13 +297,13 @@ function hetsSpans(
   const covered = (day: number): boolean =>
     billed.some((b) => day >= b.start && (b.end === null || day <= b.end));
   // A NOE inside a billed period adds nothing; one outside every billed period is an unbilled election.
-  const unbilledNoes: Span[] = hets.periods
-    .filter((p) => p.kind === "election" && !covered(toEpochDay(p.startDate)))
+  const unbilledNoes: Span[] = rows
+    .filter((p) => p.kind === "election" && !covered(p.start))
     .map((p) => ({
       source: "hets",
       kind: "election",
-      start: toEpochDay(p.startDate),
-      end: p.endDate ? toEpochDay(p.endDate) : null,
+      start: p.start,
+      end: p.end,
       endAssumedFromDaysUsed: false,
       hospiceNpi: p.hospiceNpi,
       ref: null,
@@ -250,18 +341,31 @@ function warnHetsRows(spans: readonly Span[], warn: (w: RhcCarryOverWarning) => 
   }
 }
 
+/** The first index of the ascending `sorted` whose value is > `value` (`sorted.length` when none). */
+function firstIndexAbove(sorted: readonly number[], value: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((sorted[mid] as number) > value) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
 /** Resolve open ends: assume care ran until the day before the next known care (or the new election). */
 function closeOpenSpans(
   spans: readonly Span[],
   electionDay: number,
   warn: (w: RhcCarryOverWarning) => void,
 ): (Span & { end: number; endAssumed: boolean })[] {
+  const starts = spans.map((o) => o.start).sort((a, b) => a - b);
   return spans.map((s) => {
     if (s.end !== null) return { ...s, end: s.end, endAssumed: s.endAssumedFromDaysUsed };
-    const nextStart = Math.min(
-      electionDay,
-      ...spans.filter((o) => o.start > s.start).map((o) => o.start),
-    );
+    // The first known start after this one (binary search over the sorted starts — no spread of an
+    // unbounded array into Math.min).
+    const next = starts[firstIndexAbove(starts, s.start)];
+    const nextStart = next !== undefined && next < electionDay ? next : electionDay;
     warn({
       code: "open_span_assumed_continuous",
       message: `The ${s.source === "internal" ? "earlier stay with us" : "HETS hospice record"} starting ${fromEpochDay(s.start)} has no end date; it is assumed to have run until ${fromEpochDay(nextStart - 1)} (the conservative reading — it can only lower the high-rate days).`,
@@ -295,15 +399,51 @@ function mergeBlocks(spans: readonly (Span & { end: number; endAssumed: boolean 
   return blocks;
 }
 
+/**
+ * The days each member owns when every calendar day goes to ONE member: lower `priority` first, then the earlier
+ * start, then input order (the order the per-day reference walk used). Interval arithmetic over the union of the
+ * ranges already owned — the cost depends on the NUMBER of members, never on how many days a range spans.
+ * @internal exported for the equivalence test.
+ */
+export function attributeOwnedDays(
+  members: readonly { readonly start: number; readonly end: number; readonly priority: number }[],
+): number[] {
+  const ranked = members
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => a.m.priority - b.m.priority || a.m.start - b.m.start || a.i - b.i);
+  const counted = members.map(() => 0);
+  // Disjoint owned ranges, ascending by start.
+  let owned: { start: number; end: number }[] = [];
+  for (const { m, i } of ranked) {
+    if (m.end < m.start) continue;
+    // The first owned range that ends at or after this member's start.
+    let lo = 0;
+    let hi = owned.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((owned[mid] as { end: number }).end < m.start) lo = mid + 1;
+      else hi = mid;
+    }
+    let j = lo;
+    let alreadyOwned = 0;
+    let mergedStart = m.start;
+    let mergedEnd = m.end;
+    while (j < owned.length && (owned[j] as { start: number }).start <= m.end) {
+      const o = owned[j] as { start: number; end: number };
+      alreadyOwned += Math.min(o.end, m.end) - Math.max(o.start, m.start) + 1;
+      mergedStart = Math.min(mergedStart, o.start);
+      mergedEnd = Math.max(mergedEnd, o.end);
+      j += 1;
+    }
+    counted[i] = m.end - m.start + 1 - alreadyOwned;
+    owned = [...owned.slice(0, lo), { start: mergedStart, end: mergedEnd }, ...owned.slice(j)];
+  }
+  return counted;
+}
+
 /** Attribute each day of a block to one member (our records first, then billed periods, then NOEs). */
 function attribute(block: Block): RhcCountedSpan[] {
-  const owner = new Map<number, number>();
-  const ranked = block.members
-    .map((m, i) => ({ m, i }))
-    .sort((a, b) => a.m.priority - b.m.priority || a.m.start - b.m.start);
-  for (const { m, i } of ranked) {
-    for (let d = m.start; d <= m.end; d++) if (!owner.has(d)) owner.set(d, i);
-  }
+  const counted = attributeOwnedDays(block.members);
   return block.members
     .map((m, i) => ({
       source: m.source,
@@ -311,7 +451,7 @@ function attribute(block: Block): RhcCountedSpan[] {
       start: fromEpochDay(m.start),
       end: fromEpochDay(m.end),
       endAssumed: m.endAssumed,
-      countedDays: [...owner.values()].filter((o) => o === i).length,
+      countedDays: counted[i] ?? 0,
       hospiceNpi: m.hospiceNpi,
       ref: m.ref,
     }))
@@ -338,9 +478,15 @@ export function computeRhcCarryOver(input: RhcCarryOverInput): RhcCarryOverResul
     });
   }
 
-  const ours = internalSpans(input.internalStays);
+  const minDay = toEpochDay(RHC_EARLIEST_SANE_DATE);
+  const maxDay = electionDay + RHC_HETS_LOOK_AHEAD_DAYS;
+  const ours = internalSpans(input.internalStays, maxDay);
   const theirs = input.hets
-    ? hetsSpans(input.hets, ours, new Set(input.ownProviderNpis ?? []))
+    ? hetsSpans(
+        saneHetsRows(input.hets.periods, minDay, maxDay, warn),
+        ours,
+        new Set(input.ownProviderNpis ?? []),
+      )
     : [];
   // Only care BEFORE the new election is prior; clip each span to the day before it.
   const prior = [...ours, ...theirs]

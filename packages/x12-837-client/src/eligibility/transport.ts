@@ -133,11 +133,21 @@ export function createCoreMimeHetsTransport(
   };
 }
 
+/** A CORE envelope larger than this cannot be a 271 (the parser's own cap is 4 MiB of X12). */
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+function tooLarge(): HetsTransportError {
+  return new HetsTransportError("HETS_INVALID_RESPONSE", "HETS response exceeds the size limit");
+}
+
 async function readPayload(response: Response): Promise<string> {
+  const declared = Number(response.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw tooLarge();
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     // Some clearinghouses answer the raw X12 body; accept it only if it is an interchange.
     const text = await response.text();
+    if (text.length > MAX_RESPONSE_BYTES) throw tooLarge();
     if (text.trimStart().startsWith("ISA")) return text;
     throw new HetsTransportError("HETS_INVALID_RESPONSE", "HETS response is not a CORE envelope");
   }
@@ -157,6 +167,7 @@ async function readPayload(response: Response): Promise<string> {
   }
   const payload = form.get("Payload");
   const text = typeof payload === "string" ? payload : payload ? await payload.text() : "";
+  if (text.length > MAX_RESPONSE_BYTES) throw tooLarge();
   if (!text.trimStart().startsWith("ISA")) {
     throw new HetsTransportError(
       "HETS_INVALID_RESPONSE",

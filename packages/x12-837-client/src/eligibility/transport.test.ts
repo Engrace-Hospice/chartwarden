@@ -101,6 +101,22 @@ describe("CORE MIME transport", () => {
     ],
     ["HETS_INVALID_RESPONSE", async () => new Response("<html>", { status: 200 })],
     [
+      "HETS_INVALID_RESPONSE",
+      async () =>
+        new Response("ISA", {
+          status: 200,
+          headers: { "content-type": "text/plain", "content-length": String(64 * 1024 * 1024) },
+        }),
+    ],
+    [
+      "HETS_INVALID_RESPONSE",
+      async () =>
+        new Response(`ISA${"*".repeat(9 * 1024 * 1024)}`, {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    ],
+    [
       "HETS_NETWORK_ERROR",
       async () => {
         throw new TypeError("fetch failed");

@@ -14,7 +14,7 @@
 // Table 26). This parser never reads NM1*IL, N3/N4, DMG or REF — the output is built only from the
 // segments listed above, and {@link assertNoMbi} lets the caller prove the result carries no MBI.
 import { MBI_PATTERN } from "./build-270";
-import { parseDtpValue, tokenizeInterchange } from "./x12-envelope";
+import { X12FormatError, parseDtpValue, tokenizeInterchange } from "./x12-envelope";
 
 /** The `eligibility_check.outcome` domain values (M23 §3, the `eligibility_outcome` enum). */
 export type Hets271Outcome =
@@ -71,6 +71,17 @@ export interface Parsed271 {
   readonly hospiceRecords: readonly HospiceRecord[];
 }
 
+/**
+ * Bounds on an EXTERNAL answer (a malformed or hostile 271 must not cost unbounded memory / CPU downstream). A
+ * real 271 is a few hundred KB at most: HETS returns ≤ 180 NOEs + 180 billed periods (HETS2024-1), and a transfer
+ * can surface a period twice — so 720 hospice records is double the maximum. Records past a cap are dropped (the
+ * hospice history then reads as truncated, its documented "older periods may be missing" case).
+ */
+export const HETS_271_MAX_CHARS = 4 * 1024 * 1024;
+export const HETS_271_MAX_HOSPICE_RECORDS = 720;
+const MAX_ENTITLEMENTS = 100;
+const MAX_REJECTIONS = 100;
+
 /** AAA03 beneficiary-match failures (CG Table 11, 2100C): DOB/name/MBI not matched or missing. */
 const BENEFICIARY_NOT_MATCHED = new Set(["58", "71", "72", "73"]);
 
@@ -101,6 +112,9 @@ const covers = (e: PartAEntitlement, date: string): boolean =>
  * (an `X12FormatError` with a content-free message).
  */
 export function parse271(raw: string, opts: { readonly asOfServiceDate: string }): Parsed271 {
+  if (raw.length > HETS_271_MAX_CHARS) {
+    throw new X12FormatError("271 payload exceeds the size limit");
+  }
   const { delimiters, segments } = tokenizeInterchange(raw);
   const repetition = delimiters.repetition;
 
@@ -120,10 +134,11 @@ export function parse271(raw: string, opts: { readonly asOfServiceDate: string }
   let eb: EbContext | null = null;
 
   const closeEb = (): void => {
-    if (eb?.kind === "part_a_active") entitlements.push({ ...eb.entitlement });
+    if (eb?.kind === "part_a_active" && entitlements.length < MAX_ENTITLEMENTS)
+      entitlements.push({ ...eb.entitlement });
     if (eb?.kind === "hospice") {
       const d = eb.draft;
-      if (d.kind && d.startDate) {
+      if (d.kind && d.startDate && hospiceRecords.length < HETS_271_MAX_HOSPICE_RECORDS) {
         hospiceRecords.push({
           kind: d.kind,
           startDate: d.startDate,
@@ -164,7 +179,8 @@ export function parse271(raw: string, opts: { readonly asOfServiceDate: string }
             : hlLevel === "21"
               ? "2100B"
               : "2100C";
-        rejections.push({ loop, code: seg[3] ?? "", followUp: seg[4] || null });
+        if (rejections.length < MAX_REJECTIONS)
+          rejections.push({ loop, code: seg[3] ?? "", followUp: seg[4] || null });
         continue;
       }
       if (id === "EB") {

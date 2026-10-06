@@ -88,7 +88,13 @@ export {
   MBI_PATTERN,
 } from "./eligibility/build-270";
 export type { Hets270Request } from "./eligibility/build-270";
-export { assertNoMbi, MbiLeakError, parse271 } from "./eligibility/parse-271";
+export {
+  assertNoMbi,
+  HETS_271_MAX_CHARS,
+  HETS_271_MAX_HOSPICE_RECORDS,
+  MbiLeakError,
+  parse271,
+} from "./eligibility/parse-271";
 export type {
   Hets271Outcome,
   Hets271Rejection,

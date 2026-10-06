@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { type Hets271Scenario, synthetic271 } from "./fixtures";
+import { type Hets271Scenario, type SyntheticHospicePeriod, synthetic271 } from "./fixtures";
 import { deriveHospiceHistory } from "./hospice-history";
-import { MbiLeakError, assertNoMbi, parse271 } from "./parse-271";
+import {
+  HETS_271_MAX_CHARS,
+  HETS_271_MAX_HOSPICE_RECORDS,
+  MbiLeakError,
+  assertNoMbi,
+  parse271,
+} from "./parse-271";
+import { X12FormatError } from "./x12-envelope";
 
 const MBI = "1EG4TE5MK73";
 const ctx = {
@@ -232,5 +239,30 @@ describe("assertNoMbi", () => {
     expect(() =>
       assertNoMbi({ npi: "1234567893", id: "0b3c8b6e-1d2f-4e5a-9b7c-1a2b3c4d5e6f" }),
     ).not.toThrow();
+  });
+});
+
+describe("parse271 — bounded against a malformed / hostile answer", () => {
+  it("keeps at most HETS_271_MAX_HOSPICE_RECORDS hospice records; the history then reads as truncated", () => {
+    const flood: SyntheticHospicePeriod[] = Array.from({ length: 2_000 }, (_, i) => ({
+      kind: "noe",
+      // Distinct days from 1990-01-01, so the dedupe-by-start keeps every one.
+      start: new Date(Date.UTC(1990, 0, 1 + i)).toISOString().slice(0, 10).replaceAll("-", ""),
+      revocation: "1",
+      npi: "1649726464",
+    }));
+    const t0 = performance.now();
+    const parsed = parse271(synthetic271("active_with_history", ctx, flood), {
+      asOfServiceDate: "2026-10-06",
+    });
+    expect(parsed.hospiceRecords).toHaveLength(HETS_271_MAX_HOSPICE_RECORDS);
+    const history = deriveHospiceHistory(parsed.hospiceRecords, { asOfServiceDate: "2026-10-06" });
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(history.truncated).toBe(true);
+  });
+
+  it("refuses a payload over the size limit with a content-free X12FormatError", () => {
+    const raw = `ISA*${"x".repeat(HETS_271_MAX_CHARS)}`;
+    expect(() => parse271(raw, { asOfServiceDate: "2026-10-06" })).toThrow(X12FormatError);
   });
 });
