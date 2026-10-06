@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1369,
-    "coveredRoutes": 1369,
-    "directRoutesReferenced": 1326
+    "routes": 1371,
+    "coveredRoutes": 1371,
+    "directRoutesReferenced": 1328
   },
   "modules": [
     {
@@ -73,7 +73,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 72,
+      "routes": 74,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -81,9 +81,10 @@
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
-        "apps/backend/__tests__/discharge-worklist-routes.test.ts"
+        "apps/backend/__tests__/discharge-worklist-routes.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 72
+      "directRoutesReferenced": 74
     },
     {
       "module": "07-care-plan",
@@ -108,6 +109,7 @@
         "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],

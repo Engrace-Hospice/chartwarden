@@ -54,7 +54,18 @@ const COSIGN = [
     effectiveDate: "2026-06-03",
   }),
 ];
+const RECENT = [
+  row({
+    admissionId: "a-5",
+    patientId: "p-5",
+    admissionState: "discharged",
+    dischargeType: "no_longer_terminal",
+    effectiveDate: "2026-06-20",
+    dischargedAt: "2026-06-20T17:00:00.000Z",
+  }),
+];
 const PATIENTS: Record<string, unknown> = {
+  "p-5": { id: "p-5", firstName: "Lena", lastName: "Park", mrn: "MRN-5005" },
   "p-1": { id: "p-1", firstName: "Maria", lastName: "Lopez", mrn: "MRN-1001" },
   "p-2": { id: "p-2", firstName: "James", lastName: "Carter", mrn: "MRN-2002" },
   "p-3": { id: "p-3", firstName: "Ruth", lastName: "Kim", mrn: "MRN-3003" },
@@ -73,6 +84,7 @@ function makeClient(opts: { failReady?: boolean } = {}) {
           return opts.failReady ? fail(500) : ok({ items: READY, nextCursor: null });
         if (bucket === "needs_details") return ok({ items: NEEDS, nextCursor: null });
         if (bucket === "awaiting_cosign") return ok({ items: COSIGN, nextCursor: null });
+        if (bucket === "recently_discharged") return ok({ items: RECENT, nextCursor: null });
       }
       if (path === "/api/v1/patients/{id}") {
         const id = init?.params?.path?.id ?? "";
@@ -114,13 +126,21 @@ describe("discharges hub model", () => {
       discharge: true,
       death: false,
       cosign: false,
+      readmit: false,
     });
     expect(hubAbilities(["discharge.death", "discharge.cosign_for_cause"])).toEqual({
       discharge: false,
       death: true,
       cosign: true,
+      readmit: false,
     });
-    expect(hubAbilities(null)).toEqual({ discharge: false, death: false, cosign: false });
+    expect(hubAbilities(["admission.create"]).readmit).toBe(true);
+    expect(hubAbilities(null)).toEqual({
+      discharge: false,
+      death: false,
+      cosign: false,
+      readmit: false,
+    });
   });
   it("matches a patient by name or MRN and lists only unknown patient ids", () => {
     const p = { id: "p-1", firstName: "Maria", lastName: "Lopez", mrn: "MRN-1001" };
@@ -245,5 +265,21 @@ describe("discharges hub screen", () => {
         ).length,
       ).toBe(2),
     );
+  });
+
+  it("lists recent live discharges with a Readmit action only for admission.create", async () => {
+    mount(["admission.read", "admission.create"]);
+    const table = await screen.findByRole("table", { name: "Recently discharged patients" });
+    expect(await within(table).findByText("Lena Park")).toBeTruthy();
+    expect(within(table).getByText("No longer terminal")).toBeTruthy();
+    const link = within(table).getByRole("link", { name: "Readmit Lena Park" });
+    expect(link.getAttribute("href")).toBe("/admissions/a-5/readmit");
+  });
+
+  it("hides Readmit without admission.create", async () => {
+    mount(["admission.read"]);
+    const table = await screen.findByRole("table", { name: "Recently discharged patients" });
+    await within(table).findByText("Lena Park");
+    expect(within(table).queryByRole("link", { name: /Readmit/ })).toBeNull();
   });
 });

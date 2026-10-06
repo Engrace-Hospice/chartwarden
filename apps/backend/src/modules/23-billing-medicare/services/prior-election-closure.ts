@@ -9,7 +9,7 @@
 //                      replaced)
 //
 // Two consumers: M23's own NOE-submit guard (`submitNoe`) and, through an injected port bound at the composition root,
-// M6's readmission plan (M6 may not import M23).
+// M6's readmission context (M6 may not import M23).
 import type { BillingDb } from "@wardenx/billing";
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -64,7 +64,7 @@ export async function priorElectionClosureTx(
   return { notrFiled: !!notr, finalClaimFiled: !!finalClaim };
 }
 
-/** Org-explicit (the M6 readmission-plan port; no request transaction to join). */
+/** Org-explicit (the M6 readmission-context port; no request transaction to join). */
 export async function priorElectionClosureForOrg(
   db: BillingDb,
   organizationId: string,

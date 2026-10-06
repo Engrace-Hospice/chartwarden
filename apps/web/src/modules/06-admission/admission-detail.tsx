@@ -1282,6 +1282,12 @@ export function AdmissionDetail(): JSX.Element {
                   Discharge / transfer…
                 </Link>
               ) : null}
+              {(admission.state === "discharged" || admission.state === "closed") &&
+              hasPermission("admission.create") ? (
+                <Link to={`/admissions/${admission.id}/readmit`} className="wx-btn-secondary">
+                  Readmit patient
+                </Link>
+              ) : null}
               {(admission.state === "active" || admission.state === "on_hold") &&
               hasPermission("discharge.death") ? (
                 <Link to={`/admissions/${admission.id}/death`} className="wx-btn-secondary">

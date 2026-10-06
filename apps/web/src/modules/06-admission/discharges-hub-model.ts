@@ -3,7 +3,7 @@
 // short labels. Display gating only — the server enforces every key on the workflow it links to.
 import { DISCHARGE_WORKFLOW_PERMISSIONS } from "./admission-status";
 
-export type WorklistBucket = "ready" | "needs_details" | "awaiting_cosign";
+export type WorklistBucket = "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged";
 
 export interface WorklistItem {
   admissionId: string;
@@ -35,6 +35,8 @@ export interface HubAbilities {
   readonly death: boolean;
   /** For-cause cosign queue (route 40). */
   readonly cosign: boolean;
+  /** Readmit a live-discharged patient (a new admission). */
+  readonly readmit: boolean;
 }
 
 /** What the actor may start from the hub. An unknown permission set (null) shows nothing gated. */
@@ -44,6 +46,7 @@ export function hubAbilities(permissions: readonly string[] | null | undefined):
     discharge: DISCHARGE_WORKFLOW_PERMISSIONS.some(has),
     death: has("discharge.death"),
     cosign: has("discharge.cosign_for_cause"),
+    readmit: has("admission.create"),
   };
 }
 
@@ -90,4 +93,11 @@ export function unresolvedPatientIds(
   known: Readonly<Record<string, unknown>>,
 ): string[] {
   return [...new Set(rows.map((r) => r.patientId))].filter((id) => !(id in known));
+}
+
+/** Whole days from `isoDate` (yyyy-mm-dd or an instant) to `today` (yyyy-mm-dd); `null` when unknown. */
+export function daysSince(isoDate: string | null, today: string): number | null {
+  if (!isoDate) return null;
+  const ms = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${isoDate.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(ms) ? null : Math.round(ms / 86_400_000);
 }

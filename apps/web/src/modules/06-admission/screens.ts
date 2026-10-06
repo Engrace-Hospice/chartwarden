@@ -48,6 +48,7 @@ const DischargeCosign = lazy(() =>
   import("./discharge-cosign").then((m) => ({ default: m.DischargeCosign })),
 );
 const TransferIn = lazy(() => import("./transfer-in").then((m) => ({ default: m.TransferIn })));
+const Readmission = lazy(() => import("./readmission").then((m) => ({ default: m.Readmission })));
 const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -159,6 +160,17 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Transfer-in",
       requiredPermission: "transfer.in",
       screen: TransferIn,
+    },
+    {
+      // Readmit a live-discharged patient: previous episode, benefit period (HETS-confirmed or a warning), the
+      // period's requirements, intake, review → POST /api/v1/admissions (readmittedFromAdmissionId + benefitPeriod).
+      // Reached from the admission detail of a discharged stay, the discharge hub's "Recently discharged" list and
+      // the patient chart. No nav entry (it acts on one admission).
+      id: "admission.readmit",
+      path: "/admissions/:id/readmit",
+      title: "Readmit patient",
+      requiredPermission: "admission.create",
+      screen: Readmission,
     },
     {
       // For-cause discharge medical-director cosign (route 40). The server also applies the MD ABAC.

@@ -308,6 +308,14 @@
       "app": "web",
       "module": "06-admission",
       "moduleId": 6,
+      "id": "admission.readmit",
+      "path": "/admissions/:id/readmit",
+      "permission": "admission.create"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
       "id": "admission.discharge-cosign",
       "path": "/discharges/:id/cosign",
       "permission": "discharge.cosign_for_cause"

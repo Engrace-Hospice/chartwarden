@@ -15,10 +15,24 @@ import {
 import type { WorkflowStep } from "@wardenx/ui";
 // Direct intake is a short, governed workflow. It keeps draft values in React state only: browser
 // storage would be inappropriate for referral/admission data, and no durable draft endpoint exists.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
+import { fmtDate } from "../../shell/patient-context";
+import {
+  BenefitPeriodField,
+  useBenefitPeriodPlan,
+  useHetsHospicePeriods,
+} from "./benefit-period-field";
+import { localToday } from "./end-of-episode-ui";
+import {
+  type BenefitPeriodDraft,
+  benefitPeriodBody,
+  emptyBenefitPeriodDraft,
+  endKindLabel,
+  validateBenefitPeriod,
+} from "./readmission-model";
 import { authFailureRedirect } from "./write-workflow";
 
 const INTAKE_METHODS = [
@@ -41,8 +55,27 @@ export function AdmissionCreate(): JSX.Element {
   const [hospiceMedicalDirectorId, setHospiceMedicalDirectorId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The first benefit period: our history's suggestion (1 for a patient never served), confirmed against HETS.
+  // A transfer-in inherits its period through the transfer-in workflow instead.
+  const today = localToday();
+  const askPeriod = intakeMethod !== "transfer_in" && patientId.trim().length > 0;
+  const plan = useBenefitPeriodPlan(askPeriod ? { patientId: patientId.trim() } : null);
+  const loadedPlan = plan && plan !== "error" ? plan : null;
+  const suggested = loadedPlan?.suggestion.suggestedSequence ?? null;
+  const hets = useHetsHospicePeriods(askPeriod ? patientId.trim() : null);
+  const [period, setPeriod] = useState<BenefitPeriodDraft>(() => emptyBenefitPeriodDraft(null));
+  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
+  useEffect(() => {
+    // Re-prefill when the selected patient changes (a different history).
+    if (loadedPlan && prefilledFor !== loadedPlan.patientId) {
+      setPeriod(emptyBenefitPeriodDraft(loadedPlan.suggestion.suggestedSequence));
+      setPrefilledFor(loadedPlan.patientId);
+    }
+  }, [loadedPlan, prefilledFor]);
+  const periodErrors = askPeriod ? validateBenefitPeriod(period, today) : {};
+  const periodReady = !askPeriod || Object.keys(periodErrors).length === 0;
 
-  const intakeReady = patientId.trim().length > 0;
+  const intakeReady = patientId.trim().length > 0 && periodReady;
   const clinicalReady = hospiceMedicalDirectorId.trim().length > 0;
   const ready = intakeReady && clinicalReady;
   const currentIndex = STEP_IDS.indexOf(step);
@@ -88,6 +121,9 @@ export function AdmissionCreate(): JSX.Element {
           ? { attendingPhysicianId: attendingPhysicianId.trim() }
           : {}),
         hospiceMedicalDirectorId: hospiceMedicalDirectorId.trim(),
+        ...(askPeriod && benefitPeriodBody(period, suggested, today)
+          ? { benefitPeriod: benefitPeriodBody(period, suggested, today) ?? undefined }
+          : {}),
       },
     });
     if (requestError || !data) {
@@ -109,7 +145,18 @@ export function AdmissionCreate(): JSX.Element {
       return;
     }
     navigate(`/admissions/${data.id}`);
-  }, [attendingPhysicianId, client, hospiceMedicalDirectorId, intakeMethod, navigate, patientId]);
+  }, [
+    askPeriod,
+    attendingPhysicianId,
+    client,
+    hospiceMedicalDirectorId,
+    intakeMethod,
+    navigate,
+    patientId,
+    period,
+    suggested,
+    today,
+  ]);
 
   function next(): void {
     if (step === "intake" && intakeReady) setStep("clinical");
@@ -209,6 +256,40 @@ export function AdmissionCreate(): JSX.Element {
             </div>
           </FormSection>
         ) : null}
+        {step === "intake" && askPeriod ? (
+          <FormSection
+            title="Benefit period"
+            description="The Medicare benefit period this admission elects into. Medicare counts periods across every hospice."
+          >
+            {loadedPlan?.previous && loadedPlan.previous.endKind !== "death" ? (
+              <p
+                style={{
+                  margin: `0 0 ${t.space3}`,
+                  fontSize: "0.85rem",
+                  color: t.onSurfaceVariant,
+                }}
+              >
+                Earlier stay: {endKindLabel(loadedPlan.previous.endKind).toLowerCase()} on{" "}
+                {fmtDate(loadedPlan.previous.endedOn)}.{" "}
+                {loadedPlan.readmission.eligible ? (
+                  <Link to={`/admissions/${loadedPlan.previous.admissionId}/readmit`}>
+                    Use the readmission workflow
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
+            <BenefitPeriodField
+              idPrefix="ac"
+              draft={period}
+              onChange={(p) => setPeriod((d) => ({ ...d, ...p }))}
+              suggested={suggested}
+              basis={loadedPlan?.suggestion.basis}
+              today={today}
+              errors={period.sequence ? periodErrors : {}}
+              hets={hets}
+            />
+          </FormSection>
+        ) : null}
         {step === "clinical" ? (
           <FormSection
             title="Clinical responsibility"
@@ -258,6 +339,12 @@ export function AdmissionCreate(): JSX.Element {
                 value={attendingPhysicianId || "Not assigned"}
               />
               <ReviewRow label="Medical director" value={hospiceMedicalDirectorId} />
+              {askPeriod ? (
+                <ReviewRow
+                  label="Benefit period"
+                  value={`${period.sequence}${period.hetsConfirmed ? " (HETS-confirmed)" : " (not confirmed in HETS)"}`}
+                />
+              ) : null}
             </dl>
           </FormSection>
         ) : null}

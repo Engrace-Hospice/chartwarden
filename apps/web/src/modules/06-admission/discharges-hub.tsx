@@ -6,7 +6,9 @@ import { EmptyState, Glyph, LoadingSpinner, Panel, StatusPill, useApiClient } fr
 //                              transfer-out stepper or the death workflow (each action only for an actor holding it);
 //   - Needs discharge details  ended stays whose record lacks the place of death / receiving care setting the final
 //                              claim needs → the discharge-details screen;
-//   - Awaiting for-cause cosign  (medical directors only) → the cosign screen.
+//   - Awaiting for-cause cosign  (medical directors only) → the cosign screen;
+//   - Recently discharged      live discharges / revocations / transfers out of the last 90 days → Readmit
+//                              (admission.create) — the readmission workflow.
 // Rows come from GET /api/v1/discharges/worklist (one bucket per call, caseload-narrowed server-side); names/MRNs
 // from the patient read, only for the rows loaded. The server enforces every key on the workflows linked here.
 import { type JSX, useEffect, useMemo, useState } from "react";
@@ -21,6 +23,7 @@ import {
   MISSING_LABEL,
   type WorklistBucket,
   type WorklistItem,
+  daysSince,
   endLabel,
   hubAbilities,
   matchesPatient,
@@ -196,11 +199,13 @@ export function DischargesHub(): JSX.Element {
   const ready = useWorklist("ready", true);
   const needs = useWorklist("needs_details", true);
   const cosign = useWorklist("awaiting_cosign", can.cosign);
+  const recent = useWorklist("recently_discharged", true);
+  const today = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState("");
 
   const onScreen = useMemo(
-    () => [...ready.items, ...needs.items, ...(can.cosign ? cosign.items : [])],
-    [ready.items, needs.items, cosign.items, can.cosign],
+    () => [...ready.items, ...needs.items, ...(can.cosign ? cosign.items : []), ...recent.items],
+    [ready.items, needs.items, cosign.items, can.cosign, recent.items],
   );
   const patients = usePatients(onScreen);
   const readyRows = ready.items.filter((r) =>
@@ -359,6 +364,63 @@ export function DischargesHub(): JSX.Element {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </ListState>
+        </Panel>
+
+        <Panel
+          title="Recently discharged"
+          icon="rotate-ccw"
+          description="Live discharges, revocations and transfers out of the last 90 days — patients who may come back. Deaths are not listed."
+          flush
+        >
+          <ListState
+            list={recent}
+            emptyTitle="No recent live discharges"
+            emptyText="Patients discharged alive in the last 90 days appear here."
+          >
+            <div className="wx-list-table-wrap">
+              <table className="wx-list-table">
+                <caption className="wx-sr-only">Recently discharged patients</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Patient</th>
+                    <th scope="col">MRN</th>
+                    <th scope="col">Ended</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Days since</th>
+                    <th scope="col">
+                      <span className="wx-sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.items.map((r) => {
+                    const name = patientName(patients[r.patientId] ?? undefined, "this patient");
+                    const since = daysSince(r.effectiveDate ?? r.dischargedAt, today);
+                    return (
+                      <tr key={r.admissionId}>
+                        <PatientCell row={r} patients={patients} />
+                        <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
+                        <td>{endLabel(r.dischargeType)}</td>
+                        <td className="wx-nums">{fmtDate(r.effectiveDate ?? r.dischargedAt)}</td>
+                        <td className="wx-nums">{since === null ? "—" : since}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {can.readmit ? (
+                            <Link
+                              to={`/admissions/${r.admissionId}/readmit`}
+                              className="wx-action-link"
+                              aria-label={`Readmit ${name}`}
+                            >
+                              Readmit…
+                            </Link>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
