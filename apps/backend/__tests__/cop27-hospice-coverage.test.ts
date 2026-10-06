@@ -51,7 +51,10 @@ describe("validateCoverageDetermination (42 CFR 418.24(c)(6))", () => {
   });
 
   it("requires a reason when the item is not covered (other), and treats whitespace as missing", () => {
-    const r = validateCoverageDetermination({ hospiceCoverage: "not_covered_other", reason: "   " });
+    const r = validateCoverageDetermination({
+      hospiceCoverage: "not_covered_other",
+      reason: "   ",
+    });
     expect(r).toMatchObject({ ok: false, code: "COVERAGE_REASON_REQUIRED" });
   });
 
@@ -112,9 +115,9 @@ describe("M21 decideCoverageDetermination", () => {
         reason: "CPAP for sleep apnea, unrelated to the terminal diagnosis.",
       }),
     ).toBe("CPAP for sleep apnea, unrelated to the terminal diagnosis.");
-    expect(decideCoverageDetermination({ kind: "supply", hospiceCoverage: "covered_related" })).toBe(
-      null,
-    );
+    expect(
+      decideCoverageDetermination({ kind: "supply", hospiceCoverage: "covered_related" }),
+    ).toBe(null);
   });
 
   it("refuses the comfort-kit kinds with M21_COVERAGE_NOT_APPLICABLE_TO_KIND (422)", () => {
@@ -180,9 +183,7 @@ describe("seam snapshot projections (NonCoveredItemSnapshot)", () => {
       description: "CPAP device",
       determinedByUserId: null,
     });
-    expect(supplySnapshotOf(row, null).description).toBe(
-      "Durable medical equipment (HCPCS E0601)",
-    );
+    expect(supplySnapshotOf(row, null).description).toBe("Durable medical equipment (HCPCS E0601)");
     expect(supplySnapshotOf({ ...row, kind: "supply", data: {} }, null)).toMatchObject({
       source: "supply",
       description: "Medical supply",
@@ -389,6 +390,8 @@ describe("PUT /api/v1/medication-orders/:id/coverage-determination (in-memory ba
       patientId: PATIENT,
       admissionId: ADMISSION,
       medClass: "standard",
+      rxnormRxcui: "83367",
+      ndc: null,
       drugName: "Atorvastatin",
       strength: "20 mg",
       doseForm: "tablet",

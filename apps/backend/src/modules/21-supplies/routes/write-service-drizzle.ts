@@ -835,11 +835,7 @@ export function buildDrizzleM21WriteService(
     // § 418.24(d)(2)). Freshness first (§7.2), then the kind + reason rules, row-locked so the change and
     // its event commit together. An unchanged re-save writes nothing and announces nothing. The determining
     // membership is the SESSION's (routes/actor.ts), never the body.
-    async setCoverageDetermination(
-      actor,
-      supplyRequestId,
-      input: SetCoverageDeterminationInput,
-    ) {
+    async setCoverageDetermination(actor, supplyRequestId, input: SetCoverageDeterminationInput) {
       const at = now();
       await scoped(actor, async (tx) => {
         const [row] = await tx
@@ -855,7 +851,10 @@ export function buildDrizzleM21WriteService(
           hospiceCoverage: input.hospiceCoverage,
           reason: input.reason,
         });
-        if (row.hospiceCoverage === input.hospiceCoverage && (row.coverageReason ?? null) === reason)
+        if (
+          row.hospiceCoverage === input.hospiceCoverage &&
+          (row.coverageReason ?? null) === reason
+        )
           return;
         await tx
           .update(REQUEST)

@@ -2278,6 +2278,53 @@
   .wx-clinical-section-body {
     padding: 1.125rem 1.25rem 1.25rem;
   }
+  /* COP27 hospice coverage determination (shell/hospice-coverage.tsx) */
+  .wx-coverage-head {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-coverage-fields,
+  .wx-coverage-form {
+    display: grid;
+    gap: 1rem;
+  }
+  .wx-coverage-cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  .wx-coverage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .wx-coverage-rows {
+    display: grid;
+    margin: 0;
+  }
+  .wx-coverage-rows > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 38%) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--color-outline-variant);
+  }
+  .wx-coverage-rows > div:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .wx-coverage-rows dt {
+    color: var(--color-on-surface-variant);
+    font-size: 0.85rem;
+  }
+  .wx-coverage-rows dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+  }
   .wx-field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));

@@ -16,10 +16,8 @@ import {
 import { SupplyStateError } from "./errors";
 
 /** The kinds a hospice coverage determination applies to. */
-export const COVERAGE_DETERMINABLE_KINDS: ReadonlySet<SupplyRequestKind> = new Set<SupplyRequestKind>([
-  "dme",
-  "supply",
-]);
+export const COVERAGE_DETERMINABLE_KINDS: ReadonlySet<SupplyRequestKind> =
+  new Set<SupplyRequestKind>(["dme", "supply"]);
 
 /**
  * Validate a determination against the row's kind; returns the normalised reason (`null` when blank).

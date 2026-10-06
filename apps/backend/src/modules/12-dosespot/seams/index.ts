@@ -75,7 +75,8 @@ export function registerDoseSpotSeams(deps: DoseSpotSeamDeps = {}): void {
   const store = deps.store ?? createInMemoryDoseSpotSeamStore().store;
   registerSeam("MedicationOrderProvider", createMedicationOrderProvider(store));
   registerSeam("RefillInboxProvider", createRefillInboxProvider(store));
-  if (deps.db) registerSeam("NonCoveredMedicationsReader", createNonCoveredMedicationsReader(deps.db));
+  if (deps.db)
+    registerSeam("NonCoveredMedicationsReader", createNonCoveredMedicationsReader(deps.db));
 }
 
 /** Typed resolver for M12's COP27 NonCoveredMedicationsReader (the M6 election-statement addendum composes it). */

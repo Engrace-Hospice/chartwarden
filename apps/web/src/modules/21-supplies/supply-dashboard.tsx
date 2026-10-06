@@ -21,6 +21,7 @@ import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } f
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { HospiceCoverageBadge } from "../../shell/hospice-coverage";
 import {
   type DispatchListItem,
   type ParStockView,
@@ -240,10 +241,13 @@ export function SupplyTeamDashboard(): JSX.Element {
                   <td style={td}>{requestKindLabel(r.kind)}</td>
                   <td style={td}>{shortId(r.patientId)}</td>
                   <td style={td}>
-                    <StatusPill
-                      label={humanize(r.status)}
-                      tone={toneOf(REQUEST_STATUS_TONE, r.status)}
-                    />
+                    <span className="wx-coverage-cell">
+                      <StatusPill
+                        label={humanize(r.status)}
+                        tone={toneOf(REQUEST_STATUS_TONE, r.status)}
+                      />
+                      <HospiceCoverageBadge coverage={r.hospiceCoverage} />
+                    </span>
                   </td>
                   <td style={td}>{shortId(r.assignedVendorId)}</td>
                   <td style={td}>

@@ -25,6 +25,7 @@ import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } f
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { HospiceCoverageBadge, HospiceCoverageSection } from "../../shell/hospice-coverage";
 import {
   type DeliveryMethod,
   type PharmacyDispatchMode,
@@ -40,6 +41,7 @@ import {
   markInTransit,
   markOrdered,
   returnSupplyRequest,
+  setCoverageDetermination,
 } from "./supplies-api";
 import {
   DEFAULT_DELIVERY_METHOD,
@@ -267,10 +269,13 @@ export function SupplyRequestDetailScreen(): JSX.Element {
       <Card
         title="Request"
         actions={
-          <StatusPill
-            label={humanize(request.status)}
-            tone={toneOf(REQUEST_STATUS_TONE, request.status)}
-          />
+          <span className="wx-coverage-actions">
+            <StatusPill
+              label={humanize(request.status)}
+              tone={toneOf(REQUEST_STATUS_TONE, request.status)}
+            />
+            <HospiceCoverageBadge coverage={request.hospiceCoverage} />
+          </span>
         }
       >
         <SummaryGrid>
@@ -309,6 +314,25 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           </div>
         ) : null}
       </Card>
+
+      {/* COP27 (42 CFR 418.24(c)) — dme / supply only; a comfort-kit drug is determined on its M12 order. */}
+      {!isKit ? (
+        <HospiceCoverageSection
+          current={request}
+          onSave={async (draft) => {
+            const { request: next, error: err } = await setCoverageDetermination(
+              client,
+              supplyRequestId,
+              stamp,
+              draft,
+            );
+            if (err || !next)
+              return errorMessage(err, "The coverage determination could not be saved.");
+            setRequest(next);
+            return null;
+          }}
+        />
+      ) : null}
 
       <Card title={`${requestKindLabel(request.kind)} payload`}>
         {/* The per-kind D1 `data` payload is rendered as data. §3.4's per-kind TypeBox is NOT published to

@@ -1083,8 +1083,7 @@ export function createInMemoryDoseSpotBackend(
     async setCoverageDetermination(organizationId, userId, id, args) {
       const r = find(organizationId, id); // 404s if the order is unknown to this org.
       const reason = assertCoverageDetermination(args);
-      if (r.hospiceCoverage === args.hospiceCoverage && r.coverageReason === reason)
-        return view(r); // idempotent re-save: nothing changed, nothing to announce
+      if (r.hospiceCoverage === args.hospiceCoverage && r.coverageReason === reason) return view(r); // idempotent re-save: nothing changed, nothing to announce
       const previous = r.hospiceCoverage;
       const changedAt = now();
       r.hospiceCoverage = args.hospiceCoverage;

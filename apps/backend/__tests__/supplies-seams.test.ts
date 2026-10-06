@@ -104,10 +104,12 @@ afterEach(() => {
 });
 
 describe("M21-T05 §4.8 — registration + the fail-closed boot posture", () => {
-  it("all three seams are boot-REQUIRED with a deny-stub, owned by M21", () => {
+  it("all four seams are boot-REQUIRED with a deny-stub, owned by M21", () => {
     const m21 = REQUIRED_SEAMS.filter((s) => s.ownerModule === 21);
     expect(m21.map((s) => s.key).sort()).toEqual([
       "ComfortKitDispatchProvider",
+      // COP27 (42 CFR 418.24(c)) — the not-covered dme/supply list the M6 election addendum composes.
+      "NonCoveredDmeSuppliesReader",
       "SupplyCostProvider",
       "SupplyFulfillmentProvider",
     ]);

@@ -65,6 +65,7 @@ import type {
   HopeSubmissionProvider,
   HopeTimepointProvider,
 } from "./hope";
+import type { NonCoveredItemsReader } from "./hospice-coverage";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
 import type {
   IpuAdmissionReader,
@@ -85,7 +86,6 @@ import type {
   TriageCallProvider,
   TriageCallReader,
 } from "./oncall";
-import type { NonCoveredItemsReader } from "./hospice-coverage";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type {
   PatientAddressReader,

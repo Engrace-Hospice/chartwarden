@@ -55,6 +55,10 @@ export type VerbalOrderBody = ReqBody<operations["postApiV1MedicationordersByIdV
 export type CosignOrderBody = ReqBody<operations["postApiV1MedicationordersByIdCosign"]>;
 export type DiscontinueBody = ReqBody<operations["postApiV1MedicationordersByIdDiscontinue"]>;
 export type CompleteBody = ReqBody<operations["postApiV1MedicationordersByIdComplete"]>;
+/** COP27 — the hospice coverage determination body (reason required when not covered). */
+export type CoverageDeterminationBody = ReqBody<
+  operations["putApiV1MedicationordersByIdCoveragedetermination"]
+>;
 export type ApproveRefillBody = ReqBody<operations["postApiV1RefillsByIdApprove"]>;
 export type DenyRefillBody = ReqBody<operations["postApiV1RefillsByIdDeny"]>;
 export type ControlledPolicyView = Ok<operations["getApiV1AdminControlledsubstancepolicy"]>;
@@ -226,6 +230,20 @@ export async function createOrder(
   body: CreateOrderBody,
 ): Promise<WriteResult<MedicationOrderView>> {
   const { data, error, response } = await client.POST("/api/v1/medication-orders", { body });
+  if (error || !data) return failure(response?.status, error);
+  return ok(data as MedicationOrderView);
+}
+
+/** COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination. */
+export async function setCoverageDetermination(
+  client: ApiClient,
+  id: string,
+  body: CoverageDeterminationBody,
+): Promise<WriteResult<MedicationOrderView>> {
+  const { data, error, response } = await client.PUT(
+    "/api/v1/medication-orders/{id}/coverage-determination",
+    { params: { path: { id } }, body },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as MedicationOrderView);
 }

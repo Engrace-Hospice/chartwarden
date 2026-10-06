@@ -66,6 +66,7 @@ import type {
   SupplyRequestDetail,
   VendorRoutingRuleView,
 } from "../src/modules/21-supplies/index";
+import { decideCoverageDetermination } from "../src/modules/21-supplies/lifecycle/index";
 
 // ── the M2 header-auth test shim (the M11/M16 `orders-routes.test.ts` / `bereavement-inject.test.ts`
 // precedent). Extended with `x-test-membership`, because M21's `writeActorOf` (routes/actor.ts) requires
@@ -114,6 +115,11 @@ function fakeId(): string {
 // DTO boundary, the same convention `bereavement-inject.test.ts` / `oncall-inject.test.ts` use) ──────────
 
 interface RequestRecord {
+  // COP27 — optional so the existing record literals keep compiling; `requestDetail` defaults them.
+  hospiceCoverage?: "covered_related" | "not_covered_unrelated" | "not_covered_other";
+  coverageReason?: string | null;
+  coverageDeterminedAt?: string | null;
+  coverageDeterminedBy?: string | null;
   supplyRequestId: string;
   patientId: string;
   admissionId: string;
@@ -415,6 +421,10 @@ function createFakeBackend() {
       caregiverSignatureCapturedByMembershipId: r.caregiverSignatureCapturedByMembershipId as never,
       caregiverSignatureEvidenceDocumentId: r.caregiverSignatureEvidenceDocumentId,
       caregiverSignatureEvidence: r.caregiverSignatureEvidence as never,
+      hospiceCoverage: r.hospiceCoverage ?? "covered_related",
+      coverageReason: r.coverageReason ?? null,
+      coverageDeterminedAt: (r.coverageDeterminedAt ?? null) as never,
+      coverageDeterminedBy: (r.coverageDeterminedBy ?? null) as never,
     };
   }
 
@@ -797,6 +807,22 @@ function createFakeBackend() {
     // codes. The per-method evidence floor is NOT re-derived here (that is
     // `supplies-caregiver-signature.test.ts`'s job, over the real pure validator) — this fake applies the
     // capture unconditionally once the two lifecycle guards pass.
+    // COP27 — wiring smoke over the REAL pure rule (`decideCoverageDetermination`: dme/supply only, reason
+    // required when not covered); the DB write + event + RLS are `cop27-hospice-coverage.live.test.ts`'s job.
+    async setCoverageDetermination(actor, id, input) {
+      const r = requests.get(id) ?? notFound("supply request");
+      const reason = decideCoverageDetermination({
+        kind: r.kind as never,
+        hospiceCoverage: input.hospiceCoverage,
+        reason: input.reason,
+      });
+      r.hospiceCoverage = input.hospiceCoverage;
+      r.coverageReason = reason;
+      r.coverageDeterminedAt = NOW;
+      r.coverageDeterminedBy = actor.membershipId;
+      r.updatedAt = NOW;
+      return requestDetail(r);
+    },
     async captureCaregiverSignature(actor, id, input) {
       const r = requests.get(id) ?? notFound("supply request");
       if (r.deliveredAt === null) {
@@ -1570,6 +1596,53 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     expect(returned.statusCode).toBe(200);
     expect(returned.json().status).toBe("returned");
 
+    await app.close();
+  });
+
+  it("COP27: PUT coverage-determination sets a dme determination, requires a reason, and needs If-Match", async () => {
+    const { app } = makeServer();
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...COORD, "idempotency-key": "req-cov" },
+      payload: {
+        patientId: fakeId(),
+        admissionId: fakeId(),
+        locationId: LOC_A,
+        deliveryAddress: ADDRESS,
+        kindPayload: { kind: "dme" },
+      },
+    });
+    const id = create.json().supplyRequestId as string;
+    const url = `/api/v1/supplies/supply-requests/${id}/coverage-determination`;
+
+    const noReason = await app.inject({
+      method: "PUT",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-cov-1", "if-match": NOW },
+      payload: { hospiceCoverage: "not_covered_unrelated" },
+    });
+    expect(noReason.statusCode).toBe(422);
+
+    const noIfMatch = await app.inject({
+      method: "PUT",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-cov-2" },
+      payload: { hospiceCoverage: "not_covered_unrelated", reason: "Unrelated equipment." },
+    });
+    expect(noIfMatch.statusCode).toBe(428);
+
+    const ok = await app.inject({
+      method: "PUT",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-cov-3", "if-match": NOW },
+      payload: { hospiceCoverage: "not_covered_unrelated", reason: "Unrelated equipment." },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({
+      hospiceCoverage: "not_covered_unrelated",
+      coverageReason: "Unrelated equipment.",
+    });
     await app.close();
   });
 

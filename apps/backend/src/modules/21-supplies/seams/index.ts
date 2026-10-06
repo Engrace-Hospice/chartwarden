@@ -157,7 +157,8 @@ export function registerSuppliesSeams(deps: SuppliesSeamDeps = {}): void {
   );
   registerSeam("ComfortKitDispatchProvider", createComfortKitDispatchProvider(store, clock));
   registerSeam("SupplyCostProvider", createSupplyCostProvider(store, orgOf));
-  if (deps.db) registerSeam("NonCoveredDmeSuppliesReader", createNonCoveredDmeSuppliesReader(deps.db));
+  if (deps.db)
+    registerSeam("NonCoveredDmeSuppliesReader", createNonCoveredDmeSuppliesReader(deps.db));
 }
 
 /** Typed resolver for M21's COP27 NonCoveredDmeSuppliesReader (the M6 election-statement addendum composes it). */

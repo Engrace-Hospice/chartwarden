@@ -50,15 +50,18 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG_A = "11111111-1111-1111-1111-1111111111c7";
 const ORG_B = "22222222-2222-2222-2222-2222222222c7";
 const PHYSICIAN_MDM = "66666666-6666-6666-6666-6666666666c7";
-const REASON = "Cholesterol therapy is unrelated to the terminal illness and not needed for comfort.";
+const REASON =
+  "Cholesterol therapy is unrelated to the terminal illness and not needed for comfort.";
 
 describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let m12: ReturnType<typeof createDbDoseSpotBackend>;
   let m21: ReturnType<typeof buildDrizzleM21WriteService>;
-  const org: Record<string, { pe: string; loc: string; member: string; patient: string; adm: string }> =
-    {};
+  const org: Record<
+    string,
+    { pe: string; loc: string; member: string; patient: string; adm: string }
+  > = {};
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -205,7 +208,10 @@ describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Pos
       "SELECT hospice_coverage, coverage_determined_at FROM supply_request WHERE id = $1",
       [req.id],
     );
-    expect(rows[0]).toMatchObject({ hospice_coverage: "covered_related", coverage_determined_at: null });
+    expect(rows[0]).toMatchObject({
+      hospice_coverage: "covered_related",
+      coverage_determined_at: null,
+    });
   });
 
   it("M12: refuses not-covered without a reason (422, no write), then sets it and emits exactly one event", async () => {
@@ -286,7 +292,10 @@ describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Pos
     });
     const rows = await outboxRows("m21.supply_request.coverage_determination_changed", req.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0].payload).toMatchObject({ sourceId: req.id, previousHospiceCoverage: "covered_related" });
+    expect(rows[0].payload).toMatchObject({
+      sourceId: req.id,
+      previousHospiceCoverage: "covered_related",
+    });
 
     const kit = await seedSupply(ORG_A, "comfort_kit_deploy");
     await expect(
@@ -310,7 +319,9 @@ describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Pos
         hospiceCoverage: "not_covered_unrelated",
         reason: REASON,
       });
-    await admin.query("UPDATE medication_order SET status = 'discontinued' WHERE id = $1", [stopped]);
+    await admin.query("UPDATE medication_order SET status = 'discontinued' WHERE id = $1", [
+      stopped,
+    ]);
     const meds = await listNonCoveredMedicationsForAdmission(handle.db, ORG_A, s.adm);
     expect(meds.map((m) => m.sourceId)).toEqual([listed]);
     expect(meds[0]).toMatchObject({

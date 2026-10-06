@@ -26,8 +26,14 @@ import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import {
+  type HospiceCoverage,
+  HospiceCoverageBadge,
+  HospiceCoverageSection,
+} from "../../shell/hospice-coverage";
 import { type MedicationAction, MedicationActionModal } from "./medication-action-modal";
 import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
+import { setCoverageDetermination } from "./medications-api";
 
 interface MedicationOrderView {
   id: string;
@@ -57,6 +63,10 @@ interface MedicationOrderView {
   discontinuedAt: string | null;
   discontinuationReason: string | null;
   createdAt: string;
+  hospiceCoverage: HospiceCoverage;
+  coverageReason: string | null;
+  coverageDeterminedAt: string | null;
+  coverageDeterminedBy: string | null;
 }
 
 interface TransmissionView {
@@ -280,6 +290,7 @@ export function MedicationDetail(): JSX.Element {
                         glyph="alert"
                       />
                     ) : null}
+                    <HospiceCoverageBadge coverage={row.hospiceCoverage} />
                   </div>
                 </div>
                 <div style={heroSummary}>
@@ -359,6 +370,15 @@ export function MedicationDetail(): JSX.Element {
                       </Fact>
                     </dl>
                   </Section>
+                  <HospiceCoverageSection
+                    current={row}
+                    onSave={async (draft) => {
+                      const res = await setCoverageDetermination(client, row.id, draft);
+                      if (!res.ok) return res.message;
+                      setRow(res.value as MedicationOrderView);
+                      return null;
+                    }}
+                  />
                   <Section title="Transmission">
                     {row.transmittedAt ? (
                       <>

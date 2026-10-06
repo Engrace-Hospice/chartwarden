@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1365,
-    "coveredRoutes": 1365,
-    "directRoutesReferenced": 1322
+    "routes": 1367,
+    "coveredRoutes": 1367,
+    "directRoutesReferenced": 1324
   },
   "modules": [
     {
@@ -157,15 +157,16 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 33,
+      "routes": 34,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 27
     },
     {
       "module": "13-emar",
@@ -254,12 +255,13 @@
     },
     {
       "module": "21-supplies",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 38
+      "directRoutesReferenced": 39
     },
     {
       "module": "22-documents",
