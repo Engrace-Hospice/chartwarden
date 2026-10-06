@@ -3089,6 +3089,34 @@ Per D-AUTHZ-01 (§4.5), all admission paperwork is staff-captured in v0.2; there
 
 All M6 resources are RLS-protected (§3 grants policy); the tenant predicate is enforced before any role/ABAC evaluation. The RLS isolation tests (§9.3) assert that no role — including org_admin and compliance_officer — can read M6 resources outside their tenant. Even break-glass (M3 §5) does not cross the tenant boundary; it lifts ABAC predicates within a tenant but never the tenant predicate.
 
+
+### 6.7 Intake Reach — `admission_intake_scope` and the intake default grants
+
+An intake user works on patients who are not on anyone's caseload yet, so the caseload predicate alone (`caseload_or_scope`, and `admission.scope` for a sited stay) refused the readmission / new-admission flow to them. M6 registers the ABAC predicate **`admission_intake_scope`**, which allows when ALL of:
+
+1. the caller holds an intake role — `intake_coordinator` or `intake_supervisor` — read from the server-assembled `context.roles` (M3 grants; never a request header);
+2. the patient is a patient of the caller's organization (M5's org-scoped `PatientIntakeResolver.confirmPatient`; absent or another org's → deny); and
+3. the patient has **no `active` or `on_hold` admission** (an ongoing stay belongs to its care team).
+
+Target: `patientId`, or `admissionId` (resolved to its patient under RLS). It is **OR-composed** (`requireAnyAbac`) beside the route's own scope predicate on exactly these routes, keeping `notFoundOnDeny` (a refusal is a 404):
+
+| Route | Composition |
+|---|---|
+| `GET /api/v1/admissions/:id/readmission-context` | `admission.scope` OR `admission_intake_scope` |
+| `GET /api/v1/patients/:patientId/benefit-period-plan` | `caseload_or_scope` OR `admission_intake_scope` |
+| `POST /api/v1/admissions` | `caseload_or_scope` OR `admission_intake_scope` |
+| `GET /api/v1/billing/eligibility/hospice-periods` (M23, by name through the M3 registry) | `caseload_or_scope` OR `admission_intake_scope` |
+
+Every other patient-keyed route keeps its single scope predicate.
+
+**Default grants** (`INTAKE_DEFAULT_GRANTS`, `packages/auth/src/roles/intake-grants.ts`; backfilled by migration `0374` wherever a tenant has created the role, `ON CONFLICT DO NOTHING`; the dev seed reads the same constant):
+
+| Role | Keys |
+|---|---|
+| `intake_coordinator` | `admission.read`, `billing.eligibility.read` |
+| `intake_supervisor` | `admission.create`, `admission.read`, `billing.eligibility.read` |
+
+`billing.eligibility.check` (a live HETS round-trip) is not granted. `admission.create` stays supervisor-only per §6.2.
 -----
 
 ## 7. Workflow Acceptance Criteria

@@ -4,9 +4,10 @@
 //   GET /api/v1/admissions/:id/readmission-context?sequence=&startDate=
 //   GET /api/v1/patients/:patientId/benefit-period-plan?sequence=&startDate=
 //
-// AUTHORIZATION: `admission.read`, plus the same admission / patient scope predicates every M6 read applies (passed
-// in by `registerAdmissionRoutes`, which owns them). The plan is a decision aid; creating the admission is still
-// `POST /api/v1/admissions` (`admission.create`).
+// AUTHORIZATION: `admission.read`, plus the admission / patient scope predicate every M6 read applies OR'd with
+// `admission_intake_scope` (an intake role, a patient of the caller's org, no active / on-hold admission) — passed in
+// by `registerAdmissionRoutes`, which owns them. The plan is a decision aid; creating the admission is still
+// `POST /api/v1/admissions` (`admission.create`, same OR'd scope).
 import { DegradedError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { IdParamsSchema, PatientIdParamsSchema, parse } from "./admission-typebox";
@@ -18,9 +19,9 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface ReadmissionRouteDeps {
   readonly service: ReadmissionService | undefined;
-  /** `admission.read` + `admission.scope` over the `:id` admission. */
+  /** `admission.read` + (`admission.scope` OR `admission_intake_scope`) over the `:id` admission. */
   readonly admissionGuards: readonly PreHandler[];
-  /** `admission.read` + the caseload / scope predicate over `:patientId`. */
+  /** `admission.read` + (`caseload_or_scope` OR `admission_intake_scope`) over `:patientId`. */
   readonly patientGuards: readonly PreHandler[];
 }
 

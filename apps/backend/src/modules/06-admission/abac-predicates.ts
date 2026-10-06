@@ -1,12 +1,12 @@
 // apps/backend/src/modules/06-admission/abac-predicates.ts — M6-T06 (spec §4.6).
 //
-// The TEN named ABAC predicate resolvers M6 OWNS and registers into M3's named-predicate registry
+// The ELEVEN named ABAC predicate resolvers M6 OWNS and registers into M3's named-predicate registry
 // (M3 §3.4). Each is a typed `(context, target) => boolean` evaluated server-side AFTER RBAC passes;
 // M6 never authorizes by reading the request body — the resource's owner facts are loaded through the
 // injected `AdmissionAbacResolver` (org-scoped, RLS-backstopped). `patient.scope` (route 8) is M5's
 // re-used predicate — M6 does not own or register it.
 //
-// FOUR of the ten are pure over `context.roles` (no resolver, no closure) — `f2f.is_hospice_md_or_np`,
+// FOUR of the ten §4.6 ones are pure over `context.roles` (no resolver, no closure) — `f2f.is_hospice_md_or_np`,
 // `f2f.window_override`, `discharge.is_medical_director`, `compliance.window_override`. The routes
 // wire `requireAbac` on those four (the spec's role-gated signer/override predicates). The remaining
 // six are resource-bound (scope + signer-identity); they are registered for the §4.6 handshake and
@@ -15,7 +15,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
 // is idempotent via registerPredicateIdempotent.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  INTAKE_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import { F2F_PERFORMER_ROLE_KEYS } from "./certification/f2f-performer";
 import type { AdmissionAbacResolver } from "./routes/service";
@@ -32,6 +37,7 @@ export const M6_ABAC_PREDICATES = [
   "discharge.is_medical_director",
   "compliance.scope",
   "compliance.window_override",
+  "admission_intake_scope",
 ] as const;
 
 /** The four §4.6 predicates the routes wire via `requireAbac` (pure over `context.roles`). */
@@ -53,6 +59,18 @@ const UNSITED_ADMISSION_ROLES = [
   "org_admin",
   "tenant_admin",
 ] as const;
+
+/**
+ * `admission_intake_scope` — the intake roles (M6 spec §6.1/§6.2). The SAME two keys
+ * `INTAKE_DEFAULT_GRANTS` (packages/auth) grants the readmission-flow permissions to.
+ */
+const INTAKE_ROLES: readonly string[] = INTAKE_ROLE_KEYS;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidField = (target: AbacTarget, field: string): string | null => {
+  const value = target[field];
+  return typeof value === "string" && UUID.test(value) ? value : null;
+};
 
 /** Deps for M6's ABAC predicate resolvers (the slice injects an in-memory resolver + caseload stub). */
 export interface AdmissionAbacDeps {
@@ -99,7 +117,7 @@ function resourceKindOf(target: AbacTarget): AdmissionScopeResourceKind {
 }
 
 /**
- * Build M6's ten §4.6 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
+ * Build M6's ten §4.6 predicate resolvers + `admission_intake_scope` over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers these into the shared registry via {@link registerAdmissionAbacPredicates}).
  */
 export function buildAdmissionAbacPredicates(
@@ -224,11 +242,27 @@ export function buildAdmissionAbacPredicates(
       });
     },
     "compliance.window_override": async (context) => hasRole(context, "compliance_officer"),
+    // An intake user reaches a patient who is NOT on their caseload for the new-admission / readmission work
+    // only: the caller holds an intake role (`context.roles`, server-assembled from M3 grants — never a
+    // header), the patient is a patient of the caller's org (absent / cross-tenant → deny), and the patient has
+    // no `active` / `on_hold` admission (an ongoing stay belongs to its care team). Target: `patientId`, or
+    // `admissionId` (the readmission-context route, keyed by the earlier stay) resolved to its patient.
+    // Composed (OR) beside the routes' own scope predicate on exactly the readmission-flow routes.
+    admission_intake_scope: async (context, target) => {
+      if (!INTAKE_ROLES.some((role) => hasRole(context, role))) return false;
+      const admissionId = uuidField(target, "admissionId");
+      const patientId = admissionId
+        ? ((await resolver.loadAdmission(context.organizationId, admissionId))?.patientId ?? null)
+        : uuidField(target, "patientId");
+      if (!patientId) return false;
+      const facts = await resolver.loadPatientIntakeFacts(context.organizationId, patientId);
+      return facts !== null && !facts.hasActiveOrOnHoldAdmission;
+    },
   };
 }
 
 /**
- * Register M6's ten §4.6 ABAC predicate resolvers into M3's shared registry (M6-T06; idempotent).
+ * Register M6's ten §4.6 ABAC predicate resolvers + `admission_intake_scope` into M3's shared registry (M6-T06; idempotent).
  * Call at boot after the M5 `CaseloadProvider` seam is registered (admission/compliance scope resolve
  * caseload through it). Re-boot (tests) skips already-registered names (single-owner / no-clear).
  */

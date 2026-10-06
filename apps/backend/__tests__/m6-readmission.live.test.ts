@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { type AbacContext, INTAKE_DEFAULT_GRANTS } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -26,7 +27,11 @@ import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-ent
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
 import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
-import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { buildAdmissionAbacPredicates } from "../src/modules/06-admission/abac-predicates";
+import {
+  createDbAdmissionAbacResolver,
+  createDbAdmissionRouteService,
+} from "../src/modules/06-admission/admission-route-service-db";
 import { createDbDischargeWorklistService } from "../src/modules/06-admission/discharge-worklist-service-db";
 import {
   M6_OUTBOX_EVENTS,
@@ -653,4 +658,118 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       await superuser.close();
     }
   }, 120_000);
+  it("admission_intake_scope as wardenx_app: intake reaches its own org's readmission candidate only", async () => {
+    // Arrange: ORG has a live-discharged stay (patientFree) and an ACTIVE stay (patientActive); ORG_B has a patient.
+    const patientFree = randomUUID();
+    const stayFree = await admit(patientFree, {}, `${daysAgo(10)}T00:00:00.000Z`);
+    await completeAndActivate(stayFree);
+    await dischargeLive(stayFree);
+    const patientActive = randomUUID();
+    const stayActive = await admit(patientActive);
+    await completeAndActivate(stayActive);
+    const patientB = randomUUID();
+    await seedM5Patient(admin, ORG_B, patientB);
+
+    // The predicate over the REAL Drizzle resolver on the NOBYPASSRLS app-role connection (`handle`).
+    const predicate = buildAdmissionAbacPredicates({
+      resolver: createDbAdmissionAbacResolver(handle.db),
+      isInCaseload: async () => false,
+    }).admission_intake_scope as (c: AbacContext, t: Record<string, unknown>) => Promise<boolean>;
+    const ctx = (organizationId: string, roles: string[]) =>
+      ({
+        organizationId,
+        userId: USER,
+        roles,
+        providerEntityIds: [],
+        locationIds: [],
+        attributes: {},
+      }) as unknown as AbacContext;
+
+    // intake + own org + no active admission → allow (by patient, and by the earlier stay)
+    expect(await predicate(ctx(ORG, ["intake_coordinator"]), { patientId: patientFree })).toBe(
+      true,
+    );
+    expect(await predicate(ctx(ORG, ["intake_supervisor"]), { admissionId: stayFree })).toBe(true);
+    // an active admission → deny
+    expect(await predicate(ctx(ORG, ["intake_coordinator"]), { patientId: patientActive })).toBe(
+      false,
+    );
+    // cross-tenant, both directions → deny (M5's org-scoped read + RLS on admission)
+    expect(await predicate(ctx(ORG_B, ["intake_coordinator"]), { patientId: patientFree })).toBe(
+      false,
+    );
+    expect(await predicate(ctx(ORG_B, ["intake_coordinator"]), { admissionId: stayFree })).toBe(
+      false,
+    );
+    expect(await predicate(ctx(ORG, ["intake_coordinator"]), { patientId: patientB })).toBe(false);
+    // ORG_B's intake user reaches ORG_B's own patient
+    expect(await predicate(ctx(ORG_B, ["intake_coordinator"]), { patientId: patientB })).toBe(true);
+    // no intake role → deny
+    expect(await predicate(ctx(ORG, ["rn"]), { patientId: patientFree })).toBe(false);
+  }, 120_000);
+
+  it("MIGRATION 0374: grants the intake roles their readmission-flow keys ONLY where the role exists, idempotently — pinned to INTAKE_DEFAULT_GRANTS", async () => {
+    const sqlText = readFileSync(
+      join(MIGRATIONS_DIR, "0374_m6_intake_default_role_grants.sql"),
+      "utf8",
+    );
+    // The migration's VALUES table IS the constant (a drift here is a silent permission change).
+    const fromSql: Record<string, string[]> = {};
+    for (const m of sqlText.matchAll(/\('([a-z_]+)',\s*'([a-z_.]+)'\)/g)) {
+      const role = m[1] as string;
+      fromSql[role] ??= [];
+      fromSql[role].push(m[2] as string);
+    }
+    const sorted = (o: Record<string, readonly string[]>) =>
+      Object.fromEntries(Object.entries(o).map(([r, k]) => [r, [...k].sort()]));
+    expect(sorted(fromSql)).toEqual(sorted(INTAKE_DEFAULT_GRANTS));
+    // Read-only eligibility: the check (a live HETS round-trip) is never granted.
+    expect(Object.values(fromSql).flat()).not.toContain("billing.eligibility.check");
+
+    const role = async (org: string, key: string) =>
+      (
+        await one<{ id: string }>(
+          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'operations')
+           ON CONFLICT DO NOTHING RETURNING id`,
+          [org, key],
+        )
+      )?.id ??
+      (
+        await one<{ id: string }>("SELECT id FROM role WHERE organization_id=$1 AND key=$2", [
+          org,
+          key,
+        ])
+      ).id;
+    const coordA = await role(ORG, "intake_coordinator");
+    const supA = await role(ORG, "intake_supervisor");
+    const rnA = await role(ORG, "rn_intake_test");
+    const coordB = await role(ORG_B, "intake_coordinator");
+    // ORG_B never created `intake_supervisor` — it must get nothing for it.
+
+    await admin.query(sqlText);
+    await admin.query(sqlText); // idempotent
+
+    const keysOf = async (roleId: string) =>
+      (
+        await admin.query(
+          "SELECT permission_key FROM role_permission WHERE role_id=$1 ORDER BY permission_key",
+          [roleId],
+        )
+      ).rows.map((r) => r.permission_key as string);
+    expect(await keysOf(coordA)).toEqual([...INTAKE_DEFAULT_GRANTS.intake_coordinator].sort());
+    expect(await keysOf(supA)).toEqual([...INTAKE_DEFAULT_GRANTS.intake_supervisor].sort());
+    expect(await keysOf(coordB)).toEqual([...INTAKE_DEFAULT_GRANTS.intake_coordinator].sort());
+    expect(await keysOf(rnA)).toEqual([]);
+    const supB = await admin.query(
+      "SELECT 1 FROM role WHERE organization_id=$1 AND key='intake_supervisor'",
+      [ORG_B],
+    );
+    expect(supB.rowCount).toBe(0);
+    // every grant row carries its role's own org (the three-column tenancy rule)
+    const mismatched = await admin.query(
+      `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+        WHERE r.key IN ('intake_coordinator','intake_supervisor') AND rp.organization_id <> r.organization_id`,
+    );
+    expect(mismatched.rows[0].n).toBe(0);
+  });
 });

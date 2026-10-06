@@ -31,6 +31,7 @@ export {
   type RequireAbacOptions,
   BREAK_GLASS_ATTRIBUTE,
   requireAbac,
+  requireAnyAbac,
   requireStepUp,
   resetAbacEvaluator,
   resetAuthorizationContract,

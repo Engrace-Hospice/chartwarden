@@ -78,6 +78,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
         "apps/backend/__tests__/admission-discharge.test.ts",
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
@@ -91,6 +92,7 @@
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
@@ -288,6 +290,7 @@
       "routes": 57,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",

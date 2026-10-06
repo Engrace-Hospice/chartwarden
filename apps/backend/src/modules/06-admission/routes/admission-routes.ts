@@ -10,7 +10,7 @@
 // bypass the per-reason policy by changing the path. §4.6: the four role-gated signer/override
 // predicates M6 owns are wired via `requireAbac` (routes 31/32/40/46); the scope + signer-identity
 // predicates resolve through M6's registered resolvers (see abac-predicates.ts).
-import { hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
+import { hasOrgWideScope, requireAbac, requireAnyAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -276,6 +276,41 @@ const patientScope = (action: string, source: "params" | "body"): PreHandler =>
     },
   }) as PreHandler;
 
+/** The patient id a patient-keyed guard targets (`:patientId` path param, or the POST /admissions body). */
+const patientIdOf = (raw: unknown): unknown =>
+  (raw as { patientId?: unknown } | null | undefined)?.patientId;
+
+/**
+ * The new-admission / readmission routes ONLY: `caseload_or_scope` OR `admission_intake_scope`. An intake user
+ * (intake_coordinator / intake_supervisor) works on patients who are not on anyone's caseload yet, so the
+ * caseload predicate alone 404'd the readmission plan and the create for them. `admission_intake_scope`
+ * (abac-predicates.ts) opens the route only for an intake role, a patient of the caller's org, and a patient
+ * with no active / on-hold admission. Same `notFoundOnDeny` non-leak as `patientScope`. Every other
+ * patient-keyed route keeps `patientScope` alone.
+ */
+const patientOrIntakeScope = (action: string, source: "params" | "body"): PreHandler =>
+  requireAnyAbac(action, ["caseload_or_scope", "admission_intake_scope"], {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      patientId: patientIdOf(source === "params" ? request.params : request.body),
+    }),
+  }) as PreHandler;
+
+/**
+ * `GET /admissions/:id/readmission-context` ONLY: `admission.scope` OR `admission_intake_scope` over the earlier
+ * stay `:id` (the intake predicate resolves it to its patient).
+ */
+const admissionOrIntakeScope = (action: string): PreHandler =>
+  requireAnyAbac(action, ["admission.scope", "admission_intake_scope"], {
+    notFoundOnDeny: true,
+    getTarget: (request) => {
+      const params = (
+        typeof request.params === "object" && request.params ? request.params : {}
+      ) as Record<string, unknown>;
+      return { ...params, admissionId: params.id };
+    },
+  }) as PreHandler;
+
 // The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
 // shape — no `resourceKind` involved).
 const ABAC_CTI_HOSPICE_MD = requireAbac("cti.sign_hospice_md", "cti.is_hospice_md") as PreHandler;
@@ -320,8 +355,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // The benefit-period plan behind the readmission screen and the New admission benefit-period field.
   registerReadmissionRoutes(app, {
     service: deps.readmission,
-    admissionGuards: [ADMISSION_READ, admissionScope("admission.read")],
-    patientGuards: [ADMISSION_READ, patientScope("admission.read", "params")],
+    admissionGuards: [ADMISSION_READ, admissionOrIntakeScope("admission.read")],
+    patientGuards: [ADMISSION_READ, patientOrIntakeScope("admission.read", "params")],
   });
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
@@ -623,7 +658,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admissions",
-    { preHandler: [ADMISSION_CREATE, patientScope("admission.create", "body")] },
+    { preHandler: [ADMISSION_CREATE, patientOrIntakeScope("admission.create", "body")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(AdmissionCreateSchema, request.body);

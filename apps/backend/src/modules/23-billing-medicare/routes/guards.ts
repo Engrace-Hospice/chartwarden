@@ -17,7 +17,7 @@
 //                                          .../custom — nothing exists yet to load by id, TASK-051)
 // `notFoundOnDeny:true` realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404).
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requireAnyAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { ForbiddenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
@@ -124,6 +124,21 @@ export const RULE_PROTECTED = (
   }) as PreHandler;
 
 /** §4.7 base `caseload_or_scope` (M5-owned) — reused for the patient-context eligibility reads/checks. */
+/**
+ * `caseload_or_scope` OR M6's `admission_intake_scope` (bound BY NAME through the M3 registry — no import edge into
+ * M6): an intake user reaches a patient of the org who has no active / on-hold admission, i.e. the readmission /
+ * new-admission work. Composed on `GET /billing/eligibility/hospice-periods` ONLY (the readmission screen's HETS
+ * history); every other eligibility route keeps {@link CASELOAD_OR_SCOPE}.
+ */
+export const CASELOAD_OR_INTAKE_SCOPE = (
+  key: string,
+  getTarget: (request: TargetRequest) => TargetMap = targetPatient,
+): PreHandler =>
+  requireAnyAbac(key, ["caseload_or_scope", "admission_intake_scope"], {
+    getTarget,
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 export const CASELOAD_OR_SCOPE = (
   key: string,
   getTarget: (request: TargetRequest) => TargetMap = targetPatient,

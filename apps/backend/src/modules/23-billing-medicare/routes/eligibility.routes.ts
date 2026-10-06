@@ -11,13 +11,14 @@
 //
 // `GET /billing/eligibility/hospice-periods` serves the readmission screen: the beneficiary's cross-hospice
 // hospice election / benefit-period history from the latest resolved HETS 271 + the computed next benefit
-// period (null when HETS cannot settle it). Same `billing.eligibility.read` + `caseload_or_scope` gate as the
-// other eligibility reads — an intake/admissions role that drives readmission needs that grant.
+// period (null when HETS cannot settle it). Same `billing.eligibility.read` gate as the other eligibility reads
+// (the intake roles hold it by default — INTAKE_DEFAULT_GRANTS / migration 0374), but its scope is `caseload_or_scope`
+// OR M6's `admission_intake_scope`: readmission is intake work on a patient who is on nobody's caseload yet.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { CheckEligibilityBodySchema, PatientQuerySchema, parse } from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
-import { CASELOAD_OR_SCOPE, P } from "./guards";
+import { CASELOAD_OR_INTAKE_SCOPE, CASELOAD_OR_SCOPE, P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 
@@ -28,6 +29,7 @@ export interface EligibilityRouteDeps {
 
 const READ = P("billing.eligibility.read");
 const READ_ABAC = CASELOAD_OR_SCOPE("billing.eligibility.read");
+const READ_ABAC_OR_INTAKE = CASELOAD_OR_INTAKE_SCOPE("billing.eligibility.read");
 const CHECK = P("billing.eligibility.check");
 const CHECK_ABAC = CASELOAD_OR_SCOPE("billing.eligibility.check");
 const NO_AI = rejectAiActor();
@@ -70,7 +72,10 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
   // GET /billing/eligibility/hospice-periods?patientId= — the latest resolved check's hospice history.
   app.get(
     "/api/v1/billing/eligibility/hospice-periods",
-    { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "eligibility_check" } } },
+    {
+      preHandler: [READ, READ_ABAC_OR_INTAKE],
+      config: { auditRead: { resourceKind: "eligibility_check" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { patientId } = parse(PatientQuerySchema, request.query);

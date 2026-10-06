@@ -216,6 +216,11 @@ export interface ComplianceWindowFacts {
   readonly patientId: string;
   readonly providerEntityId: string | null;
 }
+/** `admission_intake_scope` — the facts about a patient of the caller's org that decide intake reach. */
+export interface PatientIntakeFacts {
+  /** The patient has an admission in `active` or `on_hold` — an ongoing stay, not intake's business. */
+  readonly hasActiveOrOnHoldAdmission: boolean;
+}
 
 /**
  * The read-side resolver M6's ABAC predicates (§4.6) load a resource's owner facts through. Every
@@ -240,6 +245,14 @@ export interface AdmissionAbacResolver {
   loadCtiScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
   loadF2fScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
   loadLocScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  /**
+   * `admission_intake_scope` — is `patientId` a patient of `organizationId`, and does it have an active / on-hold
+   * admission? `null` when the patient is absent or another org's (the predicate then fails closed).
+   */
+  loadPatientIntakeFacts(
+    organizationId: string,
+    patientId: string,
+  ): Promise<PatientIntakeFacts | null>;
 }
 
 /** The capture contracts the routes hand the service (§4.2; abbreviated to the load-bearing fields). */
@@ -2690,6 +2703,23 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async loadLocScope(organizationId, id) {
       const rec = get(organizationId, id, "loc");
       return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    // The slice has no patient table: a patient "exists in the org" when a `patient` record or any of the
+    // org's records names it (the Drizzle resolver asks M5's org-scoped patient read instead).
+    async loadPatientIntakeFacts(organizationId, patientId) {
+      const ofOrg = [...byId.values()].filter((r) => r.organizationId === organizationId);
+      const known = ofOrg.some(
+        (r) => (r.kind === "patient" && r.id === patientId) || r.patientId === patientId,
+      );
+      if (!known) return null;
+      return {
+        hasActiveOrOnHoldAdmission: ofOrg.some(
+          (r) =>
+            r.kind === "admission" &&
+            r.patientId === patientId &&
+            (r.state === "active" || r.state === "on_hold"),
+        ),
+      };
     },
   };
 

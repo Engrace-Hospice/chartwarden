@@ -5999,6 +5999,29 @@ export function createDbAdmissionRouteService(
  */
 export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolver {
   return {
+    // `admission_intake_scope` — the patient must be a patient of THIS org (M5's org-scoped read, the same
+    // confirmation `createAdmission` runs), and the predicate needs to know whether it has an ongoing stay.
+    async loadPatientIntakeFacts(organizationId, patientId) {
+      const patient = await getSeam("PatientIntakeResolver").confirmPatient({
+        organizationId,
+        patientId,
+      });
+      if (!patient) return null;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.organizationId, organizationId),
+              eq(ADM.patientId, patientId),
+              inArray(ADM.status, ["active", "on_hold"]),
+            ),
+          )
+          .limit(1);
+        return { hasActiveOrOnHoldAdmission: open !== undefined };
+      });
+    },
     async loadReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
