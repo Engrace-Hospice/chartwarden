@@ -20,10 +20,18 @@ export interface RhcCarryOverSpan {
   ref: string | null;
 }
 
+/**
+ * A transfer-in's sending-hospice span. Claim pricing is an append-only snapshot, and claims priced before the
+ * `sending_hospice` kind existed stored that span as an internal `stay` — told apart by its NPI (our own stays never
+ * carry one). The server maps old rows at read time; this keeps the label right on any such row that reaches us.
+ */
+const isSendingHospice = (s: RhcCarryOverSpan): boolean =>
+  s.kind === "sending_hospice" || (s.source === "internal" && !!s.hospiceNpi);
+
 /** Who the counted days belong to, and where we know them from. */
 function spanSourceLabel(s: RhcCarryOverSpan): string {
   const npi = s.hospiceNpi ? `, NPI ${s.hospiceNpi}` : "";
-  if (s.kind === "sending_hospice") return `Sending hospice (transfer-in record${npi})`;
+  if (isSendingHospice(s)) return `Sending hospice (transfer-in record${npi})`;
   if (s.source === "internal") return "Our stay";
   return `Other hospice (HETS${npi})${s.kind === "election" ? ", unbilled election" : ""}`;
 }
@@ -63,6 +71,12 @@ const BASIS: Record<RhcCarryOverBasis, { label: string; tone: StatusTone }> = {
   hets_stale: { label: "HETS check is stale", tone: "warning" },
 };
 
+/** A basis this screen does not know (a newer server, or a malformed snapshot) still renders. */
+const UNKNOWN_BASIS: { label: string; tone: StatusTone } = {
+  label: "Basis not recorded",
+  tone: "neutral",
+};
+
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** What to show for a carry-over (pure). `fmt` renders an ISO date. */
@@ -85,10 +99,11 @@ export function rhcCarryOverModel(
   const hetsAge = carry.hetsCheck
     ? `HETS checked ${fmt(carry.hetsCheck.checkedAt.slice(0, 10))} (${plural(carry.hetsCheck.ageDays, "day")} ago).`
     : null;
+  const basis = Object.hasOwn(BASIS, carry.basis) ? BASIS[carry.basis] : UNKNOWN_BASIS;
   return {
     headline: hetsAge ? `${headline} ${hetsAge}` : headline,
-    basisLabel: BASIS[carry.basis].label,
-    basisTone: BASIS[carry.basis].tone,
+    basisLabel: basis.label,
+    basisTone: basis.tone,
     rows,
     warnings: carry.warnings.map((w) => w.message),
   };

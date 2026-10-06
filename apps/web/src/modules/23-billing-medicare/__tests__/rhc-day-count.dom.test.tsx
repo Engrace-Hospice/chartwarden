@@ -58,6 +58,45 @@ describe("RhcDayCount (claim detail pricing)", () => {
     expect(within(carry).getByText("Our stay")).toBeTruthy();
   });
 
+  it("labels an old-shape sending-hospice span (stored as an internal stay with an NPI) as the sending hospice", () => {
+    render(
+      <RhcDayCount
+        pricing={{
+          rhcDays1to60: 20,
+          rhcDays61Plus: 0,
+          rhcCarryOver: {
+            electionDate: "2026-02-10",
+            priorDays: 40,
+            chainDays: 40,
+            basis: "internal_only",
+            startsAtDay: 41,
+            highRateDaysRemaining: 20,
+            daysSinceLastCare: 1,
+            chain: [
+              {
+                source: "internal",
+                kind: "stay",
+                start: "2026-01-01",
+                end: "2026-02-09",
+                endAssumed: false,
+                countedDays: 40,
+                hospiceNpi: "1649726464",
+                ref: "adm-1",
+              },
+            ],
+            warnings: [],
+            hetsCheck: null,
+          },
+        }}
+      />,
+    );
+    const carry = screen.getByTestId("claim-rhc-carry-over");
+    expect(
+      within(carry).getByText("Sending hospice (transfer-in record, NPI 1649726464)"),
+    ).toBeTruthy();
+    expect(within(carry).queryByText("Our stay")).toBeNull();
+  });
+
   it("says when a claim was priced before the carry-over was recorded", () => {
     render(<RhcDayCount pricing={{ rhcDays1to60: 7, rhcDays61Plus: 0, rhcCarryOver: null }} />);
     expect(screen.getByText(/priced before cross-hospice carry-over/)).toBeTruthy();
