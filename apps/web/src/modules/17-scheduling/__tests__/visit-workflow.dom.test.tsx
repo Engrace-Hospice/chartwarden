@@ -243,6 +243,18 @@ describe("MyVisits web workflow", () => {
             ],
           },
         };
+      if (path === "/api/v1/scheduling/eligible-clinicians")
+        return {
+          data: [
+            {
+              membershipId: visit.assignedMembershipId,
+              displayName: "Nurse One",
+              disciplines: ["rn"],
+              eligible: true,
+              reasonCodes: [],
+            },
+          ],
+        };
       if (path === "/api/v1/orgs/{id}/members")
         return {
           data: {
@@ -273,9 +285,10 @@ describe("MyVisits web workflow", () => {
     fireEvent.focus(screen.getByLabelText(/active admission/i));
     await waitFor(() => expect(screen.getByText(/Admitted 2026-01-02/i)).toBeTruthy());
     fireEvent.click(screen.getByText(/Admitted 2026-01-02/i));
-    fireEvent.focus(screen.getByLabelText(/assigned clinician/i));
-    await waitFor(() => expect(screen.getByText("Nurse One")).toBeTruthy());
-    fireEvent.click(screen.getByText("Nurse One"));
+    await waitFor(() => expect(screen.getByRole("option", { name: /nurse one/i })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/assigned clinician/i), {
+      target: { value: visit.assignedMembershipId },
+    });
     fireEvent.change(screen.getByLabelText(/scheduled start/i), {
       target: { value: "2026-08-31T10:00" },
     });
@@ -300,6 +313,18 @@ describe("MyVisits web workflow", () => {
 
   it("uses dedicated M17 endpoints for reassign, cancel, no-show, and reschedule", async () => {
     const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/scheduling/eligible-clinicians")
+        return {
+          data: [
+            {
+              membershipId: "00000000-0000-4000-8000-000000000008",
+              displayName: "Nurse Two",
+              disciplines: ["rn"],
+              eligible: true,
+              reasonCodes: [],
+            },
+          ],
+        };
       if (path === "/api/v1/orgs/{id}/members")
         return {
           data: {
@@ -327,16 +352,18 @@ describe("MyVisits web workflow", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /reassign/i }));
-    fireEvent.focus(screen.getByLabelText(/new clinician/i));
-    await waitFor(() => expect(screen.getByText("Nurse Two")).toBeTruthy());
-    fireEvent.click(screen.getByText("Nurse Two"));
+    await waitFor(() => expect(screen.getByRole("option", { name: /nurse two/i })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/new clinician/i), {
+      target: { value: "00000000-0000-4000-8000-000000000008" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reassign", expect.any(Object)),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+    await waitFor(() => expect(screen.getByLabelText(/reason for cancellation/i)).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/reason for cancellation/i), {
       target: { value: "Patient cancelled due to appointment conflict." },
     });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
@@ -358,7 +385,11 @@ describe("MyVisits web workflow", () => {
       target: { value: "2026-09-01T10:00" },
     });
     fireEvent.change(screen.getByLabelText(/new end/i), { target: { value: "2026-09-01T11:00" } });
-    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+    await waitFor(() => expect(screen.getByRole("option", { name: /nurse two/i })).toBeTruthy());
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "00000000-0000-4000-8000-000000000008" },
+    });
+    fireEvent.change(screen.getByLabelText(/reason for rescheduling/i), {
       target: { value: "Patient requested a different time." },
     });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));

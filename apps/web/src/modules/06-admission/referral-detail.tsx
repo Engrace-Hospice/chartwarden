@@ -441,49 +441,6 @@ export function ReferralDetail(): JSX.Element {
                     medicare: r.medicareNumberAtReceipt ?? null,
                     medicaid: r.medicaidNumberAtReceipt ?? null,
                   }}
-            ) : (
-              <div style={resolvedBox}>
-                <strong>Resolve the patient first</strong>
-                <span>
-                  Address and Coverage / Payers can be added once this referral is linked to a
-                  canonical patient.
-                </span>
-              </div>
-            )}
-          </section>
-
-          <section style={section}>
-            <h2 style={heading}>Referral Information</h2>
-            <div style={formGrid}>
-              <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
-              <ReadOnly
-                label="DOB at receipt"
-                value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
-              />
-              <label style={label}>
-                Sex assigned at birth
-                <select
-                  value={edit.sexAssignedAtBirth}
-                  disabled={!canEditReferral}
-                  onChange={(ev) => setEdit({ ...edit, sexAssignedAtBirth: ev.target.value })}
-                >
-                  <option value="F">Female</option>
-                  <option value="M">Male</option>
-                  <option value="O">Other</option>
-                  <option value="U">Unknown / not known</option>
-                </select>
-              </label>
-              <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
-              <ReadOnly
-                label="External referral ID"
-                value={r.externalReferralId || "Not provided"}
-              />
-              <label style={label}>
-                Organization
-                <input
-                  value={edit.referrerOrganization}
-                  disabled={!canEditReferral}
-                  onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })}
                 />
               ) : (
                 <div style={resolvedBox}>
@@ -504,6 +461,19 @@ export function ReferralDetail(): JSX.Element {
                   label="DOB at receipt"
                   value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
                 />
+                <label style={label}>
+                  Sex assigned at birth
+                  <select
+                    value={edit.sexAssignedAtBirth}
+                    disabled={!canEditReferral}
+                    onChange={(ev) => setEdit({ ...edit, sexAssignedAtBirth: ev.target.value })}
+                  >
+                    <option value="F">Female</option>
+                    <option value="M">Male</option>
+                    <option value="O">Other</option>
+                    <option value="U">Unknown / not known</option>
+                  </select>
+                </label>
                 <label style={label}>
                   Medicare number (MBI)
                   <input
