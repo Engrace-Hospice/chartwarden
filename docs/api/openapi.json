@@ -46817,6 +46817,8 @@
                           "laborShareChc",
                           "laborShareIrc",
                           "laborShareGip",
+                          "hqrpCompliant",
+                          "nationalReferenceWarnings",
                           "enteredByMembershipId",
                           "entryReason",
                           "supersededAt",
@@ -46906,6 +46908,22 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "hqrpCompliant": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nationalReferenceWarnings": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "enteredByMembershipId": {
                             "type": "string"
@@ -47000,6 +47018,8 @@
                     "laborShareChc",
                     "laborShareIrc",
                     "laborShareGip",
+                    "hqrpCompliant",
+                    "nationalReferenceWarnings",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -47089,6 +47109,22 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "hqrpCompliant": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nationalReferenceWarnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -47228,6 +47264,10 @@
                     "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
                     "type": "string"
                   },
+                  "hqrpCompliant": {
+                    "description": "true = HQRP-compliant national rates; false = the 4-percentage-point HQRP-reduced rates (42 CFR 418.306(b)(2)).",
+                    "type": "boolean"
+                  },
                   "entryReason": {
                     "maxLength": 2000,
                     "type": "string"
@@ -47289,6 +47329,8 @@
                     "laborShareChc",
                     "laborShareIrc",
                     "laborShareGip",
+                    "hqrpCompliant",
+                    "nationalReferenceWarnings",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -47378,6 +47420,22 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "hqrpCompliant": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nationalReferenceWarnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -47479,6 +47537,8 @@
                     "laborShareChc",
                     "laborShareIrc",
                     "laborShareGip",
+                    "hqrpCompliant",
+                    "nationalReferenceWarnings",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -47568,6 +47628,22 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "hqrpCompliant": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nationalReferenceWarnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -47707,6 +47783,10 @@
                     "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
                     "type": "string"
                   },
+                  "hqrpCompliant": {
+                    "description": "true = HQRP-compliant national rates; false = the 4-percentage-point HQRP-reduced rates (42 CFR 418.306(b)(2)).",
+                    "type": "boolean"
+                  },
                   "entryReason": {
                     "maxLength": 2000,
                     "type": "string"
@@ -47771,6 +47851,8 @@
                         "laborShareChc",
                         "laborShareIrc",
                         "laborShareGip",
+                        "hqrpCompliant",
+                        "nationalReferenceWarnings",
                         "enteredByMembershipId",
                         "entryReason",
                         "supersededAt",
@@ -47861,6 +47943,22 @@
                             }
                           ]
                         },
+                        "hqrpCompliant": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "nationalReferenceWarnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
                         "enteredByMembershipId": {
                           "type": "string"
                         },
@@ -47903,6 +48001,176 @@
                       "type": "null"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/rate-tables/national-reference": {
+      "get": {
+        "operationId": "getApiV1BillingRatetablesNationalreference",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The CMS national hospice per-diem base rates for a fiscal year, HQRP-compliant and non-compliant, with sources (reference only; pricing reads the tenant-entered table)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYearStarting",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reference"
+                  ],
+                  "properties": {
+                    "reference": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "fiscalYearStarting",
+                            "fiscalYearLabel",
+                            "paymentUpdatePct",
+                            "hqrpReductionPctPoints",
+                            "hqrpCompliant",
+                            "hqrpNonCompliant",
+                            "sources",
+                            "note"
+                          ],
+                          "properties": {
+                            "fiscalYearStarting": {
+                              "type": "integer"
+                            },
+                            "fiscalYearLabel": {
+                              "type": "string"
+                            },
+                            "paymentUpdatePct": {
+                              "type": "number"
+                            },
+                            "hqrpReductionPctPoints": {
+                              "type": "number"
+                            },
+                            "hqrpCompliant": {
+                              "type": "object",
+                              "required": [
+                                "rhcDays1to60PerDiemCents",
+                                "rhcDays61PlusPerDiemCents",
+                                "chcPerDiemCents",
+                                "chcHourlyRateCents",
+                                "ircPerDiemCents",
+                                "gipPerDiemCents"
+                              ],
+                              "properties": {
+                                "rhcDays1to60PerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "rhcDays61PlusPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "chcPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "chcHourlyRateCents": {
+                                  "type": "integer"
+                                },
+                                "ircPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "gipPerDiemCents": {
+                                  "type": "integer"
+                                }
+                              }
+                            },
+                            "hqrpNonCompliant": {
+                              "type": "object",
+                              "required": [
+                                "rhcDays1to60PerDiemCents",
+                                "rhcDays61PlusPerDiemCents",
+                                "chcPerDiemCents",
+                                "chcHourlyRateCents",
+                                "ircPerDiemCents",
+                                "gipPerDiemCents"
+                              ],
+                              "properties": {
+                                "rhcDays1to60PerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "rhcDays61PlusPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "chcPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "chcHourlyRateCents": {
+                                  "type": "integer"
+                                },
+                                "ircPerDiemCents": {
+                                  "type": "integer"
+                                },
+                                "gipPerDiemCents": {
+                                  "type": "integer"
+                                }
+                              }
+                            },
+                            "sources": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "cite",
+                                  "url"
+                                ],
+                                "properties": {
+                                  "cite": {
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "note": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -165647,6 +165915,10 @@
                   "type": "string"
                 },
                 {
+                  "const": "ssvi",
+                  "type": "string"
+                },
+                {
                   "const": "hvldl",
                   "type": "string"
                 },
@@ -165720,6 +165992,10 @@
                             "anyOf": [
                               {
                                 "const": "hci",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ssvi",
                                 "type": "string"
                               },
                               {

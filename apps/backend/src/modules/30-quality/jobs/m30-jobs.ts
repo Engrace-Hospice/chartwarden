@@ -73,6 +73,7 @@ import {
   type OutbreakDetectionJob,
   type OutbreakDetectionPorts,
   type ProcessingLogPort,
+  type QualityBillingConsumer,
   type QualityCostReportConsumer,
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
@@ -87,6 +88,7 @@ import {
   buildMeasureRegistry,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
+  denyStubQualityBillingConsumer,
   denyStubQualityCostReportConsumer,
   hciUnavailabilityFor,
   isOpioidDrugName,
@@ -115,7 +117,8 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { getSeam } from "../../../bootstrap/index";
 import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
-import { buildM30CostReportConsumer } from "../consumed-seam-adapters";
+import { buildM30BillingConsumer, buildM30CostReportConsumer } from "../consumed-seam-adapters";
+import { isSsviMeasureCode, resolveSsviMeasureInput } from "./ssvi-resolvers";
 import {
   M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE,
   M30_ASSIGN_UNASSIGNED_MORTALITY_SCHEDULE,
@@ -291,6 +294,12 @@ export interface M30WorkerDeps {
    * throwing. The composition root binds `buildM30CostReportConsumer()` (consumed-seam-adapters.ts).
    */
   readonly costReport?: QualityCostReportConsumer;
+  /**
+   * M30's consumer over M23's `ClaimLineReader` / `PatientDaysProvider` — the input to SSVI metric 2 (billed RHC
+   * days by site of service). Same forward-seam posture as `costReport`: absent ⇒ the package deny-stub, which
+   * SUPPRESSES the metric. The composition-root factory defaults it to `buildM30BillingConsumer()`.
+   */
+  readonly billing?: QualityBillingConsumer;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
   now?: () => Date;
 }
@@ -1144,7 +1153,7 @@ export async function resolveHciLiveDischargeTimingInput(
     readonly periodStart: string;
     readonly periodEnd: string;
   },
-  seams: { readonly dischargeReader: DischargeReader },
+  seams: { readonly dischargeReader: Pick<DischargeReader, "liveDischargeTimingCounts"> },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
   const c = await seams.dischargeReader.liveDischargeTimingCounts(organizationId, {
@@ -1616,6 +1625,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "measureRecompute.hciSkilledNursing.signedEncounters.skilledNursingDayTotalsForOrg",
         "bind the M8 SignedEncountersReader (HCI indicators 2/8/9's per-day skilled-nursing totals) via getSeam",
       ),
+    skilledVisitDaysForOrg: () =>
+      unboundWorkerPort(
+        "measureRecompute.ssvi.signedEncounters.skilledVisitDaysForOrg",
+        "bind the M8 SignedEncountersReader (SSVI metrics 3/7's per-day skilled visits) via getSeam",
+      ),
   };
   const levelOfCarePeriodReader: LevelOfCarePeriodReader = deps.levelOfCarePeriodReader ?? {
     chcOrGipCoverageCounts: () =>
@@ -1639,6 +1653,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       unboundWorkerPort(
         "measureRecompute.hciLiveDischargeTiming.dischargeReader",
         "bind the M6 DischargeReader (HCI indicators 3/4's live-discharge timing counts) via getSeam at the composition root",
+      ),
+    ssviDischargeCounts: () =>
+      unboundWorkerPort(
+        "measureRecompute.ssvi.dischargeReader.ssviDischargeCounts",
+        "bind the M6 DischargeReader (SSVI metrics 4/5/8's discharge counts) via getSeam at the composition root",
       ),
   };
   const admissionOnsetReader: AdmissionOnsetReader = deps.admissionOnsetReader ?? {
@@ -1666,6 +1685,7 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
   // not fail the recompute job (D6 / D13). See the `costReport` doc on M30WorkerDeps.
   const costReport: QualityCostReportConsumer =
     deps.costReport ?? denyStubQualityCostReportConsumer;
+  const billing: QualityBillingConsumer = deps.billing ?? denyStubQualityBillingConsumer;
 
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
   // BOUND: the `quality_measure_value` store + the debounce-queue drain + the LIVE M10 HOPE consumer + the
@@ -1734,6 +1754,17 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             medicationOrders: deps.medicationOrdersForAdmissionForOrg
               ? { listForAdmission: deps.medicationOrdersForAdmissionForOrg }
               : medicationOrders,
+          });
+        // FY2027 SSVI (CMS-1851-F) — nine metrics + the total, all routed to ssvi-resolvers.ts. Metric 9 is a
+        // DECLARED absence (SSVI_UNAVAILABLE_METRICS), the composite reads the persisted metric values.
+        if (isSsviMeasureCode(request.registration.code))
+          return resolveSsviMeasureInput(request, {
+            levelOfCarePeriodReader,
+            dischargeReader,
+            deathDischargeReader,
+            encounters: signedEncounters,
+            billing,
+            values: measureValueRepo,
           });
         // GAP-065 — the CoP 418.310 indicator, the FIRST production consumer of a forward seam (M27).
         if (request.registration.code === "cost_report_filing_compliance")
@@ -2452,6 +2483,8 @@ export function buildM30WorkerDeps(deps: {
   medicationOrdersForAdmissionForOrg?: M30WorkerDeps["medicationOrdersForAdmissionForOrg"];
   /** The M27 forward-seam consumer for the CoP 418.310 measure — defaults to the LIVE adapter (GAP-065). */
   costReport?: QualityCostReportConsumer;
+  /** The M23 billing consumer for SSVI metric 2 — defaults to the LIVE adapter (degrades per method). */
+  billing?: QualityBillingConsumer;
 }): M30WorkerDeps {
   return {
     connection: deps.connection,
@@ -2484,6 +2517,8 @@ export function buildM30WorkerDeps(deps: {
     // it unbound-by-default is what produced GAP-065: the adapters were built, unit-tested, and then never
     // reached from any composition root, so the indicator they exist for never computed in production.
     costReport: deps.costReport ?? buildM30CostReportConsumer(),
+    // FY2027 SSVI metric 2 — the LIVE M23 adapter, defaulted for the same GAP-065 reason as costReport.
+    billing: deps.billing ?? buildM30BillingConsumer(),
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
     // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
     registrations: deps.registrations ?? buildMeasureRegistry(),

@@ -13,7 +13,17 @@ import { sql } from "drizzle-orm";
 // All rates are PRE-wage-index whole cents; the wage index is applied at assembly from `wage_index_factor`.
 // CROSS-MODULE FK POLICY: only organization_id gets a real `.references(...)`; provider_entity_id (M40) and
 // entered_by_membership_id (core memberships) are LOGICAL FKs, as `sequestration_policy`.
-import { date, index, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const hospiceRateTable = pgTable(
@@ -47,6 +57,14 @@ export const hospiceRateTable = pgTable(
     laborShareChc: numeric("labor_share_chc", { precision: 5, scale: 4 }),
     laborShareIrc: numeric("labor_share_irc", { precision: 5, scale: 4 }),
     laborShareGip: numeric("labor_share_gip", { precision: 5, scale: 4 }),
+
+    /**
+     * FY2027 workstream E (migration 0394) — the provider entity's declared HQRP status for this fiscal year:
+     * true = the HQRP-compliant national rates, false = the 4-point-reduced rates (42 CFR 418.306(b)(2)), NULL =
+     * undeclared (a version entered before 0394). Append-only like the rates; it only drives the national-reference
+     * sanity check, never pricing (assembly prices from the keyed rates).
+     */
+    hqrpCompliant: boolean("hqrp_compliant"),
 
     enteredByMembershipId: uuid("entered_by_membership_id").notNull(), // logical FK → memberships
     entryReason: text("entry_reason"),

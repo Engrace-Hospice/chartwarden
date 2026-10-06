@@ -7,6 +7,7 @@
 // `provider_entity_billing_scope` predicate over the ProviderEntity (query/body — the by-id routes carry it too and the
 // service 404s a mismatch) + the §D13 AI-block + `Idempotency-Key` on mutations. NO PHI. Org/actor/membership binding is
 // ALWAYS server-side.
+import { nationalRateReferenceFor } from "@wardenx/billing";
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -18,6 +19,8 @@ import {
   RateTableGetQuerySchema,
   RateTableIdParamsSchema,
   RateTableListQuerySchema,
+  RateTableNationalReferenceQuerySchema,
+  type RateTableNationalReferenceResponse,
   SupersedeRateTableBodySchema,
   assertWholeCents,
   parse,
@@ -63,6 +66,20 @@ export function registerRateTableRoutes(app: FastifyInstance, deps: RateTableRou
       const actor = actorOf(request);
       const q = parse(RateTableEffectiveQuerySchema, request.query);
       return rateTableService.effectiveRateTable(actor, q.providerEntityId, q.onDate);
+    },
+  );
+
+  // GET /billing/rate-tables/national-reference?providerEntityId=&fiscalYearStarting= — the CMS NATIONAL base rates
+  // for a fiscal year (both HQRP columns, with Federal Register sources), or `reference: null` when none is on file.
+  // Platform reference data the entry screen prefills / sanity-checks from (FY2027 workstream E); pricing still
+  // reads only the tenant-entered table. Gated like the other reads (the provider scope keeps the gate uniform).
+  app.get(
+    "/api/v1/billing/rate-tables/national-reference",
+    { preHandler: [READ, READ_ABAC], config: AUDIT_READ },
+    async (request): Promise<RateTableNationalReferenceResponse> => {
+      const q = parse(RateTableNationalReferenceQuerySchema, request.query);
+      const ref = nationalRateReferenceFor(q.fiscalYearStarting);
+      return { reference: ref === null ? null : { ...ref, sources: [...ref.sources] } };
     },
   );
 

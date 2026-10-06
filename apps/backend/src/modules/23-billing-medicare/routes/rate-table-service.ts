@@ -9,7 +9,12 @@
 // live rows). Rates are append-only: a correction SUPERSEDES the old version (it stays readable as history) and
 // already-assembled claims are unaffected because assembly snapshots the priced per-diems onto `hipps_calculation`.
 import { randomUUID } from "node:crypto";
-import { dateRangesOverlap, repositories, validateRateTableEntry } from "@wardenx/billing";
+import {
+  checkRatesAgainstNationalReference,
+  dateRangesOverlap,
+  repositories,
+  validateRateTableEntry,
+} from "@wardenx/billing";
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
@@ -64,6 +69,8 @@ export function mapRateTable(row: schema.HospiceRateTable): RateTableView {
     laborShareChc: row.laborShareChc,
     laborShareIrc: row.laborShareIrc,
     laborShareGip: row.laborShareGip,
+    hqrpCompliant: row.hqrpCompliant,
+    nationalReferenceWarnings: [...checkRatesAgainstNationalReference(row, row.hqrpCompliant)],
     enteredByMembershipId: row.enteredByMembershipId,
     entryReason: row.entryReason,
     supersededAt: iso(row.supersededAt),
@@ -166,6 +173,7 @@ export function buildDrizzleRateTableService(
         laborShareChc: body.laborShareChc,
         laborShareIrc: body.laborShareIrc,
         laborShareGip: body.laborShareGip,
+        ...(body.hqrpCompliant !== undefined ? { hqrpCompliant: body.hqrpCompliant } : {}),
         enteredByMembershipId: actor.membershipId,
         ...(body.entryReason !== undefined ? { entryReason: body.entryReason } : {}),
       });

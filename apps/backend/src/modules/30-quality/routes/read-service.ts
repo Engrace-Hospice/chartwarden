@@ -78,7 +78,7 @@ export interface MeasureValueView {
 export interface MeasureSummaryView {
   readonly measureId: string;
   readonly displayName: string;
-  readonly domain: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+  readonly domain: "hci" | "ssvi" | "hvldl" | "hope" | "cahps" | "operational";
   readonly latestValue: MeasureValueView | null;
   /** Fiscal year the platform currently computes this measure for. */
   readonly fiscalYear: number;
@@ -453,7 +453,7 @@ export interface RiskRegisterEntryView {
 // ── filters ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface MeasureListFilter {
-  readonly domain?: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+  readonly domain?: "hci" | "ssvi" | "hvldl" | "hope" | "cahps" | "operational";
 }
 export interface MeasureValuesFilter {
   readonly windowStart?: string;

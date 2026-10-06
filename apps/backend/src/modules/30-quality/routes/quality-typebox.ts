@@ -36,7 +36,7 @@ const isoInstant = () => Type.String({ format: "date-time" });
 const isoDate = () => Type.String({ format: "date" });
 
 // ── §3 vocab mirrors (string-literal unions; canonical pgEnums live in @wardenx/db, see header note) ───
-const MEASURE_DOMAIN = ["hci", "hvldl", "hope", "cahps", "operational"] as const;
+const MEASURE_DOMAIN = ["hci", "ssvi", "hvldl", "hope", "cahps", "operational"] as const;
 const RECOMPUTE_DOMAIN = ["hci", "hvldl", "hope", "cahps"] as const;
 const MEASURE_PERIOD_KIND = [
   "rolling_12m_to_quarter",
