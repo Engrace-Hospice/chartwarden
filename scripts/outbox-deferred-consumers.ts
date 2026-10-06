@@ -398,4 +398,16 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // on role/permission changes). Dropped at the source; no `seamConsumers` replacement needed since the
   // relationship the event's own description gestured at ("cache rebind") is already covered by the
   // live `ConsentEvaluator` seam regardless of this declaration.
+  // COP27 workstream B (42 CFR 418.24(c)) — the two coverage-determination events M6's election-statement
+  // addendum reacts to (update within 3 days of a plan-of-care change, § 418.24(d)(2)). The M6 consumer is
+  // built by workstream A on its own branch; this group is deleted in the COP27 integration when it binds.
+  {
+    module: "m6",
+    kind: "handlers-unbound",
+    reason: "wired in COP27 integration (workstream A addendum update window)",
+    events: [
+      "m12.medication_order.coverage_determination_changed",
+      "m21.supply_request.coverage_determination_changed",
+    ],
+  },
 ];

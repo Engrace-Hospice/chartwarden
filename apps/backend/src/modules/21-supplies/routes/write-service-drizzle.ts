@@ -866,7 +866,7 @@ export function buildDrizzleM21WriteService(
             coverageDeterminedByMembershipId: actor.membershipId,
             updatedAt: at,
           })
-          .where(and(eq(REQUEST.id, row.id), eq(REQUEST.createdAt, row.createdAt)));
+          .where(eq(REQUEST.id, row.id));
         await outbox.publish(tx, {
           eventName: "m21.supply_request.coverage_determination_changed",
           payload: {

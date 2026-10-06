@@ -825,6 +825,13 @@ jobs:
               name: "M21 caregiver-signature capture",
               scripts: "test:m21:caregiver-signature:live",
             }
+          # COP27 workstream B (42 CFR 418.24(c)) — hospice coverage determinations on M12 medication orders
+          # and M21 dme/supply requests: real catalog-validating publisher, DB CHECK backstop, the
+          # NonCovered*Reader seams, cross-tenant RLS as wardenx_app.
+          - {
+              name: "COP27 hospice coverage determinations",
+              scripts: "test:cop27:hospice-coverage:live",
+            }
           # F-233 (#248) — M21's Option-B consumer of `m12.medication_order.dispensed_at_pharmacy`
           # (records "dispensed at T" on the correlated comfort-kit request; creates no dispatch).
           - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }

@@ -189,6 +189,7 @@
     "test:m13:comfort-kit-deployment:live": "vitest run apps/backend/__tests__/m13-comfort-kit-deployment.live.test.ts",
     "test:m21:comfort-kit-replenishment:live": "vitest run apps/backend/__tests__/m21-comfort-kit-replenishment.live.test.ts",
     "test:m21:caregiver-signature:live": "vitest run apps/backend/__tests__/m21-caregiver-signature.live.test.ts",
+    "test:cop27:hospice-coverage:live": "vitest run apps/backend/__tests__/cop27-hospice-coverage.live.test.ts",
     "test:m21:pharmacy-dispense:live": "vitest run apps/backend/__tests__/m21-pharmacy-dispense.live.test.ts",
     "test:m21:cron-workers:live": "vitest run apps/backend/__tests__/m21-cron-workers.live.test.ts",
     "test:m30:bereavement-plan-closed-consumer:live": "vitest run apps/backend/__tests__/m30-bereavement-plan-closed-consumer.live.test.ts",

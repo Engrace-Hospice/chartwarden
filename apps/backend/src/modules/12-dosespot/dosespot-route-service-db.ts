@@ -1105,7 +1105,7 @@ export function createDbDoseSpotBackend(
             coverageDeterminedByMembershipId: userId,
             updatedAt: at,
           })
-          .where(and(eq(MO.id, id), eq(MO.createdAt, r.createdAt)));
+          .where(eq(MO.id, id));
         await emit(
           tx,
           organizationId,

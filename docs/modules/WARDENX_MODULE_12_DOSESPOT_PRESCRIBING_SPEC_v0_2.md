@@ -25,6 +25,14 @@
 
 ## Changelog
 
+- **COP27 amendment (2026-10-06; header version unchanged — additive, re-lock pending)** — FY2027 hospice CoP
+  workstream B (42 CFR 418.24(b)(6)/(c), in force for elections on or after 2026-10-01; research:
+  [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1). Adds the
+  **hospice coverage determination** on `medication_order` (§2.13): the `hospice_coverage` enum + reason /
+  determined-at / determined-by columns (migration `0385`), `PUT /api/v1/medication-orders/:id/coverage-determination`
+  (`prescribing.coverage_determine`), the `m12.medication_order.coverage_determination_changed` event (declared
+  consumer M6, binding deferred to the COP27 integration), and the owned `NonCoveredMedicationsReader` seam
+  (`listNonCoveredMedicationsForAdmission`) the M6 election-statement addendum composes.
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all eighteen open questions into binding decisions (§11). Defines the **shared `medication_order` row with per-medication-class TypeBox-typed `data` jsonb** spanning the three classes `{standard, controlled_substance, compounded}` (D1), the **explicit XState lifecycle machine** with the nine-state graph extending M11's seven-state machine to cover DoseSpot transmission outcomes (`signed → queued_for_transmission → transmitted → ack_received | nack_received`) and the EPCS branch (`epcs_identity_pending`) (D2), the **polymorphic-signature consumption of M11's `OrderSignatureProvider.signOrderTarget({targetKind:'medication_order'})` seam** with the EPCS wrapper for controlled substances (D3), the **outbox-driven DoseSpot patient sync** subscribed to `m5.patient.*` events with idempotent upsert (D4), the **per-tenant DoseSpot clinic credentials at `packages/dosespot/credentials` keyed by `organization_id`** per architecture §8(4) with no plaintext-on-disk path (D5), the **prescriber-roster enrollment workflow** with per-prescriber `DoseSpotPrescriber` row and EPCS IAL2 status tracking (D6), the **webhook security envelope** — HMAC-SHA256 of body with shared secret in `X-DoseSpot-Signature`, 5-minute timestamp tolerance, persisted `(dosespot_event_id, organization_id)` dedup, receipt audited, PHI never logged in the clear (D7), the **NewRx idempotency key** of `(prescriber_membership_id, patient_id, rx_business_key)` where `rx_business_key = sha256(rxnorm_rxcui ‖ strength ‖ sig_canonical_form)` with first-call-wins semantics on collision (D8), the **refill-request inbox** with inbound webhook → `refill_request` row → clinician approve/deny → on approve mint new `medication_order` with `derived_from_refill_id` pointer (D9), the **MedicationHistory pull** on admission activate and at recert/F2F windows, persisted as `medication_history_record` for clinical reconciliation but never auto-linked to `medication_order` (D10), the **degraded-mode handling**: DoseSpot adapter's `DegradedError` flips a per-tenant feature flag `dosespot_degraded=true`, the prescribing UI displays "e-prescribe temporarily unavailable; drafts will queue", drafts persist in `medication_order` with `dosespot_send_state='queued'`, and the `dosespot.transmit_queued` BullMQ worker drains on recovery per DR_BCP §10.4.3 (D11), the **AI-prohibited zone for medication orders**: Module 32's LLM may not create, modify, sign, or otherwise mutate a `medication_order` row; HearthNote Layer 2 may only narrate around an existing medication order in immutable read-only context; this is the hard-block of AI Governance §2.1.1 made operationally specific to M12; enforced at boot via the `validateMedicationAIBlock()` check on M32's prompt registry (D12), the **discharge-cascade auto-discontinue** subscribed to `m6.admission.discharged` mirroring M11 D13 — bulk-discontinue every `active` / `queued_for_transmission` / `epcs_identity_pending` medication_order via M11's `OrderSignatureProvider` system-actor path with `reason='admission_discharged'` (D13), the **free-text PHI denylist** scrub on `medication_order.data.sig_free_text`, `medication_order.data.indication`, `medication_order.data.clinical_justification`, `medication_order.data.notes`, `refill_request.pharmacy_notes`, `medication_history_record.source_notes` (D14), the **`medication_order` monthly partitioned by `created_at`** matching M4's PHI-table conventions, with `refill_request`, `medication_history_record`, `dosespot_patient_sync`, `dosespot_prescriber`, `dosespot_webhook_event`, `rx_benefit_cache`, and `medication_order_transmission` non-partitioned (D15), the **MDM Pharmacy resolution via M40's `resolvePharmacy` seam** with the per-Location preferred-pharmacy overlay (D16), the **published M12 seams** `MedicationOrderProvider` and `RefillInboxProvider` for M13 / M14 / M19 / M22 / M23 / M27 / M28 / M30 / M31 / M33 / M37 consumption (D17), and the **EPCS scope boundary**: EPCS architecture (IAL2 identity proofing, 2FA at signing, full §1311 audit trail) ships Phase 1; production *certification* (DEA Third-Party Audit per 21 CFR 1311.300, Drummond Group) is gated by ADR-006; until certification, controlled-substance prescribing is feature-flag-OFF per tenant via `epcs_certification_status` on `organization`; drafts may exist but transmission of a Schedule II/III/IV/V medication is blocked at the route handler with `EPCS_NOT_CERTIFIED` (D18). Wires the permission keys this module registers into Module 3 (§4.6), the `prescriber_eligible` / `dea_schedule_authorized` / `refill_inbox_scope` ABAC predicates this module registers with Module 3's named-predicate registry (§4.7), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), and the destruction `eraseFn` registered with Module 4 (§7.7). Includes a **proposed manifest patch** (§10 last task) updating `M12.dependsOn` from `[5, 11, 38, 40]` to `[2, 3, 4, 5, 6, 11, 22, 28, 36, 38, 39, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the prior encoding was structurally identical to M11's pre-lock state: it omitted the foundation deps that are transitively required but not surfaced in the architecture §20 short-list, and it omitted the M22 / M28 / M36 / M39 deps that are real consumer-of-data relationships rather than transitive. The M11 lock established the precedent that every module surfaces *all* its declared imports in `dependsOn`, including foundation and cross-cutting; M12 follows. Also confirms `packages/dosespot` and `apps/backend/src/modules/12-dosespot` in `M12.codePaths` per the manifest already-encoded entry.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
@@ -572,6 +580,66 @@ erDiagram
 | `m5.patient.payer_changed` (consumed) | invalidate RxBenefit cache for that patient | M12 internal |
 | `m22.document.rendered` (consumed) | if `aggregateType='medication_order'`, update `medication_order.document_id` | M12 internal |
 
+### 2.13 Hospice Coverage Determination (COP27 — 42 CFR 418.24(c))
+
+From 2026-10-01 every hospice election carries the mandatory addendum "Patient Notification of Hospice
+Non-Covered Items, Services, and Drugs" (§ 418.24(b)(6), (c); research doc §1). It must list each **drug** the
+hospice determined is unrelated to the terminal illness and related conditions (or otherwise not covered),
+with a clinical explanation the patient can understand (§ 418.24(c)(5)–(6)), and it must be updated within
+3 days of a plan-of-care change that affects those determinations (§ 418.24(d)(2)). `medication_order` is the
+source of truth for every hospice-prescribed drug, so the determination lives on the order.
+
+**Domain.**
+
+- Enum `hospice_coverage` (shared with M21 `supply_request`; created by migration `0385`):
+  `covered_related` | `not_covered_unrelated` | `not_covered_other`. Mirrored as `HOSPICE_COVERAGE_VALUES` /
+  `HospiceCoverage` in `@wardenx/types` (`packages/types/src/hospice-coverage.ts`) and `hospiceCoverage` in
+  `packages/db/src/enums.ts`.
+- Columns on `medication_order`: `hospice_coverage` (NOT NULL, default `covered_related`), `coverage_reason`
+  (text — the patient-facing explanation), `coverage_determined_at` (timestamptz; NULL = never explicitly
+  determined), `coverage_determined_by_membership_id` (uuid — the SESSION membership, never the body; logical
+  ref, no FK on the partitioned table).
+- CHECK `medication_order_coverage_reason_chk`: `hospice_coverage = 'covered_related'` OR (non-blank
+  `coverage_reason` AND `coverage_determined_at IS NOT NULL`). The app enforces the same rule first
+  (`assertCoverageDetermination`, 422 `COVERAGE_REASON_REQUIRED`; reason ≤ 2000 chars).
+- Partial index `medication_order_admission_not_covered_idx (organization_id, admission_id) WHERE
+  hospice_coverage <> 'covered_related'` backs the seam read.
+- **Default `covered_related` for existing and new rows.** § 418.24(b)(3): unrelated services are "exceptional
+  and unusual and hospice should be providing virtually all care needed" — related/covered is the regulatory
+  presumption and "not covered" is an exception that must be positively determined. Backfilling anything else
+  would invent a coverage denial nobody decided. Backfilled rows keep `coverage_determined_at` NULL, so
+  "presumed related" stays distinguishable from "affirmatively determined related".
+- **Not a lifecycle transition.** Setting the determination never moves `status` or bumps `version` (the
+  M13/M14 version-pinned reads must not see a new order); it is allowed in every status. Row-locked
+  (`FOR UPDATE`). An unchanged re-save (same value + same normalised reason) writes nothing and emits nothing.
+- **Carry-forward.** A correction (`replaces_medication_order_id`) or refill mint (`derived_from_refill_id` →
+  the refill's source order) inherits the predecessor's coverage block — same drug, same patient — so a
+  not-covered drug never silently falls off the addendum. Every other new draft starts at the default.
+- **Audit.** `coverage_reason` is NOT on the D14 denylist: it is the explanation the hospice must disclose to
+  the patient, non-hospice providers and Medicare contractors (§ 418.24(c)(6), (c)(9)); the M4 write-audit
+  after-image is the evidence of who determined what, when.
+
+**Route.** `PUT /api/v1/medication-orders/:id/coverage-determination` — permission
+`prescribing.coverage_determine`, ABAC `caseload_or_scope` on the order's patient (404 on deny, not
+break-glass-bypassable). Body `{ hospiceCoverage, reason? }` (`SetHospiceCoverageBodySchema`); response the
+`MedicationOrderResponseSchema` view, which now carries `hospiceCoverage`, `coverageReason`,
+`coverageDeterminedAt`, `coverageDeterminedBy` on every order read.
+
+**Event.** `m12.medication_order.coverage_determination_changed` — payload `{ orgId, admissionId?, patientId,
+sourceId, hospiceCoverage, previousHospiceCoverage, reason, changedAt }` (`sourceId` = order id; `reason` is
+published deliberately — the addendum must carry it). Declared consumer **M6** (addendum refresh, the
+§ 418.24(d)(2) 3-day update window); the M6 binding lands with workstream A, so the pair is registered in
+`scripts/outbox-deferred-consumers.ts` until the COP27 integration.
+
+**Owned seam.** `NonCoveredMedicationsReader` (registry key, owner M12, `phi: true`, fail-closed deny-stub) —
+the `NonCoveredItemsReader` contract `listForAdmission(orgId, admissionId): Promise<NonCoveredItemSnapshot[]>`.
+Implemented by `listNonCoveredMedicationsForAdmission(db, orgId, admissionId)`
+(`apps/backend/src/modules/12-dosespot/seams/non-covered-medications.ts`), org-explicit under `withOrgContext`
+(safe from relay ticks / workers). Returns one snapshot (`source: 'medication'`, `category: 'drug'`,
+description = drug name + strength + dose form + route, reason, determinedAt, determinedByUserId) per order on
+the admission whose coverage is not `covered_related` and whose status is **not** `draft`, `completed`,
+`discontinued` or `expired_unsigned` (a `transmission_failed` order is still intended therapy and stays listed).
+
 -----
 
 
@@ -1035,6 +1103,7 @@ The M4 PHI write-audit trigger is installed on every M12 table with the per-tabl
 | POST | `/api/v1/medication-orders/:id/verbal` | `prescribing.verbal.record` | `caseload_or_scope` | calls M11 `recordVerbalOrder` with `target_kind='medication_order'`; controlled is Phase-1-OFF per D18 |
 | POST | `/api/v1/medication-orders/:id/cosign` | `prescribing.cosign` | + `cosigner_role_match` (M11) | calls M11 with `signature_kind='cosignature'` |
 | POST | `/api/v1/medication-orders/:id/discontinue` | `prescribing.discontinue` | `caseload_or_scope` | command+cascade; writes `medication_order_discontinuation` |
+| PUT | `/api/v1/medication-orders/:id/coverage-determination` | `prescribing.coverage_determine` | `caseload_or_scope` | COP27 (§2.13): set/change the hospice coverage determination; reason required when not covered (422); not a lifecycle transition; emits `m12.medication_order.coverage_determination_changed` on change |
 | POST | `/api/v1/medication-orders/:id/complete` | `prescribing.discontinue` | `caseload_or_scope` | one-shot or no-refills-no-renewal |
 | POST | `/api/v1/medication-orders/:id/correct` | `prescribing.draft` | `caseload_or_scope` | creates new draft with `replaces_medication_order_id` |
 | POST | `/api/v1/medication-orders/:id/retransmit` | `prescribing.sign` | `caseload_or_scope` | for `transmission_failed`; mints corrected order |
@@ -1234,6 +1303,7 @@ Every state change in M12 emits exactly one event row into the M1 outbox table i
 | `m12.dosespot_recovered` | circuit-breaker close | `breakerName, closedAt` | M36 |
 | `m12.controlled_substance_policy_changed` | admin route | `actorMembershipId, before, after` | M33, compliance log |
 | `m12.medication.error_reported` | `reportMedicationError` service | `medicationErrorId, orderId, patientId, errorCategory, reportedByMembershipId, reportedAt` | M30 (Quality — medication-error rate) |
+| `m12.medication_order.coverage_determination_changed` | `setCoverageDetermination` (COP27, §2.13) | `orgId, admissionId?, patientId, sourceId, hospiceCoverage, previousHospiceCoverage, reason, changedAt` | M6 (election-statement addendum refresh; binding deferred to the COP27 integration) |
 
 **Form rendering handshake** (mirroring M11 D14 and M6 D7). Events listed with M22 as consumer trigger a PDF render via M22's outbox subscription. M22 renders, persists, and emits `m22.document.rendered` with a back-ref `{aggregateType:'medication_order', aggregateId}`. M12's `consumers/m22-document-backref.ts` updates `medication_order.document_id`. M12 does not import M22 schemas.
 
@@ -1274,8 +1344,9 @@ M12 contributes these keys to M3's permission catalog (`packages/auth/src/permis
 | `prescribing.history.read` | `medication_history_record.read` | every clinical_*, Compliance | `caseload_or_scope` |
 | `prescribing.history.reconcile` | `medication_history_record.reconcile` | hospice_physician, medical_director, np, pa, rn_case_manager, clinical_supervisor | `caseload_or_scope` |
 | `prescribing.rx_benefit.lookup` | `rx_benefit.lookup` | every prescriber + drafter | `caseload_or_scope` |
+| `prescribing.coverage_determine` | `medication_order.coverage_determine` | hospice_physician, medical_director, np, pa, rn_case_manager, clinical_supervisor (category `clinical`) | `caseload_or_scope` (COP27, §2.13) |
 
-Fourteen permission keys total. The M3 catalog binds these at boot; absence fails fast.
+Fourteen permission keys in the original lock (the as-built catalog adds `prescribing.report_error` (F-205) and `prescribing.coverage_determine` (COP27)). The M3 catalog binds these at boot; absence fails fast.
 
 ### 4.7 ABAC Predicates Registered
 
@@ -2100,6 +2171,15 @@ Module 12 is "Locked" when every line below is checked. Items marked **(blocker)
 - [ ] **(blocker)** Platform-ops route to flip the tenant gate exists, requires step-up, emits `m12.controlled_substance_policy_changed` audit.
 - [ ] **(deferred to ADR-006)** Drummond Group EPCS Third-Party Audit engagement scheduled; certification kickoff documented.
 - [ ] **(deferred to ADR-006)** First-tenant transition to `audit_in_progress` → `certified` exercised end-to-end including DEA submission.
+
+### COP27 hospice coverage determination (§2.13)
+
+- [ ] **(blocker)** Migration `0385_m12_medication_order_hospice_coverage.sql` applies on a populated baseline; every existing order reads `hospice_coverage = 'covered_related'` with `coverage_determined_at` NULL.
+- [ ] **(blocker)** `PUT /api/v1/medication-orders/:id/coverage-determination` with `not_covered_unrelated` / `not_covered_other` and a blank or missing reason → 422 `COVERAGE_REASON_REQUIRED`; the DB CHECK rejects the same write if the app guard is bypassed.
+- [ ] **(blocker)** A valid change persists the value, reason, instant and SESSION membership, leaves `status`/`version` untouched, and emits exactly one `m12.medication_order.coverage_determination_changed` (catalog-validated) in the same transaction; an unchanged re-save emits nothing.
+- [ ] **(blocker)** A correction / refill mint inherits the predecessor's coverage block.
+- [ ] **(blocker)** `NonCoveredMedicationsReader.listForAdmission` returns only that admission's not-covered orders outside `draft`/`completed`/`discontinued`/`expired_unsigned`; run as the NOBYPASSRLS `wardenx_app` role, another tenant's rows are never returned.
+- [ ] **(forward seam)** M6's addendum consumer binds `m12.medication_order.coverage_determination_changed` (COP27 integration) and the pair leaves `scripts/outbox-deferred-consumers.ts`.
 
 ### Manifest patch
 
