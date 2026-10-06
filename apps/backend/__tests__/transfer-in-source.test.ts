@@ -25,9 +25,9 @@ describe("transferInSourceRefusal", () => {
   });
 
   it("refuses a second change of hospice in the same benefit period", () => {
-    expect(
-      transferInSourceRefusal({ ...OK, transferAlreadyRecordedInPeriod: true })?.code,
-    ).toBe("TRANSFER_LIMIT_EXCEEDED");
+    expect(transferInSourceRefusal({ ...OK, transferAlreadyRecordedInPeriod: true })?.code).toBe(
+      "TRANSFER_LIMIT_EXCEEDED",
+    );
   });
 
   it("refuses an NPI whose check digit fails", () => {

@@ -72,7 +72,10 @@ function notice(over: Partial<TransferNotice> = {}): TransferNotice {
   };
 }
 
-function makeClient(items: TransferNotice[], post = vi.fn(async () => ok(items[0]))) {
+function makeClient(
+  items: TransferNotice[],
+  post: (...args: unknown[]) => Promise<unknown> = vi.fn(async () => ok(items[0])),
+) {
   const GET = vi.fn(async (path: string) => {
     if (path === "/api/v1/billing/transfer-notices")
       return ok({ items, nextCursor: null, hasMore: false });
