@@ -294,6 +294,7 @@ export function Readmission(): JSX.Element {
                 today={today}
                 errors={periodErrors}
                 hets={hets}
+                serviceDate={intake.admissionDate || today}
               />
             </Section>
           ) : null}
