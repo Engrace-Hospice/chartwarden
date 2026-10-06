@@ -44,6 +44,7 @@ export {
   createDrizzleEncounterReaderStore,
   billableEncountersInRangeForOrg,
   signedEncounterSnapshotsInRangeForOrg,
+  signedEncounterNoteForOrg,
   encounterVisitIdsForOrg,
   encounterIdsForVisitsForOrg,
 } from "./drizzle-store";

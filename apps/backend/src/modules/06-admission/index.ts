@@ -12,6 +12,7 @@ import {
   type AdmissionWriteOutboxPort,
   type DpoaConsentCheckPort,
   type F2fClinicianRolePort,
+  type F2fSignedNotePort,
   type IpuBedAssignmentReaderPort,
   type ProviderEntityLocationPort,
   type ProviderEntityOrgCheckPort,
@@ -40,6 +41,7 @@ export function mountAdmissionRoutes(
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  f2fSignedNotes?: F2fSignedNotePort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
@@ -51,6 +53,7 @@ export function mountAdmissionRoutes(
       providerEntityLocations,
       dpoaConsentCheck(),
       f2fClinicianRoles,
+      f2fSignedNotes,
     ),
   });
 }

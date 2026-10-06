@@ -1004,7 +1004,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(F2fCompleteSchema, request.body);
-      return service.completeF2f(organizationId, idOf(request), body.ifVersion, body.encounterDate);
+      return service.completeF2f(organizationId, idOf(request), body.ifVersion, body.encounterDate, {
+        encounterLocation: body.encounterLocation,
+        telehealthEligibility: body.telehealthEligibility ?? null,
+      });
     },
   );
 
@@ -1019,7 +1022,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         idOf(request),
         body.ifVersion,
         userId,
-        body.attestationNarrative,
+        body.attestationNarrative ?? null,
+        body.signedNoteEncounterId ?? null,
       );
     },
   );

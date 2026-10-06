@@ -398,6 +398,61 @@ export async function signedEncounterSnapshotsInRangeForOrg(
   );
 }
 
+/** Statuses at which the author's primary signature is on the note and it has not been voided. */
+const PRIMARY_SIGNED_STATUSES: readonly string[] = ["signed", "cosign_pending", "cosigned"];
+
+/**
+ * FY2027 R-F2F-06 (42 CFR 418.22(b)(4)) — the facts of ONE clinical note, for M6's signed-note
+ * face-to-face attestation: which patient it belongs to, the visit date, whether the author's signature is
+ * on it (and when), and the M1 USER who authored + signed it (encounters are self-signed; `signed_at` is the
+ * author's signature instant). No narrative crosses (minimum necessary). `null` when no such encounter is in
+ * this org. Org-explicit with its own `withOrgContext`, bound into M6's `F2fSignedNotePort` at the
+ * composition root (M6 does not import M8).
+ */
+export async function signedEncounterNoteForOrg(
+  db: DbClient,
+  organizationId: string,
+  encounterId: string,
+): Promise<{
+  readonly encounterId: string;
+  readonly patientId: string;
+  readonly serviceDate: string;
+  readonly signed: boolean;
+  readonly signedAt: string | null;
+  readonly signerUserId: string | null;
+} | null> {
+  const MEM = schema.memberships;
+  return withOrgContext(
+    db,
+    { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          encounterId: E.id,
+          patientId: E.patientId,
+          serviceDate: E.serviceDate,
+          status: E.status,
+          signedAt: E.signedAt,
+          authorUserId: MEM.userId,
+        })
+        .from(E)
+        .leftJoin(MEM, eq(MEM.id, E.authoredByMembershipId))
+        .where(and(eq(E.organizationId, organizationId), eq(E.id, encounterId)))
+        .limit(1);
+      if (!row) return null;
+      const signed = PRIMARY_SIGNED_STATUSES.includes(row.status) && row.signedAt !== null;
+      return {
+        encounterId: row.encounterId,
+        patientId: row.patientId,
+        serviceDate: row.serviceDate,
+        signed,
+        signedAt: row.signedAt ? row.signedAt.toISOString() : null,
+        signerUserId: row.authorUserId ?? null,
+      };
+    },
+  );
+}
+
 /**
  * F-123 (#251) — the encounter→visit map `evvCompliance.bracketsForEncounters` needs before it can even
  * ask M18 anything: M23's contract is ENCOUNTER-keyed, M18's `EvvComplianceReader.bracketStateForVisit` is

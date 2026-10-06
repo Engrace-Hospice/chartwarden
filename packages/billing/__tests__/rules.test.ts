@@ -8,6 +8,7 @@ import {
   eligibilityCheckFreshness30d,
   evvBracketCoherence,
   f2fAttestedForRecert,
+  f2fTelehealthG0679,
   hippsCodingCorrect,
   icd10Sequencing,
   ipuCapProjection,
@@ -20,7 +21,7 @@ import {
   siaCalculationCorrect,
   tobAndDatesConsistency,
 } from "@wardenx/billing";
-// @wardenx/billing — M23 §4.5 / §11.A the 19 platform-default validation rules pure-domain unit tests.
+// @wardenx/billing — M23 §4.5 / §11.A the 20 platform-default validation rules pure-domain unit tests.
 // For EACH rule: a passing `ValidationContext` (predicate holds) and a failing one (predicate fails), with
 // the rule object's published METADATA asserted (severity + regulatoryRequired + overrideRoleRequired) so
 // the §2.3 blocking-failure roll-up and the §4.5 worklist grouping stay grounded. Plus the cross-cutting
@@ -213,6 +214,15 @@ const RULE_META: ReadonlyArray<readonly [Rule, ExpectedMeta]> = [
     },
   ],
   [
+    f2fTelehealthG0679,
+    {
+      key: "f2f_telehealth_g0679",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
     evvBracketCoherence,
     {
       key: "evv_bracket_coherence",
@@ -384,7 +394,9 @@ describe("f2f_attested_for_recert (D5 regulatory)", () => {
           revocationDate: null,
         },
       ],
-      faceToFace: [{ electionPeriodSequence: 3, attested: true, encounterDate: "2026-01-20" }],
+      faceToFace: [
+        { electionPeriodSequence: 3, attested: true, encounterDate: "2026-01-20", modality: null },
+      ],
     });
     expect(r.passed).toBe(true);
   });
@@ -908,8 +920,8 @@ describe("ipu_cap_projection (D8 deny-stub degrade)", () => {
 
 describe("D5 regulatory floor — every CFR-mandated rule is regulatoryRequired with an elevated override", () => {
   const regulatory = RULE_META.filter(([, m]) => m.regulatoryRequired);
-  it("17 of the 19 default rules are regulatoryRequired (EVV is operational per ADR-0008)", () => {
-    expect(regulatory).toHaveLength(17);
+  it("18 of the 20 default rules are regulatoryRequired (EVV is operational per ADR-0008)", () => {
+    expect(regulatory).toHaveLength(18);
   });
   for (const [rule, meta] of regulatory) {
     it(`${meta.key} requires an elevated override approver (cannot be skip-and-submit'd)`, () => {

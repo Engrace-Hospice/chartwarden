@@ -401,6 +401,8 @@ describe("F2F state machine (§2.3.4)", () => {
         periodStart: "2026-07-01",
         encounterDate: "2026-06-15",
         hasOverride: false,
+        encounterLocation: "patient_home",
+        telehealthEligibility: null,
       });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("F2F_INVALID_PERFORMER");
@@ -414,6 +416,8 @@ describe("F2F state machine (§2.3.4)", () => {
       periodStart: "2026-07-01",
       encounterDate: "2026-06-15",
       hasOverride: false,
+      encounterLocation: "patient_home",
+      telehealthEligibility: null,
     });
     expect(completed.to).toBe("completed");
     const attested = transitionFaceToFace("completed", {
