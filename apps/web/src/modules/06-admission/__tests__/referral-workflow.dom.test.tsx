@@ -27,6 +27,7 @@ const referral: ReferralView = {
   patientResolutionStatus: "unresolved",
   patientNameAtReceipt: "Robert Johnson",
   patientDobAtReceipt: "1954-05-08",
+  sexAssignedAtBirth: "M",
   referringDxText: "Lung cancer with rapid decline",
   icd10TerminalPrimary: "C34.90",
   source: "fax",

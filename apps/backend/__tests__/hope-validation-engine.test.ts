@@ -111,6 +111,34 @@ function ruleIds(values: Record<string, string>, mode: "draft" | "final" = "draf
   return validationEngine.evaluate(ctx(values, mode)).map((finding) => finding.ruleId);
 }
 
+function huvContext(values: Record<string, string>): HopeValidationContext {
+  const huvActive = active.filter(
+    (itemCode) => !itemCode.startsWith("A1005") && !itemCode.startsWith("A1010"),
+  );
+  const answers = answerMap(values);
+  const base = ctx(values, "final");
+  return {
+    ...base,
+    assessment: {
+      ...base.assessment,
+      rfaKind: "02_huv1",
+      isc: "HUV",
+    },
+    activeItems: huvActive.map((itemCode) => ({
+      itemCode,
+      sectionLabel: itemCode.slice(0, 1),
+      kind: "assessment",
+      cmsItemTypeCode: itemCode.endsWith("B") ? "Date" : "Code",
+    })),
+    answers,
+    applicability: applicabilityEngine.evaluate({
+      isc: "HUV",
+      activeItemCodes: huvActive,
+      answers,
+    }),
+  };
+}
+
 describe("HOPE v1.00.1 validation engine", () => {
   it("uses stable fingerprints for repeat evaluations", () => {
     const first = validationEngine.evaluate(ctx({ J0910C1: "1", J0910C9: "1" }));
@@ -140,6 +168,15 @@ describe("HOPE v1.00.1 validation engine", () => {
     expect(ruleIds({ A1010A: "1", A1010Z: "1" })).toContain("-3090");
     expect(ruleIds({ M1195A: "1", M1195Z: "1" })).toContain("-3094");
     expect(ruleIds({ M1200A: "1", M1200Z: "1" })).toContain("-3095");
+  });
+
+  it("does not require HA-only ethnicity or race items for HUV1", () => {
+    const findings = validationEngine.evaluate(huvContext({}));
+    const ruleIdsForHuv = findings.map((finding) => finding.ruleId);
+
+    expect(ruleIdsForHuv).not.toContain("-3080");
+    expect(ruleIdsForHuv).not.toContain("-3090");
+    expect(ruleIds({}, "final")).toEqual(expect.arrayContaining(["-3080", "-3090"]));
   });
 
   it("detects pain and SFV branch validation without trusting persisted projections", () => {

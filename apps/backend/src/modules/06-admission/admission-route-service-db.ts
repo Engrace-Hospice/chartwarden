@@ -436,6 +436,7 @@ function toReferralReadView(
     patientDobAtReceipt: string | null;
     medicareNumberAtReceipt: string | null;
     medicaidNumberAtReceipt: string | null;
+    sexAssignedAtBirth: string | null;
     referringDxText: string | null;
     icd10TerminalPrimary: string | null;
     sourceChannel: string;
@@ -466,6 +467,7 @@ function toReferralReadView(
     patientDobAtReceipt: r.patientDobAtReceipt,
     medicareNumberAtReceipt: r.medicareNumberAtReceipt,
     medicaidNumberAtReceipt: r.medicaidNumberAtReceipt,
+    sexAssignedAtBirth: r.sexAssignedAtBirth,
     referringDxText: r.referringDxText,
     icd10TerminalPrimary: r.icd10TerminalPrimary,
     source: r.sourceChannel,
@@ -983,6 +985,7 @@ export function createDbAdmissionRouteService(
     patientNameAtReceipt: string;
     patientDobAtReceipt: string | null;
     medicareNumberAtReceipt: string | null;
+    sexAssignedAtBirth: string | null;
     referringDxText: string | null;
     referrerName: string | null;
     referrerOrganization: string | null;
@@ -997,6 +1000,7 @@ export function createDbAdmissionRouteService(
         patientNameAtReceipt: REF.patientNameAtReceipt,
         patientDobAtReceipt: REF.patientDobAtReceipt,
         medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
+        sexAssignedAtBirth: REF.sexAssignedAtBirth,
         referringDxText: REF.referringDxText,
         referrerName: REF.referrerName,
         referrerOrganization: REF.referrerOrganization,
@@ -1067,6 +1071,7 @@ export function createDbAdmissionRouteService(
     patientDobAtReceipt: REF.patientDobAtReceipt,
     medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
     medicaidNumberAtReceipt: REF.medicaidNumberAtReceipt,
+    sexAssignedAtBirth: REF.sexAssignedAtBirth,
     referringDxText: REF.referringDxText,
     icd10TerminalPrimary: REF.icd10TerminalPrimary,
     sourceChannel: REF.sourceChannel,
@@ -1921,6 +1926,7 @@ export function createDbAdmissionRouteService(
               patientNameAtReceipt: r.patientNameAtReceipt,
               patientDobAtReceipt: r.patientDobAtReceipt,
               medicareNumberAtReceipt: r.medicareNumberAtReceipt,
+              sexAssignedAtBirth: r.sexAssignedAtBirth,
               referringDxText: r.referringDxText,
               referrerName: r.referrerName,
               referrerOrganization: r.referrerOrganization,
@@ -1948,6 +1954,7 @@ export function createDbAdmissionRouteService(
                 patientNameAtReceipt: r.patientNameAtReceipt,
                 patientDobAtReceipt: r.patientDobAtReceipt,
                 medicareNumberAtReceipt: r.medicareNumberAtReceipt,
+                sexAssignedAtBirth: r.sexAssignedAtBirth,
                 referringDxText: r.referringDxText,
                 referrerName: r.referrerName,
                 referrerOrganization: r.referrerOrganization,
@@ -2444,6 +2451,7 @@ export function createDbAdmissionRouteService(
             patientDobAtReceipt: input.patientDobAtReceipt ?? null,
             medicareNumberAtReceipt: referralMedicareNumber(input.medicareNumberAtReceipt),
             medicaidNumberAtReceipt: referralMedicaidNumber(input.medicaidNumberAtReceipt),
+            sexAssignedAtBirth: input.sexAssignedAtBirth ?? "U",
             referringDxText: input.referringDxText ?? null,
             referrerName: input.referrerName ?? null,
             referrerOrganization: input.referrerOrganization ?? null,
@@ -2513,6 +2521,7 @@ export function createDbAdmissionRouteService(
             referrerName: input.referrerName,
             referrerOrganization: input.referrerOrganization,
             referrerPhone: input.referrerPhone,
+            sexAssignedAtBirth: input.sexAssignedAtBirth,
             version: sql`${REF.version} + 1`,
             updatedAt: now(),
           })
@@ -2760,6 +2769,7 @@ export function createDbAdmissionRouteService(
           patientNameAtReceipt: cur.patientNameAtReceipt,
           patientDobAtReceipt: cur.patientDobAtReceipt,
           medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
+          administrativeSex: cur.sexAssignedAtBirth ?? "U",
         });
         const r = firstOrThrow(
           await tx

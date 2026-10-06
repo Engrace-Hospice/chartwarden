@@ -60,6 +60,7 @@ export function ReferralDetail(): JSX.Element {
     referrerOrganization: "",
     referrerPhone: "",
     referringDxText: "",
+    sexAssignedAtBirth: "U",
   });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export function ReferralDetail(): JSX.Element {
         referrerOrganization: ref.referrerOrganization ?? "",
         referrerPhone: ref.referrerPhone ?? "",
         referringDxText: ref.referringDxText ?? "",
+        sexAssignedAtBirth: ref.sexAssignedAtBirth ?? "U",
       });
     } catch (err) {
       setError(errorMessage(err, "Referral not found or not visible to you."));
@@ -459,6 +461,19 @@ export function ReferralDetail(): JSX.Element {
                   label="DOB at receipt"
                   value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
                 />
+                <label style={label}>
+                  Sex assigned at birth
+                  <select
+                    value={edit.sexAssignedAtBirth}
+                    disabled={!canEditReferral}
+                    onChange={(ev) => setEdit({ ...edit, sexAssignedAtBirth: ev.target.value })}
+                  >
+                    <option value="F">Female</option>
+                    <option value="M">Male</option>
+                    <option value="O">Other</option>
+                    <option value="U">Unknown / not known</option>
+                  </select>
+                </label>
                 <label style={label}>
                   Medicare number (MBI)
                   <input

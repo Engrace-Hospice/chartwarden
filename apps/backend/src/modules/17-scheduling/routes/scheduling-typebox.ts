@@ -367,6 +367,12 @@ export const CredentialViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const CredentialListResponseSchema = Type.Array(CredentialViewSchema);
+export const EligibleCliniciansQuerySchema = Type.Object({
+  patientId: Type.String({ format: "uuid" }),
+  visitPurpose: VISIT_PURPOSE,
+  scheduledStartedAt: Type.String({ format: "date-time" }),
+  scheduledEndedAt: Type.String({ format: "date-time" }),
+});
 export const GrantCredentialRequest = Type.Object({
   credentialType: CREDENTIAL_DISCIPLINE,
   effectiveAt: Type.String({ format: "date" }),

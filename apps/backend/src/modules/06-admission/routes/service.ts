@@ -244,6 +244,7 @@ export interface ReferralCreateInput {
   readonly patientDobAtReceipt?: string;
   readonly medicareNumberAtReceipt?: string;
   readonly medicaidNumberAtReceipt?: string;
+  readonly sexAssignedAtBirth?: "F" | "M" | "O" | "U";
   readonly referringDxText?: string;
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
@@ -299,6 +300,7 @@ export interface ReferralUpdateInput {
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
   readonly referrerPhone?: string;
+  readonly sexAssignedAtBirth?: "F" | "M" | "O" | "U";
 }
 
 export interface ReferralNoteInput {
@@ -333,6 +335,7 @@ export interface ReferralReadView extends SummaryRow {
   readonly patientDobAtReceipt: string | null;
   readonly medicareNumberAtReceipt: string | null;
   readonly medicaidNumberAtReceipt: string | null;
+  readonly sexAssignedAtBirth: string | null;
   readonly referringDxText: string | null;
   readonly icd10TerminalPrimary: string | null;
   readonly source: string;
@@ -1082,6 +1085,7 @@ interface Rec {
   patientDobAtReceipt?: string;
   medicareNumberAtReceipt?: string;
   medicaidNumberAtReceipt?: string;
+  sexAssignedAtBirth?: "F" | "M" | "O" | "U";
   patientResolutionStatus?: "unresolved" | "possible_match" | "matched" | "created";
   electionPeriodId?: string;
   sequence?: number;
@@ -1323,6 +1327,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       patientDobAtReceipt: rec.patientDobAtReceipt ?? null,
       medicareNumberAtReceipt: rec.medicareNumberAtReceipt ?? null,
       medicaidNumberAtReceipt: rec.medicaidNumberAtReceipt ?? null,
+      sexAssignedAtBirth: rec.sexAssignedAtBirth ?? "U",
       referringDxText: rec.referringDxText ?? null,
       icd10TerminalPrimary: rec.primaryDiagnosisIcd10 ?? null,
       source: rec.source ?? "phone",
@@ -1506,6 +1511,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         patientDobAtReceipt: input.patientDobAtReceipt,
         medicareNumberAtReceipt: input.medicareNumberAtReceipt,
         medicaidNumberAtReceipt: input.medicaidNumberAtReceipt,
+        sexAssignedAtBirth: input.sexAssignedAtBirth ?? "U",
         referringDxText: input.referringDxText,
         referrerName: input.referrerName,
         referrerOrganization: input.referrerOrganization,
@@ -1553,12 +1559,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return rec ? referralView(rec) : null;
     },
     async updateReferral(organizationId, id, input, ifVersion) {
-      void input;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (!["received", "under_review", "pending_information"].includes(rec.state)) {
         throw new InvalidReferralStateError(id, rec.state, "update referral information");
       }
+      if (input.sexAssignedAtBirth) rec.sexAssignedAtBirth = input.sexAssignedAtBirth;
       return transition(rec, rec.state, ifVersion);
     },
     async triageReferral(organizationId, id, outcome, ifVersion) {

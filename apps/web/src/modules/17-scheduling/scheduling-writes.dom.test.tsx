@@ -70,6 +70,8 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
+    if (path === "/api/v1/scheduling/eligible-clinicians")
+      return [{ membershipId: MEMBER, displayName: "R. Okonkwo", disciplines: ["rn"], eligible: true, reasonCodes: [] }];
     if (path.endsWith("/admissions")) return { items: admissions };
     if (path.endsWith("/addresses"))
       return { addresses: [{ id: ADDRESS, line1: "14 Elm Row", city: "Aberdeen", kind: "home" }] };
