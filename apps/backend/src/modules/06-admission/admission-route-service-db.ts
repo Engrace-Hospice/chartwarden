@@ -76,6 +76,7 @@ import {
   dischargeRequiresCosign,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
   type AdmissionReadinessResult,
@@ -694,26 +695,24 @@ export function createDbAdmissionRouteService(
         // rows are left where they are — the cascade ends the ACTIVE election, which is what
         // "end_election_period" means.
         const openPeriods = await tx
-          .select({ id: EP.id, status: EP.status })
+          .select({
+            id: EP.id,
+            admissionId: EP.admissionId,
+            sequenceNumber: EP.sequenceNumber,
+            status: EP.status,
+          })
           .from(EP)
           .where(and(eq(EP.admissionId, ctx.admissionId), ne(EP.status, "completed")));
         const endedAt = isoDay(now());
         for (const row of openPeriods) {
-          if ((row.status as ElectionPeriodState) !== "active") continue;
-          transitionElectionPeriod(row.status as ElectionPeriodState, {
-            type: "complete",
-            cause: "discharge",
-            actualEndAt: endedAt,
-          });
-          await tx
-            .update(EP)
-            .set({
-              status: "completed",
-              actualEndAt: endedAt,
-              version: sql`${EP.version} + 1`,
-              updatedAt: now(),
-            })
-            .where(eq(EP.id, row.id));
+          // GAP-025: the shared helper completes the period AND publishes `m6.election.period_ended`
+          // (the transition's own `outbox` effect used to be discarded here, so M23's revalidate
+          // consumer bound to the event never fired). It skips non-active rows itself.
+          await completeActiveElectionPeriod(
+            tx,
+            { outbox, now },
+            { organizationId: ctx.organizationId, period: row, cause: e.cause, endDate: endedAt },
+          );
         }
       }
       // `audit`, `set_timestamp`, `set_flag`, `start_level_of_care` are folded into the aggregate

@@ -18,6 +18,9 @@ import {
 // submit block is the `appeal_within_deadline` ABAC predicate on the server, surfaced here as the chip tone.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { useSession } from "../../shell/session";
+import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { APPEAL_DRAFT_ACTION, AppealDetailPanel } from "./appeal-detail-panel";
 import { APPEAL_OUTCOME_TONE, APPEAL_STATE_TONE, humanize, toneOf } from "./remittance-status";
 
 interface AppealRow {
@@ -56,6 +59,11 @@ export function AppealTracker(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const session = useSession();
+  // Coming back from /step-up: reopen the appeal whose typed narrative was stashed.
+  const [workingId, setWorkingId] = useState<string | null>(() =>
+    findStepUpDraftResourceId(session, APPEAL_DRAFT_ACTION),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -288,6 +296,7 @@ export function AppealTracker(): JSX.Element {
                   <th style={headStyle}>State</th>
                   <th style={headStyle}>Outcome</th>
                   <th style={headStyle}>Filing deadline</th>
+                  <th style={headStyle}>Work</th>
                 </tr>
               </thead>
               <tbody>
@@ -324,6 +333,16 @@ export function AppealTracker(): JSX.Element {
                         </span>
                       )}
                     </td>
+                    <td style={cellStyle}>
+                      <Button
+                        size="sm"
+                        tone="secondary"
+                        aria-label={`Open appeal ${TIER_LABEL[r.tier] ?? humanize(r.tier)}`}
+                        onClick={() => setWorkingId(r.id)}
+                      >
+                        Open
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -342,6 +361,15 @@ export function AppealTracker(): JSX.Element {
             />
           </div>
         )
+      }
+      detail={
+        workingId ? (
+          <AppealDetailPanel
+            appealId={workingId}
+            onClose={() => setWorkingId(null)}
+            onChanged={() => void load()}
+          />
+        ) : null
       }
       fullPageScroll
     />

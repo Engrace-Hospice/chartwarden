@@ -18,6 +18,9 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { BillingTabs } from "../../shell/billing-tabs";
+import { useSession } from "../../shell/session";
+import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { DENIAL_DRAFT_ACTION, DenialDetailPanel } from "./denial-detail-panel";
 import {
   AGING_BUCKET_TONE,
   DENIAL_CATEGORY_TONE,
@@ -52,6 +55,11 @@ export function DenialWorklist(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const session = useSession();
+  // Coming back from /step-up: reopen the case whose typed reason was stashed.
+  const [workingId, setWorkingId] = useState<string | null>(() =>
+    findStepUpDraftResourceId(session, DENIAL_DRAFT_ACTION),
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -268,6 +276,7 @@ export function DenialWorklist(): JSX.Element {
                   <th style={headStyle}>Aging</th>
                   <th style={headNumStyle}>Value</th>
                   <th style={headStyle}>State</th>
+                  <th style={headStyle}>Work</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,6 +306,16 @@ export function DenialWorklist(): JSX.Element {
                         tone={toneOf(DENIAL_STATE_TONE, r.state)}
                       />
                     </td>
+                    <td style={cellStyle}>
+                      <Button
+                        size="sm"
+                        tone="secondary"
+                        aria-label={`Work denial ${r.carcCode}`}
+                        onClick={() => setWorkingId(r.id)}
+                      >
+                        Work
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -315,6 +334,15 @@ export function DenialWorklist(): JSX.Element {
             />
           </div>
         )
+      }
+      detail={
+        workingId ? (
+          <DenialDetailPanel
+            denialId={workingId}
+            onClose={() => setWorkingId(null)}
+            onChanged={() => void load()}
+          />
+        ) : null
       }
       fullPageScroll
     />

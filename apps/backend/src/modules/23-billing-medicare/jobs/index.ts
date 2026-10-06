@@ -43,9 +43,20 @@ export {
   buildM23SubmissionQueuePort,
   buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
+  registerM23DomainWorkers,
+  registerM23PortalHealthWorker,
   registerM23Workers,
   registerM23LaunchWorkers,
+  registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23LaunchJobs,
+  scheduleM23WatchJobs,
   unboundWorkerPort,
 } from "./m23-jobs";
+export {
+  buildClaimValidationRunner,
+  buildM23ValidationRunner,
+  buildM23WorkQueueEnqueuePort,
+  buildNoticeWindowPort,
+  m23WorkerActor,
+} from "./m23-worker-ports";

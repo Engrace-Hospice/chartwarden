@@ -111,7 +111,7 @@ function stringOf(consumer: string, payload: Record<string, unknown>, key: strin
  * inside a closure over its own table constants, and lifting it out is a refactor of the production write
  * path that this change has no reason to make.
  */
-function stateHistoryPort(): StateHistoryPort {
+export function stateHistoryPort(): StateHistoryPort {
   return {
     async insert(tx, row) {
       await (tx as DbClient).insert(HISTORY).values({

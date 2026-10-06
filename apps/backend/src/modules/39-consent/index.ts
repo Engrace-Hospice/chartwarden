@@ -79,6 +79,17 @@ export {
   createDbConsentStore,
 } from "./consent-store-db";
 export { buildM39ConsentRenderConsumer } from "./render-consumer";
+export {
+  M39_PATIENT_DECEASED_CONSUMER_NAME,
+  applyPatientDeceased,
+  buildM39PatientDeceasedConsumer,
+  createDrizzleDeceasedConsentUow,
+  parseDeceasedEvent,
+  planDeceasedExpiry,
+  type DeceasedConsentRow,
+  type DeceasedConsentTx,
+  type DeceasedConsentUnitOfWork,
+} from "./m5-patient-deceased-consumer";
 // F-216 — the §4.9 hourly `m39.consent_expiration` / `m39.expiration_reminder` crons (the producer of
 // `m39.consent.expired` / `.expiring_soon`) + the platform-tenancy registration their fan-out needs.
 export {

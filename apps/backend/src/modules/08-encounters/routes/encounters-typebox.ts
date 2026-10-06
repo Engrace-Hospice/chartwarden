@@ -316,6 +316,20 @@ export const EncounterViewResponseSchema = Type.Object({
       }),
     ),
   ),
+  /** GAP-027 — the encounter's addenda, oldest first (single-read only). */
+  addenda: Type.Optional(
+    Type.Array(
+      Type.Object({
+        id: Type.String(),
+        status: lit(["draft", "finalized", "signed"] as const),
+        reason: Type.String(),
+        authoredByUserId: Type.String(),
+        createdAt: Type.String(),
+        signedAt: Type.Union([Type.String(), Type.Null()]),
+        version: Type.Integer(),
+      }),
+    ),
+  ),
 });
 
 /** The `{ encounters }` envelope the list / queue / my-drafts / signed-since reads return. */

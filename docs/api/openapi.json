@@ -71664,7 +71664,8 @@
                           "agingBucketDays",
                           "agingBucketLabel",
                           "dollarValue",
-                          "taxonomyStatus"
+                          "taxonomyStatus",
+                          "version"
                         ],
                         "properties": {
                           "id": {
@@ -71735,6 +71736,10 @@
                           },
                           "taxonomyStatus": {
                             "type": "string"
+                          },
+                          "version": {
+                            "description": "Row version — send as If-Match on denial transitions",
+                            "type": "integer"
                           }
                         }
                       }
@@ -71801,7 +71806,8 @@
                     "agingBucketDays",
                     "agingBucketLabel",
                     "dollarValue",
-                    "taxonomyStatus"
+                    "taxonomyStatus",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -71872,6 +71878,10 @@
                     },
                     "taxonomyStatus": {
                       "type": "string"
+                    },
+                    "version": {
+                      "description": "Row version — send as If-Match on denial transitions",
+                      "type": "integer"
                     }
                   }
                 }
@@ -78397,7 +78407,9 @@
                 "required": [
                   "retentionClass",
                   "aggregateType",
-                  "title"
+                  "title",
+                  "mimeType",
+                  "contentBase64"
                 ],
                 "properties": {
                   "patientId": {
@@ -78437,9 +78449,160 @@
                     ]
                   },
                   "aggregateType": {
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "const": "election_statement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cti",
+                        "type": "string"
+                      },
+                      {
+                        "const": "f2f",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "revocation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "discharge_summary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nomnc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "abn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_privacy_notice",
+                        "type": "string"
+                      },
+                      {
+                        "const": "code_status_directive",
+                        "type": "string"
+                      },
+                      {
+                        "const": "encounter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "order_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_order",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_administration_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_reconciliation_worksheet",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_medication_list",
+                        "type": "string"
+                      },
+                      {
+                        "const": "comfort_kit_receipt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "supply_bill_of_lading",
+                        "type": "string"
+                      },
+                      {
+                        "const": "comfort_kit_return_receipt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "report_export",
+                        "type": "string"
+                      },
+                      {
+                        "const": "report_schedule_run",
+                        "type": "string"
+                      },
+                      {
+                        "const": "referral",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_patient_packet",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_minutes",
+                        "type": "string"
+                      },
+                      {
+                        "const": "aide_poc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "spiritual_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "volunteer_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "visit_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "evv_verification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_amendment_statement_of_disagreement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "consent_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notice_of_rights",
+                        "type": "string"
+                      },
+                      {
+                        "const": "election_statement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cti",
+                        "type": "string"
+                      },
+                      {
+                        "const": "intake_source",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
                   },
                   "aggregateId": {
                     "format": "uuid",
@@ -78448,6 +78611,39 @@
                   "title": {
                     "minLength": 1,
                     "maxLength": 500,
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "anyOf": [
+                      {
+                        "const": "application/pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/jpeg",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/png",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/tiff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contentBase64": {
+                    "minLength": 4,
+                    "maxLength": 34952536,
+                    "type": "string"
+                  },
+                  "sha256Hex": {
+                    "pattern": "^[0-9a-f]{64}$",
                     "type": "string"
                   },
                   "tags": {
@@ -80243,10 +80439,47 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "mimeType",
+                  "contentBase64"
+                ],
                 "properties": {
                   "title": {
                     "minLength": 1,
                     "maxLength": 500,
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "anyOf": [
+                      {
+                        "const": "application/pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/jpeg",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/png",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/tiff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contentBase64": {
+                    "minLength": 4,
+                    "maxLength": 34952536,
+                    "type": "string"
+                  },
+                  "sha256Hex": {
+                    "pattern": "^[0-9a-f]{64}$",
                     "type": "string"
                   }
                 }
@@ -81477,6 +81710,64 @@
                                 }
                               }
                             }
+                          },
+                          "addenda": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "status",
+                                "reason",
+                                "authoredByUserId",
+                                "createdAt",
+                                "signedAt",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "finalized",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "signed",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "authoredByUserId": {
+                                  "type": "string"
+                                },
+                                "createdAt": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -82000,6 +82291,64 @@
                                 "type": "null"
                               }
                             ]
+                          }
+                        }
+                      }
+                    },
+                    "addenda": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "reason",
+                          "authoredByUserId",
+                          "createdAt",
+                          "signedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "finalized",
+                                "type": "string"
+                              },
+                              {
+                                "const": "signed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "authoredByUserId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
                           }
                         }
                       }
@@ -86040,6 +86389,64 @@
                                 }
                               }
                             }
+                          },
+                          "addenda": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "status",
+                                "reason",
+                                "authoredByUserId",
+                                "createdAt",
+                                "signedAt",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "finalized",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "signed",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "authoredByUserId": {
+                                  "type": "string"
+                                },
+                                "createdAt": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -86372,6 +86779,64 @@
                                       "type": "null"
                                     }
                                   ]
+                                }
+                              }
+                            }
+                          },
+                          "addenda": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "status",
+                                "reason",
+                                "authoredByUserId",
+                                "createdAt",
+                                "signedAt",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "finalized",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "signed",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "authoredByUserId": {
+                                  "type": "string"
+                                },
+                                "createdAt": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
                                 }
                               }
                             }
@@ -112356,6 +112821,64 @@
                                       "type": "null"
                                     }
                                   ]
+                                }
+                              }
+                            }
+                          },
+                          "addenda": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "status",
+                                "reason",
+                                "authoredByUserId",
+                                "createdAt",
+                                "signedAt",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "finalized",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "signed",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "authoredByUserId": {
+                                  "type": "string"
+                                },
+                                "createdAt": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
                                 }
                               }
                             }

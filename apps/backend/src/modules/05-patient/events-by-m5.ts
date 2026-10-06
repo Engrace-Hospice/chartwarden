@@ -146,7 +146,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // (`handleFreeze`), as the already-bound `m6.revocation.created` — to freeze the per-patient
     // extrapolation denominator at death. Real routing logic, now live-bound in
     // `26-cap/consumers/outbox-binding.ts`'s `BOUND_TOPICS`.
-    declaredConsumers: ["m23", "m26", "m29", "m35"],
+    // GAP-110 — m39 ADDED: M39's own spec (§4.6, §7.7 W-CON-07 step 3, job `m39-m5-patient-deceased`) names
+    // this event with a real consumer (`39-consent/m5-patient-deceased-consumer.ts`) that expires the
+    // decedent's active non-survives-death consents (D13) — an outbox push, not a `PatientReader` pull.
+    declaredConsumers: ["m23", "m26", "m29", "m35", "m39"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },

@@ -4,6 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+// `localhost` can resolve to IPv6 `[::1]` first, where another project's dev server may be listening; set
+// VITE_API_PROXY_TARGET=http://127.0.0.1:3000 to pin the proxy to the IPv4 API (e.g. the Docker stack).
+const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3000";
+
 export default defineConfig({
   // Tailwind CSS v4 (architecture v0.11 §"Tailwind CSS v4"): the Vite plugin compiles the
   // `@import "tailwindcss"` entry (src/index.css) and auto-scans the module graph for class usage.
@@ -12,8 +16,8 @@ export default defineConfig({
     port: 5173,
     // Dev proxy: same-origin API calls (createApiClient baseUrl "") hit the Fastify backend.
     proxy: {
-      "/api": { target: "http://localhost:3000", changeOrigin: true },
-      "/webhooks": { target: "http://localhost:3000", changeOrigin: true },
+      "/api": { target: API_PROXY_TARGET, changeOrigin: true },
+      "/webhooks": { target: API_PROXY_TARGET, changeOrigin: true },
     },
   },
   // Output under dist/ (already git-ignored); tsc -b emits the type graph into dist/ alongside.

@@ -11,10 +11,11 @@ import {
 } from "@wardenx/ui";
 // apps/web/src/modules/27-cost-report — the COST REPORT WORKSPACE (R2, §5.1 cost-report workbench). Pick a
 // report → its lifecycle state, the filing-deadline countdown, the latest validation roll-up, and the
-// realigned Form CMS-1984-14 worksheet navigation (A → B/B-1 → C per-diem; no D/E-1/G/H). Read-only nav
-// surface — the server is the only authz point (ADR-0030). Lantern: WorkQueueLayout + worksheet grid.
+// realigned Form CMS-1984-14 worksheet navigation (A → B/B-1 → C per-diem; no D/E-1/G/H). Nav surface plus the
+// GAP-082 write actions (cost-report-actions.tsx) — the server is the only authz point (ADR-0030). Lantern: WorkQueueLayout + worksheet grid.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { CostReportActions } from "./cost-report-actions";
 import {
   ReportPicker,
   cellStyle,
@@ -44,6 +45,7 @@ interface Detail {
     closedAt: string | null;
   } | null;
   latestValidation: {
+    validationId?: string;
     status: string;
     passedCount: number;
     failedCount: number;
@@ -207,6 +209,16 @@ export function CostReportWorkspace(): JSX.Element {
               <Glyph name="alert" size={16} />
               <span>{pickErr ? "Cost reports could not be loaded." : detailError}</span>
             </div>
+          ) : null}
+          {selectedId && detail ? (
+            <CostReportActions
+              report={{
+                id: selectedId,
+                state: detail.state,
+                latestValidationId: detail.latestValidation?.validationId,
+              }}
+              onChanged={() => void load()}
+            />
           ) : null}
           <div style={filterRowStyle}>
             <ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />

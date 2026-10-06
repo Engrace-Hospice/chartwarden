@@ -260,6 +260,12 @@ afterEach(() => {
   resetAbacRegistry();
 });
 
+/** GAP-068 — the bytes every upload now carries (a tiny PDF; the in-memory backend ignores them). */
+const UPLOAD_CONTENT = {
+  mimeType: "application/pdf",
+  contentBase64: Buffer.from("%PDF-1.7 route test").toString("base64"),
+} as const;
+
 describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
   it("DELETE /document-uploads/:id returns an idempotency-safe abort body", async () => {
     const uploadId = "b6032e5c-c3c6-4d6c-8ece-452b39b29733";
@@ -301,8 +307,9 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/documents",
-      headers: RN,
+      headers: { ...RN, "idempotency-key": "gap068-up-1" },
       payload: {
+        ...UPLOAD_CONTENT,
         retentionClass: "clinical_record",
         aggregateType: "encounter",
         title: "Visit note",
@@ -312,6 +319,30 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("active");
     expect(res.json().id).toMatch(/^c0000000-/);
+  });
+
+  it("POST /documents and /documents/:id/versions require an Idempotency-Key (GAP-068 follow-up)", async () => {
+    const { app } = makeServer();
+    const body = {
+      ...UPLOAD_CONTENT,
+      retentionClass: "clinical_record",
+      aggregateType: "encounter",
+      title: "x",
+    };
+    const noKey = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: RN,
+      payload: body,
+    });
+    expect(noKey.statusCode).toBe(400);
+    const versionNoKey = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents/c0000000-0000-4000-8000-000000000001/versions",
+      headers: RN,
+      payload: { ...UPLOAD_CONTENT },
+    });
+    expect(versionNoKey.statusCode).toBe(400);
   });
 
   it("403 when the caller lacks documents.upload", async () => {
@@ -338,8 +369,9 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/documents",
-      headers: RN,
+      headers: { ...RN, "idempotency-key": "gap068-up-3" },
       payload: {
+        ...UPLOAD_CONTENT,
         retentionClass: "clinical_record",
         aggregateType: "encounter",
         title: "Visit note",
@@ -760,6 +792,7 @@ describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
         url: "/api/v1/documents",
         headers: { ...RN, "idempotency-key": `pg-${i}` },
         payload: {
+          ...UPLOAD_CONTENT,
           retentionClass: "clinical_record",
           aggregateType: "encounter",
           title: `doc ${i}`,
@@ -966,8 +999,9 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/documents",
-      headers: RN,
+      headers: { ...RN, "idempotency-key": "gap068-up-4" },
       payload: {
+        ...UPLOAD_CONTENT,
         retentionClass: "clinical_record",
         aggregateType: "encounter",
         title: "Born with tags",
@@ -1006,8 +1040,9 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
     const tagged = await app.inject({
       method: "POST",
       url: "/api/v1/documents",
-      headers: RN,
+      headers: { ...RN, "idempotency-key": "gap068-up-5" },
       payload: {
+        ...UPLOAD_CONTENT,
         retentionClass: "clinical_record",
         aggregateType: "encounter",
         title: "Findable by tag",
@@ -1018,8 +1053,9 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
     await app.inject({
       method: "POST",
       url: "/api/v1/documents",
-      headers: RN,
+      headers: { ...RN, "idempotency-key": "gap068-up-6" },
       payload: {
+        ...UPLOAD_CONTENT,
         retentionClass: "clinical_record",
         aggregateType: "encounter",
         title: "Same key, other value",

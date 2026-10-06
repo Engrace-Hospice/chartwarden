@@ -121,6 +121,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       // renewal flow: `renew` leaves the prior record active until its expires_at passes). M5's privacy
       // snapshot consumer keeps the flag lifted in that case instead of re-restricting SUD.
       remainingActiveConsentRecordId: Type.Optional(Type.String()),
+      // GAP-110 — set to `patient_deceased_consent_terminated` when the D13 post-death cascade (the
+      // `m5.patient.deceased` consumer) flipped the row, so a reader can tell a death from a lapse.
+      expiredReason: Type.Optional(Type.String()),
     }),
     // F-176 (#248) — m22 REMOVED: M22 keeps no signed-URL/subsetter state a push could act on (the real control gap is a
     // consent re-check at URL mint, in M22's mint path).

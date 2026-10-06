@@ -139,7 +139,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // subscribing to this outbox event. m10 REMOVED: M10's own spec (line 9, and its own re-lock note
     // explicitly correcting the dep direction) is equally decisive the relationship is M8 → M10 (M8
     // calls M10's `recordHopeTimepoint` API), never a push M10 would consume.
-    declaredConsumers: ["m14", "m17", "m18", "m22", "m24", "m31", "m36"],
+    // GAP-058 — m19 ADDED: M19's own D8 / §2.2.1 name this event as THE trigger that advances a triage call
+    // `documented_pending_encounter → documented`; the consumer is `19-oncall/consumers/
+    // m8-encounter-signed.ts` (a decider since M19-T05, bound by GAP-058).
+    declaredConsumers: ["m14", "m17", "m18", "m19", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },

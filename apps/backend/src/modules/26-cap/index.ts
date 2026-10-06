@@ -43,7 +43,11 @@ export { mountM26Routes } from "./routes/mount";
 // §4.3 — the six published-seam implementations + the M1 SeamRegistry registration. `CapAccrualReader` is
 // registered live (the M27 cost-report cap bind); the others stay outbox-reachable until their consumers wire.
 export { type M26SeamImpls, buildM26SeamImpls } from "./seam-impls";
-export { registerM26PublishedSeams } from "./wiring";
+export {
+  M26_PLATFORM_JOB_ID,
+  registerM26PublishedSeams,
+  wireM26Tenancy,
+} from "./wiring";
 
 // §3.7 / D14 — the M4 destruction-registry `cap` eraser (per-patient redact-to-sentinel retaining aggregates;
 // + the tenant-offboarding destruction entry). Registered over the Phase-0 deny-stub by the composition root.

@@ -341,6 +341,10 @@ describe.skipIf(!DB_URL)(
     it("a full-payment 835 advances ACK_ACCEPTED -> PAID, records history, and emits m24.medicaid_claim.paid in CENTS", async () => {
       skips.length = 0;
       await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+        patientId: null,
+        paidAmountCents: 123456,
+        serviceFrom: null,
+        serviceTo: null,
         claimId: CLAIM.paid,
         remittanceLineId: "00000000-0000-0000-0000-0000000f71e1",
         remittanceAdviceId: ADVICE,
@@ -400,6 +404,10 @@ describe.skipIf(!DB_URL)(
     it("a second 835 line posting the same outcome is a settled skip, not a retry storm", async () => {
       skips.length = 0;
       await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+        patientId: null,
+        paidAmountCents: 1000,
+        serviceFrom: null,
+        serviceTo: null,
         claimId: CLAIM.redelivered,
         remittanceLineId: "00000000-0000-0000-0000-0000000f71e3",
         remittanceAdviceId: ADVICE,
@@ -418,6 +426,10 @@ describe.skipIf(!DB_URL)(
     it("an 835 against a claim the transition is not legal from is skipped with its own reason", async () => {
       skips.length = 0;
       await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+        patientId: null,
+        paidAmountCents: 1000,
+        serviceFrom: null,
+        serviceTo: null,
         claimId: CLAIM.notLegal,
         remittanceLineId: "00000000-0000-0000-0000-0000000f71e4",
         remittanceAdviceId: ADVICE,
@@ -435,6 +447,10 @@ describe.skipIf(!DB_URL)(
     it("cannot pay another tenant's claim — the consumer runs under the EVENT's org (RLS)", async () => {
       skips.length = 0;
       await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+        patientId: null,
+        paidAmountCents: 1000,
+        serviceFrom: null,
+        serviceTo: null,
         claimId: CLAIM.crossTenant,
         remittanceLineId: "00000000-0000-0000-0000-0000000f71e5",
         remittanceAdviceId: ADVICE,

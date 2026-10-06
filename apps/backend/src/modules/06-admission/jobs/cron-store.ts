@@ -9,7 +9,7 @@
 // - election_period is joined to recover the owning admission
 
 import { type DbClient, schema } from "@wardenx/db";
-import { and, eq, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, ne, notInArray } from "drizzle-orm";
 import { addCalendarDays } from "../certification/window-math";
 
 const F2F = schema.faceToFaceEncounters;
@@ -231,4 +231,50 @@ export interface F2fWindowMissedCandidateRow {
   readonly periodStartDate: string;
   readonly attested: boolean;
   readonly alreadyFlagged: boolean;
+}
+
+export interface PeriodPastEndRow {
+  readonly id: string;
+  readonly admissionId: string;
+  readonly sequenceNumber: number;
+  readonly status: string;
+  /** The period's last covered day (`YYYY-MM-DD`, inclusive) — the event's `endDate`. */
+  readonly scheduledEndAt: string;
+}
+
+/** Bound on one tick's batch; the next hourly tick drains the remainder. */
+const PERIOD_AUTO_END_BATCH = 500;
+
+/**
+ * ACTIVE benefit periods whose last covered day is strictly before `today` (org-local `YYYY-MM-DD`).
+ * `scheduled_end_at` is the INCLUSIVE last day (state-machines/election-period.ts), so a period is over
+ * once `today` is past it. Oldest first so a backlog drains in order.
+ */
+export async function activePeriodsPastEndForOrg(
+  tx: DbClient,
+  organizationId: string,
+  today: string,
+): Promise<PeriodPastEndRow[]> {
+  const rows = await tx
+    .select({
+      id: EP.id,
+      admissionId: EP.admissionId,
+      sequenceNumber: EP.sequenceNumber,
+      status: EP.status,
+      scheduledEndAt: EP.scheduledEndAt,
+    })
+    .from(EP)
+    .where(
+      and(
+        eq(EP.organizationId, organizationId),
+        eq(EP.status, "active"),
+        isNotNull(EP.scheduledEndAt),
+        lt(EP.scheduledEndAt, today),
+      ),
+    )
+    .orderBy(EP.scheduledEndAt)
+    .limit(PERIOD_AUTO_END_BATCH);
+  return rows.flatMap((r) =>
+    r.scheduledEndAt === null ? [] : [{ ...r, scheduledEndAt: r.scheduledEndAt }],
+  );
 }

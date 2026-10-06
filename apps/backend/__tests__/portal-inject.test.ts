@@ -88,7 +88,7 @@ import type {
   TelehealthVisitDigest,
 } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import {
@@ -2255,6 +2255,48 @@ describe("M31 GAP-093 — stop-recording is starter-only", () => {
       payload: {},
     });
     expect(assigned.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe("M31 — ending a recording drops recording_requested with recording_enabled", () => {
+  // The DB CHECK telehealth_visit_recording_requires_enabled refuses `requested` without `enabled`; the
+  // in-memory store cannot enforce it, so pin the patch the routes send.
+  it("stop-recording patches recordingEnabled:false AND recordingRequested:false", async () => {
+    const { app, backend } = makeServer({ staffCaseload: { staff_user: [PATIENT] } });
+    const spy = vi.spyOn(backend.store, "updateTelehealthLifecycle");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/stop-recording`,
+      headers: { ...STAFF, ...IDEMP("k-rr-stop") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith(
+      ORG,
+      expect.anything(),
+      VISIT_ROOM_MINTED,
+      expect.objectContaining({ recordingEnabled: false, recordingRequested: false }),
+    );
+    await app.close();
+  });
+
+  it("admin halt-recording patches recordingEnabled:false AND recordingRequested:false", async () => {
+    const { app, backend } = makeServer();
+    const spy = vi.spyOn(backend.store, "updateTelehealthLifecycle");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/visits/${VISIT_ROOM_MINTED}/halt-recording`,
+      headers: { ...STAFF, ...IDEMP("k-rr-halt") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith(
+      ORG,
+      expect.anything(),
+      VISIT_ROOM_MINTED,
+      expect.objectContaining({ recordingEnabled: false, recordingRequested: false }),
+    );
     await app.close();
   });
 });

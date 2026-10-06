@@ -3106,6 +3106,16 @@
     justify-self: end;
     margin-top: 0.25rem;
   }
+  .wx-cost-actions {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .wx-cost-actions-row {
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
   .wx-action-list {
     list-style: none;
     margin: 0;
@@ -3625,6 +3635,45 @@
     color: var(--color-on-primary);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
   }
+  /* M25/M27 write surfaces (denial/appeal rail, match + cost-report modals): flat stacked body. */
+  .wx-drawer-head > h2 {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-kv > div {
+    display: contents;
+  }
+  .wx-action-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding: 0 1.125rem 1.125rem;
+  }
+  .wx-action-body.is-modal {
+    padding: 1.5rem;
+  }
+  .wx-action-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-action-hint {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-action-list {
+    padding-left: 1.1rem;
+  }
+  .wx-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .wx-action-row.is-end {
+    justify-content: flex-end;
+  }
   .wx-kv {
     display: grid;
     grid-template-columns: 8.5rem minmax(0, 1fr);
@@ -3689,6 +3738,17 @@
     }
     .wx-admission-drawer {
       position: static;
+    }
+  }
+  /* A work-queue row panel built on the admission drawer stacks under the table instead of
+     overlapping it when the 24rem rail no longer fits. */
+  @media (max-width: 1100px) {
+    .wx-work-split:has(> .wx-context-rail > .wx-admission-drawer) {
+      flex-direction: column;
+    }
+    .wx-work-split:has(> .wx-context-rail > .wx-admission-drawer) > .wx-context-rail {
+      max-width: none !important;
+      width: 100%;
     }
   }
 

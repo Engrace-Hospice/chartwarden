@@ -162,13 +162,24 @@ export const VerifiedUploadParamsSchema = Type.Object({
 });
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────
+// GAP-068 — the bytes of a single-request upload: base64 of at most 25 MiB (4/3 expansion + padding).
+const MAX_UPLOAD_BASE64_CHARS = Math.ceil((25 * 1024 * 1024) / 3) * 4;
+/** The route-level body limit for the two upload routes (base64 payload + JSON envelope headroom). */
+export const UPLOAD_BODY_LIMIT_BYTES = MAX_UPLOAD_BASE64_CHARS + 64 * 1024;
+const UploadContentFields = {
+  mimeType: lit(VERIFIED_UPLOAD_MIME_TYPE),
+  contentBase64: Type.String({ minLength: 4, maxLength: MAX_UPLOAD_BASE64_CHARS }),
+  /** Optional declared digest; the server always recomputes and refuses a mismatch. */
+  sha256Hex: Type.Optional(Type.String({ pattern: "^[0-9a-f]{64}$" })),
+};
 export const UploadDocumentRequest = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
   admissionId: Type.Optional(Type.String({ format: "uuid" })),
   retentionClass: lit(RETENTION_CLASS),
-  aggregateType: Type.String({ minLength: 1, maxLength: 64 }),
+  aggregateType: lit(DOCUMENT_AGGREGATE_TYPE),
   aggregateId: Type.Optional(Type.String({ format: "uuid" })),
   title: Type.String({ minLength: 1, maxLength: 500 }),
+  ...UploadContentFields,
   tags: Type.Optional(
     Type.Array(
       Type.Object({
@@ -184,6 +195,7 @@ export const UploadDocumentRequest = Type.Object({
 
 export const UploadVersionRequest = Type.Object({
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+  ...UploadContentFields,
 });
 
 export const InitiateVerifiedUploadRequest = Type.Object({

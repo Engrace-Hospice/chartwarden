@@ -1,0 +1,137 @@
+// apps/backend/src/modules/23-billing-medicare/services/claim-validation-context-port.ts
+//
+// The production `ValidationContextPort` (GAP-070): re-materialises the §11.A `ValidationContext` for an
+// EXISTING claim, so the `validation-run` worker can actually run the rule library. Before this the port was a
+// fail-closed stub, so no validation could ever complete.
+//
+// It reads through the SAME seam readers and the SAME derivations as the assembly (`readAssemblyFacts`,
+// `computeClaimHipps`, `computeClaimSia`, `assembleValidationContext`) — never a parallel copy — and takes the
+// claim's own persisted lines. A fact that changed since assembly (a level-of-care change, a revoked election,
+// a new rate) therefore shows up as a failing rule instead of being masked by stale persisted numbers. Two
+// facts the assembly deliberately leaves null are real here: the latest resolved HETS eligibility check and the
+// admission's NOE row.
+import { type IsoDate, repositories } from "@wardenx/billing";
+import type { ClaimAssemblySeams } from "./claim-assembly";
+import { computeClaimHipps, computeClaimSia, readAssemblyFacts } from "./claim-assembly-facts";
+import type { BillingTx, BillingWriteActor } from "./claim-state-service";
+import type {
+  MaterializedValidationInputs,
+  ValidationContextPort,
+} from "./claim-validation-service";
+import { assembleValidationContext } from "./validation-context";
+
+const MS_PER_DAY = 86_400_000;
+const INTERIM_TOBS: ReadonlySet<string> = new Set(["811", "812", "813", "814"]);
+/** Claim states a successor claim is NOT continuous with (mirrors the assembly's `NON_SUPERSEDED`). */
+const NON_CONTINUOUS_STATES: ReadonlySet<string> = new Set(["voided", "replaced", "ack_rejected"]);
+
+const wholeDaysBetween = (from: Date, to: Date): number =>
+  Math.max(0, Math.floor((to.getTime() - from.getTime()) / MS_PER_DAY));
+
+const isoDayOf = (d: Date): IsoDate => d.toISOString().slice(0, 10);
+
+export interface ClaimValidationContextPortDeps {
+  /** The same reader-seam bundle the claim assembly runs over. */
+  readonly seams: ClaimAssemblySeams;
+  /** True only when a HETS eligibility path is live; false → the eligibility rule skips (never fails). */
+  readonly eligibilityBound: boolean;
+  readonly now?: () => Date;
+}
+
+export function buildClaimValidationContextPort(
+  deps: ClaimValidationContextPortDeps,
+): ValidationContextPort {
+  const now = deps.now ?? (() => new Date());
+
+  return {
+    async build(
+      tx: BillingTx,
+      actor: BillingWriteActor,
+      claim: repositories.ClaimRecord,
+    ): Promise<MaterializedValidationInputs> {
+      const orgId = actor.organizationId;
+      const facts = await readAssemblyFacts(deps.seams, orgId, {
+        providerEntityId: claim.providerEntityId,
+        patientId: claim.patientId,
+        serviceFrom: claim.serviceFrom,
+        serviceTo: claim.serviceTo,
+      });
+      const lines = await new repositories.ClaimLineRepository(tx).listForClaim(claim.id);
+      const hipps = computeClaimHipps(facts, {
+        serviceFrom: claim.serviceFrom,
+        serviceTo: claim.serviceTo,
+      });
+      const sia = await computeClaimSia(deps.seams, facts);
+
+      // Prior-claim continuity for the admission, EXCLUDING the claim under validation.
+      const patientClaims = await new repositories.ClaimRepository(tx).listByOrgPage(
+        orgId,
+        { providerEntityId: claim.providerEntityId, patientId: claim.patientId },
+        undefined,
+        repositories.MAX_PAGE_SIZE,
+      );
+      const priorClaim = patientClaims.items
+        .filter(
+          (c) =>
+            c.id !== claim.id &&
+            c.admissionId === facts.admission.admissionId &&
+            !NON_CONTINUOUS_STATES.has(c.state) &&
+            INTERIM_TOBS.has(c.tob) &&
+            c.serviceTo < claim.serviceFrom,
+        )
+        .sort((a, b) => (a.serviceTo < b.serviceTo ? 1 : a.serviceTo > b.serviceTo ? -1 : 0))[0];
+
+      const asOf = now();
+      const latestEligibility = deps.eligibilityBound
+        ? await new repositories.EligibilityCheckRepository(tx).findLatestResolvedForPatient(
+            orgId,
+            claim.patientId,
+          )
+        : null;
+      const noeRow = await new repositories.NoeRepository(tx).findActiveByAdmission(
+        facts.admission.admissionId,
+      );
+
+      const context = assembleValidationContext({
+        orgId,
+        facts,
+        claim: {
+          claimId: claim.id,
+          providerEntityId: claim.providerEntityId,
+          patientId: claim.patientId,
+          tob: claim.tob,
+          serviceFrom: claim.serviceFrom,
+          serviceTo: claim.serviceTo,
+          replacesClaimId: claim.replacesClaimId ?? null,
+          totalChargeCents: claim.totalChargeCents,
+          priorClaimTob: priorClaim?.tob ?? null,
+          priorClaimServiceTo: priorClaim?.serviceTo ?? null,
+        },
+        lines,
+        hipps,
+        siaQualifyingVisitCount: sia?.qualifyingVisits.length ?? 0,
+        siaCents: sia?.siaAddOnCents ?? 0,
+        eligibility: latestEligibility
+          ? {
+              outcome: latestEligibility.outcome,
+              checkedAt: latestEligibility.checkedAt.toISOString(),
+              asOfDate: latestEligibility.asOfServiceDate,
+              ageDays: wholeDaysBetween(latestEligibility.checkedAt, asOf),
+            }
+          : null,
+        noe: noeRow
+          ? {
+              state: noeRow.state,
+              admissionDay: wholeDaysBetween(
+                new Date(`${facts.admission.hospiceAdmissionDate}T00:00:00.000Z`),
+                new Date(`${isoDayOf(asOf)}T00:00:00.000Z`),
+              ),
+              windowBreached: noeRow.windowBreachedAt !== null,
+            }
+          : null,
+        eligibilityBound: deps.eligibilityBound,
+      });
+      return { context };
+    },
+  };
+}

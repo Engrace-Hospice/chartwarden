@@ -18,6 +18,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import type { AddendumRow } from "./addenda-api";
+import { AddendaPanel } from "./addendum-panel";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -44,6 +46,7 @@ interface Encounter {
   vitals: Record<string, unknown> | null;
   mileage: Record<string, unknown> | null;
   carePlanLinks: CarePlanLink[];
+  addenda: AddendumRow[];
 }
 
 interface PatientSummary {
@@ -381,6 +384,7 @@ export function EncounterRead(): JSX.Element {
             carePlanLinks?: CarePlanLink[];
           }
         ).carePlanLinks ?? [],
+      addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
     });
 
     const pid = patientId ?? data.patientId;
@@ -1834,6 +1838,27 @@ export function EncounterRead(): JSX.Element {
                   ) : null}
                 </div>
               </div>
+
+              {e.addenda.length > 0 || e.status === "signed" || e.status === "cosigned" ? (
+                <div style={railCard}>
+                  <div style={railHeading}>
+                    <div style={railIconBox}>
+                      <Glyph name="pencil" size={16} />
+                    </div>
+
+                    <div>
+                      <h2 style={railTitle}>Addenda</h2>
+                      <p style={railDescription}>Post-signature corrections</p>
+                    </div>
+                  </div>
+
+                  <AddendaPanel
+                    encounterId={e.id}
+                    addenda={e.addenda}
+                    onChanged={() => void load()}
+                  />
+                </div>
+              ) : null}
 
               {/* ─────────────────────────────────────────────────────────
       SIGN-OFF

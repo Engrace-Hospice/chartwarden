@@ -21,6 +21,20 @@ const str = Type.String();
 // future producer can pass the Drizzle `numeric` row value straight through (PARAM-003).
 const money = Type.String({ description: "Decimal string — never a float" });
 
+// GAP-075 — the per-claim accrual facts M26's cap ledger records from a paid / partially-paid line (its
+// `handleRemittancePosted`). The advice-level `advice_posted` event carries none of them (no patient, no
+// per-claim amount), so M26 binds the per-line posting events instead. `patientId` resolves through the
+// payer-routed M23/M24 claim-match seam at emit time and is honestly `null` when unresolvable (never
+// fabricated); `serviceFrom`/`serviceTo` are the 835's own optional DTM dates, `null` when the payer omits
+// them (M26 refuses such a line rather than invent a service period). Cents are integer, computed from the
+// parsed amount — never a dollars-string conversion on the consumer side.
+const capAccrualFacts = {
+  patientId: Type.Union([id, Type.Null()]),
+  paidAmountCents: Type.Integer(),
+  serviceFrom: Type.Union([str, Type.Null()]),
+  serviceTo: Type.Union([str, Type.Null()]),
+};
+
 export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── 835 ingestion (the M25-owned pull → parse → post pipeline, §1.1 / §2.2) ────────────────────────
   {
@@ -70,7 +84,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       unmatchedLineCount: Type.Integer(),
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m26"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -93,6 +107,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceLineId: id,
       remittanceAdviceId: id,
       paidAmount: money,
+      ...capAccrualFacts,
       postedAt: isoInstant,
     }),
     // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event
@@ -101,7 +116,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     // (`would-defer-a-bound-event`) that assumed adding a second declared consumer would interrupt M23's
     // live delivery — `buildOutboxRoutingPlan` delivers to every BOUND consumer regardless of what else
     // is declared (verified directly against `outbox-dispatcher.ts`, the F-139/m31 precedent).
-    declaredConsumers: ["m23", "m24"],
+    declaredConsumers: ["m23", "m24", "m26"],
     isOutboxOnly: true,
   },
   {
@@ -114,9 +129,10 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       paidAmount: money,
       adjustedAmount: money,
+      ...capAccrualFacts,
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    declaredConsumers: ["m23", "m26"],
     isOutboxOnly: true,
   },
   {

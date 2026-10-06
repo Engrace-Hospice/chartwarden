@@ -231,6 +231,10 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
 
   it("a full-payment 835 advances ACK_ACCEPTED → PAID and records the advice on the history row", async () => {
     await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+      patientId: null,
+      paidAmountCents: 123456,
+      serviceFrom: null,
+      serviceTo: null,
       claimId: CLAIM.paid,
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e1",
       remittanceAdviceId: ADVICE,
@@ -275,6 +279,10 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
 
   it("a partial payment lands in PARTIAL_PAID and announces adjudicated(partial_paid) — never claim.paid", async () => {
     await postAndDrain(ORG_A, "m25.remittance.claim_partial_paid", {
+      patientId: null,
+      paidAmountCents: 40000,
+      serviceFrom: null,
+      serviceTo: null,
       claimId: CLAIM.partial,
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e2",
       remittanceAdviceId: ADVICE,
@@ -345,6 +353,10 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
   it("a second 835 line posting the same outcome is a settled skip, not a retry storm", async () => {
     skips.length = 0;
     await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+      patientId: null,
+      paidAmountCents: 1000,
+      serviceFrom: null,
+      serviceTo: null,
       claimId: CLAIM.redelivered,
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e5",
       remittanceAdviceId: ADVICE,
@@ -366,6 +378,10 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
   it("an 835 against a claim the transition is not legal from is skipped with its own reason", async () => {
     skips.length = 0;
     await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+      patientId: null,
+      paidAmountCents: 1000,
+      serviceFrom: null,
+      serviceTo: null,
       claimId: CLAIM.notLegal,
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e6",
       remittanceAdviceId: ADVICE,
@@ -381,6 +397,10 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
     skips.length = 0;
     // ORG_A's event naming ORG_B's claim: the consumer's read is org-scoped, so the row is invisible.
     await postAndDrain(ORG_A, "m25.remittance.claim_paid", {
+      patientId: null,
+      paidAmountCents: 1000,
+      serviceFrom: null,
+      serviceTo: null,
       claimId: CLAIM.crossTenant,
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e7",
       remittanceAdviceId: ADVICE,
