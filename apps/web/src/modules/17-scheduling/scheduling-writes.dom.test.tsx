@@ -28,6 +28,7 @@ const PROPOSAL = "dddddddd-4444-4444-8444-dddddddddddd";
 const TIMEOFF = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
 const ADDRESS = "ffffffff-6666-4666-8666-ffffffffffff";
 const MEMBER = "99999999-7777-4777-8777-999999999999";
+const OTHER_MEMBER = "88888888-7777-4777-8777-888888888888";
 
 let admissions: Record<string, unknown>[] = [
   { id: ADMISSION, state: "active", admissionAt: "2026-08-01T00:00:00.000Z", dischargedAt: null },
@@ -71,7 +72,30 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
     if (path === "/api/v1/scheduling/eligible-clinicians")
-      return [{ membershipId: MEMBER, displayName: "R. Okonkwo", disciplines: ["rn"], eligible: true, reasonCodes: [] }];
+      return [
+        {
+          membershipId: MEMBER,
+          displayName: "R. Okonkwo",
+          disciplines: ["rn"],
+          eligible: true,
+          reasonCodes: [],
+        },
+        {
+          membershipId: OTHER_MEMBER,
+          displayName: "S. Patel",
+          disciplines: ["rn"],
+          eligible: true,
+          reasonCodes: [],
+        },
+        {
+          // The server's D8 projection says no — the picker must not offer this clinician.
+          membershipId: "ineligible-1",
+          displayName: "Former Staff",
+          disciplines: ["chha"],
+          eligible: false,
+          reasonCodes: ["CLINICIAN_DISCIPLINE_NOT_ALLOWED"],
+        },
+      ];
     if (path.endsWith("/admissions")) return { items: admissions };
     if (path.endsWith("/addresses"))
       return { addresses: [{ id: ADDRESS, line1: "14 Elm Row", city: "Aberdeen", kind: "home" }] };
@@ -239,8 +263,10 @@ afterEach(() => {
 });
 
 // The create flow is main's `NewVisitModal` (scheduling-workflow.tsx), opened from the scheduling nav.
-// Patient, admission and clinician are typeahead comboboxes; the admission lookup is PATIENT-scoped
-// (F-066 / #161) and filtered to active admissions client-side.
+// Patient and admission are typeahead comboboxes; the admission lookup is PATIENT-scoped (F-066 /
+// #161) and filtered to active admissions client-side. The assignee is a <select> fed by the server's
+// advisory D8 projection (GET /scheduling/eligible-clinicians), offered once a patient and a valid
+// window are chosen; POST /visits still runs every gate.
 async function openNewVisit(): Promise<HTMLElement> {
   mountDay();
   fireEvent.click(await screen.findByRole("button", { name: "New Visit" }));
@@ -252,8 +278,19 @@ async function choose(dialog: HTMLElement, field: RegExp, option: string | RegEx
   fireEvent.click(await within(dialog).findByText(option));
 }
 
+// `^patient` alone would also match the "Patient address" <select> (implicit role combobox).
+const PATIENT_FIELD = /^patient(?! address)/i;
+
+async function chooseClinician(dialog: HTMLElement, label: RegExp, membershipId: string) {
+  const select = within(dialog).getByLabelText(label) as HTMLSelectElement;
+  await waitFor(() =>
+    expect([...select.options].some((option) => option.value === membershipId)).toBe(true),
+  );
+  fireEvent.change(select, { target: { value: membershipId } });
+}
+
 async function choosePatient(dialog: HTMLElement): Promise<void> {
-  await choose(dialog, /^patient/i, "Vance, Ada");
+  await choose(dialog, PATIENT_FIELD, "Vance, Ada");
   await waitFor(() =>
     expect(
       (within(dialog).getByRole("combobox", { name: /active admission/i }) as HTMLInputElement)
@@ -265,13 +302,13 @@ async function choosePatient(dialog: HTMLElement): Promise<void> {
 async function fillValidVisit(dialog: HTMLElement): Promise<void> {
   await choosePatient(dialog);
   await choose(dialog, /active admission/i, "Admitted 2026-08-01");
-  await choose(dialog, /assigned clinician/i, "R. Okonkwo");
   fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
     target: { value: "2026-08-28T09:00" },
   });
   fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
     target: { value: "2026-08-28T10:00" },
   });
+  await chooseClinician(dialog, /assigned clinician/i, MEMBER);
 }
 
 describe("#91 — a visit can be scheduled", () => {
@@ -339,13 +376,20 @@ describe("#91 — a visit can be scheduled", () => {
     expect(typeof bodies[0]?.scheduledStartedAt).toBe("string");
   });
 
-  it("the assignee picker offers the ACTIVE roster and nothing else", async () => {
-    // Not an eligibility list — the §4.7 D8 gate is the server's, and filtering by discipline here
-    // would be a second implementation of it. But a REVOKED membership is not a person to assign to.
+  it("the assignee picker offers the server's ELIGIBLE clinicians and nothing else", async () => {
+    // The eligibility comes from the server's own D8 projection — the browser does not re-derive the
+    // discipline/licence rule, it only hides what the server already said no to.
     const dialog = await openNewVisit();
-    fireEvent.focus(within(dialog).getByRole("combobox", { name: /assigned clinician/i }));
-    expect(await within(dialog).findByText("R. Okonkwo")).toBeTruthy();
-    expect(within(dialog).queryByText("Former Staff")).toBeNull();
+    await choosePatient(dialog);
+    fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
+      target: { value: "2026-08-28T09:00" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
+      target: { value: "2026-08-28T10:00" },
+    });
+    expect(await within(dialog).findByText(/R\. Okonkwo/)).toBeTruthy();
+    expect(calls).toContain("GET /api/v1/scheduling/eligible-clinicians");
+    expect(within(dialog).queryByText(/Former Staff/)).toBeNull();
   });
 
   it("a D8 pre-schedule refusal names the discipline or licence, not a generic error", async () => {
@@ -385,9 +429,15 @@ describe("#91 — the per-visit ceremonies", () => {
     fireEvent.change(within(dialog).getByLabelText("New end"), {
       target: { value: "2026-08-29T10:00" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+    fireEvent.change(within(dialog).getByLabelText(/reason for rescheduling/i), {
       target: { value: "Patient has a hospital appointment." },
     });
+    // The current assignee is kept once the server's D8 projection says they are still eligible.
+    await waitFor(() =>
+      expect((within(dialog).getByLabelText(/^clinician/i) as HTMLSelectElement).value).toBe(
+        MEMBER,
+      ),
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/visits/${VISIT}/reschedule`));
     expect(bodies[0]?.reason).toBe("Patient has a hospital appointment.");
@@ -397,7 +447,7 @@ describe("#91 — the per-visit ceremonies", () => {
 
   it("Cancel sends a coded reason — the §5.1 metrics count the code, not the prose", async () => {
     const dialog = await openAction("Cancel");
-    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+    fireEvent.change(within(dialog).getByLabelText(/reason for cancellation/i), {
       target: { value: "Patient asked to skip this week." },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
@@ -423,7 +473,8 @@ describe("#91 — the per-visit ceremonies", () => {
       body: { error: { code: "FORBIDDEN", message: "PRE_SCHEDULE_GATE_FAILED" } },
     };
     const dialog = await openAction("Reassign");
-    await choose(dialog, /new clinician/i, "R. Okonkwo");
+    // The visit's current assignee (R. Okonkwo) is not offered as its own reassignment target.
+    await chooseClinician(dialog, /new clinician/i, OTHER_MEMBER);
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/visits/${VISIT}/reassign`));
     const alert = await within(dialog).findByRole("alert");

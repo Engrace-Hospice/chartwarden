@@ -225,6 +225,15 @@ async function resolveBillingScopeFacts(
     if (!facts) return null;
     return { providerEntityId: facts.providerEntityId, patientId: facts.patientId };
   }
+  const transferNoticeId = targetStr(target, "transferNoticeId");
+  if (transferNoticeId) {
+    // Fail closed when the resolver predates transfer notices (an in-memory stub without the loader).
+    const facts = resolver.loadTransferNotice
+      ? await resolver.loadTransferNotice(readContextOf(context), transferNoticeId)
+      : null;
+    if (!facts) return null;
+    return { providerEntityId: facts.providerEntityId, patientId: facts.patientId };
+  }
   // No entity id — a create/assemble path that names the provider directly.
   if (directProvider) return { providerEntityId: directProvider, patientId: null };
   return null;

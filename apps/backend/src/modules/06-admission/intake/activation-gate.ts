@@ -154,6 +154,13 @@ export interface AdmissionReadinessFacts {
     readonly attested: boolean;
     readonly overdue?: boolean;
     readonly satisfiedBy?: "normal" | "override";
+    /**
+     * MBPM ch. 9 §20.1(5)(d) — a NEW admission in period 3+ with documented exceptional circumstances: the
+     * encounter may follow admission by up to 2 days, so it does not block activation; `exceptionDueBy` is the
+     * last timely day.
+     */
+    readonly exceptionDocumented?: boolean;
+    readonly exceptionDueBy?: string | null;
   };
 }
 
@@ -343,6 +350,17 @@ export function evaluateAdmissionReadiness(
       status: "not_applicable",
       blocking: false,
       message: "Not required for this certification period.",
+    });
+  } else if (facts.f2f.exceptionDocumented && !facts.f2f.attested) {
+    requirements.push({
+      code: "f2f",
+      label: "Face-to-Face Encounter",
+      status: "pending",
+      blocking: false,
+      message: `Exceptional circumstances documented: the face-to-face is due by ${
+        facts.f2f.exceptionDueBy ?? "the second day after admission"
+      } (deemed complete if the patient dies first).`,
+      action: "REVIEW_F2F",
     });
   } else if (facts.f2f.satisfiedBy === "override") {
     requirements.push({

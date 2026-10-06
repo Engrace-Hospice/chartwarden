@@ -33,6 +33,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { statusLabel, validationRunTone, validationSeverityTone } from "./billing-status";
+import { MissingDischargeDetailsPanel } from "./discharge-attention";
+import { missingDischargeDetailOf, normalizeRemediation } from "./validation-remediation";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 type ValidationSeverity = "error" | "warn" | "info";
@@ -57,14 +59,6 @@ interface OverrideDraft {
 }
 const overrideDraftKey = (claimId: string): string => `claim-override:${claimId}`;
 
-interface Remediation {
-  summary?: string;
-  blameTarget?: string;
-  blameTargetId?: string;
-  fixAction?: string;
-  fixDeepLink?: string;
-}
-
 interface ValidationOverrideView {
   overrideId: string;
   reason: string;
@@ -79,7 +73,8 @@ interface ValidationResultView {
   ruleVersion: number;
   severity: ValidationSeverity;
   outcome: ValidationResultOutcome;
-  remediation: Remediation | null;
+  /** Raw stored jsonb — read through `normalizeRemediation` (two historic shapes). */
+  remediation: unknown;
   overridden: boolean;
   override: ValidationOverrideView | null;
   recordedAt: string;
@@ -123,6 +118,8 @@ function fixActionLabel(action: string | undefined): string {
       return "Cosign encounter";
     case "refresh_eligibility":
       return "Refresh eligibility";
+    case "fix_discharge_details":
+      return "Fix discharge details";
     default:
       return "Fix";
   }
@@ -246,6 +243,9 @@ export function ValidationWorklist(): JSX.Element {
     return [...(detail?.results ?? [])].sort((a, b) => order[a.outcome] - order[b.outcome]);
   }, [detail]);
 
+  // The run names a missing place of death / receiving care setting: show the guided fix above the table.
+  const missingDetail = detail ? missingDischargeDetailOf(detail.results) : null;
+
   if (!claimId) return <EmptyState title="No claim" description="No claim was specified." />;
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
@@ -293,11 +293,21 @@ export function ValidationWorklist(): JSX.Element {
         filters={<RunSelector runs={runs} activeRunId={activeRunId} onSelect={setActiveRunId} />}
         table={
           detail ? (
-            <ResultsTable
-              results={sortedResults}
-              regulatory={regulatory}
-              onOverride={(r) => setOverrideTarget(r)}
-            />
+            <div style={{ display: "grid", gap: "1rem" }}>
+              {missingDetail ? (
+                <MissingDischargeDetailsPanel
+                  detail={missingDetail.detail}
+                  admissionId={missingDetail.admissionId}
+                  claimId={claimId}
+                  fixPath={missingDetail.fixDeepLink}
+                />
+              ) : null}
+              <ResultsTable
+                results={sortedResults}
+                regulatory={regulatory}
+                onOverride={(r) => setOverrideTarget(r)}
+              />
+            </div>
           ) : (
             <LoadingSpinner />
           )
@@ -422,7 +432,7 @@ function ResultsTable({
                 )}
               </td>
               <td style={{ ...tdStyle, maxWidth: "22rem" }}>
-                <RemediationCell remediation={r.remediation} />
+                <RemediationCell raw={r.remediation} />
               </td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
                 {failed && !r.overridden ? (
@@ -451,7 +461,8 @@ function ResultsTable({
 }
 
 // ── remediation cell — summary + a deep-link CTA into the owning module's editor ───────────────────────
-function RemediationCell({ remediation }: { remediation: Remediation | null }): JSX.Element {
+function RemediationCell({ raw }: { raw: unknown }): JSX.Element {
+  const remediation = normalizeRemediation(raw);
   if (!remediation?.summary)
     return <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>;
   return (

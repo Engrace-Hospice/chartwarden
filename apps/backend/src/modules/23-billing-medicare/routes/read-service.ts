@@ -19,6 +19,12 @@ import type {
   NoticeState,
   TypeOfBill,
 } from "@wardenx/billing";
+import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
+import {
+  type StoredRhcCarryOverContext,
+  normalizeStoredRhcCarryOver,
+} from "../services/rhc-carry-over-stored";
+import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 
@@ -44,7 +50,7 @@ export type OverrideRole =
   | "compliance_officer"
   | "medical_director"
   | "org_admin";
-export type ClaimSubmissionKind = "claim_837i" | "noe" | "notr";
+export type ClaimSubmissionKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
 export type ClaimSubmissionOutcome =
   | "queued"
   | "generated"
@@ -72,6 +78,12 @@ export interface ClaimSummaryView {
   readonly totalChargeCents: number;
   readonly totalExpectedPaymentCents: number;
   readonly version: number;
+  /**
+   * What the biller must do because of how the stay ended (missing place of death / receiving care setting, a
+   * Type of Bill the resolver now derives differently), from M6's CURRENT facts. Present on the list and detail
+   * reads when the stay-end facts port is bound; absent/`null` otherwise.
+   */
+  readonly attention?: ClaimAttentionView | null;
 }
 
 export interface ClaimPricingView {
@@ -83,6 +95,12 @@ export interface ClaimPricingView {
     readonly wageIndexFactor: string;
     readonly segments: unknown;
     readonly calculatedAt: string;
+    /** ADR-0001 two-tier RHC day counts on this claim (days 1–60 high / 61+ low, cumulative across stays). */
+    readonly rhcDays1to60: number;
+    readonly rhcDays61Plus: number;
+    /** The prior hospice days carried into the count, their source chain + basis; null on rows priced
+     *  before migration 0376. */
+    readonly rhcCarryOver: RhcCarryOverView | null;
   } | null;
   readonly sia: {
     readonly windowStart: string;
@@ -90,6 +108,71 @@ export interface ClaimPricingView {
     readonly siaAddOnCents: number;
     readonly calculatedAt: string;
   } | null;
+}
+
+/**
+ * The claim's discharge-driven codes: UB-04 FL 17 patient status (837I CL103; `null` = could not be derived,
+ * the discharge rule blocks the claim), FL 18-28 condition codes (HI*BG) and FL 31-34 occurrence codes with
+ * dates (HI*BH).
+ */
+export interface ClaimDischargeCodesView {
+  readonly patientStatusCode: string | null;
+  readonly conditionCodes: readonly string[];
+  readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
+}
+
+/** Project a persisted `hipps_calculation` row onto the claim detail's `pricing.hipps` (read + write paths). The
+ *  stored carry-over is an append-only snapshot: older span labels are mapped to today's at read time
+ *  (`normalizeStoredRhcCarryOver`), never rewritten. */
+export function hippsPricingView(
+  row: {
+    readonly hippsCode: string;
+    readonly hippsRateCents: number;
+    readonly wageIndexCcn: string;
+    readonly wageIndexFiscalYear: number;
+    readonly wageIndexFactor: string;
+    readonly segments: unknown;
+    readonly calculatedAt: Date;
+    readonly rhcDays1to60: number;
+    readonly rhcDays61Plus: number;
+    readonly rhcCarryOver?: unknown;
+  },
+  claim: StoredRhcCarryOverContext,
+): NonNullable<ClaimPricingView["hipps"]> {
+  return {
+    hippsCode: row.hippsCode,
+    hippsRateCents: row.hippsRateCents,
+    wageIndexCcn: row.wageIndexCcn,
+    wageIndexFiscalYear: row.wageIndexFiscalYear,
+    wageIndexFactor: row.wageIndexFactor,
+    segments: row.segments,
+    calculatedAt: row.calculatedAt.toISOString(),
+    rhcDays1to60: row.rhcDays1to60,
+    rhcDays61Plus: row.rhcDays61Plus,
+    rhcCarryOver: normalizeStoredRhcCarryOver(row.rhcCarryOver, claim),
+  };
+}
+
+/** Project the persisted `claim` code columns (jsonb, defensively narrowed) onto the view. */
+export function claimDischargeCodesView(row: {
+  readonly patientStatusCode: string | null;
+  readonly conditionCodes: unknown;
+  readonly occurrenceCodes: unknown;
+}): ClaimDischargeCodesView {
+  const conditionCodes = Array.isArray(row.conditionCodes)
+    ? row.conditionCodes.filter((c): c is string => typeof c === "string")
+    : [];
+  const occurrenceCodes = Array.isArray(row.occurrenceCodes)
+    ? row.occurrenceCodes.flatMap((o: unknown) =>
+        o !== null &&
+        typeof o === "object" &&
+        typeof (o as { code?: unknown }).code === "string" &&
+        typeof (o as { date?: unknown }).date === "string"
+          ? [{ code: (o as { code: string }).code, date: (o as { date: string }).date }]
+          : [],
+      )
+    : [];
+  return { patientStatusCode: row.patientStatusCode ?? null, conditionCodes, occurrenceCodes };
 }
 
 export interface ClaimDetailView extends ClaimSummaryView {
@@ -104,6 +187,8 @@ export interface ClaimDetailView extends ClaimSummaryView {
   readonly latestValidationRunId: string | null;
   readonly latestSubmissionId: string | null;
   readonly acknowledgmentDocumentId: string | null;
+  /** The discharge claim codes (CMS Pub. 100-04 Ch. 11 §30.3) as persisted at assembly / re-validation. */
+  readonly dischargeCodes: ClaimDischargeCodesView;
   readonly latestValidation: ValidationRunView | null;
   readonly pricing: ClaimPricingView;
   readonly createdAt: string;
@@ -151,6 +236,7 @@ export interface ClaimSubmissionView {
   readonly claimId: string | null;
   readonly noeId: string | null;
   readonly notrId: string | null;
+  readonly transferNoticeId: string | null;
   readonly claimControlNumber: string;
   readonly attemptIndex: number;
   readonly outcome: ClaimSubmissionOutcome;
@@ -220,7 +306,35 @@ export interface ValidationOverrideView {
 
 // ── NOE / NOTR view DTOs ──────────────────────────────────────────────────────────────────────────────
 
-export interface NoeView {
+/** The MAC's answer on a NOE / NOTR (migration 0377). Reason codes are PHI-free X12 codes. */
+export interface NoticeAckOutcomeView {
+  /** When the 277CA accepted the notice (the NOE timeliness / occurrence-span-77 acceptance date). */
+  readonly acceptedAt: string | null;
+  readonly rejectedAt: string | null;
+  readonly rejectionStage: "999" | "277ca" | null;
+  readonly rejectionCodes: readonly string[];
+  /** Medicare's own date for the answer (migration 0378): 277CA STC02, a 999's GS04 / ISA09, else our receipt. */
+  readonly payerStatusDate: string | null;
+  readonly payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+}
+
+/** The correction chain (migration 0378): a corrected notice points back at the rejected one, and vice versa. */
+export interface NoticeCorrectionLinkView {
+  /** On a corrected notice: the rejected notice it was filed for. */
+  readonly correctsNoticeId: string | null;
+  /** The biller's reason for the correction (on the corrected notice only). */
+  readonly correctionReason: string | null;
+  /** On a rejected notice: the correction filed for it (the live / accepted one, else the newest attempt). */
+  readonly correctedBy: { readonly noticeId: string; readonly state: NoticeState } | null;
+}
+
+/** `POST /…/:id/correct` — the corrected notice, and whether this request created it (false = replayed). */
+export interface NoticeCorrectionView<V> {
+  readonly created: boolean;
+  readonly notice: V;
+}
+
+export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly noeId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -241,7 +355,7 @@ export interface NoeView {
   readonly updatedAt: string;
 }
 
-export interface NotrView {
+export interface NotrView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly notrId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -277,6 +391,72 @@ export interface EligibilityCheckView {
   readonly parsedPayload: Json;
   readonly checkedAt: string;
   readonly staleAt: string;
+}
+
+/** One hospice election (NOE) or billed benefit period from the latest HETS 271 (CG §7.16). No MBI. */
+export interface HospicePeriodView {
+  readonly kind: "election" | "benefit_period";
+  /** Lifetime benefit-period ordinal (oldest = 1); null for NOE rows or when HETS history is not complete. */
+  readonly periodNumber: number | null;
+  readonly startDate: string;
+  readonly endDate: string | null;
+  readonly hospiceNpi: string | null;
+  readonly revocationOrDischargeDate: string | null;
+  /** HETS revocation code: 0 open spell, 1 NOTR, 2 NOTR + occurrence 42, 3 claim occurrence 23. */
+  readonly revocationCode: "0" | "1" | "2" | "3" | null;
+  readonly daysUsed: number | null;
+}
+
+/** Why `nextPeriodNumber` is (or is not) known — see `deriveHospiceHistory` in `@wardenx/x12-837-client`. */
+export type NextPeriodBasis =
+  | "computed"
+  | "election_open"
+  | "election_status_uncertain"
+  | "unbilled_election"
+  | "history_truncated";
+
+/**
+ * `GET /billing/eligibility/hospice-periods` — the beneficiary's cross-hospice hospice history from the latest
+ * RESOLVED HETS check (the readmission screen's benefit-period confirmation). `status`:
+ *   - `available`           a resolved (Part A active/inactive) check is on file — the fields below are its;
+ *   - `no_check_on_file`    HETS is configured but no resolved check exists yet (see `lastAttempt`);
+ *   - `hets_not_configured` no resolved check AND this deployment has no HETS transport bound.
+ */
+export interface HospicePeriodsView {
+  readonly status: "available" | "no_check_on_file" | "hets_not_configured";
+  readonly hetsConfigured: boolean;
+  readonly patientId: string;
+  readonly checkId: string | null;
+  readonly asOfServiceDate: string | null;
+  readonly outcome: EligibilityOutcome | null;
+  readonly checkedAt: string | null;
+  readonly staleAt: string | null;
+  /** `staleAt` has passed (the 30-day freshness window lapsed). null when no check. */
+  readonly stale: boolean | null;
+  /** The check came from the dev/test SANDBOX transport — synthetic, never real CMS data. */
+  readonly synthetic: boolean;
+  /** HETS returned a hospice section on the check (false for checks recorded before hospice parsing). */
+  readonly hospiceHistoryReturned: boolean;
+  /** true = an open election (Medicare rejects a new NOE); false = none open; null = not determinable. */
+  readonly hospiceElectionOpen: boolean | null;
+  readonly hospiceHistoryTruncated: boolean | null;
+  readonly hospicePeriods: readonly HospicePeriodView[];
+  /** The benefit period a new election on the check's as-of date would start, or null (see `nextPeriodBasis`). */
+  readonly nextPeriodNumber: number | null;
+  readonly nextPeriodBasis: NextPeriodBasis | null;
+  /** The most recent attempt when it is newer than the resolved check (e.g. a later HETS error). */
+  readonly lastAttempt: {
+    readonly checkId: string;
+    readonly outcome: EligibilityOutcome;
+    readonly checkedAt: string;
+    readonly reason: string | null;
+  } | null;
+  /**
+   * The two-tier RHC carry-over a new election on the requested `electionDate` would start with: this patient's
+   * earlier stays with us merged with the HETS history above (`computeRhcCarryOver`). null when no
+   * `electionDate` was asked for.
+   */
+  readonly rhcCarryOver: RhcCarryOverView | null;
 }
 
 export interface RuleConfigView {
@@ -322,6 +502,11 @@ export interface ClaimListFilter {
   readonly providerEntityId?: string;
   readonly patientId?: string;
   readonly state?: ClaimState;
+  /**
+   * Only claims carrying this attention flag (`missing_discharge_details` / `tob_changed`). Computed from M6's
+   * live stay-end facts, so the read SCANS pages (bounded) rather than filtering in SQL — see the Drizzle read.
+   */
+  readonly attention?: ClaimAttentionFlag;
   /**
    * SERVER-DERIVED provider-entity restriction (authorization, never a query param). `undefined` =
    * unrestricted (org-wide billing role / system principal); `[]` = the actor has no provider scope and
@@ -417,6 +602,12 @@ export interface M23ReadRouteService {
     actor: M23ReadActor,
     patientId: string,
   ): Promise<EligibilityCheckView | null>;
+  getHospicePeriods(
+    actor: M23ReadActor,
+    patientId: string,
+    /** When given, the view carries the RHC carry-over for a new election on this date. */
+    electionDate?: string,
+  ): Promise<HospicePeriodsView>;
 
   // ── rule-config library ──
   listRuleConfigs(

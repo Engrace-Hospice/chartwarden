@@ -185,6 +185,7 @@ export function createDrizzleBillingEraseStore(
   const EC = schema.eligibilityCheck;
   const NOE = schema.noeRecord;
   const NOTR = schema.notrRecord;
+  const TN = schema.transferNoticeRecord;
   const MAC = schema.macSubmitterCredential;
   const SP = schema.sequestrationPolicy;
   const VRC = schema.validationRuleConfig;
@@ -213,6 +214,14 @@ export function createDrizzleBillingEraseStore(
         .select({ id: NOTR.id })
         .from(NOTR)
         .where(and(eq(NOTR.organizationId, organizationId), eq(NOTR.patientId, patientId))),
+    );
+
+  const transferNoticeIdsFor = async (tx: Tx, organizationId: string, patientId: string) =>
+    ids(
+      await tx
+        .select({ id: TN.id })
+        .from(TN)
+        .where(and(eq(TN.organizationId, organizationId), eq(TN.patientId, patientId))),
     );
 
   /** validation_run → validation_result id chains for the patient's claims (children of children). */
@@ -290,8 +299,44 @@ export function createDrizzleBillingEraseStore(
           .limit(1);
         if (inFlightNotr.length > 0) throw new BillingEraseRefused("notr_in_flight");
 
+        const inFlightTransferNotice = await tx
+          .select({ id: TN.id })
+          .from(TN)
+          .where(
+            and(
+              eq(TN.organizationId, organizationId),
+              eq(TN.patientId, patientId),
+              inArray(TN.state, [...M23_IN_FLIGHT_STATES]),
+            ),
+          )
+          .limit(1);
+        if (inFlightTransferNotice.length > 0) {
+          throw new BillingEraseRefused("transfer_notice_in_flight");
+        }
+
         // Shred the free-text §3.7 redact fields (M23_REDACT_FIELDS) so a partial delete failure
-        // leaves nothing readable: claim.replacement_reason + validation_override.reason.
+        // leaves nothing readable: claim.replacement_reason + validation_override.reason, and the corrected
+        // NOE / NOTR's correction_reason (migration 0378; the sentinel satisfies its 20..2000 CHECK).
+        await tx
+          .update(NOE)
+          .set({ correctionReason: M23_REDACT_SENTINEL })
+          .where(
+            and(
+              eq(NOE.organizationId, organizationId),
+              eq(NOE.patientId, patientId),
+              isNotNull(NOE.correctionReason),
+            ),
+          );
+        await tx
+          .update(NOTR)
+          .set({ correctionReason: M23_REDACT_SENTINEL })
+          .where(
+            and(
+              eq(NOTR.organizationId, organizationId),
+              eq(NOTR.patientId, patientId),
+              isNotNull(NOTR.correctionReason),
+            ),
+          );
         await tx
           .update(C)
           .set({ replacementReason: M23_REDACT_SENTINEL })
@@ -319,6 +364,7 @@ export function createDrizzleBillingEraseStore(
         const claimIds = await claimIdsFor(tx, organizationId, patientId);
         const noeIds = await noeIdsFor(tx, organizationId, patientId);
         const notrIds = await notrIdsFor(tx, organizationId, patientId);
+        const transferNoticeIds = await transferNoticeIdsFor(tx, organizationId, patientId);
         const { runIds, resultIds } = await validationIdsFor(tx, organizationId, claimIds);
 
         // 1. eligibility_check (patient-keyed directly).
@@ -335,6 +381,9 @@ export function createDrizzleBillingEraseStore(
           claimIds.length > 0 ? inArray(CS.claimId, claimIds) : undefined,
           noeIds.length > 0 ? inArray(CS.noeId, noeIds) : undefined,
           notrIds.length > 0 ? inArray(CS.notrId, notrIds) : undefined,
+          transferNoticeIds.length > 0
+            ? inArray(CS.transferNoticeId, transferNoticeIds)
+            : undefined,
         ].filter((arm) => arm !== undefined);
         const submissionIds =
           subjectArms.length === 0
@@ -480,6 +529,35 @@ export function createDrizzleBillingEraseStore(
                   .returning({ id: NOTR.id })
               ).length;
 
+        // 14. transfer_notice_record — corrections / voids first (their `supersedes_notice_id` RESTRICTs
+        // the original they act on), then the originals.
+        const transferNoticeFollowUps =
+          transferNoticeIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(TN)
+                  .where(
+                    and(
+                      eq(TN.organizationId, organizationId),
+                      inArray(TN.id, transferNoticeIds),
+                      isNotNull(TN.supersedesNoticeId),
+                    ),
+                  )
+                  .returning({ id: TN.id })
+              ).length;
+        const transferNoticeOriginals =
+          transferNoticeIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(TN)
+                  .where(
+                    and(eq(TN.organizationId, organizationId), inArray(TN.id, transferNoticeIds)),
+                  )
+                  .returning({ id: TN.id })
+              ).length;
+
         return {
           eligibility_check: eligibilityChecks,
           claim_acknowledgment: acknowledgments,
@@ -494,6 +572,7 @@ export function createDrizzleBillingEraseStore(
           claim: claims,
           noe_record: noes,
           notr_record: notrs,
+          transfer_notice_record: transferNoticeFollowUps + transferNoticeOriginals,
         };
       });
     },

@@ -6,7 +6,7 @@
 // the integrator binds them — so constructing the workers at boot stays green; a port only throws WHEN A
 // CRON TICK RUNS (never at import). Nothing here runs at import (constructing a Worker opens Valkey).
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -21,9 +21,6 @@ import {
   M25_JOB_SCHEDULES,
   M25_QUEUE_PARAMS,
 } from "./queues";
-
-/** The system actor id the cron stamps on its per-org `withOrgContext` reads (audit attribution). */
-const M25_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-0000000000e5";
 
 /** The §4.9 M36 typed-alert dispatcher (alerts ship as defs + fire through M36). */
 export interface WorkerAlertPort {
@@ -99,45 +96,41 @@ export async function runDenialAgingCron(deps: M25WorkerDeps): Promise<void> {
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   const alerts = alertsOf(deps);
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M25_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const DC = schema.denialCase;
-        const store: DenialAgingStore = {
-          async openCases() {
-            const rows = await tx
-              .select({
-                id: DC.id,
-                openedAt: DC.openedAt,
-                currentBucketDays: DC.agingBucketDays,
-                state: DC.state,
-              })
-              .from(DC)
-              .where(sql`${DC.state} IN ('open','in_progress','escalated')`)
-              .limit(100000);
-            return rows.map((r) => ({
-              id: r.id,
-              openedAt: r.openedAt instanceof Date ? r.openedAt.toISOString() : String(r.openedAt),
-              currentBucketDays: r.currentBucketDays,
-              state: r.state,
-            }));
-          },
-          async setAgingBucketDays(denialCaseId, days) {
-            await tx.update(DC).set({ agingBucketDays: days }).where(eq(DC.id, denialCaseId));
-          },
-        };
-        const result = await runDenialAging(store, now);
-        for (const a of result.alerts) {
-          await alerts.dispatch({
-            alertCode: a.kind,
-            severity: a.kind === "denial.high_value" ? "high" : "warn",
-            organizationId,
-            payload: a.detail,
-          });
-        }
-      },
-    );
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const DC = schema.denialCase;
+      const store: DenialAgingStore = {
+        async openCases() {
+          const rows = await tx
+            .select({
+              id: DC.id,
+              openedAt: DC.openedAt,
+              currentBucketDays: DC.agingBucketDays,
+              state: DC.state,
+            })
+            .from(DC)
+            .where(sql`${DC.state} IN ('open','in_progress','escalated')`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            openedAt: r.openedAt instanceof Date ? r.openedAt.toISOString() : String(r.openedAt),
+            currentBucketDays: r.currentBucketDays,
+            state: r.state,
+          }));
+        },
+        async setAgingBucketDays(denialCaseId, days) {
+          await tx.update(DC).set({ agingBucketDays: days }).where(eq(DC.id, denialCaseId));
+        },
+      };
+      const result = await runDenialAging(store, now);
+      for (const a of result.alerts) {
+        await alerts.dispatch({
+          alertCode: a.kind,
+          severity: a.kind === "denial.high_value" ? "high" : "warn",
+          organizationId,
+          payload: a.detail,
+        });
+      }
+    });
   }
 }
 
@@ -147,39 +140,35 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   const alerts = alertsOf(deps);
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M25_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const AC = schema.appealCase;
-        const store: AppealDeadlineStore = {
-          async watchableAppeals() {
-            const rows = await tx
-              .select({ id: AC.id, tierDeadlineAt: AC.tierDeadlineAt, state: AC.state })
-              .from(AC)
-              .where(sql`${AC.state} IN ('draft','submitted','under_review')`)
-              .limit(100000);
-            return rows.map((r) => ({
-              id: r.id,
-              tierDeadlineAt:
-                r.tierDeadlineAt instanceof Date
-                  ? r.tierDeadlineAt.toISOString()
-                  : String(r.tierDeadlineAt),
-              state: r.state,
-            }));
-          },
-        };
-        const result = await runAppealDeadlineWatch(store, now);
-        for (const a of result.alerts) {
-          await alerts.dispatch({
-            alertCode: a.kind,
-            severity: "warn",
-            organizationId,
-            payload: a.detail,
-          });
-        }
-      },
-    );
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const AC = schema.appealCase;
+      const store: AppealDeadlineStore = {
+        async watchableAppeals() {
+          const rows = await tx
+            .select({ id: AC.id, tierDeadlineAt: AC.tierDeadlineAt, state: AC.state })
+            .from(AC)
+            .where(sql`${AC.state} IN ('draft','submitted','under_review')`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            tierDeadlineAt:
+              r.tierDeadlineAt instanceof Date
+                ? r.tierDeadlineAt.toISOString()
+                : String(r.tierDeadlineAt),
+            state: r.state,
+          }));
+        },
+      };
+      const result = await runAppealDeadlineWatch(store, now);
+      for (const a of result.alerts) {
+        await alerts.dispatch({
+          alertCode: a.kind,
+          severity: "warn",
+          organizationId,
+          payload: a.detail,
+        });
+      }
+    });
   }
 }
 

@@ -43,6 +43,8 @@ export * from "./machines/claim";
 // the `claim` machine's same-named functions. Consume as `noeMachine.reduce(...)` / `notrMachine.reduce(...)`.
 export * as noeMachine from "./machines/noe";
 export * as notrMachine from "./machines/notr";
+export * as transferNoticeMachine from "./machines/transfer-notice";
+export * from "./transfer-notice";
 // D7 the pure HIPPS calculator (LOC-segment → per-diem, days-1-7 vs days-8+, wage-index snapshot).
 export * from "./hipps";
 // D6 the pure SIA (Service Intensity Add-on) calculator (last-7-days-of-life RN/MSW care pricing).
@@ -55,6 +57,9 @@ export * from "./wage-index";
 export * from "./sequestration";
 // D4 / D14 the pure Type-of-Bill derivation (811/812/813/814/817/818 from admission + claim cadence).
 export * from "./tob";
+// CMS Pub. 100-04 Ch. 11 §30.3 the pure discharge claim codes (patient status, condition 52/H2, occurrence 42/55).
+export * from "./claim-codes";
+export * from "./notice";
 // §4.1 / §4.2 the TypeBox route request/response SHAPE contracts (one module per route group).
 // Routed via the `./route-contracts` hop (see that file) so the barrel carries no schema-path import
 // literal alongside its catalog re-exports — avoids a crude arch:tables false positive.

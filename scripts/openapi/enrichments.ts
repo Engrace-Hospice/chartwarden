@@ -137,6 +137,20 @@ import {
   UploadedElectionEvidenceSchema,
   UploadedNoticeOfRightsSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
+import {
+  DischargeDetailRecordResultSchema,
+  DischargeDetailsViewSchema,
+  PlaceOfDeathRecordSchema,
+  ReceivingCareSettingRecordSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/discharge-details-typebox";
+import {
+  DischargeWorklistQuerySchema,
+  DischargeWorklistResponseSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox";
+import {
+  BenefitPeriodPlanQuerySchema,
+  BenefitPeriodPlanSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/readmission-typebox";
 import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
@@ -337,7 +351,11 @@ import {
   CheckEligibilityBodySchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
+  CorrectNoticeBodySchema,
   CreateRuleConfigBodySchema,
+  HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
+  HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
@@ -366,6 +384,16 @@ import {
   SequestrationPolicyViewSchema,
   SupersedeSequestrationPolicyBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
+import {
+  CancelTransferNoticeBodySchema,
+  ConfirmPriorBillingBodySchema,
+  CorrectTransferDateBodySchema,
+  SubmitTransferNoticeBodySchema,
+  TransferNoticeListQuerySchema,
+  TransferNoticeListResponseSchema,
+  TransferNoticeSubmissionResponseSchema,
+  TransferNoticeViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/transfer-notice-typebox";
 import {
   CreateWageIndexBodySchema,
   SupersedeWageIndexBodySchema,
@@ -1525,6 +1553,8 @@ import {
   DiscontinueRecurringVisitRequest as M17DiscontinueRecurringVisitRequest,
   DismissProposalRequest as M17DismissProposalRequest,
   EditVisitRequest as M17EditVisitRequest,
+  EligibleCliniciansQuerySchema as M17EligibleCliniciansQuerySchema,
+  EligibleCliniciansResponseSchema as M17EligibleCliniciansResponseSchema,
   GrantCredentialRequest as M17GrantCredentialRequest,
   MapViewQuerySchema as M17MapViewQuerySchema,
   MapViewResponseSchema as M17MapViewResponseSchema,
@@ -1547,6 +1577,7 @@ import {
   RevokeCredentialRequest as M17RevokeCredentialRequest,
   RouteEfficiencyQuerySchema as M17RouteEfficiencyQuerySchema,
   RouteEfficiencyResponseSchema as M17RouteEfficiencyResponseSchema,
+  SchedulingStaffResponseSchema as M17SchedulingStaffResponseSchema,
   StartVisitRequest as M17StartVisitRequest,
   TimeOffListQuerySchema as M17TimeOffListQuerySchema,
   TimeOffListResponseSchema as M17TimeOffListResponseSchema,
@@ -2789,6 +2820,60 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
     body: CancelNoeBodySchema,
   },
+  // ── Medicare transfer notice, TOB 8xC / corrected 8xC / 8xD (transfer-notice.routes.ts) ──
+  "GET /api/v1/billing/transfer-notices": {
+    summary:
+      "Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions",
+    query: TransferNoticeListQuerySchema,
+    response: TransferNoticeListResponseSchema,
+  },
+  "GET /api/v1/billing/transfer-notices/:id": {
+    summary:
+      "Transfer notice detail — blockers, derived occurrence/condition codes, allowed actions",
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/confirm-prior-billing": {
+    summary:
+      "Confirm the transferring hospice finalized its billing (its final claim's Through date + status 50/51)",
+    body: ConfirmPriorBillingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/submit": {
+    summary:
+      "File the transfer notice with Medicare — re-checks every blocker; emits m23.transfer_notice.submit_requested (step-up; 202)",
+    body: SubmitTransferNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeSubmissionResponseSchema,
+    status: 202,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/cancel": {
+    summary:
+      "Cancel a DRAFT/READY transfer notice with a reason (a submitted one is voided instead)",
+    body: CancelTransferNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/correct-date": {
+    summary:
+      "Draft a corrected 8xC for an accepted notice: From = corrected date, OC 56 = date on file, CC D0",
+    body: CorrectTransferDateBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/void": {
+    summary: "Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/redraft": {
+    summary: "Redraft a rejected or cancelled original transfer notice",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
+  },
   // ── NOTR fast path (notr.routes.ts) ──
   "POST /api/v1/notr-records/:id/submit": {
     summary: "READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30)",
@@ -3765,6 +3850,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/discharges/:id/cosign-for-cause": {
     summary: "Medical-director cosign for a for-cause discharge (§6.3 ABAC)",
     body: DischargeCosignSchema,
+  },
+  // After-the-fact claim details (discharge-details-routes.ts)
+  "GET /api/v1/admissions/:id/discharge-details": {
+    summary:
+      "The admission's stay-ending record (completed discharge / transfer-out) and the claim detail it lacks",
+    response: DischargeDetailsViewSchema,
+  },
+  "POST /api/v1/discharges/:id/place-of-death": {
+    summary:
+      "Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason",
+    body: PlaceOfDeathRecordSchema,
+    response: DischargeDetailRecordResultSchema,
+  },
+  "GET /api/v1/admissions/:id/readmission-context": {
+    summary:
+      "Readmission plan for a live-discharged admission: the previous stay, the suggested next benefit period from our own history (Medicare counts periods across all hospices — confirm in HETS / ELGA / ELGH), the chosen period's requirements (certification signers, face-to-face window, NOE due date), the two-tier RHC carry-over, and whether the prior election's NOTR / final claim is on file (a new NOE is blocked until it is)",
+    query: BenefitPeriodPlanQuerySchema,
+    response: BenefitPeriodPlanSchema,
+  },
+  "GET /api/v1/patients/:patientId/benefit-period-plan": {
+    summary:
+      "Benefit-period plan for any new admission of the patient: the suggested first benefit period from our own history (1 when the patient was never served), its requirements and the prior election's close-out status",
+    query: BenefitPeriodPlanQuerySchema,
+    response: BenefitPeriodPlanSchema,
+  },
+  "GET /api/v1/discharges/worklist": {
+    summary:
+      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+    query: DischargeWorklistQuerySchema,
+    response: DischargeWorklistResponseSchema,
+  },
+  "POST /api/v1/transfers/:id/receiving-care-setting": {
+    summary:
+      "Record where the receiving hospice cares for the patient on a transfer-out (claim patient status 50/51); a recorded value is replaced only with a correctionReason",
+    body: ReceivingCareSettingRecordSchema,
+    response: DischargeDetailRecordResultSchema,
   },
   // NOR (routes 41–42)
   "POST /api/v1/admissions/:id/nor": {
@@ -5164,6 +5285,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
     query: M17RouteEfficiencyQuerySchema,
     response: M17RouteEfficiencyResponseSchema,
+  },
+  "GET /api/v1/scheduling/eligible-clinicians": {
+    summary:
+      "Advisory D8 projection for the scheduling UI — each active clinician with eligibility + reason codes (POST /visits still enforces every gate)",
+    query: M17EligibleCliniciansQuerySchema,
+    response: M17EligibleCliniciansResponseSchema,
+  },
+  "GET /api/v1/scheduling/staff": {
+    summary:
+      "Minimal scheduling staff directory — membership id, display name, clinical discipline",
+    response: M17SchedulingStaffResponseSchema,
   },
   "GET /api/v1/memberships/:membershipId/credentials": {
     summary: "GAP-093: a membership's clinical-license/certification roster",
@@ -9221,6 +9353,7 @@ const M23NoticeState = Type.Union([
 const M23EligibilityOutcome = Type.Union([
   Type.Literal("active_part_a"),
   Type.Literal("inactive_part_a"),
+  Type.Literal("mbi_invalid"),
   Type.Literal("indeterminate"),
   Type.Literal("error"),
 ]);
@@ -9258,6 +9391,7 @@ const M23ClaimSubmissionKind = Type.Union([
   Type.Literal("claim_837i"),
   Type.Literal("noe"),
   Type.Literal("notr"),
+  Type.Literal("transfer_notice"),
 ]);
 const M23ClaimSubmissionOutcome = Type.Union([
   Type.Literal("queued"),
@@ -9277,6 +9411,50 @@ const M23NotrTriggerKind = Type.Union([
   Type.Literal("discharge"),
 ]);
 
+// What a biller must do because of how the claim's stay ended (services/claim-attention.ts), computed from
+// M6's live stay-end facts on the claim list and detail reads.
+const M23ClaimAttentionView = Type.Object(
+  {
+    stayEnd: Type.Union([
+      Type.Object({ kind: Type.String(), effectiveDate: Type.String() }),
+      Type.Null(),
+    ]),
+    typeOfBill: Type.Object({
+      stored: Type.String(),
+      derived: Type.Union([M23TypeOfBill, Type.Null()]),
+      changed: Type.Boolean(),
+      remedy: Type.Union([
+        Type.Literal("revalidate"),
+        Type.Literal("await_acknowledgment"),
+        Type.Literal("replace"),
+        Type.Literal("manual"),
+        Type.Null(),
+      ]),
+    }),
+    missingDischargeDetail: Type.Union([
+      Type.Object({
+        detail: Type.Union([
+          Type.Literal("place_of_death"),
+          Type.Literal("receiving_care_setting"),
+        ]),
+        admissionId: Type.String(),
+        dischargeEventId: Type.Union([Type.String(), Type.Null()]),
+        transferEventId: Type.Union([Type.String(), Type.Null()]),
+        fixPath: Type.String(),
+      }),
+      Type.Null(),
+    ]),
+    flags: Type.Array(
+      Type.Union([Type.Literal("missing_discharge_details"), Type.Literal("tob_changed")]),
+    ),
+  },
+  {
+    description:
+      "Needs-attention facts from how the stay ended: a missing place of death / receiving care setting (the " +
+      "patient status cannot be derived), and whether the Type of Bill derived today differs from the stored " +
+      "one, with the remedy for the claim's state (revalidate / await_acknowledgment / replace / manual).",
+  },
+);
 const M23ClaimSummaryView = Type.Object({
   claimId: Type.String(),
   organizationId: Type.String(),
@@ -9293,6 +9471,7 @@ const M23ClaimSummaryView = Type.Object({
   totalChargeCents: Type.Integer(),
   totalExpectedPaymentCents: Type.Integer(),
   version: Type.Integer(),
+  attention: Type.Optional(Type.Union([M23ClaimAttentionView, Type.Null()])),
 });
 const M23ClaimListResponse = Type.Object({
   items: Type.Array(M23ClaimSummaryView),
@@ -9324,6 +9503,10 @@ const M23ClaimPricingView = Type.Object({
       wageIndexFactor: Type.String(),
       segments: Type.Unknown(),
       calculatedAt: Type.String(),
+      rhcDays1to60: Type.Integer(),
+      rhcDays61Plus: Type.Integer(),
+      // Two-tier RHC carry-over the claim was priced with (null on rows priced before migration 0376).
+      rhcCarryOver: Type.Union([M23RhcCarryOverSchema, Type.Null()]),
     }),
     Type.Null(),
   ]),
@@ -9351,6 +9534,13 @@ const M23ClaimDetailResponse = Type.Composite([
     latestValidationRunId: Type.Union([Type.String(), Type.Null()]),
     latestSubmissionId: Type.Union([Type.String(), Type.Null()]),
     acknowledgmentDocumentId: Type.Union([Type.String(), Type.Null()]),
+    // CMS Pub. 100-04 Ch. 11 §30.3 discharge claim codes (patient status FL 17 / condition FL 18-28 /
+    // occurrence FL 31-34), persisted at assembly and refreshed on re-validation.
+    dischargeCodes: Type.Object({
+      patientStatusCode: Type.Union([Type.String(), Type.Null()]),
+      conditionCodes: Type.Array(Type.String()),
+      occurrenceCodes: Type.Array(Type.Object({ code: Type.String(), date: Type.String() })),
+    }),
     latestValidation: Type.Union([M23ValidationRunView, Type.Null()]),
     pricing: M23ClaimPricingView,
     createdAt: Type.String(),
@@ -9402,6 +9592,7 @@ const M23ClaimSubmissionView = Type.Object({
   claimId: Type.Union([Type.String(), Type.Null()]),
   noeId: Type.Union([Type.String(), Type.Null()]),
   notrId: Type.Union([Type.String(), Type.Null()]),
+  transferNoticeId: Type.Union([Type.String(), Type.Null()]),
   claimControlNumber: Type.String(),
   attemptIndex: Type.Integer(),
   outcome: M23ClaimSubmissionOutcome,
@@ -9456,7 +9647,29 @@ const M23ClaimValidationRunsResponse = Type.Object({
   runs: Type.Array(M23ValidationRunView),
 });
 
+// The MAC's answer (0377) + Medicare's own date for it and the correction chain (0378), on NOE and NOTR alike.
+const M23NoticeAckAndCorrection = {
+  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+  rejectedAt: Type.Union([Type.String(), Type.Null()]),
+  rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+  rejectionCodes: Type.Array(Type.String()),
+  payerStatusDate: Type.Union([Type.String(), Type.Null()]),
+  payerStatusDateSource: Type.Union([
+    Type.Literal("277ca_stc02"),
+    Type.Literal("999_gs04"),
+    Type.Literal("999_isa09"),
+    Type.Literal("receipt"),
+    Type.Null(),
+  ]),
+  correctsNoticeId: Type.Union([Type.String(), Type.Null()]),
+  correctionReason: Type.Union([Type.String(), Type.Null()]),
+  correctedBy: Type.Union([
+    Type.Object({ noticeId: Type.String(), state: M23NoticeState }),
+    Type.Null(),
+  ]),
+};
 const M23NoeView = Type.Object({
+  ...M23NoticeAckAndCorrection,
   noeId: Type.String(),
   organizationId: Type.String(),
   providerEntityId: Type.String(),
@@ -9482,6 +9695,7 @@ const M23NoeListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23NotrView = Type.Object({
+  ...M23NoticeAckAndCorrection,
   notrId: Type.String(),
   organizationId: Type.String(),
   providerEntityId: Type.String(),
@@ -9620,6 +9834,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-patient eligibility-check history (§4.1 #23)",
     query: BillingPatientQuerySchema,
     response: M23EligibilityListResponse,
+  },
+  "GET /api/v1/billing/eligibility/hospice-periods": {
+    summary:
+      "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period and, given an electionDate, the two-tier RHC day-count carry-over (readmission screen)",
+    query: M23HospicePeriodsQuerySchema,
+    response: M23HospicePeriodsResponseSchema,
   },
   "GET /api/v1/billing/eligibility/latest": {
     summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
@@ -9765,6 +9985,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/notr-records/:id": {
     summary: "NOTR detail (§4.1 #29)",
     response: M23NotrView,
+  },
+  "POST /api/v1/noe-records/:id/correct": {
+    summary:
+      "File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+    body: CorrectNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: Type.Object({ created: Type.Boolean(), notice: M23NoeView }),
+    status: 201,
+  },
+  "POST /api/v1/notr-records/:id/correct": {
+    summary:
+      "File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+    body: CorrectNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: Type.Object({ created: Type.Boolean(), notice: M23NotrView }),
+    status: 201,
   },
 });
 

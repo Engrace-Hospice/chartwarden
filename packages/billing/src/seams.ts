@@ -215,12 +215,9 @@ export interface CapProjectionProvider {
 }
 
 /**
- * M5-published, M23-ONLY-consumer (§4.4 / §3.6). Returns the decrypted MBI for the duration of the
- * request only; the caller (the HETS `eligibility-270` builder) is contractually obligated NOT to
- * persist it and zeroes it after the 270 is built. DENY-STUB (fail-closed THROW) until M5's post-M23
- * lock revision publishes it — MBI is security-sensitive, so this stub NEVER degrades-open.
+ * M5-published, M23-ONLY-consumer (§4.4 / §3.6). The contract is leaf-typed in `@wardenx/types` (M5 is the
+ * producer and is not in M23's `dependsOn`, so neither side imports the other) and re-exported here for the
+ * billing surface. Returns the transient MBI + name/DOB for ONE HETS 270 build; the caller is contractually
+ * obligated NOT to persist it. M5 registers the real reader at boot; the M1 deny-stub THROWS until then.
  */
-export interface MbiUnlockReader {
-  /** Returns the decrypted MBI string for a single in-memory request; never persisted. */
-  unlockMbiForRequest(orgId: OrgId, patientPayerId: string): Promise<string>;
-}
+export type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@wardenx/types";

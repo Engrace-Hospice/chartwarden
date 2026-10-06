@@ -67,6 +67,8 @@ const LONG_STAY_SEED: BillingEraseTableCounts = {
   claim: 30,
   noe_record: 1,
   notr_record: 1,
+  // Migration 0375 — the 8xC transfer notice (an original + its accepted correction).
+  transfer_notice_record: 2,
 };
 
 /** A MAC credential whose secret cipher must be cryptographically shredded at org-destruction. */
@@ -170,9 +172,10 @@ describe("M23-T79 — billing_record §3.7 cascade order (children-first FK unwi
     ]) {
       expect(idx(child)).toBeLessThan(idx("claim"));
     }
-    // noe_record / notr_record are the independent fast-path entities — deleted LAST.
-    expect(idx("noe_record")).toBe(M23_PATIENT_CASCADE_ORDER.length - 2);
-    expect(idx("notr_record")).toBe(M23_PATIENT_CASCADE_ORDER.length - 1);
+    // noe_record / notr_record / transfer_notice_record are the independent notice entities — deleted LAST.
+    expect(idx("noe_record")).toBe(M23_PATIENT_CASCADE_ORDER.length - 3);
+    expect(idx("notr_record")).toBe(M23_PATIENT_CASCADE_ORDER.length - 2);
+    expect(idx("transfer_notice_record")).toBe(M23_PATIENT_CASCADE_ORDER.length - 1);
     // eligibility_check is the leaf-most child — deleted FIRST.
     expect(idx("eligibility_check")).toBe(0);
   });
@@ -207,8 +210,8 @@ describe("M23-T79 — the destruction certificate records affected-row counts pe
     const { store } = makeRecordingStore();
     const { erased } = await createBillingEraser(store).erase({ orgId: ORG }, PATIENT);
     const expected = Object.values(LONG_STAY_SEED).reduce((a, b) => a + b, 0);
-    expect(expected).toBe(652); // 30+55+42+180+7+96+48+12+30+120+30+1+1
-    expect(erased).toBe(652);
+    expect(expected).toBe(654); // 30+55+42+180+7+96+48+12+30+120+30+1+1+2
+    expect(erased).toBe(654);
   });
 
   it("an unseeded patient erases nothing (the cascade still runs, all counts 0)", async () => {
@@ -245,7 +248,7 @@ describe("M23-T79 — the 7-year compliance-class record is destruction-GATED (n
       destructionCertAuthorized: true,
     });
     const { erased } = await createBillingEraser(store).erase({ orgId: ORG }, PATIENT);
-    expect(erased).toBe(652);
+    expect(erased).toBe(654);
     expect(cascadeTrail).toEqual([...M23_PATIENT_CASCADE_ORDER]);
   });
 
@@ -313,7 +316,7 @@ describe("M23-T79 — M4 destruction-registry registration over the deny-stub", 
     });
     expect(boundClass).toBe("billing_record");
     const { erased } = await getEraser(BILLING_DATA_CLASS).erase({ orgId: ORG }, PATIENT);
-    expect(erased).toBe(652);
+    expect(erased).toBe(654);
   });
 
   it("the default (no store injected) registers a non-throwing no-op eraser (slice store)", async () => {

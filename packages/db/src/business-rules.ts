@@ -93,15 +93,9 @@ const MAX_CAUSE_DEPTH = 5;
  * NOTE for callers: do not log the raw error after mapping one of these. A `DrizzleQueryError`'s
  * message embeds the failed query AND its bound parameters, which on most tables is PHI.
  */
-export function classifyDatabaseError(
-  err: unknown,
-): BusinessRuleViolation | null {
+export function classifyDatabaseError(err: unknown): BusinessRuleViolation | null {
   let cursor: unknown = err;
-  for (
-    let depth = 0;
-    depth < MAX_CAUSE_DEPTH && cursor instanceof Error;
-    depth++
-  ) {
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH && cursor instanceof Error; depth++) {
     const code = (cursor as { code?: unknown }).code;
     const constraint = (cursor as { constraint?: unknown }).constraint;
     if (code === UNIQUE_VIOLATION && typeof constraint === "string") {

@@ -26,8 +26,11 @@
 > **NOT wired (partial list — treat every other row as unproven):**
 > - **No MAC transport at all.** Not "J6 only" — there is no outbound X12 claim transport of any
 >   kind. `packages/x12-837-client` builds the interchange; nothing sends it.
-> - HETS 270/271 eligibility · DoseSpot HTTP · iQIES submission · web-push · local/on-prem AI
->   backends · terminology loaders · external triage vendors — **absent**.
+> - DoseSpot HTTP · iQIES submission · web-push · local/on-prem AI backends · terminology loaders ·
+>   external triage vendors — **absent**.
+> - **HETS 270/271** — the codec + CORE MIME transport exist (`packages/x12-837-client/src/eligibility/`,
+>   §6.4) but are bound **only** when `M23_HETS_TRANSPORT` is configured; no deployment has a HETS
+>   Submitter ID / trading-partner agreement yet, so in practice eligibility checks still answer 503.
 > - SHP CAHPS is transport-unwired (only the `manual` vendor path needs no transport).
 > - **M28 FHIR** reads return hardcoded 404 / empty Bundle with no data path; bulk `$export` has
 >   neither a route nor a worker.
@@ -125,7 +128,7 @@ The master list. Every external connection appears here exactly once. New integr
 |1|DoseSpot (e-prescribe)|Bidirectional|REST + webhooks|Yes|Yes|per-tenant (clinic reg)|12|`packages/dosespot`|Tier 2|
 |2|Surescripts (via DoseSpot)|Downstream of DoseSpot|—|Yes|via DoseSpot|n/a (DoseSpot-mediated)|12|(through DoseSpot)|Tier 2|
 |3|Medicare MAC — NGS J6 (Engrace)|Outbound + ack|EDI X12 (837I, 999, 277CA, 835) + file drop/portal|Yes|N/A (CMS contractor)|per-provider-entity|23, 25|`packages/x12-837-client` + `packages/x12-835-client` (ADR-0029; MAC transport not wired)|Tier 2|
-|4|MAC eligibility — HETS|Outbound query|EDI X12 270/271|Yes|N/A (CMS)|per-provider-entity|5, 23|not built — no HETS client exists (ADR-0029 target)|Tier 3|
+|4|MAC eligibility — HETS|Outbound query|EDI X12 270/271 over CAQH CORE MIME (HTTPS)|Yes|N/A (CMS)|platform submitter ID (NPIs linked per provider entity)|5, 23|`packages/x12-837-client/src/eligibility/` (ADR-0037 TypeScript codec; bound only when configured — §6.4)|Tier 3|
 |5|State Medicaid|Outbound + ack|EDI X12 837 / 270-271 + state portals|Yes|N/A (state)|per-provider-entity + per-state adapter|24, 25|`packages/medicaid-adapters`|Tier 2|
 |6|CMS MCReF (cost report)|Outbound upload|ECR file upload (portal/API)|No (financial)|N/A (CMS)|per-provider-entity|27|`packages/cost-report` (ECR build) + portal|Tier 4|
 |7|CMS iQIES (HOPE)|Outbound submission|HL7-style / iQIES file submission|Yes|N/A (CMS)|per-provider-entity|10, 30|`packages/iqies-client`|Tier 3|
@@ -328,14 +331,47 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 
 ### 6.4 HETS — Medicare Eligibility (Modules 5, 23)
 
-- **Purpose:** Verify Medicare Part A eligibility and MBI on file before claim submission (§11.A eligibility rule, "within 30 days").
-- **Direction & protocol:** Outbound query, EDI X12 **270** (request) / **271** (response) via x12-worker.
-- **Credential model:** Per-ProviderEntity HETS submitter credentials.
-- **BAA / PHI:** PHI-bearing; CMS HETS submitter agreement.
-- **Sandbox vs prod:** HETS test environment; synthetic MBIs.
-- **Retry/idempotency:** Idempotent query; cache eligibility result with as-of timestamp (drives the 30-day freshness rule).
-- **Rate-limit posture:** HETS has published volume/throttling rules — TBD confirm; adapter paces and caches to avoid redundant checks.
-- **Failure handling:** Eligibility check failure → claim validation rule produces `warn` (not hard block) with staleness note; override path available with reason.
+- **Purpose:** Verify Medicare Part A eligibility and MBI on file before claim submission (§11.A eligibility
+  rule, "within 30 days"), **and** return the beneficiary's hospice election / benefit-period history across
+  all hospices (the readmission screen's benefit-period confirmation).
+- **Direction & protocol:** Outbound real-time query, EDI X12 **270** / **271** (005010X279A1). Built and
+  parsed in TypeScript (`packages/x12-837-client/src/eligibility/` — ADR-0037: no Python sidecar), sent over
+  CAQH CORE Phase II **HTTP MIME multipart/form-data** (`PayloadType=X12_270_Request_005010X279A1`,
+  `SenderID` = submitter ID zero-padded to 10, `ReceiverID=CMS`, `CORERuleVersion=2.2.0`).
+- **Connectivity / credential model:** CMS authorises a **HETS Submitter ID** issued under a HETS Trading
+  Partner Agreement; each hospice NPI must be linked to that Submitter ID in HETS Desktop (else 271
+  AAA 41/51). Direct-to-CMS uses TLS 1.2 mutual auth with a SHA-256 X.509 client certificate; a Network
+  Service Vendor / clearinghouse endpoint uses its own credential (bearer token). Platform-level env:
+  `M23_HETS_TRANSPORT` (`core_mime` | `sandbox`; unset = unbound), `M23_HETS_ENDPOINT_URL`,
+  `M23_HETS_SUBMITTER_ID`, `M23_HETS_AUTH_TOKEN` or `M23_HETS_CLIENT_CERT_FILE` + `M23_HETS_CLIENT_KEY_FILE`,
+  `M23_HETS_USAGE`, `M23_HETS_TIMEOUT_MS`. The `sandbox` transport answers with synthetic 271 fixtures and is
+  refused when `NODE_ENV=production`.
+- **Request (CG §7.3, Appendix A):** MBI + last name + first name + DOB in 2100C (no middle name/gender —
+  those draw a 999), 2100B = the hospice NPI, `DTP*291` service date(s) within 4 years back / 4 months
+  ahead, `EQ*30^45` (STC 45 is what makes HETS return the hospice section).
+- **Hospice data in the 271 (CG §7.16, Table 38):** 2110C `EB*X**45*MA**26` loops. `DTP*292*D8` = a Notice of
+  Election (NOE); `DTP*292*RD8` = a billed hospice benefit period; `DTP*435*RD8` = DOEBA–DOLBA (last 4 years
+  only); `HSD*DY*n` = days used; `MSG*Revocation Code – n` (0 open spell, 1 NOTR, 2 NOTR + occurrence 42,
+  3 claim occurrence 23); 2120C `NM1*1P…XX*<npi>` = the rendering hospice. HETS returns every NOE/period on
+  file regardless of the requested dates — up to 180 NOEs + 180 billed periods since HETS2024-1 (50 before)
+  — and **no benefit-period number and no occurrence count**. WardenX therefore numbers billed periods
+  oldest-first (benefit periods are lifetime-sequential, 42 CFR 418.21; CWF keeps election and benefit
+  periods, Claims Processing Manual ch. 11 §20.1.6) and returns `nextPeriodNumber = null` whenever that is
+  not provable (history at the cap, an open election, an unbilled NOE after the last billed period, or an
+  ambiguous code-0 period).
+- **MBI confinement (M23 D13 / §3.6 / §8.7):** the MBI comes from M5's `MbiUnlockReader` seam (M23-only),
+  lives only in the 270 string, and is never persisted; the raw 271 is **not** stored because HETS echoes
+  the MBI in 2100C NM1*IL; `assertNoMbi` guards the parsed payload at the persistence boundary.
+- **Retry/idempotency:** Idempotent query; every round-trip appends an `eligibility_check` row (30-day
+  `stale_at`; a failed round-trip is stale immediately).
+- **Rate-limit posture:** HETS is for patients with scheduled/delivered services; avoid default
+  max-date-span requests (CG §7.4). The adapter sends one date per check.
+- **Failure handling:** transport error / AAA 42 / 999 / TA1 → outcome `error`; AAA 58/71/72/73 →
+  `mbi_invalid`; the claim validation rule produces `warn` with a staleness note; override path available.
+- **Sources:** CMS HETS 270/271 5010 Companion Guide (R2021Q100 ed., §§4.3, 7.3, 7.4, 7.16, 8.3, App. A/B) —
+  https://www.cms.gov/files/document/r2021q100-hets-270271-companion-guide.pdf ; HETS2024-1 Release Summary
+  §3.2 — https://www.cms.gov/files/document/hets2024-1-hets-270/271-release-summary.pdf ; current guides
+  (HETS2025-x) via https://www.cms.gov/data-research/cms-information-technology/hipaa-eligibility-transaction-system .
 
 ### 6.5 State Medicaid (Modules 24, 25)
 

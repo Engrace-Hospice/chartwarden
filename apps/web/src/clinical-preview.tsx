@@ -26,6 +26,7 @@ import { DocumentExplorer } from "./modules/22-documents/document-explorer";
 import { PatientDocuments } from "./modules/22-documents/patient-documents";
 import { ArDashboard } from "./modules/23-billing-medicare/ar-dashboard";
 import { PatientClaims } from "./modules/23-billing-medicare/patient-claims";
+import { TransferNotices } from "./modules/23-billing-medicare/transfer-notices";
 import { AppLayout } from "./shell/layout";
 import { PRIMARY_NAV } from "./shell/primary-nav";
 import { RoleHome } from "./shell/role-home";
@@ -1283,6 +1284,80 @@ const explorerGet = (p: string, o?: { params?: { path?: Record<string, string> }
   if (p === "/api/v1/patients/{id}") return schedPatient(o?.params?.path?.id ?? "sp0");
   return undefined;
 };
+// ── ?xfer: Billing → Transfers (TOB 8xC worklist + rail) ──
+const isXfer = new URLSearchParams(location.search).has("xfer");
+const xferNotice = (i: number, over: Record<string, unknown>) => ({
+  transferNoticeId: `tn${i}`,
+  patientId: `xp${i}`,
+  admissionId: `xa${i}`,
+  action: "original",
+  supersedesNoticeId: null,
+  state: "draft",
+  tob: "81C",
+  statementFromDate: "2026-09-21",
+  originalTransferDate: null,
+  admissionDate: "2026-09-21",
+  benefitPeriodSequence: 2,
+  benefitPeriodStartDate: "2026-07-01",
+  priorHospiceName: "Sunrise Hospice of Salem",
+  priorHospiceCcn: "381777",
+  priorHospiceNpi: "1234567893",
+  providerCcn: "381501",
+  priorBillingConfirmedAt: null,
+  priorHospiceThroughDate: null,
+  priorHospicePatientStatus: null,
+  controlNumber: `381501-260921-a${i}c4e-00`,
+  payerControlNumber: null,
+  latestSubmissionOutcome: null,
+  cancelReason: null,
+  blockers: [
+    {
+      code: "PRIOR_BILLING_NOT_CONFIRMED",
+      message:
+        "Confirm that the transferring hospice has finalized its billing. The transfer notice is not submitted until then.",
+      citation: "CMS Pub. 100-04 ch. 11 §20.1.3",
+    },
+  ],
+  warnings: [],
+  conditionCodes: [],
+  occurrenceCodes: [],
+  allowedActions: ["confirm_prior_billing", "cancel"],
+  followUp: null,
+  version: 2,
+  createdAt: "2026-09-22T00:00:00Z",
+  ...over,
+});
+const xferGet = (p: string): unknown => {
+  if (p === "/api/v1/billing/transfer-notices")
+    return {
+      items: [
+        xferNotice(0, {}),
+        xferNotice(1, {
+          state: "ready",
+          blockers: [],
+          priorBillingConfirmedAt: "2026-09-30T00:00:00Z",
+          priorHospiceThroughDate: "2026-09-21",
+          priorHospicePatientStatus: "50",
+          allowedActions: ["confirm_prior_billing", "submit", "cancel"],
+          priorHospiceName: "Cascade Valley Hospice",
+        }),
+        xferNotice(2, {
+          state: "ack_accepted",
+          blockers: [],
+          statementFromDate: "2026-08-04",
+          benefitPeriodStartDate: "2026-08-04",
+          occurrenceCodes: [{ code: "27", date: "2026-08-04" }],
+          payerControlNumber: "21926080400512",
+          allowedActions: ["correct_date", "void"],
+          priorHospiceName: "Willamette Hospice",
+        }),
+      ],
+      nextCursor: null,
+      hasMore: false,
+    };
+  if (p === "/api/v1/patients/{id}") return { firstName: "Margaret", lastName: "Hale" };
+  return undefined;
+};
 // ── ?pclaims: patient chart Claims tab ──
 const isPClaims = new URLSearchParams(location.search).has("pclaims");
 const pclaimsGet = (p: string): unknown => {
@@ -2151,29 +2226,31 @@ const client = {
         ? idgGet(p, o as never)
         : isPClaims && p.match(/claims|noe|notr/)
           ? pclaimsGet(p)
-          : isExplorer
-            ? explorerGet(p, o as never)
-            : isBilling
-              ? billingGet(p, o as never)
-              : isSched
-                ? schedGet(p, o as never)
-                : p === "/api/v1/encounters/{encounterId}"
-                  ? details[o?.params?.path?.encounterId ?? ""]
-                  : p === "/api/v1/orders/{id}"
-                    ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
-                    : p === "/api/v1/idg/meetings/{id}"
-                      ? {
-                          id: "mt0",
-                          locationId: "loc1",
-                          status: "packets_ready",
-                          scheduledStart: d(-3),
-                          scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
-                        }
-                      : p === "/api/v1/mdm/{kind}/{id}"
-                        ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
-                        : isHome && p in homeRoutes
-                          ? homeRoutes[p]
-                          : routes[p],
+          : isXfer
+            ? xferGet(p)
+            : isExplorer
+              ? explorerGet(p, o as never)
+              : isBilling
+                ? billingGet(p, o as never)
+                : isSched
+                  ? schedGet(p, o as never)
+                  : p === "/api/v1/encounters/{encounterId}"
+                    ? details[o?.params?.path?.encounterId ?? ""]
+                    : p === "/api/v1/orders/{id}"
+                      ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
+                      : p === "/api/v1/idg/meetings/{id}"
+                        ? {
+                            id: "mt0",
+                            locationId: "loc1",
+                            status: "packets_ready",
+                            scheduledStart: d(-3),
+                            scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
+                          }
+                        : p === "/api/v1/mdm/{kind}/{id}"
+                          ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
+                          : isHome && p in homeRoutes
+                            ? homeRoutes[p]
+                            : routes[p],
     ),
   PATCH: (p: string, o?: never) => (isIdg ? idgNoteWrite("PATCH", p, o) : res({})),
   POST: (p: string, o?: never) => (isIdg ? idgNoteWrite("POST", p, o) : res({})),
@@ -2262,6 +2339,31 @@ if (isIdg) {
         </div>
       </ApiClientProvider>
     </MemoryRouter>,
+  );
+} else if (isXfer) {
+  createRoot(document.getElementById("root")!).render(
+    <SessionProvider
+      session={
+        {
+          userId: "ada",
+          organizationId: "o",
+          displayName: "Ada Administrator",
+          permissions: ["billing.noe.read", "billing.noe.submit"],
+          roles: ["administrator"],
+          isAdmin: true,
+        } as never
+      }
+    >
+      <MemoryRouter initialEntries={["/billing/transfer-notices?notice=tn0"]}>
+        <ApiClientProvider client={client}>
+          <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>
+            <Routes>
+              <Route path="/billing/transfer-notices" element={<TransferNotices />} />
+            </Routes>
+          </div>
+        </ApiClientProvider>
+      </MemoryRouter>
+    </SessionProvider>,
   );
 } else if (isBilling) {
   createRoot(document.getElementById("root")!).render(

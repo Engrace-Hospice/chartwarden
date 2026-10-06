@@ -16,6 +16,24 @@ export const ADMISSION_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** States the admission state machine accepts `executeDischarge` from (state-machines/admission.ts). */
+export const DISCHARGEABLE_STATES: ReadonlySet<string> = new Set(["active", "on_hold"]);
+
+/**
+ * Keys that let an actor use at least one path of the discharge workflow (`discharge-workflow.tsx`):
+ * route 39's umbrella key plus each per-reason key the server derives, revocation and transfer-out.
+ * Display gating only — the server is the enforcement point.
+ */
+export const DISCHARGE_WORKFLOW_PERMISSIONS: readonly string[] = [
+  "discharge.create",
+  "discharge.moved",
+  "discharge.no_longer_terminal",
+  "discharge.for_cause",
+  "discharge.other",
+  "revocation.create",
+  "transfer.out",
+];
+
 export const REFERRAL_TONE: Record<string, StatusTone> = {
   received: "progress",
   under_review: "progress",

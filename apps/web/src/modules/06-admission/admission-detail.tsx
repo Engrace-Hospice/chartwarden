@@ -6,6 +6,7 @@ import {
   type GateItem,
   GateStepper,
   GuardChip,
+  InlineAlert,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -35,7 +36,7 @@ import {
 // never promise something the server would then refuse.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   type DocumentTypeValue,
   type UploadStage,
@@ -43,8 +44,16 @@ import {
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
-import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
+import {
+  ADMISSION_TONE,
+  DISCHARGEABLE_STATES,
+  DISCHARGE_WORKFLOW_PERMISSIONS,
+  WINDOW_TONE,
+  stateLabel,
+} from "./admission-status";
+import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { PatientIntakeDetails } from "./patient-intake-details";
+import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
 
 const NOR_METHODS = [
@@ -199,7 +208,12 @@ const GATE_ROWS: { code: string; label: string }[] = [
 export function AdmissionDetail(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const session = useSession();
   const { id } = useParams<{ id: string }>();
+  // One-shot confirmation handed back by the discharge workflow after a successful submit.
+  const flashNotice = (location.state as { notice?: string } | null)?.notice ?? null;
+  const hasPermission = (key: string): boolean => session?.permissions?.includes(key) ?? false;
   const [admission, setAdmission] = useState<AdmissionDetailView | null>(null);
   const [readiness, setReadiness] = useState<AdmissionReadiness | null>(null);
   const [periods, setPeriods] = useState<SummaryRow[]>([]);
@@ -894,6 +908,13 @@ export function AdmissionDetail(): JSX.Element {
     !readiness?.requirements.some((r) => r.code === "notice_of_rights" && r.status === "complete");
   const canActivate =
     pendingWorkspace && (readiness?.canActivate ?? admission.activationGate.ready);
+  // Discharge / revocation / transfer-out entry (discharge-workflow.tsx): only from a state the
+  // admission state machine discharges from, and only for an actor holding one of the workflow's keys
+  // (display gating — the server derives and enforces the real per-reason key on submit).
+  const canEndService =
+    DISCHARGEABLE_STATES.has(admission.state) &&
+    (!session?.permissions ||
+      DISCHARGE_WORKFLOW_PERMISSIONS.some((k) => session.permissions?.includes(k)));
   const period = currentPeriod(electionCert, periods);
   const electionStatement = period?.electionStatement ?? null;
   const cti = period?.cti ?? null;
@@ -945,6 +966,11 @@ export function AdmissionDetail(): JSX.Element {
                   label={stateLabel(admission.state)}
                   tone={ADMISSION_TONE[admission.state] ?? "neutral"}
                 />
+                {hasPermission("transfer.in") ? (
+                  <Link to={`/admissions/${admission.id}/transfer-in`} className="wx-btn-secondary">
+                    Record transfer-in
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setCeremony("activate")}
@@ -984,6 +1010,7 @@ export function AdmissionDetail(): JSX.Element {
         }
       >
         <div style={contentShellStyle}>
+          <TransferNoticeStatus admissionId={admission.id} />
           <section style={summaryCardStyle}>
             <div style={summaryHeaderStyle}>
               <div>
@@ -1252,6 +1279,23 @@ export function AdmissionDetail(): JSX.Element {
                   Activate
                 </button>
               ) : null}
+              {canEndService ? (
+                <Link to={`/admissions/${admission.id}/discharge`} className="wx-btn-secondary">
+                  Discharge / transfer…
+                </Link>
+              ) : null}
+              {(admission.state === "discharged" || admission.state === "closed") &&
+              hasPermission("admission.create") ? (
+                <Link to={`/admissions/${admission.id}/readmit`} className="wx-btn-secondary">
+                  Readmit patient
+                </Link>
+              ) : null}
+              {(admission.state === "active" || admission.state === "on_hold") &&
+              hasPermission("discharge.death") ? (
+                <Link to={`/admissions/${admission.id}/death`} className="wx-btn-secondary">
+                  Record death
+                </Link>
+              ) : null}
             </div>
           }
         >
@@ -1280,6 +1324,9 @@ export function AdmissionDetail(): JSX.Element {
       }
     >
       <div style={contentShellStyle}>
+        {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
+        <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
+        <TransferNoticeStatus admissionId={admission.id} />
         <section style={summaryCardStyle}>
           <div style={summaryHeaderStyle}>
             <div>

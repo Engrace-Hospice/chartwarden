@@ -65,6 +65,9 @@ export type ElectionPeriodResolver = (
   readonly providerEntityId: string | null;
   readonly sequenceNumber: number;
   readonly effectiveAt: string | null;
+  /** The period starts the admission's election (period 1, or a readmission's continuing period). Absent → the
+   *  legacy `sequenceNumber === 1` rule. */
+  readonly isElectionStart?: boolean;
 } | null>;
 
 /** The 6-char CCN the D4 control number is derived from. M23 may not import M40, so this is a PORT —
@@ -133,8 +136,10 @@ export function buildM23NoeDraftConsumer(deps: M23NoeDraftConsumerDeps) {
         );
       }
 
-      // An NOE is filed once per election, not per benefit period — a recert continues the same election.
-      if (period.sequenceNumber !== 1) {
+      // An NOE is filed once per election, not per benefit period — a recert continues the same election. A
+      // re-election (readmission) is a NEW election in the next available period (42 CFR 418.24), so it is drafted
+      // whatever its sequence; M6 says which period starts an election.
+      if (!(period.isElectionStart ?? period.sequenceNumber === 1)) {
         deps.onSkipped?.({ reason: "not_first_period", organizationId, electionPeriodId });
         return;
       }

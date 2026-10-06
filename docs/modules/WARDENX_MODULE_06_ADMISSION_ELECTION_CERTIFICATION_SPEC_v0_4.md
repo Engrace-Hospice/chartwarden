@@ -82,7 +82,7 @@ This list is binding. Every item here is owned by another module and reached via
 | **42 CFR 418.26** — Discharge from hospice care | Discharge for cause / no-longer-terminal / move-out-of-service-area / patient-revoke / death; discharge summary written; transfer-of-care plan when applicable | `DischargeEvent` enum + workflow; M22 receives `discharge.executed` for the summary |
 | **42 CFR 418.28** — Revocation; loss of eligibility; transfer | Patient may revoke at any time in writing; transfer between hospices once per period; benefit periods continue across transfer | `RevocationEvent`, `TransferEvent`; transfer-in inherits `period_sequence_number`; once-per-period guard |
 | **42 CFR 418.52** — Patient rights | Written Notice of Rights at admission; acknowledgment captured | `NoticeOfRightsAcknowledgment` as a gate on `admission.activate` |
-| **42 CFR 418.54** — Initial and comprehensive assessment | RN initial assessment within 48 hours of election; comprehensive interdisciplinary assessment within 5 days | `ComplianceWindow` records `initial_assessment_48h` and `comprehensive_assessment_5d`; gate on activation, alerts at 24h/12h, override path with reason |
+| **42 CFR 418.54** — Initial and comprehensive assessment | RN initial assessment within 48 hours after the election (418.54(a)); comprehensive interdisciplinary assessment no later than 5 calendar days after the election (418.54(b)). CMS SOM Appendix M (L523) counts the **election date as day 0**: elected Wednesday ⇒ Monday (day 5) is the last timely day, Tuesday (day 6) is late | `ComplianceWindow` records `initial_assessment_48h` (`must_complete_by` = election instant + 48 h) and `comprehensive_assessment_5d` (`must_complete_by` = 23:59:59.999 org-local on election date + 5). `createAdmission` opens them provisionally against the draft; **activation (the election) re-anchors every still-open one** on the activation instant. The readmission plan shows the same dates (`initialAssessmentDueBy` = election + 2, the latest date 48 h reach; `comprehensiveAssessmentDueBy` = election + 5). Single source: `certification/window-math.ts` (`computeAssessmentWindowDeadline`). Gate on activation, alerts at 24h/12h, override path with reason |
 | **42 CFR 418.302** — Election to receive hospice care | Election effective on signed statement date | `ElectionPeriod.effective_at` = `ElectionStatement.signed_at` (server-stamped) |
 | **42 CFR 418.304** — Filing claim — TOB, NOE, NOTR | NOE within 5 days of admission; NOTR within 5 days of revocation/discharge | M6 emits the event with the precise effective date; M23 owns the 5-day filing timer and submission |
 | **HIPAA §164.502(b) Minimum necessary** | PHI access limited to those needing it | RLS scopes M6 rows to tenant; M3 `caseload_or_scope` ABAC narrows to assigned care team; PrivacyFlag (M5) further narrows |
@@ -584,7 +584,7 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-CTI-02` Terminal diagnosis ICD-10 must be a valid current code (M38 lookup) AND on the CMS hospice-allowable list | `submitToHospiceMd` | `TERMINAL_DX_NOT_ALLOWABLE` (422) |
 | `R-CTI-03` Attending signature required on the period-1 CTI if `patient.attending_physician_id IS NOT NULL`; the signer's NPI must match the attending on file. The CTI stays `awaiting_attending` (not `signed`) until then. **Not an activation gate** — M23 `cti_signed_per_period` blocks the claim instead (§11 D3) | `signByAttending` | `ATTENDING_SIGNATURE_REQUIRED` (409) |
 | `R-F2F-01` Performer must be hospice MD or hospice NP (not attending) | `recordCompletion` | `F2F_INVALID_PERFORMER` (422) |
-| `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start - 1 day] (CMS 418.22 prior-to-window) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
+| `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start] (CMS 418.22(a)(4); the period's first day is timely per MBPM ch. 9 §20.1(5)(a)) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
 | `R-F2F-03` Window override requires actor role `hospice_medical_director` AND a reason ≥ 20 chars | `requestWindowOverride` | `F2F_OVERRIDE_FORBIDDEN` (403) / `F2F_OVERRIDE_REASON_TOO_SHORT` (422) |
 | `R-F2F-04` Recert period (sequence ≥ 3) cannot transition to `active` without an `attested` F2F | `ElectionPeriod.setActive` | `F2F_REQUIRED_FOR_RECERT` (409) |
 | `R-ADM-01` Admission `activate` requires NOR acknowledged | `activate` | `NOTICE_OF_RIGHTS_REQUIRED` (409) |
@@ -3089,6 +3089,34 @@ Per D-AUTHZ-01 (§4.5), all admission paperwork is staff-captured in v0.2; there
 
 All M6 resources are RLS-protected (§3 grants policy); the tenant predicate is enforced before any role/ABAC evaluation. The RLS isolation tests (§9.3) assert that no role — including org_admin and compliance_officer — can read M6 resources outside their tenant. Even break-glass (M3 §5) does not cross the tenant boundary; it lifts ABAC predicates within a tenant but never the tenant predicate.
 
+
+### 6.7 Intake Reach — `admission_intake_scope` and the intake default grants
+
+An intake user works on patients who are not on anyone's caseload yet, so the caseload predicate alone (`caseload_or_scope`, and `admission.scope` for a sited stay) refused the readmission / new-admission flow to them. M6 registers the ABAC predicate **`admission_intake_scope`**, which allows when ALL of:
+
+1. the caller holds an intake role — `intake_coordinator` or `intake_supervisor` — read from the server-assembled `context.roles` (M3 grants; never a request header);
+2. the patient is a patient of the caller's organization (M5's org-scoped `PatientIntakeResolver.confirmPatient`; absent or another org's → deny); and
+3. the patient has **no `active` or `on_hold` admission** (an ongoing stay belongs to its care team).
+
+Target: `patientId`, or `admissionId` (resolved to its patient under RLS). It is **OR-composed** (`requireAnyAbac`) beside the route's own scope predicate on exactly these routes, keeping `notFoundOnDeny` (a refusal is a 404):
+
+| Route | Composition |
+|---|---|
+| `GET /api/v1/admissions/:id/readmission-context` | `admission.scope` OR `admission_intake_scope` |
+| `GET /api/v1/patients/:patientId/benefit-period-plan` | `caseload_or_scope` OR `admission_intake_scope` |
+| `POST /api/v1/admissions` | `caseload_or_scope` OR `admission_intake_scope` |
+| `GET /api/v1/billing/eligibility/hospice-periods` (M23, by name through the M3 registry) | `caseload_or_scope` OR `admission_intake_scope` |
+
+Every other patient-keyed route keeps its single scope predicate.
+
+**Default grants** (`INTAKE_DEFAULT_GRANTS`, `packages/auth/src/roles/intake-grants.ts`; backfilled by migration `0374` wherever a tenant has created the role, `ON CONFLICT DO NOTHING`; the dev seed reads the same constant):
+
+| Role | Keys |
+|---|---|
+| `intake_coordinator` | `admission.read`, `billing.eligibility.read` |
+| `intake_supervisor` | `admission.create`, `admission.read`, `billing.eligibility.read` |
+
+`billing.eligibility.check` (a live HETS round-trip) is not granted. `admission.create` stays supervisor-only per §6.2.
 -----
 
 ## 7. Workflow Acceptance Criteria
@@ -3158,7 +3186,7 @@ Each user story uses the architecture's standard form: **Given / When / Then**, 
 
 | ID | Given | When | Then |
 |---|---|---|---|
-| W-F2F-01 | Period 3 is approaching for an admission I have caseload on | I schedule an F2F | Window is computed (period_start − 30 to period_start − 1); the scheduled date must fall within; `m6.f2f.scheduled` emitted |
+| W-F2F-01 | Period 3 is approaching for an admission I have caseload on | I schedule an F2F | Window is computed (period_start − 30 to period_start, the first day included per MBPM ch. 9 §20.1(5)(a)); the scheduled date must fall within; `m6.f2f.scheduled` emitted |
 | W-F2F-02 | I am on the F2F screen on iPad in the patient's home | I tap "Complete" | `encounter_date` and `encounter_time` are stamped; the row state moves to `completed` |
 | W-F2F-03 | The encounter is `completed` | I type the attestation narrative and sign with my NPI | F2F moves to `attested`; the F2F compliance window for the next period closes; `m6.f2f.attested` emitted |
 | W-F2F-04 | The F2F was missed (window closed without attestation) | The window-monitor job fires | `m6.f2f.window_missed` emits; M30 surfaces in red; period 3 cannot start until either a corrective F2F attestation is recorded (back-date within window only) or a compliance officer files OVR-F2F-01 |

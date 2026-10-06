@@ -20,6 +20,12 @@ const AdmissionCreate = lazy(() =>
 const AdmissionDetail = lazy(() =>
   import("./admission-detail").then((m) => ({ default: m.AdmissionDetail })),
 );
+const DischargesHub = lazy(() =>
+  import("./discharges-hub").then((m) => ({ default: m.DischargesHub })),
+);
+const DischargeWorkflow = lazy(() =>
+  import("./discharge-workflow").then((m) => ({ default: m.DischargeWorkflow })),
+);
 const ComplianceDashboard = lazy(() =>
   import("./compliance-dashboard").then((m) => ({ default: m.ComplianceDashboard })),
 );
@@ -32,6 +38,17 @@ const ReferralDetail = lazy(() =>
 const ReferralInbox = lazy(() =>
   import("./referral-inbox").then((m) => ({ default: m.ReferralInbox })),
 );
+const DeathPronouncement = lazy(() =>
+  import("./death-pronouncement").then((m) => ({ default: m.DeathPronouncement })),
+);
+const DischargeDetails = lazy(() =>
+  import("./discharge-details").then((m) => ({ default: m.DischargeDetails })),
+);
+const DischargeCosign = lazy(() =>
+  import("./discharge-cosign").then((m) => ({ default: m.DischargeCosign })),
+);
+const TransferIn = lazy(() => import("./transfer-in").then((m) => ({ default: m.TransferIn })));
+const Readmission = lazy(() => import("./readmission").then((m) => ({ default: m.Readmission })));
 const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -78,6 +95,17 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: AdmissionDetail,
     },
     {
+      // Discharge / revocation / transfer-out stepper (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER) — reached
+      // from the Admission Detail header of an active / on-hold admission; omitted from nav (param path).
+      // `discharge.create` is the umbrella key (route 39's fallback gate); the server derives the real
+      // per-reason key (`discharge.moved`, `transfer.out`, `revocation.create`, …) on submit.
+      id: "admission.discharge",
+      path: "/admissions/:id/discharge",
+      title: "Discharge / transfer",
+      requiredPermission: "discharge.create",
+      screen: DischargeWorkflow,
+    },
+    {
       // Referral detail — reached from a Referral Inbox row; omitted from nav (param path). Fixes the
       // dead `/referrals/:id` link `referral-inbox.tsx` has always pointed at (TASK-031).
       id: "admission.referral-detail",
@@ -96,12 +124,72 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: AdmissionCreate,
     },
     {
+      // End-of-episode hub — nav entry right below "New admission" (primary-nav.ts childOrder). Lists admissions
+      // ready for a discharge / transfer / death, ended stays missing a claim detail, and (medical directors)
+      // for-cause discharges awaiting cosign, from GET /api/v1/discharges/worklist. The screen registry gates nav on
+      // ONE key: `discharge.create`, the discharge workflow's umbrella key (route 39's fallback gate). The row actions
+      // are gated per key inside the hub (DISCHARGE_WORKFLOW_PERMISSIONS / discharge.death / cosign_for_cause).
+      // Static path: react-router ranks it above `/admissions/:id`.
+      id: "admission.discharges",
+      path: "/admissions/discharges",
+      title: "Discharge / transfer",
+      navGroup: "Admissions",
+      requiredPermission: "discharge.create",
+      screen: DischargesHub,
+    },
+    {
       // Patient-scoped Election & Certification — reached from the patient chart tab (param path, no nav).
       id: "admission.patient-election-cert",
       path: "/patients/:patientId/election-certification",
       title: "Election & Certification",
       requiredPermission: "election.read",
       screen: PatientElectionCert,
+    },
+    {
+      // Death & Pronouncement (WARDENX_UI_DEATH_PRONOUNCEMENT) — launched from the admission detail.
+      id: "admission.death-pronouncement",
+      path: "/admissions/:id/death",
+      title: "Death & Pronouncement",
+      requiredPermission: "discharge.death",
+      screen: DeathPronouncement,
+    },
+    {
+      // Transfer-in (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER, separate entry) — pre-activation intake.
+      id: "admission.transfer-in",
+      path: "/admissions/:id/transfer-in",
+      title: "Transfer-in",
+      requiredPermission: "transfer.in",
+      screen: TransferIn,
+    },
+    {
+      // Readmit a live-discharged patient: previous episode, benefit period (HETS-confirmed or a warning), the
+      // period's requirements, intake, review → POST /api/v1/admissions (readmittedFromAdmissionId + benefitPeriod).
+      // Reached from the admission detail of a discharged stay, the discharge hub's "Recently discharged" list and
+      // the patient chart. No nav entry (it acts on one admission).
+      id: "admission.readmit",
+      path: "/admissions/:id/readmit",
+      title: "Readmit patient",
+      requiredPermission: "admission.create",
+      screen: Readmission,
+    },
+    {
+      // For-cause discharge medical-director cosign (route 40). The server also applies the MD ABAC.
+      id: "admission.discharge-cosign",
+      path: "/discharges/:id/cosign",
+      title: "Cosign for-cause discharge",
+      requiredPermission: "discharge.cosign_for_cause",
+      screen: DischargeCosign,
+    },
+    {
+      // Discharge details for billing — completes a death discharge / transfer-out recorded before the place of
+      // death / receiving care setting was captured (the final claim's patient status needs it). Reached from the
+      // admission detail's alert and a blocked claim's "Fix discharge details". Reading is admission.read; the
+      // save is gated server-side on discharge.death / transfer.out (+ admission scope) and says so on a 403.
+      id: "admission.discharge-details",
+      path: "/admissions/:id/discharge-details",
+      title: "Discharge details for billing",
+      requiredPermission: "admission.read",
+      screen: DischargeDetails,
     },
   ],
 };

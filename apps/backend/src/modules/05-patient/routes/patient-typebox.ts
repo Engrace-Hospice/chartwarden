@@ -75,7 +75,17 @@ export const AdmitBodySchema = Type.Object({
 // POST /api/v1/patients/:id/addresses (§4.2; §7.4 cascade)
 export const AddressBodySchema = AddressSchema;
 
-const ASSIGNMENT_ROLES = ["primary_rn", "attending_clinician", "case_manager_msw", "chaplain", "aide", "np", "md", "volunteer", "bereavement"] as const;
+const ASSIGNMENT_ROLES = [
+  "primary_rn",
+  "attending_clinician",
+  "case_manager_msw",
+  "chaplain",
+  "aide",
+  "np",
+  "md",
+  "volunteer",
+  "bereavement",
+] as const;
 export const AssignmentBodySchema = Type.Object({
   clinicianMembershipId: Type.String({ minLength: 1, maxLength: 64 }),
   role: Type.Union(ASSIGNMENT_ROLES.map((role) => Type.Literal(role))),

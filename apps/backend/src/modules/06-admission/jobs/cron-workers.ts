@@ -7,7 +7,7 @@
 
 import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { completeActiveElectionPeriod } from "../election-period-completion";
@@ -26,8 +26,6 @@ import {
 } from "./index";
 
 const CW = schema.complianceWindows;
-
-const M6_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000006";
 
 export interface AdmissionOutboxPublishPort {
   publish(
@@ -108,53 +106,46 @@ export async function runF2fDueNotifyCron(deps: M6WorkerDeps): Promise<void> {
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      {
-        organizationId,
-        userId: M6_WORKER_SYSTEM_USER_ID,
-      },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
 
-        const rows = await f2fDueRowsForOrg(t, organizationId);
+      const rows = await f2fDueRowsForOrg(t, organizationId);
 
-        for (const row of rows) {
-          const reminder = planDueReminder(
-            {
-              resourceId: row.f2fId,
-              dueDate: row.scheduledDate,
+      for (const row of rows) {
+        const reminder = planDueReminder(
+          {
+            resourceId: row.f2fId,
+            dueDate: row.scheduledDate,
 
-              // "completed" = encounter performed but still
-              // waiting for attestation.
-              completed: row.status === "attested",
-            },
-            today,
-          );
+            // "completed" = encounter performed but still
+            // waiting for attestation.
+            completed: row.status === "attested",
+          },
+          today,
+        );
 
-          if (!reminder) continue;
+        if (!reminder) continue;
 
-          const eventName =
-            reminder.tier === "due_7d"
-              ? "m6.f2f.due_7d"
-              : reminder.tier === "due_3d"
-                ? "m6.f2f.due_3d"
-                : "m6.f2f.overdue_1d";
+        const eventName =
+          reminder.tier === "due_7d"
+            ? "m6.f2f.due_7d"
+            : reminder.tier === "due_3d"
+              ? "m6.f2f.due_3d"
+              : "m6.f2f.overdue_1d";
 
-          await deps.outbox.publish(t, {
-            eventName,
-            payload: {
-              f2fId: row.f2fId,
-              electionPeriodId: row.electionPeriodId,
-              dueAt: row.scheduledDate,
-            },
-            organizationId,
-            aggregateKind: "face_to_face_encounter",
-            aggregateId: row.f2fId,
-          });
-        }
-      },
-    );
+        await deps.outbox.publish(t, {
+          eventName,
+          payload: {
+            f2fId: row.f2fId,
+            electionPeriodId: row.electionPeriodId,
+            dueAt: row.scheduledDate,
+          },
+          organizationId,
+          aggregateKind: "face_to_face_encounter",
+          aggregateId: row.f2fId,
+        });
+      }
+    });
   }
 }
 
@@ -164,60 +155,53 @@ export async function runCtiSignatureNotifyCron(deps: M6WorkerDeps): Promise<voi
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      {
-        organizationId,
-        userId: M6_WORKER_SYSTEM_USER_ID,
-      },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
 
-        const rows = await ctiSignatureDueRowsForOrg(t, organizationId);
+      const rows = await ctiSignatureDueRowsForOrg(t, organizationId);
 
-        for (const row of rows) {
-          const reminder = planCtiSignatureReminder(
-            {
+      for (const row of rows) {
+        const reminder = planCtiSignatureReminder(
+          {
+            ctiId: row.ctiId,
+            requestedAt: row.signatureRequestedAt,
+            dueAt: row.signatureDueAt,
+            signedAt: row.hospiceMdSignedAt,
+          },
+          now,
+        );
+
+        if (!reminder) continue;
+
+        if (reminder === "due_1d") {
+          await deps.outbox.publish(t, {
+            eventName: "m6.cti.signature_due_1d",
+            payload: {
               ctiId: row.ctiId,
-              requestedAt: row.signatureRequestedAt,
+              hospiceMdId: row.hospiceMdId,
               dueAt: row.signatureDueAt,
-              signedAt: row.hospiceMdSignedAt,
             },
-            now,
-          );
-
-          if (!reminder) continue;
-
-          if (reminder === "due_1d") {
-            await deps.outbox.publish(t, {
-              eventName: "m6.cti.signature_due_1d",
-              payload: {
-                ctiId: row.ctiId,
-                hospiceMdId: row.hospiceMdId,
-                dueAt: row.signatureDueAt,
-              },
-              organizationId,
-              aggregateKind: "certification_of_terminal_illness",
-              aggregateId: row.ctiId,
-            });
-          }
-
-          if (reminder === "overdue") {
-            await deps.outbox.publish(t, {
-              eventName: "m6.cti.signature_overdue",
-              payload: {
-                ctiId: row.ctiId,
-                hospiceMdId: row.hospiceMdId,
-                dueAt: row.signatureDueAt,
-              },
-              organizationId,
-              aggregateKind: "certification_of_terminal_illness",
-              aggregateId: row.ctiId,
-            });
-          }
+            organizationId,
+            aggregateKind: "certification_of_terminal_illness",
+            aggregateId: row.ctiId,
+          });
         }
-      },
-    );
+
+        if (reminder === "overdue") {
+          await deps.outbox.publish(t, {
+            eventName: "m6.cti.signature_overdue",
+            payload: {
+              ctiId: row.ctiId,
+              hospiceMdId: row.hospiceMdId,
+              dueAt: row.signatureDueAt,
+            },
+            organizationId,
+            aggregateKind: "certification_of_terminal_illness",
+            aggregateId: row.ctiId,
+          });
+        }
+      }
+    });
   }
 }
 
@@ -241,20 +225,10 @@ export async function runF2fWindowMissedScanCron(deps: M6WorkerDeps): Promise<vo
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
-      {
-        organizationId,
-        // "" (not M6_WORKER_SYSTEM_USER_ID) — unlike the two sibling scans above, this one INSERTs a
-        // real `compliance_window` row, which carries the M4 PHI write-audit trigger
-        // (`audit_phi_write_compliance_window`, 0027_admission_m6_rls_audit_triggers.sql). That trigger
-        // FK-references `app.user_id` into `user.id` when it is non-empty; `M6_WORKER_SYSTEM_USER_ID` is
-        // a synthetic id no migration/seed ever inserts into `user` (true of every `*_WORKER_SYSTEM_USER_ID`
-        // in this codebase — F-178b is simply the first M6 cron to touch an audited table), so using it
-        // here 23503s on the very first tick. `""` is the established system-write idiom
-        // (admission-route-service-db.ts's `withOrgContext(db, { organizationId, userId: "" }, ...)`
-        // throughout): `NULLIF(current_setting('app.user_id', true), '')::uuid` reads it as NULL, which
-        // the FK allows, and the audit row is still written (organization/resource/event scoped).
-        userId: "",
-      },
+      // The NULL (system) audit actor: this scan INSERTs an audited `compliance_window` row, and the M4
+      // write-audit trigger copies `app.user_id` into `audit_event.actor_user_id` (FK to `user`), so a
+      // synthetic "system user" uuid would 23503 (F-178b). Every M6 cron uses `systemOrgContext` now.
+      systemOrgContext(organizationId),
       async (tx) => {
         const t = tx as unknown as DbClient;
 
@@ -313,9 +287,9 @@ export async function runElectionPeriodAutoEndCron(deps: M6WorkerDeps): Promise<
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
-      // "" — this tick UPDATEs `election_period`, an audited table: a synthetic uuid would 23503 on the
-      // audit trigger's `user` FK (see the F-178b note on the window-missed scan above).
-      { organizationId, userId: "" },
+      // The NULL audit actor — this tick UPDATEs `election_period`, an audited table: a synthetic uuid
+      // would 23503 on the audit trigger's `user` FK (see the F-178b note on the window-missed scan above).
+      systemOrgContext(organizationId),
       async (tx) => {
         const t = tx as unknown as DbClient;
         const orgTimeZone = await organizationTimezone(t, organizationId);

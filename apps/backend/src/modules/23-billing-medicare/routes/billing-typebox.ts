@@ -149,6 +149,14 @@ export const UpdateRuleConfigBodySchema = Type.Object({
 export const CancelNoeBodySchema = Type.Object({ electionReversed: Type.Boolean() });
 export const CancelNotrBodySchema = Type.Object({ terminatingEventReversed: Type.Boolean() });
 
+// ── corrected NOE / NOTR after a rejection (ch. 11 §20.1.1 / §20.1.2; migration 0378) ────────────────────
+// The biller's reason (kept on the corrected row; never in an event) and, optionally, the corrected notice date
+// (NOE: admission / election effective date; NOTR: effective end date). Everything else is copied.
+export const CorrectNoticeBodySchema = Type.Object({
+  reason: Type.String({ minLength: 20, maxLength: 2000 }),
+  correctedDate: Type.Optional(Type.Union([isoDate(), Type.Null()])),
+});
+
 // ── eligibility body ───────────────────────────────────────────────────────────────────────────────────
 export const CheckEligibilityBodySchema = Type.Object({
   patientId: uuid(),
@@ -186,6 +194,15 @@ export const ClaimListQuerySchema = Type.Object({
   providerEntityId: Type.Optional(uuid()),
   patientId: Type.Optional(uuid()),
   state: Type.Optional(lit(CLAIM_STATE)),
+  attention: Type.Optional(
+    Type.Union([Type.Literal("missing_discharge_details"), Type.Literal("tob_changed")], {
+      description:
+        "Only claims needing this action: `missing_discharge_details` (the stay ended by a death with no place " +
+        "of death or a transfer-out with no receiving care setting — the patient status cannot be derived) or " +
+        "`tob_changed` (the Type of Bill derived from how the stay ended differs from the stored one). Scans " +
+        "up to 1,000 claims per request; follow `nextCursor` to continue.",
+    }),
+  ),
 });
 
 /**
@@ -241,3 +258,102 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   }
   return converted as Static<T>;
 }
+
+// ── GET /billing/eligibility/hospice-periods response (the readmission screen's HETS history) ───────────
+const nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
+const ELIGIBILITY_OUTCOME = [
+  "active_part_a",
+  "inactive_part_a",
+  "mbi_invalid",
+  "indeterminate",
+  "error",
+] as const;
+const NEXT_PERIOD_BASIS = [
+  "computed",
+  "election_open",
+  "election_status_uncertain",
+  "unbilled_election",
+  "history_truncated",
+] as const;
+
+export const HospicePeriodSchema = Type.Object({
+  kind: lit(["election", "benefit_period"] as const),
+  periodNumber: nullable(Type.Integer({ minimum: 1 })),
+  startDate: isoDate(),
+  endDate: nullable(isoDate()),
+  hospiceNpi: nullable(Type.String({ pattern: "^\\d{10}$" })),
+  revocationOrDischargeDate: nullable(isoDate()),
+  revocationCode: nullable(lit(["0", "1", "2", "3"] as const)),
+  daysUsed: nullable(Type.Integer({ minimum: 0 })),
+});
+
+/** `?patientId=&electionDate=` — `electionDate` asks for the RHC carry-over of a new election on that date. */
+export const HospicePeriodsQuerySchema = Type.Object({
+  patientId: uuid(),
+  electionDate: Type.Optional(isoDate()),
+});
+
+/**
+ * The two-tier RHC day-count carry-over (`computeRhcCarryOver`, Claims Processing Manual ch. 11 §30.2): the prior
+ * hospice days (ours + other hospices' per HETS) a new election continues, the chain counted, the basis and any
+ * warnings. Shared by the hospice-periods read and the claim detail's `pricing.hipps.rhcCarryOver`.
+ */
+export const RhcCarryOverSchema = Type.Object({
+  electionDate: isoDate(),
+  priorDays: Type.Integer({ minimum: 0, maximum: 60 }),
+  chainDays: Type.Integer({ minimum: 0 }),
+  basis: lit(["internal_only", "hets_merged", "hets_stale"] as const),
+  startsAtDay: Type.Integer({ minimum: 1 }),
+  highRateDaysRemaining: Type.Integer({ minimum: 0 }),
+  daysSinceLastCare: nullable(Type.Integer()),
+  chain: Type.Array(
+    Type.Object({
+      source: lit(["internal", "hets"] as const),
+      kind: lit(["stay", "sending_hospice", "election", "benefit_period"] as const),
+      start: isoDate(),
+      end: isoDate(),
+      endAssumed: Type.Boolean(),
+      countedDays: Type.Integer({ minimum: 0 }),
+      hospiceNpi: nullable(Type.String()),
+      ref: nullable(Type.String()),
+    }),
+  ),
+  warnings: Type.Array(Type.Object({ code: Type.String(), message: Type.String() })),
+  hetsCheck: nullable(
+    Type.Object({
+      checkId: uuid(),
+      checkedAt: Type.String({ format: "date-time" }),
+      ageDays: Type.Integer({ minimum: 0 }),
+      stale: Type.Boolean(),
+    }),
+  ),
+});
+
+export const HospicePeriodsResponseSchema = Type.Object({
+  status: lit(["available", "no_check_on_file", "hets_not_configured"] as const),
+  hetsConfigured: Type.Boolean(),
+  patientId: uuid(),
+  checkId: nullable(uuid()),
+  asOfServiceDate: nullable(isoDate()),
+  outcome: nullable(lit(ELIGIBILITY_OUTCOME)),
+  checkedAt: nullable(Type.String({ format: "date-time" })),
+  staleAt: nullable(Type.String({ format: "date-time" })),
+  stale: nullable(Type.Boolean()),
+  synthetic: Type.Boolean(),
+  hospiceHistoryReturned: Type.Boolean(),
+  hospiceElectionOpen: nullable(Type.Boolean()),
+  hospiceHistoryTruncated: nullable(Type.Boolean()),
+  hospicePeriods: Type.Array(HospicePeriodSchema),
+  nextPeriodNumber: nullable(Type.Integer({ minimum: 1 })),
+  nextPeriodBasis: nullable(lit(NEXT_PERIOD_BASIS)),
+  lastAttempt: nullable(
+    Type.Object({
+      checkId: uuid(),
+      outcome: lit(ELIGIBILITY_OUTCOME),
+      checkedAt: Type.String({ format: "date-time" }),
+      reason: nullable(Type.String()),
+    }),
+  ),
+  rhcCarryOver: nullable(RhcCarryOverSchema),
+});
+export type HospicePeriodsResponse = Static<typeof HospicePeriodsResponseSchema>;

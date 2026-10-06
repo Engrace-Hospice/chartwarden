@@ -320,6 +320,8 @@ export function createDrizzleM6ApplierGateway(
           reason: "death",
           dischargeDate: action.dischargeDate,
           narrative: externalDeathNarrative(payload.proposalId, action.sendingFacility),
+          // The HL7 ADT death notice carries no place of death M6 can trust → claim patient status 42.
+          placeOfDeath: "unknown",
           // F-227 — stamps `source='hl7_external'` + `source_proposal_id` + `cosign_required` in the SAME
           // transaction as the discharge row (M6 §4.8.4 step 2), and waives the pronouncing-certifier
           // capture the HTTP route demands (the sending facility pronounced; the cosign attests).

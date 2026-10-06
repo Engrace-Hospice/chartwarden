@@ -40,7 +40,13 @@ import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import { buildNoticeCorrectionService } from "../services/notice-correction-service";
+import {
+  PriorElectionNotClosedError,
+  priorElectionClosureTx,
+} from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
+import { mapNoe, mapNotr } from "./notice-views";
 import type {
   ClaimDetailView,
   ClaimSummaryView,
@@ -50,6 +56,7 @@ import type {
   RuleConfigView,
   ValidationOverrideView,
 } from "./read-service";
+import { claimDischargeCodesView, hippsPricingView } from "./read-service";
 import type {
   AssembleClaimArgs,
   AssembledClaimLineInput,
@@ -58,6 +65,7 @@ import type {
   CancelNotrArgs,
   CheckEligibilityArgs,
   ClaimSubmissionAcceptedView,
+  CorrectNoticeArgs,
   CreateRuleConfigArgs,
   DeleteRuleConfigArgs,
   EligibilityCheckAcceptedView,
@@ -102,55 +110,6 @@ function mapClaimSummary(row: repositories.ClaimRecord): ClaimSummaryView {
     totalChargeCents: row.totalChargeCents,
     totalExpectedPaymentCents: row.totalExpectedPaymentCents,
     version: row.version,
-  };
-}
-
-function mapNoe(row: repositories.NoeRecord): NoeView {
-  return {
-    noeId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    electionPeriodId: row.electionPeriodId,
-    state: row.state,
-    electionEffectiveDate: row.electionEffectiveDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    noeControlNumber: row.noeControlNumber,
-    payerNoeControlNumber: row.payerNoeControlNumber ?? null,
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
-  };
-}
-
-function mapNotr(row: repositories.NotrRecord): NotrView {
-  return {
-    notrId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    triggerKind: row.triggerKind,
-    revocationEventId: row.revocationEventId ?? null,
-    transferEventId: row.transferEventId ?? null,
-    dischargeEventId: row.dischargeEventId ?? null,
-    effectiveEndDate: row.effectiveEndDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    state: row.state,
-    notrControlNumber: row.notrControlNumber,
-    payerNotrControlNumber: row.payerNotrControlNumber ?? null,
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
   };
 }
 
@@ -304,6 +263,30 @@ export function buildDrizzleM23WriteService(
     if (ports.outbox) await ports.outbox.publish(tx, input);
   };
 
+  // Corrected NOE / NOTR after a rejection — its own service (one transaction each, RLS-scoped).
+  const corrections = buildNoticeCorrectionService(db, {
+    outbox: ports.outbox,
+    ccnFor: (tx, organizationId, providerEntityId) =>
+      providerCcn.ccnForProviderEntity(tx, organizationId, providerEntityId),
+    now,
+  });
+
+  /** The NOE's patient's latest earlier live-ended stay (`null` = none, an unknown NOE, or the port unbound). */
+  const priorLiveEndedStayFor = async (
+    actor: M23WriteActor,
+    noeId: string,
+  ): Promise<{ admissionId: string; patientId: string } | null> => {
+    const port = ports.priorLiveEndedStay;
+    if (!port) return null;
+    const noe = await inOrgCtx(actor, (tx) => new repositories.NoeRepository(tx).findById(noeId));
+    if (!noe || noe.organizationId !== actor.organizationId) return null;
+    const prior = await port.latestPriorLiveEndedAdmission(actor.organizationId, {
+      patientId: noe.patientId,
+      currentAdmissionId: noe.admissionId,
+    });
+    return prior ? { admissionId: prior.admissionId, patientId: noe.patientId } : null;
+  };
+
   /** §6 / §D14 server-side step-up gate (claim submit/replace/void · override · MAC-credential admin). */
   const requireStepUp = (actor: M23WriteActor): void => {
     if (!actor.stepUpRecent) {
@@ -386,6 +369,7 @@ export function buildDrizzleM23WriteService(
       latestValidationRunId: claim.latestValidationRunId ?? null,
       latestSubmissionId: claim.latestSubmissionId ?? null,
       acknowledgmentDocumentId: claim.acknowledgmentDocumentId ?? null,
+      dischargeCodes: claimDischargeCodesView(claim),
       latestValidation: latestRun
         ? {
             validationRunId: latestRun.id,
@@ -404,17 +388,7 @@ export function buildDrizzleM23WriteService(
           }
         : null,
       pricing: {
-        hipps: hipps
-          ? {
-              hippsCode: hipps.hippsCode,
-              hippsRateCents: hipps.hippsRateCents,
-              wageIndexCcn: hipps.wageIndexCcn,
-              wageIndexFiscalYear: hipps.wageIndexFiscalYear,
-              wageIndexFactor: hipps.wageIndexFactor,
-              segments: hipps.segments,
-              calculatedAt: isoReq(hipps.calculatedAt),
-            }
-          : null,
+        hipps: hipps ? hippsPricingView(hipps, { admissionId: claim.admissionId }) : null,
         sia: sia
           ? {
               windowStart: sia.windowStart,
@@ -899,7 +873,16 @@ export function buildDrizzleM23WriteService(
 
     // ── NOE / NOTR fast path ──
     async submitNoe(actor, noeId): Promise<NoticeSubmissionAcceptedView> {
+      // Readmission — the prior election must be closed out first (the M6 lookup opens its own org context, so it
+      // runs before this method's transaction rather than holding two connections).
+      const priorStay = await priorLiveEndedStayFor(actor, noeId);
       return inOrgCtx(actor, async (tx) => {
+        if (priorStay) {
+          const closure = await priorElectionClosureTx(tx, priorStay);
+          if (!closure.notrFiled && !closure.finalClaimFiled) {
+            throw new PriorElectionNotClosedError(priorStay.admissionId);
+          }
+        }
         const repo = new repositories.NoeRepository(tx);
         let noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");
@@ -1014,6 +997,16 @@ export function buildDrizzleM23WriteService(
         if (!res.ok) throw conflict412(res.currentVersion);
         return mapNotr(res.row);
       });
+    },
+
+    async correctNoe(actor, noeId, args: CorrectNoticeArgs) {
+      const res = await corrections.correctNoe(actor, noeId, args);
+      return { created: res.created, notice: mapNoe(res.record) };
+    },
+
+    async correctNotr(actor, notrId, args: CorrectNoticeArgs) {
+      const res = await corrections.correctNotr(actor, notrId, args);
+      return { created: res.created, notice: mapNotr(res.record) };
     },
 
     // ── eligibility ──

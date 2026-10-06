@@ -22,6 +22,7 @@ import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   NewVisitModal,
@@ -57,9 +58,7 @@ export function MyVisits(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "next48">(
-    "all",
-  );
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "next48">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
@@ -96,8 +95,7 @@ export function MyVisits(): JSX.Element {
   }, [load]);
 
   const purposeOptions = useMemo(
-    () =>
-      [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort(),
+    () => [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort(),
     [visits],
   );
 
@@ -120,8 +118,7 @@ export function MyVisits(): JSX.Element {
       return matchesDate && matchesStatus && matchesPurpose && matchesSearch;
     });
     return [...visible].sort(
-      (a, b) =>
-        Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt),
+      (a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt),
     );
   }, [visits, dateFilter, purpose, searchQuery, status]);
 
@@ -133,10 +130,7 @@ export function MyVisits(): JSX.Element {
   ].filter(Boolean).length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedRows = rows.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize,
-  );
+  const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -172,7 +166,7 @@ export function MyVisits(): JSX.Element {
     const evvMissingReason = attestReason.trim();
     setBusyVisitId(visitId);
     setAttestError(null);
-    const { error: err } =
+    const { error: err, response } =
       action === "start"
         ? await client.POST("/api/v1/visits/{visitId}/start", {
             params: { path: { visitId } },
@@ -193,10 +187,7 @@ export function MyVisits(): JSX.Element {
       setAttestError(
         isAssignedClinicianRefusal(err)
           ? ASSIGNED_CLINICIAN_MESSAGE
-          : apiErrorMessage(
-              err,
-              action === "start" ? "Could not start visit." : "Could not check in.",
-            ),
+          : mapSchedulingApiError(err, response?.status).message,
       );
       return;
     }
@@ -226,18 +217,12 @@ export function MyVisits(): JSX.Element {
             {error ? (
               <div role="alert" style={errorBannerStyle}>
                 <span>{error}</span>
-                <button
-                  type="button"
-                  onClick={() => setError(null)}
-                  style={dismissButtonStyle}
-                >
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
                   x
                 </button>
               </div>
             ) : null}
-            {actionNotice ? (
-              <output style={noticeBannerStyle}>{actionNotice}</output>
-            ) : null}
+            {actionNotice ? <output style={noticeBannerStyle}>{actionNotice}</output> : null}
             <div style={toolbarStyle}>
               <div style={toolbarTitleStyle}>
                 <span style={toolbarEyebrowStyle}>Schedule</span>
@@ -319,11 +304,7 @@ export function MyVisits(): JSX.Element {
           ) : rows.length === 0 ? (
             <div style={{ padding: "2rem 1.5rem" }}>
               <EmptyState
-                title={
-                  activeFilters > 0
-                    ? "No matching visits"
-                    : "No upcoming visits"
-                }
+                title={activeFilters > 0 ? "No matching visits" : "No upcoming visits"}
                 description={
                   activeFilters > 0
                     ? "Try adjusting the schedule filters."
@@ -348,16 +329,8 @@ export function MyVisits(): JSX.Element {
                     <th style={{ ...thStyle, width: "14%" }}>Purpose</th>
                     <th style={{ ...thStyle, width: "14%" }}>Start</th>
                     <th style={{ ...thStyle, width: "14%" }}>End</th>
-                    <th
-                      style={{ ...thStyle, width: "12%", textAlign: "right" }}
-                    >
-                      Status
-                    </th>
-                    <th
-                      style={{ ...thStyle, width: "18%", textAlign: "right" }}
-                    >
-                      Actions
-                    </th>
+                    <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Status</th>
+                    <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -439,12 +412,7 @@ export function MyVisits(): JSX.Element {
                               <Glyph name="check" size={13} /> Check in
                             </Button>
                           ) : null}
-                          {[
-                            "published",
-                            "en_route",
-                            "in_visit",
-                            "completed",
-                          ].includes(v.status) ? (
+                          {["published", "en_route", "in_visit", "completed"].includes(v.status) ? (
                             <Button
                               size="sm"
                               tone="tertiary"
@@ -656,14 +624,12 @@ const tableStyle = {
 const headerRowStyle = {
   textAlign: "left" as const,
   color: "var(--color-on-surface-variant)",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 
 const rowStyle = {
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
   cursor: "pointer",
   transition: "background 0.15s ease",
 };

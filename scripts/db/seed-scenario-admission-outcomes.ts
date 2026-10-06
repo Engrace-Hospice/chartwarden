@@ -513,6 +513,7 @@ async function main(): Promise<void> {
         narrative:
           "Patient died peacefully at home with family present; hospice team in attendance.",
         deathCertifierId: HOSPICE_MD,
+        placeOfDeath: "home",
       },
     });
     if (dc.error) throw new Error(`death discharge failed: ${JSON.stringify(dc.error)}`);

@@ -65,10 +65,7 @@ import {
 import type { SchedulingRouteService, VisitReadScope } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-) => Promise<void>;
+type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SchedulingRouteDeps {
   service: SchedulingRouteService;
@@ -127,18 +124,14 @@ async function readScopeOf(
   }
 }
 
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-} {
+function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
   // `userId` here is the acting MEMBERSHIP id (see scheduling-route-service-db.ts's own header
   // comment: "the acting membership is the passed `userId` (stored as `actor_membership_id` on
   // `visit_state_history`...)"). This used to read `ctx.userId` (the raw Better Auth user id, a
   // different id space), FK-violating every write.
   const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string")
-    throw new UnauthorizedError();
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
@@ -242,29 +235,21 @@ const createGateTarget = (request: GuardRequest): AbacTarget => {
   const target: Record<string, unknown> = {};
   if (typeof body.assignedMembershipId === "string")
     target.membershipId = body.assignedMembershipId;
-  if (typeof body.visitPurpose === "string")
-    target.visitPurpose = body.visitPurpose;
+  if (typeof body.visitPurpose === "string") target.visitPurpose = body.visitPurpose;
   if (typeof body.patientId === "string") target.patientId = body.patientId;
   if (typeof body.scheduledStartedAt === "string") {
     target.scheduledStartedAt = body.scheduledStartedAt;
     // The service date the D8 predicates (credentials-active-as-of, PTO overlap) reason about is the
     // ORG-LOCAL calendar date this visit falls on, not a naive UTC-instant slice (PARAM-004) — resolved
     // by `resolveOrgTimezone` above; "UTC" only if that preHandler somehow didn't run first.
-    const timezone =
-      (request.context.attributes.orgTimezone as string | undefined) ?? "UTC";
-    target.serviceDate = localDateInTimeZone(
-      new Date(body.scheduledStartedAt),
-      timezone,
-    );
+    const timezone = (request.context.attributes.orgTimezone as string | undefined) ?? "UTC";
+    target.serviceDate = localDateInTimeZone(new Date(body.scheduledStartedAt), timezone);
   }
-  if (typeof body.scheduledEndedAt === "string")
-    target.scheduledEndedAt = body.scheduledEndedAt;
+  if (typeof body.scheduledEndedAt === "string") target.scheduledEndedAt = body.scheduledEndedAt;
   return target;
 };
 const GATE = (predicate: string): PreHandler =>
-  requireAbac("visit.create", predicate, {
-    getTarget: createGateTarget,
-  }) as PreHandler;
+  requireAbac("visit.create", predicate, { getTarget: createGateTarget }) as PreHandler;
 // GAP-093 — re-attached to POST /visits below now that a real CredentialReader seam exists (M17's
 // new membership_credential table + grant/revoke routes) — see that route's comment.
 const ABAC_CREDENTIALS = GATE("clinician_credentials_active");
@@ -272,10 +257,7 @@ const ABAC_DISCIPLINE = GATE("discipline_matches_visit");
 const ABAC_NOT_ON_PTO = GATE("not_on_pto");
 const ABAC_POOL = GATE("within_caseload_or_unassigned_pool");
 
-export function registerSchedulingRoutes(
-  app: FastifyInstance,
-  deps: SchedulingRouteDeps,
-): void {
+export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingRouteDeps): void {
   const { service } = deps;
   const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
   const readScope = (request: FastifyRequest) => readScopeOf(request, caseloadPatientIds);
@@ -308,10 +290,7 @@ export function registerSchedulingRoutes(
   // 1 — list visits with filters.
   app.get(
     "/api/v1/visits",
-    {
-      preHandler: [READ],
-      config: { auditRead: { resourceKind: "visit", list: true } },
-    },
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(VisitListQuerySchema, request.query);
@@ -333,10 +312,8 @@ export function registerSchedulingRoutes(
   app.get(
     "/api/v1/visits/:visitId",
     {
-      preHandler: [READ],
-      config: {
-        auditRead: { resourceKind: "visit", resourceIdParam: "visitId" },
-      },
+      preHandler: [READ, VISIT_SCOPE],
+      config: { auditRead: { resourceKind: "visit", resourceIdParam: "visitId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -382,38 +359,26 @@ export function registerSchedulingRoutes(
 
   // Candidate projection for the scheduling UI. This is advisory only: POST /visits retains every
   // RBAC/ABAC/domain gate, because eligibility can change between this read and the write.
-  app.get(
-    "/api/v1/scheduling/eligible-clinicians",
-    { preHandler: [CREATE] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      const q = parse(EligibleCliniciansQuerySchema, request.query);
-      return service.eligibleClinicians(organizationId, q);
-    },
-  );
+  app.get("/api/v1/scheduling/eligible-clinicians", { preHandler: [CREATE] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const q = parse(EligibleCliniciansQuerySchema, request.query);
+    return service.eligibleClinicians(organizationId, q);
+  });
 
   // Minimal directory for scheduling readers.  Unlike the organization roster,
   // this does not require membership administration permission.
-  app.get(
-    "/api/v1/scheduling/staff",
-    { preHandler: [READ] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      return service.schedulingStaff(organizationId);
-    },
-  );
+  app.get("/api/v1/scheduling/staff", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    return service.schedulingStaff(organizationId);
+  });
 
   // 4 — edit non-lineage fields / assignment. Schedule time changes use the dedicated reschedule command.
-  app.patch(
-    "/api/v1/visits/:visitId",
-    { preHandler: [EDIT] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { visitId } = parse(VisitIdParamsSchema, request.params);
-      const b = parse(EditVisitRequest, request.body);
-      return service.editVisit(organizationId, userId, visitId, b);
-    },
-  );
+  app.patch("/api/v1/visits/:visitId", { preHandler: [EDIT] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    const b = parse(EditVisitRequest, request.body);
+    return service.editVisit(organizationId, userId, visitId, b);
+  });
 
   // GAP-050 — start / arrive are the clinician's own self-attest: the route predicate binds the acting
   // membership to the visit's assignee (the service re-checks), 403 on anyone else. An absent visit is a 404.
@@ -463,16 +428,12 @@ export function registerSchedulingRoutes(
   );
 
   // 7 — cancel a visit (reason ≥ 20 chars).
-  app.post(
-    "/api/v1/visits/:visitId/cancel",
-    { preHandler: [CANCEL] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { visitId } = parse(VisitIdParamsSchema, request.params);
-      const b = parse(CancelVisitRequest, request.body);
-      return service.cancelVisit(organizationId, userId, visitId, b.reason);
-    },
-  );
+  app.post("/api/v1/visits/:visitId/cancel", { preHandler: [CANCEL] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    const b = parse(CancelVisitRequest, request.body);
+    return service.cancelVisit(organizationId, userId, visitId, b.reason);
+  });
 
   // 7 — reschedule a visit (creates a new visit; original → rescheduled).
   app.post(
@@ -493,33 +454,20 @@ export function registerSchedulingRoutes(
   );
 
   // 8 — mark no-show (triggers reassign-or-followup workflow).
-  app.post(
-    "/api/v1/visits/:visitId/no-show",
-    { preHandler: [MARK_NO_SHOW] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { visitId } = parse(VisitIdParamsSchema, request.params);
-      const b = parse(NoShowVisitRequest, request.body);
-      return service.noShowVisit(organizationId, userId, visitId, b.reason);
-    },
-  );
+  app.post("/api/v1/visits/:visitId/no-show", { preHandler: [MARK_NO_SHOW] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    const b = parse(NoShowVisitRequest, request.body);
+    return service.noShowVisit(organizationId, userId, visitId, b.reason);
+  });
 
   // 9 — reassign-only (no time change; reruns the gate in-service).
-  app.post(
-    "/api/v1/visits/:visitId/reassign",
-    { preHandler: [REASSIGN] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { visitId } = parse(VisitIdParamsSchema, request.params);
-      const b = parse(ReassignVisitRequest, request.body);
-      return service.reassignVisit(
-        organizationId,
-        userId,
-        visitId,
-        b.newAssignedMembershipId,
-      );
-    },
-  );
+  app.post("/api/v1/visits/:visitId/reassign", { preHandler: [REASSIGN] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    const b = parse(ReassignVisitRequest, request.body);
+    return service.reassignVisit(organizationId, userId, visitId, b.newAssignedMembershipId);
+  });
 
   // 10 — scheduler proposal inbox.
   app.get(
@@ -559,12 +507,7 @@ export function registerSchedulingRoutes(
       const { organizationId, userId } = actorOf(request);
       const { proposalId } = parse(ProposalIdParamsSchema, request.params);
       const b = parse(DismissProposalRequest, request.body);
-      return service.dismissProposal(
-        organizationId,
-        userId,
-        proposalId,
-        b.reason,
-      );
+      return service.dismissProposal(organizationId, userId, proposalId, b.reason);
     },
   );
 
@@ -680,54 +623,40 @@ export function registerSchedulingRoutes(
         kind: b.kind,
         startsAt: b.startsAt,
         endsAt: b.endsAt,
-      });
-      return reply.code(201).send(res);
-    },
-  );
+      },
+      await authorityOf(request),
+    );
+    return reply.code(201).send(res);
+  });
 
   // 20 — approve PTO (triggers reassignment-scan in-service).
-  app.post(
-    "/api/v1/time-off/:id/approve",
-    { preHandler: [TIME_OFF_APPROVE] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(IdParamsSchema, request.params);
-      parse(ApproveTimeOffRequest, request.body);
-      return service.approveTimeOff(organizationId, userId, id);
-    },
-  );
+  app.post("/api/v1/time-off/:id/approve", { preHandler: [TIME_OFF_APPROVE] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    parse(ApproveTimeOffRequest, request.body);
+    return service.approveTimeOff(organizationId, userId, id, await authorityOf(request));
+  });
 
   // 21 — deny PTO (reason ≥ 20 chars).
-  app.post(
-    "/api/v1/time-off/:id/deny",
-    { preHandler: [TIME_OFF_APPROVE] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(IdParamsSchema, request.params);
-      const b = parse(DenyTimeOffRequest, request.body);
-      return service.denyTimeOff(organizationId, userId, id, b.reason);
-    },
-  );
+  app.post("/api/v1/time-off/:id/deny", { preHandler: [TIME_OFF_APPROVE] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    const b = parse(DenyTimeOffRequest, request.body);
+    return service.denyTimeOff(organizationId, userId, id, b.reason, await authorityOf(request));
+  });
 
   // 22 — cancel own pre-start PTO.
-  app.post(
-    "/api/v1/time-off/:id/cancel",
-    { preHandler: [TIME_OFF_CANCEL] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(IdParamsSchema, request.params);
-      parse(CancelTimeOffRequest, request.body);
-      return service.cancelTimeOff(organizationId, userId, id);
-    },
-  );
+  app.post("/api/v1/time-off/:id/cancel", { preHandler: [TIME_OFF_CANCEL] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    parse(CancelTimeOffRequest, request.body);
+    return service.cancelTimeOff(organizationId, userId, id, await authorityOf(request));
+  });
 
   // 23 — day-view for a clinician or org-wide.
   app.get(
     "/api/v1/day-view",
-    {
-      preHandler: [READ],
-      config: { auditRead: { resourceKind: "visit", list: true } },
-    },
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(DayViewQuerySchema, request.query);
@@ -738,10 +667,7 @@ export function registerSchedulingRoutes(
   // 24 — week-view.
   app.get(
     "/api/v1/week-view",
-    {
-      preHandler: [READ],
-      config: { auditRead: { resourceKind: "visit", list: true } },
-    },
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(WeekViewQuerySchema, request.query);
@@ -768,34 +694,23 @@ export function registerSchedulingRoutes(
   );
 
   // 26 — on-demand optimisation (behind scheduling.route_optimization, OFF; §7.9 degraded path otherwise).
-  app.post(
-    "/api/v1/optimize-day",
-    { preHandler: [OPTIMIZE] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const b = parse(OptimizeDayRequest, request.body);
-      return service.optimizeDay(organizationId, userId, {
-        membershipId: b.membershipId,
-        serviceDate: b.serviceDate,
-      });
-    },
-  );
+  app.post("/api/v1/optimize-day", { preHandler: [OPTIMIZE] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const b = parse(OptimizeDayRequest, request.body);
+    return service.optimizeDay(organizationId, userId, {
+      membershipId: b.membershipId,
+      serviceDate: b.serviceDate,
+    });
+  });
 
   // 27 — portal upcoming visits (portal session class; lay-language; scrubbed).
   app.get(
     "/api/v1/portal/upcoming",
-    {
-      preHandler: [PORTAL_READ],
-      config: { auditRead: { resourceKind: "visit", list: true } },
-    },
+    { preHandler: [PORTAL_READ], config: { auditRead: { resourceKind: "visit", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(PortalUpcomingQuerySchema, request.query);
-      return service.portalUpcoming(
-        organizationId,
-        q.patient,
-        q.withinHours ?? 168,
-      );
+      return service.portalUpcoming(organizationId, q.patient, q.withinHours ?? 168);
     },
   );
 
@@ -878,17 +793,9 @@ export function registerSchedulingRoutes(
     { preHandler: [CREDENTIAL_REVOKE] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
-      const { credentialId } = parse(
-        MembershipCredentialParamsSchema,
-        request.params,
-      );
+      const { credentialId } = parse(MembershipCredentialParamsSchema, request.params);
       const b = parse(RevokeCredentialRequest, request.body);
-      await service.revokeCredential(
-        organizationId,
-        userId,
-        credentialId,
-        b.reason,
-      );
+      await service.revokeCredential(organizationId, userId, credentialId, b.reason);
       return reply.code(204).send();
     },
   );

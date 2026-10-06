@@ -584,10 +584,13 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(resolved).toEqual({ ccn: "381234", macJurisdiction: "ngs_j6", cbsaCode: null });
     });
 
-    it("returns null when the provider entity has no MAC submitter credential yet", async () => {
+    it("names the missing MAC submitter credential (422) instead of reporting the provider entity unresolved", async () => {
       const pe = await seedProviderEntity(ORG_A, "381235");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
-      expect(await adapter.resolveProviderEntity(ORG_A, pe)).toBeNull();
+      await expect(adapter.resolveProviderEntity(ORG_A, pe)).rejects.toMatchObject({
+        code: "MAC_SUBMITTER_CREDENTIAL_MISSING",
+        statusCode: 422,
+      });
     });
 
     it("never resolves another org's provider entity (cross-tenant RLS isolation)", async () => {
@@ -716,9 +719,14 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(ctx?.admission).toEqual({
         admissionId,
         hospiceAdmissionDate: "2026-01-01",
+        rhcPriorHospiceDays: 0, // a first stay: the RHC day count starts here
+        rhcPriorStays: [], // …and no earlier stay with us for M23 to merge with the HETS history
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
+        placeOfDeath: null,
+        dischargeEventId: null,
+        transferOut: null,
         // F-127 (#251) — `activeAdmissionForRange` names M6_MD as the hospice physician.
         hospicePhysicianId: M6_MD,
       });
@@ -732,6 +740,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           revocationDate: null,
           // F-127 (#251) — the SIGNED election statement names M6_ATTENDING.
           attendingPhysicianId: M6_ATTENDING,
+          // An ordinary period-1 admission: no documented F2F exception (MBPM ch. 9 §20.1(5)(d)).
+          f2fExceptionDocumented: false,
         },
       ]);
       expect(ctx?.certifications).toHaveLength(1);

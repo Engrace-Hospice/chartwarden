@@ -86,7 +86,17 @@ function recordingStateService(): {
 function constantContextPort(): ValidationContextPort {
   return {
     build: async (_tx, _actor, claim) => ({
-      context: { claimId: claim.id } as unknown as ValidationContext,
+      context: {
+        claimId: claim.id,
+        claim: {
+          dischargeClaimCodes: {
+            patientStatus: "30",
+            conditionCodes: [],
+            occurrenceCodes: [],
+            unresolved: null,
+          },
+        },
+      } as unknown as ValidationContext,
       overlays: {},
     }),
   };
@@ -249,5 +259,156 @@ describe("guards", () => {
       svc.validateClaim(ACTOR, { claimId: "claim-2", trigger: "pre_submission" }),
     ).rejects.toBeTruthy();
     expect(store.runs.size).toBe(0);
+  });
+});
+
+describe("Type of Bill refresh on re-validation (812/813 → 811/814 once the stay-end counts)", () => {
+  function contextEndingOn(
+    dischargeDate: string | null,
+    reason: string | null,
+  ): ValidationContextPort {
+    return {
+      build: async (_tx, _actor, claim) => ({
+        context: {
+          claimId: claim.id,
+          claim: {
+            tob: claim.tob,
+            dischargeDate,
+            dischargeReason: reason,
+            dischargeClaimCodes: {
+              patientStatus: "01",
+              conditionCodes: [],
+              occurrenceCodes: [],
+              unresolved: null,
+            },
+          },
+        } as unknown as ValidationContext,
+        overlays: {},
+      }),
+    };
+  }
+  const seen: string[] = [];
+  const tobProbe: Rule = {
+    ...passRule,
+    key: "test.tob_probe",
+    check: (ctx) => {
+      seen.push(ctx.claim.tob);
+      return pass("test.tob_probe", "error", "ok");
+    },
+  };
+
+  it("re-types an unsubmitted interim claim whose stay ended by revocation inside the window", async () => {
+    seedValidatingClaim();
+    store.claims.set("claim-1", {
+      ...store.claims.get("claim-1"),
+      tob: "812",
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-31",
+    });
+    seen.length = 0;
+    const svc = makeService([tobProbe], {
+      contextPort: contextEndingOn("2026-03-20", "revocation"),
+    });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").tob).toBe("811");
+    expect(store.claims.get("claim-1").version).toBe(0); // a derived projection, not a user edit
+    expect(seen).toEqual(["811"]); // the rules validate the corrected TOB
+  });
+
+  it("keeps a continuing interim claim (813 → 814 only when discharged on/before the Through date)", async () => {
+    seedValidatingClaim();
+    store.claims.set("claim-1", {
+      ...store.claims.get("claim-1"),
+      tob: "813",
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-31",
+    });
+    const svc = makeService([passRule], { contextPort: contextEndingOn("2026-04-05", "transfer") });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").tob).toBe("813");
+    const svc2 = makeService([passRule], {
+      contextPort: contextEndingOn("2026-03-31", "transfer"),
+    });
+    await svc2.validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
+    expect(store.claims.get("claim-1").tob).toBe("814");
+  });
+
+  it("persists a re-validated result's remediation flat (summary at the top level, defects alongside)", async () => {
+    seedValidatingClaim();
+    const defectRule: Rule = {
+      ...blockingFailRule,
+      check: () => {
+        const r = fail("test.regulatory_block", "error", "x", { summary: "Fix it" }, { n: 1 });
+        return {
+          ...r,
+          annotations: {
+            ...r.annotations,
+            defects: [{ code: "PLACE_OF_DEATH_MISSING", message: "m" }],
+          },
+        };
+      },
+    };
+    const svc = makeService([defectRule], { contextPort: constantContextPort() });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    const result = [...store.results.values()][0];
+    expect(result.remediation).toEqual({
+      summary: "Fix it",
+      observed: { n: 1 },
+      defects: [{ code: "PLACE_OF_DEATH_MISSING", message: "m" }],
+    });
+  });
+});
+
+describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 §20.1.1)", () => {
+  function contextWithNoe(acceptedDate: string): ValidationContextPort {
+    return {
+      build: async (_tx, _actor, claim) => ({
+        context: {
+          claimId: claim.id,
+          claim: {
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-31",
+            dischargeClaimCodes: {
+              patientStatus: "30",
+              conditionCodes: [],
+              occurrenceCodes: [],
+              unresolved: null,
+            },
+          },
+          noe: {
+            state: "ack_accepted",
+            admissionDay: 20,
+            windowBreached: false,
+            electionEffectiveDate: "2026-03-01",
+            acceptedDate,
+            acceptedDateSource: "277ca_stc02",
+          },
+        } as unknown as ValidationContext,
+        overlays: {},
+      }),
+    };
+  }
+
+  it("persists OSC 77 (admission through the day before acceptance) for a NOE accepted late", async () => {
+    seedValidatingClaim();
+    const svc = makeService([passRule], { contextPort: contextWithNoe("2026-03-09") });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").occurrenceSpans).toEqual([
+      { code: "77", from: "2026-03-01", through: "2026-03-08" },
+    ]);
+    expect(store.claims.get("claim-1").version).toBe(0); // a derived projection, not a user edit
+  });
+
+  it("clears the span once the NOE reads as timely (e.g. a corrected payer date)", async () => {
+    seedValidatingClaim();
+    await makeService([passRule], { contextPort: contextWithNoe("2026-03-09") }).validateClaim(
+      ACTOR,
+      { claimId: "claim-1", trigger: "manual_re_run" },
+    );
+    await makeService([passRule], { contextPort: contextWithNoe("2026-03-05") }).validateClaim(
+      ACTOR,
+      { claimId: "claim-1", trigger: "pre_submission" },
+    );
+    expect(store.claims.get("claim-1").occurrenceSpans).toEqual([]);
   });
 });

@@ -360,17 +360,20 @@ describe("F-217 adequacy — the F2F (required from period 3)", () => {
     });
   });
 
-  describe("window basis 'dates': [start-30, start-1] on exact days (R-F2F-02)", () => {
+  describe("window basis 'dates': [start-30, start] on exact days (R-F2F-02, MBPM ch. 9 §20.1(5)(a))", () => {
     const at = (encounterDate: string | null) =>
       p3({ encounterDate, withinWindow: null }, { windowBasis: "dates" }).reasonCodes;
     it("start-30 (2026-01-30) and start-1 (2026-02-28) are inside", () => {
       expect(at("2026-01-30")).toEqual([]);
       expect(at("2026-02-28")).toEqual([]);
     });
-    it("start-31 (2026-01-29), the start date itself and later are outside", () => {
+    it("the period's first day (2026-03-01) is timely", () => {
+      expect(at("2026-03-01")).toEqual([]);
+    });
+    it("start-31 (2026-01-29) and start+1 and later are outside", () => {
       expect(at("2026-01-29")).toEqual(["F2F_OUTSIDE_WINDOW"]);
-      expect(at("2026-03-01")).toEqual(["F2F_OUTSIDE_WINDOW"]);
       expect(at("2026-03-02")).toEqual(["F2F_OUTSIDE_WINDOW"]);
+      expect(at("2026-03-03")).toEqual(["F2F_OUTSIDE_WINDOW"]);
     });
     it("a missing encounter date cannot be verified: F2F_ENCOUNTER_DATE_MISSING", () => {
       expect(at(null)).toEqual(["F2F_ENCOUNTER_DATE_MISSING"]);

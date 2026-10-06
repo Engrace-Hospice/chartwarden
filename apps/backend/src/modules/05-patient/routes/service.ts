@@ -256,7 +256,6 @@ export interface DemographicsView {
   readonly aliases: readonly NameAliasView[];
 }
 
-
 /** The route service surface (§4.2). */
 /** A query for the §4.2 census/list. Org binding is server-side, never in the query. */
 export interface PatientListQuery {
@@ -299,8 +298,18 @@ export interface PatientRouteService {
     actorUserId: string,
   ): Promise<PatientPayerView>;
   getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
-  createAssignment(organizationId: string, patientId: string, input: CreatePatientAssignmentInput, actorUserId: string): Promise<AssignmentView>;
-  endAssignment(organizationId: string, patientId: string, assignmentId: string, actorUserId: string): Promise<AssignmentView>;
+  createAssignment(
+    organizationId: string,
+    patientId: string,
+    input: CreatePatientAssignmentInput,
+    actorUserId: string,
+  ): Promise<AssignmentView>;
+  endAssignment(
+    organizationId: string,
+    patientId: string,
+    assignmentId: string,
+    actorUserId: string,
+  ): Promise<AssignmentView>;
   getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
@@ -621,15 +630,38 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
     async createAssignment(organizationId, patientId, input, _actorUserId) {
       if (!patients.has(patientId)) throw new Error("patient not found");
       const rows = assignments.get(patientId) ?? [];
-      if (rows.some((row) => row.current && row.clinicianUserId === input.clinicianMembershipId && row.role === input.role)) throw new Error("active assignment exists");
-      const row: AssignmentView = { id: `assignment_${rows.length + 1}`, clinicianUserId: input.clinicianMembershipId, role: input.role, assignedAt: input.assignedAt ?? now().toISOString().slice(0, 10), unassignedAt: null, current: true };
-      assignments.set(patientId, [...rows, row]); events.push("m5.patient.assignment_created"); return row;
+      if (
+        rows.some(
+          (row) =>
+            row.current &&
+            row.clinicianUserId === input.clinicianMembershipId &&
+            row.role === input.role,
+        )
+      )
+        throw new Error("active assignment exists");
+      const row: AssignmentView = {
+        id: `assignment_${rows.length + 1}`,
+        clinicianUserId: input.clinicianMembershipId,
+        role: input.role,
+        assignedAt: input.assignedAt ?? now().toISOString().slice(0, 10),
+        unassignedAt: null,
+        current: true,
+      };
+      assignments.set(patientId, [...rows, row]);
+      events.push("m5.patient.assignment_created");
+      return row;
     },
     async endAssignment(organizationId, patientId, assignmentId, _actorUserId) {
-      const rows = assignments.get(patientId) ?? []; const found = rows.find((row) => row.id === assignmentId);
+      const rows = assignments.get(patientId) ?? [];
+      const found = rows.find((row) => row.id === assignmentId);
       if (!found || !found.current) throw new Error("assignment not found");
       const ended = { ...found, current: false, unassignedAt: now().toISOString().slice(0, 10) };
-      assignments.set(patientId, rows.map((row) => row.id === assignmentId ? ended : row)); events.push("m5.patient.assignment_ended"); return ended;
+      assignments.set(
+        patientId,
+        rows.map((row) => (row.id === assignmentId ? ended : row)),
+      );
+      events.push("m5.patient.assignment_ended");
+      return ended;
     },
 
     async getPrivacyFlags(organizationId, patientId) {

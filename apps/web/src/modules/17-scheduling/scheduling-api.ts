@@ -31,9 +31,7 @@ import { mapSchedulingApiError } from "./scheduling-errors";
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
 /** The `application/json` payload of an openapi-fetch response/request-body slot. */
-type Json<T> = T extends { content: { "application/json": infer B } }
-  ? B
-  : never;
+type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 /** The success body of operation `Op` — 200 or 201, whichever the route actually sends. */
 type Ok<Op> = Op extends { responses: { 200: infer R } }
   ? Json<R>
@@ -48,23 +46,13 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type VisitView = Ok<operations["getApiV1VisitsByVisitId"]>;
 export type CreateVisitBody = ReqBody<operations["postApiV1Visits"]>;
 export type PatchVisitBody = ReqBody<operations["patchApiV1VisitsByVisitId"]>;
-export type RescheduleBody = ReqBody<
-  operations["postApiV1VisitsByVisitIdReschedule"]
->;
-export type ReassignBody = ReqBody<
-  operations["postApiV1VisitsByVisitIdReassign"]
->;
-export type CancelVisitBody = ReqBody<
-  operations["postApiV1VisitsByVisitIdCancel"]
->;
+export type RescheduleBody = ReqBody<operations["postApiV1VisitsByVisitIdReschedule"]>;
+export type ReassignBody = ReqBody<operations["postApiV1VisitsByVisitIdReassign"]>;
+export type CancelVisitBody = ReqBody<operations["postApiV1VisitsByVisitIdCancel"]>;
 export type NoShowBody = ReqBody<operations["postApiV1VisitsByVisitIdNoshow"]>;
-export type CreateRecurringBody = ReqBody<
-  operations["postApiV1Recurringvisits"]
->;
+export type CreateRecurringBody = ReqBody<operations["postApiV1Recurringvisits"]>;
 export type CreateTimeOffBody = ReqBody<operations["postApiV1Timeoff"]>;
-export type AvailabilityBody = ReqBody<
-  operations["putApiV1AvailabilityByMembershipId"]
->;
+export type AvailabilityBody = ReqBody<operations["putApiV1AvailabilityByMembershipId"]>;
 
 /** The §2.1 visit purposes the server accepts. Derived, so a vocabulary change is a compile error. */
 export type VisitPurpose = CreateVisitBody["visitPurpose"];
@@ -99,10 +87,7 @@ export type WriteResult<T> =
  * shown a generic error will try the same assignment again. 409 is the conflict rules — double-booking,
  * availability, approved time off — and the server's message names what it collided with.
  */
-function failure(
-  status: number | undefined,
-  body: unknown,
-): WriteResult<never> {
+function failure(status: number | undefined, body: unknown): WriteResult<never> {
   const httpStatus = typeof status === "number" ? status : null;
   const mapped = mapSchedulingApiError(body, httpStatus);
   return {
@@ -136,9 +121,7 @@ export async function loadPatientAddresses(
   }[];
   return rows.map((a) => ({
     id: a.id,
-    label:
-      [a.line1, a.city].filter(Boolean).join(", ") ||
-      (a.kind ?? a.id.slice(0, 8)),
+    label: [a.line1, a.city].filter(Boolean).join(", ") || (a.kind ?? a.id.slice(0, 8)),
   }));
 }
 
@@ -199,13 +182,10 @@ export async function rescheduleVisit(
   visitId: string,
   body: RescheduleBody,
 ): Promise<WriteResult<{ original: VisitView; created: VisitView }>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/visits/{visitId}/reschedule",
-    {
-      params: { path: { visitId } },
-      body,
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/reschedule", {
+    params: { path: { visitId } },
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as { original: VisitView; created: VisitView });
 }
@@ -216,13 +196,10 @@ export async function reassignVisit(
   visitId: string,
   newAssignedMembershipId: string,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/visits/{visitId}/reassign",
-    {
-      params: { path: { visitId } },
-      body: { newAssignedMembershipId } as ReassignBody,
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/reassign", {
+    params: { path: { visitId } },
+    body: { newAssignedMembershipId } as ReassignBody,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -233,13 +210,10 @@ export async function cancelVisit(
   visitId: string,
   body: CancelVisitBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/visits/{visitId}/cancel",
-    {
-      params: { path: { visitId } },
-      body,
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/cancel", {
+    params: { path: { visitId } },
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -254,13 +228,10 @@ export async function markNoShow(
   visitId: string,
   body: NoShowBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/visits/{visitId}/no-show",
-    {
-      params: { path: { visitId } },
-      body,
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/no-show", {
+    params: { path: { visitId } },
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -275,13 +246,10 @@ export async function startVisit(
   visitId: string,
   evvMissingReason: string,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/visits/{visitId}/start",
-    {
-      params: { path: { visitId } },
-      body: evvMissingReason ? { evvMissingReason } : {},
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/start", {
+    params: { path: { visitId } },
+    body: { evvMissingReason },
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -327,10 +295,7 @@ export async function createRecurring(
   client: ApiClient,
   body: CreateRecurringBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/recurring-visits",
-    { body },
-  );
+  const { data, error, response } = await client.POST("/api/v1/recurring-visits", { body });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -341,13 +306,10 @@ export async function discontinueRecurring(
   id: string,
   reason: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/recurring-visits/{id}/discontinue",
-    {
-      params: { path: { id } },
-      body: { reason },
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/recurring-visits/{id}/discontinue", {
+    params: { path: { id } },
+    body: { reason },
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -367,17 +329,11 @@ export async function requestTimeOff(
 }
 
 /** Approve a time-off request — the action the approval queue exists for. */
-export async function approveTimeOff(
-  client: ApiClient,
-  id: string,
-): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/time-off/{id}/approve",
-    {
-      params: { path: { id } },
-      body: {},
-    },
-  );
+export async function approveTimeOff(client: ApiClient, id: string): Promise<WriteResult<unknown>> {
+  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/approve", {
+    params: { path: { id } },
+    body: {},
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -388,29 +344,20 @@ export async function denyTimeOff(
   id: string,
   reason: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/time-off/{id}/deny",
-    {
-      params: { path: { id } },
-      body: { reason },
-    },
-  );
+  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/deny", {
+    params: { path: { id } },
+    body: { reason },
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
 
 /** Withdraw one's own request. */
-export async function cancelTimeOff(
-  client: ApiClient,
-  id: string,
-): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/time-off/{id}/cancel",
-    {
-      params: { path: { id } },
-      body: {},
-    },
-  );
+export async function cancelTimeOff(client: ApiClient, id: string): Promise<WriteResult<unknown>> {
+  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/cancel", {
+    params: { path: { id } },
+    body: {},
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }

@@ -9,6 +9,7 @@ import {
   index,
   pgTable,
   smallint,
+  text,
   timestamp,
   unique,
   uniqueIndex,
@@ -56,6 +57,21 @@ export const electionPeriods = pgTable(
     // [start-30, start-1] (R-F2F-02) can be computed against at F2F-completion time. NULL when the
     // preceding period has no scheduled end yet (not derivable) and for every activated/legacy period.
     expectedStart: date("expected_start"),
+    // Migration 0373 — how an admission's FIRST period number was established (readmission workflow). A new
+    // admission elects into the next AVAILABLE benefit period (42 CFR 418.21 / 418.24; per beneficiary across all
+    // hospices, Claims Processing Manual ch. 11 §20.1.6), so staff enter it — confirmed against HETS / ELGA / ELGH
+    // where possible — with our own history only as the suggestion. NULL on every later period and historic rows.
+    benefitPeriodSource: text("benefit_period_source", {
+      enum: ["hets_confirmed", "staff_entered_unverified", "internal_history"],
+    }),
+    benefitPeriodSuggested: smallint("benefit_period_suggested"),
+    benefitPeriodConfirmedBy: uuid("benefit_period_confirmed_by"), // acting user (logical)
+    benefitPeriodConfirmedOn: date("benefit_period_confirmed_on"), // hets_confirmed only
+    // Migration 0373 — MBPM ch. 9 §20.1(5)(d): a NEW admission in period 3+ with documented exceptional
+    // circumstances may have its F2F within 2 days after admission (a death within them deems it complete).
+    f2fExceptionReason: text("f2f_exception_reason"),
+    f2fExceptionDocumentedBy: uuid("f2f_exception_documented_by"), // acting user (logical)
+    f2fExceptionDocumentedAt: timestamp("f2f_exception_documented_at", { withTimezone: true }),
   },
   (t) => ({
     admSeqUnique: uniqueIndex("election_period_admission_seq_idx").on(

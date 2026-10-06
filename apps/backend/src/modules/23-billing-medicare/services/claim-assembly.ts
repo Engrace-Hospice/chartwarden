@@ -50,6 +50,9 @@ import {
   hospiceFiscalYearStarting,
   readAssemblyFacts,
 } from "./claim-assembly-facts";
+import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
+import { persistedRemediation } from "./persisted-remediation";
+import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
 
 // The org-context transaction handle every repo writes through (structurally a `BillingDb`). withOrgContext
@@ -251,8 +254,15 @@ export function buildClaimAssemblyService(
           .filter((c) => interimTobs.has(c.tob))
           .sort((a, b) => (a.serviceTo < b.serviceTo ? 1 : a.serviceTo > b.serviceTo ? -1 : 0))[0];
         const hasPriorClaimForAdmission = priorClaim !== undefined;
-        const patientDischarged =
-          admission.dischargeDate !== null && admission.dischargeDate <= serviceTo;
+        // The stay ends on a completed discharge_event, a transfer-out or a revocation (claim-discharge.ts) —
+        // the latter two have no discharge_event row, so reading only `dischargeDate` mis-typed their final
+        // bill as an interim one (812/813 instead of 811/814).
+        const { discharge, codes: dischargeCodes } = claimDischargeCodes(
+          admission,
+          resolvedPeriods,
+          serviceTo,
+        );
+        const patientDischarged = discharge !== null && discharge.effectiveDate <= serviceTo;
         const tob = deriveTypeOfBill({
           hasPriorClaimForAdmission,
           patientDischarged,
@@ -260,7 +270,9 @@ export function buildClaimAssemblyService(
         });
 
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
-        const hipps = computeClaimHipps(facts, { serviceFrom, serviceTo });
+        // Two-tier RHC: the prior hospice days this stay continues — our stays merged with the HETS history.
+        const rhcCarryOver = await readClaimRhcCarryOver(tx, orgId, patientId, admission, now());
+        const hipps = computeClaimHipps(facts, { serviceFrom, serviceTo }, rhcCarryOver.priorDays);
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
         const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {
@@ -360,6 +372,8 @@ export function buildClaimAssemblyService(
           sequestrationPolicyId: seqPolicy.sequestrationPolicyId,
           latestValidationRunId: validationRunId, // logical pointer; the run row is appended below
           createdByMembershipId: actor.membershipId,
+          // CMS Pub. 100-04 Ch. 11 §30.3 discharge codes (refreshed on every re-validation).
+          ...claimDischargeCodeColumns(dischargeCodes),
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(
@@ -383,6 +397,7 @@ export function buildClaimAssemblyService(
           })),
           rhcDays1to60: hipps.rhcDays1to60,
           rhcDays61Plus: hipps.rhcDays61Plus,
+          rhcCarryOver,
         });
 
         if (siaRow) {
@@ -412,6 +427,7 @@ export function buildClaimAssemblyService(
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
           noe: null,
           eligibilityBound: false,
+          rhcCarryOver: rhcCarryOverSnapshot(rhcCarryOver),
         });
 
         const startedAt = now();
@@ -468,8 +484,7 @@ export function buildClaimAssemblyService(
               ruleVersion: seams.ruleRegistry.getRule(r.ruleKey)?.version ?? 1,
               severity: r.severity,
               outcome: resultOutcome(r),
-              remediation: (r.annotations?.remediation ??
-                {}) as NewValidationResultInput["remediation"],
+              remediation: persistedRemediation(r) as NewValidationResultInput["remediation"],
             })),
           );
         }

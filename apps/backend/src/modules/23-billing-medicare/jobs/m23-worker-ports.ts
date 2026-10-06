@@ -21,7 +21,7 @@ import {
   buildClaimValidationService,
 } from "../services/claim-validation-service";
 import type { ClaimValidationRunnerPort, JobEnqueuePort, NoticeWindowPort } from "./m23-jobs";
-import { M23_QUEUES, M23_QUEUE_PARAMS } from "./queues";
+import { M23_QUEUES, M23_QUEUE_PARAMS, m23JobId } from "./queues";
 
 /** `YYYY-MM-DD` — `window_breached_at` is a SQL `date`, not a timestamp. */
 const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
@@ -97,7 +97,7 @@ export function buildM23WorkQueueEnqueuePort(connection: ConnectionOptions): {
           );
         }
         const params = WORK_QUEUE_PARAMS[queueName];
-        const jobId = `m23:${queueName}:${dedupeKey}`;
+        const jobId = m23JobId(queueName, dedupeKey);
         await queueFor(queueName).add(queueName, payload, {
           jobId,
           attempts: params.attempts,

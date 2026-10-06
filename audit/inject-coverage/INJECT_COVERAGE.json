@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1365,
-    "coveredRoutes": 1365,
-    "directRoutesReferenced": 1322
+    "routes": 1384,
+    "coveredRoutes": 1384,
+    "directRoutesReferenced": 1331
   },
   "modules": [
     {
@@ -73,21 +73,26 @@
     },
     {
       "module": "06-admission",
-      "routes": 68,
+      "routes": 74,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
         "apps/backend/__tests__/admission-discharge.test.ts",
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
-        "apps/backend/__tests__/admission-routes.test.ts"
+        "apps/backend/__tests__/admission-routes.test.ts",
+        "apps/backend/__tests__/discharge-details-routes.test.ts",
+        "apps/backend/__tests__/discharge-worklist-routes.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 68
+      "directRoutesReferenced": 74
     },
     {
       "module": "07-care-plan",
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
@@ -106,6 +111,7 @@
         "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
@@ -213,7 +219,7 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 33,
+      "routes": 35,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
@@ -281,15 +287,16 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 56,
+      "routes": 67,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts"
       ],
-      "directRoutesReferenced": 55
+      "directRoutesReferenced": 58
     },
     {
       "module": "24-billing-medicaid",

@@ -75,6 +75,7 @@ describe("buildPrimaryNav", () => {
     const nav = buildPrimaryNav([
       screen("/referrals"),
       screen("/referrals/new"),
+      screen("/admissions/discharges"),
       screen("/admissions"),
       screen("/ipu/units"),
       screen("/compliance/admissions"),
@@ -84,6 +85,8 @@ describe("buildPrimaryNav", () => {
     const admissions = nav.flatMap((s) => s.entries).find((e) => e.key === "admissions");
     expect(admissions?.children.map((c) => c.path)).toEqual([
       "/admissions/new",
+      // The Discharge / transfer hub sits right below New admission, whatever the registration order.
+      "/admissions/discharges",
       "/compliance/admissions",
       "/referrals",
       "/referrals/new",

@@ -10,6 +10,7 @@ import {
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   ASSIGNED_CLINICIAN_MESSAGE,
@@ -48,13 +49,7 @@ export interface EncounterLink {
   cosignedAt: string | null;
 }
 
-type VisitAction =
-  | "start"
-  | "arrive"
-  | "reassign"
-  | "reschedule"
-  | "cancel"
-  | "no-show";
+type VisitAction = "start" | "arrive" | "reassign" | "reschedule" | "cancel" | "no-show";
 
 type EligibleClinician = {
   membershipId: string;
@@ -65,18 +60,14 @@ type EligibleClinician = {
 };
 const eligibilityApi = (client: unknown) =>
   client as {
-    GET: (
-      path: string,
-      options: unknown,
-    ) => Promise<{ data?: unknown; error?: unknown }>;
+    GET: (path: string, options: unknown) => Promise<{ data?: unknown; error?: unknown }>;
   };
 const eligibilityReason = (reasons: readonly string[]): string => {
   if (reasons.includes("CLINICIAN_CREDENTIAL_MISSING"))
     return "No active credential for the selected date.";
   if (reasons.includes("CLINICIAN_DISCIPLINE_NOT_ALLOWED"))
     return "This discipline cannot perform the selected visit type.";
-  if (reasons.includes("CLINICIAN_ON_PTO"))
-    return "Unavailable during the selected time.";
+  if (reasons.includes("CLINICIAN_ON_PTO")) return "Unavailable during the selected time.";
   if (reasons.includes("CLINICIAN_NOT_IN_CASELOAD"))
     return "Not currently assigned to this patient's care team.";
   return "Not eligible for this visit.";
@@ -99,17 +90,9 @@ const VISIT_PURPOSES = [
   "discharge_visit",
 ] as const;
 
-const VISIT_SETTINGS = [
-  "patient_home",
-  "facility",
-  "inpatient_unit",
-  "telephonic",
-] as const;
+const VISIT_SETTINGS = ["patient_home", "facility", "inpatient_unit", "telephonic"] as const;
 
-export function hasPermission(
-  permissions: readonly string[] | undefined,
-  key: string,
-): boolean {
+export function hasPermission(permissions: readonly string[] | undefined, key: string): boolean {
   return permissions?.includes(key) ?? false;
 }
 
@@ -172,20 +155,14 @@ export function SchedulingNav({
       permission: "time_off.read_team",
     },
   ] as const;
-  const visibleTabs = tabs.filter((tab) =>
-    hasPermission(permissions, tab.permission),
-  );
+  const visibleTabs = tabs.filter((tab) => hasPermission(permissions, tab.permission));
   return (
     <div style={navShell}>
       <nav aria-label="Scheduling sections" style={navTabs}>
         {visibleTabs.map(({ href, label }) => {
           const active = location.pathname === href;
           return (
-            <Link
-              key={href}
-              to={href}
-              style={{ ...navLink, ...(active ? navLinkActive : null) }}
-            >
+            <Link key={href} to={href} style={{ ...navLink, ...(active ? navLinkActive : null) }}>
               {label}
             </Link>
           );
@@ -224,22 +201,16 @@ export function NewVisitModal({
     Array<{ id: string; label: string; isPrimary: boolean; current: boolean }>
   >([]);
   const [facilityId, setFacilityId] = useState("");
-  const [start, setStart] = useState(() =>
-    toLocalInput(new Date(Date.now() + 60 * 60 * 1000)),
-  );
-  const [end, setEnd] = useState(() =>
-    toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)),
-  );
+  const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60 * 1000)));
+  const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
   const [notes, setNotes] = useState("");
   const [reminder, setReminder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [eligibleClinicians, setEligibleClinicians] = useState<
-    EligibleClinician[]
-  >([]);
-  const [eligibilityState, setEligibilityState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
+  const [eligibleClinicians, setEligibleClinicians] = useState<EligibleClinician[]>([]);
+  const [eligibilityState, setEligibilityState] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
   const [eligibilityHint, setEligibilityHint] = useState<string | null>(null);
 
   useEffect(() => {
@@ -255,9 +226,9 @@ export function NewVisitModal({
         params: { path: { patientId } },
       })
       .then((result) => {
-        const active = (
-          (result.data?.items ?? []) as Array<{ id: string; state: string }>
-        ).filter((admission) => admission.state === "active");
+        const active = ((result.data?.items ?? []) as Array<{ id: string; state: string }>).filter(
+          (admission) => admission.state === "active",
+        );
         if (active.length === 1) setAdmissionId(active[0]!.id);
       });
   }, [admissionId, client, open, patientId]);
@@ -291,12 +262,9 @@ export function NewVisitModal({
       return;
     }
     void (async () => {
-      const { data, error: addressError } = await client.GET(
-        "/api/v1/patients/{id}/addresses",
-        {
-          params: { path: { id: patientId } },
-        },
-      );
+      const { data, error: addressError } = await client.GET("/api/v1/patients/{id}/addresses", {
+        params: { path: { id: patientId } },
+      });
       if (cancelled || addressError) return;
       const rows = (
         (data?.addresses ?? []) as Array<{
@@ -311,13 +279,7 @@ export function NewVisitModal({
         }>
       ).map((address) => ({
         id: address.id,
-        label: [
-          address.line1,
-          address.line2,
-          address.city,
-          address.state,
-          address.postalCode,
-        ]
+        label: [address.line1, address.line2, address.city, address.state, address.postalCode]
           .filter(Boolean)
           .join(", "),
         isPrimary: address.isPrimary,
@@ -338,8 +300,7 @@ export function NewVisitModal({
   // credential policy in the browser; this only makes known-invalid choices unavailable sooner.
   useEffect(() => {
     let cancelled = false;
-    const validWindow =
-      Date.parse(isoFromLocal(start)) < Date.parse(isoFromLocal(end));
+    const validWindow = Date.parse(isoFromLocal(start)) < Date.parse(isoFromLocal(end));
     if (!patientId || !validWindow) {
       setEligibleClinicians([]);
       setEligibilityState("idle");
@@ -348,19 +309,16 @@ export function NewVisitModal({
     setEligibilityState("loading");
     setEligibilityHint(null);
     void (async () => {
-      const result = await eligibilityApi(client).GET(
-        "/api/v1/scheduling/eligible-clinicians",
-        {
-          params: {
-            query: {
-              patientId,
-              visitPurpose,
-              scheduledStartedAt: isoFromLocal(start),
-              scheduledEndedAt: isoFromLocal(end),
-            },
+      const result = await eligibilityApi(client).GET("/api/v1/scheduling/eligible-clinicians", {
+        params: {
+          query: {
+            patientId,
+            visitPurpose,
+            scheduledStartedAt: isoFromLocal(start),
+            scheduledEndedAt: isoFromLocal(end),
           },
         },
-      );
+      });
       if (cancelled) return;
       if (result.error) {
         setEligibleClinicians([]);
@@ -372,14 +330,9 @@ export function NewVisitModal({
       setEligibilityState("ready");
       if (
         clinicianId &&
-        !rows.some(
-          (clinician) =>
-            clinician.membershipId === clinicianId && clinician.eligible,
-        )
+        !rows.some((clinician) => clinician.membershipId === clinicianId && clinician.eligible)
       ) {
-        const selected = rows.find(
-          (clinician) => clinician.membershipId === clinicianId,
-        );
+        const selected = rows.find((clinician) => clinician.membershipId === clinicianId);
         setClinicianId("");
         setClinicianLabel("");
         setEligibilityHint(
@@ -406,7 +359,11 @@ export function NewVisitModal({
     }
     setSubmitting(true);
     setError(null);
-    const { data, error: err } = await client.POST("/api/v1/visits", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/visits", {
       body: {
         patientId,
         admissionId,
@@ -416,15 +373,14 @@ export function NewVisitModal({
         scheduledStartedAt: isoFromLocal(start),
         scheduledEndedAt: isoFromLocal(end),
         patientAddressId: addressId || null,
-        externalFacilityId:
-          visitSetting === "facility" ? facilityId || null : null,
+        externalFacilityId: visitSetting === "facility" ? facilityId || null : null,
         ...(notes.trim() ? { schedulerInternalNotes: notes.trim() } : {}),
         caregiverReminderOptIn: reminder,
       },
     } as never);
     setSubmitting(false);
     if (err || !data) {
-      setError(mapSchedulingApiError(err).message);
+      setError(mapSchedulingApiError(err, response?.status).message);
       return;
     }
     reset();
@@ -444,16 +400,10 @@ export function NewVisitModal({
           <div>
             <h2 style={modalTitle}>New Visit</h2>
             <p style={muted}>
-              Schedule ownership stays in M17; Encounter draft seeding is
-              backend-owned.
+              Schedule ownership stays in M17; Encounter draft seeding is backend-owned.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            style={iconButton}
-          >
+          <button type="button" onClick={onClose} disabled={submitting} style={iconButton}>
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
@@ -554,10 +504,7 @@ export function NewVisitModal({
               {eligibleClinicians
                 .filter((clinician) => clinician.eligible)
                 .map((clinician) => (
-                  <option
-                    key={clinician.membershipId}
-                    value={clinician.membershipId}
-                  >
+                  <option key={clinician.membershipId} value={clinician.membershipId}>
                     {clinician.displayName} ·{" "}
                     {clinician.disciplines
                       .map((discipline) => discipline.toUpperCase())
@@ -566,24 +513,18 @@ export function NewVisitModal({
                 ))}
             </select>
             {eligibilityState === "ready" &&
-            eligibleClinicians.filter((clinician) => clinician.eligible)
-              .length === 0 ? (
+            eligibleClinicians.filter((clinician) => clinician.eligible).length === 0 ? (
               <small style={muted}>
-                No eligible clinicians for this patient and visit context.
-                Review the care team, credentials, or selected time.
+                No eligible clinicians for this patient and visit context. Review the care team,
+                credentials, or selected time.
               </small>
             ) : null}
             {eligibilityState === "error" ? (
               <small style={muted}>
-                Eligible clinicians could not be checked. Try again before
-                creating the visit.
+                Eligible clinicians could not be checked. Try again before creating the visit.
               </small>
             ) : null}
-            {eligibilityHint ? (
-              <small role="status" style={muted}>
-                {eligibilityHint}
-              </small>
-            ) : null}
+            {eligibilityHint ? <output style={muted}>{eligibilityHint}</output> : null}
           </label>
           {visitSetting === "facility" ? (
             <MdmEntityLookupField
@@ -666,27 +607,20 @@ export function VisitActionPanel({
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState("patient_request");
   const [clinicianId, setClinicianId] = useState("");
-  const [start, setStart] = useState(
-    toLocalInput(new Date(visit.scheduledStartedAt)),
-  );
-  const [end, setEnd] = useState(
-    toLocalInput(new Date(visit.scheduledEndedAt)),
-  );
-  const [evvReason, setEvvReason] = useState("");
+  const [start, setStart] = useState(toLocalInput(new Date(visit.scheduledStartedAt)));
+  const [end, setEnd] = useState(toLocalInput(new Date(visit.scheduledEndedAt)));
+  const [evvReason, setEvvReason] = useState(restored?.evvReason ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [actionEligibleClinicians, setActionEligibleClinicians] = useState<
-    EligibleClinician[]
-  >([]);
+  const [actionEligibleClinicians, setActionEligibleClinicians] = useState<EligibleClinician[]>([]);
   const [actionEligibilityState, setActionEligibilityState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  const [actionEligibilityHint, setActionEligibilityHint] = useState<
-    string | null
-  >(null);
+  const [actionEligibilityHint, setActionEligibilityHint] = useState<string | null>(null);
   const [eligibilityRefresh, setEligibilityRefresh] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: eligibilityRefresh re-runs the eligibility read on "Retry"; it is a trigger, not read in the body.
   useEffect(() => {
     let cancelled = false;
     if (
@@ -700,19 +634,16 @@ export function VisitActionPanel({
     setActionEligibilityState("loading");
     setActionEligibilityHint(null);
     void (async () => {
-      const result = await eligibilityApi(client).GET(
-        "/api/v1/scheduling/eligible-clinicians",
-        {
-          params: {
-            query: {
-              patientId: visit.patientId,
-              visitPurpose: visit.visitPurpose,
-              scheduledStartedAt: isoFromLocal(start),
-              scheduledEndedAt: isoFromLocal(end),
-            },
+      const result = await eligibilityApi(client).GET("/api/v1/scheduling/eligible-clinicians", {
+        params: {
+          query: {
+            patientId: visit.patientId,
+            visitPurpose: visit.visitPurpose,
+            scheduledStartedAt: isoFromLocal(start),
+            scheduledEndedAt: isoFromLocal(end),
           },
         },
-      );
+      });
       if (cancelled) return;
       if (result.error) {
         setActionEligibleClinicians([]);
@@ -723,13 +654,9 @@ export function VisitActionPanel({
       setActionEligibleClinicians(rows);
       setActionEligibilityState("ready");
       setClinicianId((previous) => {
-        const candidateId =
-          previous ||
-          (action === "reschedule" ? visit.assignedMembershipId : "");
+        const candidateId = previous || (action === "reschedule" ? visit.assignedMembershipId : "");
         if (!candidateId) return previous;
-        const candidate = rows.find(
-          (clinician) => clinician.membershipId === candidateId,
-        );
+        const candidate = rows.find((clinician) => clinician.membershipId === candidateId);
         if (candidate?.eligible) return candidateId;
         setActionEligibilityHint(
           `${candidate?.displayName ?? "The current clinician"} is no longer available: ${eligibilityReason(candidate?.reasonCodes ?? [])}`,
@@ -759,15 +686,9 @@ export function VisitActionPanel({
       tone?: "primary" | "secondary" | "danger";
       icon: "clock" | "check" | "users" | "calendar" | "block" | "alert";
     }> = [];
-    if (
-      visit.status === "published" &&
-      hasPermission(permissions, "visit.start")
-    )
+    if (visit.status === "published" && hasPermission(permissions, "visit.start"))
       out.push({ action: "start", label: "Start", icon: "clock" });
-    if (
-      visit.status === "en_route" &&
-      hasPermission(permissions, "visit.start")
-    )
+    if (visit.status === "en_route" && hasPermission(permissions, "visit.start"))
       out.push({ action: "arrive", label: "Check in", icon: "check" });
     if (
       ["published", "en_route"].includes(visit.status) &&
@@ -779,10 +700,7 @@ export function VisitActionPanel({
         tone: "secondary",
         icon: "users",
       });
-    if (
-      visit.status === "published" &&
-      hasPermission(permissions, "visit.reschedule")
-    )
+    if (visit.status === "published" && hasPermission(permissions, "visit.reschedule"))
       out.push({
         action: "reschedule",
         label: "Reschedule",
@@ -799,10 +717,7 @@ export function VisitActionPanel({
         tone: "danger",
         icon: "block",
       });
-    if (
-      visit.status === "published" &&
-      hasPermission(permissions, "visit.mark_no_show")
-    )
+    if (visit.status === "published" && hasPermission(permissions, "visit.mark_no_show"))
       out.push({
         action: "no-show",
         label: "No-show",
@@ -835,8 +750,7 @@ export function VisitActionPanel({
       Date.parse(isoFromLocal(end)) <= Date.parse(isoFromLocal(start))
     ) {
       setFieldErrors({
-        scheduledEndedAt:
-          "The visit end time must be later than the start time.",
+        scheduledEndedAt: "The visit end time must be later than the start time.",
       });
       setBusy(false);
       return;
@@ -853,8 +767,12 @@ export function VisitActionPanel({
       return;
     }
     let result:
-      | { data?: unknown; error?: unknown }
-      | { data?: { original: VisitView; created: VisitView }; error?: unknown };
+      | { data?: unknown; error?: unknown; response?: Response }
+      | {
+          data?: { original: VisitView; created: VisitView };
+          error?: unknown;
+          response?: Response;
+        };
     if (action === "start") {
       result = await client.POST("/api/v1/visits/{visitId}/start", {
         params: { path: { visitId: visit.id } },
@@ -908,7 +826,7 @@ export function VisitActionPanel({
           return;
         }
       }
-      setError(apiErrorMessage(result.error, "The visit action could not be completed."));
+      setError(mapSchedulingApiError(result.error, result.response?.status).message);
       return;
     }
     const payload = result.data as
@@ -953,9 +871,7 @@ export function VisitActionPanel({
             tone="secondary"
             onClick={() =>
               encounter
-                ? navigate(
-                    `/patients/${encounter.patientId}/encounters/${encounter.id}`,
-                  )
+                ? navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
                 : void onChanged()
             }
           >
@@ -965,13 +881,12 @@ export function VisitActionPanel({
         </div>
         {!encounter ? (
           <p style={muted}>
-            Draft Encounter is created asynchronously after publish. Refresh if
-            it is still processing.
+            Draft Encounter is created asynchronously after publish. Refresh if it is still
+            processing.
           </p>
         ) : (
           <p style={muted}>
-            Linked Encounter:{" "}
-            <StatusPill label={stateLabel(encounter.status)} tone="neutral" />
+            Linked Encounter: <StatusPill label={stateLabel(encounter.status)} tone="neutral" />
           </p>
         )}
       </div>
@@ -983,9 +898,7 @@ export function VisitActionPanel({
       >
         <div style={modalBody}>
           <div style={modalHeader}>
-            <h2 style={modalTitle}>
-              {action ? actionTitle(action) : "Visit action"}
-            </h2>
+            <h2 style={modalTitle}>{action ? actionTitle(action) : "Visit action"}</h2>
             <button
               type="button"
               onClick={() => setAction(null)}
@@ -1011,17 +924,15 @@ export function VisitActionPanel({
                 aria-invalid={Boolean(fieldErrors.evvMissingReason)}
               />
               {fieldErrors.evvMissingReason ? (
-                <small role="alert" style={{ color: "var(--color-error)" }}>
+                <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85em" }}>
                   {fieldErrors.evvMissingReason}
-                </small>
+                </span>
               ) : null}
             </label>
           ) : null}
           {action === "reassign" || action === "reschedule" ? (
             <label style={field}>
-              <span style={label}>
-                {action === "reassign" ? "New clinician *" : "Clinician"}
-              </span>
+              <span style={label}>{action === "reassign" ? "New clinician *" : "Clinician"}</span>
               {actionEligibilityState === "loading" ? (
                 <small style={muted}>Checking clinician availability…</small>
               ) : null}
@@ -1044,10 +955,7 @@ export function VisitActionPanel({
                         clinician.membershipId !== visit.assignedMembershipId),
                   )
                   .map((clinician) => (
-                    <option
-                      key={clinician.membershipId}
-                      value={clinician.membershipId}
-                    >
+                    <option key={clinician.membershipId} value={clinician.membershipId}>
                       {clinician.displayName} ·{" "}
                       {clinician.disciplines
                         .map((discipline) => discipline.toUpperCase())
@@ -1059,12 +967,11 @@ export function VisitActionPanel({
               actionEligibleClinicians.filter(
                 (clinician) =>
                   clinician.eligible &&
-                  (action !== "reassign" ||
-                    clinician.membershipId !== visit.assignedMembershipId),
+                  (action !== "reassign" || clinician.membershipId !== visit.assignedMembershipId),
               ).length === 0 ? (
                 <small style={muted}>
-                  No eligible clinicians available. No other clinician currently
-                  meets the requirements for this patient, visit type, and time.
+                  No eligible clinicians available. No other clinician currently meets the
+                  requirements for this patient, visit type, and time.
                 </small>
               ) : null}
               {actionEligibilityState === "error" ? (
@@ -1073,9 +980,7 @@ export function VisitActionPanel({
                 </small>
               ) : null}
               {actionEligibilityHint ? (
-                <small role="status" style={muted}>
-                  {actionEligibilityHint}
-                </small>
+                <output style={muted}>{actionEligibilityHint}</output>
               ) : null}
             </label>
           ) : null}
@@ -1103,9 +1008,9 @@ export function VisitActionPanel({
             </div>
           ) : null}
           {fieldErrors.scheduledEndedAt ? (
-            <small role="alert" style={{ color: "var(--color-error)" }}>
+            <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85em" }}>
               {fieldErrors.scheduledEndedAt}
-            </small>
+            </span>
           ) : null}
           {action === "cancel" ? (
             <label style={field}>
@@ -1122,8 +1027,7 @@ export function VisitActionPanel({
               </select>
             </label>
           ) : null}
-          {action &&
-          ["reassign", "reschedule", "cancel", "no-show"].includes(action) ? (
+          {action && ["reassign", "reschedule", "cancel", "no-show"].includes(action) ? (
             <label style={field}>
               <span style={label}>
                 {action === "reschedule"
@@ -1148,42 +1052,32 @@ export function VisitActionPanel({
                 </small>
               ) : null}
               {fieldErrors.reason ? (
-                <small role="alert" style={{ color: "var(--color-error)" }}>
+                <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85em" }}>
                   {fieldErrors.reason}
-                </small>
+                </span>
               ) : null}
             </label>
           ) : null}
           {action === "reschedule" ? (
             <p style={muted}>
-              This preserves lineage: the original Visit becomes rescheduled and
-              a new Visit is published.
+              This preserves lineage: the original Visit becomes rescheduled and a new Visit is
+              published.
             </p>
           ) : null}
           <div style={actions}>
-            <Button
-              tone="tertiary"
-              onClick={() => setAction(null)}
-              disabled={busy}
-            >
+            <Button tone="tertiary" onClick={() => setAction(null)} disabled={busy}>
               Cancel
             </Button>
             <Button
-              tone={
-                action === "cancel" || action === "no-show"
-                  ? "danger"
-                  : "primary"
-              }
+              tone={action === "cancel" || action === "no-show" ? "danger" : "primary"}
               loading={busy}
               disabled={
                 busy ||
                 ((action === "reassign" || action === "reschedule") &&
                   (!clinicianId || actionEligibilityState !== "ready")) ||
-                ((action === "reschedule" || action === "cancel") &&
-                  reason.trim().length < 20) ||
+                ((action === "reschedule" || action === "cancel") && reason.trim().length < 20) ||
                 (action === "reschedule" &&
-                  Date.parse(isoFromLocal(end)) <=
-                    Date.parse(isoFromLocal(start))) ||
+                  Date.parse(isoFromLocal(end)) <= Date.parse(isoFromLocal(start))) ||
                 ((action === "start" || action === "arrive") &&
                   evvReason.trim().length > 0 &&
                   evvReason.trim().length < 40)
@@ -1212,8 +1106,8 @@ export async function findLinkedEncounter(
       },
     },
   } as never);
-  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)
-    ?.encounters ?? []) as EncounterLink[];
+  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ??
+    []) as EncounterLink[];
   return encounters.find((encounter) => encounter.visitId === visit.id) ?? null;
 }
 

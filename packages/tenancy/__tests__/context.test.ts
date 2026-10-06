@@ -23,6 +23,7 @@ import {
   registerPlatformJob,
   resetPlatformJobRegistry,
   runWithRequestContext,
+  systemOrgContext,
   withOrgContext,
   withOrgContextFromRequest,
   withPlatformContext,
@@ -181,6 +182,24 @@ describe("withOrgContext actor defaulting (GAP-111)", () => {
         { organizationId: "org-1", userId: "user-req" },
       ),
     ).toEqual([""]);
+  });
+});
+
+describe("systemOrgContext (cron / consumer system actor)", () => {
+  it("is the NULL actor with the systemActor opt-out, never a sentinel uuid", () => {
+    expect(systemOrgContext("org-1")).toEqual({
+      organizationId: "org-1",
+      userId: "",
+      systemActor: true,
+    });
+  });
+
+  it("records the empty actor even inside an authenticated same-org request", async () => {
+    const { db, executed } = fakeDb();
+    await runWithRequestContext({ organizationId: "org-1", userId: REQ_USER }, () =>
+      withOrgContext(db, systemOrgContext("org-1"), async () => undefined),
+    );
+    expect(render(executed[1] as SQL).params).toEqual([""]);
   });
 });
 

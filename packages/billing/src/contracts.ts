@@ -76,7 +76,16 @@ export type LevelOfCare =
 
 export type ValidationOutcome = "pass" | "fail" | "warn" | "info";
 export type ValidationSeverity = "error" | "warn" | "info";
-export type EligibilityOutcome = "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+/**
+ * The domain eligibility outcome. `mbi_invalid` (HETS 2100C AAA 58/71/72/73 — beneficiary not matched) is
+ * kept distinct from `error` so the screen can say "fix the MBI/name/DOB" rather than "HETS is down".
+ */
+export type EligibilityOutcome =
+  | "active_part_a"
+  | "inactive_part_a"
+  | "mbi_invalid"
+  | "indeterminate"
+  | "error";
 export type SubmissionStatus =
   | "queued"
   | "uploaded"

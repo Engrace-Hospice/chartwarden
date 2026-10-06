@@ -184,6 +184,19 @@ export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscript
       ],
     },
 
+    // A place of death / receiving care setting recorded after the fact (M6 discharge-details routes) is
+    // exactly the fact the `bereavement_discharge_legitimacy` rule was blocking on — re-validate so the claim
+    // clears without a manual re-run.
+    "m6.discharge.details_recorded": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "A claim-relevant discharge detail (place of death / receiving care setting) was recorded in M6 — re-validate the admission's open claims so the patient discharge status is re-derived.",
+        },
+      ],
+    },
+
     // ── M8 encounter signed / cosigned → re-validate (task 53) ──────────────────────────────────────────
     "m8.encounter.signed": {
       status: "live",

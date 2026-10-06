@@ -20,18 +20,17 @@ const messageFor = (signal: string, status?: number | null): string => {
     return "This clinician cannot perform the selected type of visit.";
   if (/CLINICIAN_ON_PTO|not_on_pto/.test(signal))
     return "This clinician is unavailable during the selected time.";
-  if (
-    /CLINICIAN_NOT_IN_CASELOAD|within_caseload_or_unassigned_pool|PRE_SCHEDULE_GATE_FAILED/.test(
-      signal,
-    )
-  )
+  if (/CLINICIAN_NOT_IN_CASELOAD|within_caseload_or_unassigned_pool/.test(signal))
     return "This clinician is not currently eligible for this patient.";
+  // The unspecific D8 refusals: `VISIT_PRE_SCHEDULE_GATE_UNMET` on create/publish, a 403 whose message is
+  // the bare `PRE_SCHEDULE_GATE_FAILED` on reassign/reschedule. The fix is a different clinician or time,
+  // not a retry, so say so rather than falling through to the generic copy.
+  if (/PRE_SCHEDULE_GATE_UNMET|PRE_SCHEDULE_GATE_FAILED/.test(signal))
+    return "That clinician's discipline, active licence, caseload or approved time off does not allow this visit. Choose a different clinician or time.";
   if (status === 412)
     return "This visit was changed by someone else. Refresh the visit and try again.";
-  if (status === 409)
-    return "This clinician already has another visit during the selected time.";
-  if (status === 403)
-    return "You don't have permission to perform this action.";
+  if (status === 409) return "This clinician already has another visit during the selected time.";
+  if (status === 403) return "You don't have permission to perform this action.";
   if (status === 422) return "Please review the highlighted fields.";
   return "We couldn't complete this action. Please try again.";
 };
@@ -39,28 +38,19 @@ const fieldMessage = (field: string, value: unknown): string => {
   const raw = typeof value === "string" ? value : "";
   if (field === "reason" && /greater or equal to 20|minLength.*20/i.test(raw))
     return "Please enter at least 20 characters.";
-  if (
-    field === "evvMissingReason" &&
-    /greater or equal to 40|minLength.*40/i.test(raw)
-  )
+  if (field === "evvMissingReason" && /greater or equal to 40|minLength.*40/i.test(raw))
     return "Please enter at least 40 characters.";
   return "Please review this field.";
 };
 /** One human-facing translation layer for every M17 mutation response. */
-export function mapSchedulingApiError(
-  body: unknown,
-  status?: number | null,
-): SchedulingUiError {
+export function mapSchedulingApiError(body: unknown, status?: number | null): SchedulingUiError {
   const outer = (body && typeof body === "object" ? body : {}) as Envelope;
-  const error =
-    outer.error && typeof outer.error === "object" ? outer.error : outer;
+  const error = outer.error && typeof outer.error === "object" ? outer.error : outer;
   const code = typeof error.code === "string" ? error.code : undefined;
   const reason = typeof error.reason === "string" ? error.reason : "";
   const raw = typeof error.message === "string" ? error.message : "";
   const fieldErrors: Record<string, string> = {};
-  for (const detail of (Array.isArray(error.details)
-    ? error.details
-    : []) as Detail[])
+  for (const detail of (Array.isArray(error.details) ? error.details : []) as Detail[])
     if (typeof detail.field === "string")
       fieldErrors[detail.field] = fieldMessage(detail.field, detail.message);
   return {
@@ -69,8 +59,6 @@ export function mapSchedulingApiError(
       : messageFor(`${code ?? ""} ${reason} ${raw}`, status),
     fieldErrors,
     ...(code ? { code } : {}),
-    ...(typeof error.correlationId === "string"
-      ? { correlationId: error.correlationId }
-      : {}),
+    ...(typeof error.correlationId === "string" ? { correlationId: error.correlationId } : {}),
   };
 }
