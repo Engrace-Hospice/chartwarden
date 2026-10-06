@@ -14,6 +14,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { WardenXError } from "@wardenx/types";
 import type { M5OutboxPort } from "./deceased-db";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
@@ -25,6 +26,8 @@ import type {
   AdmitInput,
   AdmitResult,
   CareTeamView,
+  AssignmentView,
+  CreatePatientAssignmentInput,
   CensusMetrics,
   DemographicsView,
   IdentifierView,
@@ -44,6 +47,7 @@ const PCG = schema.patientCaregivers;
 const CG = schema.caregivers;
 const EC = schema.emergencyContacts;
 const PFS = schema.patientPrivacyFlagSnapshots;
+const MEM = schema.memberships;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
 
 const P = schema.patients;
@@ -101,10 +105,8 @@ function decode(cursor: string): [string, string, string] | null {
 }
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
-export function createDbPatientRouteService(
-  db: DbClient,
-  outbox: M5OutboxPort,
-): PatientRouteService {
+const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
+export function createDbPatientRouteService(db: DbClient, outbox: M5OutboxPort = NOOP_OUTBOX): PatientRouteService {
   const list = async (
     organizationId: string,
     query: ListQuery,
@@ -677,6 +679,31 @@ export function createDbPatientRouteService(
       };
     });
 
+  const createAssignment = async (organizationId: string, patientId: string, input: CreatePatientAssignmentInput, _actorUserId: string): Promise<AssignmentView> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const [patient] = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+      if (!patient) throw new WardenXError("NOT_FOUND", "patient not found", 404);
+      const [membership] = await tx.select({ userId: MEM.userId, status: MEM.status }).from(MEM).where(eq(MEM.id, input.clinicianMembershipId)).limit(1);
+      if (!membership || membership.status !== "active") throw new WardenXError("CLINICIAN_MEMBERSHIP_INVALID", "The selected clinician is not an active member of this organization.", 422);
+      const duplicate = await tx.select({ id: ASSIGN.id }).from(ASSIGN).where(and(eq(ASSIGN.patientId, patientId), eq(ASSIGN.clinicianUserId, membership.userId), eq(ASSIGN.role, input.role as never), isNull(ASSIGN.unassignedAt))).limit(1);
+      if (duplicate[0]) throw new WardenXError("ACTIVE_ASSIGNMENT_EXISTS", "This clinician already has this active care team role.", 409);
+      const [row] = await tx.insert(ASSIGN).values({ patientId, organizationId, clinicianUserId: membership.userId, role: input.role as never, assignedAt: input.assignedAt ?? new Date().toISOString().slice(0, 10) }).returning();
+      if (!row) throw new Error("patient assignment insert failed");
+      await outbox.publish(tx as DbClient, { eventName: "m5.patient.assignment_created", payload: { organizationId, patientId, clinicianUserId: row.clinicianUserId }, organizationId, aggregateKind: "patient_assignment", aggregateId: row.id });
+      return { id: row.id, clinicianUserId: row.clinicianUserId, role: row.role, assignedAt: row.assignedAt, unassignedAt: null, current: true };
+    });
+
+  const endAssignment = async (organizationId: string, patientId: string, assignmentId: string, _actorUserId: string): Promise<AssignmentView> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const [row] = await tx.select().from(ASSIGN).where(and(eq(ASSIGN.id, assignmentId), eq(ASSIGN.patientId, patientId))).limit(1);
+      if (!row) throw new WardenXError("NOT_FOUND", "care team assignment not found", 404);
+      if (row.unassignedAt) throw new WardenXError("ASSIGNMENT_ALREADY_ENDED", "This care team assignment has already ended.", 409);
+      const [ended] = await tx.update(ASSIGN).set({ unassignedAt: new Date().toISOString().slice(0, 10) }).where(eq(ASSIGN.id, assignmentId)).returning();
+      if (!ended) throw new Error("patient assignment end failed");
+      await outbox.publish(tx as DbClient, { eventName: "m5.patient.assignment_ended", payload: { organizationId, patientId, clinicianUserId: ended.clinicianUserId }, organizationId, aggregateKind: "patient_assignment", aggregateId: ended.id });
+      return { id: ended.id, clinicianUserId: ended.clinicianUserId, role: ended.role, assignedAt: ended.assignedAt, unassignedAt: ended.unassignedAt, current: false };
+    });
+
   // §3.5 / D10 Privacy Flags tab: the patient's active privacy RESTRICTIONS, read from the
   // denormalized `patient_privacy_flag_snapshot` (recomputed from M39 `m39.consent.*` — at most one
   // live row per patient, `invalidated_at IS NULL`). A flag present = restricted. The §7.6 SUD read
@@ -857,6 +884,8 @@ export function createDbPatientRouteService(
     listPayers,
     addPayer,
     getCareTeam,
+    createAssignment,
+    endAssignment,
     getPrivacyFlags,
     admit,
     addAddress,

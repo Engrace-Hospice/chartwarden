@@ -129,6 +129,12 @@ export interface AssignmentView {
   readonly current: boolean; // unassignedAt IS NULL
 }
 
+export interface CreatePatientAssignmentInput {
+  readonly clinicianMembershipId: string;
+  readonly role: string;
+  readonly assignedAt?: string;
+}
+
 /**
  * One §3.4 caregiver involvement (a `patient_caregiver` row joined to its `caregiver` person). Carries
  * the relationship, the primary-caregiver flag, and the legal-representative authority (DPOA / guardian
@@ -250,6 +256,7 @@ export interface DemographicsView {
   readonly aliases: readonly NameAliasView[];
 }
 
+
 /** The route service surface (§4.2). */
 /** A query for the §4.2 census/list. Org binding is server-side, never in the query. */
 export interface PatientListQuery {
@@ -292,6 +299,8 @@ export interface PatientRouteService {
     actorUserId: string,
   ): Promise<PatientPayerView>;
   getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
+  createAssignment(organizationId: string, patientId: string, input: CreatePatientAssignmentInput, actorUserId: string): Promise<AssignmentView>;
+  endAssignment(organizationId: string, patientId: string, assignmentId: string, actorUserId: string): Promise<AssignmentView>;
   getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
@@ -337,6 +346,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   const amendments = new Map<string, AmendmentView>();
   const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
   const payers = new Map<string, PatientPayerView[]>(); // patientId → §3.4 coverage rows
+  const assignments = new Map<string, AssignmentView[]>();
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
   // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
@@ -607,6 +617,19 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
       // The slice carries no care-team seed; production reads the M5 tables under RLS.
       return { assignments: [], caregivers: [], emergencyContacts: [] };
+    },
+    async createAssignment(organizationId, patientId, input, _actorUserId) {
+      if (!patients.has(patientId)) throw new Error("patient not found");
+      const rows = assignments.get(patientId) ?? [];
+      if (rows.some((row) => row.current && row.clinicianUserId === input.clinicianMembershipId && row.role === input.role)) throw new Error("active assignment exists");
+      const row: AssignmentView = { id: `assignment_${rows.length + 1}`, clinicianUserId: input.clinicianMembershipId, role: input.role, assignedAt: input.assignedAt ?? now().toISOString().slice(0, 10), unassignedAt: null, current: true };
+      assignments.set(patientId, [...rows, row]); events.push("m5.patient.assignment_created"); return row;
+    },
+    async endAssignment(organizationId, patientId, assignmentId, _actorUserId) {
+      const rows = assignments.get(patientId) ?? []; const found = rows.find((row) => row.id === assignmentId);
+      if (!found || !found.current) throw new Error("assignment not found");
+      const ended = { ...found, current: false, unassignedAt: now().toISOString().slice(0, 10) };
+      assignments.set(patientId, rows.map((row) => row.id === assignmentId ? ended : row)); events.push("m5.patient.assignment_ended"); return ended;
     },
 
     async getPrivacyFlags(organizationId, patientId) {

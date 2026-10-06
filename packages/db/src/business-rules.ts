@@ -70,10 +70,15 @@ export interface BusinessRuleViolation {
   readonly constraint: string;
   /** Its registered, caller-facing meaning. */
   readonly meaning: string;
+  /** Optional stable domain signal for API consumers. */
+  readonly reason?: string;
 }
 
 /** Postgres `unique_violation`. */
 const UNIQUE_VIOLATION = "23505";
+/** PostgreSQL EXCLUDE violation. M17's partition-local visit overlap constraints carry a generated
+ * partition prefix, so they cannot be registered as one exact static constraint name. */
+const EXCLUSION_VIOLATION = "23P01";
 /** How far down a `.cause` chain to look. Drizzle wraps once; a repository may wrap once more. */
 const MAX_CAUSE_DEPTH = 5;
 
@@ -88,9 +93,15 @@ const MAX_CAUSE_DEPTH = 5;
  * NOTE for callers: do not log the raw error after mapping one of these. A `DrizzleQueryError`'s
  * message embeds the failed query AND its bound parameters, which on most tables is PHI.
  */
-export function classifyDatabaseError(err: unknown): BusinessRuleViolation | null {
+export function classifyDatabaseError(
+  err: unknown,
+): BusinessRuleViolation | null {
   let cursor: unknown = err;
-  for (let depth = 0; depth < MAX_CAUSE_DEPTH && cursor instanceof Error; depth++) {
+  for (
+    let depth = 0;
+    depth < MAX_CAUSE_DEPTH && cursor instanceof Error;
+    depth++
+  ) {
     const code = (cursor as { code?: unknown }).code;
     const constraint = (cursor as { constraint?: unknown }).constraint;
     if (code === UNIQUE_VIOLATION && typeof constraint === "string") {
@@ -99,6 +110,18 @@ export function classifyDatabaseError(err: unknown): BusinessRuleViolation | nul
         return { kind: "business-rule-violation", constraint, meaning };
       }
       return null;
+    }
+    if (
+      code === EXCLUSION_VIOLATION &&
+      typeof constraint === "string" &&
+      /^visit(?:_|$).*_no_overlap$/.test(constraint)
+    ) {
+      return {
+        kind: "business-rule-violation",
+        constraint,
+        meaning: "This clinician already has another visit during this time.",
+        reason: "CLINICIAN_SCHEDULE_CONFLICT",
+      };
     }
     cursor = (cursor as { cause?: unknown }).cause;
   }

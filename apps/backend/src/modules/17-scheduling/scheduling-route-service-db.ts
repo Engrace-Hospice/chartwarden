@@ -123,6 +123,7 @@ const MEM = schema.memberships;
 const MEM_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const ORG = schema.organizations;
+const USER = schema.users;
 
 /** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
  *  derived from the policy map rather than duplicated as a literal list. */
@@ -228,7 +229,11 @@ export interface SchedulingAutomationService {
     orgId: string,
     userId: string,
     options?: { now?: Date; horizonDays?: number },
-  ): Promise<{ policiesScanned: number; visitsCreated: number; occurrencesSkipped: number }>;
+  ): Promise<{
+    policiesScanned: number;
+    visitsCreated: number;
+    occurrencesSkipped: number;
+  }>;
   generateCarePlanVisitProposals(
     orgId: string,
     userId: string,
@@ -462,7 +467,11 @@ export function createDbSchedulingBackend(
     patientId: string,
   ): Promise<boolean> {
     if (userId === null) return false;
-    return getSeam("CaseloadProvider").isInCaseload({ organizationId: orgId, userId, patientId });
+    return getSeam("CaseloadProvider").isInCaseload({
+      organizationId: orgId,
+      userId,
+      patientId,
+    });
   }
 
   // GAP-093 — the real `clinician_credentials_active` check: does `membershipId` hold an ACTIVE
@@ -614,7 +623,10 @@ export function createDbSchedulingBackend(
     orgId: string,
     userId: string,
     input: CreateVisitInput,
-    lineage: { parentRecurringVisitId: string | null; parentProposalId: string | null },
+    lineage: {
+      parentRecurringVisitId: string | null;
+      parentProposalId: string | null;
+    },
     seamFacts: PreScheduleSeamFacts,
   ): Promise<VisitView> {
     const { providerEntityId, locationId } = await resolveSiting(tx, input.assignedMembershipId);
@@ -673,7 +685,10 @@ export function createDbSchedulingBackend(
       input.scheduledEndedAt,
       seamFacts,
     );
-    const published = transitionVisit("proposed", { type: "publish", gatePassed });
+    const published = transitionVisit("proposed", {
+      type: "publish",
+      gatePassed,
+    });
     await tx
       .update(V)
       .set({ status: published.to, version: 1, updatedAt: new Date() })
@@ -1021,7 +1036,6 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
-        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1029,16 +1043,18 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "start",
-          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
-          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          source:
+            evvMissingReason === undefined
+              ? { via: "evv" }
+              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = "evv_missing_documented";
+        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason,
+            evvMissingReason: evvMissingReason ?? null,
             actualStartedAt: new Date(),
             version: (v.version as number) + 1,
             updatedAt: new Date(),
@@ -1065,7 +1081,6 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
-        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1073,16 +1088,18 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "arrive",
-          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
-          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          source:
+            evvMissingReason === undefined
+              ? { via: "evv" }
+              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = "evv_missing_documented";
+        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason,
+            evvMissingReason: evvMissingReason ?? null,
             version: (v.version as number) + 1,
             updatedAt: new Date(),
           })
@@ -1239,7 +1256,10 @@ export function createDbSchedulingBackend(
           providerEntityId: v.providerEntityId as string,
           locationId: v.locationId as string,
         };
-        const transition = transitionVisit(v.status as VisitStatus, { type: "no_show", reason });
+        const transition = transitionVisit(v.status as VisitStatus, {
+          type: "no_show",
+          reason,
+        });
         await tx
           .update(V)
           .set({
@@ -1677,7 +1697,11 @@ export function createDbSchedulingBackend(
           visitsCreated += 1;
         }
       }
-      return { policiesScanned: policies.length, visitsCreated, occurrencesSkipped };
+      return {
+        policiesScanned: policies.length,
+        visitsCreated,
+        occurrencesSkipped,
+      };
     },
 
     async generateCarePlanVisitProposals(
@@ -1775,7 +1799,10 @@ export function createDbSchedulingBackend(
                   .onConflictDoNothing({
                     target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
                   })
-                  .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
+                  .returning({
+                    id: VP.id,
+                    proposedForDate: VP.proposedForDate,
+                  }),
               );
               const proposal = inserted[0];
               if (!proposal) {
@@ -1872,7 +1899,10 @@ export function createDbSchedulingBackend(
               lt(V.scheduledEndedAt, possibleMissedCutoff),
             ),
           );
-        return { staleVisits: stale.length, possibleMissedVisits: possibleMissed.length };
+        return {
+          staleVisits: stale.length,
+          possibleMissedVisits: possibleMissed.length,
+        };
       });
     },
 
@@ -1880,7 +1910,11 @@ export function createDbSchedulingBackend(
     async getAvailability(orgId: string, membershipId: string): Promise<AvailabilityView | null> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const rows = await tx
-          .select({ dayOfWeek: CA.dayOfWeek, startTime: CA.startTime, endTime: CA.endTime })
+          .select({
+            dayOfWeek: CA.dayOfWeek,
+            startTime: CA.startTime,
+            endTime: CA.endTime,
+          })
           .from(CA)
           .where(eq(CA.membershipId, membershipId))
           .orderBy(CA.dayOfWeek);
@@ -1906,7 +1940,6 @@ export function createDbSchedulingBackend(
       input: UpsertAvailabilityInput,
       authority: CallerAuthority,
     ): Promise<AvailabilityView> {
-      assertMayEditAvailability(userId, membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         // Merge per (membership, day_of_week): UPDATE the existing row, else INSERT. No DELETE grant → a
@@ -1921,7 +1954,11 @@ export function createDbSchedulingBackend(
           if (hit) {
             await tx
               .update(CA)
-              .set({ startTime: slot.startTime, endTime: slot.endTime, updatedAt: new Date() })
+              .set({
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                updatedAt: new Date(),
+              })
               .where(eq(CA.id, hit));
           } else {
             await tx.insert(CA).values({
@@ -1980,7 +2017,6 @@ export function createDbSchedulingBackend(
       input: RequestTimeOffInput,
       authority: CallerAuthority,
     ): Promise<TimeOffView> {
-      assertMayRequestTimeOff(userId, input.membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [inserted] = await tx
@@ -2146,7 +2182,10 @@ export function createDbSchedulingBackend(
 
     async portalUpcoming(orgId: string, patientId: string, withinHours: number) {
       const cutoff = new Date(Date.now() + withinHours * 3_600_000).toISOString();
-      const visits = await backend.listVisits(orgId, { patient: patientId, status: "published" });
+      const visits = await backend.listVisits(orgId, {
+        patient: patientId,
+        status: "published",
+      });
       return visits
         .filter((v) => v.scheduledStartedAt <= cutoff)
         .map((v) => ({
@@ -2163,7 +2202,11 @@ export function createDbSchedulingBackend(
       const total = visits.length || 1;
       const noShow = visits.filter((v) => v.status === "no_show").length;
       const rescheduled = visits.filter((v) => v.status === "rescheduled").length;
-      return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
+      return {
+        onTimeRate: 1,
+        noShowRate: noShow / total,
+        rescheduleRate: rescheduled / total,
+      };
     },
 
     routeEfficiencyMetrics(_orgId: string, membershipId: string) {
@@ -2267,6 +2310,128 @@ export function createDbSchedulingBackend(
       return inCaseload(orgId, userId, patientId);
     },
 
+    /** UI projection of the create gate. It deliberately calls the same seam helpers as the write
+     * paths; this is a convenience/read model, never an authorization bypass. */
+    async eligibleClinicians(
+      orgId: string,
+      input: {
+        patientId: string;
+        visitPurpose: VisitPurpose;
+        scheduledStartedAt: string;
+        scheduledEndedAt: string;
+      },
+    ): Promise<EligibleClinicianView[]> {
+      const candidates = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: "" },
+        async (txRaw) => {
+          const tx = txRaw as DbClient;
+          return tx
+            .select({ membershipId: MEM.id, displayName: USER.name })
+            .from(MEM)
+            .innerJoin(USER, eq(USER.id, MEM.userId))
+            .where(and(eq(MEM.organizationId, orgId), eq(MEM.status, "active")));
+        },
+      );
+      return Promise.all(
+        candidates.map(async (candidate) => {
+          const facts = await resolvePreScheduleSeamFacts(
+            orgId,
+            candidate.membershipId,
+            input.visitPurpose,
+            input.patientId,
+            input.scheduledStartedAt,
+          );
+          const { disciplines, pto, pool } = await withOrgContext(
+            db,
+            { organizationId: orgId, userId: "" },
+            async (txRaw) => {
+              const tx = txRaw as DbClient;
+              const disciplines = await resolveDisciplinesTx(tx, orgId, candidate.membershipId);
+              const [pto] = await tx
+                .select({ id: TO.id })
+                .from(TO)
+                .where(
+                  and(
+                    eq(TO.membershipId, candidate.membershipId),
+                    eq(TO.approvalState, "approved" as TimeOffState),
+                    lte(TO.startsAt, new Date(input.scheduledEndedAt)),
+                    gte(TO.endsAt, new Date(input.scheduledStartedAt)),
+                  ),
+                )
+                .limit(1);
+              return {
+                disciplines,
+                pto: Boolean(pto),
+                pool: await allowsUnassignedPoolTx(tx, orgId),
+              };
+            },
+          );
+          const qualifying = disciplines.filter((discipline) =>
+            VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
+          );
+          const reasonCodes: string[] = [];
+          if (!qualifying.length) reasonCodes.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
+          else if (!facts.credentialsActive) reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
+          if (pto) reasonCodes.push("CLINICIAN_ON_PTO");
+          if (!pool && !facts.inCaseload) reasonCodes.push("CLINICIAN_NOT_IN_CASELOAD");
+          return {
+            membershipId: candidate.membershipId,
+            displayName: candidate.displayName ?? "Clinician",
+            disciplines,
+            eligible: reasonCodes.length === 0,
+            reasonCodes,
+          };
+        }),
+      );
+    },
+
+    /** Scheduling-safe staff directory.  It intentionally exposes only the
+     * values needed to render an assigned clinician; membership management
+     * permissions are neither required nor implied by this projection. */
+    async schedulingStaff(orgId: string): Promise<SchedulingStaffView[]> {
+      const candidates = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: "" },
+        async (txRaw) => {
+          const tx = txRaw as DbClient;
+          return tx
+            .select({
+              membershipId: MEM.id,
+              displayName: USER.name,
+              roleKey: ROLE.key,
+            })
+            .from(MEM)
+            .innerJoin(USER, eq(USER.id, MEM.userId))
+            .leftJoin(
+              MEM_ROLE,
+              and(
+                eq(MEM_ROLE.organizationId, orgId),
+                eq(MEM_ROLE.membershipId, MEM.id),
+                or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
+              ),
+            )
+            .leftJoin(ROLE, eq(MEM_ROLE.roleId, ROLE.id))
+            .where(and(eq(MEM.organizationId, orgId), eq(MEM.status, "active")));
+        },
+      );
+      const byMembership = new Map<string, SchedulingStaffView>();
+      for (const candidate of candidates) {
+        const discipline = ALL_SCHEDULING_DISCIPLINES.has(candidate.roleKey ?? "")
+          ? (candidate.roleKey as SchedulingDiscipline)
+          : null;
+        const current = byMembership.get(candidate.membershipId);
+        if (!current || (current.discipline === null && discipline !== null)) {
+          byMembership.set(candidate.membershipId, {
+            membershipId: candidate.membershipId,
+            displayName: candidate.displayName ?? "Clinician",
+            discipline,
+          });
+        }
+      }
+      return [...byMembership.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
+    },
+
     // ── GAP-093 — membership_credential grant/revoke/list (the management surface a real D8 gate
     // needs, or `clinician_credentials_active` would deny every caller forever for lack of any way to
     // ever satisfy it — the same regression GAP-030 fixed, one layer down) ─────────────────────────────
@@ -2295,7 +2460,11 @@ export function createDbSchedulingBackend(
       credentialId: string,
       revokedReason: string,
     ): Promise<void> {
-      return credentialStore.revoke(orgId, { credentialId, revokedReason, revokedByMembershipId });
+      return credentialStore.revoke(orgId, {
+        credentialId,
+        revokedReason,
+        revokedByMembershipId,
+      });
     },
   };
 

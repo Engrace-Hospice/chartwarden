@@ -110,7 +110,11 @@ export interface RecurringView {
 export interface AvailabilityView {
   readonly membershipId: string;
   readonly timeZone: string;
-  readonly slots: ReadonlyArray<{ weekday: number; startTime: string; endTime: string }>;
+  readonly slots: ReadonlyArray<{
+    weekday: number;
+    startTime: string;
+    endTime: string;
+  }>;
 }
 
 export interface TimeOffView {
@@ -120,6 +124,22 @@ export interface TimeOffView {
   readonly startsAt: string;
   readonly endsAt: string;
   readonly state: TimeOffState;
+}
+export interface EligibleClinicianView {
+  readonly membershipId: string;
+  readonly displayName: string;
+  readonly disciplines: readonly SchedulingDiscipline[];
+  readonly eligible: boolean;
+  readonly reasonCodes: readonly string[];
+}
+
+/** Minimal staff directory used by scheduling read surfaces.  This is deliberately
+ * not the organization-members endpoint: calendar readers need names and clinical
+ * discipline, not membership administration data. */
+export interface SchedulingStaffView {
+  readonly membershipId: string;
+  readonly displayName: string;
+  readonly discipline: SchedulingDiscipline | null;
 }
 
 // ── command shapes ────────────────────────────────────────────────────────────────────────────────────────
@@ -163,7 +183,11 @@ export interface RequestTimeOffInput {
 }
 export interface UpsertAvailabilityInput {
   readonly timeZone: string;
-  readonly slots: ReadonlyArray<{ weekday: number; startTime: string; endTime: string }>;
+  readonly slots: ReadonlyArray<{
+    weekday: number;
+    startTime: string;
+    endTime: string;
+  }>;
 }
 export interface OptimizeDayInput {
   readonly membershipId: string;
@@ -174,7 +198,10 @@ export interface OptimizeDayInput {
 export interface SchedulingSeed {
   /** membershipId → the discipline(s) it holds (drives `discipline_matches_visit`). A membership may hold
    *  SEVERAL; a bare value is accepted as the one-element case. */
-  readonly disciplines?: Record<string, SchedulingDiscipline | readonly SchedulingDiscipline[]>;
+  readonly disciplines?: Record<
+    string,
+    SchedulingDiscipline | readonly SchedulingDiscipline[]
+  >;
   /** membershipIds whose required credentials are ACTIVE (drives `clinician_credentials_active`). */
   readonly credentialedMemberships?: readonly string[];
   /** `membershipId|patientId` pairs in caseload (drives `within_caseload_or_unassigned_pool`). */
@@ -230,14 +257,29 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   private readonly unassignedPoolOrgs: Set<string>;
 
   private readonly visits = new Map<string, VisitRecord>();
-  private readonly proposals = new Map<string, ProposalView & { organizationId: string }>();
-  private readonly recurring = new Map<string, RecurringView & { organizationId: string }>();
-  private readonly availability = new Map<string, AvailabilityView & { organizationId: string }>();
-  private readonly timeOff = new Map<string, TimeOffView & { organizationId: string }>();
+  private readonly proposals = new Map<
+    string,
+    ProposalView & { organizationId: string }
+  >();
+  private readonly recurring = new Map<
+    string,
+    RecurringView & { organizationId: string }
+  >();
+  private readonly availability = new Map<
+    string,
+    AvailabilityView & { organizationId: string }
+  >();
+  private readonly timeOff = new Map<
+    string,
+    TimeOffView & { organizationId: string }
+  >();
   private readonly events: RecordedSchedulingEvent[] = [];
   // GAP-093 — the in-memory slice's membership_credential rows (route-smoke-test fixture only; the
   // pre-schedule gate itself still reads `credentialed`, a flat per-membership flag kept in sync below).
-  private readonly credentials = new Map<string, CredentialRecord & { organizationId: string }>();
+  private readonly credentials = new Map<
+    string,
+    CredentialRecord & { organizationId: string }
+  >();
   private credentialSeq = 0;
 
   constructor(deps: SchedulingServiceDeps) {
@@ -268,19 +310,75 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return Promise.resolve("UTC");
   }
 
+  /** Reference-slice projection of the same D8 facts used by create. Production additionally resolves
+   * real membership identities through Drizzle; this keeps route tests deterministic. */
+  async eligibleClinicians(
+    orgId: string,
+    input: {
+      patientId: string;
+      visitPurpose: VisitPurpose;
+      scheduledStartedAt: string;
+      scheduledEndedAt: string;
+    },
+  ): Promise<EligibleClinicianView[]> {
+    const pool = this.unassignedPoolOrgs.has(orgId);
+    return [...this.disciplines.entries()].map(
+      ([membershipId, disciplines]) => {
+        const qualifying = disciplines.filter((d) =>
+          VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(d),
+        );
+        const reasons: string[] = [];
+        if (!qualifying.length)
+          reasons.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
+        if (qualifying.length && !this.credentialed.has(membershipId))
+          reasons.push("CLINICIAN_CREDENTIAL_MISSING");
+        if (
+          !pool &&
+          !this.caseload.has(caseloadKey(membershipId, input.patientId))
+        )
+          reasons.push("CLINICIAN_NOT_IN_CASELOAD");
+        return {
+          membershipId,
+          displayName: membershipId,
+          disciplines,
+          eligible: reasons.length === 0,
+          reasonCodes: reasons,
+        };
+      },
+    );
+  }
+
+  async schedulingStaff(_orgId: string): Promise<SchedulingStaffView[]> {
+    return [...this.disciplines.entries()]
+      .map(([membershipId, disciplines]) => ({
+        membershipId,
+        displayName: membershipId,
+        discipline: disciplines[0] ?? null,
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
   // ── visits ──────────────────────────────────────────────────────────────────────────────────────────
   listVisits(
     orgId: string,
-    filters: { clinician?: string; patient?: string; from?: string; to?: string; status?: string },
-    scope?: VisitReadScope,
+    filters: {
+      clinician?: string;
+      patient?: string;
+      from?: string;
+      to?: string;
+      status?: string;
+    },
   ): VisitView[] {
     return [...this.visits.values()]
       .filter((v) => v.organizationId === orgId)
-      .filter((v) => visitInScope(v, scope))
-      .filter((v) => (filters.clinician ? v.assignedMembershipId === filters.clinician : true))
+      .filter((v) =>
+        filters.clinician ? v.assignedMembershipId === filters.clinician : true,
+      )
       .filter((v) => (filters.patient ? v.patientId === filters.patient : true))
       .filter((v) => (filters.status ? v.status === filters.status : true))
-      .filter((v) => (filters.from ? v.scheduledStartedAt >= filters.from : true))
+      .filter((v) =>
+        filters.from ? v.scheduledStartedAt >= filters.from : true,
+      )
       .filter((v) => (filters.to ? v.scheduledStartedAt <= filters.to : true))
       .map(toVisitView);
   }
@@ -289,7 +387,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(this.requireVisit(orgId, visitId));
   }
 
-  createVisit(orgId: string, _userId: string, input: CreateVisitInput): VisitView {
+  createVisit(
+    orgId: string,
+    _userId: string,
+    input: CreateVisitInput,
+  ): VisitView {
     const record: VisitRecord = {
       id: this.newId(),
       organizationId: orgId,
@@ -313,16 +415,30 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
-  editVisit(orgId: string, _userId: string, visitId: string, input: EditVisitInput): VisitView {
-    if (input.scheduledStartedAt !== undefined || input.scheduledEndedAt !== undefined) {
-      throw new ForbiddenError("schedule time changes must use the reschedule workflow");
+  editVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    input: EditVisitInput,
+  ): VisitView {
+    if (
+      input.scheduledStartedAt !== undefined ||
+      input.scheduledEndedAt !== undefined
+    ) {
+      throw new ForbiddenError(
+        "schedule time changes must use the reschedule workflow",
+      );
     }
     const record = this.requireVisit(orgId, visitId);
     const reassigned =
-      input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
-    if (input.scheduledStartedAt) record.scheduledStartedAt = input.scheduledStartedAt;
-    if (input.scheduledEndedAt) record.scheduledEndedAt = input.scheduledEndedAt;
-    if (input.assignedMembershipId) record.assignedMembershipId = input.assignedMembershipId;
+      input.assignedMembershipId !== undefined ||
+      input.scheduledStartedAt !== undefined;
+    if (input.scheduledStartedAt)
+      record.scheduledStartedAt = input.scheduledStartedAt;
+    if (input.scheduledEndedAt)
+      record.scheduledEndedAt = input.scheduledEndedAt;
+    if (input.assignedMembershipId)
+      record.assignedMembershipId = input.assignedMembershipId;
     if (input.visitPurpose) record.visitPurpose = input.visitPurpose;
     if (input.visitSetting) record.visitSetting = input.visitSetting;
     if (reassigned) this.assertGate(orgId, record); // §4.1 — rerun the gate on assignment/time change
@@ -398,7 +514,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
-  cancelVisit(orgId: string, _userId: string, visitId: string, reason: string): VisitView {
+  cancelVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    reason: string,
+  ): VisitView {
     const record = this.requireVisit(orgId, visitId);
     const transition = transitionVisit(record.status, {
       type: "cancel",
@@ -418,13 +539,17 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     input: RescheduleVisitInput,
   ): { original: VisitView; created: VisitView } {
     const record = this.requireVisit(orgId, visitId);
-    const transition = transitionVisit(record.status, { type: "reschedule", reason: input.reason });
+    const transition = transitionVisit(record.status, {
+      type: "reschedule",
+      reason: input.reason,
+    });
     const created = this.createVisit(orgId, userId, {
       patientId: record.patientId,
       admissionId: record.admissionId,
       patientAddressId: record.patientAddressId,
       externalFacilityId: record.externalFacilityId,
-      assignedMembershipId: input.newAssignedMembershipId ?? record.assignedMembershipId,
+      assignedMembershipId:
+        input.newAssignedMembershipId ?? record.assignedMembershipId,
       visitPurpose: record.visitPurpose,
       visitSetting: record.visitSetting,
       scheduledStartedAt: input.newScheduledStartedAt,
@@ -437,9 +562,17 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return { original: toVisitView(record), created };
   }
 
-  noShowVisit(orgId: string, _userId: string, visitId: string, reason: string): VisitView {
+  noShowVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    reason: string,
+  ): VisitView {
     const record = this.requireVisit(orgId, visitId);
-    const transition = transitionVisit(record.status, { type: "no_show", reason });
+    const transition = transitionVisit(record.status, {
+      type: "no_show",
+      reason,
+    });
     record.status = transition.to;
     record.version += 1;
     this.record(transition.effects, record.id);
@@ -473,10 +606,16 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       .map(stripOrg);
   }
 
-  publishProposal(orgId: string, userId: string, proposalId: string): VisitView {
+  publishProposal(
+    orgId: string,
+    userId: string,
+    proposalId: string,
+  ): VisitView {
     const proposal = this.proposals.get(proposalId);
-    if (!proposal || proposal.organizationId !== orgId) throw new NotFoundError("visit_proposal");
-    if (proposal.status !== "pending") throw new ConflictError("proposal is not pending");
+    if (!proposal || proposal.organizationId !== orgId)
+      throw new NotFoundError("visit_proposal");
+    if (proposal.status !== "pending")
+      throw new ConflictError("proposal is not pending");
     const startedAt = `${proposal.proposedForDate}T13:00:00.000Z`;
     const visit = this.createVisit(orgId, userId, {
       patientId: proposal.patientId,
@@ -500,7 +639,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     _reason: string,
   ): ProposalView {
     const proposal = this.proposals.get(proposalId);
-    if (!proposal || proposal.organizationId !== orgId) throw new NotFoundError("visit_proposal");
+    if (!proposal || proposal.organizationId !== orgId)
+      throw new NotFoundError("visit_proposal");
     const updated = { ...proposal, status: "dismissed" as const };
     this.proposals.set(proposalId, updated);
     return stripOrg(updated);
@@ -513,7 +653,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       .map(stripOrg);
   }
 
-  createRecurring(orgId: string, _userId: string, input: CreateRecurringInput): RecurringView {
+  createRecurring(
+    orgId: string,
+    _userId: string,
+    input: CreateRecurringInput,
+  ): RecurringView {
     const record = {
       id: this.newId(),
       organizationId: orgId,
@@ -527,17 +671,28 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return stripOrg(record);
   }
 
-  discontinueRecurring(orgId: string, _userId: string, id: string): RecurringView {
+  discontinueRecurring(
+    orgId: string,
+    _userId: string,
+    id: string,
+  ): RecurringView {
     const record = this.recurring.get(id);
-    if (!record || record.organizationId !== orgId) throw new NotFoundError("recurring_visit");
+    if (!record || record.organizationId !== orgId)
+      throw new NotFoundError("recurring_visit");
     const updated = { ...record, status: "discontinued" as const };
     this.recurring.set(id, updated);
-    this.events.push({ eventName: "m17.recurring_visit.discontinued", visitId: null });
+    this.events.push({
+      eventName: "m17.recurring_visit.discontinued",
+      visitId: null,
+    });
     return stripOrg(updated);
   }
 
   // ── availability ──────────────────────────────────────────────────────────────────────────────────────
-  getAvailability(orgId: string, membershipId: string): AvailabilityView | null {
+  getAvailability(
+    orgId: string,
+    membershipId: string,
+  ): AvailabilityView | null {
     const record = this.availability.get(membershipId);
     return record && record.organizationId === orgId ? stripOrg(record) : null;
   }
@@ -563,14 +718,13 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   // ── time off ──────────────────────────────────────────────────────────────────────────────────────────
   listTimeOff(
     orgId: string,
-    userId: string,
     filters: { membership?: string; state?: string },
-    authority: CallerAuthority,
   ): TimeOffView[] {
-    const membership = resolveTimeOffListScope(userId, filters.membership, authority);
     return [...this.timeOff.values()]
       .filter((t) => t.organizationId === orgId)
-      .filter((t) => (membership ? t.membershipId === membership : true))
+      .filter((t) =>
+        filters.membership ? t.membershipId === filters.membership : true,
+      )
       .filter((t) => (filters.state ? t.state === filters.state : true))
       .map(stripOrg);
   }
@@ -647,7 +801,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     eventName: string | null,
   ): TimeOffView {
     const record = this.timeOff.get(id);
-    if (!record || record.organizationId !== orgId) throw new NotFoundError("time_off");
+    if (!record || record.organizationId !== orgId)
+      throw new NotFoundError("time_off");
     const updated = { ...record, state };
     this.timeOff.set(id, updated);
     if (eventName) this.events.push({ eventName, visitId: null });
@@ -705,7 +860,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     segmentCount: number;
   }> {
     if (!this.routeOptimizationEnabled || !this.routing) {
-      this.events.push({ eventName: "m17.route_optimization_degraded", visitId: null });
+      this.events.push({
+        eventName: "m17.route_optimization_degraded",
+        visitId: null,
+      });
       return {
         membershipId: input.membershipId,
         serviceDate: input.serviceDate,
@@ -715,7 +873,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       };
     }
     if (!(await this.routing.healthy())) {
-      this.events.push({ eventName: "m17.route_optimization_degraded", visitId: null });
+      this.events.push({
+        eventName: "m17.route_optimization_degraded",
+        visitId: null,
+      });
       return {
         membershipId: input.membershipId,
         serviceDate: input.serviceDate,
@@ -724,7 +885,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
         segmentCount: 0,
       };
     }
-    const stops = this.dayView(orgId, input.membershipId, input.serviceDate).visits;
+    const stops = this.dayView(
+      orgId,
+      input.membershipId,
+      input.serviceDate,
+    ).visits;
     this.events.push({ eventName: "m17.route_optimized", visitId: null });
     return {
       membershipId: input.membershipId,
@@ -745,7 +910,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     visitPurposeLabel: string;
     visitSetting: VisitSetting;
   }> {
-    const cutoff = new Date(Date.parse(this.now()) + withinHours * 3_600_000).toISOString();
+    const cutoff = new Date(
+      Date.parse(this.now()) + withinHours * 3_600_000,
+    ).toISOString();
     return this.listVisits(orgId, { patient: patientId, status: "published" })
       .filter((v) => v.scheduledStartedAt <= cutoff)
       .map((v) => ({
@@ -765,18 +932,29 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     const total = visits.length || 1;
     const noShow = visits.filter((v) => v.status === "no_show").length;
     const rescheduled = visits.filter((v) => v.status === "rescheduled").length;
-    return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
+    return {
+      onTimeRate: 1,
+      noShowRate: noShow / total,
+      rescheduleRate: rescheduled / total,
+    };
   }
 
   routeEfficiencyMetrics(
     _orgId: string,
     membershipId: string,
-  ): { membershipId: string; totalProposedMiles: number; overrideRate: number } {
+  ): {
+    membershipId: string;
+    totalProposedMiles: number;
+    overrideRate: number;
+  } {
     return { membershipId, totalProposedMiles: 0, overrideRate: 0 };
   }
 
   // ── SchedulingAbacResolver (§4.7) — resolves over the same dataset ────────────────────────────────────
-  async resolveDisciplines(_orgId: string, membershipId: string): Promise<SchedulingDiscipline[]> {
+  async resolveDisciplines(
+    _orgId: string,
+    membershipId: string,
+  ): Promise<SchedulingDiscipline[]> {
     return this.disciplines.get(membershipId) ?? [];
   }
 
@@ -809,12 +987,19 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return this.unassignedPoolOrgs.has(orgId);
   }
 
-  async isInCaseload(_orgId: string, membershipId: string, patientId: string): Promise<boolean> {
+  async isInCaseload(
+    _orgId: string,
+    membershipId: string,
+    patientId: string,
+  ): Promise<boolean> {
     return this.caseload.has(caseloadKey(membershipId, patientId));
   }
 
   // ── GAP-093 — membership_credential grant/revoke/list (slice fixture) ────────────────────────────────
-  async listCredentials(orgId: string, membershipId: string): Promise<CredentialRecord[]> {
+  async listCredentials(
+    orgId: string,
+    membershipId: string,
+  ): Promise<CredentialRecord[]> {
     return [...this.credentials.values()].filter(
       (c) => c.organizationId === orgId && c.membershipId === membershipId,
     );
@@ -875,7 +1060,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   // ── internals ─────────────────────────────────────────────────────────────────────────────────────────
   private requireVisit(orgId: string, visitId: string): VisitRecord {
     const record = this.visits.get(visitId);
-    if (!record || record.organizationId !== orgId) throw new NotFoundError("visit");
+    if (!record || record.organizationId !== orgId)
+      throw new NotFoundError("visit");
     return record;
   }
 
@@ -896,7 +1082,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     );
     const poolOrCaseload =
       this.unassignedPoolOrgs.has(orgId) ||
-      this.caseload.has(caseloadKey(record.assignedMembershipId, record.patientId));
+      this.caseload.has(
+        caseloadKey(record.assignedMembershipId, record.patientId),
+      );
     return disciplineOk && credentialsOk && !pto && poolOrCaseload;
   }
 
@@ -906,7 +1094,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     }
   }
 
-  private publishRecord(orgId: string, record: VisitRecord, _startedAt: string): void {
+  private publishRecord(
+    orgId: string,
+    record: VisitRecord,
+    _startedAt: string,
+  ): void {
     const transition = transitionVisit(record.status, {
       type: "publish",
       gatePassed: this.gatePassedSync(orgId, record),
@@ -916,7 +1108,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     this.record(transition.effects, record.id);
   }
 
-  private record(effects: ReadonlyArray<{ kind: string; event?: string }>, visitId: string): void {
+  private record(
+    effects: ReadonlyArray<{ kind: string; event?: string }>,
+    visitId: string,
+  ): void {
     for (const effect of effects) {
       if (effect.kind === "outbox" && effect.event)
         this.events.push({ eventName: effect.event, visitId });
@@ -944,7 +1139,9 @@ function toVisitView(record: VisitRecord): VisitView {
 }
 
 /** Strip the internal `organizationId` from a stored view record (the route never returns it twice). */
-function stripOrg<T extends { organizationId: string }>(record: T): Omit<T, "organizationId"> {
+function stripOrg<T extends { organizationId: string }>(
+  record: T,
+): Omit<T, "organizationId"> {
   const { organizationId: _omit, ...rest } = record;
   return rest;
 }

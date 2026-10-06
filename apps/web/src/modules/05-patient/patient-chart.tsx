@@ -1,7 +1,9 @@
 import {
   CenteredStatusLayout,
+  Button,
   LoadingSpinner,
   MaskedIdentifier,
+  Modal,
   PatientBanner,
   PatientWorkspaceLayout,
   SealedBlock,
@@ -27,7 +29,7 @@ import type { paths } from "@wardenx/ui";
 
 // GET /api/v1/patients/:id (+ /demographics, /identifiers) via the typed client.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -39,12 +41,16 @@ import { ClinicalRail, ClinicalTab, useClinicalData } from "./patient-clinical";
 import {
   OverviewRail,
   OverviewTab,
+  Avatar,
   PatientChartHeader,
   usePatientChartData,
 } from "./patient-overview";
 
-import { ChartModuleRail, type ChartSection } from "../../shell/chart-module-rail";
-import { useSession } from "../../shell/session";
+import {
+  ChartModuleRail,
+  type ChartSection,
+} from "../../shell/chart-module-rail";
+import { MembershipLookupField } from "../../shell/entity-lookups";
 
 interface PatientSummary {
   id: string;
@@ -111,15 +117,44 @@ export function PatientChart(): JSX.Element {
     | { kind: "ready"; patient: PatientSummary }
   >({ kind: "loading" });
 
+  const updatePatient = useCallback((patch: Partial<PatientSummary>) => {
+    setState((current) =>
+      current.kind === "ready"
+        ? {
+            kind: "ready",
+            patient: { ...current.patient, ...patch },
+          }
+        : current,
+    );
+  }, []);
+
+  const refreshPatient = useCallback(async (): Promise<void> => {
+    if (!id) return;
+
+    const { data, error } = await client.GET("/api/v1/patients/{id}", {
+      params: { path: { id } },
+    });
+
+    // A background refresh after a successful edit must never replace an
+    // already-usable chart with an error state. The edit surface keeps the
+    // optimistic values and the next normal chart load can retry.
+    if (error || !data) return;
+
+    setState({ kind: "ready", patient: data as PatientSummary });
+  }, [client, id]);
+
   useEffect(() => {
     let active = true;
 
     (async () => {
       if (!id) return;
 
-      const { data, error, response } = await client.GET("/api/v1/patients/{id}", {
-        params: { path: { id } },
-      });
+      const { data, error, response } = await client.GET(
+        "/api/v1/patients/{id}",
+        {
+          params: { path: { id } },
+        },
+      );
 
       if (!active) return;
 
@@ -155,19 +190,49 @@ export function PatientChart(): JSX.Element {
     );
   }
 
-  return <PatientChartReady patient={state.patient} section={currentSection} />;
+  return (
+    <PatientChartReady
+      patient={state.patient}
+      section={currentSection}
+      updatePatient={updatePatient}
+      refreshPatient={refreshPatient}
+    />
+  );
 }
 
 /** The loaded chart: redesigned header + tab strip, the Overview (with its right rail) or a record sub-view. */
 function PatientChartReady({
   patient: p,
   section,
+  updatePatient,
+  refreshPatient,
 }: {
   patient: PatientSummary;
   section: ChartSection;
+  updatePatient: (patch: Partial<PatientSummary>) => void;
+  refreshPatient: () => Promise<void>;
 }): JSX.Element {
-  const data = usePatientChartData(p);
+  const [chartRevision, setChartRevision] = useState(0);
+  const data = usePatientChartData(p, chartRevision);
   const clinical = useClinicalData(p.id, data, section === "clinical");
+
+  const handleDemographicsSaved = useCallback(
+    (next: Demographics) => {
+      // Update the banner immediately, then reconcile with the canonical
+      // patient read and refresh the shared chart sources in the background.
+      updatePatient({
+        firstName: next.legalFirstName,
+        lastName: next.legalLastName,
+        dob: next.dob,
+        mrn: next.mrn,
+        status: next.status,
+      });
+      setChartRevision((revision) => revision + 1);
+      void refreshPatient();
+    },
+    [refreshPatient, updatePatient],
+  );
+
   return (
     <PatientWorkspaceLayout
       banner={<PatientChartHeader patient={p} data={data} />}
@@ -191,13 +256,16 @@ function PatientChartReady({
           }}
         >
           {section === "demographics" ? (
-            <DemographicsTab patientId={p.id} />
+            <DemographicsTab
+              patientId={p.id}
+              onSaved={handleDemographicsSaved}
+            />
           ) : section === "addresses" ? (
             <AddressesTab patientId={p.id} />
           ) : section === "coverage" ? (
             <CoverageTab patientId={p.id} />
           ) : section === "care-team" ? (
-            <CareTeamTab patientId={p.id} />
+            <CareTeamTab patientId={p.id} organizationId={p.organizationId} />
           ) : section === "privacy" ? (
             <PrivacyFlagsTab patientId={p.id} />
           ) : section === "clinical" ? (
@@ -274,7 +342,10 @@ function Card({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="wx-patient-card" style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}>
+    <section
+      className="wx-patient-card"
+      style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}
+    >
       <h2
         style={{
           margin: "0 0 0.75rem",
@@ -349,9 +420,13 @@ function SubsectionHeader({
       <div>
         <div style={subsectionTitleRow}>
           <h3 style={subsectionTitle}>{title}</h3>
-          {typeof count === "number" ? <span style={countBadge}>{count}</span> : null}
+          {typeof count === "number" ? (
+            <span style={countBadge}>{count}</span>
+          ) : null}
         </div>
-        {description ? <p style={subsectionDescription}>{description}</p> : null}
+        {description ? (
+          <p style={subsectionDescription}>{description}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -384,6 +459,33 @@ function InfoField({
         {value}
       </div>
       {hint ? <div style={infoFieldHint}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function DetailItem({
+  label,
+  value,
+  hint,
+  mono = false,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  mono?: boolean;
+}): JSX.Element {
+  return (
+    <div style={detailItem}>
+      <span style={detailItemLabel}>{label}</span>
+      <div
+        style={{
+          ...detailItemValue,
+          ...(mono ? { fontFamily: "var(--font-mono)" } : {}),
+        }}
+      >
+        {value}
+      </div>
+      {hint ? <div style={detailItemHint}>{hint}</div> : null}
     </div>
   );
 }
@@ -432,7 +534,8 @@ function FieldLabel({
 function maskIdentifierTail(value: string | null | undefined): string {
   const normalized = value?.trim();
   if (!normalized) return "Not recorded";
-  if (normalized === "^" || normalized === "+" || normalized === "N") return normalized;
+  if (normalized === "^" || normalized === "+" || normalized === "N")
+    return normalized;
   if (normalized.length <= 4) return normalized;
   return `••••${normalized.slice(-4)}`;
 }
@@ -509,11 +612,23 @@ interface Identifier {
   effectiveTo: string | null;
 }
 
-function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
+function DemographicsTab({
+  patientId,
+  onSaved,
+}: {
+  patientId: string;
+  onSaved: (demographics: Demographics) => void;
+}): JSX.Element {
   const client = useApiClient();
+  const toast = useToast();
   const [demographics, setDemographics] = useState<Demographics | null>(null);
   const [identifiers, setIdentifiers] = useState<Identifier[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
 
   useEffect(() => {
     let active = true;
@@ -556,13 +671,112 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
   }
 
   const d = demographics;
-  const orDash = (value: string | null) => (value?.trim() ? value : "—");
-  const codeList = (values: string[]) => (values.length ? values.join(", ") : "—");
-  const legalName = [d.legalFirstName, d.legalMiddleName, d.legalLastName, d.legalNameSuffix]
+  const sexLabel = (value: string) =>
+    ({ M: "Male", F: "Female", U: "Unknown", O: "Other", UNK: "Not recorded" })[
+      value
+    ] ?? value;
+  const displayValue = (value: string | null | undefined): ReactNode =>
+    value?.trim() ? value : <span style={missingValue}>Not recorded</span>;
+  const displayCodes = (values: string[]): ReactNode =>
+    values.length ? (
+      values.join(", ")
+    ) : (
+      <span style={missingValue}>Not recorded</span>
+    );
+  const formatDisplayDate = (value: string | null | undefined): string => {
+    if (!value) return "Not recorded";
+    const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return value.slice(0, 10);
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(parsed);
+  };
+  const legalName = [
+    d.legalFirstName,
+    d.legalMiddleName,
+    d.legalLastName,
+    d.legalNameSuffix,
+  ]
     .filter(Boolean)
     .join(" ");
+  const aliases = d.aliases
+    .map((alias) => {
+      const name =
+        alias.fullName ??
+        [alias.firstName, alias.middleName, alias.lastName]
+          .filter(Boolean)
+          .join(" ");
+      return name
+        ? `${name} · ${titleCase(alias.kind)}`
+        : titleCase(alias.kind);
+    })
+    .filter(Boolean);
+  const age = ageYears(d.dob);
   const activeIdentifiers = identifiers.filter((item) => !item.effectiveTo);
-  const historicalIdentifiers = identifiers.filter((item) => Boolean(item.effectiveTo));
+  const historicalIdentifiers = identifiers.filter((item) =>
+    Boolean(item.effectiveTo),
+  );
+
+  async function submitDemographics(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+
+    const form = new FormData(event.currentTarget);
+    const nullable = (name: string) =>
+      String(form.get(name) ?? "").trim() || null;
+    const list = (name: string) =>
+      String(form.get(name) ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+    try {
+      const res = await (
+        client as unknown as {
+          PUT: (
+            path: string,
+            options: unknown,
+          ) => Promise<{ data?: Demographics; error?: unknown }>;
+        }
+      ).PUT("/api/v1/patients/{id}/demographics", {
+        params: { path: { id: patientId } },
+        body: {
+          legalFirstName: String(form.get("legalFirstName") ?? "").trim(),
+          legalMiddleName: nullable("legalMiddleName"),
+          legalLastName: String(form.get("legalLastName") ?? "").trim(),
+          legalNameSuffix: nullable("legalNameSuffix"),
+          dob: String(form.get("dob") ?? ""),
+          sexAssignedAtBirth: String(form.get("sexAssignedAtBirth") ?? "U"),
+          genderIdentityCode: nullable("genderIdentityCode"),
+          sexualOrientationCode: nullable("sexualOrientationCode"),
+          pronounsCode: nullable("pronounsCode"),
+          maritalStatusCode: nullable("maritalStatusCode"),
+          preferredLanguageCode: nullable("preferredLanguageCode"),
+          raceCodes: list("raceCodes"),
+          ethnicityCodes: list("ethnicityCodes"),
+        },
+      });
+
+      if (res.error || !res.data) {
+        setSaveError(
+          "Could not save demographics. Please review the fields and try again.",
+        );
+        return;
+      }
+
+      // Update this tab immediately and notify the chart shell so the banner
+      // and shared chart data reconcile without requiring a page reload.
+      setDemographics(res.data);
+      onSaved(res.data);
+      setEditing(false);
+      toast.show("Demographics updated.", { tone: "success" });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div style={tabPage}>
@@ -570,51 +784,103 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         eyebrow="Patient identity"
         title="Demographics & Identifiers"
         description="Core identity, demographic attributes and identifiers used across the patient chart."
+        trailing={
+          <Button
+            tone="secondary"
+            onClick={() => {
+              setSaveError(null);
+              setEditing(true);
+            }}
+          >
+            Edit demographics
+          </Button>
+        }
       />
 
-      <div style={overviewStrip}>
-        <InfoField label="Legal name" value={legalName || "—"} />
-        <InfoField label="Date of birth" value={dateOnly(d.dob)} />
-        <InfoField label="Preferred language" value={orDash(d.preferredLanguageCode)} />
-        <InfoField label="MRN" value={d.mrn} mono />
-      </div>
+      <section style={identityHero} aria-label="Patient identity summary">
+        <div style={identityHeroMain}>
+          <div style={identityMonogram} aria-hidden="true">
+            {`${d.legalFirstName[0] ?? ""}${d.legalLastName[0] ?? ""}`.toUpperCase() ||
+              "?"}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={identityName}>{legalName || "Name not recorded"}</h3>
+            <div style={identityMeta}>
+              <span>{sexLabel(d.sexAssignedAtBirth)}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                Born {formatDisplayDate(d.dob)}
+                {age != null ? ` · ${age}y` : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div style={identityMrn}>
+          <span style={detailItemLabel}>Medical record number</span>
+          <code style={identityMrnValue}>{d.mrn}</code>
+        </div>
+      </section>
 
       <div style={twoColumnGrid}>
-        <Card title="Identity">
-          <InfoGrid>
-            <InfoField label="Legal name" value={legalName || "—"} />
-            <InfoField
+        <Card title="Identity details">
+          <div style={detailGrid}>
+            <DetailItem
+              label="Date of birth"
+              value={formatDisplayDate(d.dob)}
+              hint={age != null ? `${age} years old` : undefined}
+            />
+            <DetailItem
               label="Aliases"
               value={
-                d.aliases.length === 0
-                  ? "None recorded"
-                  : d.aliases
-                      .map(
-                        (alias) =>
-                          `${alias.fullName ?? [alias.firstName, alias.lastName].filter(Boolean).join(" ")} · ${titleCase(alias.kind)}`,
-                      )
-                      .join("; ")
+                aliases.length ? (
+                  aliases.join("; ")
+                ) : (
+                  <span style={missingValue}>None recorded</span>
+                )
               }
             />
-          </InfoGrid>
+          </div>
         </Card>
 
-        <Card title="Demographic profile">
-          <InfoGrid>
-            <InfoField label="Sex assigned at birth" value={orDash(d.sexAssignedAtBirth)} />
-            <InfoField label="Gender identity" value={orDash(d.genderIdentityCode)} />
-            <InfoField label="Sexual orientation" value={orDash(d.sexualOrientationCode)} />
-            <InfoField label="Pronouns" value={orDash(d.pronounsCode)} />
-            <InfoField label="Marital status" value={orDash(d.maritalStatusCode)} />
-            <InfoField label="Preferred language" value={orDash(d.preferredLanguageCode)} />
-            <InfoField label="Race" value={codeList(d.raceCodes)} />
-            <InfoField label="Ethnicity" value={codeList(d.ethnicityCodes)} />
-          </InfoGrid>
+        <Card title="Personal & demographic details">
+          <div style={detailGrid}>
+            <DetailItem
+              label="Sex assigned at birth"
+              value={sexLabel(d.sexAssignedAtBirth)}
+            />
+            <DetailItem
+              label="Gender identity"
+              value={displayValue(d.genderIdentityCode)}
+            />
+            <DetailItem label="Pronouns" value={displayValue(d.pronounsCode)} />
+            <DetailItem
+              label="Sexual orientation"
+              value={displayValue(d.sexualOrientationCode)}
+            />
+            <DetailItem
+              label="Marital status"
+              value={displayValue(d.maritalStatusCode)}
+            />
+            <DetailItem
+              label="Preferred language"
+              value={displayValue(d.preferredLanguageCode)}
+            />
+          </div>
 
-          <p style={helperNote}>
-            SOGI, race and ethnicity values are stored as USCDI codes until M38 display-label
-            resolution is connected.
-          </p>
+          <div style={sectionDivider} />
+
+          <SubsectionHeader
+            title="Race & ethnicity"
+            description="Values are shown as stored codes until M38 display-label resolution is connected."
+          />
+          <div style={detailGrid}>
+            <DetailItem label="Race" value={displayCodes(d.raceCodes)} />
+            <DetailItem
+              label="Ethnicity"
+              value={displayCodes(d.ethnicityCodes)}
+            />
+          </div>
         </Card>
       </div>
 
@@ -633,17 +899,21 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         ) : (
           <div style={recordList}>
             {activeIdentifiers.map((identifier) => (
-              <div key={identifier.id} style={recordRow}>
+              <div key={identifier.id} style={identifierRow}>
                 <div style={recordRowMain}>
                   <div style={recordTitleRow}>
-                    <strong style={recordTitle}>{identifier.kind.toUpperCase()}</strong>
+                    <strong style={recordTitle}>
+                      {identifier.kind.toUpperCase()}
+                    </strong>
                     {identifier.kind === "mrn" ? (
                       <span style={badge("neutral")}>immutable</span>
                     ) : null}
-                    {identifier.sensitive ? <span style={badge("warning")}>sensitive</span> : null}
+                    {identifier.sensitive ? (
+                      <span style={badge("warning")}>sensitive</span>
+                    ) : null}
                   </div>
 
-                  <div style={recordValue}>
+                  <div style={identifierValue}>
                     {identifier.sensitive ? (
                       <MaskedIdentifier
                         value=""
@@ -651,14 +921,18 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
                         label={`${identifier.kind.toUpperCase()} (masked)`}
                       />
                     ) : (
-                      orDash(identifier.value)
+                      displayValue(identifier.value)
                     )}
                   </div>
+                </div>
 
-                  <div style={recordMeta}>
-                    {identifier.issuer ? `Issuer: ${identifier.issuer}` : "No issuer recorded"} ·
-                    active since {dateOnly(identifier.effectiveFrom)}
-                  </div>
+                <div style={identifierMetaColumn}>
+                  <span>
+                    {identifier.issuer
+                      ? `Issuer: ${identifier.issuer}`
+                      : "No issuer recorded"}
+                  </span>
+                  <span>Active since {dateOnly(identifier.effectiveFrom)}</span>
                 </div>
               </div>
             ))}
@@ -676,13 +950,14 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
                   <div>
                     <strong>{identifier.kind.toUpperCase()}</strong>
                     <div style={recordMeta}>
-                      {dateOnly(identifier.effectiveFrom)} → {dateOnly(identifier.effectiveTo)}
+                      {dateOnly(identifier.effectiveFrom)} →{" "}
+                      {dateOnly(identifier.effectiveTo)}
                     </div>
                   </div>
                   <div style={{ color: "var(--color-on-surface-variant)" }}>
                     {identifier.sensitive
                       ? `••••${identifier.last4 ?? "####"}`
-                      : orDash(identifier.value)}
+                      : displayValue(identifier.value)}
                   </div>
                 </div>
               ))}
@@ -691,10 +966,205 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         ) : null}
 
         <p style={helperNote}>
-          Sensitive identifiers remain masked in this chart. Full SSN reveal requires the
+          Sensitive identifiers remain masked in this chart. Full SSN reveal
+          requires the
           <code style={{ margin: "0 0.25rem" }}>phi.read_ssn</code> permission.
         </p>
       </Card>
+
+      <Modal
+        open={editing}
+        onClose={saving ? undefined : () => setEditing(false)}
+        ariaLabel="Edit patient demographics"
+        width="54rem"
+      >
+        <form style={modalForm} onSubmit={submitDemographics}>
+          <header style={modalHeader}>
+            <div>
+              <h2 style={modalTitle}>Edit demographics</h2>
+              <p style={modalLead}>
+                Update identity and demographic information. MRN and protected
+                identifiers are managed separately to preserve identity and
+                audit history.
+              </p>
+            </div>
+          </header>
+
+          <div style={modalBody}>
+            <section style={modalSection}>
+              <div>
+                <h3 style={modalSectionTitle}>Legal identity</h3>
+                <p style={modalSectionDescription}>
+                  Use the patient&apos;s legal name exactly as it should appear
+                  in the chart.
+                </p>
+              </div>
+
+              <div style={modalFormGridTwo}>
+                <FieldLabel label="First name">
+                  <input
+                    name="legalFirstName"
+                    defaultValue={d.legalFirstName}
+                    placeholder="e.g. Benjamin"
+                    autoComplete="given-name"
+                    required
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Last name">
+                  <input
+                    name="legalLastName"
+                    defaultValue={d.legalLastName}
+                    placeholder="e.g. Davies"
+                    autoComplete="family-name"
+                    required
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Middle name" optional>
+                  <input
+                    name="legalMiddleName"
+                    defaultValue={d.legalMiddleName ?? ""}
+                    placeholder="e.g. James"
+                    autoComplete="additional-name"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Suffix" optional>
+                  <input
+                    name="legalNameSuffix"
+                    defaultValue={d.legalNameSuffix ?? ""}
+                    placeholder="e.g. Jr."
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Date of birth">
+                  <input
+                    name="dob"
+                    type="date"
+                    defaultValue={dateOnly(d.dob)}
+                    required
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Sex assigned at birth">
+                  <select
+                    name="sexAssignedAtBirth"
+                    defaultValue={d.sexAssignedAtBirth}
+                    style={input}
+                  >
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                    <option value="U">Unknown</option>
+                    <option value="O">Other</option>
+                  </select>
+                </FieldLabel>
+              </div>
+            </section>
+
+            <section style={modalSection}>
+              <div>
+                <h3 style={modalSectionTitle}>Personal details</h3>
+                <p style={modalSectionDescription}>
+                  Leave optional values blank when they have not been recorded.
+                </p>
+              </div>
+
+              <div style={modalFormGridTwo}>
+                <FieldLabel label="Gender identity" optional>
+                  <input
+                    name="genderIdentityCode"
+                    defaultValue={d.genderIdentityCode ?? ""}
+                    placeholder="Enter gender identity code"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Pronouns" optional>
+                  <input
+                    name="pronounsCode"
+                    defaultValue={d.pronounsCode ?? ""}
+                    placeholder="Enter pronouns code"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Sexual orientation" optional>
+                  <input
+                    name="sexualOrientationCode"
+                    defaultValue={d.sexualOrientationCode ?? ""}
+                    placeholder="Enter sexual orientation code"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Marital status" optional>
+                  <input
+                    name="maritalStatusCode"
+                    defaultValue={d.maritalStatusCode ?? ""}
+                    placeholder="Enter marital status code"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Preferred language" optional>
+                  <input
+                    name="preferredLanguageCode"
+                    defaultValue={d.preferredLanguageCode ?? ""}
+                    placeholder="Enter language code"
+                    style={input}
+                  />
+                </FieldLabel>
+              </div>
+            </section>
+
+            <section style={modalSection}>
+              <div>
+                <h3 style={modalSectionTitle}>Race & ethnicity coding</h3>
+                <p style={modalSectionDescription}>
+                  Enter multiple values as comma-separated codes. Display-label
+                  resolution remains handled by M38.
+                </p>
+              </div>
+
+              <div style={modalFormGridTwo}>
+                <FieldLabel label="Race codes" optional>
+                  <input
+                    name="raceCodes"
+                    defaultValue={d.raceCodes.join(", ")}
+                    placeholder="Comma-separated race codes"
+                    style={input}
+                  />
+                </FieldLabel>
+                <FieldLabel label="Ethnicity codes" optional>
+                  <input
+                    name="ethnicityCodes"
+                    defaultValue={d.ethnicityCodes.join(", ")}
+                    placeholder="Comma-separated ethnicity codes"
+                    style={input}
+                  />
+                </FieldLabel>
+              </div>
+            </section>
+
+            {saveError ? (
+              <div role="alert" style={errorNote}>
+                {saveError}
+              </div>
+            ) : null}
+          </div>
+
+          <footer style={modalFooter}>
+            <Button
+              type="button"
+              tone="tertiary"
+              disabled={saving}
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </footer>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -737,7 +1207,13 @@ interface Address {
   geocodeLng: string | null;
 }
 
-const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
+const ADDRESS_KINDS = [
+  "home",
+  "facility",
+  "mailing",
+  "temporary",
+  "prior",
+] as const;
 
 function AddressLine({ a }: { a: Address }): JSX.Element {
   return (
@@ -754,7 +1230,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [form, setForm] = useState({
     line1: "",
     line2: "",
@@ -822,7 +1300,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     setSaving(false);
 
     if (res.error) {
-      setSaveError("Could not save the address. Check the fields and try again.");
+      setSaveError(
+        "Could not save the address. Check the fields and try again.",
+      );
       return;
     }
 
@@ -863,7 +1343,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
         title="Addresses"
         description="Current service-location and contact addresses, with append-only history."
         trailing={
-          primary ? <span style={badge("primary")}>Primary address on file</span> : undefined
+          primary ? (
+            <span style={badge("primary")}>Primary address on file</span>
+          ) : undefined
         }
       />
 
@@ -892,8 +1374,12 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                     }}
                   >
                     <div style={recordTitleRow}>
-                      <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
-                      {address.isPrimary ? <span style={badge("primary")}>primary</span> : null}
+                      <strong style={{ textTransform: "capitalize" }}>
+                        {address.kind}
+                      </strong>
+                      {address.isPrimary ? (
+                        <span style={badge("primary")}>primary</span>
+                      ) : null}
                       {address.geocodeLat && address.geocodeLng ? (
                         <span
                           style={badge("success")}
@@ -933,7 +1419,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                   <div key={address.id} style={recordRowMuted}>
                     <div>
                       <div style={recordTitleRow}>
-                        <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
+                        <strong style={{ textTransform: "capitalize" }}>
+                          {address.kind}
+                        </strong>
                         {address.isPrimary ? (
                           <span style={badge("neutral")}>was primary</span>
                         ) : null}
@@ -943,7 +1431,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                       </div>
                     </div>
                     <div style={recordMeta}>
-                      {dateOnly(address.effectiveFrom)} → {dateOnly(address.effectiveTo)}
+                      {dateOnly(address.effectiveFrom)} →{" "}
+                      {dateOnly(address.effectiveTo)}
                     </div>
                   </div>
                 ))}
@@ -954,8 +1443,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
         <Card title="Add address">
           <p style={cardIntro}>
-            Add a new address record. Setting it as primary will close the current primary record
-            and preserve it in history.
+            Add a new address record. Setting it as primary will close the
+            current primary record and preserve it in history.
           </p>
 
           <form onSubmit={submit} style={addressForm}>
@@ -1004,7 +1493,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                   required
                   placeholder="ZIP"
                   value={form.postalCode}
-                  onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, postalCode: e.target.value })
+                  }
                   style={input}
                 />
               </FieldLabel>
@@ -1029,7 +1520,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                 <input
                   type="checkbox"
                   checked={form.isPrimary}
-                  onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
+                  onChange={(e) =>
+                    setForm({ ...form, isPrimary: e.target.checked })
+                  }
                 />
                 <span>
                   <strong style={{ display: "block" }}>Set as primary</strong>
@@ -1042,7 +1535,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
             {form.isPrimary && current.some((address) => address.isPrimary) ? (
               <div style={warningNote}>
-                The current primary address will move to history when this address is saved.
+                The current primary address will move to history when this
+                address is saved.
               </div>
             ) : null}
 
@@ -1130,7 +1624,8 @@ interface HopeCoverageSnapshot {
 }
 
 function hopeAssessmentDate(assessment: HopeAssessmentSummary): number {
-  const raw = assessment.signedAt ?? assessment.targetDate ?? assessment.createdAt;
+  const raw =
+    assessment.signedAt ?? assessment.targetDate ?? assessment.createdAt;
   const parsed = raw ? Date.parse(raw) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -1140,7 +1635,9 @@ function selectHopeAdmissionAssessment(
 ): HopeAssessmentSummary | null {
   const candidates = assessments
     .filter(
-      (assessment) => assessment.rfaKind === "01_admission" && !assessment.supersededByAssessmentId,
+      (assessment) =>
+        assessment.rfaKind === "01_admission" &&
+        !assessment.supersededByAssessmentId,
     )
     .sort((a, b) => {
       if (a.status === "signed" && b.status !== "signed") return -1;
@@ -1162,9 +1659,15 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [payers, setPayers] = useState<PatientPayer[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [hopeSnapshot, setHopeSnapshot] = useState<HopeCoverageSnapshot | null>(null);
-  const [hopeStatus, setHopeStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [hopeSnapshot, setHopeSnapshot] = useState<HopeCoverageSnapshot | null>(
+    null,
+  );
+  const [hopeStatus, setHopeStatus] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
 
   useEffect(() => {
     let active = true;
@@ -1200,8 +1703,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
           const result = await client.GET("/api/v1/mdm/{kind}/{id}", {
             params: { path: { kind: "payer", id: payerId } },
           });
-          const name = (result.data as { canonical?: { displayName?: string } } | undefined)
-            ?.canonical?.displayName;
+          const name = (
+            result.data as { canonical?: { displayName?: string } } | undefined
+          )?.canonical?.displayName;
           return [payerId, name ?? ""] as const;
         }),
       );
@@ -1214,7 +1718,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
         return;
       }
 
-      const assessments = (hopeRes.data as { assessments: HopeAssessmentSummary[] }).assessments;
+      const assessments = (
+        hopeRes.data as { assessments: HopeAssessmentSummary[] }
+      ).assessments;
       const admissionAssessment = selectHopeAdmissionAssessment(assessments);
 
       if (!admissionAssessment) {
@@ -1222,9 +1728,12 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
         return;
       }
 
-      const workspaceRes = await client.GET("/api/v1/hope/assessments/{id}/workspace", {
-        params: { path: { id: admissionAssessment.id } },
-      });
+      const workspaceRes = await client.GET(
+        "/api/v1/hope/assessments/{id}/workspace",
+        {
+          params: { path: { id: admissionAssessment.id } },
+        },
+      );
 
       if (!active) return;
 
@@ -1234,7 +1743,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       }
 
       const workspace = workspaceRes.data as HopeWorkspace;
-      const sectionA = workspace.sections.find((section) => section.code === "A");
+      const sectionA = workspace.sections.find(
+        (section) => section.code === "A",
+      );
 
       if (!sectionA) {
         setHopeStatus("unavailable");
@@ -1243,9 +1754,13 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
       setHopeSnapshot({
         assessment: admissionAssessment,
-        payerItems: sectionA.items.filter((item) => item.itemCode.startsWith("A1400")),
-        medicareNumber: sectionA.items.find((item) => item.itemCode === "A0600B") ?? null,
-        medicaidNumber: sectionA.items.find((item) => item.itemCode === "A0700") ?? null,
+        payerItems: sectionA.items.filter((item) =>
+          item.itemCode.startsWith("A1400"),
+        ),
+        medicareNumber:
+          sectionA.items.find((item) => item.itemCode === "A0600B") ?? null,
+        medicaidNumber:
+          sectionA.items.find((item) => item.itemCode === "A0700") ?? null,
       });
       setHopeStatus("ready");
     })();
@@ -1266,18 +1781,25 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
     );
   }
 
-  const current = [...payers].filter((payer) => payer.current).sort((a, b) => a.rank - b.rank);
+  const current = [...payers]
+    .filter((payer) => payer.current)
+    .sort((a, b) => a.rank - b.rank);
   const history = payers.filter((payer) => !payer.current);
 
   const payerName = (payer: PatientPayer): ReactNode =>
     names[payer.payerId] ?? (
-      <span style={{ color: "var(--color-muted)" }} title={`M40 payer ${payer.payerId}`}>
+      <span
+        style={{ color: "var(--color-muted)" }}
+        title={`M40 payer ${payer.payerId}`}
+      >
         {payer.payerId.slice(0, 8)}…
       </span>
     );
 
   const selectedHopePayers =
-    hopeSnapshot?.payerItems.filter((item) => String(item.value ?? "") === "1") ?? [];
+    hopeSnapshot?.payerItems.filter(
+      (item) => String(item.value ?? "") === "1",
+    ) ?? [];
 
   const hasMedicare =
     hopeSnapshot?.payerItems.some(
@@ -1359,7 +1881,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   ) : (
                     <span style={badge("neutral")}>rank {payer.rank}</span>
                   )}
-                  <span style={badge("success")}>{titleCase(payer.coverageKind)}</span>
+                  <span style={badge("success")}>
+                    {titleCase(payer.coverageKind)}
+                  </span>
                 </div>
 
                 <div style={coverageFacts}>
@@ -1368,9 +1892,20 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                     value={maskIdentifierTail(payer.subscriberId)}
                     mono
                   />
-                  <InfoField label="Group" value={payer.groupNumber || "—"} mono />
-                  <InfoField label="BIN / PCN" value={payer.binPcn || "—"} mono />
-                  <InfoField label="Effective" value={dateOnly(payer.effectiveFrom)} />
+                  <InfoField
+                    label="Group"
+                    value={payer.groupNumber || "—"}
+                    mono
+                  />
+                  <InfoField
+                    label="BIN / PCN"
+                    value={payer.binPcn || "—"}
+                    mono
+                  />
+                  <InfoField
+                    label="Effective"
+                    value={dateOnly(payer.effectiveFrom)}
+                  />
                 </div>
               </div>
             ))}
@@ -1406,7 +1941,8 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   />
                 </div>
                 <p style={cardIntro}>
-                  Regulatory snapshot from the selected non-superseded Admission HOPE record.
+                  Regulatory snapshot from the selected non-superseded Admission
+                  HOPE record.
                 </p>
               </div>
 
@@ -1504,7 +2040,8 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   </div>
                 </div>
                 <div style={recordMeta}>
-                  {dateOnly(payer.effectiveFrom)} → {dateOnly(payer.effectiveTo)}
+                  {dateOnly(payer.effectiveFrom)} →{" "}
+                  {dateOnly(payer.effectiveTo)}
                 </div>
               </div>
             ))}
@@ -1513,8 +2050,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
 
       <p style={helperNote}>
-        Current payer records and HOPE coverage are intentionally shown separately: the HOPE card is
-        a regulatory snapshot, not a replacement for the patient's live coverage.
+        Current payer records and HOPE coverage are intentionally shown
+        separately: the HOPE card is a regulatory snapshot, not a replacement
+        for the patient's live coverage.
       </p>
     </div>
   );
@@ -1526,11 +2064,11 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
 // legal-representative authority), and the `emergencyContacts` (priority-ordered). A clinician's
 
-// DISPLAY NAME crosses into M2 — the M2 roster does not yet expose user names (FB-T12 / M34), so an
+// DISPLAY NAME crosses into M2. When the current viewer can read the organization roster, this
 
-// assignment shows its role + the short user id honestly rather than a fabricated name. `current`
+// surface resolves the clinician user id to a staff name/email; otherwise it falls back to the short
 
-// (open) rows render above closed ones.
+// clinician id rather than fabricating identity. `current` (open) rows render above closed ones.
 
 interface Assignment {
   id: string;
@@ -1592,6 +2130,14 @@ interface CareTeam {
   emergencyContacts: EmergencyContact[];
 }
 
+interface TeamMember {
+  membershipId: string;
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  status: string;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   primary_rn: "Primary RN",
 
@@ -1612,40 +2158,198 @@ const ROLE_LABELS: Record<string, string> = {
   bereavement: "Bereavement",
 };
 
+const ASSIGNABLE_ROLES = [
+  "primary_rn",
+  "attending_clinician",
+  "case_manager_msw",
+  "chaplain",
+  "aide",
+  "np",
+  "md",
+] as const;
+
 const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 
-const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function assignmentApiError(error: unknown): { title: string; message: string } {
+  const detail =
+    error && typeof error === "object" && "error" in error
+      ? (error as { error?: unknown }).error
+      : error;
+  const code =
+    detail && typeof detail === "object" && "code" in detail
+      ? (detail as { code?: unknown }).code
+      : undefined;
+  const message =
+    detail && typeof detail === "object" && "message" in detail
+      ? (detail as { message?: unknown }).message
+      : undefined;
+  return {
+    title: code === "ACTIVE_ASSIGNMENT_EXISTS" ? "Assignment already exists" : "Could not assign clinician",
+    message:
+      typeof message === "string" && message.trim()
+        ? message
+        : "We couldn't assign this clinician. Please review the selection and try again.",
+  };
+}
 
-function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
-  const client = useApiClient();
-  const [team, setTeam] = useState<CareTeam | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+const titleCase = (s: string) =>
+  s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+function CareTeamRolePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let active = true;
-    (async () => {
-      setStatus("loading");
-      const res = await client.GET("/api/v1/patients/{id}/care-team", {
-        params: { path: { id: patientId } },
-      });
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
 
-      if (!active) return;
+  return (
+    <div ref={rootRef} style={rolePickerRoot}>
+      <span style={fieldLabel}>
+        Care team role
+        <span style={requiredLabel}>Required</span>
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+        }}
+        style={{
+          ...rolePickerButton,
+          ...(open ? rolePickerButtonOpen : {}),
+          ...(disabled ? { opacity: 0.6, cursor: "not-allowed" } : {}),
+        }}
+      >
+        <span>{roleLabel(value)}</span>
+        <span aria-hidden="true" style={rolePickerChevron}>
+          {open ? "⌃" : "⌄"}
+        </span>
+      </button>
 
-      if (res.error || !res.data) {
+      {open ? (
+        <div role="listbox" aria-label="Care team role" style={rolePickerMenu}>
+          {ASSIGNABLE_ROLES.map((role) => {
+            const selected = role === value;
+            const highlighted = role === hovered;
+            return (
+              <button
+                key={role}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onMouseEnter={() => setHovered(role)}
+                onMouseLeave={() => setHovered(null)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onChange(role);
+                  setOpen(false);
+                }}
+                style={{
+                  ...rolePickerOption,
+                  ...(selected ? rolePickerOptionSelected : {}),
+                  ...(highlighted ? rolePickerOptionHovered : {}),
+                }}
+              >
+                <span>{roleLabel(role)}</span>
+                {selected ? (
+                  <span aria-hidden="true" style={rolePickerCheck}>
+                    ✓
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <span style={formHint}>
+        The role controls how this clinician appears on the patient care team.
+      </span>
+    </div>
+  );
+}
+
+function CareTeamTab({
+  patientId,
+  organizationId,
+}: {
+  patientId: string;
+  organizationId: string;
+}): JSX.Element {
+  const client = useApiClient();
+  const toast = useToast();
+  const [team, setTeam] = useState<CareTeam | null>(null);
+  const [members, setMembers] = useState<Map<string, TeamMember>>(new Map());
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [membershipId, setMembershipId] = useState("");
+  const [membershipLabel, setMembershipLabel] = useState("");
+  const [assignmentRole, setAssignmentRole] = useState("primary_rn");
+  const [assigning, setAssigning] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const reload = useCallback(
+    async (showLoading = false) => {
+      if (showLoading) setStatus("loading");
+
+      const [teamResult, membersResult] = await Promise.all([
+        client.GET("/api/v1/patients/{id}/care-team", {
+          params: { path: { id: patientId } },
+        }),
+        client.GET("/api/v1/orgs/{id}/members", {
+          params: { path: { id: organizationId }, query: {} },
+        }),
+      ]);
+
+      if (teamResult.error || !teamResult.data) {
         setStatus("error");
         return;
       }
 
-      setTeam(res.data as CareTeam);
+      setTeam(teamResult.data as CareTeam);
+
+      const nextMembers = new Map<string, TeamMember>();
+      if (!membersResult.error && membersResult.data) {
+        for (const member of (membersResult.data as { members: TeamMember[] })
+          .members ?? []) {
+          nextMembers.set(member.userId, member);
+          nextMembers.set(member.membershipId, member);
+        }
+      }
+      setMembers(nextMembers);
       setStatus("ready");
-    })();
+    },
+    [client, organizationId, patientId],
+  );
 
-    return () => {
-      active = false;
-    };
-  }, [client, patientId]);
+  useEffect(() => {
+    void reload(true);
+  }, [reload]);
 
-  if (status === "loading") return <LoadingSpinner />;
+  if (status === "loading" && team === null) return <LoadingSpinner />;
 
   if (status === "error" || team === null) {
     return (
@@ -1656,14 +2360,40 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
     );
   }
 
-  const assignments = [...team.assignments].sort((a, b) => Number(b.current) - Number(a.current));
-  const activeAssignments = assignments.filter((assignment) => assignment.current);
-  const pastAssignments = assignments.filter((assignment) => !assignment.current);
+  const assignments = [...team.assignments].sort(
+    (a, b) => Number(b.current) - Number(a.current),
+  );
+  const activeAssignments = assignments.filter(
+    (assignment) => assignment.current,
+  );
+  const pastAssignments = assignments.filter(
+    (assignment) => !assignment.current,
+  );
   const caregivers = team.caregivers.filter((caregiver) => caregiver.current);
-  const pastCaregivers = team.caregivers.filter((caregiver) => !caregiver.current);
-  const emergencyContacts = [...team.emergencyContacts].sort((a, b) => a.priority - b.priority);
-  const primaryRn = activeAssignments.find((assignment) => assignment.role === "primary_rn");
+  const pastCaregivers = team.caregivers.filter(
+    (caregiver) => !caregiver.current,
+  );
+  const emergencyContacts = [...team.emergencyContacts].sort(
+    (a, b) => a.priority - b.priority,
+  );
+  const primaryRn = activeAssignments.find(
+    (assignment) => assignment.role === "primary_rn",
+  );
   const primaryCaregiver = caregivers.find((caregiver) => caregiver.isPrimary);
+
+  const clinicianName = (assignment: Assignment): string => {
+    const member = members.get(assignment.clinicianUserId);
+    return (
+      member?.displayName ??
+      member?.email ??
+      `Clinician ${assignment.clinicianUserId.slice(0, 8)}…`
+    );
+  };
+
+  const clinicianSecondary = (assignment: Assignment): string | null => {
+    const member = members.get(assignment.clinicianUserId);
+    return member?.displayName && member.email ? member.email : null;
+  };
 
   return (
     <div style={tabPage}>
@@ -1671,13 +2401,23 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
         eyebrow="People involved in care"
         title="Care Team & Assignments"
         description="Clinical assignments, caregivers, legal representatives and emergency contacts in one place."
+        trailing={
+          <Button
+            onClick={() => {
+              setAssignmentError(null);
+              setAssignOpen(true);
+            }}
+          >
+            Assign care team member
+          </Button>
+        }
       />
 
       <div style={overviewStrip}>
         <InfoField
           label="Primary RN"
-          value={primaryRn ? roleLabel(primaryRn.role) : "Not assigned"}
-          hint={primaryRn ? `Clinician ${primaryRn.clinicianUserId.slice(0, 8)}…` : undefined}
+          value={primaryRn ? clinicianName(primaryRn) : "Not assigned"}
+          hint={primaryRn ? roleLabel(primaryRn.role) : undefined}
         />
         <InfoField label="Active clinicians" value={activeAssignments.length} />
         <InfoField
@@ -1688,178 +2428,333 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
               : "Not recorded"
           }
         />
-        <InfoField label="Emergency contacts" value={emergencyContacts.length} />
-      </div>
-
-      <div style={twoColumnGrid}>
-        <Card title="Clinical assignments">
-          <SubsectionHeader
-            title="Active care team"
-            description="Current clinical roles assigned to this patient."
-            count={activeAssignments.length}
-          />
-
-          {activeAssignments.length === 0 ? (
-            <EmptyPanel
-              title="No active assignments"
-              description="No clinicians are currently assigned to this patient."
-            />
-          ) : (
-            <div style={recordList}>
-              {activeAssignments.map((assignment) => (
-                <div
-                  key={assignment.id}
-                  style={{
-                    ...recordRow,
-                    ...(assignment.role === "primary_rn" ? highlightedRow : {}),
-                  }}
-                >
-                  <div style={recordRowMain}>
-                    <div style={recordTitleRow}>
-                      <strong style={recordTitle}>{roleLabel(assignment.role)}</strong>
-                      {assignment.role === "primary_rn" ? (
-                        <span style={badge("primary")}>primary RN</span>
-                      ) : null}
-                    </div>
-                    <div style={recordValue} title={`M2 user ${assignment.clinicianUserId}`}>
-                      Clinician{" "}
-                      <code style={inlineCode}>{assignment.clinicianUserId.slice(0, 8)}…</code>
-                    </div>
-                    <div style={recordMeta}>Assigned {dateOnly(assignment.assignedAt)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card title="Caregivers & representatives">
-          <SubsectionHeader
-            title="Current caregivers"
-            description="People supporting the patient outside the clinical team."
-            count={caregivers.length}
-          />
-
-          {caregivers.length === 0 ? (
-            <EmptyPanel
-              title="No current caregivers"
-              description="No caregiver relationship is currently recorded."
-            />
-          ) : (
-            <div style={recordList}>
-              {caregivers.map((caregiver) => (
-                <div
-                  key={caregiver.id}
-                  style={{
-                    ...recordRow,
-                    ...(caregiver.isPrimary ? highlightedRow : {}),
-                  }}
-                >
-                  <div style={recordRowMain}>
-                    <div style={recordTitleRow}>
-                      <strong style={recordTitle}>
-                        {caregiver.firstName} {caregiver.lastName}
-                      </strong>
-                      <span style={badge("success")}>{titleCase(caregiver.relationship)}</span>
-                      {caregiver.isPrimary ? <span style={badge("primary")}>primary</span> : null}
-                      {caregiver.isLegalRepresentative ? (
-                        <span style={badge("warning")}>legal representative</span>
-                      ) : null}
-                    </div>
-
-                    {caregiver.phone || caregiver.email ? (
-                      <div style={contactLine}>
-                        {caregiver.phone ? <span>Phone · {caregiver.phone}</span> : null}
-                        {caregiver.email ? <span>Email · {caregiver.email}</span> : null}
-                      </div>
-                    ) : (
-                      <div style={recordMeta}>No contact details recorded</div>
-                    )}
-
-                    {caregiver.isLegalRepresentative ? (
-                      <div style={recordMeta}>Authority: {titleCase(caregiver.lrAuthority)}</div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Card title="Emergency contacts">
-        <SubsectionHeader
-          title="Contact priority"
-          description="Contacts are ordered by the sequence clinicians should use."
-          count={emergencyContacts.length}
+        <InfoField
+          label="Emergency contacts"
+          value={emergencyContacts.length}
         />
+      </div>
 
-        {emergencyContacts.length === 0 ? (
-          <EmptyPanel
-            title="No emergency contacts"
-            description="No emergency contact has been recorded for this patient."
-          />
-        ) : (
-          <div style={coverageGrid}>
-            {emergencyContacts.map((contact) => (
-              <div key={contact.id} style={contactCard}>
-                <span style={contactPriority}>#{contact.priority}</span>
-                <div style={{ minWidth: 0 }}>
-                  <strong style={recordTitle}>{contact.name}</strong>
-                  <div style={recordMeta}>{titleCase(contact.relationship)}</div>
-                  <div style={contactLine}>
-                    <span>{contact.phone}</span>
-                    {contact.email ? <span>{contact.email}</span> : null}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+      <div className="wx-care-team-layout">
+        <div className="wx-care-team-main">
+          <Card title="Clinical assignments">
+            <SubsectionHeader
+              title="Active care team"
+              description="Current clinicians and roles assigned to this patient."
+              count={activeAssignments.length}
+            />
 
-      {pastAssignments.length > 0 || pastCaregivers.length > 0 ? (
-        <Card title="Past involvement">
-          <details style={detailsBlock}>
-            <summary style={detailsSummary}>
-              Show previous clinicians and caregivers (
-              {pastAssignments.length + pastCaregivers.length})
-            </summary>
-            <div style={{ ...recordList, marginTop: "0.75rem" }}>
-              {pastAssignments.map((assignment) => (
-                <div key={assignment.id} style={recordRowMuted}>
-                  <div>
-                    <strong>{roleLabel(assignment.role)}</strong>
-                    <div style={recordMeta}>
-                      Clinician {assignment.clinicianUserId.slice(0, 8)}…
+            {activeAssignments.length === 0 ? (
+              <EmptyPanel
+                title="No care team members assigned yet"
+                description="Assign clinicians so they can participate in care and be scheduled for eligible visits."
+              />
+            ) : (
+              <div style={recordList}>
+                {activeAssignments.map((assignment) => {
+                  const name = clinicianName(assignment);
+                  const secondary = clinicianSecondary(assignment);
+                  return (
+                    <div
+                      key={assignment.id}
+                      style={{
+                        ...assignmentRow,
+                        ...(assignment.role === "primary_rn" ? highlightedRow : {}),
+                      }}
+                    >
+                      <div style={assignmentPerson}>
+                        <Avatar name={name} size={2.5} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={recordTitleRow}>
+                            <strong style={assignmentName}>{name}</strong>
+                            {assignment.role === "primary_rn" ? (
+                              <span style={badge("primary")}>Primary</span>
+                            ) : null}
+                          </div>
+                          <div style={assignmentRoleText}>
+                            {roleLabel(assignment.role)}
+                          </div>
+                          {secondary ? (
+                            <div style={recordMeta}>{secondary}</div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={assignmentMeta}>
+                        <span>Assigned {dateOnly(assignment.assignedAt)}</span>
+                        {!members.has(assignment.clinicianUserId) ? (
+                          <code
+                            style={inlineCode}
+                            title={`Clinician ${assignment.clinicianUserId}`}
+                          >
+                            {assignment.clinicianUserId.slice(0, 8)}…
+                          </code>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div style={recordMeta}>
-                    {dateOnly(assignment.assignedAt)} → {dateOnly(assignment.unassignedAt)}
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
+            )}
+          </Card>
 
-              {pastCaregivers.map((caregiver) => (
-                <div key={caregiver.id} style={recordRowMuted}>
-                  <div>
-                    <strong>
-                      {caregiver.firstName} {caregiver.lastName}
-                    </strong>
-                    <div style={recordMeta}>{titleCase(caregiver.relationship)}</div>
-                  </div>
-                  <span style={badge("neutral")}>ended</span>
+          {pastAssignments.length > 0 || pastCaregivers.length > 0 ? (
+            <Card title="Past involvement">
+              <details style={detailsBlock}>
+                <summary style={detailsSummary}>
+                  Show previous clinicians and caregivers (
+                  {pastAssignments.length + pastCaregivers.length})
+                </summary>
+                <div style={{ ...recordList, marginTop: "0.75rem" }}>
+                  {pastAssignments.map((assignment) => (
+                    <div key={assignment.id} style={recordRowMuted}>
+                      <div>
+                        <strong>{clinicianName(assignment)}</strong>
+                        <div style={recordMeta}>{roleLabel(assignment.role)}</div>
+                      </div>
+                      <div style={recordMeta}>
+                        {dateOnly(assignment.assignedAt)} →{" "}
+                        {dateOnly(assignment.unassignedAt)}
+                      </div>
+                    </div>
+                  ))}
+
+                  {pastCaregivers.map((caregiver) => (
+                    <div key={caregiver.id} style={recordRowMuted}>
+                      <div>
+                        <strong>
+                          {caregiver.firstName} {caregiver.lastName}
+                        </strong>
+                        <div style={recordMeta}>
+                          {titleCase(caregiver.relationship)}
+                        </div>
+                      </div>
+                      <span style={badge("neutral")}>ended</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </details>
-        </Card>
-      ) : null}
+              </details>
+            </Card>
+          ) : null}
+        </div>
+
+        <aside className="wx-care-team-rail" aria-label="Care team context">
+          <div className="wx-care-team-rail-cards">
+            <Card title="Caregivers & representatives">
+              <SubsectionHeader
+                title="Current caregivers"
+                description="People supporting the patient outside the clinical team."
+                count={caregivers.length}
+              />
+
+              {caregivers.length === 0 ? (
+                <EmptyPanel
+                  title="No current caregivers"
+                  description="No caregiver relationship is currently recorded."
+                />
+              ) : (
+                <div style={recordList}>
+                  {caregivers.map((caregiver) => {
+                    const name = `${caregiver.firstName} ${caregiver.lastName}`;
+                    return (
+                      <div
+                        key={caregiver.id}
+                        style={{
+                          ...caregiverRow,
+                          ...(caregiver.isPrimary ? highlightedRow : {}),
+                        }}
+                      >
+                        <Avatar name={name} size={2.25} />
+                        <div style={recordRowMain}>
+                          <div style={recordTitleRow}>
+                            <strong style={recordTitle}>{name}</strong>
+                            {caregiver.isPrimary ? (
+                              <span style={badge("primary")}>primary</span>
+                            ) : null}
+                            {caregiver.isLegalRepresentative ? (
+                              <span style={badge("warning")}>
+                                legal representative
+                              </span>
+                            ) : null}
+                          </div>
+                          <div style={assignmentRoleText}>
+                            {titleCase(caregiver.relationship)}
+                          </div>
+
+                          {caregiver.phone || caregiver.email ? (
+                            <div style={contactLine}>
+                              {caregiver.phone ? (
+                                <span>{caregiver.phone}</span>
+                              ) : null}
+                              {caregiver.email ? (
+                                <span>{caregiver.email}</span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div style={recordMeta}>
+                              No contact details recorded
+                            </div>
+                          )}
+
+                          {caregiver.isLegalRepresentative ? (
+                            <div style={recordMeta}>
+                              Authority: {titleCase(caregiver.lrAuthority)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Emergency contacts">
+              <SubsectionHeader
+                title="Contact priority"
+                description="Ordered by the sequence clinicians should use."
+                count={emergencyContacts.length}
+              />
+
+              {emergencyContacts.length === 0 ? (
+                <EmptyPanel
+                  title="No emergency contacts"
+                  description="No emergency contact has been recorded for this patient."
+                />
+              ) : (
+                <div style={recordList}>
+                  {emergencyContacts.map((contact) => (
+                    <div key={contact.id} style={contactCard}>
+                      <span style={contactPriority}>#{contact.priority}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={recordTitle}>{contact.name}</strong>
+                        <div style={recordMeta}>
+                          {titleCase(contact.relationship)}
+                        </div>
+                        <div style={contactLine}>
+                          <span>{contact.phone}</span>
+                          {contact.email ? <span>{contact.email}</span> : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        </aside>
+      </div>
 
       <p style={helperNote}>
-        Clinician display names remain represented by their care-team role and clinician ID until
-        the M2/M34 roster exposes staff names to this surface.
+        Staff names are resolved from the organization roster when available;
+        the clinician identifier remains the fallback when roster access is not
+        available.
       </p>
+
+      <Modal
+        open={assignOpen}
+        onClose={assigning ? undefined : () => setAssignOpen(false)}
+        ariaLabel="Assign care team member"
+        width="36rem"
+      >
+        <div style={assignmentModal}>
+          <header style={modalHeader}>
+            <div>
+              <h2 style={modalTitle}>Assign care team member</h2>
+              <p style={modalLead}>
+                Choose an active staff member and the role they will hold for
+                this patient.
+              </p>
+            </div>
+          </header>
+
+          <div style={assignmentModalBody}>
+            <MembershipLookupField
+              label="Clinician"
+              value={membershipId}
+              valueLabel={membershipLabel}
+              appearance="modal"
+              placeholder="Search staff by name or email..."
+              hint="Only active members of this organization are available."
+              onChange={(value, option) => {
+                setMembershipId(value);
+                setMembershipLabel(option?.searchLabel ?? "");
+                setAssignmentError(null);
+              }}
+              required
+            />
+
+            <CareTeamRolePicker
+              value={assignmentRole}
+              onChange={(role) => {
+                setAssignmentRole(role);
+                setAssignmentError(null);
+              }}
+              disabled={assigning}
+            />
+
+            {assignmentError ? (
+              <div role="alert" style={errorNote}>
+                <strong style={{ display: "block", marginBottom: "0.2rem" }}>
+                  {assignmentError.title}
+                </strong>
+                <span>{assignmentError.message}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <footer style={modalFooter}>
+            <Button
+              tone="tertiary"
+              onClick={() => setAssignOpen(false)}
+              disabled={assigning}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!membershipId || assigning}
+              onClick={() =>
+                void (async () => {
+                  setAssigning(true);
+                  setAssignmentError(null);
+                  // This new M5 operation is intentionally not in the generated client yet. Keep this
+                  // narrow cast at the boundary so TypeScript does not try to recursively instantiate
+                  // the entire OpenAPI paths map for an ungenerated literal route.
+                  const res = await (
+                    client as unknown as {
+                      POST: (
+                        path: string,
+                        options: unknown,
+                      ) => Promise<{ error?: unknown }>;
+                    }
+                  ).POST("/api/v1/patients/{id}/assignments", {
+                    params: { path: { id: patientId } },
+                    body: {
+                      clinicianMembershipId: membershipId,
+                      role: assignmentRole,
+                    } as never,
+                  });
+
+                  if (res.error) {
+                    setAssigning(false);
+                    setAssignmentError(assignmentApiError(res.error));
+                    return;
+                  }
+
+                  setAssignOpen(false);
+                  setMembershipId("");
+                  setMembershipLabel("");
+                  setAssignmentRole("primary_rn");
+                  setAssigning(false);
+                  toast.show("Care team member assigned.", { tone: "success" });
+                  await reload(false);
+                })()
+              }
+            >
+              {assigning ? "Assigning…" : "Assign clinician"}
+            </Button>
+          </footer>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1947,7 +2842,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const canAdministerPrivacy = useSession()?.permissions?.includes("privacy.admin") ?? false;
   const [flags, setFlags] = useState<PrivacyFlags | null>(null);
   const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
 
   useEffect(() => {
     let active = true;
@@ -1996,8 +2893,10 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   }
 
   const nonSud = flags.flags.filter((flag) => flag !== "sud");
-  const activeConsents = consents?.filter((consent) => consent.status === "active") ?? [];
-  const otherConsents = consents?.filter((consent) => consent.status !== "active") ?? [];
+  const activeConsents =
+    consents?.filter((consent) => consent.status === "active") ?? [];
+  const otherConsents =
+    consents?.filter((consent) => consent.status !== "active") ?? [];
 
   return (
     <div style={tabPage}>
@@ -2040,9 +2939,12 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
               ✓
             </span>
             <div>
-              <strong style={recordTitle}>No active privacy restrictions</strong>
+              <strong style={recordTitle}>
+                No active privacy restrictions
+              </strong>
               <p style={emptyPanelText}>
-                No patient privacy flag currently limits disclosure on this chart.
+                No patient privacy flag currently limits disclosure on this
+                chart.
               </p>
             </div>
           </div>
@@ -2054,7 +2956,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                   <span style={badge("danger")}>restricted</span>
                   <strong style={recordTitle}>{flagLabel("sud")}</strong>
                 </div>
-                <p style={cardIntro}>42 CFR Part 2 protections apply to substance-use records.</p>
+                <p style={cardIntro}>
+                  42 CFR Part 2 protections apply to substance-use records.
+                </p>
               </div>
             ) : null}
 
@@ -2071,8 +2975,8 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
         {flags.capturedAt ? (
           <p style={helperNote}>
-            Restriction snapshot captured {dateOnly(flags.capturedAt)} and recomputed from consent
-            state.
+            Restriction snapshot captured {dateOnly(flags.capturedAt)} and
+            recomputed from consent state.
           </p>
         ) : null}
       </Card>
@@ -2085,7 +2989,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                 ✓
               </span>
               <div>
-                <strong style={recordTitle}>Disclosure is permitted for authorized care</strong>
+                <strong style={recordTitle}>
+                  Disclosure is permitted for authorized care
+                </strong>
                 <p style={emptyPanelText}>
                   A qualifying Part 2 consent is on file for this patient.
                 </p>
@@ -2115,7 +3021,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
               <div key={consent.id} style={recordRow}>
                 <div style={recordRowMain}>
                   <div style={recordTitleRow}>
-                    <strong style={recordTitle}>{titleCase(consent.typeKey)}</strong>
+                    <strong style={recordTitle}>
+                      {titleCase(consent.typeKey)}
+                    </strong>
                     <StatusPill
                       label={titleCase(consent.status)}
                       tone={consentTone(consent.status)}
@@ -2126,7 +3034,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                     {consent.expiresAt
                       ? ` · expires ${dateOnly(consent.expiresAt)}`
                       : " · no expiry"}
-                    {consent.grantorKind ? ` · ${titleCase(consent.grantorKind)}` : ""}
+                    {consent.grantorKind
+                      ? ` · ${titleCase(consent.grantorKind)}`
+                      : ""}
                   </div>
                 </div>
               </div>
@@ -2136,7 +3046,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
         {otherConsents.length > 0 ? (
           <details style={{ ...detailsBlock, marginTop: "1rem" }}>
-            <summary style={detailsSummary}>Other consent records ({otherConsents.length})</summary>
+            <summary style={detailsSummary}>
+              Other consent records ({otherConsents.length})
+            </summary>
             <div style={{ ...recordList, marginTop: "0.75rem" }}>
               {otherConsents.map((consent) => (
                 <div key={consent.id} style={recordRowMuted}>
@@ -2144,7 +3056,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                     <strong>{titleCase(consent.typeKey)}</strong>
                     <div style={recordMeta}>
                       Effective {dateOnly(consent.effectiveAt)}
-                      {consent.expiresAt ? ` · expires ${dateOnly(consent.expiresAt)}` : ""}
+                      {consent.expiresAt
+                        ? ` · expires ${dateOnly(consent.expiresAt)}`
+                        : ""}
                     </div>
                   </div>
                   <StatusPill
@@ -2167,12 +3081,427 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
 
       <p style={helperNote}>
-        Privacy detail fails closed: when disclosure authority is absent or unknown, protected
-        information remains sealed rather than appearing blank.
+        Privacy detail fails closed: when disclosure authority is absent or
+        unknown, protected information remains sealed rather than appearing
+        blank.
       </p>
     </div>
   );
 }
+
+const identityHero = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1.25rem",
+  marginBottom: "1rem",
+  padding: "1.15rem 1.25rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-outline-variant))",
+  borderRadius: "var(--radius-xl, 1rem)",
+  background:
+    "linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, var(--color-surface)) 0%, var(--color-surface) 72%)",
+} as const;
+
+const identityHeroMain = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.9rem",
+  minWidth: 0,
+} as const;
+
+const identityMonogram = {
+  display: "grid",
+  width: "3.25rem",
+  height: "3.25rem",
+  flex: "0 0 auto",
+  placeItems: "center",
+  borderRadius: "9999px",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-primary)",
+  fontSize: "1rem",
+  fontWeight: 750,
+  letterSpacing: "0.04em",
+} as const;
+
+const identityName = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontFamily: "var(--font-display)",
+  fontSize: "1.15rem",
+  fontWeight: 650,
+  lineHeight: 1.25,
+} as const;
+
+const identityMeta = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.35rem",
+  marginTop: "0.3rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+  lineHeight: 1.45,
+} as const;
+
+const identityMrn = {
+  display: "flex",
+  flex: "0 0 auto",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: "0.25rem",
+  paddingLeft: "1rem",
+  borderLeft:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+} as const;
+
+const identityMrnValue = {
+  color: "var(--color-on-surface)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.9rem",
+  fontWeight: 700,
+} as const;
+
+const detailGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+  gap: "0 1.25rem",
+} as const;
+
+const detailItem = {
+  minWidth: 0,
+  padding: "0.65rem 0",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 38%, transparent)",
+} as const;
+
+const detailItemLabel = {
+  display: "block",
+  marginBottom: "0.25rem",
+  color: "var(--color-muted)",
+  fontSize: "0.68rem",
+  fontWeight: 700,
+  letterSpacing: "0.035em",
+  textTransform: "uppercase",
+} as const;
+
+const detailItemValue = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.88rem",
+  fontWeight: 620,
+  lineHeight: 1.45,
+  overflowWrap: "anywhere",
+} as const;
+
+const detailItemHint = {
+  marginTop: "0.18rem",
+  color: "var(--color-muted)",
+  fontSize: "0.72rem",
+  lineHeight: 1.4,
+} as const;
+
+const missingValue = {
+  color: "var(--color-muted)",
+  fontWeight: 500,
+  fontStyle: "italic",
+} as const;
+
+const sectionDivider = {
+  height: "1px",
+  margin: "1rem 0",
+  background:
+    "color-mix(in srgb, var(--color-outline-variant) 42%, transparent)",
+} as const;
+
+const identifierRow = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  minWidth: 0,
+  padding: "0.85rem 0.9rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+} as const;
+
+const identifierValue = {
+  marginTop: "0.38rem",
+  color: "var(--color-on-surface)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.88rem",
+  fontWeight: 650,
+} as const;
+
+const identifierMetaColumn = {
+  display: "flex",
+  flex: "0 0 auto",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: "0.2rem",
+  color: "var(--color-muted)",
+  fontSize: "0.72rem",
+  lineHeight: 1.4,
+  textAlign: "right",
+} as const;
+
+const modalForm = {
+  display: "flex",
+  maxHeight: "min(82vh, 760px)",
+  flexDirection: "column",
+  overflow: "hidden",
+} as const;
+
+const modalHeader = {
+  flex: "0 0 auto",
+  padding: "1.25rem 1.35rem 1rem",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+} as const;
+
+const modalTitle = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontFamily: "var(--font-display)",
+  fontSize: "1.2rem",
+  fontWeight: 650,
+} as const;
+
+const modalLead = {
+  maxWidth: "44rem",
+  margin: "0.35rem 0 0",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+  lineHeight: 1.5,
+} as const;
+
+const modalBody = {
+  display: "flex",
+  flex: "1 1 auto",
+  flexDirection: "column",
+  gap: "1.1rem",
+  minHeight: 0,
+  padding: "1rem 1.35rem 1.25rem",
+  overflowY: "auto",
+} as const;
+
+const modalSection = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.85rem",
+  padding: "1rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent)",
+  borderRadius: "var(--radius-lg)",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
+} as const;
+
+const modalSectionTitle = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontSize: "0.9rem",
+  fontWeight: 700,
+} as const;
+
+const modalSectionDescription = {
+  margin: "0.2rem 0 0",
+  color: "var(--color-muted)",
+  fontSize: "0.74rem",
+  lineHeight: 1.45,
+} as const;
+
+const modalFormGridTwo = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+  gap: "0.8rem",
+} as const;
+
+const modalFooter = {
+  display: "flex",
+  flex: "0 0 auto",
+  justifyContent: "flex-end",
+  gap: "0.55rem",
+  padding: "0.9rem 1.35rem 1.05rem",
+  borderTop:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  background: "var(--color-surface)",
+} as const;
+
+const formHint = {
+  color: "var(--color-muted)",
+  fontSize: "0.72rem",
+  lineHeight: 1.4,
+} as const;
+
+const requiredLabel = {
+  color: "var(--color-primary)",
+  fontSize: "0.68rem",
+  fontWeight: 650,
+} as const;
+
+const assignmentRow = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  minWidth: 0,
+  padding: "0.85rem 0.9rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+} as const;
+
+const assignmentPerson = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  minWidth: 0,
+} as const;
+
+const assignmentName = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.9rem",
+  fontWeight: 700,
+  overflowWrap: "anywhere",
+} as const;
+
+const assignmentRoleText = {
+  marginTop: "0.18rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.78rem",
+  lineHeight: 1.4,
+} as const;
+
+const assignmentMeta = {
+  display: "flex",
+  flex: "0 0 auto",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: "0.3rem",
+  color: "var(--color-muted)",
+  fontSize: "0.72rem",
+  textAlign: "right",
+} as const;
+
+const caregiverRow = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "0.75rem",
+  minWidth: 0,
+  padding: "0.8rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+} as const;
+
+const assignmentModal = {
+  display: "flex",
+  maxHeight: "min(78vh, 640px)",
+  flexDirection: "column",
+  overflow: "visible",
+} as const;
+
+const assignmentModalBody = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "1.15rem 1.35rem 1.3rem",
+  overflow: "visible",
+} as const;
+
+const rolePickerRoot = {
+  position: "relative",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+  minWidth: 0,
+} as const;
+
+const rolePickerButton = {
+  display: "flex",
+  width: "100%",
+  minHeight: "2.75rem",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  padding: "0.6rem 0.75rem",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 75%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+  font: "inherit",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textAlign: "left",
+} as const;
+
+const rolePickerButtonOpen = {
+  borderColor: "var(--color-primary)",
+  boxShadow:
+    "0 0 0 3px color-mix(in srgb, var(--color-primary) 13%, transparent)",
+} as const;
+
+const rolePickerChevron = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+} as const;
+
+const rolePickerMenu = {
+  position: "absolute",
+  zIndex: 120,
+  top: "4.35rem",
+  left: 0,
+  right: 0,
+  display: "flex",
+  maxHeight: "17rem",
+  flexDirection: "column",
+  overflowY: "auto",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+  boxShadow: "var(--shadow-float)",
+} as const;
+
+const rolePickerOption = {
+  display: "flex",
+  width: "100%",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  padding: "0.7rem 0.8rem",
+  border: "none",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 38%, transparent)",
+  background: "transparent",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+  font: "inherit",
+  fontSize: "0.82rem",
+  fontWeight: 600,
+  textAlign: "left",
+} as const;
+
+const rolePickerOptionSelected = {
+  background:
+    "color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))",
+  color: "var(--color-primary)",
+} as const;
+
+const rolePickerOptionHovered = {
+  background: "var(--color-surface-container)",
+} as const;
+
+const rolePickerCheck = {
+  color: "var(--color-primary)",
+  fontWeight: 800,
+} as const;
 
 const tabPage = {
   width: "100%",
@@ -2276,7 +3605,8 @@ const infoField = {
   minWidth: 0,
   padding: "0.75rem 0.8rem",
   borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container-low, var(--color-surface-container))",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const infoFieldLabel = {
@@ -2330,20 +3660,24 @@ const recordRow = {
   gap: "1rem",
   minWidth: 0,
   padding: "0.75rem 0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const recordRowMuted = {
   ...recordRow,
-  background: "var(--color-surface-container-low, var(--color-surface-container))",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
   color: "var(--color-on-surface-variant)",
 } as const;
 
 const highlightedRow = {
-  borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-outline-variant))",
-  background: "color-mix(in srgb, var(--color-primary) 5%, var(--color-surface))",
+  borderColor:
+    "color-mix(in srgb, var(--color-primary) 40%, var(--color-outline-variant))",
+  background:
+    "color-mix(in srgb, var(--color-primary) 5%, var(--color-surface))",
 } as const;
 
 const recordRowMain = {
@@ -2384,9 +3718,11 @@ const emptyPanel = {
   alignItems: "flex-start",
   gap: "0.75rem",
   padding: "0.85rem",
-  border: "1px dashed color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
+  border:
+    "1px dashed color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container-low, var(--color-surface-container))",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const emptyPanelIcon = {
@@ -2430,7 +3766,8 @@ const cardIntro = {
 } as const;
 
 const detailsBlock = {
-  borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderTop:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   marginTop: "0.9rem",
   paddingTop: "0.75rem",
 } as const;
@@ -2451,14 +3788,17 @@ const addressLayout = {
 
 const addressRecordCard = {
   padding: "0.85rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const addressRecordPrimary = {
-  borderColor: "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
-  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
+  borderColor:
+    "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
+  background:
+    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
 } as const;
 
 const addressText = {
@@ -2504,7 +3844,8 @@ const input = {
   boxSizing: "border-box",
   padding: "0.62rem 0.7rem",
   borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
@@ -2529,9 +3870,11 @@ const primaryToggle = {
   gap: "0.65rem",
   minHeight: "42px",
   padding: "0.55rem 0.65rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container-low, var(--color-surface-container))",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
   color: "var(--color-on-surface)",
   cursor: "pointer",
 } as const;
@@ -2540,7 +3883,8 @@ const warningNote = {
   padding: "0.65rem 0.75rem",
   border: "1px solid color-mix(in srgb, var(--color-warning) 40%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))",
+  background:
+    "color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))",
   color: "var(--color-on-surface)",
   fontSize: "0.78rem",
   lineHeight: 1.45,
@@ -2574,7 +3918,8 @@ const secondaryLinkButton = {
   justifyContent: "center",
   flex: "0 0 auto",
   padding: "0.5rem 0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent)",
   borderRadius: "9999px",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
@@ -2591,14 +3936,17 @@ const coverageGrid = {
 
 const coverageCard = {
   padding: "0.85rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const coverageCardPrimary = {
-  borderColor: "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
-  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
+  borderColor:
+    "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
+  background:
+    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
 } as const;
 
 const coverageCardTitle = {
@@ -2657,9 +4005,11 @@ const identifierSummaryCard = {
   gap: "0.35rem 0.75rem",
   alignItems: "center",
   padding: "0.75rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container-low, var(--color-surface-container))",
+  background:
+    "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const identifierSummaryValue = {
@@ -2683,7 +4033,8 @@ const contactCard = {
   alignItems: "flex-start",
   gap: "0.75rem",
   padding: "0.85rem",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
@@ -2719,7 +4070,8 @@ const restrictionCardWarning = {
   padding: "0.8rem",
   border: "1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-warning) 6%, var(--color-surface))",
+  background:
+    "color-mix(in srgb, var(--color-warning) 6%, var(--color-surface))",
 } as const;
 
 const restrictionCardDanger = {
@@ -2736,7 +4088,8 @@ const positiveState = {
   padding: "0.85rem",
   border: "1px solid color-mix(in srgb, var(--color-success) 35%, transparent)",
   borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
+  background:
+    "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
 } as const;
 
 const positiveStateIcon = {

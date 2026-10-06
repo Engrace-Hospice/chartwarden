@@ -58,6 +58,7 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
 
   const [addressOpen, setAddressOpen] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
+  const [coverageBeingChanged, setCoverageBeingChanged] = useState<PatientPayer | null>(null);
 
   const [busy, setBusy] = useState<"address" | "coverage" | null>(null);
 
@@ -176,6 +177,34 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
   const currentPayers = [...payers]
     .filter((payer) => payer.current)
     .sort((a, b) => a.rank - b.rank);
+
+  function resetCoverage(): void {
+    setCoverage({
+      payerId: "",
+      coverageKind: "",
+      subscriberId: "",
+      groupNumber: "",
+      binPcn: "",
+      rank: "1",
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+    });
+    setCoverageBeingChanged(null);
+  }
+
+  function beginCoverageChange(payer: PatientPayer): void {
+    setCoverage({
+      payerId: payer.payerId,
+      coverageKind: payer.coverageKind,
+      subscriberId: payer.subscriberId,
+      groupNumber: payer.groupNumber ?? "",
+      binPcn: payer.binPcn ?? "",
+      rank: String(payer.rank),
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+    });
+    setCoverageBeingChanged(payer);
+    setCoverageError(null);
+    setCoverageOpen(true);
+  }
 
   async function saveAddress(): Promise<void> {
     setAddressError(null);
@@ -307,15 +336,7 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
       return;
     }
 
-    setCoverage({
-      payerId: "",
-      coverageKind: "",
-      subscriberId: "",
-      groupNumber: "",
-      binPcn: "",
-      rank: "1",
-      effectiveFrom: new Date().toISOString().slice(0, 10),
-    });
+    resetCoverage();
 
     setCoverageOpen(false);
 
@@ -519,9 +540,16 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
             <Button
               size="sm"
               tone="secondary"
+              disabled={busy === "coverage"}
               onClick={() => {
                 setCoverageError(null);
-                setCoverageOpen((value) => !value);
+                if (coverageOpen) {
+                  setCoverageOpen(false);
+                  resetCoverage();
+                } else {
+                  resetCoverage();
+                  setCoverageOpen(true);
+                }
               }}
             >
               Add coverage
@@ -544,10 +572,20 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
                     </span>
                   </div>
 
-                  <StatusPill
-                    label={payer.rank === 1 ? "Primary" : `Rank ${payer.rank}`}
-                    tone={payer.rank === 1 ? "success" : "neutral"}
-                  />
+                  <div style={payerActions}>
+                    <StatusPill
+                      label={payer.rank === 1 ? "Primary" : `Rank ${payer.rank}`}
+                      tone={payer.rank === 1 ? "success" : "neutral"}
+                    />
+                    <Button
+                      size="sm"
+                      tone="tertiary"
+                      disabled={busy === "coverage"}
+                      onClick={() => beginCoverageChange(payer)}
+                    >
+                      Change coverage
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -560,6 +598,12 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
 
           {coverageOpen ? (
             <div style={form}>
+              {coverageBeingChanged ? (
+                <p style={changeHint}>
+                  Saving replaces the active coverage at rank {coverageBeingChanged.rank} and keeps
+                  its history.
+                </p>
+              ) : null}
               <MdmEntityLookupField
                 kind="payer"
                 label="Payer"
@@ -614,6 +658,7 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
                     type="number"
                     min={1}
                     value={coverage.rank}
+                    disabled={Boolean(coverageBeingChanged)}
                     onChange={(event) =>
                       setCoverage((current) => ({
                         ...current,
@@ -623,7 +668,11 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
                     style={input}
                   />
 
-                  <span style={fieldHint}>1 = primary</span>
+                  <span style={fieldHint}>
+                    {coverageBeingChanged
+                      ? "Rank is preserved when changing coverage."
+                      : "1 = primary"}
+                  </span>
                 </label>
               </div>
 
@@ -710,13 +759,14 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
                   onClick={() => {
                     setCoverageOpen(false);
                     setCoverageError(null);
+                    resetCoverage();
                   }}
                 >
                   Cancel
                 </Button>
 
                 <Button size="sm" loading={busy === "coverage"} onClick={() => void saveCoverage()}>
-                  Save coverage
+                  {coverageBeingChanged ? "Save coverage change" : "Save coverage"}
                 </Button>
               </div>
             </div>
@@ -924,6 +974,20 @@ const payerMain: CSSProperties = {
   minWidth: 0,
   color: t.onSurface,
   fontSize: "0.8rem",
+};
+
+const payerActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flex: "0 0 auto",
+  gap: "0.35rem",
+};
+
+const changeHint: CSSProperties = {
+  margin: 0,
+  color: t.onSurfaceVariant,
+  fontSize: "0.75rem",
+  lineHeight: 1.45,
 };
 
 const muted: CSSProperties = {
