@@ -19,6 +19,8 @@ export type FaceToFaceEvent =
       readonly periodStart: LocalDate | null;
       readonly encounterDate: LocalDate;
       readonly hasOverride: boolean;
+      /** MBPM ch. 9 §20.1(5)(d) — period-3+ new admission with documented exceptional circumstances. */
+      readonly exceptionDocumented?: boolean;
     }
   | {
       readonly type: "requestWindowOverride";
@@ -57,6 +59,7 @@ export function transitionFaceToFace(
         periodStart: event.periodStart,
         encounterDate: event.encounterDate,
         hasOverride: event.hasOverride,
+        exceptionDocumented: event.exceptionDocumented,
       });
       return result(from, event.type, "completed", [
         {

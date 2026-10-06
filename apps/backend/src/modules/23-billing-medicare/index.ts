@@ -69,6 +69,12 @@ export {
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
 export {
+  type PriorElectionClosure,
+  type PriorLiveEndedStayPort,
+  PriorElectionNotClosedError,
+  priorElectionClosureForOrg,
+} from "./services/prior-election-closure";
+export {
   type M23BootAssemblyPorts,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,

@@ -4,7 +4,15 @@
 // resolves names for the rows it shows).
 import { type Static, Type } from "@sinclair/typebox";
 
-export const DISCHARGE_WORKLIST_BUCKETS = ["ready", "needs_details", "awaiting_cosign"] as const;
+export const DISCHARGE_WORKLIST_BUCKETS = [
+  "ready",
+  "needs_details",
+  "awaiting_cosign",
+  "recently_discharged",
+] as const;
+
+/** The "recently discharged" look-back (days since the discharge was recorded). */
+export const RECENTLY_DISCHARGED_DAYS = 90;
 export type DischargeWorklistBucket = (typeof DISCHARGE_WORKLIST_BUCKETS)[number];
 
 export const DischargeWorklistQuerySchema = Type.Object({
@@ -15,7 +23,9 @@ export const DischargeWorklistQuerySchema = Type.Object({
         '"ready": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or ' +
         'death can be recorded). "needs_details": discharged / bereavement admissions whose stay-ending record lacks ' +
         'the place of death or the receiving care setting the final claim needs. "awaiting_cosign": for-cause ' +
-        "discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause).",
+        "discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause). " +
+        '"recently_discharged": live discharges, revocations and transfers-out of the last 90 days (never deaths) ' +
+        "whose patient has no later admission — the readmission candidates.",
     },
   ),
   cursor: Type.Optional(Type.String({ maxLength: 64 })),

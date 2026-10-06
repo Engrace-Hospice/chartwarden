@@ -60,8 +60,10 @@ export interface PatientPayerReader {
 /** M6 — the admission anchor facts the assembly + the HIPPS day-of-stay bucket + the TOB derivation need. */
 export interface AdmissionContext {
   readonly admissionId: string;
-  /** The hospice election/admission date — anchors the RHC days-1-7 vs days-8+ bucket (D7). */
+  /** The hospice election/admission date — day 1 of THIS stay in the ADR-0001 RHC day-60 tier count (D7). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
+  readonly rhcPriorHospiceDays?: number;
   /** The COMPLETED `discharge_event` only (a voided or pending-cosign row is not a discharge). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;

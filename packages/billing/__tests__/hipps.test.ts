@@ -560,3 +560,34 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
     expect(code).toBe("G0000");
   });
 });
+
+describe("calculateHipps — two-tier RHC carry-over across a readmission (Claims Processing Manual ch. 11)", () => {
+  it("a readmission carrying 55 prior hospice days reaches the low rate on its 6th day", () => {
+    // Arrange: readmitted 2026-01-01 within 60 days of a 55-day stay → this stay's day 1 is cumulative day 56.
+    const r = calculateHipps(
+      input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10", priorHospiceDays: 55 }),
+    );
+    // Assert: cumulative days 56–60 high, 61–65 low.
+    expect(r.rhcDays1to60).toBe(5);
+    expect(r.rhcDays61Plus).toBe(5);
+  });
+
+  it("no carried days (a first stay, or a gap over 60 days) keeps the stay's own count", () => {
+    const withZero = calculateHipps(
+      input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10", priorHospiceDays: 0 }),
+    );
+    const absent = calculateHipps(
+      input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10" }),
+    );
+    expect(withZero.rhcDays1to60).toBe(10);
+    expect(absent).toEqual(withZero);
+  });
+
+  it("60 or more carried days bill the whole readmission at the low rate", () => {
+    const r = calculateHipps(
+      input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-03", priorHospiceDays: 60 }),
+    );
+    expect(r.rhcDays1to60).toBe(0);
+    expect(r.rhcDays61Plus).toBe(3);
+  });
+});

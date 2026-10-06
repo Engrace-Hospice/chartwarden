@@ -66,6 +66,9 @@ export const CTI_SUBMIT_WINDOW = { backDays: 14, forwardDays: 30 } as const;
 /** Inclusive prior-to F2F window relative to `period_start` (§2.4 R-F2F-02 / CMS 418.22). */
 export const F2F_PRIOR_WINDOW = { earliestDaysBefore: 30, latestDaysBefore: 1 } as const;
 
+/** MBPM ch. 9 §20.1(5)(d) — days after admission a documented-exception F2F is still timely. */
+export const F2F_EXCEPTION_GRACE_DAYS = 2;
+
 // ── Pure calendar helpers (LocalDate `yyyy-mm-dd`; UTC-noon math avoids DST drift) ──────────────────
 
 /** Whole calendar days from `a` to `b` (b - a). Negative when `b` precedes `a`. */
@@ -182,6 +185,11 @@ export function checkF2fWindow(input: {
   periodStart: LocalDate | null;
   encounterDate: LocalDate;
   hasOverride: boolean;
+  /**
+   * MBPM ch. 9 §20.1(5)(d) — a NEW admission in period 3+ with documented exceptional circumstances: an encounter
+   * on the admission day or within the {@link F2F_EXCEPTION_GRACE_DAYS} days after it is also timely.
+   */
+  exceptionDocumented?: boolean;
 }): { withinWindow: boolean | null } {
   if (input.periodStart === null) {
     if (!input.hasOverride) {
@@ -194,8 +202,11 @@ export function checkF2fWindow(input: {
   }
   const daysBefore = daysBetween(input.encounterDate, input.periodStart);
   const withinWindow =
-    daysBefore >= F2F_PRIOR_WINDOW.latestDaysBefore &&
-    daysBefore <= F2F_PRIOR_WINDOW.earliestDaysBefore;
+    (daysBefore >= F2F_PRIOR_WINDOW.latestDaysBefore &&
+      daysBefore <= F2F_PRIOR_WINDOW.earliestDaysBefore) ||
+    (input.exceptionDocumented === true &&
+      daysBefore <= 0 &&
+      daysBefore >= -F2F_EXCEPTION_GRACE_DAYS);
   if (!withinWindow && !input.hasOverride) {
     throw new AdmissionStateError(
       "F2F_OUTSIDE_WINDOW",

@@ -20,7 +20,9 @@ import {
 } from "./admission-route-service-db";
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
 import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
+import type { PriorElectionClosurePort } from "./routes/readmission-service";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
@@ -42,6 +44,8 @@ export function mountAdmissionRoutes(
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  /** The prior election's NOTR / final-claim status (an M23 fact) for the readmission plan; absent → `unknown`. */
+  priorElectionClosure?: PriorElectionClosurePort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
@@ -58,6 +62,7 @@ export function mountAdmissionRoutes(
     // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
     dischargeDetails: createDbDischargeDetailsService(db, outbox),
     dischargeWorklist: createDbDischargeWorklistService(db),
+    readmission: createDbReadmissionService(db, priorElectionClosure),
   });
 }
 
@@ -183,6 +188,14 @@ export {
   createDbDischargeDetailsService,
 } from "./discharge-details-service-db";
 export { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+export { createDbReadmissionService } from "./readmission-service-db";
+export type { PriorElectionClosurePort, ReadmissionService } from "./routes/readmission-service";
+export {
+  type PriorEpisode,
+  latestLiveEndedEpisode,
+  priorEpisodesForOrg,
+} from "./seams/prior-episodes";
+export * from "./intake/benefit-period";
 export type { DischargeDetailsService } from "./routes/discharge-details-service";
 export type { DischargeWorklistService } from "./routes/discharge-worklist-service";
 export {

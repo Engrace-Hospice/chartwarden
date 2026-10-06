@@ -40,6 +40,10 @@ import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import {
+  PriorElectionNotClosedError,
+  priorElectionClosureTx,
+} from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
 import type {
   ClaimDetailView,
@@ -303,6 +307,22 @@ export function buildDrizzleM23WriteService(
     },
   ): Promise<void> => {
     if (ports.outbox) await ports.outbox.publish(tx, input);
+  };
+
+  /** The NOE's patient's latest earlier live-ended stay (`null` = none, an unknown NOE, or the port unbound). */
+  const priorLiveEndedStayFor = async (
+    actor: M23WriteActor,
+    noeId: string,
+  ): Promise<{ admissionId: string; patientId: string } | null> => {
+    const port = ports.priorLiveEndedStay;
+    if (!port) return null;
+    const noe = await inOrgCtx(actor, (tx) => new repositories.NoeRepository(tx).findById(noeId));
+    if (!noe || noe.organizationId !== actor.organizationId) return null;
+    const prior = await port.latestPriorLiveEndedAdmission(actor.organizationId, {
+      patientId: noe.patientId,
+      currentAdmissionId: noe.admissionId,
+    });
+    return prior ? { admissionId: prior.admissionId, patientId: noe.patientId } : null;
   };
 
   /** §6 / §D14 server-side step-up gate (claim submit/replace/void · override · MAC-credential admin). */
@@ -901,7 +921,16 @@ export function buildDrizzleM23WriteService(
 
     // ── NOE / NOTR fast path ──
     async submitNoe(actor, noeId): Promise<NoticeSubmissionAcceptedView> {
+      // Readmission — the prior election must be closed out first (the M6 lookup opens its own org context, so it
+      // runs before this method's transaction rather than holding two connections).
+      const priorStay = await priorLiveEndedStayFor(actor, noeId);
       return inOrgCtx(actor, async (tx) => {
+        if (priorStay) {
+          const closure = await priorElectionClosureTx(tx, priorStay);
+          if (!closure.notrFiled && !closure.finalClaimFiled) {
+            throw new PriorElectionNotClosedError(priorStay.admissionId);
+          }
+        }
         const repo = new repositories.NoeRepository(tx);
         let noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");

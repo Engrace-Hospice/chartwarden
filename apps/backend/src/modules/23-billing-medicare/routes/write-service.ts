@@ -10,6 +10,7 @@
 // (D2 outbox-only); the MAC-portal dispatch + the X12 generation are deferred to the §4.8 workers (the
 // service emits the `*_requested` outbox row + records the submission attempt; the worker uploads and emits
 // the terminal `submitted`/`accepted`/`rejected`).
+import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
 import type {
   ClaimDetailView,
@@ -118,6 +119,12 @@ export interface M23WriteServicePorts {
   readonly secretCipher?: SecretCipherPort;
   /** Records the prominent M4 override audit event + returns its id (fail-closed default). */
   readonly audit?: AuditEventPort;
+  /**
+   * The patient's latest earlier live-ended stay (an M6 fact). When bound, `submitNoe` refuses a readmission's NOE
+   * while that stay has no NOTR / final claim filed (Claims Processing Manual ch. 11 §20.1.6). Absent in slices
+   * that do not wire M6 — the check is then skipped.
+   */
+  readonly priorLiveEndedStay?: PriorLiveEndedStayPort;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }

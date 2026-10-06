@@ -33,9 +33,12 @@ import type {
   LevelOfCare,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
+
+import { rhcCarryOver } from "../intake/benefit-period";
+import { loadPriorEpisodes } from "./prior-episodes";
 
 const ADM = schema.admissions;
 const REF = schema.referrals;
@@ -162,6 +165,13 @@ export interface ElectionPeriodContext {
   /** Org-local `yyyy-mm-dd`. NULL until the period is activated — see the interface note. */
   readonly effectiveAt: string | null;
   readonly scheduledEndAt: string | null;
+  /**
+   * The period STARTS the admission's election: its first period (lowest sequence) on an admission that was not a
+   * transfer-in. Period 1 for a first election, the continuing number for a re-election (readmission, 42 CFR
+   * 418.24) — either way a new NOE (8xA) is owed. A transfer-in's inherited period continues an election begun at
+   * the sending hospice (8xC, not 8xA); a recert continues this admission's own election.
+   */
+  readonly isElectionStart: boolean;
 }
 
 /** One election period's identity + window, org-explicit and worker-callable. `null` when the id is
@@ -194,6 +204,29 @@ export function electionPeriodContextForOrg(
         .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
         .limit(1);
       if (!row) return null;
+      const [earlier] = await tx
+        .select({ id: EP.id })
+        .from(EP)
+        .where(
+          and(
+            eq(EP.admissionId, row.admissionId),
+            lt(EP.sequenceNumber, Number(row.sequenceNumber)),
+          ),
+        )
+        .limit(1);
+      // D9 — a transfer-in's inherited period (`activationPeriodFor`'s rule: a direction-in transfer_event carrying
+      // this sequence; `admission.transferred_in` is not maintained).
+      const [inherited] = await tx
+        .select({ id: TE.id })
+        .from(TE)
+        .where(
+          and(
+            eq(TE.admissionId, row.admissionId),
+            eq(TE.direction, "in"),
+            eq(TE.periodSequenceAtTransfer, Number(row.sequenceNumber)),
+          ),
+        )
+        .limit(1);
       return {
         electionPeriodId: row.id,
         admissionId: row.admissionId,
@@ -204,6 +237,7 @@ export function electionPeriodContextForOrg(
         status: String(row.status),
         effectiveAt: localDateN(row.effectiveAt),
         scheduledEndAt: localDateN(row.scheduledEndAt),
+        isElectionStart: !inherited && !earlier,
       };
     },
   );
@@ -221,10 +255,14 @@ export function electionPeriodContextForOrg(
  */
 export interface ClaimRangeAdmission {
   readonly admissionId: string;
-  /** `admission_at` coalesced to `activated_at` — the CURRENT election's admission date the HIPPS day
-   *  counter anchors on (`packages/billing/src/hipps/calculator.ts`'s own doc: it does not (yet) count
-   *  cumulative days across sequential elections, so this admission's own start is the right anchor). */
+  /** `admission_at` coalesced to `activated_at` — day 1 of THIS stay in the HIPPS day counter; earlier stays a
+   *  readmission continues are carried separately in `rhcPriorHospiceDays` (this date also anchors the NOE
+   *  admission day, so it is never shifted). */
   readonly hospiceAdmissionDate: string;
+  /** Hospice days of this patient's earlier stays with us that carry into this stay's two-tier RHC day count
+   *  (a readmission within 60 days of a discharge; Claims Processing Manual ch. 11) — 0 when the count starts
+   *  here. Days at another hospice are not known to M6. */
+  readonly rhcPriorHospiceDays: number;
   /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
    *  is the FILING timestamp, not the CMS-relevant effective date. Only a `completed` discharge counts: a
    *  `voided` one never happened and a `pending_cosign` for-cause filing leaves the admission active (D11). */
@@ -390,9 +428,14 @@ export async function claimAssemblyRangeContextForOrg(
         .orderBy(desc(TE.effectiveAt))
         .limit(1);
 
+      const rhc = rhcCarryOver(
+        await loadPriorEpisodes(tx as DbClient, patientId, admissionId),
+        localDate(candidate.start),
+      );
       const admission: ClaimRangeAdmission = {
         admissionId,
         hospiceAdmissionDate: localDate(candidate.start),
+        rhcPriorHospiceDays: rhc.priorHospiceDays,
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,

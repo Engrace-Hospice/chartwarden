@@ -1,0 +1,581 @@
+/**
+ * Readmission workflow, END TO END over real Postgres (the NOBYPASSRLS `wardenx_app` role, the real catalog-validating
+ * outbox publisher and dispatcher):
+ *
+ *   discharge (live) → the patient's chart moves to discharged → readmission context suggests period 2 and reports
+ *   the prior election open → readmit into period 2 (HETS-confirmed) → activation → M23 drafts the readmission's NOE
+ *   (a re-election starts a new election whatever its sequence) → submitting it is REFUSED until the prior stay's
+ *   NOTR is filed (Claims Processing Manual ch. 11 §20.1.6) → filed → accepted → the chart is active again.
+ *
+ * Plus: a period-3 readmission needs a face-to-face before activation unless exceptional circumstances are documented
+ * (MBPM ch. 9 §20.1(5)(d)); a transfer-out keeps the period; the "recently discharged" worklist; a readmission must
+ * name an earlier stay of the SAME patient.
+ *
+ *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:readmission:live
+ */
+import { randomUUID } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createDbClient } from "@wardenx/db";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
+import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
+import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
+import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
+import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
+import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { createDbDischargeWorklistService } from "../src/modules/06-admission/discharge-worklist-service-db";
+import {
+  M6_OUTBOX_EVENTS,
+  admissionSchedulingContextForOrg,
+  claimAssemblyRangeContextForOrg,
+  createDbReadmissionService,
+  createDrizzleAdmissionReaderStore,
+  electionPeriodContextForOrg,
+  latestLiveEndedEpisode,
+  priorEpisodesForOrg,
+  registerAdmissionSeams,
+} from "../src/modules/06-admission/index";
+import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
+import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
+import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
+import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
+import { M22_OUTBOX_EVENTS } from "../src/modules/22-documents/index";
+import {
+  M23_OUTBOX_EVENTS,
+  buildDrizzleM23WriteService,
+  buildM23NoeDraftConsumer,
+  buildM23NotrDraftConsumer,
+  priorElectionClosureForOrg,
+} from "../src/modules/23-billing-medicare/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
+
+const CTI_CLINICAL = {
+  terminalDiagnosisIcd10: "C34.90",
+  prognosisStatement:
+    "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  narrative:
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+  clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
+};
+
+const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ORG = "11111111-1111-1111-1111-111111111111";
+const USER = "33333333-3333-3333-3333-333333333333";
+const ATTENDING = "77777777-7777-7777-7777-777777777777";
+const MD = "66666666-6666-6666-6666-666666666666";
+const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
+const WRITE_ACTOR = {
+  organizationId: ORG,
+  userId: USER,
+  roles: ["billing_specialist"],
+  membershipId: USER,
+  stepUpRecent: true,
+  actorKind: "user",
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
+  let admin: Client;
+  let handle: ReturnType<typeof createDbClient>;
+  let svc: ReturnType<typeof createDbAdmissionRouteService>;
+  let readmission: ReturnType<typeof createDbReadmissionService>;
+  let m23: ReturnType<typeof buildDrizzleM23WriteService>;
+  let dispatcher: ReturnType<typeof createOutboxDispatcher>;
+  let m5Siting: ReturnType<typeof buildM5AdmissionSitingConsumer>;
+  let m5Discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
+  let providerId = "";
+  const noeSkips: { reason: string; electionPeriodId: string }[] = [];
+
+  async function resetSchema() {
+    await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await admin.query("CREATE SCHEMA public");
+    for (const r of ROLES)
+      await admin.query(
+        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+      );
+  }
+  async function applyMigrations() {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
+      await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+  }
+  async function one<T = Record<string, unknown>>(sql: string, params: unknown[]): Promise<T> {
+    const { rows } = await admin.query(sql, params);
+    return rows[0] as T;
+  }
+  async function periodsOf(admissionId: string) {
+    const { rows } = await admin.query(
+      `SELECT id, sequence_number, period_kind, status, benefit_period_source, benefit_period_suggested,
+              benefit_period_confirmed_by, benefit_period_confirmed_on::text AS confirmed_on, f2f_exception_reason
+         FROM election_period WHERE admission_id=$1 ORDER BY sequence_number`,
+      [admissionId],
+    );
+    return rows;
+  }
+  async function patientStatus(patientId: string): Promise<string> {
+    return (await one<{ status: string }>("SELECT status FROM patient WHERE id=$1", [patientId]))
+      .status;
+  }
+  /** Hand the latest `eventType` row M6 wrote for `aggregateId` to an M5 consumer. */
+  async function deliver(
+    consumer: { handle(e: { organizationId: string; payload: unknown }): Promise<unknown> },
+    eventType: string,
+    aggregateId: string,
+  ) {
+    const row = await one<{ organization_id: string; payload: unknown }>(
+      `SELECT organization_id, payload FROM outbox_event WHERE event_type=$1 AND aggregate_id=$2
+        ORDER BY created_at DESC LIMIT 1`,
+      [eventType, aggregateId],
+    );
+    return consumer.handle({ organizationId: row.organization_id, payload: row.payload });
+  }
+
+  /** Referral → qualify → convert (with an optional first benefit period) → admission details. */
+  async function admit(
+    patientId: string,
+    first: Record<string, unknown> = {},
+    admissionAt = `${daysAgo(1)}T00:00:00.000Z`,
+  ): Promise<string> {
+    await seedM5Patient(admin, ORG, patientId);
+    const ref = await svc.createReferral(
+      ORG,
+      {
+        source: "phone",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "P",
+        patientId,
+        referrerName: "Dr. Referrer",
+        referringDxText: "Metastatic NSCLC",
+      } as never,
+      USER,
+    );
+    await svc.triageReferral(ORG, ref.id, "eligible", 0);
+    await svc.qualifyReferral(ORG, ref.id, 1, USER);
+    const { admissionId } = await svc.acceptReferral(
+      ORG,
+      ref.id,
+      { primaryDiagnosisIcd10: "C34.90", patientId, ...first } as never,
+      2,
+      USER,
+    );
+    const { version } = await one<{ version: string }>(
+      "SELECT version FROM admission WHERE id=$1",
+      [admissionId],
+    );
+    await svc.updateAdmission(
+      ORG,
+      admissionId,
+      { admissionAt, hospicePhysicianId: MD },
+      Number(version),
+    );
+    return admissionId;
+  }
+
+  /** NOR + signed election + signed CTI (the §418.24 bundle), then activation. */
+  async function completeAndActivate(admissionId: string): Promise<void> {
+    const periods = await periodsOf(admissionId);
+    const periodId = periods[0].id as string;
+    const nor = await svc.acknowledgeNor(
+      ORG,
+      admissionId,
+      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      USER,
+    );
+    const es = await svc.draftElectionStatement(ORG, admissionId, periodId, {
+      electedProviderEntityId: providerId,
+      electedAttendingPhysicianId: ATTENDING,
+      waiverAcknowledged: true,
+    });
+    await svc.signElection(ORG, es.id, es.version, USER, SIGN);
+    const cti = await svc.draftCti(
+      ORG,
+      {
+        electionPeriodId: periodId,
+        hospiceMedicalDirectorId: MD,
+        attendingPhysicianId: ATTENDING,
+        ...CTI_CLINICAL,
+        isRecert: false,
+      },
+      USER,
+    );
+    await svc.signCtiHospiceMd(ORG, cti.id, cti.version, USER);
+    await svc.activateAdmission(ORG, admissionId, nor.version);
+  }
+
+  async function dischargeLive(admissionId: string, dischargeDate = daysAgo(1)): Promise<void> {
+    const adm = await svc.getAdmission(ORG, admissionId);
+    await svc.discharge(
+      ORG,
+      admissionId,
+      {
+        reason: "no_longer_terminal",
+        dischargeDate,
+        narrative:
+          "The patient's condition stabilized; no longer terminally ill per the IDG review.",
+        ifVersion: adm?.version,
+      } as never,
+      USER,
+    );
+  }
+
+  beforeAll(async () => {
+    admin = new Client({ connectionString: DB_URL });
+    await admin.connect();
+    await resetSchema();
+    await applyMigrations();
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
+      [ORG],
+    );
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'rd@x.test'),($2,'rdmd@x.test'),($3,'rdat@x.test')`,
+      [USER, MD, ATTENDING],
+    );
+    providerId = (
+      await one<{ id: string }>(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,'H11111','Hospice A','NPI-1111','\\x00','12-31') RETURNING id`,
+        [ORG],
+      )
+    ).id;
+    await admin.query(
+      `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone, status)
+         VALUES ($1,'Loc','1 St','Town','OR','97000','America/Los_Angeles','active')`,
+      [providerId],
+    );
+    await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+      [USER, ORG],
+    );
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    registerM5IntakeSeams(handle.db);
+    registerAdmissionSeams({ store: createDrizzleAdmissionReaderStore(handle.db) });
+
+    const catalog = buildBootOutboxCatalog([
+      M5_OUTBOX_EVENTS,
+      M6_OUTBOX_EVENTS,
+      M10_OUTBOX_EVENTS,
+      M11_OUTBOX_EVENTS,
+      M12_OUTBOX_EVENTS,
+      M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
+      M16_OUTBOX_EVENTS,
+      M20_OUTBOX_EVENTS,
+      M21_OUTBOX_EVENTS,
+      M22_OUTBOX_EVENTS,
+      M23_OUTBOX_EVENTS,
+      M25_OUTBOX_EVENTS,
+      M27_OUTBOX_EVENTS,
+      M33_OUTBOX_EVENTS,
+      M37_OUTBOX_EVENTS,
+    ]);
+    const publisher = buildTxOutboxPublisher(catalog);
+    const bind = (module: string) => ({
+      publish: (tx: unknown, e: Record<string, unknown>) =>
+        publisher.publish(tx as never, { ...e, callerModule: module } as never),
+    });
+
+    svc = createDbAdmissionRouteService(
+      handle.db,
+      bind("m6") as never,
+      undefined,
+      {
+        async belongsToOrg(organizationId: string, providerEntityId: string) {
+          const { rows } = await admin.query(
+            "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+            [providerEntityId, organizationId],
+          );
+          return rows.length > 0;
+        },
+      },
+      { activeLocationsFor: buildProviderEntityLocationLister(handle.db) },
+    );
+    // The PRODUCTION bindings of the two cross-module facts (apps/backend/src/index.ts).
+    readmission = createDbReadmissionService(handle.db, {
+      closureFor: (organizationId, q) =>
+        priorElectionClosureForOrg(handle.db as never, organizationId, q),
+    });
+    m23 = buildDrizzleM23WriteService(handle.db as never, {
+      outbox: bind("m23") as never,
+      jobs: { enqueue: async () => ({ jobId: randomUUID() }) },
+      priorLiveEndedStay: {
+        async latestPriorLiveEndedAdmission(organizationId, q) {
+          const prior = latestLiveEndedEpisode(
+            await priorEpisodesForOrg(handle.db, organizationId, q.patientId, q.currentAdmissionId),
+          );
+          return prior ? { admissionId: prior.admissionId } : null;
+        },
+      },
+    });
+
+    const orgs: ActiveOrgEnumerator = { listActiveOrgs: async () => [{ organizationId: ORG }] };
+    const resolveCcn = async () => "H11111";
+    dispatcher = createOutboxDispatcher({
+      db: handle.db,
+      orgs,
+      consumers: [
+        buildM23NoeDraftConsumer({
+          db: handle.db as never,
+          outbox: bind("m23") as never,
+          resolveElectionPeriod: async (organizationId, electionPeriodId) =>
+            electionPeriodContextForOrg(handle.db, organizationId, electionPeriodId),
+          resolveCcn,
+          onSkipped: (info) => noeSkips.push(info),
+        }),
+        buildM23NotrDraftConsumer({
+          db: handle.db as never,
+          outbox: bind("m23") as never,
+          resolveAdmission: async (organizationId, admissionId) =>
+            admissionSchedulingContextForOrg(handle.db, organizationId, admissionId),
+          resolveCcn,
+        }),
+      ],
+      eventCatalog: catalog,
+      options: { log: () => {} },
+    });
+    const m5Publisher = { publish: (tx: never, input: never) => bind("m5").publish(tx, input) };
+    m5Siting = buildM5AdmissionSitingConsumer({ db: handle.db, outbox: m5Publisher as never });
+    m5Discharged = buildM5AdmissionDischargedConsumer({
+      db: handle.db,
+      outbox: m5Publisher as never,
+    });
+  }, 240_000);
+
+  afterAll(async () => {
+    await handle?.close();
+    if (admin) await admin.end();
+  });
+
+  it("discharge → readmit in period 2 → activation → NOE blocked until the prior NOTR → patient active", async () => {
+    const patientId = randomUUID();
+    // ── first election: period 1, live discharge ──
+    const first = await admit(patientId, {}, `${daysAgo(30)}T00:00:00.000Z`);
+    expect((await periodsOf(first))[0]).toMatchObject({
+      sequence_number: 1,
+      benefit_period_source: "internal_history",
+    });
+    await completeAndActivate(first);
+    await deliver(m5Siting, "m6.admission.activated", first);
+    await dischargeLive(first, daysAgo(5));
+    await deliver(m5Discharged, "m6.admission.discharged", first);
+    expect(await patientStatus(patientId)).toBe("discharged");
+    await dispatcher.tick(); // M23 drafts the first NOE and the discharge NOTR
+
+    // ── the readmission context ──
+    const ctx = await readmission.getReadmissionContext(ORG, first, {});
+    expect(ctx?.readmission).toEqual({ eligible: true, blockers: [] });
+    expect(ctx?.previous).toMatchObject({ endKind: "live_discharge", lastSequence: 1 });
+    expect(ctx?.suggestion).toMatchObject({
+      suggestedSequence: 2,
+      basis: "next_after_live_discharge",
+    });
+    expect(ctx?.requirements).toMatchObject({ sequence: 2, periodKind: "ninety_day" });
+    expect(ctx?.requirements.certification.attendingIfDesignated).toBe(false);
+    expect(ctx?.rhc.applies).toBe(true);
+    expect(ctx?.priorElectionClosure).toMatchObject({ admissionId: first, status: "not_filed" });
+    expect(ctx?.noeBlocked).toBe(true);
+
+    // ── readmit into period 2, HETS-confirmed ──
+    const second = await admit(patientId, {
+      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: today() },
+    });
+    const [p2] = await periodsOf(second);
+    expect(p2).toMatchObject({
+      sequence_number: 2,
+      period_kind: "ninety_day",
+      benefit_period_source: "hets_confirmed",
+      benefit_period_suggested: 2,
+      benefit_period_confirmed_by: USER,
+      confirmed_on: today(),
+    });
+    await completeAndActivate(second);
+    const after = await periodsOf(second);
+    expect(after[0].status).toBe("active");
+
+    // M23 drafts the readmission's NOE although its sequence is 2: a re-election starts a new election.
+    await dispatcher.tick();
+    const noe = await one<{ id: string; state: string }>(
+      "SELECT id, state FROM noe_record WHERE admission_id=$1",
+      [second],
+    );
+    expect(noe?.state).toBe("DRAFT");
+    expect(noeSkips.filter((s) => s.electionPeriodId === p2.id)).toHaveLength(0);
+
+    // ── the NOE waits for the prior election's close-out ──
+    await expect(m23.submitNoe(WRITE_ACTOR as never, noe.id)).rejects.toMatchObject({
+      code: "PRIOR_ELECTION_NOT_CLOSED",
+      statusCode: 409,
+    });
+    const notr = await one<{ id: string }>("SELECT id FROM notr_record WHERE admission_id=$1", [
+      first,
+    ]);
+    expect(notr).toBeDefined();
+    await admin.query("UPDATE notr_record SET state='SUBMITTED' WHERE id=$1", [notr.id]);
+    expect((await readmission.getReadmissionContext(ORG, first, {}))?.noeBlocked).toBe(false);
+    const accepted = await m23.submitNoe(WRITE_ACTOR as never, noe.id);
+    expect(accepted.kind).toBe("noe");
+
+    // ── two-tier RHC: the 25-day first stay carries into the readmission's day count (claim assembly read) ──
+    const range = await claimAssemblyRangeContextForOrg(handle.db, ORG, patientId, {
+      from: today(),
+      to: today(),
+    });
+    expect(range?.admission.admissionId).toBe(second);
+    expect(range?.admission.rhcPriorHospiceDays).toBe(25);
+
+    // ── the chart is under care again ──
+    await deliver(m5Siting, "m6.admission.activated", second);
+    expect(await patientStatus(patientId)).toBe("active");
+  }, 120_000);
+
+  it("a period-3 readmission needs a face-to-face before activation, unless exceptional circumstances are documented", async () => {
+    const patientId = randomUUID();
+    const first = await admit(patientId, {}, `${daysAgo(20)}T00:00:00.000Z`);
+    await completeAndActivate(first);
+    await dischargeLive(first, daysAgo(3));
+
+    const blocked = await admit(patientId, {
+      benefitPeriod: { sequence: 3, source: "staff_entered_unverified" },
+    });
+    expect((await periodsOf(blocked))[0]).toMatchObject({
+      sequence_number: 3,
+      period_kind: "sixty_day",
+      benefit_period_suggested: 2,
+    });
+    const readiness = await svc.getAdmissionReadiness(ORG, blocked);
+    expect(readiness?.requirements.find((r) => r.code === "f2f")).toMatchObject({
+      blocking: true,
+      status: "action_required",
+    });
+    // Activation is refused by the R-AC-01 readiness gate (412), and the CTI signature did NOT activate the
+    // period as if it were a recertification.
+    await expect(completeAndActivate(blocked)).rejects.toMatchObject({
+      code: "ADMISSION_NOT_READY",
+      statusCode: 412,
+    });
+    expect((await periodsOf(blocked))[0].status).not.toBe("active");
+
+    // The exception path, on another patient (the blocked admission above stays open for this one).
+    const other = randomUUID();
+    const prior = await admit(other, {}, `${daysAgo(20)}T00:00:00.000Z`);
+    await completeAndActivate(prior);
+    await dischargeLive(prior, daysAgo(3));
+    const excepted = await admit(other, {
+      benefitPeriod: { sequence: 3, source: "staff_entered_unverified" },
+      f2fException: { reason: "Weekend emergency admission; no hospice physician available" },
+    });
+    expect((await periodsOf(excepted))[0].f2f_exception_reason).toContain("Weekend");
+    const r2 = await svc.getAdmissionReadiness(ORG, excepted);
+    expect(r2?.requirements.find((r) => r.code === "f2f")).toMatchObject({
+      blocking: false,
+      status: "pending",
+    });
+    await completeAndActivate(excepted);
+    expect((await periodsOf(excepted))[0].status).toBe("active");
+  }, 120_000);
+
+  it("a transfer out keeps the benefit period; the recently-discharged worklist lists the live ending", async () => {
+    const patientId = randomUUID();
+    const admissionId = await admit(patientId, {}, `${daysAgo(10)}T00:00:00.000Z`);
+    await completeAndActivate(admissionId);
+    await svc.transferOut(
+      ORG,
+      admissionId,
+      {
+        effectiveDate: daysAgo(1),
+        otherHospiceName: "Sunrise Hospice",
+        receivingCareSetting: "home",
+        otherHospiceCcn: "391234",
+        narrative: "patient relocated closer to family; care transferred by mutual agreement",
+      } as never,
+      USER,
+    );
+    const plan = await readmission.getPatientBenefitPeriodPlan(ORG, patientId, {});
+    expect(plan.suggestion).toMatchObject({ suggestedSequence: 1, basis: "same_after_transfer" });
+    expect(plan.previous?.transfer).toBe(true);
+
+    const worklist = createDbDischargeWorklistService(handle.db);
+    const page = await worklist.list(
+      ORG,
+      { bucket: "recently_discharged", limit: 200 },
+      { patientIds: null },
+    );
+    const row = page.items.find((i) => i.admissionId === admissionId);
+    expect(row).toMatchObject({ dischargeType: "transfer_out", effectiveDate: daysAgo(1) });
+
+    // Once readmitted, the stay is no longer a readmission candidate.
+    await admit(patientId);
+    const again = await worklist.list(
+      ORG,
+      { bucket: "recently_discharged", limit: 200 },
+      { patientIds: null },
+    );
+    expect(again.items.find((i) => i.admissionId === admissionId)).toBeUndefined();
+  }, 120_000);
+
+  it("a readmission must name an earlier, live-ended stay of the SAME patient", async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    const stayOfA = await admit(a, {}, `${daysAgo(10)}T00:00:00.000Z`);
+    await completeAndActivate(stayOfA);
+    await dischargeLive(stayOfA);
+    await seedM5Patient(admin, ORG, b);
+    await expect(
+      svc.createAdmission(
+        ORG,
+        {
+          patientId: b,
+          intakeMethod: "in_person",
+          hospiceMedicalDirectorId: MD,
+          readmittedFromAdmissionId: stayOfA,
+        },
+        USER,
+      ),
+    ).rejects.toMatchObject({ code: "READMISSION_SOURCE_INVALID", statusCode: 409 });
+
+    // The direct-intake path records the link, the period and how it was established.
+    const direct = await svc.createAdmission(
+      ORG,
+      {
+        patientId: a,
+        intakeMethod: "in_person",
+        hospiceMedicalDirectorId: MD,
+        readmittedFromAdmissionId: stayOfA,
+        admissionDate: today(),
+      },
+      USER,
+    );
+    const adm = await one<{ readmitted_from_admission_id: string; admission_at: Date }>(
+      "SELECT readmitted_from_admission_id, admission_at FROM admission WHERE id=$1",
+      [direct.id],
+    );
+    expect(adm.readmitted_from_admission_id).toBe(stayOfA);
+    expect((await periodsOf(direct.id))[0]).toMatchObject({
+      sequence_number: 2,
+      benefit_period_source: "internal_history",
+    });
+  }, 120_000);
+});

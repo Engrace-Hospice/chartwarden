@@ -17,6 +17,12 @@ export const M6_ERROR_STATUS = {
   BENEFIT_PERIOD_SEQUENCE_GAP: 409,
   CURATIVE_CARE_ACK_REQUIRED: 422,
   ELECTION_PERIOD_OVERLAP: 409,
+  // The first benefit period of a NEW admission (intake/benefit-period.ts): malformed number / HETS date (422).
+  BENEFIT_PERIOD_INVALID: 422,
+  BENEFIT_PERIOD_CONFIRMATION_DATE_REQUIRED: 422,
+  BENEFIT_PERIOD_CONFIRMATION_DATE_INVALID: 422,
+  // A readmission must start from a live-discharged earlier admission of the same patient (409).
+  READMISSION_SOURCE_INVALID: 409,
   // CTI (§2.4.1 R-CTI-*)
   TERMINAL_DX_NOT_ALLOWABLE: 422,
   ATTENDING_SIGNATURE_REQUIRED: 409,
@@ -36,6 +42,8 @@ export const M6_ERROR_STATUS = {
   F2F_ENCOUNTER_DATE_INVALID: 422,
   F2F_PERIOD_START_UNKNOWN: 409,
   F2F_ATTESTATION_TOO_SHORT: 422,
+  // MBPM ch. 9 §20.1(5)(d) — the exceptional-circumstance path needs period 3+ and a documented reason.
+  F2F_EXCEPTION_INVALID: 422,
   // Admission (§2.4.1 R-ADM-*)
   NOTICE_OF_RIGHTS_REQUIRED: 409,
   INITIAL_ASSESSMENT_OVERDUE: 409,

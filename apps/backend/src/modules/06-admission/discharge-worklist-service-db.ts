@@ -9,22 +9,27 @@
 //                    (`missingDischargeDetail`: a completed death without a place of death, or — with no completed
 //                    discharge — a transfer-out without a receiving care setting).
 //   awaiting_cosign  discharge_event status pending_cosign (oldest first).
+//   recently_discharged  admission discharged / closed (bereavement = a death) that ended ALIVE — a revocation, a
+//                    transfer-out, or a completed non-death discharge — in the last RECENTLY_DISCHARGED_DAYS days,
+//                    whose patient has no later admission: the readmission candidates (newest first).
 // The page's discharge/transfer facts are read with ONE extra query per table, bounded by the page size.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type SQL, and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type DischargeDetailKind, missingDischargeDetail } from "./discharge";
 import type { DischargeWorklistService } from "./routes/discharge-worklist-service";
-import type {
-  DischargeWorklistItem,
-  DischargeWorklistPage,
-  DischargeWorklistQuery,
+import {
+  type DischargeWorklistItem,
+  type DischargeWorklistPage,
+  type DischargeWorklistQuery,
+  RECENTLY_DISCHARGED_DAYS,
 } from "./routes/discharge-worklist-typebox";
 import type { AdmissionReadScope } from "./routes/service";
 
 const ADM = schema.admissions;
 const DE = schema.dischargeEvents;
 const TE = schema.transferEvents;
+const RE = schema.revocationEvents;
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
@@ -211,6 +216,75 @@ export function createDbDischargeWorklistService(db: DbClient): DischargeWorklis
     };
   }
 
+  async function recentlyDischarged(
+    tx: DbClient,
+    filters: SQL[],
+    limit: number,
+    offset: number,
+  ): Promise<DischargeWorklistPage> {
+    const LATER = schema.admissions;
+    const rows = await tx
+      .select(ADMISSION_COLS)
+      .from(ADM)
+      .where(
+        and(
+          ...filters,
+          inArray(ADM.status, ["discharged", "closed"]),
+          sql`${ADM.dischargedAt} >= now() - make_interval(days => ${RECENTLY_DISCHARGED_DAYS})`,
+          sql`(
+            EXISTS (SELECT 1 FROM ${RE} WHERE ${RE.admissionId} = ${ADM.id})
+            OR EXISTS (SELECT 1 FROM ${TE} WHERE ${TE.admissionId} = ${ADM.id} AND ${TE.direction} = 'out')
+            OR EXISTS (SELECT 1 FROM ${DE} WHERE ${DE.admissionId} = ${ADM.id} AND ${DE.status} = 'completed'
+                       AND ${DE.dischargeType} <> 'death')
+          )`,
+          sql`NOT EXISTS (SELECT 1 FROM ${LATER} later WHERE later.patient_id = ${ADM.patientId}
+                          AND later.id <> ${ADM.id} AND later.created_at > ${ADM.createdAt})`,
+        ),
+      )
+      .orderBy(desc(ADM.dischargedAt), desc(ADM.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const p = page(rows, limit, offset);
+    const ids = p.rows.map((r) => r.id);
+    if (ids.length === 0) return { items: [], nextCursor: p.nextCursor };
+    const revs = await tx
+      .select({ admissionId: RE.admissionId, effectiveAt: RE.effectiveAt })
+      .from(RE)
+      .where(inArray(RE.admissionId, ids));
+    const xfers = await tx
+      .select({ id: TE.id, admissionId: TE.admissionId, effectiveAt: TE.effectiveAt })
+      .from(TE)
+      .where(and(inArray(TE.admissionId, ids), eq(TE.direction, "out")))
+      .orderBy(desc(TE.effectiveAt));
+    const dis = await tx
+      .select({
+        id: DE.id,
+        admissionId: DE.admissionId,
+        dischargeType: DE.dischargeType,
+        effectiveAt: DE.effectiveAt,
+      })
+      .from(DE)
+      .where(and(inArray(DE.admissionId, ids), eq(DE.status, "completed")));
+    const items = p.rows.map((a): DischargeWorklistItem => {
+      const rev = revs.find((r) => r.admissionId === a.id);
+      const te = xfers.find((t) => t.admissionId === a.id);
+      const de = dis.find((d) => d.admissionId === a.id);
+      const [dischargeType, effectiveDate] = rev
+        ? ["revocation", String(rev.effectiveAt)]
+        : te
+          ? ["transfer_out", String(te.effectiveAt)]
+          : [de ? String(de.dischargeType) : null, de ? String(de.effectiveAt) : null];
+      return {
+        ...baseItem(a),
+        dischargeEventId: de?.id ?? null,
+        transferEventId: te?.id ?? null,
+        dischargeType,
+        effectiveDate,
+      };
+    });
+    return { items, nextCursor: p.nextCursor };
+  }
+
   return {
     async list(
       organizationId: string,
@@ -227,6 +301,8 @@ export function createDbDischargeWorklistService(db: DbClient): DischargeWorklis
         if (scopedIds !== null) filters.push(inArray(ADM.patientId, [...scopedIds]));
         if (query.bucket === "ready") return ready(tx, filters, limit, offset);
         if (query.bucket === "needs_details") return needsDetails(tx, filters, limit, offset);
+        if (query.bucket === "recently_discharged")
+          return recentlyDischarged(tx, filters, limit, offset);
         return awaitingCosign(tx, filters, limit, offset);
       });
     },

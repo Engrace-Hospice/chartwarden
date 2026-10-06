@@ -32,6 +32,8 @@ export type ElectionPeriodEvent =
       readonly admissionActivated: boolean;
       readonly sequence: number;
       readonly f2fAttested: boolean;
+      /** MBPM ch. 9 §20.1(5)(d) — a period-3+ NEW admission with documented exceptional circumstances. */
+      readonly f2fExceptionDocumented?: boolean;
       readonly effectiveAt: LocalDate;
     }
   | {
@@ -154,7 +156,7 @@ export function transitionElectionPeriod(
       require_(event.admissionActivated, "ILLEGAL_TRANSITION", "admission not yet activated");
       if (event.sequence >= RECERT_SEQUENCE_FLOOR) {
         require_(
-          event.f2fAttested,
+          event.f2fAttested || event.f2fExceptionDocumented === true,
           "F2F_REQUIRED_FOR_RECERT",
           "recert period requires an attested F2F",
         );

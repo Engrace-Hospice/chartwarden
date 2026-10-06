@@ -2150,6 +2150,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/readmission-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Readmission plan for a live-discharged admission: the previous stay, the suggested next benefit period from our own history (Medicare counts periods across all hospices — confirm in HETS / ELGA / ELGH), the chosen period's requirements (certification signers, face-to-face window, NOE due date), the two-tier RHC carry-over, and whether the prior election's NOTR / final claim is on file (a new NOE is blocked until it is) */
+        get: operations["getApiV1AdmissionsByIdReadmissioncontext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/resume": {
         parameters: {
             query?: never;
@@ -13405,6 +13422,23 @@ export interface paths {
         put?: never;
         /** F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary) */
         post: operations["postApiV1PatientsByPatientIdAssessmentsSummaryDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/benefit-period-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Benefit-period plan for any new admission of the patient: the suggested first benefit period from our own history (1 when the patient was never served), its requirements and the prior election's close-out status */
+        get: operations["getApiV1PatientsByPatientIdBenefitperiodplan"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -25507,6 +25541,28 @@ export interface operations {
                     attendingPhysicianId?: string;
                     /** Format: uuid */
                     hospiceMedicalDirectorId: string;
+                    /** @description A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context). */
+                    readmittedFromAdmissionId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                 };
             };
         };
@@ -26459,6 +26515,102 @@ export interface operations {
                             };
                             reasonCode?: "INTAKE_DETECTION_UNREVIEWED" | "CONSENT_REQUIRED" | "RESTRICTED" | "PATIENT_NOT_FOUND" | "PRIVACY_CLEARANCE_UNAVAILABLE";
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdReadmissioncontext: {
+        parameters: {
+            query?: {
+                sequence?: number;
+                startDate?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        previous: {
+                            admissionId: string;
+                            admissionState: string;
+                            startedOn: string | null;
+                            endedOn: string | null;
+                            endKind: "live_discharge" | "revocation" | "transfer_out" | "death" | "unknown";
+                            dischargeType: string | null;
+                            /** @description Ended by a transfer to another hospice (status 50/51). */
+                            transfer: boolean;
+                            lastSequence: number | null;
+                            daysSinceDischarge: number | null;
+                        } | null;
+                        readmission: {
+                            eligible: boolean;
+                            blockers: ("NOT_ENDED" | "ENDED_BY_DEATH" | "OPEN_ADMISSION_EXISTS" | "NEWER_ADMISSION_EXISTS")[];
+                        };
+                        priorElectionClosure: {
+                            admissionId: string;
+                            status: "filed" | "not_filed" | "unknown";
+                            notrFiled: boolean | null;
+                            finalClaimFiled: boolean | null;
+                        } | null;
+                        /** @description True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked. */
+                        noeBlocked: boolean;
+                        suggestion: {
+                            suggestedSequence: number;
+                            basis: "no_history" | "next_after_live_discharge" | "next_after_revocation" | "same_after_transfer" | "next_after_unknown_end";
+                            fromAdmissionId: string | null;
+                            lastKnownSequence: number | null;
+                        };
+                        requirements: {
+                            sequence: number;
+                            periodKind: "ninety_day" | "sixty_day";
+                            lengthDays: number;
+                            /** Format: date */
+                            startDate: string;
+                            /** Format: date */
+                            endDate: string;
+                            certification: {
+                                /** @constant */
+                                hospicePhysician: true;
+                                attendingIfDesignated: boolean;
+                            };
+                            faceToFace: {
+                                required: boolean;
+                                windowStart: string | null;
+                                windowEnd: string | null;
+                                exceptionWindowEnd: string | null;
+                            };
+                            /** @constant */
+                            electionStatementRequired: true;
+                            /** Format: date */
+                            noeDueBy: string;
+                            /** Format: date */
+                            initialAssessmentDueBy: string;
+                            /** Format: date */
+                            comprehensiveAssessmentDueBy: string;
+                            /** Format: date */
+                            hopeAdmissionA0220: string;
+                        };
+                        rhc: {
+                            applies: boolean;
+                            daysSinceDischarge: number | null;
+                            priorHospiceDays: number;
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                        };
                     };
                 };
             };
@@ -39245,7 +39397,7 @@ export interface operations {
     getApiV1DischargesWorklist: {
         parameters: {
             query: {
-                bucket: "ready" | "needs_details" | "awaiting_cosign";
+                bucket: "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged";
                 cursor?: string;
                 limit?: number;
             };
@@ -58848,6 +59000,102 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByPatientIdBenefitperiodplan: {
+        parameters: {
+            query?: {
+                sequence?: number;
+                startDate?: string;
+            };
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        previous: {
+                            admissionId: string;
+                            admissionState: string;
+                            startedOn: string | null;
+                            endedOn: string | null;
+                            endKind: "live_discharge" | "revocation" | "transfer_out" | "death" | "unknown";
+                            dischargeType: string | null;
+                            /** @description Ended by a transfer to another hospice (status 50/51). */
+                            transfer: boolean;
+                            lastSequence: number | null;
+                            daysSinceDischarge: number | null;
+                        } | null;
+                        readmission: {
+                            eligible: boolean;
+                            blockers: ("NOT_ENDED" | "ENDED_BY_DEATH" | "OPEN_ADMISSION_EXISTS" | "NEWER_ADMISSION_EXISTS")[];
+                        };
+                        priorElectionClosure: {
+                            admissionId: string;
+                            status: "filed" | "not_filed" | "unknown";
+                            notrFiled: boolean | null;
+                            finalClaimFiled: boolean | null;
+                        } | null;
+                        /** @description True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked. */
+                        noeBlocked: boolean;
+                        suggestion: {
+                            suggestedSequence: number;
+                            basis: "no_history" | "next_after_live_discharge" | "next_after_revocation" | "same_after_transfer" | "next_after_unknown_end";
+                            fromAdmissionId: string | null;
+                            lastKnownSequence: number | null;
+                        };
+                        requirements: {
+                            sequence: number;
+                            periodKind: "ninety_day" | "sixty_day";
+                            lengthDays: number;
+                            /** Format: date */
+                            startDate: string;
+                            /** Format: date */
+                            endDate: string;
+                            certification: {
+                                /** @constant */
+                                hospicePhysician: true;
+                                attendingIfDesignated: boolean;
+                            };
+                            faceToFace: {
+                                required: boolean;
+                                windowStart: string | null;
+                                windowEnd: string | null;
+                                exceptionWindowEnd: string | null;
+                            };
+                            /** @constant */
+                            electionStatementRequired: true;
+                            /** Format: date */
+                            noeDueBy: string;
+                            /** Format: date */
+                            initialAssessmentDueBy: string;
+                            /** Format: date */
+                            comprehensiveAssessmentDueBy: string;
+                            /** Format: date */
+                            hopeAdmissionA0220: string;
+                        };
+                        rhc: {
+                            applies: boolean;
+                            daysSinceDischarge: number | null;
+                            priorHospiceDays: number;
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByPatientIdCareplan: {
         parameters: {
             query?: never;
@@ -65908,6 +66156,26 @@ export interface operations {
                     primaryDiagnosisIcd10: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                     ifVersion: number;
                 };
             };
@@ -66053,6 +66321,26 @@ export interface operations {
                     primaryDiagnosisIcd10: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                     ifVersion: number;
                 };
             };

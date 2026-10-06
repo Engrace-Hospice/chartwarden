@@ -210,6 +210,8 @@ export function computeClaimHipps(
       claimServiceFrom: window.serviceFrom,
       claimServiceTo: window.serviceTo,
       hospiceAdmissionDate: admission.hospiceAdmissionDate,
+      // Two-tier RHC — a readmission within 60 days continues the prior stays' day count.
+      priorHospiceDays: admission.rhcPriorHospiceDays ?? 0,
       levelOfCarePeriods: resolvedLoc.map((p) => ({
         levelOfCare: p.levelOfCare,
         from: p.from,

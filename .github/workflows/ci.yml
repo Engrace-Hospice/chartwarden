@@ -855,6 +855,9 @@ jobs:
           - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
           # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
           - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
+          # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
+          # readmission NOE held until the prior election's NOTR / final claim is filed.
+          - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.

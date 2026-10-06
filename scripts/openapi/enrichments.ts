@@ -147,6 +147,10 @@ import {
   DischargeWorklistQuerySchema,
   DischargeWorklistResponseSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox";
+import {
+  BenefitPeriodPlanQuerySchema,
+  BenefitPeriodPlanSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/readmission-typebox";
 import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
@@ -3787,6 +3791,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason",
     body: PlaceOfDeathRecordSchema,
     response: DischargeDetailRecordResultSchema,
+  },
+  "GET /api/v1/admissions/:id/readmission-context": {
+    summary:
+      "Readmission plan for a live-discharged admission: the previous stay, the suggested next benefit period from our own history (Medicare counts periods across all hospices — confirm in HETS / ELGA / ELGH), the chosen period's requirements (certification signers, face-to-face window, NOE due date), the two-tier RHC carry-over, and whether the prior election's NOTR / final claim is on file (a new NOE is blocked until it is)",
+    query: BenefitPeriodPlanQuerySchema,
+    response: BenefitPeriodPlanSchema,
+  },
+  "GET /api/v1/patients/:patientId/benefit-period-plan": {
+    summary:
+      "Benefit-period plan for any new admission of the patient: the suggested first benefit period from our own history (1 when the patient was never served), its requirements and the prior election's close-out status",
+    query: BenefitPeriodPlanQuerySchema,
+    response: BenefitPeriodPlanSchema,
   },
   "GET /api/v1/discharges/worklist": {
     summary:

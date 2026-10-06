@@ -37,6 +37,11 @@ import {
 } from "../intake";
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
+import {
+  type BenefitPeriodEntry,
+  assertBenefitPeriodEntry,
+  assertF2fExceptionReason,
+} from "../intake/benefit-period";
 import { AdmissionStateError } from "../state-machines/errors";
 import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { daysBetween } from "../state-machines/validation";
@@ -253,12 +258,25 @@ export interface ReferralCreateInput {
   readonly referrerPhone?: string;
   readonly externalReferralId?: string;
 }
-export interface AdmissionCreateInput {
+/**
+ * The first benefit period a NEW admission elects into (intake/benefit-period.ts). Absent = our own history's
+ * suggestion, recorded as `internal_history` (1 for a patient we never served — the pre-readmission behaviour).
+ */
+export interface FirstBenefitPeriodInput {
+  readonly benefitPeriod?: BenefitPeriodEntry;
+  /** Period 3+ only: the documented exceptional circumstance (MBPM ch. 9 §20.1(5)(d)). */
+  readonly f2fException?: { readonly reason: string };
+  /** The planned admission / election date (`YYYY-MM-DD`); anchors the F2F window of a period-3+ admission. */
+  readonly admissionDate?: string;
+}
+export interface AdmissionCreateInput extends FirstBenefitPeriodInput {
   readonly patientId: string;
   readonly referralId?: string;
   readonly intakeMethod: string;
   readonly attendingPhysicianId?: string;
   readonly hospiceMedicalDirectorId: string;
+  /** A readmission: the patient's earlier, live-discharged admission this one follows. */
+  readonly readmittedFromAdmissionId?: string;
 }
 export interface AdmissionUpdateInput {
   readonly admissionAt?: string;
@@ -289,7 +307,7 @@ export interface UploadedCtiInput {
   readonly signedAt?: string;
 }
 /** §4.2.1 accept body — links/creates the M5 patient and supplies the primary dx (W-RF-04). */
-export interface AcceptReferralInput {
+export interface AcceptReferralInput extends FirstBenefitPeriodInput {
   readonly patientId?: string;
   readonly primaryDiagnosisIcd10: string;
   readonly attendingPhysicianId?: string;
@@ -1182,6 +1200,17 @@ export interface AdmissionBackendSeed {
  * `events` array records emitted outbox event names for assertion. Deterministic — no I/O, injected
  * clock.
  */
+/**
+ * The in-memory slice's first benefit period: the staff entry (validated like the Drizzle path) or 1 — the slice
+ * keeps no discharge history to suggest from (the Drizzle path's suggestion is proven by its live suite).
+ */
+function firstSequence(input: FirstBenefitPeriodInput): number {
+  if (!input.benefitPeriod) return 1;
+  assertBenefitPeriodEntry(input.benefitPeriod, new Date().toISOString().slice(0, 10));
+  assertF2fExceptionReason(input.f2fException?.reason, input.benefitPeriod.sequence);
+  return input.benefitPeriod.sequence;
+}
+
 export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}): {
   service: AdmissionRouteService;
   resolver: AdmissionAbacResolver;
@@ -1675,7 +1704,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       insert("election_period", organizationId, "pending", {
         admissionId: adm.id,
         patientId,
-        sequence: 1,
+        sequence: firstSequence(input),
         primaryDiagnosisIcd10: input.primaryDiagnosisIcd10,
       });
       insert("compliance_window", organizationId, "open", {
@@ -1789,10 +1818,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         primaryDiagnosisIcd10: "C00",
       });
+      const sequence = firstSequence(input);
       const period = insert("election_period", organizationId, "pending", {
         admissionId: rec.id,
         patientId: input.patientId,
-        sequence: 1,
+        sequence,
         primaryDiagnosisIcd10: "C00",
       });
       insert("cti", organizationId, "drafted", {
@@ -1800,7 +1830,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         electionPeriodId: period.id,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
-        sequence: 1,
+        sequence,
       });
       return summary(rec);
     },

@@ -267,8 +267,10 @@ import {
   idgHospitalEventsForOrg,
   idgPacketInclusionForOrg,
   idgRecertWindowsForOrg,
+  latestLiveEndedEpisode,
   mountAdmissionRoutes,
   portalDischargedPastGraceForOrg,
+  priorEpisodesForOrg,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
@@ -732,6 +734,7 @@ import {
   createM23LaunchGateway,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
+  priorElectionClosureForOrg,
   registerBillingErasers,
   registerM23AbacPredicates,
   registerM23DomainWorkers,
@@ -3449,6 +3452,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
             // GAP-022 — the F2F performer role is derived from the clinician's real role grants.
             buildF2fClinicianRoleReader(dbHandle.db),
+            // Readmission workflow — whether the prior election's NOTR / final claim is on file (M23's own query;
+            // M6 may not import M23, so the fact crosses here).
+            {
+              closureFor: (organizationId, q) =>
+                priorElectionClosureForOrg(dbHandle.db, organizationId, q),
+            },
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
@@ -3825,6 +3834,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             }),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
+              // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
+              priorLiveEndedStay: {
+                async latestPriorLiveEndedAdmission(organizationId, q) {
+                  const prior = latestLiveEndedEpisode(
+                    await priorEpisodesForOrg(
+                      dbHandle.db,
+                      organizationId,
+                      q.patientId,
+                      q.currentAdmissionId,
+                    ),
+                  );
+                  return prior ? { admissionId: prior.admissionId } : null;
+                },
+              },
               jobs: buildM23OutboxBackedSubmissionGate({
                 "claim.submit": m23SubmissionQueues !== null,
                 "noe.submit": m23SubmissionQueues !== null,

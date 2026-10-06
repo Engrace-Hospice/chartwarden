@@ -36,6 +36,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   ne,
   or,
   sql,
@@ -65,6 +66,7 @@ import {
   resolveF2fWindowStart,
 } from "./certification/f2f-window";
 import {
+  addCalendarDays,
   computeCtiSignatureDueAt,
   computeWrittenCertDeadline,
   localDateOfInstant,
@@ -86,6 +88,8 @@ import {
   computeActivationGate,
   evaluateAdmissionReadiness,
 } from "./intake";
+import { F2F_EXCEPTION_DAYS_AFTER_ADMISSION } from "./intake/benefit-period";
+import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
@@ -858,11 +862,32 @@ export function createDbAdmissionRouteService(
         ),
       )
       .limit(1);
+    // Readmission workflow — an admission's FIRST period (a re-election into period 3+) has no predecessor on the
+    // admission to derive a start from; its start is the admission date.
+    let admissionDay: string | null = null;
+    if (!prior && !ep.expectedStart && !ep.effectiveAt) {
+      const [adm] = await tx
+        .select({ admissionAt: ADM.admissionAt })
+        .from(ADM)
+        .where(eq(ADM.id, ep.admissionId))
+        .limit(1);
+      admissionDay = adm?.admissionAt ? adm.admissionAt.toISOString().slice(0, 10) : null;
+    }
     return resolveF2fWindowStart({
-      expectedStart: ep.expectedStart,
+      expectedStart: ep.expectedStart ?? admissionDay,
       priorScheduledEnd: prior?.scheduledEndAt ?? null,
       effectiveAt: ep.effectiveAt,
     });
+  }
+
+  /** MBPM ch. 9 §20.1(5)(d) — does this period carry a documented F2F exceptional circumstance? */
+  async function periodHasF2fException(tx: DbClient, periodId: string): Promise<boolean> {
+    const [ep] = await tx
+      .select({ reason: EP.f2fExceptionReason })
+      .from(EP)
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    return !!ep?.reason;
   }
 
   /**
@@ -1153,6 +1178,8 @@ export function createDbAdmissionRouteService(
           sequenceNumber: number;
           effectiveAt: string | null;
           scheduledEndAt: string | null;
+          expectedStart: string | null;
+          f2fExceptionReason: string | null;
         }
       | undefined;
     inherited: boolean;
@@ -1163,6 +1190,8 @@ export function createDbAdmissionRouteService(
         sequenceNumber: EP.sequenceNumber,
         effectiveAt: EP.effectiveAt,
         scheduledEndAt: EP.scheduledEndAt,
+        expectedStart: EP.expectedStart,
+        f2fExceptionReason: EP.f2fExceptionReason,
       })
       .from(EP)
       .where(eq(EP.admissionId, admissionId))
@@ -1202,6 +1231,8 @@ export function createDbAdmissionRouteService(
     periodScheduledEndAt: string | null;
     /** D9 — the activation period is the sending hospice's inherited one (transfer-in). */
     inheritedPeriod: boolean;
+    /** MBPM ch. 9 §20.1(5)(d) — a period-3+ new admission's documented F2F exceptional circumstance. */
+    f2fExceptionDocumented: boolean;
   }> {
     await backfillLegacyEvidenceForAdmission(tx, organizationId, admissionId);
     const { period, inherited } = await activationPeriodFor(tx, admissionId);
@@ -1256,6 +1287,7 @@ export function createDbAdmissionRouteService(
       periodEffectiveAt: period?.effectiveAt ?? null,
       periodScheduledEndAt: period?.scheduledEndAt ?? null,
       inheritedPeriod: inherited,
+      f2fExceptionDocumented: !!period?.f2fExceptionReason,
     };
   }
 
@@ -1590,6 +1622,14 @@ export function createDbAdmissionRouteService(
         attestationRequired: !inheritedPeriod && (period?.sequenceNumber ?? 1) >= 3,
         attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
+        exceptionDocumented: !inheritedPeriod && !!period?.f2fExceptionReason,
+        exceptionDueBy: (() => {
+          const start =
+            period?.effectiveAt ??
+            period?.expectedStart ??
+            (adm.admissionAt ? adm.admissionAt.toISOString().slice(0, 10) : null);
+          return start ? addCalendarDays(start, F2F_EXCEPTION_DAYS_AFTER_ADMISSION) : null;
+        })(),
       },
     };
     return evaluateAdmissionReadiness(facts);
@@ -2902,6 +2942,13 @@ export function createDbAdmissionRouteService(
           referralAccepted: true,
           hasOtherOpenAdmission: !!open,
         } satisfies AdmissionEvent);
+        // Readmission workflow — the first benefit period (staff-entered or history-suggested), validated first.
+        const first = await resolveFirstBenefitPeriod(tx as DbClient, {
+          patientId,
+          input,
+          actorUserId,
+          now: now(),
+        });
         const adm = firstOrThrow(
           await tx
             .insert(ADM)
@@ -2910,6 +2957,7 @@ export function createDbAdmissionRouteService(
               patientId,
               referralId: id,
               status: t.to,
+              ...(first.admissionAt ? { admissionAt: first.admissionAt } : {}),
             })
             .returning({ id: ADM.id, version: ADM.version }),
           "admission insert returned no row",
@@ -2925,12 +2973,12 @@ export function createDbAdmissionRouteService(
           t.effects,
           { "m6.admission.draft_created": { patientId, referralId: id } },
         );
-        // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
+        // Seed the first benefit period (the §7.1 cascade — not a state-machine effect). It is period 1 only for a
+        // patient with no earlier election; a re-election continues the count (42 CFR 418.21 / 418.24).
         await tx.insert(EP).values({
           organizationId,
           admissionId: adm.id,
-          sequenceNumber: 1,
-          periodKind: "ninety_day",
+          ...first.periodValues,
         });
         // Advance the referral to converted.
         const r = firstOrThrow(
@@ -3322,6 +3370,17 @@ export function createDbAdmissionRouteService(
           referralAccepted: true,
           hasOtherOpenAdmission: !!open,
         } satisfies AdmissionEvent);
+        // Readmission workflow — the first benefit period is the staff-entered (or history-suggested) number,
+        // validated before any write. A transfer-in inherits its sequence via `transferIn` instead (below).
+        const first =
+          input.intakeMethod === "transfer_in"
+            ? null
+            : await resolveFirstBenefitPeriod(tx as DbClient, {
+                patientId: input.patientId,
+                input,
+                actorUserId,
+                now: now(),
+              });
         const adm = firstOrThrow(
           await tx
             .insert(ADM)
@@ -3332,6 +3391,10 @@ export function createDbAdmissionRouteService(
               hospicePhysicianId: input.hospiceMedicalDirectorId,
               attendingPhysicianId: input.attendingPhysicianId ?? null,
               status: t.to,
+              ...(first?.admissionAt ? { admissionAt: first.admissionAt } : {}),
+              ...(input.readmittedFromAdmissionId
+                ? { readmittedFromAdmissionId: input.readmittedFromAdmissionId }
+                : {}),
             })
             .returning({
               id: ADM.id,
@@ -3362,7 +3425,7 @@ export function createDbAdmissionRouteService(
         // (42 CFR 418.28, the benefit-period counter never restarts). Seeding period 1 here for a
         // transfer-in unconditionally created a spurious extra election_period row (+ a spurious CTI
         // attached to it) ahead of `transferIn`'s own inherited/next pair.
-        if (input.intakeMethod === "transfer_in") {
+        if (!first) {
           return {
             id: adm.id,
             state: adm.status,
@@ -3375,8 +3438,7 @@ export function createDbAdmissionRouteService(
             .values({
               organizationId,
               admissionId: adm.id,
-              sequenceNumber: 1,
-              periodKind: "ninety_day",
+              ...first.periodValues,
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -3784,7 +3846,9 @@ export function createDbAdmissionRouteService(
           privacyFlagBlock: false,
           initialAssessment48hOverdue: false,
           donOverride: false,
-          isFirstElectionPeriod: facts.periodSequence === 1,
+          // The admission's FIRST period starts here — period 1 for a first election, the continuing number for a
+          // re-election (readmission). A transfer-in's inherited period keeps its old rule (it started elsewhere).
+          isFirstElectionPeriod: facts.inheritedPeriod ? facts.periodSequence === 1 : true,
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
         const activatedAt = now();
@@ -3846,6 +3910,7 @@ export function createDbAdmissionRouteService(
                 periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
                   ? await hasAttestedF2f(tx as DbClient, facts.periodId)
                   : true,
+              f2fExceptionDocumented: facts.f2fExceptionDocumented,
               effectiveAt: isoDay(activatedAt),
             });
           }
@@ -4366,7 +4431,14 @@ export function createDbAdmissionRouteService(
           },
           createdByMembershipId: actorUserId,
         });
-        if (period.seq >= 2 && cti.epId) {
+        // Readmission workflow — a re-election's FIRST period can be 2 or later, but it is not a recertification:
+        // it activates with the admission (`activateAdmission`, R-AC-01 gate), never on the CTI signature alone.
+        const [earlierPeriod] = await tx
+          .select({ id: EP.id })
+          .from(EP)
+          .where(and(eq(EP.admissionId, period.admissionId), lt(EP.sequenceNumber, period.seq)))
+          .limit(1);
+        if (period.seq >= 2 && cti.epId && earlierPeriod) {
           // §2.3.2 `setActive` on the RECERT path — the one that matters. This path advances any
           // period ≥ 2 on the hospice-MD signature alone and has no face-to-face term, so a third
           // or later benefit period activated with no attested F2F encounter: 42 CFR 418.22(a)(4)
@@ -4665,6 +4737,7 @@ export function createDbAdmissionRouteService(
           periodStart: windowStart?.start ?? null,
           encounterDate,
           hasOverride: cur.override,
+          exceptionDocumented: await periodHasF2fException(tx as DbClient, cur.epId),
         });
         const withinWindow: boolean | null = t.effects.some(
           (e) => e.kind === "set_flag" && e.field === "within_window_unknown",

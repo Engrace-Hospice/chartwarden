@@ -96,10 +96,69 @@ export const ReferralTriageSchema = Type.Object({
   ifVersion: Version(),
 });
 
+// ── The first benefit period of a NEW admission (intake/benefit-period.ts) ──────────────────────────
+// Shared by direct intake, referral conversion and readmission. Absent = our own history's suggestion.
+export const BenefitPeriodEntrySchema = Type.Object(
+  {
+    sequence: Type.Integer({
+      minimum: 1,
+      maximum: 200,
+      description:
+        "The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods " +
+        "per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH.",
+    }),
+    source: Type.Union(
+      [
+        Type.Literal("hets_confirmed"),
+        Type.Literal("staff_entered_unverified"),
+        Type.Literal("internal_history"),
+      ],
+      {
+        description:
+          '"hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": ' +
+          'entered without that check. "internal_history": our own history\'s suggestion, accepted as is.',
+      },
+    ),
+    confirmedOn: Type.Optional(
+      Type.String({
+        format: "date",
+        description: "The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const FirstBenefitPeriodFields = {
+  benefitPeriod: Type.Optional(BenefitPeriodEntrySchema),
+  f2fException: Type.Optional(
+    Type.Object(
+      {
+        reason: Type.String({
+          minLength: 20,
+          maxLength: 2000,
+          description:
+            "Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the " +
+            "period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)).",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+  ),
+  admissionDate: Type.Optional(
+    Type.String({
+      format: "date",
+      description:
+        "The planned admission / election date; anchors the period-3+ face-to-face window.",
+    }),
+  ),
+};
+
 export const ReferralAcceptSchema = Type.Object({
   patientId: Type.Optional(Uuid()),
   primaryDiagnosisIcd10: Icd10(),
   attendingPhysicianId: Type.Optional(Uuid()),
+  ...FirstBenefitPeriodFields,
   ifVersion: Version(),
 });
 
@@ -195,6 +254,15 @@ export const AdmissionCreateSchema = Type.Object({
   intakeMethod: Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m))),
   attendingPhysicianId: Type.Optional(Uuid()),
   hospiceMedicalDirectorId: Uuid(),
+  readmittedFromAdmissionId: Type.Optional(
+    Type.String({
+      minLength: 1,
+      maxLength: 64,
+      description:
+        "A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context).",
+    }),
+  ),
+  ...FirstBenefitPeriodFields,
 });
 
 export const AdmissionListQuerySchema = Type.Object({

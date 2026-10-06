@@ -6,12 +6,12 @@
 // SIA last-7-days window and was struck by ADR-0001). Days are measured from `hospiceAdmissionDate`
 // (NOT the claim's from date, so a mid-stay interim claim lands in the right tier).
 //
-// KNOWN LIMITATION (recorded, not silent): ADR-0001's day counter is the beneficiary's CUMULATIVE
-// hospice-election day count across sequential stays and hospices, with a >60-day election-gap reset.
-// This calculator anchors to the CURRENT election's admission date — correct for a first/continuous
-// election, and under-counts prior-stay days otherwise. Wiring the cumulative count needs beneficiary
-// election history (M6 + external eligibility data) that no seam provides yet; when it lands, pass the
-// cumulative day-1 anchor as `hospiceAdmissionDate` and this math is already right.
+// CUMULATIVE COUNT: ADR-0001's day counter is the beneficiary's CUMULATIVE hospice day count across
+// sequential stays, reset by a >60-day gap (Claims Processing Manual ch. 11, two-tier RHC). The current
+// stay's days count from `hospiceAdmissionDate`; `priorHospiceDays` carries the earlier stays a
+// readmission within 60 days continues (M6 computes it from its own history — readmission workflow).
+// KNOWN LIMITATION (recorded, not silent): days at ANOTHER hospice are not in any table (they would come
+// from HETS / eligibility data), so a patient arriving from elsewhere still under-counts.
 //
 // Each resolved rate is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
 // and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `hipps_calculation` row so
@@ -126,6 +126,9 @@ export interface HippsCalculationInput {
   /** The hospice election/admission date — day 1 of the ADR-0001 day-60 tier count (see the header's
    * cumulative-count limitation note). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** Hospice days of earlier stays that carry into this stay's RHC day count (a readmission within 60 days
+   *  of a discharge); 0 / absent when the count starts at this admission. */
+  readonly priorHospiceDays?: number;
   readonly levelOfCarePeriods: readonly HippsLocPeriodInput[];
   readonly rateTable: HippsRateTable;
   /** Snapshotted into the result for audit reproducibility (D7 / D12). */
@@ -289,6 +292,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
     );
   }
 
+  const priorDays = Math.max(0, Math.trunc(input.priorHospiceDays ?? 0));
   // 1. Resolve each calendar day to a level of care + wage-adjusted per-diem (skip uncovered gap days).
   const days: DayResolution[] = [];
   for (let day = fromDay; day <= toDay; day++) {
@@ -301,7 +305,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
     const loc = period.levelOfCare;
     const bucket: RhcDayBucket =
       loc === "routine_home_care"
-        ? dayOfStay(input.hospiceAdmissionDate, iso) <= RHC_HIGH_TIER_LAST_DAY
+        ? dayOfStay(input.hospiceAdmissionDate, iso) + priorDays <= RHC_HIGH_TIER_LAST_DAY
           ? "days_1_60"
           : "days_61_plus"
         : "n/a";

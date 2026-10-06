@@ -17420,6 +17420,70 @@
                   "hospiceMedicalDirectorId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "readmittedFromAdmissionId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context).",
+                    "type": "string"
+                  },
+                  "benefitPeriod": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "sequence",
+                      "source"
+                    ],
+                    "properties": {
+                      "sequence": {
+                        "minimum": 1,
+                        "maximum": 200,
+                        "description": "The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH.",
+                        "type": "integer"
+                      },
+                      "source": {
+                        "description": "\"hets_confirmed\": checked against HETS / ELGA / ELGH (confirmedOn required). \"staff_entered_unverified\": entered without that check. \"internal_history\": our own history's suggestion, accepted as is.",
+                        "anyOf": [
+                          {
+                            "const": "hets_confirmed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "staff_entered_unverified",
+                            "type": "string"
+                          },
+                          {
+                            "const": "internal_history",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "confirmedOn": {
+                        "format": "date",
+                        "description": "The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "f2fException": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "minLength": 20,
+                        "maxLength": 2000,
+                        "description": "Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "admissionDate": {
+                    "format": "date",
+                    "description": "The planned admission / election date; anchors the period-3+ face-to-face window.",
+                    "type": "string"
                   }
                 }
               }
@@ -21613,6 +21677,509 @@
                               }
                             ]
                           }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/readmission-context": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdReadmissioncontext",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Readmission plan for a live-discharged admission: the previous stay, the suggested next benefit period from our own history (Medicare counts periods across all hospices — confirm in HETS / ELGA / ELGH), the chosen period's requirements (certification signers, face-to-face window, NOE due date), the two-tier RHC carry-over, and whether the prior election's NOTR / final claim is on file (a new NOE is blocked until it is)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Compute the requirements for this benefit period instead of the suggested one.",
+              "type": "integer"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "description": "The planned admission / election date (default: today, org-local).",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "previous",
+                    "readmission",
+                    "priorElectionClosure",
+                    "noeBlocked",
+                    "suggestion",
+                    "requirements",
+                    "rhc"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "admissionId",
+                            "admissionState",
+                            "startedOn",
+                            "endedOn",
+                            "endKind",
+                            "dischargeType",
+                            "transfer",
+                            "lastSequence",
+                            "daysSinceDischarge"
+                          ],
+                          "properties": {
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "admissionState": {
+                              "type": "string"
+                            },
+                            "startedOn": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "endedOn": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "endKind": {
+                              "anyOf": [
+                                {
+                                  "const": "live_discharge",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "transfer_out",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "dischargeType": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "transfer": {
+                              "description": "Ended by a transfer to another hospice (status 50/51).",
+                              "type": "boolean"
+                            },
+                            "lastSequence": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "daysSinceDischarge": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readmission": {
+                      "type": "object",
+                      "required": [
+                        "eligible",
+                        "blockers"
+                      ],
+                      "properties": {
+                        "eligible": {
+                          "type": "boolean"
+                        },
+                        "blockers": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "NOT_ENDED",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ENDED_BY_DEATH",
+                                "type": "string"
+                              },
+                              {
+                                "const": "OPEN_ADMISSION_EXISTS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "NEWER_ADMISSION_EXISTS",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "priorElectionClosure": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "admissionId",
+                            "status",
+                            "notrFiled",
+                            "finalClaimFiled"
+                          ],
+                          "properties": {
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "not_filed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "notrFiled": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "finalClaimFiled": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "noeBlocked": {
+                      "description": "True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked.",
+                      "type": "boolean"
+                    },
+                    "suggestion": {
+                      "type": "object",
+                      "required": [
+                        "suggestedSequence",
+                        "basis",
+                        "fromAdmissionId",
+                        "lastKnownSequence"
+                      ],
+                      "properties": {
+                        "suggestedSequence": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "basis": {
+                          "anyOf": [
+                            {
+                              "const": "no_history",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_live_discharge",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_revocation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "same_after_transfer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_unknown_end",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "fromAdmissionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastKnownSequence": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "requirements": {
+                      "type": "object",
+                      "required": [
+                        "sequence",
+                        "periodKind",
+                        "lengthDays",
+                        "startDate",
+                        "endDate",
+                        "certification",
+                        "faceToFace",
+                        "electionStatementRequired",
+                        "noeDueBy",
+                        "initialAssessmentDueBy",
+                        "comprehensiveAssessmentDueBy",
+                        "hopeAdmissionA0220"
+                      ],
+                      "properties": {
+                        "sequence": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "periodKind": {
+                          "anyOf": [
+                            {
+                              "const": "ninety_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sixty_day",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "lengthDays": {
+                          "type": "integer"
+                        },
+                        "startDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "endDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "certification": {
+                          "type": "object",
+                          "required": [
+                            "hospicePhysician",
+                            "attendingIfDesignated"
+                          ],
+                          "properties": {
+                            "hospicePhysician": {
+                              "const": true,
+                              "type": "boolean"
+                            },
+                            "attendingIfDesignated": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "faceToFace": {
+                          "type": "object",
+                          "required": [
+                            "required",
+                            "windowStart",
+                            "windowEnd",
+                            "exceptionWindowEnd"
+                          ],
+                          "properties": {
+                            "required": {
+                              "type": "boolean"
+                            },
+                            "windowStart": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "windowEnd": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "exceptionWindowEnd": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "electionStatementRequired": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "noeDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "initialAssessmentDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "comprehensiveAssessmentDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "hopeAdmissionA0220": {
+                          "format": "date",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "rhc": {
+                      "type": "object",
+                      "required": [
+                        "applies",
+                        "daysSinceDischarge",
+                        "priorHospiceDays",
+                        "startsAtDay",
+                        "highRateDaysRemaining"
+                      ],
+                      "properties": {
+                        "applies": {
+                          "type": "boolean"
+                        },
+                        "daysSinceDischarge": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "priorHospiceDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "startsAtDay": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "highRateDaysRemaining": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }
@@ -74532,7 +75099,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "description": "\"ready\": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or death can be recorded). \"needs_details\": discharged / bereavement admissions whose stay-ending record lacks the place of death or the receiving care setting the final claim needs. \"awaiting_cosign\": for-cause discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause).",
+              "description": "\"ready\": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or death can be recorded). \"needs_details\": discharged / bereavement admissions whose stay-ending record lacks the place of death or the receiving care setting the final claim needs. \"awaiting_cosign\": for-cause discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause). \"recently_discharged\": live discharges, revocations and transfers-out of the last 90 days (never deaths) whose patient has no later admission — the readmission candidates.",
               "anyOf": [
                 {
                   "const": "ready",
@@ -74544,6 +75111,10 @@
                 },
                 {
                   "const": "awaiting_cosign",
+                  "type": "string"
+                },
+                {
+                  "const": "recently_discharged",
                   "type": "string"
                 }
               ]
@@ -151468,6 +152039,509 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/benefit-period-plan": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdBenefitperiodplan",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Benefit-period plan for any new admission of the patient: the suggested first benefit period from our own history (1 when the patient was never served), its requirements and the prior election's close-out status",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Compute the requirements for this benefit period instead of the suggested one.",
+              "type": "integer"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "description": "The planned admission / election date (default: today, org-local).",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "previous",
+                    "readmission",
+                    "priorElectionClosure",
+                    "noeBlocked",
+                    "suggestion",
+                    "requirements",
+                    "rhc"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "admissionId",
+                            "admissionState",
+                            "startedOn",
+                            "endedOn",
+                            "endKind",
+                            "dischargeType",
+                            "transfer",
+                            "lastSequence",
+                            "daysSinceDischarge"
+                          ],
+                          "properties": {
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "admissionState": {
+                              "type": "string"
+                            },
+                            "startedOn": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "endedOn": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "endKind": {
+                              "anyOf": [
+                                {
+                                  "const": "live_discharge",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "transfer_out",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "dischargeType": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "transfer": {
+                              "description": "Ended by a transfer to another hospice (status 50/51).",
+                              "type": "boolean"
+                            },
+                            "lastSequence": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "daysSinceDischarge": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readmission": {
+                      "type": "object",
+                      "required": [
+                        "eligible",
+                        "blockers"
+                      ],
+                      "properties": {
+                        "eligible": {
+                          "type": "boolean"
+                        },
+                        "blockers": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "NOT_ENDED",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ENDED_BY_DEATH",
+                                "type": "string"
+                              },
+                              {
+                                "const": "OPEN_ADMISSION_EXISTS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "NEWER_ADMISSION_EXISTS",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "priorElectionClosure": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "admissionId",
+                            "status",
+                            "notrFiled",
+                            "finalClaimFiled"
+                          ],
+                          "properties": {
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "not_filed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "notrFiled": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "finalClaimFiled": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "noeBlocked": {
+                      "description": "True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked.",
+                      "type": "boolean"
+                    },
+                    "suggestion": {
+                      "type": "object",
+                      "required": [
+                        "suggestedSequence",
+                        "basis",
+                        "fromAdmissionId",
+                        "lastKnownSequence"
+                      ],
+                      "properties": {
+                        "suggestedSequence": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "basis": {
+                          "anyOf": [
+                            {
+                              "const": "no_history",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_live_discharge",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_revocation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "same_after_transfer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "next_after_unknown_end",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "fromAdmissionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastKnownSequence": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "requirements": {
+                      "type": "object",
+                      "required": [
+                        "sequence",
+                        "periodKind",
+                        "lengthDays",
+                        "startDate",
+                        "endDate",
+                        "certification",
+                        "faceToFace",
+                        "electionStatementRequired",
+                        "noeDueBy",
+                        "initialAssessmentDueBy",
+                        "comprehensiveAssessmentDueBy",
+                        "hopeAdmissionA0220"
+                      ],
+                      "properties": {
+                        "sequence": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "periodKind": {
+                          "anyOf": [
+                            {
+                              "const": "ninety_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sixty_day",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "lengthDays": {
+                          "type": "integer"
+                        },
+                        "startDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "endDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "certification": {
+                          "type": "object",
+                          "required": [
+                            "hospicePhysician",
+                            "attendingIfDesignated"
+                          ],
+                          "properties": {
+                            "hospicePhysician": {
+                              "const": true,
+                              "type": "boolean"
+                            },
+                            "attendingIfDesignated": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "faceToFace": {
+                          "type": "object",
+                          "required": [
+                            "required",
+                            "windowStart",
+                            "windowEnd",
+                            "exceptionWindowEnd"
+                          ],
+                          "properties": {
+                            "required": {
+                              "type": "boolean"
+                            },
+                            "windowStart": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "windowEnd": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "exceptionWindowEnd": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "electionStatementRequired": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "noeDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "initialAssessmentDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "comprehensiveAssessmentDueBy": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "hopeAdmissionA0220": {
+                          "format": "date",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "rhc": {
+                      "type": "object",
+                      "required": [
+                        "applies",
+                        "daysSinceDischarge",
+                        "priorHospiceDays",
+                        "startsAtDay",
+                        "highRateDaysRemaining"
+                      ],
+                      "properties": {
+                        "applies": {
+                          "type": "boolean"
+                        },
+                        "daysSinceDischarge": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "priorHospiceDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "startsAtDay": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "highRateDaysRemaining": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/care-plan": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdCareplan",
@@ -174922,6 +175996,64 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "benefitPeriod": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "sequence",
+                      "source"
+                    ],
+                    "properties": {
+                      "sequence": {
+                        "minimum": 1,
+                        "maximum": 200,
+                        "description": "The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH.",
+                        "type": "integer"
+                      },
+                      "source": {
+                        "description": "\"hets_confirmed\": checked against HETS / ELGA / ELGH (confirmedOn required). \"staff_entered_unverified\": entered without that check. \"internal_history\": our own history's suggestion, accepted as is.",
+                        "anyOf": [
+                          {
+                            "const": "hets_confirmed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "staff_entered_unverified",
+                            "type": "string"
+                          },
+                          {
+                            "const": "internal_history",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "confirmedOn": {
+                        "format": "date",
+                        "description": "The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "f2fException": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "minLength": 20,
+                        "maxLength": 2000,
+                        "description": "Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "admissionDate": {
+                    "format": "date",
+                    "description": "The planned admission / election date; anchors the period-3+ face-to-face window.",
+                    "type": "string"
+                  },
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"
@@ -175260,6 +176392,64 @@
                   },
                   "attendingPhysicianId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "benefitPeriod": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "sequence",
+                      "source"
+                    ],
+                    "properties": {
+                      "sequence": {
+                        "minimum": 1,
+                        "maximum": 200,
+                        "description": "The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH.",
+                        "type": "integer"
+                      },
+                      "source": {
+                        "description": "\"hets_confirmed\": checked against HETS / ELGA / ELGH (confirmedOn required). \"staff_entered_unverified\": entered without that check. \"internal_history\": our own history's suggestion, accepted as is.",
+                        "anyOf": [
+                          {
+                            "const": "hets_confirmed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "staff_entered_unverified",
+                            "type": "string"
+                          },
+                          {
+                            "const": "internal_history",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "confirmedOn": {
+                        "format": "date",
+                        "description": "The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "f2fException": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "minLength": 20,
+                        "maxLength": 2000,
+                        "description": "Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)).",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "admissionDate": {
+                    "format": "date",
+                    "description": "The planned admission / election date; anchors the period-3+ face-to-face window.",
                     "type": "string"
                   },
                   "ifVersion": {
