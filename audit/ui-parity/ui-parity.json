@@ -282,6 +282,30 @@
     },
     {
       "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.death-pronouncement",
+      "path": "/admissions/:id/death",
+      "permission": "discharge.death"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.transfer-in",
+      "path": "/admissions/:id/transfer-in",
+      "permission": "transfer.in"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.discharge-cosign",
+      "path": "/discharges/:id/cosign",
+      "permission": "discharge.cosign_for_cause"
+    },
+    {
+      "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.view",

@@ -211,6 +211,7 @@ export function AdmissionDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   // One-shot confirmation handed back by the discharge workflow after a successful submit.
   const flashNotice = (location.state as { notice?: string } | null)?.notice ?? null;
+  const hasPermission = (key: string): boolean => session?.permissions?.includes(key) ?? false;
   const [admission, setAdmission] = useState<AdmissionDetailView | null>(null);
   const [readiness, setReadiness] = useState<AdmissionReadiness | null>(null);
   const [periods, setPeriods] = useState<SummaryRow[]>([]);
@@ -963,6 +964,15 @@ export function AdmissionDetail(): JSX.Element {
                   label={stateLabel(admission.state)}
                   tone={ADMISSION_TONE[admission.state] ?? "neutral"}
                 />
+                {hasPermission("transfer.in") ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admissions/${admission.id}/transfer-in`)}
+                    style={ghostBtn}
+                  >
+                    Record transfer-in
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setCeremony("activate")}
@@ -1274,6 +1284,16 @@ export function AdmissionDetail(): JSX.Element {
                 <Link to={`/admissions/${admission.id}/discharge`} className="wx-btn-secondary">
                   Discharge / transfer…
                 </Link>
+              ) : null}
+              {(admission.state === "active" || admission.state === "on_hold") &&
+              hasPermission("discharge.death") ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admissions/${admission.id}/death`)}
+                  style={ghostBtn}
+                >
+                  Record death
+                </button>
               ) : null}
             </div>
           }
