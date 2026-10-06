@@ -352,7 +352,9 @@ import {
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   CreateRuleConfigBodySchema,
+  HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
@@ -9421,6 +9423,10 @@ const M23ClaimPricingView = Type.Object({
       wageIndexFactor: Type.String(),
       segments: Type.Unknown(),
       calculatedAt: Type.String(),
+      rhcDays1to60: Type.Integer(),
+      rhcDays61Plus: Type.Integer(),
+      // Two-tier RHC carry-over the claim was priced with (null on rows priced before migration 0376).
+      rhcCarryOver: Type.Union([M23RhcCarryOverSchema, Type.Null()]),
     }),
     Type.Null(),
   ]),
@@ -9727,8 +9733,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/billing/eligibility/hospice-periods": {
     summary:
-      "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen)",
-    query: BillingPatientQuerySchema,
+      "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period and, given an electionDate, the two-tier RHC day-count carry-over (readmission screen)",
+    query: M23HospicePeriodsQuerySchema,
     response: M23HospicePeriodsResponseSchema,
   },
   "GET /api/v1/billing/eligibility/latest": {

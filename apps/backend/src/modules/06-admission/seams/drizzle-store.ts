@@ -261,8 +261,15 @@ export interface ClaimRangeAdmission {
   readonly hospiceAdmissionDate: string;
   /** Hospice days of this patient's earlier stays with us that carry into this stay's two-tier RHC day count
    *  (a readmission within 60 days of a discharge; Claims Processing Manual ch. 11) — 0 when the count starts
-   *  here. Days at another hospice are not known to M6. */
+   *  here. Days at another hospice are not known to M6 (M23 merges them in from HETS — `rhcPriorStays`). */
   readonly rhcPriorHospiceDays: number;
+  /** This patient's earlier stays with us (start / ending date, both inclusive hospice days), the facts behind
+   *  `rhcPriorHospiceDays`: M23 merges them with the HETS cross-hospice history (`computeRhcCarryOver`). */
+  readonly rhcPriorStays: readonly {
+    readonly admissionId: string;
+    readonly startedOn: string | null;
+    readonly endedOn: string | null;
+  }[];
   /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
    *  is the FILING timestamp, not the CMS-relevant effective date. Only a `completed` discharge counts: a
    *  `voided` one never happened and a `pending_cosign` for-cause filing leaves the admission active (D11). */
@@ -432,14 +439,22 @@ export async function claimAssemblyRangeContextForOrg(
         .orderBy(desc(TE.effectiveAt))
         .limit(1);
 
-      const rhc = rhcCarryOver(
-        await loadPriorEpisodes(tx as DbClient, organizationId, patientId, admissionId),
-        localDate(candidate.start),
+      const priorEpisodes = await loadPriorEpisodes(
+        tx as DbClient,
+        organizationId,
+        patientId,
+        admissionId,
       );
+      const rhc = rhcCarryOver(priorEpisodes, localDate(candidate.start));
       const admission: ClaimRangeAdmission = {
         admissionId,
         hospiceAdmissionDate: localDate(candidate.start),
         rhcPriorHospiceDays: rhc.priorHospiceDays,
+        rhcPriorStays: priorEpisodes.map((e) => ({
+          admissionId: e.admissionId,
+          startedOn: e.startedOn,
+          endedOn: e.endedOn,
+        })),
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,

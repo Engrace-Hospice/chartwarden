@@ -20,6 +20,7 @@ import type {
   TypeOfBill,
 } from "@wardenx/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
+import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 
@@ -90,6 +91,12 @@ export interface ClaimPricingView {
     readonly wageIndexFactor: string;
     readonly segments: unknown;
     readonly calculatedAt: string;
+    /** ADR-0001 two-tier RHC day counts on this claim (days 1–60 high / 61+ low, cumulative across stays). */
+    readonly rhcDays1to60: number;
+    readonly rhcDays61Plus: number;
+    /** The prior hospice days carried into the count, their source chain + basis; null on rows priced
+     *  before migration 0376. */
+    readonly rhcCarryOver: RhcCarryOverView | null;
   } | null;
   readonly sia: {
     readonly windowStart: string;
@@ -108,6 +115,33 @@ export interface ClaimDischargeCodesView {
   readonly patientStatusCode: string | null;
   readonly conditionCodes: readonly string[];
   readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
+}
+
+/** Project a persisted `hipps_calculation` row onto the claim detail's `pricing.hipps` (read + write paths). */
+export function hippsPricingView(row: {
+  readonly hippsCode: string;
+  readonly hippsRateCents: number;
+  readonly wageIndexCcn: string;
+  readonly wageIndexFiscalYear: number;
+  readonly wageIndexFactor: string;
+  readonly segments: unknown;
+  readonly calculatedAt: Date;
+  readonly rhcDays1to60: number;
+  readonly rhcDays61Plus: number;
+  readonly rhcCarryOver?: unknown;
+}): NonNullable<ClaimPricingView["hipps"]> {
+  return {
+    hippsCode: row.hippsCode,
+    hippsRateCents: row.hippsRateCents,
+    wageIndexCcn: row.wageIndexCcn,
+    wageIndexFiscalYear: row.wageIndexFiscalYear,
+    wageIndexFactor: row.wageIndexFactor,
+    segments: row.segments,
+    calculatedAt: row.calculatedAt.toISOString(),
+    rhcDays1to60: row.rhcDays1to60,
+    rhcDays61Plus: row.rhcDays61Plus,
+    rhcCarryOver: (row.rhcCarryOver as RhcCarryOverView | null | undefined) ?? null,
+  };
 }
 
 /** Project the persisted `claim` code columns (jsonb, defensively narrowed) onto the view. */
@@ -379,6 +413,12 @@ export interface HospicePeriodsView {
     readonly checkedAt: string;
     readonly reason: string | null;
   } | null;
+  /**
+   * The two-tier RHC carry-over a new election on the requested `electionDate` would start with: this patient's
+   * earlier stays with us merged with the HETS history above (`computeRhcCarryOver`). null when no
+   * `electionDate` was asked for.
+   */
+  readonly rhcCarryOver: RhcCarryOverView | null;
 }
 
 export interface RuleConfigView {
@@ -524,7 +564,12 @@ export interface M23ReadRouteService {
     actor: M23ReadActor,
     patientId: string,
   ): Promise<EligibilityCheckView | null>;
-  getHospicePeriods(actor: M23ReadActor, patientId: string): Promise<HospicePeriodsView>;
+  getHospicePeriods(
+    actor: M23ReadActor,
+    patientId: string,
+    /** When given, the view carries the RHC carry-over for a new election on this date. */
+    electionDate?: string,
+  ): Promise<HospicePeriodsView>;
 
   // ── rule-config library ──
   listRuleConfigs(

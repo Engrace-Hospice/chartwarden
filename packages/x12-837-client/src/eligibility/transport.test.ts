@@ -135,6 +135,31 @@ describe("sandbox transport", () => {
     expect(parse271(notFound.x12, { asOfServiceDate: "2026-10-06" }).outcome).toBe("mbi_invalid");
   });
 
+  it("answers with an injected hospice history when one is configured (dev / test fixtures)", async () => {
+    const t = createSandboxHetsTransport({
+      hospiceHistory: [
+        {
+          kind: "billed",
+          start: "20260801",
+          end: "20260830",
+          days: 30,
+          revocation: "1",
+          npi: "1649726464",
+        },
+      ],
+    });
+    const { x12 } = await t.exchange({ x12: request270(), payloadId: "p" });
+    expect(parse271(x12, { asOfServiceDate: "2026-10-06" }).hospiceRecords).toEqual([
+      expect.objectContaining({
+        kind: "benefit_period",
+        startDate: "2026-08-01",
+        endDate: "2026-08-30",
+        daysUsed: 30,
+        hospiceNpi: "1649726464",
+      }),
+    ]);
+  });
+
   it("marks every synthetic answer as a test interchange (ISA15 = T)", async () => {
     const x12 = await sample271();
     expect(x12.split("*")[15]).toBe("T");

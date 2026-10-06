@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type AbacContext, INTAKE_DEFAULT_GRANTS } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -62,6 +63,7 @@ import {
   buildM23NotrDraftConsumer,
   priorElectionClosureForOrg,
 } from "../src/modules/23-billing-medicare/index";
+import { readClaimRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -97,6 +99,9 @@ const WRITE_ACTOR = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
+const never = (): never => {
+  throw new Error("expected a claim-range admission");
+};
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 
 describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
@@ -446,13 +451,50 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     const accepted = await m23.submitNoe(WRITE_ACTOR as never, noe.id);
     expect(accepted.kind).toBe("noe");
 
-    // ── two-tier RHC: the 25-day first stay carries into the readmission's day count (claim assembly read) ──
+    // ── two-tier RHC: the 26-day first stay (both ends inclusive, ch. 11 §30.2) carries into the readmission's
+    //    day count (claim assembly read) ──
     const range = await claimAssemblyRangeContextForOrg(handle.db, ORG, patientId, {
       from: today(),
       to: today(),
     });
     expect(range?.admission.admissionId).toBe(second);
-    expect(range?.admission.rhcPriorHospiceDays).toBe(25);
+    expect(range?.admission.rhcPriorHospiceDays).toBe(26);
+    expect(range?.admission.rhcPriorStays).toEqual([
+      { admissionId: first, startedOn: daysAgo(30), endedOn: daysAgo(5) },
+    ]);
+
+    // ── …merged with another hospice's period from HETS (CWF is beneficiary-level): 10 days that ended 20 days
+    //    before our first stay. The claim assembly's carry-over read (M23's own eligibility_check, as wardenx_app).
+    const hetsPayload = {
+      hospicePeriods: [
+        {
+          kind: "benefit_period",
+          periodNumber: null,
+          startDate: daysAgo(59),
+          endDate: daysAgo(50),
+          hospiceNpi: "1649726464",
+          revocationOrDischargeDate: daysAgo(50),
+          revocationCode: "1",
+          daysUsed: 10,
+        },
+      ],
+      hospiceHistoryTruncated: false,
+      transport: "sandbox",
+    };
+    await admin.query(
+      `INSERT INTO eligibility_check (organization_id, provider_entity_id, patient_id, as_of_service_date, outcome,
+                                      parsed_payload, checked_at, stale_at)
+         VALUES ($1, $2, $3, $4, 'active_part_a', $5, now(), now() + interval '30 days')`,
+      [ORG, providerId, patientId, today(), JSON.stringify(hetsPayload)],
+    );
+    const carry = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+      readClaimRhcCarryOver(tx as never, ORG, patientId, range?.admission ?? never(), new Date()),
+    );
+    expect(carry).toMatchObject({ priorDays: 36, basis: "hets_merged" });
+    expect(carry.chain.map((c) => [c.source, c.countedDays])).toEqual([
+      ["hets", 10],
+      ["internal", 26],
+    ]);
 
     // ── the chart is under care again ──
     await deliver(m5Siting, "m6.admission.activated", second);

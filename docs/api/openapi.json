@@ -45955,7 +45955,10 @@
                                 "wageIndexFiscalYear",
                                 "wageIndexFactor",
                                 "segments",
-                                "calculatedAt"
+                                "calculatedAt",
+                                "rhcDays1to60",
+                                "rhcDays61Plus",
+                                "rhcCarryOver"
                               ],
                               "properties": {
                                 "hippsCode": {
@@ -45976,6 +45979,215 @@
                                 "segments": {},
                                 "calculatedAt": {
                                   "type": "string"
+                                },
+                                "rhcDays1to60": {
+                                  "type": "integer"
+                                },
+                                "rhcDays61Plus": {
+                                  "type": "integer"
+                                },
+                                "rhcCarryOver": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "electionDate",
+                                        "priorDays",
+                                        "chainDays",
+                                        "basis",
+                                        "startsAtDay",
+                                        "highRateDaysRemaining",
+                                        "daysSinceLastCare",
+                                        "chain",
+                                        "warnings",
+                                        "hetsCheck"
+                                      ],
+                                      "properties": {
+                                        "electionDate": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "priorDays": {
+                                          "minimum": 0,
+                                          "maximum": 60,
+                                          "type": "integer"
+                                        },
+                                        "chainDays": {
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "basis": {
+                                          "anyOf": [
+                                            {
+                                              "const": "internal_only",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "hets_merged",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "hets_stale",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "startsAtDay": {
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        },
+                                        "highRateDaysRemaining": {
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "daysSinceLastCare": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "chain": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "source",
+                                              "kind",
+                                              "start",
+                                              "end",
+                                              "endAssumed",
+                                              "countedDays",
+                                              "hospiceNpi",
+                                              "ref"
+                                            ],
+                                            "properties": {
+                                              "source": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "internal",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "hets",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "kind": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "stay",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "election",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "benefit_period",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "start": {
+                                                "format": "date",
+                                                "type": "string"
+                                              },
+                                              "end": {
+                                                "format": "date",
+                                                "type": "string"
+                                              },
+                                              "endAssumed": {
+                                                "type": "boolean"
+                                              },
+                                              "countedDays": {
+                                                "minimum": 0,
+                                                "type": "integer"
+                                              },
+                                              "hospiceNpi": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "ref": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "warnings": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "code",
+                                              "message"
+                                            ],
+                                            "properties": {
+                                              "code": {
+                                                "type": "string"
+                                              },
+                                              "message": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "hetsCheck": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "required": [
+                                                "checkId",
+                                                "checkedAt",
+                                                "ageDays",
+                                                "stale"
+                                              ],
+                                              "properties": {
+                                                "checkId": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                },
+                                                "checkedAt": {
+                                                  "format": "date-time",
+                                                  "type": "string"
+                                                },
+                                                "ageDays": {
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                },
+                                                "stale": {
+                                                  "type": "boolean"
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               }
                             },
@@ -47471,7 +47683,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen)",
+        "summary": "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period and, given an electionDate, the two-tier RHC day-count carry-over (readmission screen)",
         "parameters": [
           {
             "name": "patientId",
@@ -47479,6 +47691,15 @@
             "required": true,
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "electionDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
               "type": "string"
             }
           }
@@ -47507,7 +47728,8 @@
                     "hospicePeriods",
                     "nextPeriodNumber",
                     "nextPeriodBasis",
-                    "lastAttempt"
+                    "lastAttempt",
+                    "rhcCarryOver"
                   ],
                   "properties": {
                     "status": {
@@ -47849,6 +48071,209 @@
                               "anyOf": [
                                 {
                                   "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rhcCarryOver": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "electionDate",
+                            "priorDays",
+                            "chainDays",
+                            "basis",
+                            "startsAtDay",
+                            "highRateDaysRemaining",
+                            "daysSinceLastCare",
+                            "chain",
+                            "warnings",
+                            "hetsCheck"
+                          ],
+                          "properties": {
+                            "electionDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "priorDays": {
+                              "minimum": 0,
+                              "maximum": 60,
+                              "type": "integer"
+                            },
+                            "chainDays": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "basis": {
+                              "anyOf": [
+                                {
+                                  "const": "internal_only",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "hets_merged",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "hets_stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "startsAtDay": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "highRateDaysRemaining": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "daysSinceLastCare": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "chain": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "source",
+                                  "kind",
+                                  "start",
+                                  "end",
+                                  "endAssumed",
+                                  "countedDays",
+                                  "hospiceNpi",
+                                  "ref"
+                                ],
+                                "properties": {
+                                  "source": {
+                                    "anyOf": [
+                                      {
+                                        "const": "internal",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hets",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "stay",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "election",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "benefit_period",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "start": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "end": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "endAssumed": {
+                                    "type": "boolean"
+                                  },
+                                  "countedDays": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "hospiceNpi": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "ref": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "warnings": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "code",
+                                  "message"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "hetsCheck": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "checkId",
+                                    "checkedAt",
+                                    "ageDays",
+                                    "stale"
+                                  ],
+                                  "properties": {
+                                    "checkId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "checkedAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "ageDays": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "stale": {
+                                      "type": "boolean"
+                                    }
+                                  }
                                 },
                                 {
                                   "type": "null"

@@ -3968,7 +3968,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen) */
+        /** The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period and, given an electionDate, the two-tier RHC day-count carry-over (readmission screen) */
         get: operations["getApiV1BillingEligibilityHospiceperiods"];
         put?: never;
         post?: never;
@@ -31419,6 +31419,42 @@ export interface operations {
                                 wageIndexFactor: string;
                                 segments: unknown;
                                 calculatedAt: string;
+                                rhcDays1to60: number;
+                                rhcDays61Plus: number;
+                                rhcCarryOver: {
+                                    /** Format: date */
+                                    electionDate: string;
+                                    priorDays: number;
+                                    chainDays: number;
+                                    basis: "internal_only" | "hets_merged" | "hets_stale";
+                                    startsAtDay: number;
+                                    highRateDaysRemaining: number;
+                                    daysSinceLastCare: number | null;
+                                    chain: {
+                                        source: "internal" | "hets";
+                                        kind: "stay" | "election" | "benefit_period";
+                                        /** Format: date */
+                                        start: string;
+                                        /** Format: date */
+                                        end: string;
+                                        endAssumed: boolean;
+                                        countedDays: number;
+                                        hospiceNpi: string | null;
+                                        ref: string | null;
+                                    }[];
+                                    warnings: {
+                                        code: string;
+                                        message: string;
+                                    }[];
+                                    hetsCheck: {
+                                        /** Format: uuid */
+                                        checkId: string;
+                                        /** Format: date-time */
+                                        checkedAt: string;
+                                        ageDays: number;
+                                        stale: boolean;
+                                    } | null;
+                                } | null;
                             } | null;
                             sia: {
                                 windowStart: string;
@@ -31924,6 +31960,7 @@ export interface operations {
         parameters: {
             query: {
                 patientId: string;
+                electionDate?: string;
             };
             header?: never;
             path?: never;
@@ -31972,6 +32009,40 @@ export interface operations {
                             /** Format: date-time */
                             checkedAt: string;
                             reason: string | null;
+                        } | null;
+                        rhcCarryOver: {
+                            /** Format: date */
+                            electionDate: string;
+                            priorDays: number;
+                            chainDays: number;
+                            basis: "internal_only" | "hets_merged" | "hets_stale";
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                            daysSinceLastCare: number | null;
+                            chain: {
+                                source: "internal" | "hets";
+                                kind: "stay" | "election" | "benefit_period";
+                                /** Format: date */
+                                start: string;
+                                /** Format: date */
+                                end: string;
+                                endAssumed: boolean;
+                                countedDays: number;
+                                hospiceNpi: string | null;
+                                ref: string | null;
+                            }[];
+                            warnings: {
+                                code: string;
+                                message: string;
+                            }[];
+                            hetsCheck: {
+                                /** Format: uuid */
+                                checkId: string;
+                                /** Format: date-time */
+                                checkedAt: string;
+                                ageDays: number;
+                                stale: boolean;
+                            } | null;
                         } | null;
                     };
                 };

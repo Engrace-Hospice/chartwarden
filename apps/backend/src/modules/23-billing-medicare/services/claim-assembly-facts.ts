@@ -203,6 +203,9 @@ export type AssemblyFacts = Awaited<ReturnType<typeof readAssemblyFacts>>;
 export function computeClaimHipps(
   facts: AssemblyFacts,
   window: { readonly serviceFrom: string; readonly serviceTo: string },
+  /** Two-tier RHC — the prior hospice days the stay continues (ours + other hospices', `rhc-carry-over.ts`);
+   *  absent ⇒ M6's own-stays count. */
+  rhcPriorDays?: number,
 ): ReturnType<typeof calculateHipps> {
   const { admission, resolvedLoc, rateTable, pe, fiscalYearStarting, wageIndex } = facts;
   try {
@@ -211,7 +214,7 @@ export function computeClaimHipps(
       claimServiceTo: window.serviceTo,
       hospiceAdmissionDate: admission.hospiceAdmissionDate,
       // Two-tier RHC — a readmission within 60 days continues the prior stays' day count.
-      priorHospiceDays: admission.rhcPriorHospiceDays ?? 0,
+      priorHospiceDays: rhcPriorDays ?? admission.rhcPriorHospiceDays ?? 0,
       levelOfCarePeriods: resolvedLoc.map((p) => ({
         levelOfCare: p.levelOfCare,
         from: p.from,

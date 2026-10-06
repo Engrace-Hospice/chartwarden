@@ -10,6 +10,7 @@ import type {
   EligibilitySnapshot,
   IsoDate,
   NoeStatusSnapshot,
+  RhcCarryOverSnapshot,
   ValidationContext,
   calculateHipps,
   repositories,
@@ -44,6 +45,8 @@ export interface AssembleValidationContextInput {
   /** `null` when the admission has no NOE row yet. */
   readonly noe: NoeStatusSnapshot | null;
   readonly eligibilityBound: boolean;
+  /** The RHC carry-over the claim is priced with (`rhc-carry-over.ts`); absent ⇒ the carry rule skips. */
+  readonly rhcCarryOver?: RhcCarryOverSnapshot | null;
 }
 
 export function assembleValidationContext(
@@ -149,6 +152,7 @@ export function assembleValidationContext(
     capProjection: capProjectionCtx, // M26 §11.A live projection (or null → cap rules warn-skip, D8)
     eligibility: input.eligibility,
     noe: input.noe,
+    rhcCarryOver: input.rhcCarryOver ?? null,
     sequestration: {
       percentage: seqPolicy.percentage,
       effectiveFrom: seqPolicy.effectiveFrom,

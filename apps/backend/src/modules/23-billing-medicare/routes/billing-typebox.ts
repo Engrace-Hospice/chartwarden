@@ -279,6 +279,48 @@ export const HospicePeriodSchema = Type.Object({
   daysUsed: nullable(Type.Integer({ minimum: 0 })),
 });
 
+/** `?patientId=&electionDate=` — `electionDate` asks for the RHC carry-over of a new election on that date. */
+export const HospicePeriodsQuerySchema = Type.Object({
+  patientId: uuid(),
+  electionDate: Type.Optional(isoDate()),
+});
+
+/**
+ * The two-tier RHC day-count carry-over (`computeRhcCarryOver`, Claims Processing Manual ch. 11 §30.2): the prior
+ * hospice days (ours + other hospices' per HETS) a new election continues, the chain counted, the basis and any
+ * warnings. Shared by the hospice-periods read and the claim detail's `pricing.hipps.rhcCarryOver`.
+ */
+export const RhcCarryOverSchema = Type.Object({
+  electionDate: isoDate(),
+  priorDays: Type.Integer({ minimum: 0, maximum: 60 }),
+  chainDays: Type.Integer({ minimum: 0 }),
+  basis: lit(["internal_only", "hets_merged", "hets_stale"] as const),
+  startsAtDay: Type.Integer({ minimum: 1 }),
+  highRateDaysRemaining: Type.Integer({ minimum: 0 }),
+  daysSinceLastCare: nullable(Type.Integer()),
+  chain: Type.Array(
+    Type.Object({
+      source: lit(["internal", "hets"] as const),
+      kind: lit(["stay", "election", "benefit_period"] as const),
+      start: isoDate(),
+      end: isoDate(),
+      endAssumed: Type.Boolean(),
+      countedDays: Type.Integer({ minimum: 0 }),
+      hospiceNpi: nullable(Type.String()),
+      ref: nullable(Type.String()),
+    }),
+  ),
+  warnings: Type.Array(Type.Object({ code: Type.String(), message: Type.String() })),
+  hetsCheck: nullable(
+    Type.Object({
+      checkId: uuid(),
+      checkedAt: Type.String({ format: "date-time" }),
+      ageDays: Type.Integer({ minimum: 0 }),
+      stale: Type.Boolean(),
+    }),
+  ),
+});
+
 export const HospicePeriodsResponseSchema = Type.Object({
   status: lit(["available", "no_check_on_file", "hets_not_configured"] as const),
   hetsConfigured: Type.Boolean(),
@@ -304,5 +346,6 @@ export const HospicePeriodsResponseSchema = Type.Object({
       reason: nullable(Type.String()),
     }),
   ),
+  rhcCarryOver: nullable(RhcCarryOverSchema),
 });
 export type HospicePeriodsResponse = Static<typeof HospicePeriodsResponseSchema>;

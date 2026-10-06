@@ -54,7 +54,7 @@ import type {
   RuleConfigView,
   ValidationOverrideView,
 } from "./read-service";
-import { claimDischargeCodesView } from "./read-service";
+import { claimDischargeCodesView, hippsPricingView } from "./read-service";
 import type {
   AssembleClaimArgs,
   AssembledClaimLineInput,
@@ -426,17 +426,7 @@ export function buildDrizzleM23WriteService(
           }
         : null,
       pricing: {
-        hipps: hipps
-          ? {
-              hippsCode: hipps.hippsCode,
-              hippsRateCents: hipps.hippsRateCents,
-              wageIndexCcn: hipps.wageIndexCcn,
-              wageIndexFiscalYear: hipps.wageIndexFiscalYear,
-              wageIndexFactor: hipps.wageIndexFactor,
-              segments: hipps.segments,
-              calculatedAt: isoReq(hipps.calculatedAt),
-            }
-          : null,
+        hipps: hipps ? hippsPricingView(hipps) : null,
         sia: sia
           ? {
               windowStart: sia.windowStart,

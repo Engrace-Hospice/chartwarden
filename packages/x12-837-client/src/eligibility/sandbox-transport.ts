@@ -7,7 +7,7 @@
 //
 // Scenario selection: a fixed scenario from config, else a keyword in the 270's subscriber last name
 // (e.g. a dev patient named "Openelection") — else `active_with_history`.
-import { type Hets271Scenario, synthetic271 } from "./fixtures";
+import { type Hets271Scenario, type SyntheticHospicePeriod, synthetic271 } from "./fixtures";
 import type { HetsTransport } from "./transport";
 import { X12FormatError, tokenizeInterchange } from "./x12-envelope";
 
@@ -23,6 +23,8 @@ const KEYWORD_SCENARIOS: readonly (readonly [string, Hets271Scenario])[] = [
 export interface SandboxHetsTransportOptions {
   /** Answer every request with this scenario (otherwise keyword-selected by subscriber last name). */
   readonly scenario?: Hets271Scenario;
+  /** Replace the canned hospice history `active_with_history` answers with (dev / test fixtures). */
+  readonly hospiceHistory?: readonly SyntheticHospicePeriod[];
 }
 
 /** Create the sandbox transport. Throws (content-free) if the 270 it receives is not a HETS 270. */
@@ -49,14 +51,18 @@ export function createSandboxHetsTransport(
         KEYWORD_SCENARIOS.find(([kw]) => lastName.replace(/[^A-Z0-9]/g, "").includes(kw))?.[1] ??
         "active_with_history";
       return {
-        x12: synthetic271(scenario, {
-          traceNumber: trn[2] ?? "",
-          submitterId: gs[2] ?? "",
-          providerNpi: receiver[9] ?? "",
-          mbi: subscriber[9] ?? "",
-          lastName,
-          firstName: subscriber[4] ?? "",
-        }),
+        x12: synthetic271(
+          scenario,
+          {
+            traceNumber: trn[2] ?? "",
+            submitterId: gs[2] ?? "",
+            providerNpi: receiver[9] ?? "",
+            mbi: subscriber[9] ?? "",
+            lastName,
+            firstName: subscriber[4] ?? "",
+          },
+          options.hospiceHistory,
+        ),
       };
     },
   };

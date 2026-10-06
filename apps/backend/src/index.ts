@@ -3858,6 +3858,21 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               },
               // The hospice-periods read reports `hets_not_configured` when no transport is bound.
               hetsConfigured: m23HetsConfig !== null,
+              // Two-tier RHC carry-over on the readmission screen: M6's earlier stays, merged with HETS.
+              priorStays: {
+                async forPatient(organizationId, patientId) {
+                  const episodes = await priorEpisodesForOrg(
+                    dbHandle.db,
+                    organizationId,
+                    patientId,
+                  );
+                  return episodes.map((e) => ({
+                    admissionId: e.admissionId,
+                    startedOn: e.startedOn,
+                    endedOn: e.endedOn,
+                  }));
+                },
+              },
             }),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,

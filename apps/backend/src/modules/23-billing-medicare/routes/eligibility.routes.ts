@@ -16,7 +16,12 @@
 // OR M6's `admission_intake_scope`: readmission is intake work on a patient who is on nobody's caseload yet.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { CheckEligibilityBodySchema, PatientQuerySchema, parse } from "./billing-typebox";
+import {
+  CheckEligibilityBodySchema,
+  HospicePeriodsQuerySchema,
+  PatientQuerySchema,
+  parse,
+} from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
 import { CASELOAD_OR_INTAKE_SCOPE, CASELOAD_OR_SCOPE, P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
@@ -69,7 +74,8 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     },
   );
 
-  // GET /billing/eligibility/hospice-periods?patientId= — the latest resolved check's hospice history.
+  // GET /billing/eligibility/hospice-periods?patientId=&electionDate= — the latest resolved check's hospice
+  // history; with `electionDate`, also the two-tier RHC carry-over a new election on that date starts with.
   app.get(
     "/api/v1/billing/eligibility/hospice-periods",
     {
@@ -78,8 +84,8 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     },
     async (request) => {
       const actor = actorOf(request);
-      const { patientId } = parse(PatientQuerySchema, request.query);
-      return readService.getHospicePeriods(actor, patientId);
+      const { patientId, electionDate } = parse(HospicePeriodsQuerySchema, request.query);
+      return readService.getHospicePeriods(actor, patientId, electionDate);
     },
   );
 

@@ -122,5 +122,9 @@ export type {
 export { createSandboxHetsTransport } from "./eligibility/sandbox-transport";
 export type { SandboxHetsTransportOptions } from "./eligibility/sandbox-transport";
 export { HETS_271_SCENARIOS, synthetic271 } from "./eligibility/fixtures";
-export type { Hets271Scenario, Synthetic271Context } from "./eligibility/fixtures";
+export type {
+  Hets271Scenario,
+  Synthetic271Context,
+  SyntheticHospicePeriod,
+} from "./eligibility/fixtures";
 export { X12FormatError } from "./eligibility/x12-envelope";

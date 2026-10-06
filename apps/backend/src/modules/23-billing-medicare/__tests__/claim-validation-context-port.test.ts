@@ -52,9 +52,20 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
       return { items: [], nextCursor: null };
     }
   }
+  class EligibilityCheckRepository {
+    async findLatestResolvedForPatient() {
+      return null;
+    }
+  }
   return {
     ...actual,
-    repositories: { ...actual.repositories, NoeRepository, ClaimLineRepository, ClaimRepository },
+    repositories: {
+      ...actual.repositories,
+      NoeRepository,
+      ClaimLineRepository,
+      ClaimRepository,
+      EligibilityCheckRepository,
+    },
   };
 });
 

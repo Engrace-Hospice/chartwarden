@@ -31,6 +31,7 @@ import {
   type ClaimStayEndFactsPort,
   claimAttention,
 } from "../services/claim-attention";
+import { type PriorStayFact, resolveRhcCarryOver } from "../services/rhc-carry-over";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import { projectHospicePeriods } from "./hospice-periods";
@@ -57,7 +58,7 @@ import type {
   ValidationRunDetailView,
   ValidationRunView,
 } from "./read-service";
-import { claimDischargeCodesView } from "./read-service";
+import { claimDischargeCodesView, hippsPricingView } from "./read-service";
 
 type BillingDb = repositories.BillingDb;
 
@@ -77,6 +78,17 @@ export interface M23ReadServicePorts {
    * hospice-periods `status` when no resolved check is on file (`hets_not_configured` vs `no_check_on_file`).
    */
   readonly hetsConfigured?: boolean;
+  /**
+   * M6's earlier stays for a patient (`priorEpisodesForOrg`), bound at the composition root: the hospice-periods
+   * read merges them with the HETS history into the RHC carry-over for a requested election date. When absent
+   * the carry-over counts the HETS history alone.
+   */
+  readonly priorStays?: PriorStaysPort;
+}
+
+/** M6 — a patient's earlier (ended) stays with us, org-explicit. */
+export interface PriorStaysPort {
+  forPatient(organizationId: string, patientId: string): Promise<readonly PriorStayFact[]>;
 }
 
 /** The most claims one `attention`-filtered list request scans (M6 facts are live, so it cannot be SQL). */
@@ -435,17 +447,7 @@ export function buildDrizzleM23ReadService(
           attention: null,
           latestValidation: latestRun ? mapValidationRun(latestRun) : null,
           pricing: {
-            hipps: hipps
-              ? {
-                  hippsCode: hipps.hippsCode,
-                  hippsRateCents: hipps.hippsRateCents,
-                  wageIndexCcn: hipps.wageIndexCcn,
-                  wageIndexFiscalYear: hipps.wageIndexFiscalYear,
-                  wageIndexFactor: hipps.wageIndexFactor,
-                  segments: hipps.segments,
-                  calculatedAt: isoReq(hipps.calculatedAt),
-                }
-              : null,
+            hipps: hipps ? hippsPricingView(hipps) : null,
             sia: sia
               ? {
                   windowStart: sia.windowStart,
@@ -614,19 +616,37 @@ export function buildDrizzleM23ReadService(
       });
     },
 
-    async getHospicePeriods(actor, patientId) {
-      return read(actor, async (tx) => {
+    async getHospicePeriods(actor, patientId, electionDate) {
+      const view = await read(actor, async (tx) => {
         const repo = new repositories.EligibilityCheckRepository(tx);
         const resolved = await repo.findLatestResolvedForPatient(actor.organizationId, patientId);
         const latest = await repo.findLatestForPatient(actor.organizationId, patientId);
-        return projectHospicePeriods({
-          patientId,
-          hetsConfigured: ports.hetsConfigured ?? false,
+        return {
           resolved,
-          latest,
-          now: now(),
-        });
+          view: projectHospicePeriods({
+            patientId,
+            hetsConfigured: ports.hetsConfigured ?? false,
+            resolved,
+            latest,
+            now: now(),
+          }),
+        };
       });
+      if (!electionDate) return view.view;
+      // M6 opens its own org-scoped transaction (one connection per tx), so it is read after ours closes.
+      const priorStays = ports.priorStays
+        ? await ports.priorStays.forPatient(actor.organizationId, patientId)
+        : [];
+      return {
+        ...view.view,
+        rhcCarryOver: resolveRhcCarryOver({
+          electionDate,
+          priorStays,
+          fallbackPriorDays: 0,
+          check: view.resolved,
+          now: now(),
+        }),
+      };
     },
 
     async listRuleConfigs(actor, filter: RuleConfigListFilter, cursor, limit) {

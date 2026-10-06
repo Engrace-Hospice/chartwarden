@@ -15,6 +15,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { calculateHipps } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { createSandboxHetsTransport } from "@wardenx/x12-837-client";
@@ -23,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildProviderEligibilityIdentityReader } from "../src/bootstrap/provider-entity-resolver";
 import { buildMbiUnlockReader } from "../src/modules/05-patient/mbi-unlock-reader";
+import { priorEpisodesForOrg } from "../src/modules/06-admission/seams/prior-episodes";
 import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
@@ -32,6 +34,7 @@ import {
   type M23WorkerDeps,
   runEligibilityRefresh,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { readClaimRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -51,6 +54,7 @@ const MBIS = {
   open: "2EG4TE5MK74",
   notFound: "3EG4TE5MK75",
   orgB: "4EG4TE5MK76",
+  carry: "5EG4TE5MK77",
 } as const;
 
 describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as wardenx_app", () => {
@@ -135,6 +139,7 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
     patient.notFound = await seedPatient(ORG_A, "Notfound", MBIS.notFound);
     patient.noMbi = await seedPatient(ORG_A, "Nocoverage", null);
     patient.orgB = await seedPatient(ORG_B, "Bpatient", MBIS.orgB);
+    patient.carry = await seedPatient(ORG_A, "Carryover", MBIS.carry);
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -224,6 +229,123 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
     });
   });
 
+  it("RHC carry-over: another hospice's period from the sandbox HETS history carries into a new election (readmission read + claim HIPPS)", async () => {
+    // Arrange: HETS reports a billed period at ANOTHER hospice, 08/01–08/21 (21 days, revoked), and the patient
+    // elects with us on 09/07 — 17 days later, within 60 (Claims Processing Manual ch. 11 §30.2).
+    const carryDeps = {
+      ...deps,
+      hets: buildHetsEligibilityPort({
+        transport: createSandboxHetsTransport({
+          hospiceHistory: [
+            { kind: "noe", start: "20260801", revocation: "1", npi: "1649726464" },
+            {
+              kind: "billed",
+              start: "20260801",
+              end: "20260821",
+              days: 21,
+              revocation: "1",
+              npi: "1649726464",
+            },
+          ],
+        }),
+        submitterId: "SANDBOX",
+        usage: "T",
+        mbiUnlock: () => buildMbiUnlockReader(handle.db),
+        providers: buildProviderEligibilityIdentityReader(handle.db),
+        now: () => new Date(`${AS_OF}T12:00:00.000Z`),
+      }),
+    } as M23WorkerDeps;
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      runEligibilityRefresh(tx as never, carryDeps, {
+        organizationId: ORG_A,
+        patientId: patient.carry as string,
+        providerEntityId: providerOf[ORG_A] as string,
+        asOfServiceDate: AS_OF,
+      }),
+    );
+    const now = new Date(`${AS_OF}T13:00:00.000Z`);
+
+    // Act 1: the readmission screen's read, with M6's real prior-stays reader (no stays with us here).
+    const read = buildDrizzleM23ReadService(handle.db as never, {
+      hetsConfigured: true,
+      now: () => now,
+      priorStays: {
+        forPatient: async (org, pid) =>
+          (await priorEpisodesForOrg(handle.db, org, pid)).map((e) => ({
+            admissionId: e.admissionId,
+            startedOn: e.startedOn,
+            endedOn: e.endedOn,
+          })),
+      },
+    });
+    const view = await read.getHospicePeriods(
+      actorFor(ORG_A),
+      patient.carry as string,
+      "2026-09-07",
+    );
+    expect(view.rhcCarryOver).toMatchObject({
+      priorDays: 21,
+      basis: "hets_merged",
+      startsAtDay: 22,
+      daysSinceLastCare: 17,
+      chain: [{ source: "hets", hospiceNpi: "1649726464", countedDays: 21, start: "2026-08-01" }],
+      hetsCheck: { stale: false, ageDays: 0 },
+    });
+    // Without an election date the read is unchanged (no carry-over computed).
+    expect(
+      (await read.getHospicePeriods(actorFor(ORG_A), patient.carry as string)).rhcCarryOver,
+    ).toBeNull();
+
+    // Act 2: the claim path — the same merge inside an org-scoped tx as wardenx_app, then the HIPPS split.
+    const carry = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      readClaimRhcCarryOver(
+        tx as never,
+        ORG_A,
+        patient.carry as string,
+        { hospiceAdmissionDate: "2026-09-07", rhcPriorHospiceDays: 0, rhcPriorStays: [] },
+        now,
+      ),
+    );
+    expect(carry.priorDays).toBe(21);
+    const hipps = calculateHipps({
+      claimServiceFrom: "2026-10-01",
+      claimServiceTo: "2026-10-31",
+      hospiceAdmissionDate: "2026-09-07",
+      priorHospiceDays: carry.priorDays,
+      levelOfCarePeriods: [
+        { levelOfCare: "routine_home_care", from: "2026-09-07", to: "2026-10-31" },
+      ],
+      rateTable: {
+        rhcDays1to60PerDiemCents: 21_500,
+        rhcDays61PlusPerDiemCents: 17_000,
+        chcHourlyRateCents: 4_400,
+        ircPerDiemCents: 49_000,
+        gipPerDiemCents: 118_000,
+        rhcLaborShare: "0.6600",
+        chcLaborShare: "0.6800",
+        ircLaborShare: "0.5400",
+        gipLaborShare: "0.6400",
+      },
+      wageIndexCcn: "381240",
+      wageIndexFiscalYear: 2026,
+      wageIndexFactorDecimal: "1.0000",
+    });
+    // Day 22 on 09/07 → day 60 on 10/15: 10/01–10/15 high, 10/16–10/31 low (without HETS: all 31 high).
+    expect(hipps.rhcDays1to60).toBe(15);
+    expect(hipps.rhcDays61Plus).toBe(16);
+
+    // Tenant isolation: org B never sees org A's check.
+    const otherOrg = await buildDrizzleM23ReadService(handle.db as never, {
+      hetsConfigured: true,
+      now: () => now,
+    }).getHospicePeriods(actorFor(ORG_B), patient.carry as string, "2026-09-07");
+    expect(otherOrg.rhcCarryOver).toMatchObject({
+      priorDays: 0,
+      basis: "internal_only",
+      chain: [],
+    });
+  });
+
   it("records mbi_invalid for a HETS AAA 72 and for a patient with no Medicare MBI on file", async () => {
     await refresh(ORG_A, patient.notFound as string);
     await refresh(ORG_A, patient.noMbi as string);
@@ -276,12 +398,13 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
         "SELECT row_to_json(t)::text AS j FROM audit_event t WHERE resource_kind = 'patient_payer'",
       outbox_event: "SELECT row_to_json(t)::text AS j FROM outbox_event t",
     };
+    // One check per scenario patient so far, the RHC carry-over patient included.
     const checks = await admin.query("SELECT count(*)::int AS n FROM eligibility_check");
-    expect(checks.rows[0].n).toBe(5);
+    expect(checks.rows[0].n).toBe(6);
     const audits = await admin.query(
       "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='eligibility_check'",
     );
-    expect(audits.rows[0].n).toBe(5);
+    expect(audits.rows[0].n).toBe(6);
     for (const [name, sql] of Object.entries(tables)) {
       const { rows } = await admin.query(sql);
       const dump = rows.map((r) => r.j as string).join("\n");

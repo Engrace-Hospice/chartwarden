@@ -41,14 +41,18 @@ const PART_A = "EB*1**30^10^42^45^48^49^69^76^83^A5^A7^AG^BT^BU^BV^RN*MA";
 const PART_B =
   "EB*1**30^2^3^23^24^25^26^27^28^33^36^37^38^39^40^42^50^51^52^53^64^67^69^73^76^83^86^98*MB";
 
-function hospicePeriodSegments(p: {
+/** One synthetic HETS hospice record (dates `CCYYMMDD`): a NOE, or a billed period with its days used. */
+export interface SyntheticHospicePeriod {
   readonly kind: "noe" | "billed";
   readonly start: string;
   readonly end?: string;
   readonly days?: number;
+  /** HETS revocation code `0`–`3`. */
   readonly revocation: string;
   readonly npi: string;
-}): string[] {
+}
+
+function hospicePeriodSegments(p: SyntheticHospicePeriod): string[] {
   return [
     "EB*X**45*MA**26",
     ...(p.kind === "billed" && p.days !== undefined ? [`HSD*DY*${p.days}`] : []),
@@ -63,7 +67,7 @@ function hospicePeriodSegments(p: {
 }
 
 /** Three revoked billed periods at other hospices (90 / 90 / 60 days) — the next election is period 4. */
-const CLOSED_HISTORY = [
+const CLOSED_HISTORY: readonly SyntheticHospicePeriod[] = [
   { kind: "noe", start: "20230110", revocation: "1", npi: SYNTHETIC_OTHER_HOSPICE_NPI },
   {
     kind: "billed",
@@ -89,12 +93,12 @@ const CLOSED_HISTORY = [
     revocation: "2",
     npi: SYNTHETIC_SECOND_HOSPICE_NPI,
   },
-] as const;
+];
 
 /** An open election at another hospice: an NOE (revocation code 0) whose first period is not billed yet. */
-const OPEN_ELECTION = [
+const OPEN_ELECTION: readonly SyntheticHospicePeriod[] = [
   { kind: "noe", start: "20260915", revocation: "0", npi: SYNTHETIC_OTHER_HOSPICE_NPI },
-] as const;
+];
 
 function envelope(ctx: Synthetic271Context, st: string[]): string {
   const isa = [
@@ -144,8 +148,15 @@ function header(ctx: Synthetic271Context): string[] {
   ];
 }
 
-/** Build a synthetic 271 (or 999) interchange for a scenario. */
-export function synthetic271(scenario: Hets271Scenario, ctx: Synthetic271Context): string {
+/**
+ * Build a synthetic 271 (or 999) interchange for a scenario. `hospiceHistory` replaces the canned closed history
+ * of `active_with_history` (dev/test: e.g. another hospice's recent period for the RHC carry-over).
+ */
+export function synthetic271(
+  scenario: Hets271Scenario,
+  ctx: Synthetic271Context,
+  hospiceHistory?: readonly SyntheticHospicePeriod[],
+): string {
   const partA = [PART_A, "DTP*291*D8*20050401", "MSG*0 – Beneficiary insured due to age OASI"];
   const partB = [PART_B, "DTP*291*D8*20050401"];
   switch (scenario) {
@@ -154,7 +165,7 @@ export function synthetic271(scenario: Hets271Scenario, ctx: Synthetic271Context
         ...header(ctx),
         ...partA,
         ...partB,
-        ...CLOSED_HISTORY.flatMap(hospicePeriodSegments),
+        ...(hospiceHistory ?? CLOSED_HISTORY).flatMap(hospicePeriodSegments),
       ]);
     case "open_election":
       return envelope(ctx, [

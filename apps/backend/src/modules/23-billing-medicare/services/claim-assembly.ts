@@ -52,6 +52,7 @@ import {
 } from "./claim-assembly-facts";
 import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
 import { persistedRemediation } from "./persisted-remediation";
+import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
 
 // The org-context transaction handle every repo writes through (structurally a `BillingDb`). withOrgContext
@@ -269,7 +270,9 @@ export function buildClaimAssemblyService(
         });
 
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
-        const hipps = computeClaimHipps(facts, { serviceFrom, serviceTo });
+        // Two-tier RHC: the prior hospice days this stay continues — our stays merged with the HETS history.
+        const rhcCarryOver = await readClaimRhcCarryOver(tx, orgId, patientId, admission, now());
+        const hipps = computeClaimHipps(facts, { serviceFrom, serviceTo }, rhcCarryOver.priorDays);
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
         const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {
@@ -394,6 +397,7 @@ export function buildClaimAssemblyService(
           })),
           rhcDays1to60: hipps.rhcDays1to60,
           rhcDays61Plus: hipps.rhcDays61Plus,
+          rhcCarryOver,
         });
 
         if (siaRow) {
@@ -423,6 +427,7 @@ export function buildClaimAssemblyService(
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
           noe: null,
           eligibilityBound: false,
+          rhcCarryOver: rhcCarryOverSnapshot(rhcCarryOver),
         });
 
         const startedAt = now();

@@ -18,6 +18,7 @@ import type {
   MaterializedValidationInputs,
   ValidationContextPort,
 } from "./claim-validation-service";
+import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
 
 const MS_PER_DAY = 86_400_000;
@@ -57,10 +58,19 @@ export function buildClaimValidationContextPort(
         serviceTo: claim.serviceTo,
       });
       const lines = await new repositories.ClaimLineRepository(tx).listForClaim(claim.id);
-      const hipps = computeClaimHipps(facts, {
-        serviceFrom: claim.serviceFrom,
-        serviceTo: claim.serviceTo,
-      });
+      // Two-tier RHC carry-over, re-derived (a newer HETS check or a corrected stay surfaces as a HIPPS diff).
+      const rhcCarryOver = await readClaimRhcCarryOver(
+        tx as repositories.BillingDb,
+        orgId,
+        claim.patientId,
+        facts.admission,
+        now(),
+      );
+      const hipps = computeClaimHipps(
+        facts,
+        { serviceFrom: claim.serviceFrom, serviceTo: claim.serviceTo },
+        rhcCarryOver.priorDays,
+      );
       const sia = await computeClaimSia(deps.seams, facts);
 
       // Prior-claim continuity for the admission, EXCLUDING the claim under validation.
@@ -133,6 +143,7 @@ export function buildClaimValidationContextPort(
             }
           : null,
         eligibilityBound: deps.eligibilityBound,
+        rhcCarryOver: rhcCarryOverSnapshot(rhcCarryOver),
       });
       return { context };
     },

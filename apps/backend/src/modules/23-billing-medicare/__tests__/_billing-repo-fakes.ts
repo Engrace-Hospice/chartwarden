@@ -22,6 +22,8 @@ export interface FakeStore {
   readonly overrides: Map<string, any>;
   readonly history: any[];
   readonly emitted: any[];
+  /** Resolved HETS eligibility checks (newest last) the RHC carry-over reads. */
+  readonly eligibilityChecks: any[];
   reset(): void;
 }
 
@@ -43,6 +45,7 @@ export function buildFakeRepositories(): {
     overrides: new Map<string, any>(),
     history: [],
     emitted: [],
+    eligibilityChecks: [],
     reset(): void {
       this.claims.clear();
       this.lines.length = 0;
@@ -53,6 +56,7 @@ export function buildFakeRepositories(): {
       this.overrides.clear();
       this.history.length = 0;
       this.emitted.length = 0;
+      this.eligibilityChecks.length = 0;
       seq = 0;
     },
   };
@@ -237,8 +241,19 @@ export function buildFakeRepositories(): {
     }
   }
 
+  class EligibilityCheckRepository {
+    async findLatestResolvedForPatient(orgId: string, patientId: string): Promise<any> {
+      return (
+        [...store.eligibilityChecks]
+          .reverse()
+          .find((c) => c.organizationId === orgId && c.patientId === patientId) ?? null
+      );
+    }
+  }
+
   const repos: Record<string, unknown> = {
     ClaimRepository,
+    EligibilityCheckRepository,
     ClaimLineRepository,
     HippsCalculationRepository,
     SiaCalculationRepository,

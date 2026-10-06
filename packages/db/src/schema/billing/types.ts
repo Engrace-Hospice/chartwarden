@@ -200,6 +200,32 @@ export interface HippsCalculationSegment {
 }
 export type HippsCalculationSegments = HippsCalculationSegment[];
 
+// hipps_calculation.rhc_carry_over — the two-tier RHC carry-over the claim was priced with (migration 0376;
+// nullable: rows priced before it carry NULL). Shape owned by `@wardenx/billing` `computeRhcCarryOver` +
+// M23's `RhcCarryOverView`; kept structural here (db does not import billing). Dates, counts, NPIs, codes —
+// no PHI / MBI.
+export interface HippsCalculationRhcCarryOver {
+  electionDate: string;
+  priorDays: number;
+  chainDays: number;
+  basis: "internal_only" | "hets_merged" | "hets_stale";
+  startsAtDay: number;
+  highRateDaysRemaining: number;
+  daysSinceLastCare: number | null;
+  chain: readonly {
+    source: "internal" | "hets";
+    kind: "stay" | "election" | "benefit_period";
+    start: string;
+    end: string;
+    endAssumed: boolean;
+    countedDays: number;
+    hospiceNpi: string | null;
+    ref: string | null;
+  }[];
+  warnings: readonly { code: string; message: string }[];
+  hetsCheck: { checkId: string; checkedAt: string; ageDays: number; stale: boolean } | null;
+}
+
 // sia_calculation.qualifying_visits — last-7-days-of-life qualifying RN/MSW visits (NOT NULL, no default).
 export interface SiaQualifyingVisit {
   encounterId: string; // M8 logical FK

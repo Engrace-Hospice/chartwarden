@@ -115,5 +115,6 @@ export function projectHospicePeriods(input: {
         : null,
     nextPeriodBasis: rawPeriods !== null ? basis : null,
     lastAttempt,
+    rhcCarryOver: null,
   };
 }

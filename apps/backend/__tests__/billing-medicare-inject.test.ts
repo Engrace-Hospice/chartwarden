@@ -535,6 +535,7 @@ function createM23TestBackend(): {
         nextPeriodNumber: null,
         nextPeriodBasis: null,
         lastAttempt: null,
+        rhcCarryOver: null,
       };
     },
     async listRuleConfigs(_actor, _filter: RuleConfigListFilter) {

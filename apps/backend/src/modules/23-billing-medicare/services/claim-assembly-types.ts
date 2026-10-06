@@ -64,6 +64,13 @@ export interface AdmissionContext {
   readonly hospiceAdmissionDate: IsoDate;
   /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
   readonly rhcPriorHospiceDays?: number;
+  /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice
+   *  history by `computeRhcCarryOver`. Absent (older readers / fakes) ⇒ `rhcPriorHospiceDays` is used as is. */
+  readonly rhcPriorStays?: readonly {
+    readonly admissionId: string;
+    readonly startedOn: IsoDate | null;
+    readonly endedOn: IsoDate | null;
+  }[];
   /** The COMPLETED `discharge_event` only (a voided or pending-cosign row is not a discharge). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;

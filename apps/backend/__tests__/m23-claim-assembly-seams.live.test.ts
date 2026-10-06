@@ -720,6 +720,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         admissionId,
         hospiceAdmissionDate: "2026-01-01",
         rhcPriorHospiceDays: 0, // a first stay: the RHC day count starts here
+        rhcPriorStays: [], // …and no earlier stay with us for M23 to merge with the HETS history
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
