@@ -63,8 +63,6 @@ import {
 } from "../merges-db";
 import {
   AddPatientPayerBodySchema,
-  AssignmentBodySchema,
-  AssignmentParamsSchema,
   AddressBodySchema,
   AdmitBodySchema,
   AmendmentBodySchema,
@@ -225,18 +223,6 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       return service.list(organizationId, query, await censusScope(request));
     },
   );
-
-  app.post("/api/v1/patients/:id/assignments", { preHandler: [EDIT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const assignment = await service.createAssignment(organizationId, id, parse(AssignmentBodySchema, request.body), userId);
-    return reply.code(201).send(assignment);
-  });
-  app.post("/api/v1/patients/:id/assignments/:assignmentId/end", { preHandler: [EDIT] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id, assignmentId } = parse(AssignmentParamsSchema, request.params);
-    return service.endAssignment(organizationId, id, assignmentId, userId);
-  });
 
   // --- §4.2 census KPI metrics (active count + per-status breakdown; static path beats /:id) ------
   app.get(
