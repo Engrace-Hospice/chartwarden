@@ -17,21 +17,21 @@ import type {
   NonCoveredItemsReader,
 } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
-import type { AdmissionWriteOutboxPort } from "../admission-route-service-db";
 import { ResourceNotFoundError } from "../routes/service";
-import { AdmissionStateError } from "../state-machines/errors";
 import {
   type AddendumContentFacts,
   type ElectionAddendumEvent,
   transitionElectionAddendum,
 } from "../state-machines/election-addendum";
+import { AdmissionStateError } from "../state-machines/errors";
+import type { AddendumOutboxPort as AdmissionWriteOutboxPort } from "./outbox-port";
 import { buildAddendumRenderPayload } from "./render-payload";
 import {
+  ADDENDUM_WINDOW_KINDS,
   type AddendumAdmissionFacts,
   type AddendumItem,
   type AddendumPrefill,
   type AddendumRow,
-  ADDENDUM_WINDOW_KINDS,
   EMPTY_PREFILL,
   closeAddendumWindows,
   createUpdateVersionInTx,
@@ -630,7 +630,9 @@ export function createElectionAddendumService(
           organizationId,
           admissionId,
           kinds: [
-            updated.trigger === "initial" ? "election_addendum_initial" : "election_addendum_update",
+            updated.trigger === "initial"
+              ? "election_addendum_initial"
+              : "election_addendum_update",
           ],
           closedVia: "furnished",
           closedByUserId: actorUserId,

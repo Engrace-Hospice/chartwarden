@@ -73,7 +73,11 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M6",
     denylist: M6_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql",
+      // FY2027 — `election_addendum`'s own table + trigger (42 CFR 418.24(c)).
+      "packages/db/migrations/0381_m6_election_addendum.sql",
+    ],
   },
   {
     mod: "M7",

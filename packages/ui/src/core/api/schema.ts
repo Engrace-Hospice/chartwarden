@@ -5355,7 +5355,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org-wide compliance-window worklist (cursor-paginated) */
+        /** Org-wide compliance-window worklist (cursor-paginated; rows carry the window kind and due instant) */
         get: operations["getApiV1Compliancewindows"];
         put?: never;
         post?: never;
@@ -35829,6 +35829,10 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            admissionId?: string;
+                            windowKind?: string;
+                            severity?: string;
+                            dueAt?: string;
                         }[];
                         nextCursor: string | null;
                     };

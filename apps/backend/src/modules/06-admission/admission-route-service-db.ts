@@ -41,15 +41,6 @@ import {
   sql,
 } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
-import { addendumRequiredForElection } from "./election-addendum/due-dates";
-import {
-  exemptionReasonForDischarge,
-  listAddendumVersions,
-  loadAddendumAdmissionFacts,
-  openAddendumWindows,
-  openInitialAddendumInTx,
-  settleAddendumOnLeavingCareInTx,
-} from "./election-addendum/store";
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
@@ -85,6 +76,15 @@ import {
   dischargeRequiresCosign,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import { addendumRequiredForElection } from "./election-addendum/due-dates";
+import {
+  exemptionReasonForDischarge,
+  listAddendumVersions,
+  loadAddendumAdmissionFacts,
+  openAddendumWindows,
+  openInitialAddendumInTx,
+  settleAddendumOnLeavingCareInTx,
+} from "./election-addendum/store";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -121,6 +121,7 @@ import type {
   AdmissionAbacResolver,
   AdmissionDetail,
   AdmissionRouteService,
+  ComplianceWindowRow,
   MutationResult,
   Page,
   PatientAdmissionSummary,
@@ -1663,6 +1664,33 @@ export function createDbAdmissionRouteService(
     });
   }
   /** Page a status-bearing table on the integer-offset cursor, newest-first. */
+  const complianceWindowColumns = {
+    id: CW.id,
+    state: CW.status,
+    version: CW.version,
+    admissionId: CW.admissionId,
+    windowKind: CW.windowKind,
+    severity: CW.severity,
+    mustCompleteBy: CW.mustCompleteBy,
+  };
+  function toComplianceWindowRow(r: {
+    id: string;
+    state: string;
+    version: number;
+    admissionId: string;
+    windowKind: string;
+    severity: string;
+    mustCompleteBy: Date;
+  }): ComplianceWindowRow {
+    return {
+      ...toSummary(r),
+      admissionId: r.admissionId,
+      windowKind: r.windowKind,
+      severity: r.severity,
+      dueAt: r.mustCompleteBy.toISOString(),
+    };
+  }
+
   async function pageByStatus(
     organizationId: string,
     table: typeof REF | typeof ADM | typeof CW,
@@ -2443,15 +2471,31 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         if (!(await admissionExists(tx as DbClient, admissionId))) return null;
         const rows = await tx
-          .select({ id: CW.id, state: CW.status, version: CW.version })
+          .select(complianceWindowColumns)
           .from(CW)
           .where(eq(CW.admissionId, admissionId))
           .orderBy(desc(CW.mustCompleteBy));
-        return rows.map(toSummary);
+        return rows.map(toComplianceWindowRow);
       });
     },
     async listComplianceWindows(organizationId, query) {
-      return pageByStatus(organizationId, CW, CW.mustCompleteBy, query);
+      // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
+      // the dashboard could not tell an election-addendum window from any other kind.
+      const limit = clampLimit(query.limit);
+      const offset = parseOffset(query.cursor);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select(complianceWindowColumns)
+          .from(CW)
+          .where(query.state ? eq(CW.status, query.state as never) : undefined)
+          .orderBy(desc(CW.mustCompleteBy), desc(CW.id))
+          .limit(limit + 1)
+          .offset(offset);
+        return {
+          items: rows.slice(0, limit).map(toComplianceWindowRow),
+          nextCursor: rows.length > limit ? String(offset + limit) : null,
+        };
+      });
     },
 
     // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────

@@ -469,6 +469,15 @@ export interface SummaryRow {
   readonly patientId?: string | null;
 }
 
+/** A compliance-window worklist row: the summary plus what the window IS and when it is due (FY2027 — so the
+ *  compliance dashboard can show the election-addendum kinds). The DB service fills the extras. */
+export interface ComplianceWindowRow extends SummaryRow {
+  readonly admissionId?: string;
+  readonly windowKind?: string;
+  readonly severity?: string;
+  readonly dueAt?: string;
+}
+
 /** F-195 (#248) — `GET /api/v1/admissions`'s own row, carrying the hold/resume facts M6's spec (line 2983)
  *  names as surfaced on "M30's operational dashboard" — `holdReason`/`holdAt`/`releasedAt` were write-only
  *  everywhere in this module until now (see `events-by-m6.ts`'s corrected `m30` declaration on
@@ -1011,11 +1020,11 @@ export interface AdmissionRouteService {
   listComplianceWindowsForAdmission(
     organizationId: string,
     admissionId: string,
-  ): Promise<readonly SummaryRow[] | null>;
+  ): Promise<readonly ComplianceWindowRow[] | null>;
   listComplianceWindows(
     organizationId: string,
     query: { state?: string; cursor?: string; limit?: number },
-  ): Promise<Page<SummaryRow>>;
+  ): Promise<Page<ComplianceWindowRow>>;
   closeComplianceWindow(
     organizationId: string,
     id: string,

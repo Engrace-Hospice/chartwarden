@@ -259,10 +259,10 @@ import {
   claimAssemblyRangeContextForOrg,
   composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
-  createElectionAddendumService,
-  electionAddendumComplianceForOrg,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
+  createElectionAddendumService,
+  electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgCurrentLevelOfCareForOrg,
   idgHospitalEventsForOrg,
@@ -2525,7 +2525,8 @@ function buildM23AssemblyPorts(db: DbClient): {
     },
     // FY2027 — M6's election addendum facts for the `election_addendum_signed` rule (42 CFR 418.24(c)).
     m6ElectionAddendum: {
-      forAdmission: (orgId, admissionId) => electionAddendumComplianceForOrg(db, orgId, admissionId),
+      forAdmission: (orgId, admissionId) =>
+        electionAddendumComplianceForOrg(db, orgId, admissionId),
     },
     // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
     m7ClaimDiagnoses: {

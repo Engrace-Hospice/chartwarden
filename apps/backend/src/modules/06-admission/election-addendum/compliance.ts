@@ -3,9 +3,12 @@
 // overdue scan (`admission.window_alert` cron). Both are FY2027, 42 CFR 418.24(c)/(d).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { ElectionAddendumComplianceSnapshot, ElectionAddendumExemptionReason } from "@wardenx/types";
+import type {
+  ElectionAddendumComplianceSnapshot,
+  ElectionAddendumExemptionReason,
+} from "@wardenx/types";
 import { and, desc, eq, inArray, lte, ne } from "drizzle-orm";
-import type { AdmissionWriteOutboxPort } from "../admission-route-service-db";
+import type { AddendumOutboxPort as AdmissionWriteOutboxPort } from "./outbox-port";
 import { ADDENDUM_WINDOW_KINDS, loadAddendumAdmissionFacts } from "./store";
 
 const EA = schema.electionAddenda;
@@ -69,10 +72,7 @@ export async function electionAddendumComplianceForOrg(
       anyRefusalDocumented: has("refused"),
       anyExemptionDocumented: has("signature_not_required", "not_required"),
       leftCareReason: facts
-        ? leftCareReason(
-            facts.status,
-            discharge?.reason ?? (revocation ? "revocation" : null),
-          )
+        ? leftCareReason(facts.status, discharge?.reason ?? (revocation ? "revocation" : null))
         : null,
     };
   });

@@ -90,10 +90,7 @@ export const electionAddenda = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     // ── 418.24(c)(5)–(7) determinations ──
-    items: jsonb("items")
-      .$type<ElectionAddendumItemRow[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    items: jsonb("items").$type<ElectionAddendumItemRow[]>().notNull().default(sql`'[]'::jsonb`),
     /** The documented "everything is related and covered" determination (FR-F: "not a blank form"). */
     noNonCoveredItems: boolean("no_non_covered_items").notNull().default(false),
     clinicalExplanation: text("clinical_explanation"),

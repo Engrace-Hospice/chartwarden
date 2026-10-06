@@ -62344,7 +62344,7 @@
         "tags": [
           "06-admission"
         ],
-        "summary": "Org-wide compliance-window worklist (cursor-paginated)",
+        "summary": "Org-wide compliance-window worklist (cursor-paginated; rows carry the window kind and due instant)",
         "parameters": [
           {
             "name": "state",
@@ -62415,6 +62415,18 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "windowKind": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
                           }
                         }
                       }

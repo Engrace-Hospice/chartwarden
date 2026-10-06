@@ -114,11 +114,7 @@ export function checkAddendumItems(content: AddendumContentFacts): void {
     "An addendum cannot list non-covered items and also record that there are none",
   );
   for (const [i, item] of content.items.entries()) {
-    require_(
-      !blank(item.description),
-      "ADDENDUM_INCOMPLETE",
-      `Item ${i + 1} needs a description`,
-    );
+    require_(!blank(item.description), "ADDENDUM_INCOMPLETE", `Item ${i + 1} needs a description`);
     require_(
       !blank(item.reasonNotCovered),
       "ADDENDUM_INCOMPLETE",

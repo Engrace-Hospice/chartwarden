@@ -17,8 +17,8 @@
 // The customer's paper form (version 4/18) lacked the (b)(3) "exceptional and unusual" language, (b)(5), (b)(6)
 // and (b)(7); this template is the reason those can no longer be missing.
 import { type Block, type DocModel, latestInstant } from "./doc-model";
-import { fmtDate, rec, str } from "./shared";
 import { ELECTION_ADDENDUM_DOC_TITLE } from "./election-addendum-doc";
+import { fmtDate, rec, str } from "./shared";
 
 export const ELECTION_STATEMENT_DOC_TITLE = "Medicare Hospice Election Statement";
 
@@ -41,9 +41,15 @@ export function buildElectionStatementDoc(payload: unknown): DocModel {
       kind: "facts",
       rows: [
         ["Hospice", str(p.hospiceName) ?? "______________________________"],
-        ["Attending physician (my choice)", str(p.attendingPhysicianName) ?? "______________________________"],
+        [
+          "Attending physician (my choice)",
+          str(p.attendingPhysicianName) ?? "______________________________",
+        ],
         ["Beneficiary", str(p.patientName) ?? "______________________________"],
-        ["Effective date of election", p.effectiveDate ? fmtDate(p.effectiveDate) : "______________"],
+        [
+          "Effective date of election",
+          p.effectiveDate ? fmtDate(p.effectiveDate) : "______________",
+        ],
       ],
     },
     { kind: "heading", level: 1, text: "My hospice and my attending physician" },

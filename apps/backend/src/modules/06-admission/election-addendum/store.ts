@@ -11,13 +11,9 @@ import type {
 } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
-import type { AdmissionWriteOutboxPort } from "../admission-route-service-db";
 import { exemptionEventFor, transitionElectionAddendum } from "../state-machines/election-addendum";
-import {
-  addendumRequiredForElection,
-  initialAddendumDue,
-  updateAddendumDue,
-} from "./due-dates";
+import { addendumRequiredForElection, initialAddendumDue, updateAddendumDue } from "./due-dates";
+import type { AddendumOutboxPort as AdmissionWriteOutboxPort } from "./outbox-port";
 
 const EA = schema.electionAddenda;
 const ADM = schema.admissions;
@@ -28,7 +24,10 @@ export type AddendumRow = typeof EA.$inferSelect;
 export type AddendumItem = AddendumRow["items"][number];
 
 /** The two compliance-window kinds the addendum owns. */
-export const ADDENDUM_WINDOW_KINDS = ["election_addendum_initial", "election_addendum_update"] as const;
+export const ADDENDUM_WINDOW_KINDS = [
+  "election_addendum_initial",
+  "election_addendum_update",
+] as const;
 export type AddendumWindowKind = (typeof ADDENDUM_WINDOW_KINDS)[number];
 
 /** Admission statuses during which the addendum obligation is live (the patient is under hospice care). */
@@ -549,7 +548,9 @@ export async function refreshDraftInTx(
 // ── leaving care (418.24(d)(3)/(d)(4)) ──────────────────────────────────────────────────────────────
 
 /** Map an M6 discharge type onto the addendum exemption reason the regulation names. */
-export function exemptionReasonForDischarge(dischargeType: string): ElectionAddendumExemptionReason {
+export function exemptionReasonForDischarge(
+  dischargeType: string,
+): ElectionAddendumExemptionReason {
   if (dischargeType === "death") return "death";
   if (dischargeType === "revocation") return "revocation";
   return "discharge";
@@ -580,9 +581,7 @@ export async function settleAddendumOnLeavingCareInTx(
   const open = await tx
     .select()
     .from(EA)
-    .where(
-      and(eq(EA.admissionId, input.admissionId), inArray(EA.status, ["draft", "furnished"])),
-    );
+    .where(and(eq(EA.admissionId, input.admissionId), inArray(EA.status, ["draft", "furnished"])));
   let changed = 0;
   for (const row of open) {
     const event = exemptionEventFor(row.status, input.reason);
@@ -636,7 +635,12 @@ export async function supersedePriorVersionsInTx(
 ): Promise<void> {
   await tx
     .update(EA)
-    .set({ supersededById: newId, supersededAt: at, updatedAt: at, version: sql`${EA.version} + 1` })
+    .set({
+      supersededById: newId,
+      supersededAt: at,
+      updatedAt: at,
+      version: sql`${EA.version} + 1`,
+    })
     .where(
       and(
         eq(EA.admissionId, admissionId),

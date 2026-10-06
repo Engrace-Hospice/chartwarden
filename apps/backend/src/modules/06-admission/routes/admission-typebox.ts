@@ -606,6 +606,22 @@ export const AdmissionReadinessResponseSchema = Type.Object({
   ),
 });
 
+/** FY2027 — a compliance-window worklist row: the summary plus the window kind, admission and due instant. */
+export const ComplianceWindowRowResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  admissionId: Type.Optional(Type.String()),
+  windowKind: Type.Optional(Type.String()),
+  severity: Type.Optional(Type.String()),
+  dueAt: Type.Optional(Type.String()),
+});
+export const ComplianceWindowPageResponseSchema = Type.Object({
+  items: Type.Array(ComplianceWindowRowResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
 /** The cursor-paginated page the list routes return (`{ items, nextCursor }`). */
 export const SummaryPageResponseSchema = Type.Object({
   items: Type.Array(SummaryRowResponseSchema),

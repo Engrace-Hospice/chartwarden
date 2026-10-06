@@ -412,7 +412,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       // FY2027 — additive, optional: what M22's 42 CFR 418.24(b)(1)–(8) statement template prints.
       patientName: Type.Optional(Type.String({ minLength: 1 })),
-      signerKind: Type.Optional(Type.Union([Type.Literal("patient"), Type.Literal("representative")])),
+      signerKind: Type.Optional(
+        Type.Union([Type.Literal("patient"), Type.Literal("representative")]),
+      ),
       hospiceName: Type.Optional(Type.String({ minLength: 1 })),
       effectiveDate: Type.Optional(Type.String({ minLength: 1 })),
     }),
@@ -1081,7 +1083,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       versionNumber: Type.Integer({ minimum: 1 }),
       furnishedAt: Type.String({ minLength: 1 }),
-      furnishMethod: Type.Union([Type.Literal("paper"), Type.Literal("electronic_with_paper_copy")]),
+      furnishMethod: Type.Union([
+        Type.Literal("paper"),
+        Type.Literal("electronic_with_paper_copy"),
+      ]),
       /** Every 418.24(c)(1)–(10) element, already resolved (election-addendum/render-payload.ts). */
       renderPayload: Type.Unknown(),
     }),

@@ -29,7 +29,9 @@ export interface AdmissionComplianceAlertPlan {
 function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
   const v = p[key];
   if (typeof v !== "string" || v.length === 0) {
-    throw new Error(`${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: ${eventName} payload has no ${key}`);
+    throw new Error(
+      `${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: ${eventName} payload has no ${key}`,
+    );
   }
   return v;
 }

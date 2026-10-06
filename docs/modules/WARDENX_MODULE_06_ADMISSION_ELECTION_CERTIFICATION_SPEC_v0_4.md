@@ -8,10 +8,11 @@
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` helper, outbox helper, idempotency, error envelope), 2 (Identity — session/actor resolution), 3 (Authorization — `requirePermission` / `requireAbac` contract; the catalog this module contributes to), 4 (Audit — write-audit trigger generator, read-audit helper, destruction-cert workflow, retention classes), 5 (Patient & Demographics — `Patient`, `Payer`, `PrivacyFlag`), 29 (External Interfaces — inbound HL7 v2 ADT proposal-accepted outbox events consumed by the `AdmissionEventApplier`), 38 (Terminology — ICD-10 validation, hospice diagnosis value sets, level-of-care revenue/Q-code mapping), 39 (Consent & Authorization Management — election authority verification, DPOA gating for proxy-signed elections, 42 CFR Part 2 redaction), 40 (Master Data Management — `ExternalPhysician` for attending NPIs, `Facility` for transfer/place-of-service references, `ReferralSource`)
 **Consumed by:** 7 (Care Plan — initial care plan tied to admission), 8 (Encounters — visit notes scoped to active admission), 11 (Orders — orders gated by active election), 14 (IDG — meeting scope is the active caseload of admitted patients; also consumes `m6.referral.withdrawn` for the cancellation notification template), 16 (Bereavement — listens for `bereavement.eligible`), 22 (Document Management — listens for `election.signed`, `revocation.signed`, `discharge.executed`, `notice_of_rights.required`, `cti.signed` to render and store forms), 23 (Billing — Medicare — reads `ElectionPeriod`, `CertificationOfTerminalIllness`, `FaceToFaceEncounter`, `LevelOfCarePeriod`, `RevocationEvent`, `DischargeEvent`; owns the NOE/NOTR wire artifact and emits acceptance back to M6 via outbox), 26 (Cap Management — reads admission and discharge dates to drive cap accrual), 27 (Cost Report — patient-day census derives from M6), 28 (FHIR Gateway — maps Admission → `Encounter`/`EpisodeOfCare`, CTI → `Condition`/`Composition`), 30 (HQRP & Quality — survey readiness queries the F2F window log and CTI lateness register; also consumes `m6.applier.refused` and the `info`-severity external-signal windows), 33 (Reporting — admission/discharge/recert reports), 36 (Secure Messaging — subscribes to compliance-window outbox events), 37 (Inpatient Unit Management — admission's `LevelOfCarePeriod` drives IPU bed assignment for GIP/IRC)
 **Owns:** `apps/backend/src/modules/06-admission` (the admission spine, election periods, CTI/F2F compliance, the `AdmissionEventApplier`), `packages/domain/admission`, and the twelve owned tables (`referral`, `admission`, `election_period`, `election_statement`, `certification_of_terminal_illness`, `face_to_face_encounter`, `level_of_care_period`, `revocation_event`, `transfer_event`, `discharge_event`, `notice_of_rights_acknowledgment`, `compliance_window`, **`election_addendum`** — M06-F02/ADR-0015 D1).
-**Spec status:** Re-locked v0.7 (referral intake captures the patient's Medicare (MBI) and Medicaid numbers; supersedes Re-locked v0.6 — attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
+**Spec status:** Re-locked v0.8 (FY2027 mandatory election statement addendum, 42 CFR 418.24(b)(6)/(c)/(d) as amended by CMS-1851-F; supersedes Re-locked v0.7 — referral intake captures the patient's Medicare (MBI) and Medicaid numbers; supersedes Re-locked v0.6 — attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
 
 > **Phase-4 remediation (2026-06-11; ADR-0015) — 6 BLOCKERs.**
 > - **M06-F02:** `election_addendum` entity added (Patient Notification of Non-Covered Items, 418.24(c)) — a **condition of payment**: furnished within 5 days of election (72 h if requested later), signed/dated, versioned, amendable on POC change. The M21 non-covered DME path terminates here.
+>   **Superseded in part by v0.8 (FY2027, CMS-1851-F):** the addendum is now **mandatory for every election effective on or after 2026-10-01** (no longer on request, so the "72 h if requested later" path is gone); updates are due **within 3 calendar days** of a plan-of-care change. Built in §2.6.
 > - **M06-F03:** certification timing corrected — **verbal cert within 2 calendar days** of period start (if written can't be completed), **written before billing**; recert completed **no more than 15 days before** the period start (was encoded backwards).
 > - **M06-F04:** **one signed `election_statement` per election** (election continues across benefit periods until revoked/discharged/transferred) — not one per benefit period.
 > - **M06-F05:** the invented agency F2F "override" (which billed uncertified days) is removed; CMS **late-F2F + exceptional-circumstances** logic encoded (F2F within 2 days of admission when admitted <2 days before a 3rd+ period start; else discharge, never bill).
@@ -20,6 +21,7 @@
 
 ## Changelog
 
+- **v0.8 (Re-locked; 2026-10-06)** — **FY2027 mandatory election statement addendum** (42 CFR 418.24(b)(6), (c), (d) as amended by CMS-1851-F, effective 2026-10-01; primary-source facts in [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1). Builds the `election_addendum` table ADR-0015 D1 mandated in v0.2 and that was never built (migrations `0380_election_addendum_enum_values.sql`, `0381_m6_election_addendum.sql`, `0382_m6_election_addendum_permissions.sql`); a versioned lifecycle (`state-machines/election-addendum.ts`); two compliance-window kinds `election_addendum_initial` (election effective date + 5 calendar days) and `election_addendum_update` (plan-of-care change + 3 calendar days), opened at activation and by M7 plan-of-care changes, closed on furnish, settled automatically on death/revocation/discharge; seven routes under `/api/v1/admissions/:id/election-addendum` gated by three new keys (`election_addendum.read` / `.write` / `.acknowledge`); five events `m6.election_addendum.{drafted,furnished,acknowledged,not_required,overdue}` (M22 renders, M36 pages); the M7 consumer and the generic `openAddendumUpdateWindow` entry point; the M23 claim-assembly snapshot behind rule `election_addendum_signed`; an informational (never blocking) activation-checklist item. `m6.election.signed` gains optional render fields so M22's election statement template prints every 418.24(b)(1)–(8) element. The compliance-window list routes (`GET /api/v1/compliance-windows`, `GET /api/v1/admissions/:id/compliance-windows`) now return each row's `admissionId`, `windowKind`, `severity` and `dueAt` (additive), so the compliance dashboard can show the two addendum kinds. See §1.3, §2.6, §4.1, §4.4, §4.5, §7.10. ADR-0015 amended (FY2027 note).
 - **v0.7 (Re-locked; 2026-10-04)** — Referral intake captures the patient's **Medicare number (MBI)** and **Medicaid number**: two `referral` columns (`medicare_number_at_receipt`, `medicaid_number_at_receipt`) with format CHECKs, added to the referral write-audit denylist (migration `0317_m6_referral_payer_numbers.sql`); `POST`/`PATCH /api/v1/referrals` accept both (normalized server-side; 422 on a malformed value). The MBI is recorded on the patient's chart through M5's `PatientIntakeResolver` (create-from-intake, or `recordMedicareNumberIfMissing` on match / when linked) without ever overwriting a chart MBI; the Medicaid number pre-fills the intake Coverage / Payers form (M5 keeps Medicaid IDs on `patient_payer`). See §2.2 "Payer numbers at intake".
 - **v0.6 (Re-locked)** — Aligned the period-1 attending-physician CTI signature with 42 CFR 418.22 and the as-built code. The attending signature is still required on the period-1 CTI when the patient has an attending, but it gates **claim submission** (M23 rule `cti_signed_per_period`, `packages/billing/src/rules/cti-signed.ts`), not admission activation: §418.22(a)(3) requires the written certification before the claim is submitted, not before care starts. `R-CTI-03` now enforces the attending sign on the CTI's `signByAttending` transition (attending NPI match); a period-1 CTI stays `awaiting_attending` — not `signed` — until then. Removed `attending_signed` from the §4.2.2 activate 412 list, the §5.2.3 wizard and §5.2.5 activation checklist, and the §8 `m6_admission_activation_blocked_total` reasons; D3 amended.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
@@ -78,6 +80,9 @@ This list is binding. Every item here is owned by another module and reached via
 |---|---|---|
 | **42 CFR 418.22** — Certification of terminal illness | CTI signed by hospice MD before every benefit period; attending co-sign for period 1 if patient has attending; F2F by hospice MD/NP within 30 days prior to recert period start, from period 3 onward; F2F attestation captured separately | `CertificationOfTerminalIllness` state machine; `FaceToFaceEncounter` + window math; `f2f_window_overridden` audit; recert-claim block until F2F signed |
 | **42 CFR 418.24** — Election of hospice care | Patient (or representative under DPOA) signs election statement that includes patient name, hospice name, attending physician identification, acknowledgment of curative-care waiver, effective date, signature | `ElectionStatement` table with required fields; `electionAuthority` resolved via M39 (patient vs DPOA); signature timestamp; immutability post-sign |
+| **42 CFR 418.24(b)(1)–(8)** as amended by CMS-1851-F (FY2027) — election statement content | Hospice + attending of choice; palliative not curative; coverage responsibility + waived services, unrelated services "exceptional and unusual"; effective date; cost sharing; **(b)(6) the beneficiary will receive the addendum**; BFCC-QIO immediate advocacy; signature | M22 `election_statement` template (`render-pdf/election-statement-doc.ts`) prints every element; `m6.election.signed` carries the optional render fields (`patientName`, `signerKind`, `hospiceName`, `effectiveDate`); forms-registry floor fields for (b)(2)–(7) |
+| **42 CFR 418.24(c)** (FY2027) — election statement addendum content | Titled "Patient Notification of Hospice Non-Covered Items, Services, and Drugs"; hospice name; name + MRN; terminal + related conditions; non-covered conditions/items/services/drugs with reasons; clinical explanation + relatedness statement; guideline references; purpose + BFCC-QIO advocacy; receipt-only signature (refusal reason on the addendum); date furnished | `election_addendum` (§2.6) + the M22 `election_addendum` template (`render-pdf/election-addendum-doc.ts`); `furnish` refuses an addendum missing a (c) element (`missingAddendumContent`) |
+| **42 CFR 418.24(d)** (FY2027) — addendum timeframes | Mandatory for elections effective on/after 2026-10-01; within 5 days of the effective date (MLN: calendar days); update within 3 days of a plan-of-care change; death/revocation/discharge before furnish → not required (reason noted); before signature → signature not required (noted on the addendum) | `election_addendum_initial` / `election_addendum_update` compliance windows; M7 plan-of-care consumer; `settleAddendumOnLeavingCareInTx` in the discharge transaction; overdue → `m6.election_addendum.overdue` → M36; M23 rule `election_addendum_signed` (warn through 2026-12-31 under CMS enforcement discretion, blocking from 2027-01-01) |
 | **42 CFR 418.25** — Admission to hospice care | Hospice physician determines terminal illness; admission documented | `Admission` state machine with `admitted_by_physician_id` and the CTI link |
 | **42 CFR 418.26** — Discharge from hospice care | Discharge for cause / no-longer-terminal / move-out-of-service-area / patient-revoke / death; discharge summary written; transfer-of-care plan when applicable | `DischargeEvent` enum + workflow; M22 receives `discharge.executed` for the summary |
 | **42 CFR 418.28** — Revocation; loss of eligibility; transfer | Patient may revoke at any time in writing; transfer between hospices once per period; benefit periods continue across transfer | `RevocationEvent`, `TransferEvent`; transfer-in inherits `period_sequence_number`; once-per-period guard |
@@ -629,7 +634,46 @@ If the COMMIT fails for any reason, the audit row, the outbox row, and the domai
 
 The full outbox-event catalog is locked in §4.4 below.
 
+### 2.6 Election Statement Addendum (FY2027, v0.8)
+
+The "Patient Notification of Hospice Non-Covered Items, Services, and Drugs" (42 CFR 418.24(c)) is **mandatory for every election whose effective date is on or after 2026-10-01** (418.24(b)(6), (c), (d) as amended by CMS-1851-F; research: [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1). It is a **condition for payment**, not for admission. Code: `apps/backend/src/modules/06-admission/election-addendum/` (service, store, due-date math, render payload, compliance reads) and `state-machines/election-addendum.ts`.
+
+**Table `election_addendum`** (migration `0381_m6_election_addendum.sql`; Drizzle `packages/db/src/schema/admission/election-addenda.ts`). Three tenancy columns, FORCEd RLS on `app.org_id`, write-audit trigger, no DELETE grant (it is part of the medical record). One row per **version** per admission (`UNIQUE (admission_id, version_number)`, at most one `draft` per admission). Columns: admission + election-statement refs; `version_number`; `trigger` (`initial` | `poc_change`) + `trigger_cause` (a non-PHI tag such as `election`, `m7.problem.added`, `manual`) + `triggered_at`; `status`; the (c)(2)–(4) snapshot (`hospice_name`, `patient_name`, `medical_record_number`, `terminal_diagnosis` / `related_diagnoses` jsonb); `items` jsonb (each `{category: condition|item|service|drug, description, reasonNotCovered, source?, sourceId?}`); `no_non_covered_items` (the documented "everything is related" determination — CHECK-exclusive with a non-empty list); `clinical_explanation`, `guideline_references`; `due_at`; `furnished_at` + `furnish_method` (`paper` | `electronic_with_paper_copy` — a written copy is always produced) + `furnished_by_user_id`; `signed_at`, `signer_kind` (`beneficiary` | `representative`), `representative_name` / `_relationship`; `refused_at` + `refusal_reason`; `signature_not_required_reason` (`death` | `revocation` | `discharge`) + `_note` + `_at`; `document_id` (M22 back-ref); `superseded_by_id` / `superseded_at`. CHECKs enforce the furnished / signed / refused / exemption shapes. The audit denylist drops every PHI or free-text column (mirrored in `M6_AUDIT_DENYLIST`). Enum values in `0380_election_addendum_enum_values.sql` (the two window kinds + the `election_addendum` document aggregate type, in their own migration because PG cannot use a value added in the same transaction).
+
+**State machine** (`ELECTION_ADDENDUM_GRAPH`):
+
+| From | Event | To | Effect |
+|---|---|---|---|
+| `draft` | `updateItems` | `draft` | items/diagnoses/explanation edited (items need description + reason; list XOR "none") |
+| `draft` | `furnish` | `furnished` | refuses with `ADDENDUM_INCOMPLETE` unless hospice name, patient name, MRN, a terminal diagnosis, items-or-"none" and (when items exist) the clinical explanation are present; closes the version's window; supersedes earlier on-file versions; emits `m6.election_addendum.furnished` (M22 renders) |
+| `furnished` | `recordSignature` | `signed` | representative signature must name the representative (`ADDENDUM_REPRESENTATIVE_REQUIRED`); emits `.acknowledged` |
+| `furnished` | `recordRefusal` | `refused` | reason ≥ 5 chars (`ADDENDUM_REFUSAL_REASON_REQUIRED`), printed on the addendum; emits `.acknowledged` |
+| `furnished` | `recordSignatureNotRequired` | `signature_not_required` | (d)(4); emits `.acknowledged` |
+| `draft` | `markNotRequired` | `not_required` | (d)(3); closes the windows; emits `.not_required` |
+
+A furnished version is never edited: a later plan-of-care change creates the next version, copied from the latest and re-filled from the sources.
+
+**Clocks** (`election-addendum/due-dates.ts`, org timezone, inclusive of the whole due day):
+
+| Window kind | Opened | Due | Closed |
+|---|---|---|---|
+| `election_addendum_initial` | in the activation transaction, for a period-1 election effective ≥ 2026-10-01 (a transfer-in's inherited period is not a new election and is skipped) — draft v1 is created with it | election effective date + 5 calendar days | `furnish` of the initial version; or `not_required:<reason>` on death/revocation/discharge |
+| `election_addendum_update` | `openAddendumUpdateWindow` creating a `poc_change` version | org-local date of the plan-of-care change + 3 calendar days; a second change while the window is open keeps the earlier due date | `furnish` of that version; or `not_required:<reason>` |
+
+The `admission.window_alert` worker (every 15 min) moves a past-due addendum window to `overdue`/`alert` and emits `m6.compliance.window.overdue` **and** `m6.election_addendum.overdue` (once per window).
+
+**The generic plan-of-care entry point.** `ElectionAddendumService.openAddendumUpdateWindow(orgId, admissionId, triggeredAt, cause, { requireDiff?, actorUserId? })` is the single (d)(2) path every relatedness change calls. Outcomes: `initial_opened` (no addendum yet — opens the initial one, still clocked from the effective date), `draft_refreshed` (a draft in progress absorbs the change), `update_opened` (new version + 3-day window), `unchanged` (with `requireDiff`, the sources' determinations equal the latest version's), `not_applicable`, `not_in_care`, `not_found`. Today's caller is the M6 consumer `m6.election-addendum-care-plan` (`outbox-consumers/m7-care-plan-addendum.ts`): `m7.problem.added` / `.resolved` with `kind='unrelated'`, `m7.problem.updated` when `kind` or `previousKind` is `unrelated`, and `m7.care_plan.version_signed` (with `requireDiff`). The M7 problem payloads gained optional `admissionId`, `kind`, `previousKind`; an event without `admissionId` is skipped (the next signed version catches it by diff). Medication and DME relatedness changes (M12 / M21) will call the same function.
+
+**Pre-fill sources** (read before the write transaction; an unavailable source leaves the field as it is): `NonCoveredItemsReader` (`packages/types/src/hospice-coverage.ts`) merged by `composeNonCoveredItemsReaders` — today M7's `createUnrelatedProblemItemsReader` (active, non-Part-2 `unrelated` problems as `condition` lines); `AddendumDiagnosesReader` (M7's active terminal/related problems); patient name + MRN through M5's `PatientReader`; the hospice name from the provider entity's legal name. Part 2 (`sud_related`) problems are never pre-filled — the addendum is shared with non-hospice providers. Merging keeps clinician-typed lines and clinician edits to source-backed lines, drops lines whose source no longer reports them, and appends new ones.
+
+**Leaving care** (418.24(d)(3)/(4)). `dischargeAdmissionTx` (discharge, for-cause cosign, revocation, transfer-out) calls `settleAddendumOnLeavingCareInTx`: every unfurnished draft becomes `not_required`, every furnished-but-unacknowledged version `signature_not_required`, both with the reason (`death` / `revocation` / `discharge`; transfer-out maps to `discharge`) and a fixed note recorded on the addendum, and the addendum windows close. Settled versions are untouched.
+
+**Activation checklist.** `evaluateAdmissionReadiness` adds an `election_addendum` item that is **always `blocking: false`**: `not_applicable` for elections before 2026-10-01; `pending` before activation; after activation `action_required` / `overdue` (action `COMPLETE_ELECTION_ADDENDUM`), `awaiting_signature` once furnished, `complete` once signed / refused / exempt.
+
+**Billing.** `electionAddendumComplianceForOrg(db, orgId, admissionId)` returns the PHI-free `ElectionAddendumComplianceSnapshot` M23 claim assembly reads for rule `election_addendum_signed` (M23 §4.5).
+
 -----
+
 ## 3. Drizzle Schema
 
 ### 3.1 Package Layout
@@ -1263,7 +1307,7 @@ The `AdmissionEventApplier` composes existing tables (`discharge_event`, `compli
 
 ### 3.5 Owned Tables Update for `module-manifest.ts`
 
-The manifest's M6 entry now carries the twelve owned tables (this patch was applied — note `election_addendum` is mandated by ADR-0015 D1 but is in neither the manifest nor the schema yet). At lock time it was:
+The manifest's M6 entry now carries the owned tables (this patch was applied). `election_addendum` (ADR-0015 D1) joined the manifest (`.ts` and `.cjs`) and the schema in v0.8 (`packages/db/src/schema/admission/election-addenda.ts`, migration `0381_m6_election_addendum.sql`). At lock time it was:
 
 ```typescript
 { id: 6, name: "Admission, Election & Certification",
@@ -1858,6 +1902,14 @@ Shared error envelope is M1's `{ code, message, details? }`. Every route returns
 | 44 | GET | `/api/v1/compliance-windows` | `compliance.read` | `compliance.scope` | global queue: filter open/overdue/closed |
 | 45 | POST | `/api/v1/compliance-windows/:id/close` | `compliance.close` | `admission.scope` | manual close with `closed_via=manual`; rarely used (most close via outbox) |
 | 46 | POST | `/api/v1/compliance-windows/:id/override` | `compliance.override` | `compliance.window_override` | exception with mandatory reason |
+| **Election Statement Addendum (FY2027, v0.8; §2.6)** | | | | | |
+| 47 | GET | `/api/v1/admissions/:id/election-addendum` | `election_addendum.read` | `admission.scope` | current version, history, open 418.24(d) windows |
+| 48 | POST | `/api/v1/admissions/:id/election-addendum` | `election_addendum.write` | `admission.scope` | draft v1 / refresh the draft / start a clinician-initiated update (`ADDENDUM_NOT_APPLICABLE` 409 for elections before 2026-10-01 or a patient not in care) |
+| 49 | PATCH | `/api/v1/admissions/:id/election-addendum/:addendumId` | `election_addendum.write` | `admission.scope` | edit a draft (items, diagnoses, explanation, references, identity snapshot); `ifVersion` |
+| 50 | POST | `/api/v1/admissions/:id/election-addendum/:addendumId/furnish` | `election_addendum.write` | `admission.scope` | `method` paper / electronic_with_paper_copy, optional back-dated `furnishedAt`; renders the PDF |
+| 51 | POST | `/api/v1/admissions/:id/election-addendum/:addendumId/signature` | `election_addendum.acknowledge` | `admission.scope` | beneficiary or representative (name required) |
+| 52 | POST | `/api/v1/admissions/:id/election-addendum/:addendumId/refusal` | `election_addendum.acknowledge` | `admission.scope` | reason required (≥ 5 chars) |
+| 53 | POST | `/api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required` | `election_addendum.acknowledge` | `admission.scope` | `death` / `revocation` / `discharge` + note; a draft becomes `not_required`, a furnished version `signature_not_required` |
 
 > Reader/seam routes (§4.7) are read-only views exposed for downstream modules; they are **not** listed in §4.1 because they are not called directly by clients — only by other modules via internal HTTP within the cluster or, where preferable, via direct repository-pattern import (the architecture's §11 import-rules permits read-only schema reads via published reader interfaces). The `AdmissionEventApplier` (§4.8) is likewise not a client-facing route — it is the outbox subscriber for `m29.hl7_inbound_proposal.accepted`.
 
@@ -2240,6 +2292,11 @@ Every state change in M6 emits exactly one event row into the M1 outbox table in
 | `m6.compliance.window.overridden` | route 46 | `complianceWindowId, reason` | M30 |
 | `m6.bereavement.eligible` | derived from `m6.discharge.death` post-rule check | `admissionId, patientId, eligibleAt` | M16 |
 | `m6.applier.refused` | `AdmissionEventApplier` on contract violation (D13) | `proposalId, organizationId, reason, refusedAt` | M30 (external-event-applier health) |
+| `m6.election_addendum.drafted` | activation (v1) / `openAddendumUpdateWindow` | `electionAddendumId, admissionId, versionNumber, trigger, dueAt` | — (record-only) |
+| `m6.election_addendum.furnished` | route 50 | `electionAddendumId, admissionId, patientId, versionNumber, furnishedAt, furnishMethod, renderPayload` | M22 (renders `election_addendum`) |
+| `m6.election_addendum.acknowledged` | routes 51–53 | `electionAddendumId, admissionId, patientId, versionNumber, outcome, acknowledgedAt, renderPayload` | M22 (appends a version of the same document) |
+| `m6.election_addendum.not_required` | route 53 on a draft / discharge settle | `electionAddendumId, admissionId, versionNumber, reason` | — (record-only) |
+| `m6.election_addendum.overdue` | `admission.window_alert` worker | `complianceWindowId, admissionId, patientId, electionAddendumId, windowKind, dueAt` | M36 (care team + compliance alerts) |
 
 > **Schema envelope.** Every event conforms to M1's outbox envelope: `{ id, occurredAt, tenantId, organizationId, eventType, aggregateType, aggregateId, payload, traceId }`. Subscribers register on `eventType` prefix. The envelope is not duplicated above; only `payload` keys are listed.
 
@@ -2273,6 +2330,9 @@ M6 contributes the following keys to M3's permission catalog (M3 §3.3). They ar
 | `election.read` | clinical_*, billing_*, compliance_officer | routes 16, 19 |
 | `election.sign` | clinical_admin, intake_supervisor *(patient signature is recorded via typed sig; the **permission** is on the staff member capturing it — D-AUTHZ-01 below)* | route 17 |
 | `election.void` | clinical_admin, compliance_officer | route 18 |
+| `election_addendum.read` | every role holding `election.read` (migration 0382 grant) | route 47 |
+| `election_addendum.write` | every role holding `election.draft` (migration 0382 grant) | routes 48–50 |
+| `election_addendum.acknowledge` | every role holding `election.sign` (migration 0382 grant) | routes 51–53 |
 | `cti.draft` | medical_director, hospice_physician, np | route 22 |
 | `cti.read` | clinical_*, billing_*, compliance_officer | route 23 |
 | `cti.sign_hospice_md` | medical_director, hospice_physician | route 24 |
@@ -3291,6 +3351,7 @@ For each CoP/regulation listed in §1.3, the table below points to the workflow(
 |---|---|
 | 42 CFR 418.22 (CTI content + timing) | W-AD-01, W-AD-03, W-CTI-01, W-CTI-02, W-CTI-03, W-CTI-04 + late-cert path |
 | 42 CFR 418.24 (Election statement) | W-AD-01, W-AD-02 |
+| 42 CFR 418.24(b)(6), (c), (d) (FY2027 election statement addendum) | W-EA-01 … W-EA-09 (§7.10) |
 | 42 CFR 418.25 (F2F requirement) | W-F2F-01, W-F2F-02, W-F2F-03, W-F2F-04, W-OVR-01 |
 | 42 CFR 418.26 (Discharge) | W-DC-01, W-DC-02, W-M6-31, W-M6-34 |
 | 42 CFR 418.28 (Revocation) | (covered by Revocation Workflow §5.2.14 acceptance — explicit story added below) |
@@ -3300,6 +3361,20 @@ For each CoP/regulation listed in §1.3, the table below points to the workflow(
 | HIPAA §164.502(b) | All routes enforce minimum necessary via RBAC + ABAC (§6) + RLS |
 | HIPAA §164.528 | M4 owns disclosure accounting; M6 only contributes events |
 | 42 CFR Part 2 | M6 does not directly handle SUD records; M5 owns the consent flag; integration test asserts blocked routes when consent absent (§9.4) |
+
+### 7.10 Election Statement Addendum (FY2027, v0.8)
+
+| ID | Given / When | Then |
+|---|---|---|
+| **W-EA-01** | An admission whose period-1 election is effective 2026-10-03 is activated | In the same transaction: draft v1 (`trigger=initial`) and an `election_addendum_initial` window due at the end of 2026-10-08 (org time); `m6.election_addendum.drafted` + `m6.compliance.window.opened` |
+| **W-EA-02** | The election is effective 2026-09-30 | No addendum and no window; the activation checklist item is `not_applicable`; rule `election_addendum_signed` passes as out of scope |
+| **W-EA-03** | The draft lacks the MRN, a terminal diagnosis, or both items and the "none" determination; clinician furnishes | 422 `ADDENDUM_INCOMPLETE` naming the missing (c) elements; nothing changes |
+| **W-EA-04** | A complete draft is furnished on paper | `furnished`, window closed (`closed_via=furnished`), M22 renders the PDF with every (c)(1)–(10) element and stamps `document_id` |
+| **W-EA-05** | The beneficiary refuses to sign | Refusal requires a reason (422 without one); `refused`; M22 appends a version printing the reason on the addendum |
+| **W-EA-06** | After a furnished addendum, a clinician adds an `unrelated` problem (or signs a care-plan version that changes the unrelated set) | Version n+1 (`poc_change`) copied from version n with the new line pre-filled; `election_addendum_update` window due change date + 3 calendar days; a second change before furnish refreshes the same draft and never extends the due date |
+| **W-EA-07** | The patient dies before the addendum is furnished (or after furnish, before signature) | In the discharge transaction the draft becomes `not_required` (or the version `signature_not_required`) with reason `death` and a note on the addendum; windows close; no overdue alert follows |
+| **W-EA-08** | A window passes its due instant unfurnished | Next `window_alert` tick: window `overdue`/`alert`, `m6.election_addendum.overdue` once; M36 raises one care-team alert and one compliance/clinical-lead alert (idempotent on redelivery) |
+| **W-EA-09** | A user of another organization requests the addendum routes | 404 (RLS + `admission.scope` non-leak); a live suite runs the cross-tenant check as `wardenx_app` |
 
 -----
 ## 8. Audit & Observability

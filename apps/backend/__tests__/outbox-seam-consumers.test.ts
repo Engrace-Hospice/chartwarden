@@ -1,3 +1,12 @@
+import { Type } from "@sinclair/typebox";
+import { describe, expect, it } from "vitest";
+import { MODULES } from "../../../architecture/module-manifest";
+import {
+  type OutboxConsumerBinding,
+  buildOutboxRoutingPlan,
+} from "../src/bootstrap/outbox-dispatcher";
+import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
 // apps/backend/__tests__/outbox-seam-consumers.test.ts — F-043 / #103, the `seamConsumers` split.
 //
 // The catalog had ONE word for TWO delivery mechanisms. 623 (module, event) pairs used
@@ -12,15 +21,7 @@
 // minutes for the life of the deployment.
 //
 // These cases pin the distinction the fix rests on: a seam consumer is INERT for routing.
-import { Type } from "@sinclair/typebox";
-import { describe, expect, it } from "vitest";
-import { MODULES } from "../../../architecture/module-manifest";
-import {
-  type OutboxConsumerBinding,
-  buildOutboxRoutingPlan,
-} from "../src/bootstrap/outbox-dispatcher";
-import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
-import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
+import { buildM36AdmissionComplianceAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36ClinicalAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/clinical-alerts";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { M39_OUTBOX_EVENTS } from "../src/modules/39-consent/events-by-m39";
@@ -124,9 +125,11 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
   /** The one exception: M36's clinical-alert consumer BINDS a handful of events live from the outbox
    *  (`m36.clinical-visit-encounter-alerts`). For exactly those, M36 is a real outbox consumer and
    *  belongs in `declaredConsumers` — rule 3 of `arch:outbox-bindings` refuses the binding otherwise. */
-  const M36_BOUND = new Set(
-    buildM36ClinicalAlertConsumer({ emit: async () => {} } as never).eventTypes,
-  );
+  const M36_BOUND = new Set([
+    ...buildM36ClinicalAlertConsumer({ emit: async () => {} } as never).eventTypes,
+    // FY2027 — the election-addendum overdue page (`m36.admission-compliance-alerts`).
+    ...buildM36AdmissionComplianceAlertConsumer({ emit: async () => {} } as never).eventTypes,
+  ]);
 
   it("no event in these contributions declares a seam module as an outbox consumer", () => {
     const offenders: string[] = [];

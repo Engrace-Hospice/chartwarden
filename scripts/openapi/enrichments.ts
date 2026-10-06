@@ -102,6 +102,7 @@ import {
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
+  ComplianceWindowPageResponseSchema as M6ComplianceWindowPageResponseSchema,
   PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
   ReferralListResponseSchema as M6ReferralListResponseSchema,
   SummaryItemsResponseSchema as M6SummaryItemsResponseSchema,
@@ -3657,7 +3658,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6ElectionAddendumOverviewSchema,
   },
   "POST /api/v1/admissions/:id/election-addendum": {
-    summary: "Draft the addendum (initial), refresh the draft, or start an update after a plan-of-care change",
+    summary:
+      "Draft the addendum (initial), refresh the draft, or start an update after a plan-of-care change",
     body: M6ElectionAddendumDraftSchema,
     response: M6ElectionAddendumOverviewSchema,
   },
@@ -3682,7 +3684,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6ElectionAddendumViewSchema,
   },
   "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required": {
-    summary: "Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4))",
+    summary:
+      "Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4))",
     body: M6ElectionAddendumSignatureNotRequiredSchema,
     response: M6ElectionAddendumViewSchema,
   },
@@ -3832,9 +3835,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryItemsResponseSchema,
   },
   "GET /api/v1/compliance-windows": {
-    summary: "Org-wide compliance-window worklist (cursor-paginated)",
+    summary:
+      "Org-wide compliance-window worklist (cursor-paginated; rows carry the window kind and due instant)",
     query: M6ComplianceListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6ComplianceWindowPageResponseSchema,
   },
   "POST /api/v1/compliance-windows/:id/close": {
     summary: "Close a compliance window",
