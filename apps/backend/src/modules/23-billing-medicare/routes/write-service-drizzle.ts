@@ -429,7 +429,7 @@ export function buildDrizzleM23WriteService(
           }
         : null,
       pricing: {
-        hipps: hipps ? hippsPricingView(hipps) : null,
+        hipps: hipps ? hippsPricingView(hipps, { admissionId: claim.admissionId }) : null,
         sia: sia
           ? {
               windowStart: sia.windowStart,

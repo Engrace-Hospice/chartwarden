@@ -573,5 +573,15 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
     expect(carry.chainDays).toBe(68);
     expect(carry.priorDays).toBe(60);
     expect(carry.highRateDaysRemaining).toBe(0);
+    // M6's own fallback count (no stays list, no HETS) counts the same sending span by the same rule.
+    expect(range?.admission.rhcPriorHospiceDays).toBe(60);
+    const fallbackOnly = resolveRhcCarryOver({
+      electionDate: TRANSFER_DATE,
+      priorStays: undefined,
+      fallbackPriorDays: range?.admission.rhcPriorHospiceDays ?? 0,
+      check: null,
+      now: new Date(`${TRANSFER_DATE}T12:00:00.000Z`),
+    });
+    expect(fallbackOnly.priorDays).toBe(carry.priorDays);
   });
 });

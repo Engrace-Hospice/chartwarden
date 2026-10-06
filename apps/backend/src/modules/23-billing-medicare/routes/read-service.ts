@@ -20,6 +20,10 @@ import type {
   TypeOfBill,
 } from "@wardenx/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
+import {
+  type StoredRhcCarryOverContext,
+  normalizeStoredRhcCarryOver,
+} from "../services/rhc-carry-over-stored";
 import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
@@ -117,19 +121,24 @@ export interface ClaimDischargeCodesView {
   readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
 }
 
-/** Project a persisted `hipps_calculation` row onto the claim detail's `pricing.hipps` (read + write paths). */
-export function hippsPricingView(row: {
-  readonly hippsCode: string;
-  readonly hippsRateCents: number;
-  readonly wageIndexCcn: string;
-  readonly wageIndexFiscalYear: number;
-  readonly wageIndexFactor: string;
-  readonly segments: unknown;
-  readonly calculatedAt: Date;
-  readonly rhcDays1to60: number;
-  readonly rhcDays61Plus: number;
-  readonly rhcCarryOver?: unknown;
-}): NonNullable<ClaimPricingView["hipps"]> {
+/** Project a persisted `hipps_calculation` row onto the claim detail's `pricing.hipps` (read + write paths). The
+ *  stored carry-over is an append-only snapshot: older span labels are mapped to today's at read time
+ *  (`normalizeStoredRhcCarryOver`), never rewritten. */
+export function hippsPricingView(
+  row: {
+    readonly hippsCode: string;
+    readonly hippsRateCents: number;
+    readonly wageIndexCcn: string;
+    readonly wageIndexFiscalYear: number;
+    readonly wageIndexFactor: string;
+    readonly segments: unknown;
+    readonly calculatedAt: Date;
+    readonly rhcDays1to60: number;
+    readonly rhcDays61Plus: number;
+    readonly rhcCarryOver?: unknown;
+  },
+  claim: StoredRhcCarryOverContext,
+): NonNullable<ClaimPricingView["hipps"]> {
   return {
     hippsCode: row.hippsCode,
     hippsRateCents: row.hippsRateCents,
@@ -140,7 +149,7 @@ export function hippsPricingView(row: {
     calculatedAt: row.calculatedAt.toISOString(),
     rhcDays1to60: row.rhcDays1to60,
     rhcDays61Plus: row.rhcDays61Plus,
-    rhcCarryOver: (row.rhcCarryOver as RhcCarryOverView | null | undefined) ?? null,
+    rhcCarryOver: normalizeStoredRhcCarryOver(row.rhcCarryOver, claim),
   };
 }
 

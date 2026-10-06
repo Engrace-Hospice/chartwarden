@@ -34,6 +34,14 @@
 //     Wed ⇒ due Mon = election + 5) assessments, and a new HOPE Admission record (A0220 = the re-election date).
 //   • two-tier RHC: readmitted within 60 days of a discharge, the prior hospice days carry over for the day 1–60
 //     high rate; after a longer gap the day count resets (Claims Processing Manual ch. 11, two-tier RHC).
+import {
+  RHC_CARRY_OVER_MAX_GAP_DAYS,
+  RHC_HIGH_TIER_LAST_DAY,
+  clipToBeforeElection,
+  isoDateToEpochDay,
+  mergeCarryBlocks,
+  walkCarryChain,
+} from "@wardenx/shared/rhc";
 import type { LocalDate } from "@wardenx/types";
 import {
   COMPREHENSIVE_ASSESSMENT_DAYS,
@@ -52,7 +60,6 @@ import {
   F2F_EXCEPTION_GRACE_DAYS,
   F2F_PRIOR_WINDOW,
   TEXT_MINIMUMS,
-  daysBetween,
 } from "../state-machines/validation";
 
 /** How the first benefit-period number of a new admission was established. */
@@ -71,9 +78,9 @@ export const MAX_BENEFIT_PERIOD_SEQUENCE = 200;
 /** MBPM ch. 9 §20.1(5)(d) — the post-admission grace for a period-3+ NEW admission's F2F (and the death rule). */
 export const F2F_EXCEPTION_DAYS_AFTER_ADMISSION = F2F_EXCEPTION_GRACE_DAYS;
 /** Claims Processing Manual ch. 11 — a readmission within this many days continues the RHC day count. */
-export const RHC_CARRYOVER_GAP_DAYS = 60;
+export const RHC_CARRYOVER_GAP_DAYS = RHC_CARRY_OVER_MAX_GAP_DAYS;
 /** The RHC high rate covers days 1–60 of the (carried) day count. */
-export const RHC_HIGH_RATE_DAYS = 60;
+export const RHC_HIGH_RATE_DAYS = RHC_HIGH_TIER_LAST_DAY;
 /** 42 CFR 418.24 / Claims Processing Manual ch. 11 §20.1.1 — NOE due 5 calendar days after the admission date
  *  (admission day is NOT day 1: admitted 10/10 ⇒ due 10/15). Matches M23's NOE `window_target_at` (+5). */
 export const NOE_CALENDAR_DAYS = 5;
@@ -312,7 +319,7 @@ export interface RhcCarryOver {
   /** True when readmitted within {@link RHC_CARRYOVER_GAP_DAYS} days of the latest discharge. */
   readonly applies: boolean;
   readonly daysSinceDischarge: number | null;
-  /** Hospice days that carry into this admission's RHC day count (0 when the count resets). */
+  /** Hospice days that carry into this admission's RHC day count, capped at 60 (0 when the count resets). */
   readonly priorHospiceDays: number;
   /** The first RHC day-count number this admission starts at (1 when the count resets). */
   readonly startsAtDay: number;
@@ -320,50 +327,69 @@ export interface RhcCarryOver {
   readonly highRateDaysRemaining: number;
 }
 
-/**
- * Hospice days of one stay, BOTH ends inclusive: the discharge / revocation / transfer day is a hospice day
- * (Claims Processing Manual ch. 11 §30.2 example: elected 01/10, revoked 01/30 "accounts for 21 days").
- */
-function episodeDays(p: PriorEpisodeFacts): number {
-  if (!p.startedOn || !p.endedOn) return 0;
-  return Math.max(0, daysBetween(p.startedOn, p.endedOn) + 1);
+/** One span of hospice days the count reads: an earlier stay with us, or a transfer-in's sending-hospice span
+ *  (`rhcPriorStayFacts`, seams/prior-episodes.ts). Both ends are hospice days (ch. 11 §30.2 example: elected
+ *  01/10, revoked 01/30 "accounts for 21 days"). */
+export interface RhcCountableStay {
+  readonly startedOn: LocalDate | null;
+  readonly endedOn: LocalDate | null;
 }
 
 /**
- * The RHC day count a readmission on `readmitOn` continues. Walks back from the latest stay while each gap is
- * ≤ 60 days, summing the stays' days; a longer gap (or none at all) resets the count to day 1.
+ * The RHC day count an admission starting on `readmitOn` continues — the SAME rule as M23's `computeRhcCarryOver`
+ * (both run `@wardenx/shared/rhc`): each span is clipped to the day before `readmitOn` (a transfer's hand-off day
+ * is day 1 of the new stay), overlapping / next-day spans merge so a shared day counts once, and the walk back
+ * continues while each gap is ≤ 60 days, stopping at the 60-day high tier (prior days are capped at 60). Pass
+ * `rhcPriorStayFacts(...)` so a transfer-in's sending-hospice days count. Unlike M23 (which assumes an open span
+ * ran until the next known care), a span with no recorded start or end is skipped: this count only informs the
+ * readmission screen and M23's last-resort fallback, and M23 prices from the stays list whenever it has one.
  */
 export function rhcCarryOver(
-  prior: readonly PriorEpisodeFacts[],
+  prior: readonly RhcCountableStay[],
   readmitOn: LocalDate,
 ): RhcCarryOver {
-  const stays = prior
-    // Only stays that ended on or before this admission (a claim on an older stay ignores later ones).
-    .filter((p) => p.endedOn !== null && p.startedOn !== null && p.endedOn <= readmitOn)
-    .sort((a, b) => (b.endedOn ?? "").localeCompare(a.endedOn ?? ""));
-  const latest = stays[0];
-  const reset: RhcCarryOver = {
-    applies: false,
-    daysSinceDischarge: latest?.endedOn ? daysBetween(latest.endedOn, readmitOn) : null,
-    priorHospiceDays: 0,
-    startsAtDay: 1,
-    highRateDaysRemaining: RHC_HIGH_RATE_DAYS,
-  };
-  if (!latest?.endedOn) return reset;
-  const gap = daysBetween(latest.endedOn, readmitOn);
-  if (gap < 0 || gap > RHC_CARRYOVER_GAP_DAYS) return reset;
-  let days = 0;
-  let nextStart = readmitOn;
-  for (const stay of stays) {
-    if (!stay.endedOn || daysBetween(stay.endedOn, nextStart) > RHC_CARRYOVER_GAP_DAYS) break;
-    days += episodeDays(stay);
-    nextStart = stay.startedOn ?? nextStart;
+  const electionDay = isoDateToEpochDay(readmitOn);
+  const spans = electionDay === null ? [] : countablePriorSpans(prior, electionDay);
+  // Unclipped: a stay ending ON the new start day (a same-day readmission / the transfer day) is 0 days ago.
+  const lastCareDay = spans.reduce<number | null>((last, s) => {
+    const lastDay = electionDay === null ? s.end : Math.min(s.end, electionDay);
+    return last === null ? lastDay : Math.max(last, lastDay);
+  }, null);
+  const daysSinceDischarge =
+    electionDay === null || lastCareDay === null ? null : electionDay - lastCareDay;
+  const walked =
+    electionDay === null
+      ? null
+      : walkCarryChain(mergeCarryBlocks(clipToBeforeElection(spans, electionDay)), electionDay);
+  if (!walked || walked.blocks.length === 0) {
+    return {
+      applies: false,
+      daysSinceDischarge,
+      priorHospiceDays: 0,
+      startsAtDay: 1,
+      highRateDaysRemaining: RHC_HIGH_RATE_DAYS,
+    };
   }
+  const days = Math.min(walked.totalDays, RHC_HIGH_RATE_DAYS);
   return {
     applies: true,
-    daysSinceDischarge: gap,
+    daysSinceDischarge,
     priorHospiceDays: days,
     startsAtDay: days + 1,
-    highRateDaysRemaining: Math.max(0, RHC_HIGH_RATE_DAYS - days),
+    highRateDaysRemaining: RHC_HIGH_RATE_DAYS - days,
   };
+}
+
+/** The spans with a readable start and end that began before the new start day, as epoch days. */
+function countablePriorSpans(
+  prior: readonly RhcCountableStay[],
+  electionDay: number,
+): { start: number; end: number }[] {
+  return prior.flatMap((p) => {
+    const start = isoDateToEpochDay(p.startedOn);
+    const end = isoDateToEpochDay(p.endedOn);
+    return start !== null && end !== null && end >= start && start < electionDay
+      ? [{ start, end }]
+      : [];
+  });
 }

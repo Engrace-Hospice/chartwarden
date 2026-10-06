@@ -106,6 +106,53 @@ describe("rhcCarryOverModel", () => {
   });
 });
 
+describe("rhcCarryOverModel — rows stored under the older span vocabulary", () => {
+  it("labels an old internal 'stay' that carries a hospice NPI as the sending hospice (our stays never carry one)", () => {
+    const m = rhcCarryOverModel(
+      carry({
+        chain: [
+          {
+            source: "internal",
+            kind: "stay",
+            start: "2026-01-01",
+            end: "2026-02-09",
+            endAssumed: false,
+            countedDays: 40,
+            hospiceNpi: "1234567893",
+            ref: "adm-1",
+          },
+        ],
+      }),
+      fmt,
+    );
+    expect(m.rows[0]?.source).toBe("Sending hospice (transfer-in record, NPI 1234567893)");
+  });
+
+  it("still shows a carry-over whose basis or span kind it does not know", () => {
+    const m = rhcCarryOverModel(
+      carry({
+        basis: "legacy_basis" as RhcCarryOver["basis"],
+        chain: [
+          {
+            source: "internal",
+            kind: "own_stay" as RhcCarryOver["chain"][number]["kind"],
+            start: "2026-01-01",
+            end: "2026-01-21",
+            endAssumed: false,
+            countedDays: 21,
+            hospiceNpi: null,
+            ref: "adm-1",
+          },
+        ],
+      }),
+      fmt,
+    );
+    expect(m.basisLabel).toBe("Basis not recorded");
+    expect(m.basisTone).toBe("neutral");
+    expect(m.rows[0]?.source).toBe("Our stay");
+  });
+});
+
 describe("RhcCarryOverSummary", () => {
   it("renders the basis pill, the counted stays and the warnings", () => {
     render(
