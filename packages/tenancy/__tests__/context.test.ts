@@ -108,6 +108,8 @@ describe("withOrgContext (M1-T06 §3.14)", () => {
   });
 });
 
+const REQ_USER = "7f0c1d2e-3a4b-4c5d-8e6f-1a2b3c4d5e6f";
+
 describe("withOrgContext actor defaulting (GAP-111)", () => {
   const actorParam = async (
     ctx: { organizationId: string; userId: string; systemActor?: boolean },
@@ -123,9 +125,22 @@ describe("withOrgContext actor defaulting (GAP-111)", () => {
     expect(
       await actorParam(
         { organizationId: "org-1", userId: "" },
-        { organizationId: "org-1", userId: "user-req" },
+        { organizationId: "org-1", userId: REQ_USER },
       ),
-    ).toEqual(["user-req"]);
+    ).toEqual([REQ_USER]);
+  });
+
+  it("stays empty when the ambient actor is not a uuid (the internal 'system' principal)", async () => {
+    // app.user_id is cast to uuid by the write-audit trigger: inheriting "system" would 500 every write
+    // on a machine-credential request instead of recording the NULL (system) actor it recorded before.
+    for (const nonUuid of ["system", "user-req", "not-a-uuid"]) {
+      expect(
+        await actorParam(
+          { organizationId: "org-1", userId: "" },
+          { organizationId: "org-1", userId: nonUuid },
+        ),
+      ).toEqual([""]);
+    }
   });
 
   it("keeps an explicit userId over the ambient actor", async () => {

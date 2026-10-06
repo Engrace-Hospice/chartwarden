@@ -56,16 +56,18 @@ export interface UserContext {
  * The actor recorded as `app.user_id`. An explicit `userId` always wins. An empty one (the
  * legacy route-service convention) inherits the ambient request actor so the write-audit trigger
  * does not record a NULL actor (GAP-111) — but only when that request is authenticated and in
- * the SAME org, and never when the caller opts out with `systemActor`. Outside a request
+ * the SAME org with a uuid user id, and never when the caller opts out with `systemActor`. Outside a request
  * (workers, relay ticks) there is no ambient actor, so it stays "" (a deliberate system actor).
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function resolveActorUserId(ctx: OrgContext): string {
   if (ctx.userId !== "" || ctx.systemActor === true) return ctx.userId;
   const ambient = requestStore.getStore();
-  if (!ambient || ambient.userId === "" || ambient.organizationId !== ctx.organizationId) {
-    return "";
-  }
-  return ambient.userId;
+  if (!ambient || ambient.organizationId !== ctx.organizationId) return "";
+  // `app.user_id` is cast to uuid by the write-audit trigger, so only a real user id may be inherited: the
+  // machine-credential principal ("system") and any other non-uuid actor keep recording the NULL actor.
+  return UUID_RE.test(ambient.userId) ? ambient.userId : "";
 }
 
 /**
