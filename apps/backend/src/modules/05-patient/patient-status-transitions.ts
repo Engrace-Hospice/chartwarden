@@ -4,6 +4,7 @@
 //   prospective --> active : admission approved (M6)
 //   discharged  --> active : re-admission (new election period; M6)
 //   active      --> deceased, on_hold --> deceased : death recorded
+//   active      --> discharged, on_hold --> discharged : revoke / discharge for cause / transfer (M6)
 //
 // Nothing applied the first two edges until now, so every patient admitted through the app stayed
 // `prospective` for its whole stay and the death cascade (which only knew the `→ deceased` edges)
@@ -39,4 +40,31 @@ const DEATH_RECORDABLE_FROM: ReadonlySet<string> = new Set([
 export function deathTransitionFrom(status: string): DeathTransition {
   if (status === "deceased") return "already_deceased";
   return DEATH_RECORDABLE_FROM.has(status) ? "record" : "reject";
+}
+
+/**
+ * How an M6 LIVE discharge (`m6.admission.discharged` with any reason but `death`: revocation, transfer
+ * out, moved out of area, no longer terminal, for cause after cosign, other) applies to the patient row.
+ *
+ * `active`/`on_hold` are the §2.4.1 `→ discharged` edges. `discharged` is a redelivery (no-op). Every
+ * other status has no §2.4.1 discharge edge and is left alone without an error: `deceased`/`merged` are
+ * terminal for this chart, and a `prospective` row never applied its activation — re-admission
+ * (`m6.admission.activated`) is the edge that moves it, not this one.
+ */
+export type LiveDischargeTransition = "discharge" | "already_discharged" | "skip";
+
+const DISCHARGEABLE_FROM: ReadonlySet<string> = new Set(["active", "on_hold"]);
+
+export function liveDischargeTransitionFrom(status: string): LiveDischargeTransition {
+  if (status === "discharged") return "already_discharged";
+  return DISCHARGEABLE_FROM.has(status) ? "discharge" : "skip";
+}
+
+/**
+ * Whether an `m6.admission.discharged` `reason` is a death. M6 stamps `death` for every death discharge
+ * (the HTTP discharge route and the M29 external-death accept alike); the `→ deceased` edge belongs to the
+ * `m6.discharge.death` cascade (`deceased-db.ts`), never to the live-discharge consumer.
+ */
+export function isDeathDischargeReason(reason: string): boolean {
+  return reason === "death";
 }

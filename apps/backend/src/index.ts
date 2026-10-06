@@ -209,6 +209,7 @@ import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction
 import {
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+  buildM5AdmissionDischargedConsumer,
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
@@ -6829,6 +6830,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
           buildM5AdmissionSitingConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // §2.4.1 — a LIVE discharge (revocation, transfer out, moved, no longer terminal, for cause,
+          // other) moves the chart `active/on_hold → discharged`; a death is the death cascade's.
+          buildM5AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-165 (#248, m24 group) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
           // M17's shift-assignment Valkey cache, unioned additively into `CaseloadProvider`'s read
           // (see `wireModuleSeams`'s `caseloadShiftCacheRedis` wiring above). Gated on the dedicated

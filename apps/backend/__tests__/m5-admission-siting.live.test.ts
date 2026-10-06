@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
+import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
 import { registerAdmissionSeams } from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -43,6 +44,7 @@ describe.skipIf(!DB_URL)(
     let providerB: string;
     let locationA: string;
     let consumer: ReturnType<typeof buildM5AdmissionSitingConsumer>;
+    let discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -154,6 +156,12 @@ describe.skipIf(!DB_URL)(
       // The REAL catalog-validating publisher — a payload drift on `m5.patient.status_changed` throws.
       const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M5_OUTBOX_EVENTS]));
       consumer = buildM5AdmissionSitingConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
+        },
+      });
+      discharged = buildM5AdmissionDischargedConsumer({
         db: handle.db,
         outbox: {
           publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
@@ -338,6 +346,172 @@ describe.skipIf(!DB_URL)(
         expect(await patientStatus(patientId)).toBe(status);
         expect(await statusChangedPayloads(patientId)).toEqual([]);
       }
+    });
+
+    // ── §2.4.1 `active/on_hold → discharged` — the live-discharge consumer (m6.admission.discharged) ──
+    /** Marks the admission discharged the way M6's `dischargeAdmissionTx` leaves it. */
+    async function endAdmission(admissionId: string) {
+      await admin.query(
+        `UPDATE admission SET status = 'discharged', discharged_at = now() WHERE id = $1`,
+        [admissionId],
+      );
+    }
+    async function dischargedAdmissionFor(organizationId: string, patientId: string) {
+      const providerEntityId = organizationId === ORG_A ? providerA1 : providerB;
+      const admissionId = await seedAdmission({
+        organizationId,
+        patientId,
+        providerEntityId,
+        locationId: null,
+      });
+      await endAdmission(admissionId);
+      return admissionId;
+    }
+    const deliver = (organizationId: string, admissionId: string, reason: string) =>
+      discharged.handle({
+        organizationId,
+        payload: { admissionId, reason, dischargeDate: "2026-06-01" },
+      });
+
+    it("a live discharge moves an active patient to discharged and emits status_changed (NULL audit actor)", async () => {
+      const patientId = await seedPatient(ORG_A, "active");
+      const admissionId = await dischargedAdmissionFor(ORG_A, patientId);
+
+      expect(await deliver(ORG_A, admissionId, "moved_out_of_service_area")).toBe("discharged");
+
+      expect(await patientStatus(patientId)).toBe("discharged");
+      expect(await statusChangedPayloads(patientId)).toEqual([
+        { patientId, organizationId: ORG_A, fromStatus: "active", toStatus: "discharged" },
+      ]);
+      const audit = await admin.query(
+        "SELECT actor_user_id FROM audit_event WHERE resource_id = $1 AND event_type = 'patient.update'",
+        [patientId],
+      );
+      expect(audit.rows.length).toBeGreaterThan(0);
+      expect(audit.rows.every((r) => r.actor_user_id === null)).toBe(true);
+    });
+
+    it("revocation, transfer out, no longer terminal, for cause and other all discharge; on_hold too", async () => {
+      const cases: [string, string][] = [
+        ["revocation", "active"],
+        ["transfer", "active"],
+        ["no_longer_terminal", "on_hold"],
+        ["for_cause", "active"],
+        ["other", "on_hold"],
+      ];
+      for (const [reason, from] of cases) {
+        const patientId = await seedPatient(ORG_A, from);
+        const admissionId = await dischargedAdmissionFor(ORG_A, patientId);
+        expect(await deliver(ORG_A, admissionId, reason)).toBe("discharged");
+        expect(await patientStatus(patientId)).toBe("discharged");
+        expect(await statusChangedPayloads(patientId)).toEqual([
+          { patientId, organizationId: ORG_A, fromStatus: from, toStatus: "discharged" },
+        ]);
+      }
+    });
+
+    it("a death discharge is NOT handled here — the death cascade owns `deceased`", async () => {
+      const patientId = await seedPatient(ORG_A, "active");
+      const admissionId = await dischargedAdmissionFor(ORG_A, patientId);
+
+      expect(await deliver(ORG_A, admissionId, "death")).toBe("skipped_death");
+
+      expect(await patientStatus(patientId)).toBe("active");
+      expect(await statusChangedPayloads(patientId)).toEqual([]);
+    });
+
+    it("is idempotent on redelivery — one status change, one event", async () => {
+      const patientId = await seedPatient(ORG_A, "active");
+      const admissionId = await dischargedAdmissionFor(ORG_A, patientId);
+
+      expect(await deliver(ORG_A, admissionId, "revocation")).toBe("discharged");
+      expect(await deliver(ORG_A, admissionId, "revocation")).toBe("already_discharged");
+
+      expect(await patientStatus(patientId)).toBe("discharged");
+      expect(await statusChangedPayloads(patientId)).toHaveLength(1);
+    });
+
+    it("leaves deceased and merged charts alone without an error", async () => {
+      const deceasedId = (
+        await admin.query(
+          `INSERT INTO patient
+             (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth,
+              status, deceased_date)
+           VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', 'deceased', '2026-01-01')
+           RETURNING id`,
+          [ORG_A, `MRN-${Math.random().toString(36).slice(2, 10)}`],
+        )
+      ).rows[0].id as string;
+      const deceasedAdmission = await dischargedAdmissionFor(ORG_A, deceasedId);
+      expect(await deliver(ORG_A, deceasedAdmission, "other")).toBe("skipped_status");
+      expect(await patientStatus(deceasedId)).toBe("deceased");
+
+      const survivorId = await seedPatient(ORG_A, "active");
+      const mergedId = await seedPatient(ORG_A, "active");
+      await admin.query("UPDATE patient SET status = 'merged', merged_into_id = $2 WHERE id = $1", [
+        mergedId,
+        survivorId,
+      ]);
+      const mergedAdmission = await dischargedAdmissionFor(ORG_A, mergedId);
+      expect(await deliver(ORG_A, mergedAdmission, "other")).toBe("skipped_status");
+      expect(await patientStatus(mergedId)).toBe("merged");
+      expect(await statusChangedPayloads(deceasedId)).toEqual([]);
+      expect(await statusChangedPayloads(mergedId)).toEqual([]);
+    });
+
+    it("a late discharge never discharges a patient a re-admission already took back under care", async () => {
+      const patientId = await seedPatient(ORG_A, "active");
+      const oldAdmission = await dischargedAdmissionFor(ORG_A, patientId);
+      // The re-admission is already active (and its activation already applied) when the OLD admission's
+      // discharge is finally delivered — a retry or a redelivery.
+      await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA2,
+        locationId: null,
+      });
+
+      expect(await deliver(ORG_A, oldAdmission, "transfer")).toBe(
+        "skipped_other_admission_under_care",
+      );
+      expect(await patientStatus(patientId)).toBe("active");
+      expect(await statusChangedPayloads(patientId)).toEqual([]);
+    });
+
+    it("discharged then re-admitted: the activation consumer brings the patient back to active", async () => {
+      const patientId = await seedPatient(ORG_A, "active");
+      const firstAdmission = await dischargedAdmissionFor(ORG_A, patientId);
+      expect(await deliver(ORG_A, firstAdmission, "revocation")).toBe("discharged");
+      expect(await patientStatus(patientId)).toBe("discharged");
+
+      const readmission = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA2,
+        locationId: null,
+      });
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId: readmission, patientId },
+      });
+
+      expect(await patientStatus(patientId)).toBe("active");
+      expect(await statusChangedPayloads(patientId)).toEqual([
+        { patientId, organizationId: ORG_A, fromStatus: "active", toStatus: "discharged" },
+        { patientId, organizationId: ORG_A, fromStatus: "discharged", toStatus: "active" },
+      ]);
+    });
+
+    it("RLS — an org-A delivery for an org-B admission touches nothing in either tenant", async () => {
+      const patientBId = await seedPatient(ORG_B, "active");
+      const admissionB = await dischargedAdmissionFor(ORG_B, patientBId);
+
+      expect(await deliver(ORG_A, admissionB, "revocation")).toBe("skipped_unknown_admission");
+      expect(await patientStatus(patientBId)).toBe("active");
+
+      // The owning tenant's own delivery still applies.
+      expect(await deliver(ORG_B, admissionB, "revocation")).toBe("discharged");
+      expect(await patientStatus(patientBId)).toBe("discharged");
     });
   },
 );

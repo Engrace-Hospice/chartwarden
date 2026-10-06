@@ -344,6 +344,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m13",
       // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       "m7",
+      // M5 §2.4.1 `active/on_hold → discharged` ("revoke / discharge for cause / transfer (M6)"): the
+      // live-discharge edge (`05-patient/outbox-consumers/m6-admission-discharged.ts`). A `reason: death`
+      // delivery is skipped there — `m6.discharge.death` owns `→ deceased`.
+      "m5",
       "m16",
       "m17",
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which

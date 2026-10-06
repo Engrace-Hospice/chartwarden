@@ -185,6 +185,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       async getAdmissionSiting() {
         return null;
       },
+      async getAdmissionPatientCare() {
+        return null;
+      },
     });
     registerPatientSeams({ db: handle.db });
     svc = createDbHopeBackend(handle.db);

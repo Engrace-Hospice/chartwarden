@@ -31,8 +31,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
+import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
-import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import {
+  M6_OUTBOX_EVENTS,
+  createDrizzleAdmissionReaderStore,
+  registerAdmissionSeams,
+} from "../src/modules/06-admission/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
@@ -87,6 +93,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
+  let m5Discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
   const memberOf: Record<string, string> = {};
@@ -336,6 +343,17 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
       eventCatalog: catalog,
       options: { log: () => {} },
     });
+
+    // M5's live-discharge consumer, over the REAL M6 AdmissionStatusReader seam and M5's real
+    // catalog-validating publisher (an `m5.patient.status_changed` payload drift throws).
+    registerAdmissionSeams({ store: createDrizzleAdmissionReaderStore(handle.db) });
+    const m5Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M5_OUTBOX_EVENTS]));
+    m5Discharged = buildM5AdmissionDischargedConsumer({
+      db: handle.db,
+      outbox: {
+        publish: (tx, input) => m5Publisher.publish(tx, { ...input, callerModule: "m5" }),
+      },
+    });
   }, 180_000);
 
   afterAll(async () => {
@@ -443,5 +461,80 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     expect(await orderStatus(orderA)).toBe("discontinued");
     expect(await orderStatus(orderB)).toBe("active");
     expect(await discontinuationFor(orderB)).toHaveLength(0);
+  });
+
+  // ── M5 §2.4.1 `active → discharged`: every LIVE M6 ending reaches the patient chart ──────────────────
+  /** The `m6.admission.discharged` row M6 actually wrote for this admission, delivered to M5. */
+  async function deliverDischargedToM5(org: string, admissionId: string) {
+    const { rows } = await admin.query(
+      "SELECT organization_id, payload FROM outbox_event WHERE event_type='m6.admission.discharged' AND aggregate_id=$1",
+      [admissionId],
+    );
+    expect(rows).toHaveLength(1);
+    const outcome = await m5Discharged.handle({
+      organizationId: rows[0].organization_id as string,
+      payload: rows[0].payload,
+    });
+    return { outcome, reason: (rows[0].payload as { reason: string }).reason, org };
+  }
+  async function patientStatus(patientId: string): Promise<string> {
+    const { rows } = await admin.query("SELECT status FROM patient WHERE id=$1", [patientId]);
+    return rows[0].status as string;
+  }
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  it("M5: a live discharge (moved out of the service area) moves the patient active → discharged", async () => {
+    const patientId = randomUUID();
+    const admissionId = await activeAdmission(ORG_A, patientId);
+    await discharge(ORG_A, admissionId);
+
+    const { outcome, reason } = await deliverDischargedToM5(ORG_A, admissionId);
+    expect(reason).toBe("moved_out_of_service_area");
+    expect(outcome).toBe("discharged");
+    expect(await patientStatus(patientId)).toBe("discharged");
+  });
+
+  it("M5: a revocation emits m6.admission.discharged (reason revocation) and discharges the patient", async () => {
+    const patientId = randomUUID();
+    const admissionId = await activeAdmission(ORG_A, patientId);
+    await svc.createRevocation(
+      ORG_A,
+      admissionId,
+      {
+        revocationDate: today(),
+        narrative: "Beneficiary elected to revoke and pursue curative treatment.",
+        signingPatientName: "Pat Patient",
+        signingRole: "patient",
+        revocationReason: "seek_curative_treatment",
+      } as never,
+      USER,
+    );
+
+    const { outcome, reason } = await deliverDischargedToM5(ORG_A, admissionId);
+    expect(reason).toBe("revocation");
+    expect(outcome).toBe("discharged");
+    expect(await patientStatus(patientId)).toBe("discharged");
+  });
+
+  it("M5: a transfer out emits m6.admission.discharged (reason transfer) and discharges the patient", async () => {
+    const patientId = randomUUID();
+    const admissionId = await activeAdmission(ORG_A, patientId);
+    await svc.transferOut(
+      ORG_A,
+      admissionId,
+      {
+        effectiveDate: today(),
+        otherHospiceName: "Sunrise Hospice",
+        receivingCareSetting: "home",
+        otherHospiceCcn: "391234",
+        narrative: "patient relocated closer to family; care transferred by mutual agreement",
+      } as never,
+      USER,
+    );
+
+    const { outcome, reason } = await deliverDischargedToM5(ORG_A, admissionId);
+    expect(reason).toBe("transfer");
+    expect(outcome).toBe("discharged");
+    expect(await patientStatus(patientId)).toBe("discharged");
   });
 });

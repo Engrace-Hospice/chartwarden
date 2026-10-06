@@ -644,6 +644,9 @@ export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
   getAdmissionSiting() {
     throw new NotImplementedError("AdmissionStatusReader");
   },
+  getAdmissionPatientCare() {
+    throw new NotImplementedError("AdmissionStatusReader");
+  },
 };
 
 /** M6 — patient siting (location ids of active admissions). Denies until M6 registers the real reader. */

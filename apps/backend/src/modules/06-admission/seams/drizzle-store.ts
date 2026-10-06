@@ -921,6 +921,40 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
       });
     },
 
+    async admissionPatientCare(organizationId, admissionId) {
+      // Org-explicit (relay-tick-safe): its own `withOrgContext`, explicit organization_id predicate.
+      return withOrgContext(
+        db,
+        { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({ admissionId: ADM.id, patientId: ADM.patientId, status: ADM.status })
+            .from(ADM)
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+            .limit(1);
+          if (!row) return null; // unknown id / not visible under RLS
+          const [other] = await tx
+            .select({ id: ADM.id })
+            .from(ADM)
+            .where(
+              and(
+                eq(ADM.organizationId, organizationId),
+                eq(ADM.patientId, row.patientId),
+                ne(ADM.id, admissionId),
+                inArray(ADM.status, ["active", "on_hold"]),
+              ),
+            )
+            .limit(1);
+          return {
+            admissionId: row.admissionId,
+            patientId: row.patientId,
+            status: row.status,
+            otherAdmissionUnderCare: other !== undefined,
+          };
+        },
+      );
+    },
+
     async admissionSiting(organizationId, admissionId) {
       return withOrgContext(
         db,

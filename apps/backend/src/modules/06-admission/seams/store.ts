@@ -8,6 +8,7 @@ import type {
   ActiveElectionPeriod,
   AdmissionCensusEntry,
   AdmissionId,
+  AdmissionPatientCare,
   AdmissionReaderScope,
   AdmissionSiting,
   AdmissionSummary,
@@ -61,6 +62,11 @@ export interface AdmissionReaderStore {
     organizationId: string,
     admissionId: AdmissionId,
   ): Promise<AdmissionSiting | null>;
+  /** The admission's patient/status + whether another of the patient's admissions is under care. */
+  admissionPatientCare(
+    organizationId: string,
+    admissionId: AdmissionId,
+  ): Promise<AdmissionPatientCare | null>;
   /** Every level-of-care period for an admission (the reader derives current + day counts). */
   levelOfCarePeriods(admissionId: AdmissionId): Promise<readonly LevelOfCarePeriodSummary[]>;
   /** The active (non-superseded/non-voided) CTI for a period, or null. */
@@ -169,6 +175,24 @@ export function createInMemoryAdmissionReaderStore(seed: AdmissionReaderSeed = {
               activatedAt: a.activatedAt ? `${a.activatedAt}T00:00:00.000Z` : null,
             }
           : null;
+      },
+      async admissionPatientCare(organizationId, admissionId) {
+        const a = admissions.find(
+          (x) => x.organizationId === organizationId && x.admissionId === admissionId,
+        );
+        if (!a) return null;
+        return {
+          admissionId: a.admissionId,
+          patientId: a.patientId,
+          status: a.status,
+          otherAdmissionUnderCare: admissions.some(
+            (x) =>
+              x.organizationId === organizationId &&
+              x.patientId === a.patientId &&
+              x.admissionId !== admissionId &&
+              (x.status === "active" || x.status === "on_hold"),
+          ),
+        };
       },
       async levelOfCarePeriods(admissionId) {
         return locPeriods
