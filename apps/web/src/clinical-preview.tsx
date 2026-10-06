@@ -11,6 +11,7 @@ import {
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PatientChart } from "./modules/05-patient/patient-chart";
+import { PatientElectionCert } from "./modules/06-admission/patient-election-cert";
 import { CarePlanView } from "./modules/07-care-plan/care-plan-view";
 import { PatientOrders } from "./modules/11-orders/patient-orders";
 import { PatientMedications } from "./modules/12-dosespot/patient-medications";
@@ -2144,36 +2145,108 @@ const idgEls = [
 const isHome = new URLSearchParams(location.search).has("home");
 const res = (data: unknown) =>
   Promise.resolve({ data, error: undefined, response: new Response() });
+
+// `?f2f=scheduled|completed|attested` — the FY2027 Face-to-Face rail on the Election & Certification
+// workspace (R-F2F-05 modality / R-F2F-06 signed-note attestation). Click "View details" on Period 3.
+const f2fQ = new URLSearchParams(location.search).get("f2f");
+const f2fState = f2fQ === "scheduled" || f2fQ === "completed" ? f2fQ : "attested";
+const f2fPeriod = (n: number, status: string, f2f: unknown) => ({
+  id: `ep${n}`,
+  sequenceNumber: n,
+  periodKind: n <= 2 ? "ninety_day" : "sixty_day",
+  effectiveAt: n === 3 ? "2027-01-05" : "2026-07-08",
+  scheduledEndAt: n === 3 ? "2027-03-05" : "2026-10-05",
+  actualEndAt: null,
+  status,
+  electionStatement: null,
+  cti: null,
+  faceToFace: f2f,
+});
+function f2fGet(p: string): unknown {
+  if (p === "/api/v1/patients/{patientId}/election-certification")
+    return {
+      admission: {
+        id: "adm1",
+        state: "active",
+        admissionAt: "2026-07-08T10:00:00Z",
+        activatedAt: "2026-07-08T12:00:00Z",
+        dischargedAt: null,
+        version: 3,
+      },
+      periods: [
+        f2fPeriod(2, "active", null),
+        f2fPeriod(3, "pending", {
+          id: "f2f3",
+          status: f2fState,
+          performerRole: "hospice_np",
+          performerUserId: "u-np",
+          encounterDate: f2fState === "scheduled" ? null : "2026-12-28",
+          encounterLocation: f2fState === "scheduled" ? null : "telehealth",
+          attestationNoteEncounterId: f2fState === "attested" ? "n-f2f" : null,
+          withinWindow: f2fState === "scheduled" ? null : true,
+          windowOverride: false,
+          attested: f2fState === "attested",
+        }),
+      ],
+      complianceWindows: [],
+    };
+  if (p === "/api/v1/patients/{id}")
+    return {
+      mrn: "MRN-20417",
+      firstName: "Henry",
+      lastName: "Nakamura",
+      dob: "1936-02-11",
+      status: "active",
+    };
+  if (p === "/api/v1/face-to-face/{id}") return { id: "f2f3", state: f2fState, version: 2 };
+  if (p === "/api/v1/encounters")
+    return {
+      encounters: [
+        {
+          id: "n-f2f",
+          encounterType: "face_to_face",
+          discipline: "np",
+          serviceDate: "2026-12-28",
+          status: "signed",
+          authoredByUserId: "u-np",
+          signedAt: "2026-12-28T19:10:00Z",
+        },
+      ],
+    };
+  return {};
+}
 const client = {
   GET: (p: string, o?: { params?: { path?: { encounterId?: string; id?: string } } }) =>
     res(
-      isIdg && p.startsWith("/api/v1/")
-        ? idgGet(p, o as never)
-        : isPClaims && p.match(/claims|noe|notr/)
-          ? pclaimsGet(p)
-          : isExplorer
-            ? explorerGet(p, o as never)
-            : isBilling
-              ? billingGet(p, o as never)
-              : isSched
-                ? schedGet(p, o as never)
-                : p === "/api/v1/encounters/{encounterId}"
-                  ? details[o?.params?.path?.encounterId ?? ""]
-                  : p === "/api/v1/orders/{id}"
-                    ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
-                    : p === "/api/v1/idg/meetings/{id}"
-                      ? {
-                          id: "mt0",
-                          locationId: "loc1",
-                          status: "packets_ready",
-                          scheduledStart: d(-3),
-                          scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
-                        }
-                      : p === "/api/v1/mdm/{kind}/{id}"
-                        ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
-                        : isHome && p in homeRoutes
-                          ? homeRoutes[p]
-                          : routes[p],
+      f2fQ !== null
+        ? f2fGet(p)
+        : isIdg && p.startsWith("/api/v1/")
+          ? idgGet(p, o as never)
+          : isPClaims && p.match(/claims|noe|notr/)
+            ? pclaimsGet(p)
+            : isExplorer
+              ? explorerGet(p, o as never)
+              : isBilling
+                ? billingGet(p, o as never)
+                : isSched
+                  ? schedGet(p, o as never)
+                  : p === "/api/v1/encounters/{encounterId}"
+                    ? details[o?.params?.path?.encounterId ?? ""]
+                    : p === "/api/v1/orders/{id}"
+                      ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
+                      : p === "/api/v1/idg/meetings/{id}"
+                        ? {
+                            id: "mt0",
+                            locationId: "loc1",
+                            status: "packets_ready",
+                            scheduledStart: d(-3),
+                            scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
+                          }
+                        : p === "/api/v1/mdm/{kind}/{id}"
+                          ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
+                          : isHome && p in homeRoutes
+                            ? homeRoutes[p]
+                            : routes[p],
     ),
   PATCH: (p: string, o?: never) => (isIdg ? idgNoteWrite("PATCH", p, o) : res({})),
   POST: (p: string, o?: never) => (isIdg ? idgNoteWrite("POST", p, o) : res({})),
@@ -2305,6 +2378,31 @@ if (isIdg) {
           <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>
             <CalendarPage />
           </div>
+        </ApiClientProvider>
+      </MemoryRouter>
+    </SessionProvider>,
+  );
+} else if (f2fQ !== null) {
+  createRoot(document.getElementById("root")!).render(
+    <SessionProvider
+      session={
+        {
+          userId: "u-np",
+          organizationId: "o",
+          displayName: "Nora Patel, NP",
+          permissions: ["election.read", "f2f.read", "f2f.complete", "f2f.attest"],
+          roles: ["np"],
+        } as never
+      }
+    >
+      <MemoryRouter initialEntries={["/patients/p1/election-certification"]}>
+        <ApiClientProvider client={client}>
+          <Routes>
+            <Route
+              path="/patients/:patientId/election-certification"
+              element={<PatientElectionCert />}
+            />
+          </Routes>
         </ApiClientProvider>
       </MemoryRouter>
     </SessionProvider>,

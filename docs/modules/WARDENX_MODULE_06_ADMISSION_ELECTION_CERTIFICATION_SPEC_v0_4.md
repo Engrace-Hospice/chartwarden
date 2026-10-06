@@ -8,7 +8,7 @@
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` helper, outbox helper, idempotency, error envelope), 2 (Identity — session/actor resolution), 3 (Authorization — `requirePermission` / `requireAbac` contract; the catalog this module contributes to), 4 (Audit — write-audit trigger generator, read-audit helper, destruction-cert workflow, retention classes), 5 (Patient & Demographics — `Patient`, `Payer`, `PrivacyFlag`), 29 (External Interfaces — inbound HL7 v2 ADT proposal-accepted outbox events consumed by the `AdmissionEventApplier`), 38 (Terminology — ICD-10 validation, hospice diagnosis value sets, level-of-care revenue/Q-code mapping), 39 (Consent & Authorization Management — election authority verification, DPOA gating for proxy-signed elections, 42 CFR Part 2 redaction), 40 (Master Data Management — `ExternalPhysician` for attending NPIs, `Facility` for transfer/place-of-service references, `ReferralSource`)
 **Consumed by:** 7 (Care Plan — initial care plan tied to admission), 8 (Encounters — visit notes scoped to active admission), 11 (Orders — orders gated by active election), 14 (IDG — meeting scope is the active caseload of admitted patients; also consumes `m6.referral.withdrawn` for the cancellation notification template), 16 (Bereavement — listens for `bereavement.eligible`), 22 (Document Management — listens for `election.signed`, `revocation.signed`, `discharge.executed`, `notice_of_rights.required`, `cti.signed` to render and store forms), 23 (Billing — Medicare — reads `ElectionPeriod`, `CertificationOfTerminalIllness`, `FaceToFaceEncounter`, `LevelOfCarePeriod`, `RevocationEvent`, `DischargeEvent`; owns the NOE/NOTR wire artifact and emits acceptance back to M6 via outbox), 26 (Cap Management — reads admission and discharge dates to drive cap accrual), 27 (Cost Report — patient-day census derives from M6), 28 (FHIR Gateway — maps Admission → `Encounter`/`EpisodeOfCare`, CTI → `Condition`/`Composition`), 30 (HQRP & Quality — survey readiness queries the F2F window log and CTI lateness register; also consumes `m6.applier.refused` and the `info`-severity external-signal windows), 33 (Reporting — admission/discharge/recert reports), 36 (Secure Messaging — subscribes to compliance-window outbox events), 37 (Inpatient Unit Management — admission's `LevelOfCarePeriod` drives IPU bed assignment for GIP/IRC)
 **Owns:** `apps/backend/src/modules/06-admission` (the admission spine, election periods, CTI/F2F compliance, the `AdmissionEventApplier`), `packages/domain/admission`, and the twelve owned tables (`referral`, `admission`, `election_period`, `election_statement`, `certification_of_terminal_illness`, `face_to_face_encounter`, `level_of_care_period`, `revocation_event`, `transfer_event`, `discharge_event`, `notice_of_rights_acknowledgment`, `compliance_window`, **`election_addendum`** — M06-F02/ADR-0015 D1).
-**Spec status:** Re-locked v0.7 (referral intake captures the patient's Medicare (MBI) and Medicaid numbers; supersedes Re-locked v0.6 — attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
+**Spec status:** Re-locked v0.7.1 (FY2027 face-to-face: telehealth modality + signed-note attestation; on top of v0.7 — referral intake captures the patient's Medicare (MBI) and Medicaid numbers; supersedes Re-locked v0.6 — attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
 
 > **Phase-4 remediation (2026-06-11; ADR-0015) — 6 BLOCKERs.**
 > - **M06-F02:** `election_addendum` entity added (Patient Notification of Non-Covered Items, 418.24(c)) — a **condition of payment**: furnished within 5 days of election (72 h if requested later), signed/dated, versioned, amendable on POC change. The M21 non-covered DME path terminates here.
@@ -20,6 +20,7 @@
 
 ## Changelog
 
+- **v0.7.1 (FY2027 CoP — face-to-face; 2026-10-06)** — Implements the 42 CFR 418.22 face-to-face changes (source: [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §3–4). **R-F2F-05** (§ 418.22(a)(4)(ii), CMS-1851-F): `POST /face-to-face/:id/complete` now requires `encounterLocation` (persisted to the existing `encounter_location` column); a `telehealth` recertification F2F is allowed only through **2027-12-31** (the PHE branch is not modelled — constant `TELEHEALTH_F2F_ALLOWED_THROUGH`) and, for encounters from **2026-01-31**, only with the clinician's explicit attestation of the (A) moratorium-area / (B) enhanced-oversight / (C) performer-enrolled-or-opted-out facts — WardenX has no moratorium/oversight/enrollment registry, so the attestation is the control; it is persisted in the new `face_to_face_encounter.telehealth_eligibility` jsonb (migration `0390_m6_f2f_telehealth_eligibility.sql`, CHECK: only on telehealth rows). **R-F2F-06** (§ 418.22(b)(4), effective 2025-10-01): `POST /face-to-face/:id/attest` accepts `signedNoteEncounterId` as the alternative to `attestationNarrative` — an M8 note signed by the F2F performer, for the same patient, dated on the encounter date (validated through M8's `signedEncounterNoteForOrg`, injected as `F2fSignedNotePort`); the note id is stored in the existing `encounter_id` column and no narrative is required. Exactly one source is accepted. The claim range read (`claimAssemblyRangeContextForOrg`) now carries each F2F's `modality` and also returns a later (incl. pending) period's TELEHEALTH F2F whose date falls in the range, for M23's CR 14495 G0679 line. Web: the patient Election & Certification F2F opens in a right rail with the modality selector and the "Link signed visit note" / "Write attestation" choice. Live suite `test:m6:f2f-fy2027:live`.
 - **v0.7 (Re-locked; 2026-10-04)** — Referral intake captures the patient's **Medicare number (MBI)** and **Medicaid number**: two `referral` columns (`medicare_number_at_receipt`, `medicaid_number_at_receipt`) with format CHECKs, added to the referral write-audit denylist (migration `0317_m6_referral_payer_numbers.sql`); `POST`/`PATCH /api/v1/referrals` accept both (normalized server-side; 422 on a malformed value). The MBI is recorded on the patient's chart through M5's `PatientIntakeResolver` (create-from-intake, or `recordMedicareNumberIfMissing` on match / when linked) without ever overwriting a chart MBI; the Medicaid number pre-fills the intake Coverage / Payers form (M5 keeps Medicaid IDs on `patient_payer`). See §2.2 "Payer numbers at intake".
 - **v0.6 (Re-locked)** — Aligned the period-1 attending-physician CTI signature with 42 CFR 418.22 and the as-built code. The attending signature is still required on the period-1 CTI when the patient has an attending, but it gates **claim submission** (M23 rule `cti_signed_per_period`, `packages/billing/src/rules/cti-signed.ts`), not admission activation: §418.22(a)(3) requires the written certification before the claim is submitted, not before care starts. `R-CTI-03` now enforces the attending sign on the CTI's `signByAttending` transition (attending NPI match); a period-1 CTI stays `awaiting_attending` — not `signed` — until then. Removed `attending_signed` from the §4.2.2 activate 412 list, the §5.2.3 wizard and §5.2.5 activation checklist, and the §8 `m6_admission_activation_blocked_total` reasons; D3 amended.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
@@ -537,9 +538,9 @@ stateDiagram-v2
 
 | From | Event | To | Guards | Side effects |
 |---|---|---|---|---|
-| `scheduled` | `recordCompletion(date, performer)` | `completed` | performer is hospice MD/NP (not attending); date computable to in/out of window | compute `within_window`; if false AND no override → ConflictError `F2F_OUTSIDE_WINDOW`; persist; audit |
+| `scheduled` | `recordCompletion(date, performer, encounterLocation, telehealthEligibility?)` | `completed` | performer is hospice MD/NP (not attending); date computable to in/out of window; **R-F2F-05** telehealth only through 2027-12-31, and from 2026-01-31 only with the (A)–(C) attestation answered permissively | compute `within_window`; if false AND no override → ConflictError `F2F_OUTSIDE_WINDOW`; persist date + `encounter_location` (+ `telehealth_eligibility` for telehealth); audit |
 | `completed` | `requestWindowOverride(reason)` | `completed` (self) | actor has `f2f.window_override` (Medical Director role only) | set window_override=true; outbox `f2f.window_overridden` (severity=warn) |
-| `completed` | `attest(narrative)` | `attested` | narrative ≥ 100 chars; performer = current actor | outbox `f2f.attested`; clear pending `f2f_recert_30d_prior` ComplianceWindow |
+| `completed` | `attest(narrative \| signedNote)` | `attested` | exactly one source: narrative ≥ 100 chars, OR (**R-F2F-06**, § 418.22(b)(4)) a linked M8 note signed (with a signature date) by the performer, for this patient, dated on the encounter date; performer = current actor | persist narrative or `encounter_id`; outbox `f2f.attested`; clear pending `f2f_recert_30d_prior` ComplianceWindow |
 
 #### 2.3.5 `LevelOfCarePeriod`
 
@@ -587,6 +588,8 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start - 1 day] (CMS 418.22 prior-to-window) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
 | `R-F2F-03` Window override requires actor role `hospice_medical_director` AND a reason ≥ 20 chars | `requestWindowOverride` | `F2F_OVERRIDE_FORBIDDEN` (403) / `F2F_OVERRIDE_REASON_TOO_SHORT` (422) |
 | `R-F2F-04` Recert period (sequence ≥ 3) cannot transition to `active` without an `attested` F2F | `ElectionPeriod.setActive` | `F2F_REQUIRED_FOR_RECERT` (409) |
+| `R-F2F-05` (FY2027) A `telehealth` F2F must be dated on/before 2027-12-31 (§ 418.22(a)(4)(ii)); from 2026-01-31 it also requires the completing clinician's attestation that the patient is not in a moratorium area, the hospice is not under enhanced oversight, and the performer is Medicare-enrolled or opted out | `recordCompletion` | `F2F_TELEHEALTH_NOT_PERMITTED` (422) / `F2F_TELEHEALTH_ATTESTATION_REQUIRED` (422) |
+| `R-F2F-06` (FY2027) A linked attestation note must exist in the org, belong to the F2F's patient, be signed with a signature date, be authored/signed by the performer, and be dated on the encounter date (§ 418.22(b)(4)); exactly one attestation source | `attest` | `F2F_ATTESTATION_NOTE_INVALID` (422) / `F2F_ATTESTATION_SOURCE_REQUIRED` (422); unbound note reader → `F2F_NOTE_SOURCE_UNAVAILABLE` (503) |
 | `R-ADM-01` Admission `activate` requires NOR acknowledged | `activate` | `NOTICE_OF_RIGHTS_REQUIRED` (409) |
 | `R-ADM-02` Admission `activate` requires no overdue `initial_assessment_48h` window unless explicitly overridden by DON role | `activate` | `INITIAL_ASSESSMENT_OVERDUE` (409) |
 | `R-ADM-03` `for_cause` discharge requires explicit DON + Medical Director co-sign (two distinct users with the respective roles) | `executeDischarge` | `FOR_CAUSE_REQUIRES_COSIGN` (409) |
@@ -2048,10 +2051,28 @@ Type.Object({
 // 412 SCHEDULED_OUTSIDE_WINDOW
 ```
 
+**POST /api/v1/face-to-face/:id/complete** — `f2f.complete` (FY2027 R-F2F-05)
+```typescript
+Type.Object({
+  encounterDate: Type.String({ format:'date' }),
+  encounterLocation: Type.Union([ 'patient_home','alf','snf','ipu','hospital','telehealth' ].map(Type.Literal)),
+  // required for telehealth on/after 2026-01-31 (42 CFR 418.22(a)(4)(ii)(A)-(C)); persisted for audit
+  telehealthEligibility: Type.Optional(Type.Object({
+    patientInMoratoriumArea: Type.Boolean(),
+    hospiceUnderEnhancedOversight: Type.Boolean(),
+    performerMedicareEnrolledOrOptedOut: Type.Boolean(),
+  })),
+  ifVersion: Type.Integer(),
+})
+// 422 F2F_TELEHEALTH_NOT_PERMITTED | F2F_TELEHEALTH_ATTESTATION_REQUIRED
+```
+
 **POST /api/v1/face-to-face/:id/attest** — `f2f.attest`
 ```typescript
 Type.Object({
-  attestationNarrative: Type.String({ minLength:1, maxLength:4000 }),
+  // exactly one of the two (§ 418.22(b)(4)):
+  attestationNarrative: Type.Optional(Type.String({ minLength:1, maxLength:4000 })), // >= 100 chars
+  signedNoteEncounterId: Type.Optional(Type.String({ format:'uuid' })), // FY2027 R-F2F-06 — M8 note
   ifVersion: Type.Integer(),
 })
 // 200 -> { id, attestedAt, state:'attested', version }

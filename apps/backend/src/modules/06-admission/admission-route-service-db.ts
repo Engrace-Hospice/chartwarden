@@ -2207,6 +2207,9 @@ export function createDbAdmissionRouteService(
                 status: F2F.status,
                 performerRole: F2F.performerRole,
                 encounterDate: F2F.encounterDate,
+                encounterLocation: F2F.encounterLocation,
+                encounterId: F2F.encounterId,
+                performedByUserId: F2F.performedByUserId,
                 withinWindow: F2F.withinWindow,
                 windowOverride: F2F.windowOverride,
                 attestationSignedAt: F2F.attestationSignedAt,
@@ -2295,6 +2298,11 @@ export function createDbAdmissionRouteService(
                   status: f2f.status,
                   performerRole: f2f.performerRole,
                   encounterDate: f2f.encounterDate,
+                  // FY2027 R-F2F-05 / R-F2F-06 — the modality and the linked signed note (when the
+                  // § 418.22(b)(4) attestation is a clinical note rather than a written narrative).
+                  encounterLocation: f2f.encounterLocation,
+                  attestationNoteEncounterId: f2f.encounterId,
+                  performerUserId: f2f.performedByUserId,
                   withinWindow: f2f.withinWindow,
                   windowOverride: f2f.windowOverride,
                   attested: !!f2f.attestationSignedAt,
