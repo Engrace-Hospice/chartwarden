@@ -20,6 +20,7 @@ import { createDbClient } from "@wardenx/db";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildM17AdmissionLifecycleConsumer } from "../src/modules/17-scheduling/consumers/admission-lifecycle";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/events-by-m17";
 import { buildM17EvvAtPatientAddressConsumer } from "../src/modules/17-scheduling/outbox-consumers/m18-evv-at-patient-address";
 import { buildM17EvvCheckInConsumer } from "../src/modules/17-scheduling/outbox-consumers/m18-evv-check-in";
@@ -49,6 +50,7 @@ describe.skipIf(!DB_URL)(
     let checkInConsumer: ReturnType<typeof buildM17EvvCheckInConsumer>;
     let atPatientAddressConsumer: ReturnType<typeof buildM17EvvAtPatientAddressConsumer>;
     let cancelConsumer: ReturnType<typeof buildM17SosVisitCancellationConsumer>;
+    let lifecycleConsumer: ReturnType<typeof buildM17AdmissionLifecycleConsumer>;
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -111,9 +113,10 @@ describe.skipIf(!DB_URL)(
       locationId: string;
       assignedMembershipId: string;
       status: "published" | "en_route" | "in_visit";
+      admissionId?: string;
     }): Promise<string> {
       const patientId = crypto.randomUUID();
-      const admissionId = crypto.randomUUID();
+      const admissionId = opts.admissionId ?? crypto.randomUUID();
       // Offset each seeded visit's window so the GiST exclusion constraint (one clinician, no overlapping
       // scheduled windows) never collides across the several visits a single test seeds for one membership.
       const offsetHours = visitSeedCounter++;
@@ -209,6 +212,7 @@ describe.skipIf(!DB_URL)(
       checkInConsumer = buildM17EvvCheckInConsumer({ db: handle.db, outbox });
       atPatientAddressConsumer = buildM17EvvAtPatientAddressConsumer({ db: handle.db });
       cancelConsumer = buildM17SosVisitCancellationConsumer({ db: handle.db, outbox });
+      lifecycleConsumer = buildM17AdmissionLifecycleConsumer({ db: handle.db, outbox });
     }, 120_000);
 
     afterAll(async () => {
@@ -374,6 +378,45 @@ describe.skipIf(!DB_URL)(
       });
       expect((await visitRow(visitId)).version).toBe(1);
       expect(await historyRows(visitId)).toHaveLength(1);
+    });
+
+    it("m6.admission.discharged cancels the admission's future visits under the NULL (system) audit actor", async () => {
+      // Before the fix the sentinel M17_SYSTEM_USER_ID reached `app.user_id`, and the visit UPDATE failed
+      // on 23503 `audit_event_actor_user_id_user_id_fk` — it is not a `user` row.
+      const admissionId = crypto.randomUUID();
+      const visitId = await seedVisit({
+        organizationId: ORG_A,
+        providerEntityId: peA,
+        locationId: locA,
+        assignedMembershipId: memA,
+        status: "published",
+        admissionId,
+      });
+      const today = new Date().toISOString().slice(0, 10);
+
+      await lifecycleConsumer.handle({
+        id: crypto.randomUUID(),
+        organizationId: ORG_A,
+        eventType: "m6.admission.discharged",
+        payload: { admissionId, aggregateId: admissionId, dischargeDate: today, reason: "death" },
+      } as never);
+
+      const row = await visitRow(visitId);
+      expect(row.status).toBe("cancelled");
+      expect(row.cancelled_by_membership_id).toBe(M17_SYSTEM_USER_ID);
+      expect(row.cancellation_reason_code).toBe("admission_lifecycle");
+
+      const audit = await admin.query(
+        `SELECT actor_user_id FROM audit_event WHERE resource_id = $1`,
+        [visitId],
+      );
+      expect(audit.rows.length).toBeGreaterThan(0);
+      expect(audit.rows.every((r) => r.actor_user_id === null)).toBe(true);
+      const cancelled = (await outboxRows(ORG_A, "m17.visit.cancelled")).filter(
+        (r) => r.payload.visitId === visitId,
+      );
+      expect(cancelled).toHaveLength(1);
+      expect(cancelled[0].payload).toMatchObject({ cancelledBy: M17_SYSTEM_USER_ID });
     });
   },
 );

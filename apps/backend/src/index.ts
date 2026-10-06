@@ -129,6 +129,7 @@ import {
   buildProviderEntityCcnResolver,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
+  buildRequiredProviderEntityCcnResolver,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
@@ -6827,7 +6828,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
-          buildM5AdmissionSitingConsumer({ db: dbHandle.db }),
+          buildM5AdmissionSitingConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-165 (#248, m24 group) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
           // M17's shift-assignment Valkey cache, unioned additively into `CaseloadProvider`'s read
           // (see `wireModuleSeams`'s `caseloadShiftCacheRedis` wiring above). Gated on the dedicated
@@ -7384,20 +7385,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m23OutboxPublisher,
             resolveElectionPeriod: async (organizationId, electionPeriodId) =>
               electionPeriodContextForOrg(dbHandle.db, organizationId, electionPeriodId),
-            resolveCcn: async (organizationId, providerEntityId) => {
-              const [provider] = await dbHandle.db
-                .select({ ccn: schema.providerEntities.ccn })
-                .from(schema.providerEntities)
-                .where(
-                  and(
-                    eq(schema.providerEntities.id, providerEntityId),
-                    eq(schema.providerEntities.organizationId, organizationId),
-                  ),
-                )
-                .limit(1);
-              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
-              return provider.ccn;
-            },
+            // Org-scoped read (a relay tick has no app.org_id — the 22P02 that stranded transfer-outs).
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
             onSkipped: (info) =>
               app.log.info(
                 {
@@ -7416,20 +7405,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m23OutboxPublisher,
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
-            resolveCcn: async (organizationId, providerEntityId) => {
-              const [provider] = await dbHandle.db
-                .select({ ccn: schema.providerEntities.ccn })
-                .from(schema.providerEntities)
-                .where(
-                  and(
-                    eq(schema.providerEntities.id, providerEntityId),
-                    eq(schema.providerEntities.organizationId, organizationId),
-                  ),
-                )
-                .limit(1);
-              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
-              return provider.ccn;
-            },
+            // Org-scoped read (a relay tick has no app.org_id — the 22P02 that stranded transfer-outs).
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
             onSkipped: (info) =>
               app.log.info(
                 {

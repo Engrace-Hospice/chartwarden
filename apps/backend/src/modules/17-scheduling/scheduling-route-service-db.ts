@@ -108,6 +108,7 @@ import {
   type VisitView,
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
+import { orgContextFor } from "./system-actor";
 
 /** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
 const UNSCOPED_LIMIT = 50_000;
@@ -754,7 +755,7 @@ export function createDbSchedulingBackend(
     cutoff: Date,
     reason: string,
   ): Promise<number> {
-    return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+    return withOrgContext(db, orgContextFor(orgId, userId), async (txRaw) => {
       const tx = txRaw as DbClient;
       const rows = await tx
         .select(VISIT_WRITE_COLS)
@@ -1619,7 +1620,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date; horizonDays?: number } = {},
     ) {
       const now = options.now ?? new Date();
-      const policies = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+      const policies = await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
         tx
           .select()
           .from(RV)
@@ -1653,7 +1654,7 @@ export function createDbSchedulingBackend(
             policy.patientId,
             occurrence.scheduledStartedAt,
           );
-          await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+          await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
             await insertAndPublish(
               tx as DbClient,
               orgId,
@@ -1748,43 +1749,40 @@ export function createDbSchedulingBackend(
               throw err;
             }
             for (const p of planned) {
-              const inserted = await withOrgContext(
-                db,
-                { organizationId: orgId, userId },
-                async (tx) =>
-                  tx
-                    .insert(VP)
-                    .values({
-                      organizationId: orgId,
-                      providerEntityId: p.providerEntityId,
-                      locationId: p.locationId,
-                      patientId: p.patientId,
-                      admissionId: p.admissionId,
-                      source: p.source,
-                      sourcePayload: {
-                        ...p.sourcePayload,
-                        planId: input.planId,
-                        versionId: input.versionId,
-                      },
-                      sourceIdempotencyKey: `${input.planId}:${input.versionId}:${p.sourceIdempotencyKey}`,
-                      proposedForDate: p.proposedForDate,
-                      proposedVisitPurpose: p.proposedVisitPurpose,
-                      proposedDiscipline: p.proposedDiscipline,
-                      proposedDurationMinutes: p.proposedDurationMinutes,
-                      suggestedMembershipId: p.suggestedMembershipId,
-                      status: "pending",
-                    })
-                    .onConflictDoNothing({
-                      target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
-                    })
-                    .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
+              const inserted = await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
+                tx
+                  .insert(VP)
+                  .values({
+                    organizationId: orgId,
+                    providerEntityId: p.providerEntityId,
+                    locationId: p.locationId,
+                    patientId: p.patientId,
+                    admissionId: p.admissionId,
+                    source: p.source,
+                    sourcePayload: {
+                      ...p.sourcePayload,
+                      planId: input.planId,
+                      versionId: input.versionId,
+                    },
+                    sourceIdempotencyKey: `${input.planId}:${input.versionId}:${p.sourceIdempotencyKey}`,
+                    proposedForDate: p.proposedForDate,
+                    proposedVisitPurpose: p.proposedVisitPurpose,
+                    proposedDiscipline: p.proposedDiscipline,
+                    proposedDurationMinutes: p.proposedDurationMinutes,
+                    suggestedMembershipId: p.suggestedMembershipId,
+                    status: "pending",
+                  })
+                  .onConflictDoNothing({
+                    target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
+                  })
+                  .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
               );
               const proposal = inserted[0];
               if (!proposal) {
                 skipped += 1;
                 continue;
               }
-              await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+              await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
                 emit(tx, orgId, "m17.visit.proposed", "visit_proposal", proposal.id, {
                   proposalId: proposal.id,
                   patientId: input.patientId,
@@ -1841,7 +1839,7 @@ export function createDbSchedulingBackend(
 
     async scanVisitAttentionForOrg(orgId: string, userId: string, options: { now?: Date } = {}) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+      return withOrgContext(db, orgContextFor(orgId, userId), async (txRaw) => {
         const tx = txRaw as DbClient;
         const staleCutoff = new Date(now.getTime() - 48 * 3_600_000);
         const possibleMissedCutoff = new Date(now.getTime() - 2 * 3_600_000);

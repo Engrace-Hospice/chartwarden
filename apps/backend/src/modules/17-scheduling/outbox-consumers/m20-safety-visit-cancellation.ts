@@ -33,7 +33,7 @@ const VSH = schema.visitStateHistory;
  *  M17's own established system-actor sentinel, not a real membership row (both target columns are plain
  *  app-validated uuid with no FK). Duplicated locally rather than imported because neither sibling file
  *  exports it (the existing pattern in this module). */
-const M17_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
+import { M17_SYSTEM_USER_ID } from "../system-actor";
 
 export const M17_SOS_VISIT_CANCELLATION_CONSUMER = {
   eventName: "m20.safety.visit_cancellation_requested",

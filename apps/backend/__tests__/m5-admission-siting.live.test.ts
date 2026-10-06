@@ -20,6 +20,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Imported by exact file path, not the module barrel: the coordinator wires the barrel export
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
 import { registerAdmissionSeams } from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -60,13 +62,13 @@ describe.skipIf(!DB_URL)(
       }
     }
 
-    async function seedPatient(organizationId: string): Promise<string> {
+    async function seedPatient(organizationId: string, status = "prospective"): Promise<string> {
       const row = await admin.query(
         `INSERT INTO patient
-           (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth)
-         VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female')
+           (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+         VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', $3)
          RETURNING id`,
-        [organizationId, `MRN-${Math.random().toString(36).slice(2, 10)}`],
+        [organizationId, `MRN-${Math.random().toString(36).slice(2, 10)}`, status],
       );
       return row.rows[0].id as string;
     }
@@ -149,7 +151,14 @@ describe.skipIf(!DB_URL)(
         ).createDrizzleAdmissionReaderStore(handle.db),
       });
 
-      consumer = buildM5AdmissionSitingConsumer({ db: handle.db });
+      // The REAL catalog-validating publisher — a payload drift on `m5.patient.status_changed` throws.
+      const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M5_OUTBOX_EVENTS]));
+      consumer = buildM5AdmissionSitingConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
+        },
+      });
     }, 120_000);
 
     afterAll(async () => {
@@ -251,6 +260,84 @@ describe.skipIf(!DB_URL)(
       // Org B's own patient row is untouched by the org-A-scoped delivery above.
       const siting = await patientSiting(patientBId);
       expect(siting.provider_entity_id).toBeNull();
+    });
+
+    async function patientStatus(patientId: string): Promise<string> {
+      const { rows } = await admin.query(`SELECT status FROM patient WHERE id = $1`, [patientId]);
+      return rows[0].status as string;
+    }
+
+    async function statusChangedPayloads(patientId: string) {
+      const { rows } = await admin.query(
+        `SELECT payload FROM outbox_event
+          WHERE event_type = 'm5.patient.status_changed' AND aggregate_id = $1`,
+        [patientId],
+      );
+      return rows.map((r) => r.payload);
+    }
+
+    it("promotes a prospective patient to active (§2.4.1 'admission approved') and emits status_changed once", async () => {
+      const patientId = await seedPatient(ORG_A, "prospective");
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: null,
+      });
+
+      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+
+      expect(await patientStatus(patientId)).toBe("active");
+      expect(await statusChangedPayloads(patientId)).toEqual([
+        { patientId, organizationId: ORG_A, fromStatus: "prospective", toStatus: "active" },
+      ]);
+    });
+
+    it("promotes a discharged patient on re-admission", async () => {
+      const patientId = await seedPatient(ORG_A, "discharged");
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: null,
+      });
+
+      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+
+      expect(await patientStatus(patientId)).toBe("active");
+      expect(await statusChangedPayloads(patientId)).toEqual([
+        { patientId, organizationId: ORG_A, fromStatus: "discharged", toStatus: "active" },
+      ]);
+    });
+
+    it("leaves an on_hold or deceased patient's status alone", async () => {
+      for (const status of ["on_hold", "deceased"] as const) {
+        const patientId =
+          status === "deceased"
+            ? (
+                await admin.query(
+                  `INSERT INTO patient
+                     (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth,
+                      status, deceased_date)
+                   VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', 'deceased', '2026-01-01')
+                   RETURNING id`,
+                  [ORG_A, `MRN-${Math.random().toString(36).slice(2, 10)}`],
+                )
+              ).rows[0].id
+            : await seedPatient(ORG_A, status);
+        const admissionId = await seedAdmission({
+          organizationId: ORG_A,
+          patientId,
+          providerEntityId: providerA1,
+          locationId: null,
+        });
+
+        await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+
+        expect(await patientStatus(patientId)).toBe(status);
+        expect(await statusChangedPayloads(patientId)).toEqual([]);
+      }
     });
   },
 );

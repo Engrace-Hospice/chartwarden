@@ -584,10 +584,13 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(resolved).toEqual({ ccn: "381234", macJurisdiction: "ngs_j6", cbsaCode: null });
     });
 
-    it("returns null when the provider entity has no MAC submitter credential yet", async () => {
+    it("names the missing MAC submitter credential (422) instead of reporting the provider entity unresolved", async () => {
       const pe = await seedProviderEntity(ORG_A, "381235");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
-      expect(await adapter.resolveProviderEntity(ORG_A, pe)).toBeNull();
+      await expect(adapter.resolveProviderEntity(ORG_A, pe)).rejects.toMatchObject({
+        code: "MAC_SUBMITTER_CREDENTIAL_MISSING",
+        statusCode: 422,
+      });
     });
 
     it("never resolves another org's provider entity (cross-tenant RLS isolation)", async () => {

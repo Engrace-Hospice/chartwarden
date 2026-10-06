@@ -165,6 +165,34 @@ describe.skipIf(!DB_URL)("GAP-004 death cascade — LIVE Postgres", () => {
     expect(outboxRows.rows).toHaveLength(1);
   });
 
+  it.each(["prospective", "discharged"])(
+    "records the death when the patient row lagged M6's activation (status '%s') and emits status_changed",
+    async (lagged) => {
+      const patientId = await seedPatient(lagged);
+      const { admissionId, dischargeEventId } = await seedDeathDischarge(patientId, "2026-08-01");
+
+      await consumer.handle({
+        organizationId: ORG,
+        payload: { dischargeEventId, admissionId, dischargeDate: "2026-08-01" },
+      });
+
+      const patientRow = await admin.query("SELECT status FROM patient WHERE id=$1", [patientId]);
+      expect(patientRow.rows[0].status).toBe("deceased");
+      const changed = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m5.patient.status_changed' AND aggregate_id=$1",
+        [patientId],
+      );
+      expect(changed.rows.map((r) => r.payload)).toEqual([
+        { patientId, organizationId: ORG, fromStatus: lagged, toStatus: "deceased" },
+      ]);
+      const deceased = await admin.query(
+        "SELECT id FROM outbox_event WHERE event_type='m5.patient.deceased' AND aggregate_id=$1",
+        [patientId],
+      );
+      expect(deceased.rows).toHaveLength(1);
+    },
+  );
+
   it("dead-letters (throws) when M6's DeathDischargeReader has no matching row for the admission", async () => {
     await expect(
       consumer.handle({
