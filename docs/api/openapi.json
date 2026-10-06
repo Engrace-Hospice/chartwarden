@@ -74519,6 +74519,201 @@
         }
       }
     },
+    "/api/v1/discharges/worklist": {
+      "get": {
+        "operationId": "getApiV1DischargesWorklist",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+        "parameters": [
+          {
+            "name": "bucket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "description": "\"ready\": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or death can be recorded). \"needs_details\": discharged / bereavement admissions whose stay-ending record lacks the place of death or the receiving care setting the final claim needs. \"awaiting_cosign\": for-cause discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause).",
+              "anyOf": [
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "needs_details",
+                  "type": "string"
+                },
+                {
+                  "const": "awaiting_cosign",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "admissionId",
+                          "patientId",
+                          "admissionState",
+                          "admissionAt",
+                          "dischargedAt",
+                          "missing",
+                          "dischargeEventId",
+                          "transferEventId",
+                          "dischargeType",
+                          "effectiveDate"
+                        ],
+                        "properties": {
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionState": {
+                            "type": "string"
+                          },
+                          "admissionAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dischargedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "missing": {
+                            "description": "needs_details only: the claim detail the stay-ending record lacks.",
+                            "anyOf": [
+                              {
+                                "const": "place_of_death",
+                                "type": "string"
+                              },
+                              {
+                                "const": "receiving_care_setting",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dischargeEventId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transferEventId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dischargeType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "description": "The discharge / transfer effective date (needs_details, awaiting_cosign).",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/discipline-plans": {
       "get": {
         "operationId": "getApiV1Disciplineplans",

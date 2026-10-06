@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 160 statically-routable `web` screen(s) — 19/160 E2E-reached, 154/160 axe-reached.
+**Coverage:** 161 statically-routable `web` screen(s) — 19/161 E2E-reached, 155/161 axe-reached.
 
 ## Zero E2E coverage
 
@@ -23,6 +23,7 @@
 | `volunteer.compliance` | 15-discipline-care-plans | `/admin/volunteer-compliance` | volunteer_compliance.read |
 | `volunteer.ratio` | 15-discipline-care-plans | `/admin/volunteer-ratio` | volunteer_compliance.read_ratio |
 | `admission.census` | 06-admission | `/admissions` | admission.read |
+| `admission.discharges` | 06-admission | `/admissions/discharges` | discharge.create |
 | `audit.log-viewer` | 04-audit | `/audit` | audit.read |
 | `bereavement.caseload` | 16-bereavement | `/bereavement` | bereavement.dashboard.counselor |
 | `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |

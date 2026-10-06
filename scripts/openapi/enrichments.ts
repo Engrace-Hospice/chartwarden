@@ -143,6 +143,10 @@ import {
   PlaceOfDeathRecordSchema,
   ReceivingCareSettingRecordSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/discharge-details-typebox";
+import {
+  DischargeWorklistQuerySchema,
+  DischargeWorklistResponseSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox";
 import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
@@ -3783,6 +3787,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason",
     body: PlaceOfDeathRecordSchema,
     response: DischargeDetailRecordResultSchema,
+  },
+  "GET /api/v1/discharges/worklist": {
+    summary:
+      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+    query: DischargeWorklistQuerySchema,
+    response: DischargeWorklistResponseSchema,
   },
   "POST /api/v1/transfers/:id/receiving-care-setting": {
     summary:

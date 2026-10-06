@@ -19,6 +19,7 @@ import {
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
+import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 
 export * from "./state-machines";
@@ -56,6 +57,7 @@ export function mountAdmissionRoutes(
     // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
     // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
     dischargeDetails: createDbDischargeDetailsService(db, outbox),
+    dischargeWorklist: createDbDischargeWorklistService(db),
   });
 }
 
@@ -180,7 +182,9 @@ export {
   DISCHARGE_DETAILS_RECORDED_EVENT,
   createDbDischargeDetailsService,
 } from "./discharge-details-service-db";
+export { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 export type { DischargeDetailsService } from "./routes/discharge-details-service";
+export type { DischargeWorklistService } from "./routes/discharge-worklist-service";
 export {
   type AdmissionRouteService,
   type AdmissionAbacResolver,

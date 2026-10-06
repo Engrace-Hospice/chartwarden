@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 160,
+  "totalStaticWebScreens": 161,
   "e2eReachedCount": 19,
-  "axeReachedCount": 154,
+  "axeReachedCount": 155,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -121,6 +121,14 @@
       "module": "06-admission",
       "path": "/admissions",
       "permission": "admission.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "admission.discharges",
+      "module": "06-admission",
+      "path": "/admissions/discharges",
+      "permission": "discharge.create",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1309,6 +1317,14 @@
       "module": "06-admission",
       "path": "/admissions",
       "permission": "admission.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "admission.discharges",
+      "module": "06-admission",
+      "path": "/admissions/discharges",
+      "permission": "discharge.create",
       "e2eReached": false,
       "axeReached": true
     },

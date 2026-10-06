@@ -276,6 +276,14 @@
       "app": "web",
       "module": "06-admission",
       "moduleId": 6,
+      "id": "admission.discharges",
+      "path": "/admissions/discharges",
+      "permission": "discharge.create"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
       "id": "admission.patient-election-cert",
       "path": "/patients/:patientId/election-certification",
       "permission": "election.read"

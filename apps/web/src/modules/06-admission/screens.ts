@@ -20,6 +20,9 @@ const AdmissionCreate = lazy(() =>
 const AdmissionDetail = lazy(() =>
   import("./admission-detail").then((m) => ({ default: m.AdmissionDetail })),
 );
+const DischargesHub = lazy(() =>
+  import("./discharges-hub").then((m) => ({ default: m.DischargesHub })),
+);
 const DischargeWorkflow = lazy(() =>
   import("./discharge-workflow").then((m) => ({ default: m.DischargeWorkflow })),
 );
@@ -118,6 +121,20 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admissions",
       requiredPermission: "admission.create",
       screen: AdmissionCreate,
+    },
+    {
+      // End-of-episode hub — nav entry right below "New admission" (primary-nav.ts childOrder). Lists admissions
+      // ready for a discharge / transfer / death, ended stays missing a claim detail, and (medical directors)
+      // for-cause discharges awaiting cosign, from GET /api/v1/discharges/worklist. The screen registry gates nav on
+      // ONE key: `discharge.create`, the discharge workflow's umbrella key (route 39's fallback gate). The row actions
+      // are gated per key inside the hub (DISCHARGE_WORKFLOW_PERMISSIONS / discharge.death / cosign_for_cause).
+      // Static path: react-router ranks it above `/admissions/:id`.
+      id: "admission.discharges",
+      path: "/admissions/discharges",
+      title: "Discharge / transfer",
+      navGroup: "Admissions",
+      requiredPermission: "discharge.create",
+      screen: DischargesHub,
     },
     {
       // Patient-scoped Election & Certification — reached from the patient chart tab (param path, no nav).

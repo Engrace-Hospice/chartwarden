@@ -26,6 +26,7 @@ import {
   claimAssemblyRangeContextForOrg,
   claimStayEndFactsForOrg,
   createDbDischargeDetailsService,
+  createDbDischargeWorklistService,
 } from "../src/modules/06-admission/index";
 import {
   claimAttention,
@@ -547,5 +548,102 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
         [dischargeEventId],
       ),
     ).rejects.toThrow(/discharge_event_pod_correction_reason_len_chk/);
+  });
+
+  // ── the end-of-episode worklist (GET /api/v1/discharges/worklist, the web "Discharge / transfer" hub)
+
+  it("worklist buckets: ready / needs_details / awaiting_cosign, caseload-narrowed and RLS-scoped", async () => {
+    const worklist = createDbDischargeWorklistService(handle.db);
+    const ORG_WIDE = { patientIds: null };
+    const ids = async (org: string, bucket: "ready" | "needs_details" | "awaiting_cosign") =>
+      (await worklist.list(org, { bucket, limit: 200 }, ORG_WIDE)).items;
+
+    const readyPatient = randomUUID();
+    const ready = await activeAdmission(readyPatient);
+    const pending = await activeAdmission(randomUUID());
+    const filed = await fileForCause(pending);
+    const death = await historicDeath(randomUUID());
+    const xferAdmission = await activeAdmission(randomUUID());
+    const xfer = await svc.transferOut(
+      ORG_A,
+      xferAdmission,
+      {
+        effectiveDate: isoDay(0),
+        otherHospiceName: "Sunrise Hospice",
+        receivingCareSetting: "home",
+        narrative: "patient moved closer to family served by another hospice",
+      },
+      USER,
+    );
+    await admin.query("UPDATE transfer_event SET receiving_care_setting = NULL WHERE id=$1", [
+      xfer.id,
+    ]);
+
+    const readyItems = await ids(ORG_A, "ready");
+    expect(readyItems.map((i) => i.admissionId)).toContain(ready);
+    // A for-cause filing awaiting cosign keeps the admission active but is not offered a second discharge.
+    expect(readyItems.map((i) => i.admissionId)).not.toContain(pending);
+    expect(readyItems.find((i) => i.admissionId === ready)).toMatchObject({
+      patientId: readyPatient,
+      admissionState: "active",
+      missing: null,
+    });
+
+    const cosign = await ids(ORG_A, "awaiting_cosign");
+    expect(cosign.find((i) => i.admissionId === pending)).toMatchObject({
+      dischargeEventId: filed.id,
+      dischargeType: "for_cause",
+      effectiveDate: isoDay(0),
+    });
+
+    const needs = await ids(ORG_A, "needs_details");
+    expect(needs.find((i) => i.admissionId === death.admissionId)).toMatchObject({
+      missing: "place_of_death",
+      dischargeEventId: death.dischargeEventId,
+      dischargeType: "death",
+    });
+    expect(needs.find((i) => i.admissionId === xferAdmission)).toMatchObject({
+      missing: "receiving_care_setting",
+      transferEventId: xfer.id,
+      dischargeType: "transfer_out",
+    });
+    expect(needs.map((i) => i.admissionId)).not.toContain(ready);
+
+    // Recording the place of death takes the admission off the list.
+    await details.recordPlaceOfDeath(
+      ORG_A,
+      death.dischargeEventId,
+      { value: "home", ifVersion: death.version },
+      USER,
+    );
+    expect((await ids(ORG_A, "needs_details")).map((i) => i.admissionId)).not.toContain(
+      death.admissionId,
+    );
+
+    // Caseload narrowing (GAP-020) and an empty caseload.
+    const narrowed = await worklist.list(
+      ORG_A,
+      { bucket: "ready", limit: 200 },
+      { patientIds: [readyPatient] },
+    );
+    expect(narrowed.items.map((i) => i.admissionId)).toEqual([ready]);
+    expect((await worklist.list(ORG_A, { bucket: "ready" }, { patientIds: [] })).items).toEqual([]);
+
+    // Pagination cursor.
+    const first = await worklist.list(ORG_A, { bucket: "ready", limit: 1 }, ORG_WIDE);
+    expect(first.items).toHaveLength(1);
+    if (first.nextCursor !== null) {
+      const second = await worklist.list(
+        ORG_A,
+        { bucket: "ready", limit: 1, cursor: first.nextCursor },
+        ORG_WIDE,
+      );
+      expect(second.items[0]?.admissionId).not.toBe(first.items[0]?.admissionId);
+    }
+
+    // RLS: another org sees none of it.
+    for (const bucket of ["ready", "needs_details", "awaiting_cosign"] as const) {
+      expect(await ids(ORG_B, bucket)).toEqual([]);
+    }
   });
 });

@@ -81,6 +81,8 @@ import {
 } from "./admission-typebox";
 import { registerDischargeDetailsRoutes } from "./discharge-details-routes";
 import type { DischargeDetailsService } from "./discharge-details-service";
+import { registerDischargeWorklistRoutes } from "./discharge-worklist-routes";
+import type { DischargeWorklistService } from "./discharge-worklist-service";
 import {
   type AdmissionReadScope,
   type AdmissionRouteService,
@@ -97,6 +99,11 @@ export interface AdmissionRouteDeps {
    * that do not need it — its routes then answer 503 DEGRADED rather than disappearing.
    */
   dischargeDetails?: DischargeDetailsService;
+  /**
+   * The end-of-episode worklist (the web "Discharge / transfer" hub). Absent in slices that do not need it — its
+   * route then answers 503 DEGRADED.
+   */
+  dischargeWorklist?: DischargeWorklistService;
   /**
    * The patients on a clinician's caseload (GAP-020) — defaults to M5's published `CaseloadProvider` seam.
    * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
@@ -298,6 +305,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
   // After-the-fact claim details (place of death / receiving care setting) — own registrar + service.
   registerDischargeDetailsRoutes(app, { service: deps.dischargeDetails });
+  // The end-of-episode worklist — same caseload narrowing as the census.
+  registerDischargeWorklistRoutes(app, {
+    service: deps.dischargeWorklist,
+    readScope: (request) => readScopeOf(request, caseloadPatientIds),
+  });
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
   app.post("/api/v1/referrals", { preHandler: [REFERRAL_CREATE] }, async (request, reply) => {

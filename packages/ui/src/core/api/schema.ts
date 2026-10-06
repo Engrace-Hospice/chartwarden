@@ -6685,6 +6685,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discharges/worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause) */
+        get: operations["getApiV1DischargesWorklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discipline-plans": {
         parameters: {
             query?: never;
@@ -39218,6 +39235,47 @@ export interface operations {
                         version: number;
                         /** @description The claim patient discharge status this value sets (40/41/42 or 50/51). */
                         claimPatientStatus: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DischargesWorklist: {
+        parameters: {
+            query: {
+                bucket: "ready" | "needs_details" | "awaiting_cosign";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            admissionId: string;
+                            patientId: string;
+                            admissionState: string;
+                            admissionAt: string | null;
+                            dischargedAt: string | null;
+                            /** @description needs_details only: the claim detail the stay-ending record lacks. */
+                            missing: "place_of_death" | "receiving_care_setting" | null;
+                            dischargeEventId: string | null;
+                            transferEventId: string | null;
+                            dischargeType: string | null;
+                            effectiveDate: string | null;
+                        }[];
+                        nextCursor: string | null;
                     };
                 };
             };
