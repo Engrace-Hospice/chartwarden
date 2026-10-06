@@ -17,7 +17,7 @@ import { registerCopRoutes } from "./cop.routes";
 import { registerIncidentRoutes } from "./incidents.routes";
 import { registerInfectionRoutes } from "./infection.routes";
 import { registerMeasuresRoutes } from "./measures.routes";
-import { registerMortalityRoutes } from "./mortality.routes";
+import { type PatientDisplayPort, registerMortalityRoutes } from "./mortality.routes";
 import { registerQapiRoutes } from "./qapi.routes";
 import type { M30ReadRouteService } from "./read-service";
 import { registerRiskRegisterRoutes } from "./risk-register.routes";
@@ -81,6 +81,8 @@ export interface M30RouteServices {
   readonly writeService: M30WriteRouteService;
   /** GAP-091 — overrides the PHI patient-scope resolver (default: org-wide roles ⇒ org, else M5 caseload). */
   readonly resolveScope?: PatientScopeResolver;
+  /** D19 — M5's display-label port (injected at the composition root); gates on `mortality.read_with_patient`. */
+  readonly patientDisplay?: PatientDisplayPort;
 }
 
 /**
@@ -91,14 +93,14 @@ export interface M30RouteServices {
  * write surfaces share no method name, so the merge is total and unambiguous).
  */
 export function mountM30Routes(app: FastifyInstance, services: M30RouteServices): void {
-  const { readService, writeService, resolveScope } = services;
+  const { readService, writeService, resolveScope, patientDisplay } = services;
   const combined: M30CombinedRouteService = { ...readService, ...writeService };
 
   registerMeasuresRoutes(app, { readService, writeService });
   registerCahpsRoutes(app, { readService, writeService });
   registerRiskRegisterRoutes(app, { readService, writeService });
   registerIncidentRoutes(app, { readService, writeService, resolveScope });
-  registerMortalityRoutes(app, { readService, writeService, resolveScope });
+  registerMortalityRoutes(app, { readService, writeService, resolveScope, patientDisplay });
   registerInfectionRoutes(app, { readService, writeService, resolveScope });
   registerQapiRoutes(app, { service: combined });
   registerSraRoutes(app, { service: combined });

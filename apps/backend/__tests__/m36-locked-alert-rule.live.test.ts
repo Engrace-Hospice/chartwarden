@@ -231,4 +231,47 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
     expect(rules).toHaveLength(1);
     expect(rules[0]?.channelsOverride).toContain("voice");
   });
+
+  // Migration 0346 — the M20 coverage-gap rule joins the locked set. The trigger is data-driven, so the
+  // proof is: an already-seeded UNLOCKED platform row is flipped by the migration, after which a tenant
+  // clone cannot weaken it (as the real NOBYPASSRLS wardenx_app role).
+  it("0346: flips a seeded unlocked coverage-gap platform rule, after which a tenant cannot loosen it", async () => {
+    const GAP = "m20.safety.coverage_gap_detected";
+    await admin.query("DELETE FROM alert_rule WHERE event_type=$1", [GAP]);
+    await admin.query(
+      `INSERT INTO alert_rule (organization_id,event_type,category,severity_floor,recipient_resolver,resolver_args,system_locked,enabled)
+       VALUES (NULL,'${GAP}','field_safety','critical','role_set','{"roleKeys":["don","org_admin"]}'::jsonb,false,true)`,
+    );
+    const weakClone = (over: string) =>
+      `INSERT INTO alert_rule (organization_id,event_type,category,severity_floor,recipient_resolver,resolver_args,system_locked,enabled)
+       VALUES ('${ORG_A}','${GAP}','field_safety',${over})`;
+    const loose = `'warn','role_set','{"roleKeys":["don","org_admin"]}'::jsonb,true,true`;
+    // Before the migration the rule is not locked: a tenant may not mint a locked clone of an unlocked rule.
+    expect((await asAppInOrgA(weakClone(loose)))?.message).toMatch(/system_locked/);
+
+    await admin.query(
+      readFileSync(join(MIGRATIONS_DIR, "0346_m20_coverage_gap_alert_rule_lock.sql"), "utf8"),
+    );
+    const { rows } = await admin.query(
+      "SELECT system_locked, enabled FROM alert_rule WHERE organization_id IS NULL AND event_type=$1",
+      [GAP],
+    );
+    expect(rows).toEqual([{ system_locked: true, enabled: true }]);
+
+    for (const weak of [
+      loose, // severity downgrade
+      `'critical','role_set','{"roleKeys":["don"]}'::jsonb,true,true`, // resolver args changed
+      `'critical','role_set','{"roleKeys":["don","org_admin"]}'::jsonb,true,false`, // disabled
+      `'critical','role_set','{"roleKeys":["don","org_admin"]}'::jsonb,false,true`, // lock dropped
+    ]) {
+      const err = await asAppInOrgA(weakClone(weak));
+      expect(err, weak).not.toBeNull();
+      expect(err?.message).toMatch(/alert_rule/);
+    }
+    expect(
+      await asAppInOrgA(
+        weakClone(`'critical','role_set','{"roleKeys":["don","org_admin"]}'::jsonb,true,true`),
+      ),
+    ).toBeNull();
+  });
 });

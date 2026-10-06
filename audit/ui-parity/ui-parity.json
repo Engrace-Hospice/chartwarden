@@ -1858,6 +1858,14 @@
     },
     {
       "app": "web",
+      "module": "30-quality",
+      "moduleId": 30,
+      "id": "quality.mortality",
+      "path": "/quality/mortality",
+      "permission": "mortality.read"
+    },
+    {
+      "app": "web",
       "module": "32-ai-platform",
       "moduleId": 32,
       "id": "ai.compliance",

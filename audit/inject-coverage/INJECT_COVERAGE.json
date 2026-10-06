@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1364,
-    "coveredRoutes": 1364,
-    "directRoutesReferenced": 1321
+    "routes": 1365,
+    "coveredRoutes": 1365,
+    "directRoutesReferenced": 1322
   },
   "modules": [
     {
@@ -204,12 +204,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 33,
+      "routes": 34,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts"
       ],
-      "directRoutesReferenced": 33
+      "directRoutesReferenced": 34
     },
     {
       "module": "17-scheduling",
@@ -356,6 +356,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/gap-091-m30-phi-scope.test.ts",
         "apps/backend/__tests__/m30-close-cosign.test.ts",
+        "apps/backend/__tests__/m30-mortality-patient-display.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
       "directRoutesReferenced": 60

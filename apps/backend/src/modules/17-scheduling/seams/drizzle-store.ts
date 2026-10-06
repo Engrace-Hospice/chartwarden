@@ -30,7 +30,7 @@
 // `totalActualMiles: 0` — an unreadable mileage ledger is not a clinician who drove zero miles. The
 // override rate is derived from data (per-day proposed sequence vs. the actual start order), never seeded.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type {
   DateRange,
   OnCallRosterEntry,
@@ -170,6 +170,65 @@ function toAssignmentDto(r: VisitDtoRow): VisitAssignmentDto {
   } as VisitAssignmentDto;
 }
 
+/**
+ * The window tallies behind `VisitMetricsProvider`, over an already-open tenant tx. Shared by the request-
+ * scoped store method and {@link onTimeVisitCountsForOrg} so the on-time semantics live in one place.
+ */
+async function schedulingMetricsCountsIn(
+  tx: DbClient,
+  window: Parameters<SchedulingSeamStore["metricsCounts"]>[0],
+  filters?: Parameters<SchedulingSeamStore["metricsCounts"]>[1],
+): Promise<SchedulingMetricsCounts> {
+  const conds = [
+    gte(V.scheduledStartedAt, new Date(window.from)),
+    lte(V.scheduledStartedAt, new Date(window.to)),
+    gte(V.serviceDate, dateOf(window.from)),
+    lte(V.serviceDate, dateOf(window.to)),
+  ];
+  if (filters?.discipline !== undefined) {
+    conds.push(eq(V.assignedDisciplineAtAssignment, filters.discipline));
+  }
+  // One scan, the per-tally split done in SQL (the M21 costTotals precedent) — the semantics are the
+  // in-memory slice's, verbatim: on-time = started at/before the scheduled start; published = past the
+  // proposal stage; the provider does all division.
+  const [row] = await tx
+    .select({
+      total: sql<string>`count(*)`,
+      onTime: sql<string>`count(*) filter (where ${V.actualStartedAt} is not null and ${V.actualStartedAt} <= ${V.scheduledStartedAt})`,
+      noShow: sql<string>`count(*) filter (where ${V.status} = 'no_show')`,
+      published: sql<string>`count(*) filter (where ${V.status} <> 'proposed')`,
+      rescheduled: sql<string>`count(*) filter (where ${V.status} = 'rescheduled')`,
+    })
+    .from(V)
+    .where(and(...conds));
+  const n = (v: string | number | null | undefined): number => Number(v ?? 0);
+  return {
+    totalScheduled: n(row?.total),
+    onTimeCount: n(row?.onTime),
+    noShowCount: n(row?.noShow),
+    publishedCount: n(row?.published),
+    rescheduledCount: n(row?.rescheduled),
+  };
+}
+
+/**
+ * GAP-090 — org-explicit on-time-visit tally for M30's `visit_on_time_rate` recompute. The published
+ * `VisitMetricsProvider` runs under `withOrgContextFromRequest`, which throws `no ambient request context`
+ * inside a worker; this opens its own `withOrgContext` envelope on the job's org instead (the
+ * `complianceStatesForVisitsForOrg` / `admissionSchedulingContextForOrg` shape). Aggregate counts only.
+ */
+export async function onTimeVisitCountsForOrg(
+  db: DbClient,
+  organizationId: string,
+  window: Parameters<SchedulingSeamStore["metricsCounts"]>[0],
+  filters?: Parameters<SchedulingSeamStore["metricsCounts"]>[1],
+): Promise<{ readonly numerator: number; readonly denominator: number }> {
+  const counts = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+    schedulingMetricsCountsIn(tx as unknown as DbClient, window, filters),
+  );
+  return { numerator: counts.onTimeCount, denominator: counts.totalScheduled };
+}
+
 /** Build the Drizzle-backed §4.3 scheduling seam store (production; injected via `registerSchedulingSeams`). */
 export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamStore {
   return {
@@ -300,38 +359,9 @@ export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamSt
 
     // ── metric reads (VisitMetricsProvider) ────────────────────────────────────────────────────────────
     async metricsCounts(window, filters) {
-      return withOrgContextFromRequest(db, async (tx): Promise<SchedulingMetricsCounts> => {
-        const conds = [
-          gte(V.scheduledStartedAt, new Date(window.from)),
-          lte(V.scheduledStartedAt, new Date(window.to)),
-          gte(V.serviceDate, dateOf(window.from)),
-          lte(V.serviceDate, dateOf(window.to)),
-        ];
-        if (filters?.discipline !== undefined) {
-          conds.push(eq(V.assignedDisciplineAtAssignment, filters.discipline));
-        }
-        // One scan, the per-tally split done in SQL (the M21 costTotals precedent) — the semantics are the
-        // in-memory slice's, verbatim: on-time = started at/before the scheduled start; published = past the
-        // proposal stage; the provider does all division.
-        const [row] = await tx
-          .select({
-            total: sql<string>`count(*)`,
-            onTime: sql<string>`count(*) filter (where ${V.actualStartedAt} is not null and ${V.actualStartedAt} <= ${V.scheduledStartedAt})`,
-            noShow: sql<string>`count(*) filter (where ${V.status} = 'no_show')`,
-            published: sql<string>`count(*) filter (where ${V.status} <> 'proposed')`,
-            rescheduled: sql<string>`count(*) filter (where ${V.status} = 'rescheduled')`,
-          })
-          .from(V)
-          .where(and(...conds));
-        const n = (v: string | number | null | undefined): number => Number(v ?? 0);
-        return {
-          totalScheduled: n(row?.total),
-          onTimeCount: n(row?.onTime),
-          noShowCount: n(row?.noShow),
-          publishedCount: n(row?.published),
-          rescheduledCount: n(row?.rescheduled),
-        };
-      });
+      return withOrgContextFromRequest(db, (tx) =>
+        schedulingMetricsCountsIn(tx as unknown as DbClient, window, filters),
+      );
     },
 
     async routeEfficiencyForMembership(membershipId, window) {

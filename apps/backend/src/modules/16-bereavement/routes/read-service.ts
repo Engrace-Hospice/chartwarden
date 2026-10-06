@@ -86,6 +86,10 @@ export interface BereavedContactRowView {
   readonly confirmedAt: IsoInstant | null;
   readonly optedOutAt: IsoInstant | null;
   readonly unreachableAt: IsoInstant | null;
+  /** §4.9 — the nightly detector proposes (never applies) `markUnreachable`; true while a proposal is stamped and the contact is not already unreachable. */
+  readonly unreachableProposed: boolean;
+  /** `contact_at` of the newest no-response row behind the proposal; null when not proposed. */
+  readonly unreachableProposedAt: IsoInstant | null;
   readonly deceasedAt: IsoInstant | null;
   /** D9 — true while the 90-day self-service rescind window is still open on the active opt-out row. */
   readonly mayRescindOptOut: boolean;
@@ -250,4 +254,27 @@ export interface M16ReadService {
     actor: M16ReadActor,
     query: SupervisorDashboardQuery,
   ): Promise<SupervisorDashboardView>;
+}
+
+/**
+ * §4.9 — derive the read-only "unreachable proposed" flags from a contact row. The nightly detector only
+ * stamps `unreachable_proposed_through_at`; the counselor's `markUnreachable` is what changes status, so
+ * a proposal stops being surfaced once the contact is already unreachable.
+ */
+export function unreachableProposalOf(row: {
+  readonly status: string;
+  readonly unreachableProposedThroughAt: Date | string | null;
+  /** Route 34 — the counselor's "keep trying" stamp; dismissed while it is >= the proposal stamp. */
+  readonly unreachableProposalDismissedAt?: Date | string | null;
+}): { unreachableProposed: boolean; unreachableProposedAt: IsoInstant | null } {
+  const stamp = row.unreachableProposedThroughAt;
+  if (stamp === null || row.status === "unreachable") {
+    return { unreachableProposed: false, unreachableProposedAt: null };
+  }
+  const dismissed = row.unreachableProposalDismissedAt ?? null;
+  if (dismissed !== null && new Date(dismissed).getTime() >= new Date(stamp).getTime()) {
+    return { unreachableProposed: false, unreachableProposedAt: null };
+  }
+  const at = (stamp instanceof Date ? stamp : new Date(stamp)).toISOString() as IsoInstant;
+  return { unreachableProposed: true, unreachableProposedAt: at };
 }

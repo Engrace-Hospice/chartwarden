@@ -71,6 +71,7 @@ function digest(
     lateEntryTier: "normal",
     status: "signed",
     evvBracketState,
+    durationMinutes: null,
   };
 }
 

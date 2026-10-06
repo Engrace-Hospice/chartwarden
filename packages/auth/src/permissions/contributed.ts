@@ -4623,6 +4623,14 @@ export const M30_CONTRIBUTED_PERMISSIONS = {
     category: "quality",
     abac: "inOrg",
   },
+  // D19 — patient-identifying detail (display name + MRN suffix) on R-70/R-71. Without it the reads return the
+  // patient id only. Grant is per-tenant role data (M3), like every other M30 key.
+  "mortality.read_with_patient": {
+    resource: "mortality_review",
+    action: "read_with_patient",
+    category: "quality",
+    abac: "inOrg",
+  },
   // R-72 update review fields.
   "mortality.write": {
     resource: "mortality_review",

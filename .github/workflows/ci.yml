@@ -297,6 +297,10 @@ jobs:
               name: "M13 comfort-kit deployment",
               scripts: "test:m13:comfort-kit-deployment:live",
             }
+          # GAP-038/039/040 — the §4.8 eMAR crons (extend-schedule, missed-dose-sweep, reconciliation-due-warning,
+          # kit-return-overdue, prn-reassessment-overdue). Live: the FOR UPDATE SKIP LOCKED claim, the unique
+          # indexes that make a re-tick a no-op and the NOT EXISTS over the partitioned administration_record.
+          - { name: "M13 eMAR crons", scripts: "test:m13:emar-crons:live" }
           - {
               name: "M14 IDG",
               scripts:
@@ -348,6 +352,10 @@ jobs:
           # statement about how Postgres serializes two concurrent version-guarded UPDATEs on the same
           # row, and the policy-pinned SLA read goes through the real SafetyPolicyProvider.
           - { name: "M20 SOS SLA watchdog", scripts: "test:m20:sos-sla-watchdog:live" }
+          # GAP-061: the §4.8 `m20.overdue-detector.cron` (the 30-second lone-worker overdue check-in
+          # detector) + `m20.coverage-gap-watchdog.cron`. Live because the per-row `FOR UPDATE` decision,
+          # the overdue/escalated stamp CHECKs and the real catalog-validating outbox publish are Postgres.
+          - { name: "M20 Overdue detector", scripts: "test:m20:overdue-detector:live" }
           - {
               name: "M22 Documents",
               scripts:
@@ -367,7 +375,7 @@ jobs:
               scripts:
                 "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live
                 test:m24:revalidate-medicare-primary:live test:m24:remittance-feedback:live
-                test:m24:state-channel-health:live",
+                test:m24:state-channel-health:live test:m24:rb-day-sweep:live",
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
@@ -820,9 +828,13 @@ jobs:
           # F-233 (#248) — M21's Option-B consumer of `m12.medication_order.dispensed_at_pharmacy`
           # (records "dispensed at T" on the correlated comfort-kit request; creates no dispatch).
           - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }
+          # GAP-062 — the M21 §4.6 crons (par-monitor, 30d overdue flip, 72h auto-confirm) via the real publisher.
+          - { name: "M21 cron workers", scripts: "test:m21:cron-workers:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           # F-234 (#248) — the M14 <-> M15 IDG-decision loop (discipline_plan_update -> apply -> ack).
           - { name: "M15 IDG decision loop", scripts: "test:m15:idg-decision:live" }
+          # GAP-044 — the five M15 §4.6 crons (supervisory/MSW/chaplain overdue, gate watcher, hour aggregator).
+          - { name: "M15 crons", scripts: "test:m15:crons:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
           - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
@@ -830,6 +842,8 @@ jobs:
           - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
           - { name: "M16 early close + source encounter", scripts: "test:m16:early-close:live" }
+          # GAP-048 — the §4.9 crons: 13-month auto-close, miss-deadline, anniversary lookahead.
+          - { name: "M16 cron workers", scripts: "test:m16:cron-workers:live" }
           - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31

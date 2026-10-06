@@ -40,6 +40,10 @@ export const medicationReconciliationWorksheets = pgTable(
 
     documentId: uuid("document_id"), // M22 back-ref
 
+    // "Already warned" markers (0345): stamped in the SAME tx as the outbox publish by the deadline sweeps.
+    deadlineWarnedAt: timestamp("deadline_warned_at", { withTimezone: true }), // due_at_warning published
+    deadlineOverdueWarnedAt: timestamp("deadline_overdue_warned_at", { withTimezone: true }), // overdue published
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

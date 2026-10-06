@@ -179,6 +179,103 @@ function toLocationDto(r: {
   } as EvvLocationDto;
 }
 
+/**
+ * The window compliance tallies behind `EvvMetricsProvider`, over an already-open tenant tx. Shared by the
+ * request-scoped store method and {@link evvComplianceCountsForOrg}.
+ */
+async function evvComplianceCountsIn(
+  tx: DbClient,
+  window: Parameters<EvvSeamStore["complianceCountsForWindow"]>[0],
+  filters?: Parameters<EvvSeamStore["complianceCountsForWindow"]>[1],
+): Promise<EvvComplianceDto> {
+  // Population = the window's COMPLETED visits (the billable population ADR-0008 gates; a cancelled/
+  // no-show row has no service to verify). Window keyed on the scheduled start, service_date-pruned.
+  const conds = [
+    eq(VISIT.status, "completed"),
+    gte(VISIT.scheduledStartedAt, new Date(window.from)),
+    lte(VISIT.scheduledStartedAt, new Date(window.to)),
+    gte(VISIT.serviceDate, dateOf(window.from)),
+    lte(VISIT.serviceDate, dateOf(window.to)),
+  ];
+  if (filters?.discipline !== undefined) {
+    conds.push(eq(VISIT.assignedDisciplineAtAssignment, filters.discipline));
+  }
+  const visits = await tx
+    .select({ id: VISIT.id })
+    .from(VISIT)
+    .where(and(...conds));
+  if (visits.length === 0) {
+    return {
+      compliant: 0,
+      documentedMissing: 0,
+      unresolvedMissing: 0,
+      notRequired: 0,
+      total: 0,
+    };
+  }
+  const ids = visits.map((v) => v.id);
+  // Two batched reads over the id set (inArray — never an N+1): the active event pair + the
+  // resolution trail, classified per visit by the shared ADR-0008 rules.
+  const events = await tx
+    .select({ visitId: EVENT.visitId, kind: EVENT.kind })
+    .from(EVENT)
+    .where(and(inArray(EVENT.visitId, ids), isNull(EVENT.supersededByEventId)));
+  const resolutions = await tx
+    .select({ visitId: MR.visitId, status: MR.status })
+    .from(MR)
+    .where(inArray(MR.visitId, ids));
+
+  const pair = new Map<string, { checkIn: boolean; checkOut: boolean }>();
+  for (const e of events) {
+    const p = pair.get(e.visitId) ?? { checkIn: false, checkOut: false };
+    if (e.kind === "check_in") p.checkIn = true;
+    if (e.kind === "check_out") p.checkOut = true;
+    pair.set(e.visitId, p);
+  }
+  const open = new Set<string>();
+  const documented = new Set<string>();
+  for (const r of resolutions) {
+    if (r.status === "open") open.add(r.visitId);
+    else if ((DOCUMENTED_CLOSE_STATUSES as readonly string[]).includes(r.status)) {
+      documented.add(r.visitId);
+    }
+  }
+
+  const counts = { compliant: 0, documentedMissing: 0, unresolvedMissing: 0, notRequired: 0 };
+  for (const id of ids) {
+    const p = pair.get(id) ?? { checkIn: false, checkOut: false };
+    const verdict = classify({
+      hasCheckIn: p.checkIn,
+      hasCheckOut: p.checkOut,
+      hasOpenResolution: open.has(id),
+      hasDocumentedClose: documented.has(id),
+    }).compliance;
+    if (verdict === "compliant") counts.compliant++;
+    else if (verdict === "documented_missing") counts.documentedMissing++;
+    else if (verdict === "unresolved_missing") counts.unresolvedMissing++;
+    else counts.notRequired++;
+  }
+  return { ...counts, total: ids.length };
+}
+
+/**
+ * GAP-090 — org-explicit EVV compliance tally for M30's `evv_compliance_rate` recompute. The published
+ * `EvvMetricsProvider` runs under `withOrgContextFromRequest`, which throws `no ambient request context`
+ * inside a worker; this opens its own `withOrgContext` envelope on the job's org (the
+ * `complianceStatesForVisitsForOrg` shape). Aggregate counts only.
+ */
+export async function evvComplianceCountsForOrg(
+  db: DbClient,
+  organizationId: string,
+  window: Parameters<EvvSeamStore["complianceCountsForWindow"]>[0],
+  filters?: Parameters<EvvSeamStore["complianceCountsForWindow"]>[1],
+): Promise<{ readonly numerator: number; readonly denominator: number }> {
+  const c = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+    evvComplianceCountsIn(tx as unknown as DbClient, window, filters),
+  );
+  return { numerator: c.compliant, denominator: c.total };
+}
+
 /** Build the Drizzle-backed §4.3 EVV seam store (production; injected via `registerEvvSeams`). */
 export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
   /** The per-visit bracket facts (active event pair + resolution trail) the three per-visit reads share. */
@@ -258,76 +355,9 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
     },
 
     async complianceCountsForWindow(window, filters) {
-      return withOrgContextFromRequest(db, async (tx): Promise<EvvComplianceDto> => {
-        // Population = the window's COMPLETED visits (the billable population ADR-0008 gates; a cancelled/
-        // no-show row has no service to verify). Window keyed on the scheduled start, service_date-pruned.
-        const conds = [
-          eq(VISIT.status, "completed"),
-          gte(VISIT.scheduledStartedAt, new Date(window.from)),
-          lte(VISIT.scheduledStartedAt, new Date(window.to)),
-          gte(VISIT.serviceDate, dateOf(window.from)),
-          lte(VISIT.serviceDate, dateOf(window.to)),
-        ];
-        if (filters?.discipline !== undefined) {
-          conds.push(eq(VISIT.assignedDisciplineAtAssignment, filters.discipline));
-        }
-        const visits = await tx
-          .select({ id: VISIT.id })
-          .from(VISIT)
-          .where(and(...conds));
-        if (visits.length === 0) {
-          return {
-            compliant: 0,
-            documentedMissing: 0,
-            unresolvedMissing: 0,
-            notRequired: 0,
-            total: 0,
-          };
-        }
-        const ids = visits.map((v) => v.id);
-        // Two batched reads over the id set (inArray — never an N+1): the active event pair + the
-        // resolution trail, classified per visit by the shared ADR-0008 rules.
-        const events = await tx
-          .select({ visitId: EVENT.visitId, kind: EVENT.kind })
-          .from(EVENT)
-          .where(and(inArray(EVENT.visitId, ids), isNull(EVENT.supersededByEventId)));
-        const resolutions = await tx
-          .select({ visitId: MR.visitId, status: MR.status })
-          .from(MR)
-          .where(inArray(MR.visitId, ids));
-
-        const pair = new Map<string, { checkIn: boolean; checkOut: boolean }>();
-        for (const e of events) {
-          const p = pair.get(e.visitId) ?? { checkIn: false, checkOut: false };
-          if (e.kind === "check_in") p.checkIn = true;
-          if (e.kind === "check_out") p.checkOut = true;
-          pair.set(e.visitId, p);
-        }
-        const open = new Set<string>();
-        const documented = new Set<string>();
-        for (const r of resolutions) {
-          if (r.status === "open") open.add(r.visitId);
-          else if ((DOCUMENTED_CLOSE_STATUSES as readonly string[]).includes(r.status)) {
-            documented.add(r.visitId);
-          }
-        }
-
-        const counts = { compliant: 0, documentedMissing: 0, unresolvedMissing: 0, notRequired: 0 };
-        for (const id of ids) {
-          const p = pair.get(id) ?? { checkIn: false, checkOut: false };
-          const verdict = classify({
-            hasCheckIn: p.checkIn,
-            hasCheckOut: p.checkOut,
-            hasOpenResolution: open.has(id),
-            hasDocumentedClose: documented.has(id),
-          }).compliance;
-          if (verdict === "compliant") counts.compliant++;
-          else if (verdict === "documented_missing") counts.documentedMissing++;
-          else if (verdict === "unresolved_missing") counts.unresolvedMissing++;
-          else counts.notRequired++;
-        }
-        return { ...counts, total: ids.length };
-      });
+      return withOrgContextFromRequest(db, (tx) =>
+        evvComplianceCountsIn(tx as unknown as DbClient, window, filters),
+      );
     },
 
     // ── aggregator reads (EvvAggregatorReferenceReader) ────────────────────────────────────────────────

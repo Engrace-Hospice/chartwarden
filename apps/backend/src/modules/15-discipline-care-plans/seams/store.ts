@@ -29,6 +29,7 @@ import type {
   DisciplinePlanId,
   DisciplinePlanIdgDigest,
   FiscalYear,
+  IsoInstant,
   LocationId,
   MembershipId,
   MswRiskFactor,
@@ -75,6 +76,8 @@ export interface DisciplineComplianceCounts {
 export interface VolunteerHourTotals {
   readonly volunteerHourMinutes: number;
   readonly staffPatientCareMinutes: number | null;
+  /** When the nightly aggregator persisted the denominator; `null` = never computed (migration 0347). */
+  readonly staffPatientCareComputedAt?: IsoInstant | null | undefined;
 }
 
 /**
@@ -233,6 +236,9 @@ export function createInMemoryDisciplinePlanSeamStore(seed: DisciplinePlanSeamSe
         return {
           volunteerHourMinutes: row?.volunteerHourMinutes ?? 0,
           staffPatientCareMinutes: row?.staffPatientCareMinutes ?? null,
+          // no seeded row ⇒ never computed; a seeded row without a stamp ⇒ the inline (non-staleness) case.
+          staffPatientCareComputedAt:
+            row === undefined ? null : (row.staffPatientCareComputedAt ?? undefined),
         };
       },
     },

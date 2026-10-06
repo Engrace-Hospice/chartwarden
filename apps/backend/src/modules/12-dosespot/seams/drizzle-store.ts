@@ -454,3 +454,28 @@ export async function medicationOrderScheduleContextForOrg(
     };
   });
 }
+
+/**
+ * GAP-090 — org-explicit per-admission medication-order read for M30's `opioid_on_admission_rate`
+ * recompute. The published `MedicationOrderProvider.listForAdmission` opens `withOrgContextFromRequest`,
+ * which throws `no ambient request context` inside a worker (the `medicationOrderPatientAndDrugForOrg`
+ * precedent above). Projects ONLY what the resolver reads — `activatedAt` + `drugName`; no clinical free
+ * text crosses.
+ */
+export async function medicationOrdersForAdmissionForOrg(
+  db: DbClient,
+  organizationId: string,
+  admissionId: string,
+): Promise<ReadonlyArray<{ readonly activatedAt: string | null; readonly drugName: string }>> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const rows = await tx
+      .select({ activatedAt: MO.activatedAt, drugName: MO.drugName })
+      .from(MO)
+      .where(and(eq(MO.organizationId, organizationId), eq(MO.admissionId, admissionId)))
+      .orderBy(desc(MO.createdAt), desc(MO.id));
+    return rows.map((r) => ({
+      activatedAt: isoN(r.activatedAt),
+      drugName: r.drugName,
+    }));
+  });
+}

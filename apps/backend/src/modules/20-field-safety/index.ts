@@ -132,7 +132,9 @@ export * from "./seams";
 // M9/M25/M7 precedent) + the platform-tenancy registration its active-org fan-out needs.
 export {
   M20_DLQ,
+  M20_COVERAGE_GAP_WATCHDOG_JOB_NAME,
   M20_JOB_SCHEDULES,
+  M20_OVERDUE_DETECTOR_JOB_NAME,
   M20_QUEUES,
   M20_QUEUE_PARAMS,
   M20_SOS_WATCHDOG_JOB_NAME,
@@ -142,6 +144,8 @@ export {
   type M20WorkerDeps,
   buildM20WorkerDeps,
   registerM20CronWorkers,
+  runCoverageGapWatchdogCron,
+  runOverdueDetectorCron,
   runSosSlaWatchdogCron,
   scheduleM20Jobs,
 } from "./jobs/cron-workers";

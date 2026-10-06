@@ -175,6 +175,12 @@ export interface MarkUnreachableInput {
   readonly note?: string;
 }
 
+/** Route 34 — "keep trying": dismiss the 3-strikes unreachable proposal. */
+export interface DismissUnreachableProposalInput {
+  readonly expectedVersion?: number;
+  readonly note?: string;
+}
+
 /** Route 18 — §7.7 complicated-grief referral out of the program. */
 export interface FlagComplicatedGriefInput {
   readonly expectedVersion?: number;
@@ -354,6 +360,11 @@ export interface M16WriteService {
     actor: M16WriteActor,
     contactId: string,
     input: MarkUnreachableInput,
+  ): Promise<BereavedContactRowView>;
+  dismissUnreachableProposal(
+    actor: M16WriteActor,
+    contactId: string,
+    input: DismissUnreachableProposalInput,
   ): Promise<BereavedContactRowView>;
   flagComplicatedGrief(
     actor: M16WriteActor,

@@ -3143,6 +3143,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Keep trying: dismiss the nightly unreachable proposal until a strictly newer no-response strike (§4.1 #34) */
+        post: operations["postApiV1BereavementContactsByContactIdDismissunreachableproposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}/flag-complicated-grief": {
         parameters: {
             query?: never;
@@ -28857,6 +28874,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -28906,6 +28925,58 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementContactsByContactIdDismissunreachableproposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -28958,6 +29029,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29053,6 +29126,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29101,6 +29176,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29152,6 +29229,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29243,6 +29322,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29789,6 +29870,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29888,6 +29971,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -29987,6 +30072,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -30084,6 +30171,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -30201,6 +30290,8 @@ export interface operations {
                         confirmedAt: string | null;
                         optedOutAt: string | null;
                         unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -30427,6 +30518,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -30641,6 +30734,8 @@ export interface operations {
                             confirmedAt: string | null;
                             optedOutAt: string | null;
                             unreachableAt: string | null;
+                            unreachableProposed: boolean;
+                            unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -30804,6 +30899,8 @@ export interface operations {
                                 confirmedAt: string | null;
                                 optedOutAt: string | null;
                                 unreachableAt: string | null;
+                                unreachableProposed: boolean;
+                                unreachableProposedAt: string | null;
                                 deceasedAt: string | null;
                                 mayRescindOptOut: boolean;
                                 currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
@@ -63467,6 +63564,8 @@ export interface operations {
                             status: "created" | "in_progress" | "completed";
                             targetCompletionAt: string;
                             completedAt: string | null;
+                            patientDisplayName?: string;
+                            patientMrnSuffix?: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -63503,6 +63602,8 @@ export interface operations {
                         status: "created" | "in_progress" | "completed";
                         targetCompletionAt: string;
                         completedAt: string | null;
+                        patientDisplayName?: string;
+                        patientMrnSuffix?: string | null;
                     } & {
                         dimensions: {
                             clinical: {

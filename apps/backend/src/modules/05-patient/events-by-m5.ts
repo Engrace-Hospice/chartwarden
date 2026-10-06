@@ -149,7 +149,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // GAP-110 — m39 ADDED: M39's own spec (§4.6, §7.7 W-CON-07 step 3, job `m39-m5-patient-deceased`) names
     // this event with a real consumer (`39-consent/m5-patient-deceased-consumer.ts`) that expires the
     // decedent's active non-survives-death consents (D13) — an outbox push, not a `PatientReader` pull.
-    declaredConsumers: ["m23", "m26", "m29", "m35", "m39"],
+    // GAP-071 — m24 ADDED: M24 §4.4 `m5-patient-deceased.consumer.ts` voids the decedent's not-yet-billed
+    // `rb_day` rows after the date of death ("final R&B day finalization").
+    declaredConsumers: ["m23", "m24", "m26", "m29", "m35", "m39"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },

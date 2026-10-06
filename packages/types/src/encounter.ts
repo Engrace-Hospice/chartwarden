@@ -254,6 +254,10 @@ export interface SignedEncounterDigest {
    * counts only `evv_present` qualifying-discipline visits; the M8 Drizzle reader populates it from the
    * `encounter.evv_bracket_state` column. Additive — existing consumers ignore the field. */
   readonly evvBracketState: EvvBracketState;
+  /** Whole minutes between the visit bracket's start and end (`encounter.started_at`/`ended_at`: EVV
+   * check-in/out or clinician-entered), or `null` when the bracket is incomplete or non-positive. `null` means
+   * UNRESOLVED — consumers must report it, never treat it as zero minutes (M15's 418.78(e) hour ledger, GAP-044). */
+  readonly durationMinutes: number | null;
 }
 
 /** A signed addendum projection inside an {@link EncounterRenderPayload}. */

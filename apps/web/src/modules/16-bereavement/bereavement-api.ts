@@ -545,6 +545,20 @@ export async function markContactUnreachable(
   return { contact: res.data, error: null };
 }
 
+/** Route 34 — "keep trying": dismiss the unreachable proposal until a strictly newer no-response strike. */
+export async function dismissUnreachableProposal(
+  client: ApiClient,
+  contactId: string,
+  version: number,
+): Promise<{ contact: ContactRow | null; error: unknown }> {
+  const res = await client.POST(
+    "/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal",
+    { params: { path: { contactId } }, headers: writeHeaders(version), body: {} },
+  );
+  if (res.error) return { contact: null, error: res.error };
+  return { contact: res.data, error: null };
+}
+
 /** Route 18 — §7.7 complicated grief. ENDS the M16 program for this survivor; the M40 resource is required. */
 export async function flagComplicatedGrief(
   client: ApiClient,

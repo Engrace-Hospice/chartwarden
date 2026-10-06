@@ -30,6 +30,11 @@ export const M24_SUBSCRIPTION_MAP: Readonly<Record<string, string>> = {
   "m5.patient.updated": "trigger-revalidate",
   "m5.patient.address_changed": "trigger-revalidate",
   "m8.encounter.signed": "trigger-revalidate",
+  // GAP-071 follow-up — the rb_day lifecycle consumers (`outbox-consumers/m24-rb-day-consumers.ts`, bound at
+  // the composition root like the three above).
+  "m6.loc.changed": "reevaluate-rb-days",
+  "m6.admission.discharged": "void-rb-days",
+  "m5.patient.deceased": "void-rb-days",
 };
 
 export const M24_UPSTREAM_SUBSCRIPTIONS = Object.keys(M24_SUBSCRIPTION_MAP) as readonly string[];

@@ -124,3 +124,27 @@ export {
   eraseBereavementRecord,
   registerBereavementErasers,
 } from "./erasers/bereavement-eraser";
+
+// GAP-048 — the §4.9 time-driven crons (13-month auto-close, miss-deadline, anniversary lookahead): the live
+// BullMQ Worker/Queue construction + the platform-tenancy registration their active-org fan-out needs.
+export {
+  M16_ANNIVERSARY_LOOKAHEAD_DAYS,
+  M16_DLQ,
+  M16_JOB_NAMES,
+  M16_JOB_SCHEDULES,
+  M16_QUEUES,
+  M16_QUEUE_PARAMS,
+} from "./jobs/index";
+export {
+  type ActiveOrgListPort as M16ActiveOrgListPort,
+  type M16WorkerDeps,
+  anniversaryLookaheadRange,
+  buildM16WorkerDeps,
+  closeCutoffDate,
+  registerM16CronWorkers,
+  runAnniversaryLookaheadCron,
+  runClose13MonthsCron,
+  runMissDeadlineCron,
+  scheduleM16Jobs,
+} from "./jobs/cron-workers";
+export { M16_PLATFORM_JOB_ID, wireM16Tenancy } from "./wiring";

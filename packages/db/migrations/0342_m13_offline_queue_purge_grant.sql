@@ -1,0 +1,13 @@
+-- M13 (GAP-038 follow-up) — let the tenant app role purge synced rows of the server-side offline-sync ledger.
+--
+-- The M13 spec (§4.8 `m13.purge-offline-queue`, §3 retention note) purges `administration_offline_queue` rows
+-- 30 days post-sync. The nightly cron runs `DELETE` as `wardenx_app` inside `withOrgContext`, but migration 0041
+-- granted that role only SELECT, INSERT, UPDATE on the table although its RLS policy is FOR ALL and the
+-- `trg_audit_administration_offline_queue` trigger already records DELETE (rejection_reason_detail scrubbed).
+--
+-- This adds exactly the missing privilege. RLS still confines every delete to the caller's own org
+-- (administration_offline_queue_org, USING organization_id = app.org_id); the cron only deletes
+-- `sync_status = 'synced'` rows past retention (never `pending` / `rejected`), and the audit trigger records
+-- each deleted row. Tenant erasure keeps its own grant on wardenx_destruction (0157); nothing is revoked.
+-- Idempotent: re-granting an held privilege is a no-op.
+GRANT DELETE ON "administration_offline_queue" TO wardenx_app;

@@ -13,9 +13,10 @@
 //   • `gatesForMembership` is the ONE read that catches its own failure and answers `null` — §8.7 turns
 //     that into the fail-CLOSED `isActive:false` + `service_unavailable` sentinel. An ABSENT gate row is
 //     NOT an active gate: it comes back as an empty slice, and `effectiveStatusFor` fails the missing kind.
-//   • `volunteerHourTotals.staffPatientCareMinutes` stays `null` while the M27 patient-care-HOURS seam is
-//     unbound (M15-F04), so `computeVolunteerHourRatio` badges `unavailable` — never a fabricated 0% CoP
-//     breach. The optional `staffPatientCareMinutes` dep is where the M27 bind attaches later.
+//   • `volunteerHourTotals.staffPatientCareMinutes` is the denominator the nightly hour aggregator PERSISTED
+//     on `volunteer_hour_ledger` (migration 0347; computed once per PE × FY from M8's signed-encounter
+//     digests). It stays `null` when never computed or no qualifying visit resolved a duration, so
+//     `computeVolunteerHourRatio` badges `unavailable` — never a fabricated 0% CoP breach.
 //   • Every other read propagates a store failure (the supervisory readers' contracts use `null` for "no
 //     obligation armed", and an outage must not impersonate that answer).
 //
@@ -24,7 +25,7 @@
 // (`evaluateInitialClock`, `effectiveStatusFor`) — never re-implemented in SQL — so "day 12 warn / day 14
 // red / day 16 block" has one implementation whichever surface reads it.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type {
   ComplianceScope,
   DisciplineAssessmentDto,
@@ -81,14 +82,6 @@ const strArray = (value: unknown): string[] =>
 /** Deps the composition root may override (tests inject a deterministic clock; the M27 bind lands here). */
 export interface DrizzleDisciplinePlanSeamDeps {
   readonly now?: () => IsoInstant;
-  /**
-   * The M27 patient-care-HOURS denominator for the 418.78(e) ratio (M15-F04 — hours, never dollars).
-   * Unbound ⇒ `null` ⇒ the provider's honest `unavailable` badge, never a fabricated 0%.
-   */
-  readonly staffPatientCareMinutes?: (input: {
-    providerEntityId: string;
-    fiscalYear: number;
-  }) => Promise<number | null>;
 }
 
 /** Build the Drizzle-backed §4.3 seam store over M15's tables. */
@@ -107,7 +100,6 @@ export function createDrizzleDisciplinePlanSeamStore(
   const LEDGER = schema.volunteerHourLedger;
 
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
-  const staffMinutes = deps.staffPatientCareMinutes ?? (async () => null);
 
   type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -631,23 +623,26 @@ export function createDrizzleDisciplinePlanSeamStore(
     },
 
     async volunteerHourTotals(providerEntityId, fiscalYear) {
-      const volunteerHourMinutes = await withOrgContextFromRequest(db, async (tx) => {
+      // M15-F04 / 0347: the denominator is the value the nightly hour aggregator PERSISTED on the ledger row
+      // (never recomputed here). No row / never computed ⇒ `computedAt` null ⇒ the honest `unavailable` badge.
+      return withOrgContextFromRequest(db, async (tx): Promise<VolunteerHourTotals> => {
         const [row] = await tx
-          .select({ minutes: LEDGER.totalVolunteerHourMinutes })
+          .select({
+            minutes: LEDGER.totalVolunteerHourMinutes,
+            patientCareMinutes: LEDGER.patientCareMinutes,
+            computedAt: LEDGER.patientCareComputedAt,
+          })
           .from(LEDGER)
           .where(
             and(eq(LEDGER.providerEntityId, providerEntityId), eq(LEDGER.fiscalYear, fiscalYear)),
           )
           .limit(1);
-        return row?.minutes ?? 0;
+        return {
+          volunteerHourMinutes: row?.minutes ?? 0,
+          staffPatientCareMinutes: row?.patientCareMinutes ?? null,
+          staffPatientCareComputedAt: row?.computedAt ? iso(row.computedAt) : null,
+        };
       });
-      // M15-F04: `null` until the M27 patient-care-HOURS seam is bound — `computeVolunteerHourRatio`
-      // badges it `unavailable` with the reason, never a 0% CoP breach the agency did not commit.
-      const totals: VolunteerHourTotals = {
-        volunteerHourMinutes,
-        staffPatientCareMinutes: await staffMinutes({ providerEntityId, fiscalYear }),
-      };
-      return totals;
     },
   };
 }

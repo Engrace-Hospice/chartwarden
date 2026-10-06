@@ -116,6 +116,11 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { getSeam } from "../../../bootstrap/index";
 import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
 import { buildM30CostReportConsumer } from "../consumed-seam-adapters";
+import {
+  M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE,
+  M30_ASSIGN_UNASSIGNED_MORTALITY_SCHEDULE,
+  assignUnassignedMortalityReviews,
+} from "./assign-unassigned-mortality-reviews";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -173,6 +178,15 @@ export interface M30WorkerDeps {
    * (WX-PR-014).
    */
   readonly providerEntities?: (organizationId: string) => Promise<readonly string[]>;
+  /**
+   * D9 — the Medical Director resolver (`buildMortalityReviewerResolver`) the nightly
+   * `m30.assign-unassigned-mortality-reviews` backfill cron assigns open, unassigned mortality reviews through.
+   * Fail-closed (the cron rejects the tick) when absent.
+   */
+  readonly resolveMedicalDirectorForOrg?: (
+    organizationId: string,
+    providerEntityId: string,
+  ) => Promise<string | null>;
   /**
    * The §4.8 BullMQ recompute/refresh producer (`buildM30RecomputeEnqueue`, wiring.ts — the SAME producer
    * the R-04/R-96 command routes enqueue through). The nightly-recompute + risk-register-refresh crons
@@ -258,6 +272,17 @@ export interface M30WorkerDeps {
    * Fail-closed thunk when absent.
    */
   readonly medicationOrders?: MedicationOrderProvider;
+  /**
+   * GAP-090 — ORG-EXPLICIT reads for the three operational measures whose published seams
+   * (`VisitMetricsProvider`, `EvvMetricsProvider`, `MedicationOrderProvider`) open
+   * `withOrgContextFromRequest` and throw `no ambient request context` inside a BullMQ worker. Each is an
+   * `...ForOrg` function that opens its own `withOrgContext` on the job's org (the composition root binds
+   * M17's `onTimeVisitCountsForOrg`, M18's `evvComplianceCountsForOrg`, M12's
+   * `medicationOrdersForAdmissionForOrg`). When present they take precedence over the request-scoped seam.
+   */
+  readonly visitOnTimeCountsForOrg?: VisitOnTimeCountsView["getOnTimeVisitCounts"];
+  readonly evvComplianceCountsForOrg?: EvvComplianceCountsView["getComplianceCounts"];
+  readonly medicationOrdersForAdmissionForOrg?: MedicationOrderListView["listForAdmission"];
   /**
    * M30's FORWARD-seam consumer over M27's `CostReportFilingStatusReader` — the input to the CoP 418.310
    * `cost_report_filing_compliance` measure (GAP-065). Unlike every other seam on this bundle its absence
@@ -1704,7 +1729,12 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         )
           return resolveHciLiveDischargeTimingInput(request, { dischargeReader });
         if (request.registration.code === "opioid_on_admission_rate")
-          return resolveOpioidOnAdmissionInput(request, { admissionOnsetReader, medicationOrders });
+          return resolveOpioidOnAdmissionInput(request, {
+            admissionOnsetReader,
+            medicationOrders: deps.medicationOrdersForAdmissionForOrg
+              ? { listForAdmission: deps.medicationOrdersForAdmissionForOrg }
+              : medicationOrders,
+          });
         // GAP-065 — the CoP 418.310 indicator, the FIRST production consumer of a forward seam (M27).
         if (request.registration.code === "cost_report_filing_compliance")
           return resolveCostReportFilingInput(request, { costReport });
@@ -1713,8 +1743,13 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         // floor can be applied honestly.
         if (OPERATIONAL_BOUND_MEASURE_CODES.has(request.registration.code))
           return resolveOperationalMeasureInput(request, {
-            visitMetrics: getSeam("VisitMetricsProvider") as never,
-            evvMetrics: getSeam("EvvMetricsProvider") as never,
+            // GAP-090 — org-explicit when bound (a worker has no request context); else the published seam.
+            visitMetrics: deps.visitOnTimeCountsForOrg
+              ? { getOnTimeVisitCounts: deps.visitOnTimeCountsForOrg }
+              : (getSeam("VisitMetricsProvider") as never),
+            evvMetrics: deps.evvComplianceCountsForOrg
+              ? { getComplianceCounts: deps.evvComplianceCountsForOrg }
+              : (getSeam("EvvMetricsProvider") as never),
             // The same M8 reader the HVLDL path uses — closed over from deps so an unbound boot throws
             // lazily on RUN rather than at port-bundle construction.
             signedEncounters,
@@ -2168,6 +2203,7 @@ export const M30_CRON_QUEUES = {
   cahpsMonthlySample: "m30.cahps_monthly_sample",
   riskRegisterRefresh: "m30.risk_register_refresh.cron",
   sraReminders: "m30.sra_reminders",
+  assignUnassignedMortalityReviews: M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE,
 } as const;
 
 export type M30CronQueueName = (typeof M30_CRON_QUEUES)[keyof typeof M30_CRON_QUEUES];
@@ -2339,6 +2375,19 @@ export function registerM30CronWorkers(deps: M30WorkerDeps): Worker[] {
       riskRegisterRefreshCronProcessor(ports.riskRegisterRefresh),
     ),
     mk(M30_CRON_QUEUES.sraReminders, sraRemindersCronProcessor(ports.sraReminders)),
+    mk(M30_CRON_QUEUES.assignUnassignedMortalityReviews, async () =>
+      assignUnassignedMortalityReviews({
+        db: deps.db,
+        listActiveOrgs: () => ports.nightlyRecompute.orgs.listActiveOrgs(),
+        resolveMedicalDirectorForOrg:
+          deps.resolveMedicalDirectorForOrg ??
+          (() =>
+            unboundWorkerPort(
+              "assignUnassignedMortalityReviews.resolveMedicalDirectorForOrg",
+              "bind `buildMortalityReviewerResolver` (bootstrap/m30-mortality-reviewer-resolver.ts)",
+            )),
+      }),
+    ),
   ];
 }
 
@@ -2356,6 +2405,7 @@ export async function scheduleM30Jobs(connection: ConnectionOptions): Promise<Qu
     [M30_CRON_QUEUES.cahpsMonthlySample, M30_JOB_SCHEDULES.cahpsMonthlySample],
     [M30_CRON_QUEUES.riskRegisterRefresh, M30_JOB_SCHEDULES.riskRegisterRefresh],
     [M30_CRON_QUEUES.sraReminders, M30_JOB_SCHEDULES.sraReminders],
+    [M30_CRON_QUEUES.assignUnassignedMortalityReviews, M30_ASSIGN_UNASSIGNED_MORTALITY_SCHEDULE],
   ];
   const queues: Queue[] = [];
   for (const [name, pattern] of schedules) {
@@ -2382,6 +2432,7 @@ export function buildM30WorkerDeps(deps: {
   ) => ProcessingLogPort;
   activeOrgs?: ActiveOrgListPort;
   providerEntities?: (organizationId: string) => Promise<readonly string[]>;
+  resolveMedicalDirectorForOrg?: M30WorkerDeps["resolveMedicalDirectorForOrg"];
   recomputeEnqueue?: M30WorkerDeps["recomputeEnqueue"];
   outboxPublisher?: M30WorkerDeps["outboxPublisher"];
   registrations?: ReadonlyMap<string, MeasureRegistration>;
@@ -2395,6 +2446,10 @@ export function buildM30WorkerDeps(deps: {
    *  (resolved via `getSeam`). */
   admissionOnsetReader?: AdmissionOnsetReader;
   medicationOrders?: MedicationOrderProvider;
+  /** GAP-090 — org-explicit reads for the three operational measures (see {@link M30WorkerDeps}). */
+  visitOnTimeCountsForOrg?: M30WorkerDeps["visitOnTimeCountsForOrg"];
+  evvComplianceCountsForOrg?: M30WorkerDeps["evvComplianceCountsForOrg"];
+  medicationOrdersForAdmissionForOrg?: M30WorkerDeps["medicationOrdersForAdmissionForOrg"];
   /** The M27 forward-seam consumer for the CoP 418.310 measure — defaults to the LIVE adapter (GAP-065). */
   costReport?: QualityCostReportConsumer;
 }): M30WorkerDeps {
@@ -2410,6 +2465,7 @@ export function buildM30WorkerDeps(deps: {
     processingLogFactory: deps.processingLogFactory ?? buildProcessingLogPort,
     activeOrgs: deps.activeOrgs,
     providerEntities: deps.providerEntities,
+    resolveMedicalDirectorForOrg: deps.resolveMedicalDirectorForOrg,
     recomputeEnqueue: deps.recomputeEnqueue,
     outboxPublisher: deps.outboxPublisher,
     deathDischargeReader: deps.deathDischargeReader,
@@ -2418,6 +2474,9 @@ export function buildM30WorkerDeps(deps: {
     dischargeReader: deps.dischargeReader,
     admissionOnsetReader: deps.admissionOnsetReader,
     medicationOrders: deps.medicationOrders,
+    visitOnTimeCountsForOrg: deps.visitOnTimeCountsForOrg,
+    evvComplianceCountsForOrg: deps.evvComplianceCountsForOrg,
+    medicationOrdersForAdmissionForOrg: deps.medicationOrdersForAdmissionForOrg,
     // GAP-065 — default to the LIVE M27 forward-seam adapter rather than leaving it to the integrator.
     // Defaulting is safe precisely because the adapter degrades per method: if M27's
     // `CostReportFilingStatusReader` is not registered (or is still the M1 deny-stub), the read returns

@@ -282,4 +282,44 @@ describe.skipIf(!DB_URL)("F-109 — alert outcome + §2.4.4 settlement, LIVE Pos
     const { recipients } = createDrizzleAlertEmitterPorts(handle.db);
     expect(await recipients.roleSetMembers(ORG_A, ["platform_security_owner"])).toEqual([USER_A2]);
   });
+  it("roleSetMembersForProviderEntity resolves only members whose default PE is the named one (biller_for_pe)", async () => {
+    const membershipOf = async (u: string) =>
+      (await admin.query("SELECT id FROM membership WHERE user_id=$1", [u])).rows[0].id as string;
+    const PE_1 = "00000000-0000-4000-8000-0000000000e1";
+    const PE_2 = "00000000-0000-4000-8000-0000000000e2";
+    const biller = (
+      await admin.query(
+        "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'biller','Biller','operations',true) RETURNING id",
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    for (const u of [USER_A1, USER_A2])
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [ORG_A, await membershipOf(u), biller],
+      );
+    await admin.query("UPDATE membership SET default_provider_entity_id=$1 WHERE id=$2", [
+      PE_1,
+      await membershipOf(USER_A1),
+    ]);
+    await admin.query("UPDATE membership SET default_provider_entity_id=$1 WHERE id=$2", [
+      PE_2,
+      await membershipOf(USER_A2),
+    ]);
+
+    const { recipients } = createDrizzleAlertEmitterPorts(handle.db);
+    expect(await recipients.roleSetMembersForProviderEntity?.(ORG_A, ["biller"], PE_1)).toEqual([
+      USER_A1,
+    ]);
+    expect(await recipients.roleSetMembersForProviderEntity?.(ORG_A, ["biller"], PE_2)).toEqual([
+      USER_A2,
+    ]);
+    expect(
+      await recipients.roleSetMembersForProviderEntity?.(
+        ORG_A,
+        ["biller"],
+        "00000000-0000-4000-8000-0000000000e3",
+      ),
+    ).toEqual([]);
+  });
 });

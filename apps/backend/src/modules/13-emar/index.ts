@@ -219,3 +219,23 @@ export {
   M13_COMFORT_KIT_RETURN_RECONCILIATION_CONSUMER,
   buildM13ComfortKitReturnReconciliationConsumer,
 } from "./outbox-consumers/m21-comfort-kit-return-reconciliation";
+
+// GAP-038/039/040 — the §4.8 crons (extend-schedule, missed-dose-sweep, reconciliation-due-warning,
+// kit-return-overdue, prn-reassessment-overdue, purge-offline-queue) + their platform-tenancy registration.
+export {
+  M13_CRON_QUEUES,
+  MISSED_DOSE_SWEEP_LOOKBACK_HOURS,
+  OFFLINE_QUEUE_RETENTION_DAYS,
+  type M13ActiveOrgListPort,
+  type M13CronDeps,
+  buildM13CronRunners,
+  registerM13CronWorkers,
+  runExtendScheduleForOrg,
+  runKitReturnOverdueForOrg,
+  runMissedDoseSweepForOrg,
+  runPrnReassessmentOverdueForOrg,
+  runPurgeOfflineQueueForOrg,
+  runReconciliationDueWarningForOrg,
+  scheduleM13Jobs,
+} from "./jobs/index";
+export { M13_PLATFORM_JOB_ID, wireM13Tenancy } from "./wiring";

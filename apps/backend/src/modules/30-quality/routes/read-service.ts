@@ -373,6 +373,13 @@ export interface MortalityReviewSummaryView {
   readonly status: "created" | "in_progress" | "completed";
   readonly targetCompletionAt: string;
   readonly completedAt: string | null;
+  /**
+   * D19 — "First L." display name from M5's minimum-necessary display seam. PRESENT ONLY when the caller holds
+   * `mortality.read_with_patient` (and M5 resolved the patient); absent otherwise — callers fall back to the id.
+   */
+  readonly patientDisplayName?: string;
+  /** D19 — last four characters of the MRN (same gate as {@link patientDisplayName}); null when the MRN is blank. */
+  readonly patientMrnSuffix?: string | null;
 }
 
 /** Mortality-review detail — the three review dimensions (R-71). PHI. */

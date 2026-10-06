@@ -45,6 +45,7 @@ export const M30_PERMISSIONS = [
   "incident.abuse_review",
   // Mortality (§6.6)
   "mortality.read",
+  "mortality.read_with_patient",
   "mortality.write",
   "mortality.close",
   // CoP compliance (§6.6)

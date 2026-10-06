@@ -76,7 +76,11 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
   const R = schema.roles;
   const M = schema.memberships;
 
-  const activeMembershipUserIds = (orgId: string, roleKeys: readonly string[]) =>
+  const activeMembershipUserIds = (
+    orgId: string,
+    roleKeys: readonly string[],
+    providerEntityId?: string,
+  ) =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx: Tx) => {
       if (roleKeys.length === 0) return [] as string[];
       // GAP-096 — a tenant-owned row carrying a reserved platform key (e.g. a legacy
@@ -98,6 +102,9 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
             inArray(R.key, roleKeys as string[]),
             eq(R.enabled, true),
             eq(M.status, "active"),
+            providerEntityId === undefined
+              ? undefined
+              : eq(M.defaultProviderEntityId, providerEntityId),
             or(isNull(MR.expiresAt), gt(MR.expiresAt, new Date())),
           ),
         );
@@ -130,6 +137,9 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
     },
     async roleSetMembers(orgId, roleKeys) {
       return activeMembershipUserIds(orgId, roleKeys);
+    },
+    async roleSetMembersForProviderEntity(orgId, roleKeys, providerEntityId) {
+      return activeMembershipUserIds(orgId, roleKeys, providerEntityId);
     },
     async tenantAdmins(orgId) {
       return activeMembershipUserIds(orgId, [ORG_ADMIN_ROLE_KEY]);

@@ -77,6 +77,7 @@ export {
   buildDrizzleSuppliesAbacResolver,
 } from "./abac-resolver-drizzle";
 export * from "./routes/index";
+export * from "./jobs/index";
 export { mountM21Routes } from "./routes/mount";
 export {
   DEIDENTIFIED_UUID,

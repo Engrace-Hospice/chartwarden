@@ -188,3 +188,77 @@ describe("role_set userIdPaths (array) + roleKeysPath (per-event tier)", () => {
     expect(ports.roleSetMembers).toHaveBeenCalledWith("org-1", []);
   });
 });
+
+describe("role_set provider-entity narrowing (biller_for_pe)", () => {
+  const args = {
+    providerEntityIdPath: "providerEntityId",
+    providerEntityScopedRoleKeys: ["billing_manager", "biller"],
+    providerEntityFallbackRoleKeys: ["billing_manager"],
+  };
+
+  it("resolves only the members assigned to the payload's provider entity", async () => {
+    const forPe = vi.fn(async () => ["u-biller-pe"]);
+    const ports = fakePorts({
+      roleSetMembers: vi.fn(async (_o: string, keys: readonly string[]) =>
+        keys.length === 0 ? [] : ["u-org-wide"],
+      ),
+      roleSetMembersForProviderEntity: forPe,
+    });
+    const out = await resolveRecipients(
+      createRecipientResolverRegistry(ports),
+      "role_set",
+      "org-1",
+      args,
+      { providerEntityId: "pe-1" },
+    );
+    expect(out).toEqual(["u-biller-pe"]);
+    expect(forPe).toHaveBeenCalledWith("org-1", ["billing_manager", "biller"], "pe-1");
+    expect(ports.roleSetMembers).not.toHaveBeenCalledWith("org-1", ["billing_manager"]);
+  });
+
+  it("falls back to the org-wide fallback role keys when nobody is assigned to the PE", async () => {
+    const roleSetMembers = vi.fn(async (_o: string, keys: readonly string[]) =>
+      keys.length === 1 ? ["u-bm"] : [],
+    );
+    const ports = fakePorts({
+      roleSetMembers,
+      roleSetMembersForProviderEntity: vi.fn(async () => []),
+    });
+    const out = await resolveRecipients(
+      createRecipientResolverRegistry(ports),
+      "role_set",
+      "org-1",
+      args,
+      { providerEntityId: "pe-1" },
+    );
+    expect(out).toEqual(["u-bm"]);
+    expect(roleSetMembers).toHaveBeenCalledWith("org-1", ["billing_manager"]);
+  });
+
+  it("falls back when the payload carries no provider entity or the port is unbound", async () => {
+    const forPe = vi.fn(async () => ["u-never"]);
+    const ports = fakePorts({
+      roleSetMembers: vi.fn(async (_o: string, keys: readonly string[]) =>
+        keys.length === 1 ? ["u-bm"] : [],
+      ),
+      roleSetMembersForProviderEntity: forPe,
+    });
+    const registry = createRecipientResolverRegistry(ports);
+    expect(await resolveRecipients(registry, "role_set", "org-1", args, {})).toEqual(["u-bm"]);
+    expect(forPe).not.toHaveBeenCalled();
+
+    const unbound = fakePorts({
+      roleSetMembers: vi.fn(async (_o: string, keys: readonly string[]) =>
+        keys.length === 1 ? ["u-bm"] : [],
+      ),
+    });
+    const out = await resolveRecipients(
+      createRecipientResolverRegistry(unbound),
+      "role_set",
+      "org-1",
+      args,
+      { providerEntityId: "pe-1" },
+    );
+    expect(out).toEqual(["u-bm"]);
+  });
+});

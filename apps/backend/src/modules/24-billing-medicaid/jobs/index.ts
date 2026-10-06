@@ -5,10 +5,18 @@
 // integrator binds them — constructing the workers stays green; a port only throws WHEN A CRON TICK RUNS.
 // Nothing here runs at import (constructing a Worker opens Valkey).
 //
-// BOOT-WIRING DEFERRED (the M26 posture + this P3 scope): the composition root does NOT yet construct these
-// workers — the submit/poll/ack-pull/revalidate execution path needs the live per-state adapter. The job
-// surface is exported module-only so the wiring is a one-line follow-up once the adapter wire I/O binds.
+// BOOT-WIRING (GAP-071): the eligibility-stale-watchdog + rb-day-daily-sweep crons run the real stores
+// (rb-day-sweep.ts) the composition root injects; a store left unbound fails the tick closed (never silently
+// no-ops). The submit/poll/ack-pull path is wired separately (submission-jobs.ts).
+// Nothing here runs at import (constructing a Worker opens Valkey).
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import {
+  type EligibilityAlertPort,
+  type EligibilityWatchdogStore,
+  type RbDaySweepStore,
+  runEligibilityStaleWatchdog,
+  runRbDayDailySweep,
+} from "./m24-jobs";
 import { M24_CRON_QUEUES, M24_JOB_SCHEDULES, M24_QUEUE_PARAMS } from "./queues";
 
 export * from "./m24-jobs";
@@ -31,25 +39,68 @@ export interface M24WorkerDeps {
   readonly connection: ConnectionOptions;
   now?: () => Date;
   readonly activeOrgs?: ActiveOrgListPort;
+  readonly rbDaySweep?: RbDaySweepStore;
+  readonly eligibilityWatchdog?: EligibilityWatchdogStore;
+  /** Best-effort M36 alert dispatch for stale eligibility (an unbound port skips alerts). */
+  readonly eligibilityAlerts?: EligibilityAlertPort;
+  readonly log?: { error(err: unknown, msg: string): void };
+}
+
+const UNBOUND_STORE_MESSAGE =
+  "M24 cron: store not bound (fail-closed until the composition root binds it)";
+const MS_PER_DAY = 86_400_000;
+
+const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
+
+/**
+ * Fan one org-scoped cron body out over every active org. One org's failure never starves the others; the
+ * failures are logged per org and the tick then throws so BullMQ records it failed (never a silent success).
+ */
+export async function forEachActiveOrg(
+  activeOrgs: ActiveOrgListPort,
+  log: M24WorkerDeps["log"],
+  label: string,
+  body: (organizationId: string) => Promise<unknown>,
+): Promise<void> {
+  const orgs = await activeOrgs.listActiveOrgs();
+  const failures: unknown[] = [];
+  for (const { organizationId } of orgs) {
+    try {
+      await body(organizationId);
+    } catch (err) {
+      failures.push(err);
+      log?.error(err, `${label} failed for org ${organizationId}`);
+    }
+  }
+  if (failures.length > 0) throw new Error(`${label}: ${failures.length} org(s) failed`);
 }
 
 /** Construct the M24 §4.9 cron workers over the injected Valkey connection (the M26 worker-runner shape). */
 export function registerM24CronWorkers(deps: M24WorkerDeps): Worker[] {
   const activeOrgs = deps.activeOrgs ?? FAIL_CLOSED_ORGS;
+  const now = deps.now ?? (() => new Date());
   const opts = { connection: deps.connection } as const;
-  // The cron bodies fan out per active org; the org-scoped store reads bind with the per-state adapter
-  // (deferred). Until then a tick fails closed at the enumerator (never at import).
   const eligibility = new Worker(
     M24_CRON_QUEUES.eligibilityStaleWatchdog,
     async () => {
-      await activeOrgs.listActiveOrgs();
+      const store = deps.eligibilityWatchdog;
+      if (!store) throw new Error(UNBOUND_STORE_MESSAGE);
+      await forEachActiveOrg(activeOrgs, deps.log, "M24 eligibility-stale-watchdog", (orgId) =>
+        runEligibilityStaleWatchdog(store, orgId, isoDate(now()), deps.eligibilityAlerts, deps.log),
+      );
     },
     { ...opts, concurrency: M24_QUEUE_PARAMS.eligibilityStaleWatchdog.concurrency },
   );
   const rbSweep = new Worker(
     M24_CRON_QUEUES.rbDayDailySweep,
     async () => {
-      await activeOrgs.listActiveOrgs();
+      const store = deps.rbDaySweep;
+      if (!store) throw new Error(UNBOUND_STORE_MESSAGE);
+      // Sweep through the last COMPLETE UTC day (the cron fires at 01:30).
+      const throughDay = isoDate(new Date(now().getTime() - MS_PER_DAY));
+      await forEachActiveOrg(activeOrgs, deps.log, "M24 rb-day-daily-sweep", (orgId) =>
+        runRbDayDailySweep(store, orgId, throughDay),
+      );
     },
     { ...opts, concurrency: M24_QUEUE_PARAMS.rbDayDailySweep.concurrency },
   );

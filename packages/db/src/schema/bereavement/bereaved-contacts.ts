@@ -86,6 +86,15 @@ export const bereavedContact = pgTable(
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
     unreachableAt: timestamp("unreachable_at", { withTimezone: true }),
+    // §4.9 `m16-unreachable-detector` dedupe: the `contact_at` of the newest `no_response` log row the last
+    // 3-strikes PROPOSAL covered. The detector re-proposes only when a strictly newer strike exists.
+    unreachableProposedThroughAt: timestamp("unreachable_proposed_through_at", {
+      withTimezone: true,
+    }),
+    // Route 34 "keep trying": the `unreachable_proposed_through_at` value the counselor dismissed. Dismissed while >= it.
+    unreachableProposalDismissedAt: timestamp("unreachable_proposal_dismissed_at", {
+      withTimezone: true,
+    }),
     deceasedAt: timestamp("deceased_at", { withTimezone: true }),
     ineligibleAt: timestamp("ineligible_at", { withTimezone: true }),
     ineligibleReasonRedacted: text("ineligible_reason_redacted"), // D11 audit-denylisted

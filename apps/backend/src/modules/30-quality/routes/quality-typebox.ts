@@ -829,6 +829,9 @@ export const MortalityReviewSummaryViewSchema = Type.Object({
   status: lit(MORTALITY_STATUS),
   targetCompletionAt: Type.String(),
   completedAt: m30Nullable(Type.String()),
+  // D19 — only present when the caller holds `mortality.read_with_patient`.
+  patientDisplayName: Type.Optional(Type.String()),
+  patientMrnSuffix: Type.Optional(m30Nullable(Type.String())),
 });
 export const MortalityListResponseSchema = m30PageOf(MortalityReviewSummaryViewSchema);
 

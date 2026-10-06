@@ -8,6 +8,9 @@ import type { ComponentType } from "react";
 const QapiIncidents = lazy(() =>
   import("./qapi-incidents").then((m) => ({ default: m.QapiIncidents })),
 );
+const MortalityReview = lazy(() =>
+  import("./mortality-review").then((m) => ({ default: m.MortalityReview })),
+);
 const QualityHub = lazy(() => import("./quality-hub").then((m) => ({ default: m.QualityHub })));
 
 export const qualityScreens: ScreenRegistryModule<ComponentType> = {
@@ -29,6 +32,14 @@ export const qualityScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Compliance",
       requiredPermission: "incident.read",
       screen: QapiIncidents,
+    },
+    {
+      id: "quality.mortality",
+      path: "/quality/mortality",
+      title: "Mortality Reviews",
+      navGroup: "Compliance",
+      requiredPermission: "mortality.read",
+      screen: MortalityReview,
     },
   ],
 };

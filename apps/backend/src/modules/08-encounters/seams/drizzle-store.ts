@@ -27,6 +27,15 @@ import { type EncounterReaderStore, createInMemoryEncounterReaderStore } from ".
 
 const E = schema.encounters;
 
+const MS_PER_MINUTE = 60_000;
+
+/** Whole minutes of a visit bracket; `null` (UNRESOLVED, never zero) when either end is missing or the span is not positive. */
+function bracketMinutes(startedAt: Date | null, endedAt: Date | null): number | null {
+  if (!startedAt || !endedAt) return null;
+  const minutes = Math.round((endedAt.getTime() - startedAt.getTime()) / MS_PER_MINUTE);
+  return minutes > 0 ? minutes : null;
+}
+
 /** Encounter statuses that reached at least primary sign — the billing-relevant lifecycle
  *  `billableEncountersInRangeForOrg` scopes to (F-122, #251). A pure `draft`/`finalized` row was never
  *  signed and has no clinical content a claim line could point at; `deriveBillability` itself does not
@@ -209,6 +218,8 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
               lateEntryTier: E.lateEntryTier,
               status: E.status,
               evvBracketState: E.evvBracketState,
+              startedAt: E.startedAt,
+              endedAt: E.endedAt,
             })
             .from(E)
             .where(
@@ -233,6 +244,7 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
               lateEntryTier: r.lateEntryTier,
               status: r.status,
               evvBracketState: (r.evvBracketState ?? "evv_missing_documented") as EvvBracketState,
+              durationMinutes: bracketMinutes(r.startedAt, r.endedAt),
             }),
           );
         },

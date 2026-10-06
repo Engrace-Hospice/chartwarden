@@ -73,6 +73,7 @@ import type {
   M16ReadService,
   SupervisorDashboardView,
 } from "./read-service";
+import { unreachableProposalOf } from "./read-service";
 
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -216,6 +217,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     confirmedAt: isoN(r.confirmedAt) as IsoInstant | null,
     optedOutAt: isoN(r.optedOutAt) as IsoInstant | null,
     unreachableAt: isoN(r.unreachableAt) as IsoInstant | null,
+    ...unreachableProposalOf(r),
     deceasedAt: isoN(r.deceasedAt) as IsoInstant | null,
     mayRescindOptOut:
       r.status === "opted_out" &&

@@ -179,6 +179,7 @@ import {
   CosignCloseBody as M16CosignCloseBody,
   CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
   CreateContactBody as M16CreateContactBody,
+  DismissUnreachableProposalBody as M16DismissUnreachableProposalBody,
   FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
   InitiateContactBody as M16InitiateContactBody,
   LateAttemptBody as M16LateAttemptBody,
@@ -6353,6 +6354,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
     body: M16MarkUnreachableBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/dismiss-unreachable-proposal": {
+    summary:
+      "Keep trying: dismiss the nightly unreachable proposal until a strictly newer no-response strike (§4.1 #34)",
+    body: M16DismissUnreachableProposalBody,
     response: M16ContactRowResponse,
   },
   "POST /api/v1/bereavement/contacts/:contactId/flag-complicated-grief": {

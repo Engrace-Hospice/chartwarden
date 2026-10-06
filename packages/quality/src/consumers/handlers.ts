@@ -138,6 +138,19 @@ export async function handleDischargeDeath(
   };
 }
 
+/**
+ * GAP-089 — the mortality-draft HALF of {@link handleDischargeDeath}, bindable on its own: the CAHPS half
+ * (`addCahpsSampleCandidate`) is blocked on the M1 caregiver-contact DEK, and calling both in one handler
+ * made the whole `m6.discharge.death` binding impossible. Only `ports.createMortalityReviewDraft` is used.
+ */
+export async function handleDischargeDeathMortality(
+  event: DischargeDeathEvent,
+  ports: Pick<M30ConsumerPorts, "createMortalityReviewDraft">,
+): Promise<UpstreamConsumeReport> {
+  await ports.createMortalityReviewDraft(buildMortalityReviewFromDeath(event));
+  return { eventName: "m6.discharge.death", effects: ["mortality_review_draft"] };
+}
+
 /** The minimal `m6.election.signed` payload M30 reads (§4.10). */
 export interface ElectionSignedEvent {
   readonly eventId: string;

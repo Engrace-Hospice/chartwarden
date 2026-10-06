@@ -21,6 +21,7 @@ import {
   handleBereavementPlanClosed,
   handleClaimAdjudicated,
   handleDischargeDeath,
+  handleDischargeDeathMortality,
   handleElectionSigned,
   handleEvvVisitVerified,
   handleHopeSubmissionAccepted,
@@ -219,6 +220,25 @@ describe("M30 §4.10 upstream handlers", () => {
       cap.ports,
     );
     expect(cap.cahpsCandidates[0]?.deathSource).toBe("external_import");
+  });
+
+  it("m6.discharge.death (mortality half) drafts the review WITHOUT touching the CAHPS port (GAP-089)", async () => {
+    const cap = capturePorts();
+    const report = await handleDischargeDeathMortality(
+      {
+        organizationId: "org-1",
+        providerEntityId: "pe-1",
+        deceasedPatientId: "patient-9",
+        admissionId: "adm-9",
+        deathAt: new Date("2025-02-10T12:00:00Z"),
+        eventIdempotencyKey: "evt-death-1",
+      },
+      { createMortalityReviewDraft: cap.ports.createMortalityReviewDraft },
+    );
+    expect(report.effects).toEqual(["mortality_review_draft"]);
+    expect(cap.mortalityDrafts).toHaveLength(1);
+    expect(cap.cahpsCandidates).toHaveLength(0);
+    expect(cap.mortalityDrafts[0]?.row.status).toBe("pending");
   });
 
   it("m6.election.signed → enqueues an HCI recompute with the resolved codes", async () => {

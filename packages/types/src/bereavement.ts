@@ -257,6 +257,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.contact_opt_out_rescinded",
   "m16.bereavement.contact_deceased",
   "m16.bereavement.contact_unreachable",
+  "m16.bereavement.contact_unreachable_proposed",
   "m16.bereavement.contact_referred_external",
   "m16.bereavement.outreach_scheduled",
   "m16.bereavement.outreach_completed",
@@ -456,6 +457,14 @@ export interface M16ContactUnreachablePayload {
   readonly missedTouchpointCount: number;
 }
 
+/** `m16.bereavement.contact_unreachable_proposed` — the nightly 3-strikes detector's PROPOSAL to mark a contact
+ *  unreachable (§4.9 `m16-unreachable-detector`); the counselor decides. Consumers: M36 (alert). */
+export interface M16ContactUnreachableProposedPayload {
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly consecutiveNoResponseCount: number;
+}
+
 /** `m16.bereavement.contact_referred_external` — complicated grief routed to the M40 external resource
  *  (§7.7); M36 raises the `clinical_urgent` alert. Consumers: M30, M33, M36. */
 export interface M16ContactReferredExternalPayload {
@@ -541,6 +550,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.contact_opt_out_rescinded": M16ContactOptOutRescindedPayload;
   "m16.bereavement.contact_deceased": M16ContactDeceasedPayload;
   "m16.bereavement.contact_unreachable": M16ContactUnreachablePayload;
+  "m16.bereavement.contact_unreachable_proposed": M16ContactUnreachableProposedPayload;
   "m16.bereavement.contact_referred_external": M16ContactReferredExternalPayload;
   "m16.bereavement.outreach_scheduled": M16OutreachScheduledPayload;
   "m16.bereavement.outreach_completed": M16OutreachCompletedPayload;

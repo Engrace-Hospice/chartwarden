@@ -106,6 +106,7 @@ describe("SignedEncountersReader (§4.7)", () => {
         lateEntryTier: "normal" as const,
         status: "signed" as const,
         evvBracketState: "evv_present" as const,
+        durationMinutes: null,
       },
       {
         ...{
@@ -120,6 +121,7 @@ describe("SignedEncountersReader (§4.7)", () => {
           lateEntryTier: "normal" as const,
           status: "signed" as const,
           evvBracketState: "evv_present" as const,
+          durationMinutes: null,
         },
       },
     ];

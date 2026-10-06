@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1375,
-    "enriched": 1370,
+    "routes": 1376,
+    "enriched": 1371,
     "deficit": 5,
-    "mutating": 777,
+    "mutating": 778,
     "mutatingNoBody": 1,
     "gets": 565,
     "getsNoResponse": 10
@@ -151,10 +151,10 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 33,
-      "enriched": 33,
+      "routes": 34,
+      "enriched": 34,
       "deficit": 0,
-      "mutating": 26,
+      "mutating": 27,
       "mutatingNoBody": 0,
       "gets": 7,
       "getsNoResponse": 0

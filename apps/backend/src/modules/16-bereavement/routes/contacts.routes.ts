@@ -23,6 +23,7 @@ import {
   ConfirmContactBody,
   ContactParams,
   CreateContactBody,
+  DismissUnreachableProposalBody,
   FlagComplicatedGriefBody,
   LogDirectContactBody,
   MarkDeceasedBody,
@@ -188,6 +189,27 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(MarkUnreachableBody, request.body);
       return writeService.markContactUnreachable(writeActorOf(request), contactId, {
+        expectedVersion: ifMatchVersion(request),
+        ...body,
+      });
+    },
+  );
+
+  // 34 — "keep trying": the counselor declines the detector's unreachable proposal. Same decision authority as
+  //      route 17, so it shares `bereavement.contact.mark_unreachable`; no status change, no event.
+  app.post(
+    "/api/v1/bereavement/contacts/:contactId/dismiss-unreachable-proposal",
+    {
+      preHandler: [
+        P("bereavement.contact.mark_unreachable"),
+        ABAC_WINDOW_CONTACT("bereavement.contact.mark_unreachable"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { contactId } = parse(ContactParams, request.params);
+      const body = parse(DismissUnreachableProposalBody, request.body);
+      return writeService.dismissUnreachableProposal(writeActorOf(request), contactId, {
         expectedVersion: ifMatchVersion(request),
         ...body,
       });
