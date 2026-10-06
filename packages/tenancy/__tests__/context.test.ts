@@ -108,6 +108,67 @@ describe("withOrgContext (M1-T06 §3.14)", () => {
   });
 });
 
+describe("withOrgContext actor defaulting (GAP-111)", () => {
+  const actorParam = async (
+    ctx: { organizationId: string; userId: string; systemActor?: boolean },
+    ambient?: { organizationId: string; userId: string },
+  ) => {
+    const { db, executed } = fakeDb();
+    const run = () => withOrgContext(db, ctx, async () => undefined);
+    await (ambient ? runWithRequestContext(ambient, run) : run());
+    return render(executed[1] as SQL).params;
+  };
+
+  it("defaults an empty userId to the ambient request actor in the same org", async () => {
+    expect(
+      await actorParam(
+        { organizationId: "org-1", userId: "" },
+        { organizationId: "org-1", userId: "user-req" },
+      ),
+    ).toEqual(["user-req"]);
+  });
+
+  it("keeps an explicit userId over the ambient actor", async () => {
+    expect(
+      await actorParam(
+        { organizationId: "org-1", userId: "user-explicit" },
+        { organizationId: "org-1", userId: "user-req" },
+      ),
+    ).toEqual(["user-explicit"]);
+  });
+
+  it("stays empty outside a request (workers / relay ticks)", async () => {
+    expect(await actorParam({ organizationId: "org-1", userId: "" })).toEqual([""]);
+  });
+
+  it("stays empty when the ambient request belongs to a different org", async () => {
+    expect(
+      await actorParam(
+        { organizationId: "org-1", userId: "" },
+        { organizationId: "org-2", userId: "user-req" },
+      ),
+    ).toEqual([""]);
+  });
+
+  it("stays empty when the ambient request is unauthenticated (empty userId)", async () => {
+    expect(
+      await actorParam(
+        { organizationId: "org-1", userId: "" },
+        { organizationId: "org-1", userId: "" },
+      ),
+    ).toEqual([""]);
+  });
+
+  it("honours an explicit systemActor opt-out even inside a request", async () => {
+    expect(
+      await actorParam(
+        { organizationId: "org-1", userId: "", systemActor: true },
+        { organizationId: "org-1", userId: "user-req" },
+      ),
+    ).toEqual([""]);
+  });
+});
+
 describe("withOrgContextFromRequest (M1-T06 §3.14)", () => {
   it("derives the tenant scope from the ambient request context", async () => {
     const { db, executed } = fakeDb();

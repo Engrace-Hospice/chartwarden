@@ -285,6 +285,7 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)),
   );
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
+  baselineGate("abac-composed", () => expectGreen(gate("check-abac-composed.ts", ROOT)));
   baselineGate("request-body-contract", () =>
     expectGreen(gate("check-request-body-contract.ts", ROOT)),
   );

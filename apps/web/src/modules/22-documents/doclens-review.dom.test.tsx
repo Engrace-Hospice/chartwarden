@@ -12,7 +12,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import type { Workspace } from "./doclens-api";
 import { exclusionLabel } from "./doclens-model";
@@ -42,6 +42,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
       detectorRef: "sud-lexicon-v1",
       resolvedAt: null,
       resolvedByMembershipId: null,
+      contentRedacted: false,
       indicators: [
         {
           page: 1,
@@ -87,6 +88,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
         sudDetected: false,
         codingFlags: [],
         writebackTarget: true,
+        redacted: false,
         decision: null,
       },
       {
@@ -104,6 +106,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
         sudDetected: false,
         codingFlags: [],
         writebackTarget: false,
+        redacted: false,
         decision: null,
       },
     ],
@@ -304,6 +307,60 @@ describe("DocLens review workspace", () => {
     const post = calls.find((c) => c.path.endsWith("/sud-review"));
     expect(post?.body).toEqual({ outcome: "confirmed" });
     expect(post?.idem).toBeTruthy();
+  });
+});
+
+describe("GAP-067 — Part 2 content withheld", () => {
+  const WITHHELD =
+    /Part 2 content withheld — you need a licensed reviewer with a Part 2 need-to-know/;
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("shows the withheld state, not a blank value, for a redacted candidate and offers no decision", async () => {
+    workspace = fixture("confirmed");
+    workspace.sud.contentRedacted = true;
+    workspace.sud.indicators = [];
+    const phone = workspace.candidates[0];
+    if (phone) {
+      phone.redacted = true;
+      phone.value = null;
+      phone.sudDetected = true;
+    }
+    mount();
+    const row = await waitFor(() => fieldRow(/^Home phone/));
+
+    expect(within(row).getByTestId("doclens-field-withheld").textContent).toMatch(WITHHELD);
+    expect(within(row).queryByText("—")).toBeNull();
+    fireEvent.click(row);
+    expect(within(fieldList()).queryByRole("button", { name: /Accept/ })).toBeNull();
+    expect(within(fieldList()).getByText(/cannot be accepted, edited or rejected/)).toBeTruthy();
+  });
+
+  it("does not request the page image when the whole batch is withheld", async () => {
+    workspace = fixture("detected");
+    workspace.sud.contentRedacted = true;
+    mount();
+
+    expect((await screen.findByTestId("doclens-page-withheld")).textContent).toMatch(WITHHELD);
+    expect(screen.queryByRole("img", { name: /Page 1/ })).toBeNull();
+  });
+
+  it("replaces a page image that the server refuses with a 403 by the withheld state", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 403 }));
+    mount();
+    fireEvent.error(await screen.findByRole("img", { name: /Page 1/ }));
+
+    expect((await screen.findByTestId("doclens-page-withheld")).textContent).toMatch(WITHHELD);
+    expect(screen.queryByRole("img", { name: /Page 1/ })).toBeNull();
+  });
+
+  it("keeps the ordinary broken-image message for a non-403 failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 500 }));
+    mount();
+    fireEvent.error(await screen.findByRole("img", { name: /Page 1/ }));
+
+    expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
+    expect(screen.queryByTestId("doclens-page-withheld")).toBeNull();
   });
 });
 

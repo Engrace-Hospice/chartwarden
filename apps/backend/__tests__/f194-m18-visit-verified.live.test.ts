@@ -200,7 +200,10 @@ describe.skipIf(!DB_URL)(
       const outbox: EvvWriteOutboxPort = {
         publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m18" }),
       };
-      svc = createDbEvvBackend(handle.db, outbox);
+      // GAP-054 — the geofence baseline is the address coordinate; pin it to the capture coordinate used below.
+      svc = createDbEvvBackend(handle.db, outbox, {
+        addressCoordinate: async () => ({ lat: 45.523, lng: -122.6789 }),
+      });
     }, 180_000);
 
     afterAll(async () => {
@@ -284,9 +287,7 @@ describe.skipIf(!DB_URL)(
         },
         SYSTEM_FIXTURE,
       );
-      // The decision is accuracy-banded against the tenant's `maxAccuracyM` policy (50) — not derived from
-      // `coords` at all (`captureInTx`'s own "in-mem accuracy-band model" comment) — so a breach needs a
-      // GPS accuracy worse than the policy's ceiling, un-attested.
+      // Within the radius, so the breach here comes from accuracy worse than the policy's ceiling, un-attested.
       const co = await svc.recordCapture(
         ORG_A,
         member,

@@ -217,6 +217,22 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
   },
   // ── GIP criteria (§2.4) ───────────────────────────────────────────────────────────────────────────
   {
+    // GAP-106 — the §4.4 attestation event (spec row 1512) the attest route now emits in the attesting tx.
+    eventName: "m37.gip_criteria.attested",
+    moduleOwner: "m37",
+    description: "A hospice physician attested a GIP admission's criteria (CoP 418.108).",
+    payloadSchema: Type.Object({
+      ...admissionCore,
+      gipAdmissionCriteriaId: id,
+      criterionKind: id,
+      attestedAt: iso,
+    }),
+    // The spec names M4/M22/M30 as consumers; none is bound yet, so the event is record-only until a
+    // consumer is (declaring one here without a binding would trip arch:outbox-bindings).
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m37.gip_criteria.reassessment_due",
     moduleOwner: "m37",
     description: "A GIP reassessment is due (stale past the window).",

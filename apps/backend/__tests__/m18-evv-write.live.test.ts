@@ -38,6 +38,8 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
+/** The patient-address coordinate every in-geofence capture below is taken at (GAP-054). */
+const ADDRESS_BASELINE = { lat: 45.523, lng: -122.6789 };
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
@@ -50,6 +52,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   let svc: ReturnType<typeof createDbEvvBackend>;
   // Same DB, default (OFF) device-attestation flag — the production configuration.
   let svcAttestationOff: ReturnType<typeof createDbEvvBackend>;
+  let svcNoBaseline: ReturnType<typeof createDbEvvBackend>;
   const seeded: Record<string, Seed> = {};
 
   async function resetSchema() {
@@ -210,8 +213,14 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m18" }),
     };
     // The enforced contract (attestation + session-device binding) is what most of this suite proves.
-    svc = createDbEvvBackend(handle.db, outbox, { deviceAttestationEnforced: true });
-    svcAttestationOff = createDbEvvBackend(handle.db, outbox);
+    // GAP-054 — the geofence baseline is the patient-address coordinate (a seam in prod); pinned here.
+    const addressCoordinate = async () => ADDRESS_BASELINE;
+    svc = createDbEvvBackend(handle.db, outbox, {
+      deviceAttestationEnforced: true,
+      addressCoordinate,
+    });
+    svcAttestationOff = createDbEvvBackend(handle.db, outbox, { addressCoordinate });
+    svcNoBaseline = createDbEvvBackend(handle.db, outbox, { addressCoordinate: async () => null });
   }, 180_000);
 
   afterAll(async () => {
@@ -343,7 +352,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       "check_in",
       {
         visitId: visit,
-        coords: { lat: 45.5, lng: -122.6 },
+        coords: ADDRESS_BASELINE,
         accuracyM: 80, // > max_accuracy_m 50
         capturedAt: new Date().toISOString(),
       },
@@ -352,6 +361,91 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(ci.geofenceDecision).toBe("fail_accuracy");
     expect(ci.gpsQuality).toBe("outside_geofence");
     expect(await eventsFor(ci.eventId)).toContain("m18.evv.geofence_breach_recorded");
+  });
+
+  async function captureAt(
+    service: typeof svc,
+    coords: { lat: number; lng: number },
+    accuracyM: number,
+    gpsQualityAttested?: "degraded_attested",
+  ) {
+    const { member } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const ci = await service.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords,
+        accuracyM,
+        capturedAt: new Date().toISOString(),
+        gpsQualityAttested,
+      },
+      SYSTEM_FIXTURE,
+    );
+    const { rows } = await admin.query(
+      "SELECT computed_distance_m, decision FROM evv_geofence_evaluation WHERE evv_event_id=$1",
+      [ci.eventId],
+    );
+    return { ci, evaluation: rows[0], events: await eventsFor(ci.eventId) };
+  }
+
+  it("GAP-054: a good-accuracy capture ~5 km from the address is a breach with the real distance and no at_patient_address", async () => {
+    const { ci, evaluation, events } = await captureAt(
+      svc,
+      { lat: ADDRESS_BASELINE.lat + 0.045, lng: ADDRESS_BASELINE.lng },
+      5,
+    );
+    expect(ci.geofenceDecision).toBe("fail_distance");
+    expect(ci.gpsQuality).toBe("outside_geofence");
+    expect(events).toContain("m18.evv.geofence_breach_recorded");
+    expect(events).not.toContain("m18.evv.at_patient_address");
+    expect(evaluation.decision).toBe("fail_distance");
+    expect(evaluation.computed_distance_m).toBeGreaterThan(4_500);
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_name='m18.evv.geofence_breach_recorded' AND aggregate_id=$1",
+      [ci.eventId],
+    );
+    expect(rows[0].payload.computedDistanceM).toBeGreaterThan(4_500);
+  });
+
+  it("GAP-054: the degraded_attested flag at the address is an advisory breach, not a pass; the flag cannot rescue a far capture", async () => {
+    const atAddress = await captureAt(svc, ADDRESS_BASELINE, 80, "degraded_attested");
+    expect(atAddress.ci.geofenceDecision).toBe("fail_accuracy");
+    expect(atAddress.ci.gpsQuality).toBe("degraded_attested");
+    expect(atAddress.events).toContain("m18.evv.geofence_breach_recorded");
+    expect(atAddress.events).not.toContain("m18.evv.at_patient_address");
+
+    const far = await captureAt(
+      svc,
+      { lat: ADDRESS_BASELINE.lat + 0.045, lng: ADDRESS_BASELINE.lng },
+      80,
+      "degraded_attested",
+    );
+    expect(far.ci.geofenceDecision).toBe("fail_distance");
+    expect(far.events).not.toContain("m18.evv.at_patient_address");
+  });
+
+  it("GAP-054: with no address coordinate the capture is no_geofence_baseline, distance NULL, nothing fabricated", async () => {
+    const { ci, evaluation, events } = await captureAt(svcNoBaseline, ADDRESS_BASELINE, 5);
+    expect(ci.geofenceDecision).toBe("fail_no_baseline");
+    expect(ci.gpsQuality).toBe("no_geofence_baseline");
+    expect(evaluation.computed_distance_m).toBeNull();
+    expect(events).toContain("m18.evv.check_in_recorded");
+    expect(events).not.toContain("m18.evv.at_patient_address");
+    expect(events).not.toContain("m18.evv.geofence_breach_recorded");
+  });
+
+  it("GAP-054: an in-geofence capture stores and emits its real (non-zero-fabricated) distance", async () => {
+    const { evaluation, events } = await captureAt(
+      svc,
+      { lat: ADDRESS_BASELINE.lat + 0.0005, lng: ADDRESS_BASELINE.lng },
+      5,
+    );
+    expect(events).toContain("m18.evv.at_patient_address");
+    expect(evaluation.computed_distance_m).toBeGreaterThan(40);
+    expect(evaluation.computed_distance_m).toBeLessThan(70);
   });
 
   it("capture without an approved device is refused (422)", async () => {

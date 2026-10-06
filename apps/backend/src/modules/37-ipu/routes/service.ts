@@ -12,7 +12,6 @@ import type {
   AttestGipBody,
   BedCleaningBody,
   CheckInVisitorBody,
-  ConfirmBody,
   ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
@@ -38,6 +37,7 @@ import type {
   UpdateUnitBody,
   VisitorRestrictionListQuery,
 } from "./ipu-typebox";
+import type { IpuActor, IpuSystemActor } from "./system-actor";
 
 export interface UnitView {
   readonly id: string;
@@ -274,7 +274,11 @@ export interface IpuRouteService {
   ): Promise<AdmissionView>;
   assignBed(actor: IpuWriteActor, admissionId: string, body: AssignBedBody): Promise<AdmissionView>;
   discharge(actor: IpuWriteActor, admissionId: string, body: DischargeBody): Promise<AdmissionView>;
-  confirm(actor: IpuWriteActor, admissionId: string, body: ConfirmBody): Promise<AdmissionView>;
+  /**
+   * §4.1 route 15 — the M6 LCP-ack handshake. SYSTEM-INTERNAL (GAP-106): the actor is the typed
+   * `m6LcpAckActor`, which only M6's activation path mints; no HTTP route can supply one.
+   */
+  confirm(actor: IpuSystemActor, admissionId: string): Promise<AdmissionView>;
   initiateTransfer(
     actor: IpuWriteActor,
     admissionId: string,
@@ -381,7 +385,7 @@ export interface IpuRouteService {
   ): Promise<EquipmentView>;
   getBodyRelease(actor: IpuReadActor, admissionId: string): Promise<BodyReleaseView | null>;
   advanceBodyRelease(
-    actor: IpuWriteActor,
+    actor: IpuActor,
     admissionId: string,
     body: AdvanceBodyReleaseBody,
   ): Promise<BodyReleaseView>;

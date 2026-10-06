@@ -216,6 +216,7 @@ export const M37_OUTBOX_EVENT_NAMES = [
   "m37.shift.rn_uncovered",
   "m37.rn_coverage.break_glass_invoked",
   // GIP criteria (§2.4)
+  "m37.gip_criteria.attested",
   "m37.gip_criteria.reassessment_due",
   "m37.gip_criteria.reassessment_completed",
   // IRC cap (§2.5)

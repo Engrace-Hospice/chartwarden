@@ -244,14 +244,33 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     expect(rows.map((r) => r.to_state).sort()).toEqual(["proposed", "published"]);
   });
 
-  it("startVisit (EVV path) advances published→en_route and emits started", async () => {
+  it("startVisit (self-attest path, GAP-050) advances published→en_route and documents the missing EVV", async () => {
     const { member } = seeded[ORG_A];
     const v = await newVisit(ORG_A, member);
-    const started = await svc.startVisit(ORG_A, member, v.id, undefined, false);
+    const reason = "Cell signal failure at the patient home; patient signed the tablet at start.";
+    const started = await svc.startVisit(ORG_A, member, v.id, reason, true);
     expect(started.status).toBe("en_route");
     expect(await eventsFor(v.id)).toContain("m17.visit.started");
-    const { rows } = await admin.query("SELECT evv_bracket_state FROM visit WHERE id=$1", [v.id]);
-    expect(rows[0].evv_bracket_state).toBe("evv_present");
+    const { rows } = await admin.query(
+      "SELECT evv_bracket_state, evv_missing_reason FROM visit WHERE id=$1",
+      [v.id],
+    );
+    expect(rows[0].evv_bracket_state).toBe("evv_missing_documented");
+    expect(rows[0].evv_missing_reason).toBe(reason);
+  });
+
+  it("startVisit / arriveVisit refuse a membership that is not the assigned clinician (GAP-050)", async () => {
+    const { member } = seeded[ORG_A];
+    const v = await newVisit(ORG_A, member);
+    const reason = "Cell signal failure at the patient home; patient signed the tablet at start.";
+    const other = "99999999-9999-4999-8999-999999999999";
+    await expect(svc.startVisit(ORG_A, other, v.id, reason, true)).rejects.toThrow(
+      /ASSIGNED_CLINICIAN_REQUIRED/,
+    );
+    await expect(svc.arriveVisit(ORG_A, other, v.id, reason, true)).rejects.toThrow(
+      /ASSIGNED_CLINICIAN_REQUIRED/,
+    );
+    expect(await visitStatus(v.id)).toBe("published");
   });
 
   it("cancelVisit → cancelled; emits unassigned + cancelled", async () => {

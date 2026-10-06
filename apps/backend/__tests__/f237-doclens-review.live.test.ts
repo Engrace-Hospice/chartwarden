@@ -436,8 +436,39 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     }
   });
 
+  // GAP-067 — the route resolves the Part 2 need-to-know (licence + `sud_consent_present` on the batch's
+  // patient) and hands the service this function; the service defaults to DENY when it is absent.
+  const sudAllowed = async (patientId: string | null): Promise<boolean> => patientId !== null;
+  const sudDenied = async (): Promise<boolean> => false;
+
+  it("withholds SUD values and evidence from a viewer without the Part 2 need-to-know (GAP-067)", async () => {
+    for (const viewer of [undefined, sudDenied]) {
+      const ws = await workspace.getWorkspace(ORG, batchId, membership, viewer);
+      expect(ws.sud.status).toBe("detected");
+      expect(ws.sud.contentRedacted).toBe(true);
+      expect(ws.sud.indicators).toEqual([]);
+      const med = ws.candidates.find((x) => x.fieldPath === "medications[0].name");
+      expect(med).toMatchObject({ value: null, redacted: true, sudDetected: true });
+      expect(med?.vision.observedValue).toBeNull();
+      expect(JSON.stringify(ws)).not.toMatch(/methadone/i);
+      // The same batch's non-SUD fields stay readable for review.
+      expect(ws.candidates.find((x) => x.fieldPath === "patient.phoneHome")?.value).toBe(
+        "(503) 555-0142",
+      );
+    }
+  });
+
+  it("refuses a Part 2 batch's page image without the need-to-know, before any render (GAP-067)", async () => {
+    for (const viewer of [undefined, sudDenied]) {
+      await expect(
+        workspace.renderPage(ORG, batchId, 1, "corr-gap067", viewer),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+  });
+
   it("serves the workspace (decrypted for the reviewer) and the queue (counts only)", async () => {
-    const ws = await workspace.getWorkspace(ORG, batchId, membership);
+    const ws = await workspace.getWorkspace(ORG, batchId, membership, sudAllowed);
+    expect(ws.sud.contentRedacted).toBe(false);
     expect(ws.batch).toMatchObject({ patientId: patient, patientName: "Doclens, Mae" });
     expect(ws.pages.map((p) => [p.page, p.documentType])).toEqual([
       [1, "transfer_record"],

@@ -325,9 +325,10 @@ export async function confirmAdmission(
   client: ApiClient,
   id: string,
 ): Promise<WriteResult<AdmissionView>> {
+  // GAP-106 — the route is SYSTEM-INTERNAL (driven by M6's LCP acknowledgement): a tenant session is always
+  // refused (403) and there is no request body. Kept so the modal surfaces that refusal honestly.
   const { data, error, response } = await client.POST("/api/v1/ipu-admissions/{id}/confirm", {
     params: { path: { id } },
-    body: {},
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data);

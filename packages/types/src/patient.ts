@@ -584,6 +584,23 @@ export interface PatientAddressReader {
     from: string,
     to: string,
   ): Promise<readonly PatientResidenceSpan[]>;
+  /**
+   * The geocoded coordinate of the patient's service address (GAP-054 — M18's EVV geofence baseline): the
+   * address row `patientAddressId` names when given (it must belong to `patientId`), else the current PRIMARY
+   * address. Null when the address is absent, was never geocoded, or its coordinate is unreadable — the caller
+   * treats that as "no baseline" (advisory), never as a pass. PHI: hold in memory only.
+   */
+  serviceAddressCoordinate(
+    organizationId: string,
+    patientId: string,
+    patientAddressId: string | null,
+  ): Promise<PatientAddressCoordinate | null>;
+}
+
+/** A WGS-84 coordinate in decimal degrees (a patient address's geocode). */
+export interface PatientAddressCoordinate {
+  readonly lat: number;
+  readonly lng: number;
 }
 
 // ── PatientPrivacyFlagReader seam (GAP-061 — the M37 §2.2 shared-room occupancy gate) ────────────────

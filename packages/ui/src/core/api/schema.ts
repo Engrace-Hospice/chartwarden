@@ -10358,7 +10358,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** M6 LCP-ack handler: activate the admission; GIP requires attested criteria (412), IRC opens the episode (§2.2) */
+        /** M6 LCP-ack handler — SYSTEM-INTERNAL: every tenant session is refused (403); the handshake is driven by M6 through its typed system actor (GAP-106). No request body */
         post: operations["postApiV1IpuadmissionsByIdConfirm"];
         delete?: never;
         options?: never;
@@ -48493,6 +48493,7 @@ export interface operations {
                             detectorRef: string | null;
                             resolvedAt: string | null;
                             resolvedByMembershipId: string | null;
+                            contentRedacted: boolean;
                             indicators: {
                                 page: number;
                                 category: string;
@@ -48570,6 +48571,7 @@ export interface operations {
                                 detail: string;
                             }[];
                             writebackTarget: boolean;
+                            redacted: boolean;
                             decision: {
                                 id: string;
                                 decision: string;
@@ -49448,13 +49450,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    forceFlag?: boolean;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -78334,7 +78330,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    evvMissingReason?: string;
+                    evvMissingReason: string;
                 };
             };
         };
@@ -78634,7 +78630,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    evvMissingReason?: string;
+                    evvMissingReason: string;
                 };
             };
         };

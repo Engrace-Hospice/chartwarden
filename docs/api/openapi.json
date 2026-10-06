@@ -109078,6 +109078,7 @@
                         "detectorRef",
                         "resolvedAt",
                         "resolvedByMembershipId",
+                        "contentRedacted",
                         "indicators"
                       ],
                       "properties": {
@@ -109130,6 +109131,9 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "contentRedacted": {
+                          "type": "boolean"
                         },
                         "indicators": {
                           "type": "array",
@@ -109443,6 +109447,7 @@
                           "sudDetected",
                           "codingFlags",
                           "writebackTarget",
+                          "redacted",
                           "decision"
                         ],
                         "properties": {
@@ -109592,6 +109597,9 @@
                             }
                           },
                           "writebackTarget": {
+                            "type": "boolean"
+                          },
+                          "redacted": {
                             "type": "boolean"
                           },
                           "decision": {
@@ -112794,7 +112802,7 @@
         "tags": [
           "37-ipu"
         ],
-        "summary": "M6 LCP-ack handler: activate the admission; GIP requires attested criteria (412), IRC opens the episode (§2.2)",
+        "summary": "M6 LCP-ack handler — SYSTEM-INTERNAL: every tenant session is refused (403); the handshake is driven by M6 through its typed system actor (GAP-106). No request body",
         "parameters": [
           {
             "name": "id",
@@ -112875,21 +112883,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "forceFlag": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
           }
         }
       }
@@ -238036,6 +238029,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "evvMissingReason"
+                ],
                 "properties": {
                   "evvMissingReason": {
                     "minLength": 40,
@@ -239547,6 +239543,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "evvMissingReason"
+                ],
                 "properties": {
                   "evvMissingReason": {
                     "minLength": 40,

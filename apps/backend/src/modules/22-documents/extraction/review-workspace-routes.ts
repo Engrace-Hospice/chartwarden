@@ -3,20 +3,23 @@ import { type Static, Type } from "@sinclair/typebox";
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
 //
 //   GET  /api/v1/intake/uploads                       the intake work queue (no values)
-//   GET  /api/v1/intake/uploads/:id/workspace         one batch for review (decrypted values — PHI)
-//   GET  /api/v1/intake/uploads/:id/pages/:page/image the page image the boxes are drawn on (PHI)
+//   GET  /api/v1/intake/uploads/:id/workspace         one batch for review (decrypted values — PHI; SUD values
+//                                                     + evidence redacted without the Part 2 need-to-know)
+//   GET  /api/v1/intake/uploads/:id/pages/:page/image the page image the boxes are drawn on (PHI; 403 for a
+//                                                     Part 2 batch without the need-to-know)
 //   POST /api/v1/intake/uploads/:id/sud-review        §7.4 W4 step 6: confirm / reject a SUD detection
 //
 // Authorization is the server's: `intake.read` for the queue, `intake.review` for everything that shows
 // values or decides; the SUD resolution additionally needs the high-risk licence (the
 // `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. Every PHI read
 // carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor, requireIdempotencyKey } from "../routes/concurrency";
 import { parse } from "../routes/documents-typebox";
 import type { ReviewWorkspaceService } from "./review-workspace";
+import type { SudContentAccess } from "./sud-content-gate";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -109,6 +112,8 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
     detectorRef: Nullable(Type.String()),
     resolvedAt: Nullable(Type.String()),
     resolvedByMembershipId: Nullable(Type.String()),
+    // GAP-067 — the SUD evidence and SUD-candidate values were withheld from this viewer.
+    contentRedacted: Type.Boolean(),
     indicators: Type.Array(
       Type.Object({
         page: Type.Integer(),
@@ -202,6 +207,8 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
         }),
       ),
       writebackTarget: Type.Boolean(),
+      // GAP-067 — a SUD-detected candidate whose value / evidence was withheld from this viewer.
+      redacted: Type.Boolean(),
       decision: Type.Union([
         Type.Object({
           id: Type.String(),
@@ -275,6 +282,38 @@ const ABAC_SUD_REVIEWER = requireAbac("intake.review", "extraction_reviewer_elig
   getTarget: () => ({ sudReview: true }),
 }) as PreHandler;
 
+// GAP-067 — the DocLens READ surface (workspace values + evidence, page images) for a batch with a pending or
+// confirmed Part 2 detection. Two named predicates, composed here and never decided from the request: the
+// licence arm of `extraction_reviewer_eligible`, and M39's `sud_consent_present` (42 CFR Part 2 need-to-know)
+// for the BATCH'S patient — which the service loads from the batch row and passes in (`getTarget` is
+// synchronous, so the route cannot look it up itself). `requireAbac` throws on denial; for a READ a denial
+// is not a refusal of the whole request but a redaction, so the throw is the answer, caught here and turned
+// into `false`. Any error (an unregistered predicate, a down consent seam) is a `false` too: fail closed.
+// Not break-glass-bypassable: an emergency grant is not a Part 2 need-to-know.
+const SUD_READ_ELIGIBLE = requireAbac("intake.review", "extraction_reviewer_eligible", {
+  getTarget: () => ({ sudReview: true }),
+  breakGlassBypassable: false,
+});
+const sudConsentFor = (patientId: string) =>
+  requireAbac("intake.review", "sud_consent_present", {
+    getTarget: () => ({ patientId }),
+    breakGlassBypassable: false,
+  });
+
+function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
+  const guardRequest: GuardRequest = request;
+  return async (patientId) => {
+    if (!patientId) return false; // a patientless batch has no consent to evaluate
+    try {
+      await SUD_READ_ELIGIBLE(guardRequest);
+      await sudConsentFor(patientId)(guardRequest);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
 function actorOf(request: FastifyRequest): {
   organizationId: string;
   userId: string;
@@ -325,7 +364,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     async (request) => {
       const { organizationId, membershipId } = actorOf(request);
       const { id } = parse(BatchParams, request.params);
-      return service.getWorkspace(organizationId, id, membershipId);
+      return service.getWorkspace(organizationId, id, membershipId, sudContentAccessOf(request));
     },
   );
 
@@ -341,7 +380,13 @@ export function registerDocLensReviewWorkspaceRoutes(
         ...(request.params as Record<string, unknown>),
         page: Number((request.params as { page?: string }).page),
       });
-      const out = await service.renderPage(organizationId, id, page, request.id);
+      const out = await service.renderPage(
+        organizationId,
+        id,
+        page,
+        request.id,
+        sudContentAccessOf(request),
+      );
       return reply
         .header("content-type", "image/png")
         .header("cache-control", "private, max-age=300")

@@ -61,6 +61,7 @@ import {
 import {
   IDENTITY_LABEL,
   MIN_REASON,
+  PART2_WITHHELD_MESSAGE,
   batchStatusLabel,
   bboxPercent,
   bulkEligible,
@@ -539,6 +540,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
       <SudPanel
         status={sudStatus}
         indicatorCount={ws.sud.indicators.length}
+        contentRedacted={ws.sud.contentRedacted}
         disabled={busy || lockedByOther || isComplete}
         onResolve={async (outcome, reason) => {
           const ok = await run(() => resolveSud(client, batchId, outcome, reason));
@@ -602,6 +604,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
               batchId={ws.batch.id}
               pageNo={viewerPage}
               page={currentPage}
+              contentRedacted={ws.sud.contentRedacted}
               candidates={ws.candidates.filter((c) => c.page === viewerPage)}
               sudBoxes={
                 sudStatus === "detected" || sudStatus === "confirmed"
@@ -722,7 +725,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
             <ul style={{ margin: 0, paddingLeft: "1.125rem" }}>
               {eligible.map((c) => (
                 <li key={c.id}>
-                  {fieldLabel(c.fieldPath)}: {c.value ?? "—"}
+                  {fieldLabel(c.fieldPath)}: {c.redacted ? "withheld (Part 2)" : (c.value ?? "—")}
                 </li>
               ))}
             </ul>
@@ -825,6 +828,7 @@ function PageStage({
   batchId,
   pageNo,
   page,
+  contentRedacted,
   candidates,
   sudBoxes,
   selectedId,
@@ -834,6 +838,7 @@ function PageStage({
   batchId: string;
   pageNo: number;
   page: WorkspacePage | null;
+  contentRedacted: boolean;
   candidates: Candidate[];
   sudBoxes: Workspace["sud"]["indicators"];
   selectedId: string | null;
@@ -841,8 +846,24 @@ function PageStage({
   boxRef: (id: string, el: HTMLButtonElement | null) => void;
 }): JSX.Element {
   const [failed, setFailed] = useState(false);
+  // An <img> cannot report its HTTP status, so a failed load is probed once: a 403 is the Part 2
+  // need-to-know refusal (GAP-067), which reads very differently from a broken render.
+  const [refused, setRefused] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new page gets a fresh image attempt.
-  useEffect(() => setFailed(false), [batchId, pageNo]);
+  useEffect(() => {
+    setFailed(false);
+    setRefused(false);
+  }, [batchId, pageNo]);
+  const withheld = contentRedacted || refused;
+  const onImageError = (): void => {
+    setFailed(true);
+    const probe = typeof fetch === "function" ? fetch(pageImageUrl(batchId, pageNo)) : null;
+    probe
+      ?.then((r) => {
+        if (r.status === 403) setRefused(true);
+      })
+      .catch(() => undefined);
+  };
   return (
     <div className="wx-doclens-stage">
       <div
@@ -850,7 +871,11 @@ function PageStage({
         data-testid="doclens-page"
         style={page ? { aspectRatio: `${page.width} / ${page.height}` } : undefined}
       >
-        {failed ? (
+        {withheld ? (
+          <output className="wx-doclens-page-missing" data-testid="doclens-page-withheld">
+            {PART2_WITHHELD_MESSAGE}
+          </output>
+        ) : failed ? (
           <p className="wx-doclens-page-missing">
             The image for page {pageNo} could not be loaded. Field boxes are still shown in
             position.
@@ -859,7 +884,7 @@ function PageStage({
           <img
             src={pageImageUrl(batchId, pageNo)}
             alt={`Page ${pageNo} of the source document`}
-            onError={() => setFailed(true)}
+            onError={onImageError}
           />
         )}
         {page
@@ -1251,7 +1276,11 @@ function FieldSummary({ c, sud }: { c: Candidate; sud: Workspace["sud"]["status"
       </span>
       {c.description ? <span className="wx-doclens-field-desc">{c.description}</span> : null}
       <span className="wx-doclens-field-value">
-        {c.decision?.decision === "approve_with_edit" && c.decision.editedValue !== null ? (
+        {c.redacted ? (
+          <span className="wx-row-sub" data-testid="doclens-field-withheld">
+            {PART2_WITHHELD_MESSAGE}
+          </span>
+        ) : c.decision?.decision === "approve_with_edit" && c.decision.editedValue !== null ? (
           <>
             {c.decision.editedValue}
             <span className="wx-row-sub"> (extracted: {c.value ?? "—"})</span>
@@ -1328,6 +1357,12 @@ function FieldActions(props: {
 }): JSX.Element {
   const { c, gate: g, mode } = props;
   const id = c.id.slice(0, 8);
+  if (c.redacted)
+    return (
+      <p className="wx-row-sub" style={{ margin: "0.5rem 0 0" }}>
+        {PART2_WITHHELD_MESSAGE} It cannot be accepted, edited or rejected from this view.
+      </p>
+    );
   if (!props.canDecide) {
     return (
       <div className="wx-doclens-actions">
@@ -1490,17 +1525,27 @@ function FieldActions(props: {
 function SudPanel({
   status,
   indicatorCount,
+  contentRedacted,
   disabled,
   onResolve,
 }: {
   status: Workspace["sud"]["status"];
   indicatorCount: number;
+  contentRedacted: boolean;
   disabled: boolean;
   onResolve: (outcome: "confirmed" | "rejected", reason?: string) => Promise<boolean>;
 }): JSX.Element | null {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   if (status === "not_detected") return null;
+  if (contentRedacted)
+    return (
+      <Alert
+        tone="warning"
+        title="Substance use disorder information"
+        body={`${PART2_WITHHELD_MESSAGE} The pages, extracted values and flagged terms stay hidden from this account.`}
+      />
+    );
   if (status === "confirmed")
     return (
       <Alert
@@ -1620,7 +1665,7 @@ function CompleteDialog({
   );
   const label = (path: string): string => fieldLabel(path);
   const lineOf = (c: (typeof ws.candidates)[number]): string =>
-    c.decision?.editedValue ?? c.value ?? "—";
+    c.redacted ? "withheld (Part 2)" : (c.decision?.editedValue ?? c.value ?? "—");
   // The demographics planner reports every medication / allergy line as "not a demographics field"; the
   // clinical half (`clinicalWriteback`) is what decided them, so show its outcome instead.
   const demographicExcluded = (result?.writeback?.excluded ?? []).filter(
@@ -1724,7 +1769,7 @@ function CompleteDialog({
               <ul>
                 {toChart.map((c) => (
                   <li key={c.id}>
-                    {label(c.fieldPath)}: {c.decision?.editedValue ?? c.value ?? "—"}
+                    {label(c.fieldPath)}: {lineOf(c)}
                   </li>
                 ))}
               </ul>

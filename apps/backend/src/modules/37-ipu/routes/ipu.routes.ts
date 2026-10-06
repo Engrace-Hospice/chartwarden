@@ -14,9 +14,10 @@
 // `IPU_RN_COVERAGE_UNAVAILABLE` (412) — `arranged` (remote-IPU) admissions bypass per §2.3, matching the
 // pure `packages/inpatient` machine's own exemption. `assign-bed` never needed the check (the state machine
 // gates coverage one step earlier, at request-bed).
+import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { P, STEP_UP } from "./guards";
+import { GIP_ATTESTER_ELIGIBLE, P, STEP_UP, SYSTEM_INTERNAL_ONLY } from "./guards";
 import {
   AdmissionIdParamsSchema,
   AdvanceBodyReleaseBodySchema,
@@ -28,7 +29,6 @@ import {
   AttestGipBodySchema,
   BedCleaningBodySchema,
   CheckInVisitorBodySchema,
-  ConfirmBodySchema,
   ConfirmStaffBodySchema,
   ConfirmTransferBodySchema,
   CreateBedBodySchema,
@@ -287,13 +287,18 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   );
 
   // 15. POST /ipu-admissions/:id/confirm — M6 LCP-ack handler (system-internal). §4.1.
+  // GAP-106 — NOT tenant-callable. The handshake is driven by M6's own activation path through the typed
+  // `m6LcpAckActor` (routes/system-actor.ts); this URL used to hard-code `lcpConfirmed: true` for any holder
+  // of `m37.ipu_admission.create`, so a coordinator could activate an admission M6 never acknowledged. The
+  // route stays registered (route-table / client parity) but every tenant session is refused — a role named
+  // "system" is still a tenant session. `P` runs first so an unauthorised caller still sees the RBAC refusal.
   app.post(
     "/api/v1/ipu-admissions/:id/confirm",
-    { preHandler: [P("m37.ipu_admission.create")] },
-    async (request) => {
-      const actor = writeActorOf(request);
-      const { id } = parse(IdParamsSchema, request.params);
-      return service.confirm(actor, id, parse(ConfirmBodySchema, request.body));
+    { preHandler: [P("m37.ipu_admission.create"), SYSTEM_INTERNAL_ONLY] },
+    async () => {
+      throw new ForbiddenError(
+        "confirm is system-internal: it is driven by the M6 LCP acknowledgement",
+      );
     },
   );
 
@@ -322,7 +327,15 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   // 19. POST /ipu-admissions/:id/gip-criteria — attest GIP criteria (step-up). §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/gip-criteria",
-    { preHandler: [P("m37.gip_criteria.attest"), STEP_UP("m37.gip_criteria.attest")] },
+    {
+      // GAP-106 — attester_eligible gates the route too (CoP 418.108, hospice physician only); the service
+      // re-asserts it together with the M40 physician fact. RBAC → step-up → attester discipline.
+      preHandler: [
+        P("m37.gip_criteria.attest"),
+        STEP_UP("m37.gip_criteria.attest"),
+        GIP_ATTESTER_ELIGIBLE,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);

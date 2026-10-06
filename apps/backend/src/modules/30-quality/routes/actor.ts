@@ -21,13 +21,24 @@ export interface M30ReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /**
+   * The active membership id, when the session carries one. Reads use it ONLY for the own-record arm of the
+   * PHI patient scope (GAP-091); it is server-assembled, never from the wire.
+   */
+  readonly membershipId?: string;
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
 export function actorOf(request: FastifyRequest): M30ReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  const membershipId = ctx.attributes?.membershipId;
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    ...(typeof membershipId === "string" && membershipId.length > 0 ? { membershipId } : {}),
+  };
 }
 
 /**

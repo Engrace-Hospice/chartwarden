@@ -8683,7 +8683,6 @@ import {
   BodyReleaseViewSchema as M37BodyReleaseViewSchema,
   CensusListSchema as M37CensusListSchema,
   CheckInVisitorBodySchema as M37CheckInVisitorBodySchema,
-  ConfirmBodySchema as M37ConfirmBodySchema,
   ConfirmStaffBodySchema as M37ConfirmStaffBodySchema,
   ConfirmTransferBodySchema as M37ConfirmTransferBodySchema,
   CreateBedBodySchema as M37CreateBedBodySchema,
@@ -8825,10 +8824,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2). 422 unless the M6 admission is ITSELF discharged — resolved server-side through M6's AdmissionStatusReader, not asserted by the caller (F-070)",
   },
   "POST /api/v1/ipu-admissions/:id/confirm": {
-    body: M37ConfirmBodySchema,
     response: M37AdmissionViewSchema,
     summary:
-      "M6 LCP-ack handler: activate the admission; GIP requires attested criteria (412), IRC opens the episode (§2.2)",
+      "M6 LCP-ack handler — SYSTEM-INTERNAL: every tenant session is refused (403); the handshake is driven by M6 through its typed system actor (GAP-106). No request body",
   },
   "POST /api/v1/ipu-admissions/:id/initiate-transfer": {
     body: M37InitiateTransferBodySchema,

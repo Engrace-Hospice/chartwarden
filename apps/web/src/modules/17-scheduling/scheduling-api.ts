@@ -273,17 +273,18 @@ export async function markNoShow(
 }
 
 /**
- * Start a visit. `evvMissingReason` is the D9 fallback: a visit started without an EVV bracket must say
- * why, because an unexplained missing bracket is what a Medicaid EVV audit asks about.
+ * Start a visit (GAP-050). `evvMissingReason` (40..1000 chars) is mandatory: the start is always a
+ * self-attestation, because an unexplained missing bracket is what a Medicaid EVV audit asks about. The
+ * route also needs a fresh step-up and the assigned clinician.
  */
 export async function startVisit(
   client: ApiClient,
   visitId: string,
-  evvMissingReason?: string,
+  evvMissingReason: string,
 ): Promise<WriteResult<VisitView>> {
   const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/start", {
     params: { path: { visitId } },
-    body: evvMissingReason ? { evvMissingReason } : {},
+    body: { evvMissingReason },
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);

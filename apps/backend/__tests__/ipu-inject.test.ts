@@ -344,8 +344,7 @@ function createIpuTestBackend(): IpuRouteService {
       admissions.set(admissionId, updated);
       return updated;
     },
-    async confirm(actor, admissionId, body) {
-      void body;
+    async confirm(actor, admissionId) {
       const row = admissions.get(admissionId);
       if (!row || row.organizationId !== actor.organizationId)
         throw new NotFoundError("ipu_admission", admissionId);
@@ -1078,15 +1077,15 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
     expect(detail.statusCode).toBe(200);
     expect(detail.json().id).toBe(admission.id);
 
-    // 15 — confirm (system-internal M6-ack handler)
+    // 15 — confirm is system-internal (GAP-106): a fully-permissioned tenant session is REFUSED. The
+    // service-level handshake is exercised by `ipu-gap106-trust-boundary.test.ts` and the live suite.
     const confirmed = await app.inject({
       method: "POST",
       url: `/api/v1/ipu-admissions/${admission.id}/confirm`,
       headers: SUPER,
       payload: {},
     });
-    expect(confirmed.statusCode).toBe(200);
-    expect(confirmed.json().state).toBe("active");
+    expect(confirmed.statusCode).toBe(403);
 
     // 17 — confirm-transfer
     const confirmedTransfer = await app.inject({
@@ -1102,7 +1101,8 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
     const attested = await app.inject({
       method: "POST",
       url: `/api/v1/ipu-admissions/${admission.id}/gip-criteria`,
-      headers: SUPER,
+      // GAP-106 — attester_eligible gates the route: the attester must hold a hospice-MD discipline.
+      headers: { ...SUPER, "x-test-roles": "hospice_physician" },
       payload: {
         attestingPhysicianId: randomUUID(),
         data: {

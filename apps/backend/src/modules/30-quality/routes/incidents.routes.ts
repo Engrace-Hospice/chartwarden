@@ -34,6 +34,7 @@ import { requireAbac, requirePermission, resolveActorPermissions } from "@warden
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
+import { assertPatientInScope } from "./patient-scope";
 import {
   AbuseAllegationListQuerySchema,
   AddInvestigationNoteBodySchema,
@@ -48,11 +49,14 @@ import {
   parse,
 } from "./quality-typebox";
 import type { IncidentListFilter, M30ReadRouteService } from "./read-service";
+import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
 import type { M30WriteRouteService } from "./write-service";
 
 export interface IncidentRouteDeps {
   readonly readService: M30ReadRouteService;
   readonly writeService: M30WriteRouteService;
+  /** GAP-091 — resolves the caller's patient scope from the server session (defaults to the M5 caseload). */
+  readonly resolveScope?: PatientScopeResolver;
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -97,6 +101,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** Register the §4.1 incident routes (R-50..R-61). */
 export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRouteDeps): void {
   const { readService, writeService } = deps;
+  const scopeOf = deps.resolveScope ?? defaultPatientScopeResolver;
 
   // R-50 — list the incident register (cursor-paginated). §4.1/§4.1.2.
   //
@@ -128,7 +133,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
         patientId: q.patientId,
         mayViewAbuseAllegations: granted.has("incident.abuse_review"),
       };
-      return readService.listIncidents(actor, filter, q.cursor, q.limit);
+      return readService.listIncidents(actor, filter, q.cursor, q.limit, await scopeOf(actor));
     },
   );
 
@@ -154,6 +159,8 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(CreateIncidentBodySchema, request.body);
+      // GAP-091 — a patient-linked report must be about a patient in the reporter's scope (404 otherwise).
+      assertPatientInScope(await scopeOf(actor), body.patientId, "patient", false);
       const res = await writeService.createIncident(actor, {
         kind: body.kind,
         severity: body.severity,
@@ -175,7 +182,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     async (request) => {
       const actor = actorOf(request);
       const { incidentId } = parse(IncidentIdParamsSchema, request.params);
-      return readService.getIncident(actor, incidentId);
+      return readService.getIncident(actor, incidentId, await scopeOf(actor));
     },
   );
 

@@ -25,6 +25,7 @@ import type {
 } from "@wardenx/quality";
 import type { M30ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
+import type { QualityPatientScope } from "./patient-scope";
 
 // Re-export the actor so route plugins import the read contract + actor from one barrel.
 export type { M30ReadActor };
@@ -589,8 +590,13 @@ export interface M30ReadRouteService {
     filter: IncidentListFilter,
     cursor: string | undefined,
     limit: number | undefined,
+    scope: QualityPatientScope,
   ): Promise<CursorPage<IncidentSummaryView>>;
-  getIncident(actor: M30ReadActor, incidentId: string): Promise<IncidentDetailView>;
+  getIncident(
+    actor: M30ReadActor,
+    incidentId: string,
+    scope: QualityPatientScope,
+  ): Promise<IncidentDetailView>;
   listAbuseAllegations(
     actor: M30ReadActor,
     cursor: string | undefined,
@@ -603,8 +609,13 @@ export interface M30ReadRouteService {
     filter: MortalityListFilter,
     cursor: string | undefined,
     limit: number | undefined,
+    scope: QualityPatientScope,
   ): Promise<CursorPage<MortalityReviewSummaryView>>;
-  getMortalityReview(actor: M30ReadActor, reviewId: string): Promise<MortalityReviewDetailView>;
+  getMortalityReview(
+    actor: M30ReadActor,
+    reviewId: string,
+    scope: QualityPatientScope,
+  ): Promise<MortalityReviewDetailView>;
 
   // CoP compliance (R-80)
   listCopCitations(
@@ -619,6 +630,7 @@ export interface M30ReadRouteService {
     filter: InfectionEventFilter,
     cursor: string | undefined,
     limit: number | undefined,
+    scope: QualityPatientScope,
   ): Promise<CursorPage<InfectionEventView>>;
   listInfectionOutbreaks(
     actor: M30ReadActor,

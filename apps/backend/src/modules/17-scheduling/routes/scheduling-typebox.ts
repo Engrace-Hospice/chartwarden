@@ -201,7 +201,8 @@ export const EditVisitRequest = Type.Object({
 });
 
 export const StartVisitRequest = Type.Object({
-  evvMissingReason: Type.Optional(Type.String({ minLength: 40, maxLength: 1000 })),
+  // GAP-050 — the HTTP route is always the documented self-attest path, so the reason is mandatory.
+  evvMissingReason: Type.String({ minLength: 40, maxLength: 1000 }),
 });
 
 export const CancelVisitRequest = Type.Object({

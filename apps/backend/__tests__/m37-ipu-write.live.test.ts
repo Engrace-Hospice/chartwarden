@@ -22,6 +22,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eraseIpuRecord } from "../src/modules/37-ipu/eraser";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
+import {
+  M37_SYSTEM_MEMBERSHIP_ID,
+  bodyReleaseSweepActor,
+  m6LcpAckActor,
+} from "../src/modules/37-ipu/routes/system-actor";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 /**
@@ -543,6 +548,243 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
         (r) => r.id,
       ),
     ).toContain(applied.id);
+  });
+
+  // ── GAP-106 — body release / GIP attestation / M6 confirm no longer trust client-supplied facts ──────
+  describe("GAP-106 trust boundary", () => {
+    const FH_OK = "cccccccc-0000-4000-8000-cccccccc0001";
+    const MD_OK = "dddddddd-0000-4000-8000-dddddddd0001";
+    const MD_DEACTIVATED = "dddddddd-0000-4000-8000-dddddddd0002";
+    const SESSION_ID = "eeeeeeee-0000-4000-8000-eeeeeeee0001";
+    const DOC_OK = "99999999-0000-4000-8000-999999999901";
+    const MD_ACTOR = {
+      ...actor,
+      roles: ["hospice_physician"],
+      stepUpAssertionId: SESSION_ID,
+    };
+    const MDM = {
+      resolveFuneralHome: async (_org: string, id: string) =>
+        id === FH_OK ? { id, status: "active" } : null,
+      resolvePhysician: async (_org: string, id: string) =>
+        id === MD_OK
+          ? { id, status: "active" }
+          : id === MD_DEACTIVATED
+            ? { id, status: "deactivated" }
+            : null,
+    };
+    let releaseBodyId = "";
+    const DOCS = {
+      documentMetadata: async ({ documentId }: { documentId: string }) =>
+        documentId === DOC_OK
+          ? {
+              aggregateType: "body_release_authorization",
+              aggregateId: releaseBodyId,
+              patientId: PATIENT,
+              status: "active",
+              activeVersionId: "99999999-0000-4000-8000-999999999902",
+            }
+          : null,
+    };
+    let gipSvc: ReturnType<typeof buildDrizzleIpuRouteService>;
+    const GIP_DATA = {
+      criterion_kind: "imminent_death_terminal_care",
+      clinical_estimate_days_to_death: 3,
+      signs_of_imminent_death: ["mottling"],
+      rationale_for_inpatient_setting: "x".repeat(110),
+      home_environment_assessment_text: "y".repeat(60),
+    } as never;
+
+    async function openBedAssignedGipAdmission(seq: number) {
+      const [unit] = await svc.listUnits(readActor);
+      if (!unit) throw new Error("expected the unit from the first test");
+      const roomId = (
+        await admin.query(
+          "INSERT INTO ipu_room (organization_id,unit_id,room_number,kind,bed_count) VALUES ($1,$2,$3,'private',1) RETURNING id",
+          [ORG_A, unit.id, `g106-${seq}`],
+        )
+      ).rows[0].id;
+      const bedId = (
+        await admin.query(
+          "INSERT INTO ipu_bed (organization_id,room_id,unit_id,bed_label,cleaning_status) VALUES ($1,$2,$3,'A','ready') RETURNING id",
+          [ORG_A, roomId, unit.id],
+        )
+      ).rows[0].id;
+      const lcp = `88888888-8888-4888-8888-${String(seq).padStart(12, "0")}`;
+      const adm = await gipSvc.openAdmission(actor, {
+        patientId: PATIENT,
+        admissionId: `77777777-7777-4777-8777-${String(seq).padStart(12, "0")}`,
+        levelOfCarePeriodId: lcp,
+        providerEntityId: PE,
+        unitId: unit.id,
+        kind: "gip",
+      });
+      await gipSvc.requestBed(actor, adm.id, { unitId: unit.id });
+      await gipSvc.assignBed(actor, adm.id, { bedId });
+      return { adm, lcp };
+    }
+
+    it("GIP attestation: a non-MD, an unknown/deactivated M40 physician, or a session with no assertion is refused; the stored assertion is the session's", async () => {
+      gipSvc = buildDrizzleIpuRouteService(handle.db, {
+        orders: ORDERS,
+        admissions: ADMISSIONS,
+        outbox: VALIDATING_OUTBOX,
+        releaseDocuments: DOCS as never,
+        mdmDirectory: MDM,
+      });
+      const { adm } = await openBedAssignedGipAdmission(201);
+      const body = { attestingPhysicianId: MD_OK, data: GIP_DATA };
+
+      await expect(
+        gipSvc.attestGip({ ...MD_ACTOR, roles: ["rn"] }, adm.id, body),
+      ).rejects.toMatchObject({ code: "GIP_ATTESTER_NOT_ELIGIBLE" });
+      await expect(
+        gipSvc.attestGip(MD_ACTOR, adm.id, { ...body, attestingPhysicianId: MD_DEACTIVATED }),
+      ).rejects.toMatchObject({ code: "GIP_ATTESTER_NOT_ELIGIBLE" });
+      await expect(
+        gipSvc.attestGip(MD_ACTOR, adm.id, {
+          ...body,
+          attestingPhysicianId: "dddddddd-0000-4000-8000-dddddddd0099",
+        }),
+      ).rejects.toMatchObject({ code: "GIP_ATTESTER_NOT_ELIGIBLE" });
+      await expect(
+        gipSvc.attestGip({ ...MD_ACTOR, stepUpAssertionId: null }, adm.id, body),
+      ).rejects.toMatchObject({ code: "GIP_STEP_UP_ASSERTION_MISSING" });
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM gip_admission_criteria WHERE ipu_admission_id=$1",
+            [adm.id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+
+      await gipSvc.attestGip(MD_ACTOR, adm.id, body);
+      const row = (
+        await admin.query(
+          "SELECT step_up_assertion_id, attesting_membership_id FROM gip_admission_criteria WHERE ipu_admission_id=$1",
+          [adm.id],
+        )
+      ).rows[0];
+      expect(row.step_up_assertion_id).toBe(SESSION_ID);
+      expect(row.step_up_assertion_id).not.toBe(MEMBER);
+    });
+
+    it("confirm: only the typed M6 LCP-ack actor, naming THIS admission's period, activates it", async () => {
+      const { adm, lcp } = await openBedAssignedGipAdmission(202);
+      await gipSvc.attestGip(MD_ACTOR, adm.id, { attestingPhysicianId: MD_OK, data: GIP_DATA });
+
+      // A tenant write actor smuggled past the type (a role named "system" changes nothing) is refused,
+      // and the admission has NOT activated.
+      await expect(
+        gipSvc.confirm({ ...actor, roles: ["system"] } as never, adm.id),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      // An ack for a different level-of-care period is refused 409.
+      await expect(
+        gipSvc.confirm(m6LcpAckActor(ORG_A, "88888888-8888-4888-8888-0000000000ff"), adm.id),
+      ).rejects.toMatchObject({ code: "IPU_LCP_ACK_MISMATCH" });
+      expect((await gipSvc.getAdmission(readActor, adm.id))?.state).toBe("bed_assigned");
+
+      const confirmed = await gipSvc.confirm(m6LcpAckActor(ORG_A, lcp), adm.id);
+      expect(confirmed.state).toBe("active");
+      const hist = (
+        await admin.query(
+          "SELECT by_membership_id FROM ipu_admission_state_history WHERE ipu_admission_id=$1 AND to_state='active'",
+          [adm.id],
+        )
+      ).rows[0];
+      expect(hist.by_membership_id).toBe(M37_SYSTEM_MEMBERSHIP_ID);
+    });
+
+    it("body release: M40 resolves the funeral home, M22 proves the document, postClose is the sweep's", async () => {
+      const [unit] = await svc.listUnits(readActor);
+      if (!unit) throw new Error("expected the unit from the first test");
+      const adm = await gipSvc.openAdmission(actor, {
+        patientId: PATIENT,
+        admissionId: "77777777-7777-4777-8777-000000000203",
+        levelOfCarePeriodId: "88888888-8888-4888-8888-000000000203",
+        providerEntityId: PE,
+        unitId: unit.id,
+        kind: "gip",
+      });
+      releaseBodyId = (
+        await admin.query(
+          `INSERT INTO ipu_body_release (organization_id,ipu_admission_id,provider_entity_id,patient_id,death_event_id,pronouncing_physician_id,pronounced_at)
+           VALUES ($1,$2,$3,$4,gen_random_uuid(),$5,now()) RETURNING id`,
+          [ORG_A, adm.id, PE, PATIENT, MD_OK],
+        )
+      ).rows[0].id;
+
+      // A random funeral home id → 422; the state did not move.
+      await expect(
+        gipSvc.advanceBodyRelease(actor, adm.id, {
+          action: "identifyFuneralHome",
+          funeralHomeId: "cccccccc-0000-4000-8000-cccccccc00ff",
+        }),
+      ).rejects.toMatchObject({ code: "BODY_RELEASE_FUNERAL_HOME_UNRESOLVED", statusCode: 422 });
+      const identified = await gipSvc.advanceBodyRelease(actor, adm.id, {
+        action: "identifyFuneralHome",
+        funeralHomeId: FH_OK,
+      });
+      expect(identified.state).toBe("funeral_home_identified");
+
+      // A random release document → 422; none at all → 412; the matching M22 document → released.
+      await expect(
+        gipSvc.advanceBodyRelease(actor, adm.id, {
+          action: "releaseBody",
+          releaseDocumentId: "99999999-0000-4000-8000-9999999999ff",
+        }),
+      ).rejects.toMatchObject({ code: "BODY_RELEASE_DOCUMENT_INVALID", statusCode: 422 });
+      await expect(
+        gipSvc.advanceBodyRelease(actor, adm.id, { action: "releaseBody" }),
+      ).rejects.toMatchObject({ code: "BODY_RELEASE_DOCUMENT_REQUIRED" });
+      const released = await gipSvc.advanceBodyRelease(actor, adm.id, {
+        action: "releaseBody",
+        releaseDocumentId: DOC_OK,
+      });
+      expect(released.state).toBe("released");
+
+      // A tenant caller cannot postClose; the typed sweep actor can.
+      await expect(
+        gipSvc.advanceBodyRelease(actor, adm.id, { action: "postClose" }),
+      ).rejects.toMatchObject({ code: "ILLEGAL_BODY_RELEASE_TRANSITION" });
+      const closed = await gipSvc.advanceBodyRelease(bodyReleaseSweepActor(ORG_A), adm.id, {
+        action: "postClose",
+      });
+      expect(closed.state).toBe("closed");
+    });
+
+    it("body release fails closed when the M22 / M40 seams are unbound (deny-stubs throw)", async () => {
+      const unbound = buildDrizzleIpuRouteService(handle.db, {
+        outbox: VALIDATING_OUTBOX,
+        releaseDocuments: {
+          documentMetadata: () => {
+            throw new Error("DocumentReader deny-stub");
+          },
+        } as never,
+        mdmDirectory: {
+          resolveFuneralHome: () => {
+            throw new Error("MdmEntityProvider deny-stub");
+          },
+          resolvePhysician: () => {
+            throw new Error("MdmEntityProvider deny-stub");
+          },
+        },
+      });
+      const [row] = (await admin.query("SELECT ipu_admission_id FROM ipu_body_release LIMIT 1"))
+        .rows;
+      await expect(
+        unbound.advanceBodyRelease(actor, row.ipu_admission_id, {
+          action: "identifyFuneralHome",
+          funeralHomeId: FH_OK,
+        }),
+      ).rejects.toMatchObject({ statusCode: expect.any(Number) });
+      await expect(
+        unbound.attestGip(MD_ACTOR, row.ipu_admission_id, {
+          attestingPhysicianId: MD_OK,
+          data: GIP_DATA,
+        }),
+      ).rejects.toMatchObject({ code: "GIP_ATTESTER_NOT_ELIGIBLE" });
+    });
   });
 
   it("erases the patient's IPU record under a destruction cert", async () => {

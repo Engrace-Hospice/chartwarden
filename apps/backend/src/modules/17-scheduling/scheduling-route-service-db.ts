@@ -81,6 +81,7 @@ import {
 import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
+import { assertAssignedClinician } from "./routes/assigned-clinician";
 import {
   type AvailabilityView,
   type CreateRecurringInput,
@@ -1005,12 +1006,13 @@ export function createDbSchedulingBackend(
       orgId: string,
       userId: string,
       visitId: string,
-      evvMissingReason: string | undefined,
+      evvMissingReason: string,
       stepUpSatisfied: boolean,
     ): Promise<VisitView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
+        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1018,18 +1020,16 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "start",
-          source:
-            evvMissingReason === undefined
-              ? { via: "evv" }
-              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
+          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
+        const bracket = "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason: evvMissingReason ?? null,
+            evvMissingReason,
             actualStartedAt: new Date(),
             version: (v.version as number) + 1,
             updatedAt: new Date(),
@@ -1050,12 +1050,13 @@ export function createDbSchedulingBackend(
       orgId: string,
       userId: string,
       visitId: string,
-      evvMissingReason: string | undefined,
+      evvMissingReason: string,
       stepUpSatisfied: boolean,
     ): Promise<VisitView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
+        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1063,18 +1064,16 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "arrive",
-          source:
-            evvMissingReason === undefined
-              ? { via: "evv" }
-              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
+          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
+        const bracket = "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason: evvMissingReason ?? null,
+            evvMissingReason,
             version: (v.version as number) + 1,
             updatedAt: new Date(),
           })

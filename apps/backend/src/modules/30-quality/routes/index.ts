@@ -21,6 +21,7 @@ import { registerMortalityRoutes } from "./mortality.routes";
 import { registerQapiRoutes } from "./qapi.routes";
 import type { M30ReadRouteService } from "./read-service";
 import { registerRiskRegisterRoutes } from "./risk-register.routes";
+import type { PatientScopeResolver } from "./scope-resolver";
 import { registerSraRoutes } from "./sra.routes";
 import type { M30WriteRouteService } from "./write-service";
 
@@ -55,6 +56,8 @@ export {
 } from "./actor";
 
 export type { M30ReadRouteService } from "./read-service";
+export type { PatientScopeResolver } from "./scope-resolver";
+export type { QualityPatientScope } from "./patient-scope";
 export type { M30WriteRouteService } from "./write-service";
 export {
   type M30ReadServicePorts,
@@ -74,6 +77,8 @@ export type M30CombinedRouteService = M30ReadRouteService & M30WriteRouteService
 export interface M30RouteServices {
   readonly readService: M30ReadRouteService;
   readonly writeService: M30WriteRouteService;
+  /** GAP-091 — overrides the PHI patient-scope resolver (default: org-wide roles ⇒ org, else M5 caseload). */
+  readonly resolveScope?: PatientScopeResolver;
 }
 
 /**
@@ -84,15 +89,15 @@ export interface M30RouteServices {
  * write surfaces share no method name, so the merge is total and unambiguous).
  */
 export function mountM30Routes(app: FastifyInstance, services: M30RouteServices): void {
-  const { readService, writeService } = services;
+  const { readService, writeService, resolveScope } = services;
   const combined: M30CombinedRouteService = { ...readService, ...writeService };
 
   registerMeasuresRoutes(app, { readService, writeService });
   registerCahpsRoutes(app, { readService, writeService });
   registerRiskRegisterRoutes(app, { readService, writeService });
-  registerIncidentRoutes(app, { readService, writeService });
-  registerMortalityRoutes(app, { readService, writeService });
-  registerInfectionRoutes(app, { readService, writeService });
+  registerIncidentRoutes(app, { readService, writeService, resolveScope });
+  registerMortalityRoutes(app, { readService, writeService, resolveScope });
+  registerInfectionRoutes(app, { readService, writeService, resolveScope });
   registerQapiRoutes(app, { service: combined });
   registerSraRoutes(app, { service: combined });
   registerCopRoutes(app, { service: combined });

@@ -47,6 +47,14 @@ import {
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import type { DoclingClient } from "./docling-client";
 import { VISION_VERIFIED_RISK_LEVELS } from "./intake-job";
+import {
+  type SudContentAccess,
+  type SudStatus,
+  assertSudPageReadable,
+  isSudContentState,
+  redactSudWorkspace,
+  resolveSudContentAccess,
+} from "./sud-content-gate";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
 
 const BATCH = schema.intakeUploadBatches;
@@ -65,7 +73,7 @@ const LOW_CONFIDENCE = 0.75;
 const iso = (v: Date | string | null): string | null =>
   v === null ? null : v instanceof Date ? v.toISOString() : String(v);
 
-export type SudStatus = "not_detected" | "detected" | "confirmed" | "rejected";
+export type { SudStatus };
 export type VisionStatus = "not_required" | "verified" | "disagreed" | "unverified";
 
 export interface ReviewQueueItem {
@@ -121,6 +129,8 @@ export interface WorkspaceCandidate {
   }[];
   /** F-235 allowlist + low risk: what completion would write to the chart (after approval). */
   readonly writebackTarget: boolean;
+  /** GAP-067 — a SUD-detected candidate whose value / evidence was withheld from THIS viewer. */
+  readonly redacted: boolean;
   readonly decision: {
     readonly id: string;
     readonly decision: string;
@@ -150,6 +160,8 @@ export interface ReviewWorkspace {
     readonly detectorRef: string | null;
     readonly resolvedAt: string | null;
     readonly resolvedByMembershipId: string | null;
+    /** GAP-067 — the SUD evidence and SUD-candidate values were withheld from THIS viewer. */
+    readonly contentRedacted: boolean;
     readonly indicators: readonly {
       readonly page: number;
       readonly category: string;
@@ -235,16 +247,23 @@ export interface ReviewWorkspaceService {
       sudStatus?: SudStatus;
     },
   ): Promise<CursorPage<ReviewQueueItem>>;
+  /**
+   * `sudAccess` is the caller's Part 2 need-to-know decision (GAP-067). OMITTED MEANS DENIED: SUD-detected
+   * values and the SUD evidence come back redacted.
+   */
   getWorkspace(
     organizationId: string,
     batchId: string,
     viewerMembershipId: string,
+    sudAccess?: SudContentAccess,
   ): Promise<ReviewWorkspace>;
+  /** A page of a Part 2 batch is a 403 unless `sudAccess` allows it (omitted ⇒ denied). */
   renderPage(
     organizationId: string,
     batchId: string,
     page: number,
     correlationId: string,
+    sudAccess?: SudContentAccess,
   ): Promise<{ png: Uint8Array; pageWidth: number; pageHeight: number }>;
   resolveSud(
     organizationId: string,
@@ -433,7 +452,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       return paginate(items, q.cursor, q.limit);
     },
 
-    async getWorkspace(organizationId, batchId, viewerMembershipId) {
+    async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess) {
       // F-238 — records filed against a referral adopt its patient once M6 has resolved one, and are
       // re-checked against that patient (M22 writes only its own rows here).
       if (deps.identity && deps.cipher) {
@@ -497,6 +516,9 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { b, pages, jobs, cands, review, decisions, conflict };
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
+      // GAP-067 — decided BEFORE any decryption, so a denied viewer's request never holds Part 2 plaintext.
+      const sudAllowed =
+        !isSudContentState(b.sudStatus) || (await resolveSudContentAccess(sudAccess, b.patientId));
 
       const geometry = (Array.isArray(b.pageGeometry) ? b.pageGeometry : []) as {
         page: number;
@@ -534,8 +556,9 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             : findExtractionField(docType as IntakeDocumentType, c.fieldPath);
         const box = c.sourceBoundingBox as { x1: number; y1: number; x2: number; y2: number };
         const d = decisions.find((x) => x.extractionCandidateId === c.id);
-        const disagreement = await decrypt(organizationId, c.visionDisagreement);
-        const flagsJson = await decrypt(organizationId, c.codingFlagsCipher);
+        const withheld = !sudAllowed && c.sudDetected;
+        const disagreement = withheld ? null : await decrypt(organizationId, c.visionDisagreement);
+        const flagsJson = withheld ? null : await decrypt(organizationId, c.codingFlagsCipher);
         candidates.push({
           id: c.id,
           jobId: c.extractionJobId,
@@ -544,7 +567,11 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           description: spec?.description ?? null,
           riskLevel: c.riskLevel,
           confidence: Number(c.confidence),
-          value: c.valueCipher ? await decrypt(organizationId, c.valueCipher) : c.valueText,
+          value: withheld
+            ? null
+            : c.valueCipher
+              ? await decrypt(organizationId, c.valueCipher)
+              : c.valueText,
           page: c.sourcePage,
           bbox: [box.x1, box.y1, box.x2, box.y2],
           vision: {
@@ -564,6 +591,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             : [],
           writebackTarget:
             Object.hasOwn(DOCLENS_M5_WRITEBACK_FIELDS, c.fieldPath) && c.riskLevel === "low",
+          redacted: false,
           decision: d
             ? {
                 id: d.id,
@@ -581,8 +609,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           x.page - y.page || x.bbox[1] - y.bbox[1] || x.fieldPath.localeCompare(y.fieldPath),
       );
 
-      const evidence = await decrypt(organizationId, b.sudEvidenceCipher);
-      return {
+      const evidence = sudAllowed ? await decrypt(organizationId, b.sudEvidenceCipher) : null;
+      const workspace: ReviewWorkspace = {
         batch: {
           id: b.id,
           status: String(b.status),
@@ -600,6 +628,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           detectorRef: b.sudDetectorRef,
           resolvedAt: iso(b.sudResolvedAt),
           resolvedByMembershipId: b.sudResolvedByMembershipId,
+          contentRedacted: false,
           indicators: evidence
             ? (JSON.parse(evidence) as ReviewWorkspace["sud"]["indicators"])
             : [],
@@ -641,15 +670,20 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           : null,
         candidates,
       };
+      // The redactor stamps `redacted` / `contentRedacted` and drops what the skipped decryption left behind
+      // (decision text is plaintext on the decision row, not encrypted with the candidate).
+      return sudAllowed ? workspace : redactSudWorkspace(workspace);
     },
 
-    async renderPage(organizationId, batchId, page, correlationId) {
-      if (!deps.docling || !deps.presignSource) {
-        throw new DegradedError("doclens-render", "no docling-worker / object store is configured");
-      }
+    async renderPage(organizationId, batchId, page, correlationId, sudAccess) {
       const source = await read(organizationId, async (tx) => {
         const [row] = await tx
-          .select({ objectKey: DV.minioObjectKey, geometry: BATCH.pageGeometry })
+          .select({
+            objectKey: DV.minioObjectKey,
+            geometry: BATCH.pageGeometry,
+            sudStatus: BATCH.sudStatus,
+            patientId: BATCH.patientId,
+          })
           .from(BATCH)
           .innerJoin(DOC, eq(DOC.id, BATCH.initialDocumentId))
           .innerJoin(DV, eq(DV.id, DOC.activeVersionId))
@@ -662,6 +696,17 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         page: number;
       }[];
       if (!geometry.some((g) => g.page === page)) throw new NotFoundError("page");
+      // GAP-067 — the image is the whole source page, Part 2 content included. Refused BEFORE a presign or a
+      // docling call, so a denied viewer costs the object store nothing and never holds a URL.
+      assertSudPageReadable(
+        source.sudStatus,
+        isSudContentState(source.sudStatus)
+          ? await resolveSudContentAccess(sudAccess, source.patientId)
+          : true,
+      );
+      if (!deps.docling || !deps.presignSource) {
+        throw new DegradedError("doclens-render", "no docling-worker / object store is configured");
+      }
       const url = await deps.presignSource({
         organizationId,
         bucket: deriveTenantBucket(organizationId),

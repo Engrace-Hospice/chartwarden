@@ -40,11 +40,32 @@ export interface TransactionalDb<Tx extends SqlExecutor> {
 export interface OrgContext {
   readonly organizationId: string;
   readonly userId: string;
+  /**
+   * Set only by workers/relay ticks that run inside a request scope yet must record a
+   * NULL (system) actor. Without it, an empty `userId` inherits the ambient request actor (GAP-111).
+   */
+  readonly systemActor?: boolean;
 }
 
 /** A pre-org session identity. It may read only rows whose RLS policy explicitly keys on app.user_id. */
 export interface UserContext {
   readonly userId: string;
+}
+
+/**
+ * The actor recorded as `app.user_id`. An explicit `userId` always wins. An empty one (the
+ * legacy route-service convention) inherits the ambient request actor so the write-audit trigger
+ * does not record a NULL actor (GAP-111) — but only when that request is authenticated and in
+ * the SAME org, and never when the caller opts out with `systemActor`. Outside a request
+ * (workers, relay ticks) there is no ambient actor, so it stays "" (a deliberate system actor).
+ */
+function resolveActorUserId(ctx: OrgContext): string {
+  if (ctx.userId !== "" || ctx.systemActor === true) return ctx.userId;
+  const ambient = requestStore.getStore();
+  if (!ambient || ambient.userId === "" || ambient.organizationId !== ctx.organizationId) {
+    return "";
+  }
+  return ambient.userId;
 }
 
 /**
@@ -60,7 +81,7 @@ export async function withOrgContext<Tx extends SqlExecutor, T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.org_id', ${ctx.organizationId}, true)`);
-    await tx.execute(sql`SELECT set_config('app.user_id', ${ctx.userId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.user_id', ${resolveActorUserId(ctx)}, true)`);
     return fn(tx);
   });
 }

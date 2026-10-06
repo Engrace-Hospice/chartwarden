@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -42,6 +42,7 @@ function renderMyVisits(client: { GET: ReturnType<typeof vi.fn>; POST: ReturnTyp
         >
           <Routes>
             <Route path="/me/visits" element={<MyVisits />} />
+            <Route path="/step-up" element={<LocationProbe />} />
             <Route
               path="/patients/:patientId/encounters/:encounterId"
               element={<LocationProbe />}
@@ -87,21 +88,90 @@ function renderSchedulingWidget(
 }
 
 describe("MyVisits web workflow", () => {
-  it("starts a published Visit through M17 and refreshes the authoritative list", async () => {
-    const get = vi.fn(async () => ({ data: [visit] }));
-    const post = vi.fn(async () => ({ data: { ...visit, status: "en_route" } }));
-    renderMyVisits({ GET: get, POST: post });
+  const REASON =
+    "Device GPS was offline in the patient's rural home; no EVV bracket could be recorded.";
 
+  async function openStartDialog(client: {
+    GET: ReturnType<typeof vi.fn>;
+    POST: ReturnType<typeof vi.fn>;
+  }) {
+    renderMyVisits(client);
     await screen.findByText("Scheduled visit");
     fireEvent.click(screen.getByRole("button", { name: /^start visit/i }));
+    return screen.findByRole("dialog");
+  }
+
+  it("starts a published Visit with the mandatory EVV reason and refreshes the list", async () => {
+    const get = vi.fn(async () => ({ data: [visit] }));
+    const post = vi.fn(async () => ({ data: { ...visit, status: "en_route" } }));
+    const dialog = await openStartDialog({ GET: get, POST: post });
+
+    fireEvent.change(within(dialog).getByLabelText(/reason there is no evv bracket/i), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
 
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        "/api/v1/visits/{visitId}/start",
-        expect.objectContaining({ params: { path: { visitId: visit.id } } }),
-      ),
+      expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/start", {
+        params: { path: { visitId: visit.id } },
+        body: { evvMissingReason: REASON },
+      }),
     );
     expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a start reason shorter than 40 characters without calling the server", async () => {
+    const post = vi.fn(async () => ({ data: visit }));
+    const dialog = await openStartDialog({
+      GET: vi.fn(async () => ({ data: [visit] })),
+      POST: post,
+    });
+
+    fireEvent.change(within(dialog).getByLabelText(/reason there is no evv bracket/i), {
+      target: { value: "too short" },
+    });
+    expect(within(dialog).getByText(/at least 40 characters \(9\/40\)/i)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    expect((await within(dialog).findAllByRole("alert")).length).toBeGreaterThan(0);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("sends the user through step-up when the server asks for a fresh one", async () => {
+    const post = vi.fn(async () => ({
+      error: { code: "STEP_UP_REQUIRED" },
+      response: { status: 403 },
+    }));
+    const dialog = await openStartDialog({
+      GET: vi.fn(async () => ({ data: [visit] })),
+      POST: post,
+    });
+
+    fireEvent.change(within(dialog).getByLabelText(/reason there is no evv bracket/i), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    const where = await screen.findByLabelText("location");
+    expect(where.textContent).toBe("/step-up");
+  });
+
+  it("explains the 403 when the caller is not the assigned clinician", async () => {
+    const post = vi.fn(async () => ({
+      error: { code: "FORBIDDEN", message: "ASSIGNED_CLINICIAN_REQUIRED" },
+      response: { status: 403 },
+    }));
+    const dialog = await openStartDialog({
+      GET: vi.fn(async () => ({ data: [visit] })),
+      POST: post,
+    });
+
+    fireEvent.change(within(dialog).getByLabelText(/reason there is no evv bracket/i), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    expect(await within(dialog).findByText(/only the clinician assigned/i)).toBeTruthy();
   });
 
   it("opens the linked Encounter without creating a duplicate Encounter", async () => {

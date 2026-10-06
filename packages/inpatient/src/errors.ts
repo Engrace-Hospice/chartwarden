@@ -118,6 +118,19 @@ export const M37_ERROR_STATUS = {
   BODY_RELEASE_FUNERAL_HOME_UNRESOLVED: 422,
   // §2.11 — releaseBody without the signed M22 body_release_authorization document.
   BODY_RELEASE_DOCUMENT_REQUIRED: 412,
+  // §2.11 (GAP-106) — a release document that was named but is not the M22 body_release_authorization
+  // for THIS release (unknown, wrong type / release / patient, superseded) or that M22 could not be asked.
+  BODY_RELEASE_DOCUMENT_INVALID: 422,
+
+  // ── §2.4 D5 GIP attestation (GAP-106) ──────────────────────────────────────────────────────────────
+  // §2.4 — the attester is not a hospice physician with an active M40 physician (attester_eligible).
+  GIP_ATTESTER_NOT_ELIGIBLE: 403,
+  // §2.4 — no server-side step-up assertion to bind the attestation to (the session carries none).
+  GIP_STEP_UP_ASSERTION_MISSING: 403,
+
+  // ── §4.1 route 15 (GAP-106) — the M6 LCP-ack confirm handshake ─────────────────────────────────────
+  // The acknowledged M6 level-of-care period is not the one this admission was opened for.
+  IPU_LCP_ACK_MISMATCH: 409,
 } as const;
 
 /** A machine-readable M37 domain failure code. */

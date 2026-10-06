@@ -1242,7 +1242,13 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM30Routes(app, { readService: backend.readService, writeService: backend.writeService });
+  // GAP-091 — this smoke file drives the hand-rolled in-memory service, so scope is pinned to org-wide
+  // here; the real scope resolution is proven in gap-091-m30-phi-scope.test.ts.
+  mountM30Routes(app, {
+    readService: backend.readService,
+    writeService: backend.writeService,
+    resolveScope: async () => ({ kind: "org" }),
+  });
   return { app, backend };
 }
 

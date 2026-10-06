@@ -24,6 +24,7 @@ import { requireAbac, requirePermission } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
+import { assertPatientInScope } from "./patient-scope";
 import {
   CaseIdParamsSchema,
   InfectionEventListQuerySchema,
@@ -37,11 +38,14 @@ import type {
   InfectionOutbreakFilter,
   M30ReadRouteService,
 } from "./read-service";
+import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
 import type { M30WriteRouteService } from "./write-service";
 
 export interface InfectionRouteDeps {
   readonly readService: M30ReadRouteService;
   readonly writeService: M30WriteRouteService;
+  /** GAP-091 — resolves the caller's patient scope from the server session (defaults to the M5 caseload). */
+  readonly resolveScope?: PatientScopeResolver;
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -59,6 +63,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** Register the §4.1 infection routes (R-90..R-93). */
 export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRouteDeps): void {
   const { readService, writeService } = deps;
+  const scopeOf = deps.resolveScope ?? defaultPatientScopeResolver;
 
   // R-90 — list surveillance events (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
@@ -76,7 +81,13 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
         observedAfter: q.observedAfter,
         observedBefore: q.observedBefore,
       };
-      return readService.listInfectionEvents(actor, filter, q.cursor, q.limit);
+      return readService.listInfectionEvents(
+        actor,
+        filter,
+        q.cursor,
+        q.limit,
+        await scopeOf(actor),
+      );
     },
   );
 
@@ -88,6 +99,8 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(RecordInfectionEventBodySchema, request.body);
+      // GAP-091 — an event is recorded only for a patient in the filer's scope (404 otherwise).
+      assertPatientInScope(await scopeOf(actor), body.patientId, "patient", false);
       const res = await writeService.recordInfectionEvent(actor, {
         patientId: body.patientId,
         pathogen: body.pathogen,

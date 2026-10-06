@@ -7,7 +7,7 @@
 // SignedUrlService (T03 plan + T04 presign port + §4.12 BAA gate); the overlay PUT layers `If-Match`
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { DegradedError, NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -163,6 +163,12 @@ const ABAC_DISCREPANCY_REVIEWER = requireAbac("intake.review", "extraction_revie
 const ABAC_BULK = requireAbac("intake.review", "extraction_high_risk_field_per_field_only", {
   getTarget: bulkTarget,
 }) as PreHandler;
+// GAP-066 — step-up freshness (M3 `step_up_recent`, resolved server-side from the session), keyed by the
+// same operation key as the permission so a tenant can only TIGHTEN its window. Never an emergency-grant
+// bypass (`requireStepUp` opts out of break-glass).
+const STEP_UP_EXPORT = requireStepUp("documents.export_phi_bundle") as PreHandler;
+const STEP_UP_OVERLAY = requireStepUp("documents.manage_overlay") as PreHandler;
+const STEP_UP_RETRY = requireStepUp("documents.admin_retry_render") as PreHandler;
 const ABAC_PUBLISH = requireAbac(
   "documents.publish_template",
   "form_template_publish_authority",
@@ -387,10 +393,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
   );
 
-  // 11 — §164.524 right-of-access bulk export (step-up at the route; SEC-052).
+  // 11 — §164.524 right-of-access bulk export (step-up composed at the route via STEP_UP_EXPORT; SEC-052).
   app.post(
     "/api/v1/documents/:id/export-phi-bundle",
-    { preHandler: [EXPORT, ABAC_OWNER] },
+    { preHandler: [EXPORT, STEP_UP_EXPORT, ABAC_OWNER] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(ExportPhiBundleRequest, request.body);
@@ -733,10 +739,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
   );
 
-  // 31 — publish overlay (step-up + golden-template diff; tenant_template_overlay_edit_authority ABAC + If-Match).
+  // 31 — publish overlay (step-up via STEP_UP_OVERLAY; golden-template diff is service-side; tenant_template_overlay_edit_authority ABAC + If-Match).
   app.put(
     "/api/v1/tenant-overlays/:templateKey",
-    { preHandler: [MANAGE_OVERLAY, ABAC_OVERLAY, IF_MATCH] },
+    { preHandler: [MANAGE_OVERLAY, STEP_UP_OVERLAY, ABAC_OVERLAY, IF_MATCH] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { templateKey } = parse(OverlayParamsSchema, request.params);
@@ -759,10 +765,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
   );
 
-  // 33 — manually retry a failed render (platform-only; step-up; audited as elevated).
+  // 33 — manually retry a failed render (platform-only; step-up via STEP_UP_RETRY; audited as elevated).
   app.post(
     "/api/v1/admin/form-fills/:id/retry",
-    { preHandler: [ADMIN_RETRY_RENDER] },
+    { preHandler: [ADMIN_RETRY_RENDER, STEP_UP_RETRY] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id } = parse(FormFillParamsSchema, request.params);

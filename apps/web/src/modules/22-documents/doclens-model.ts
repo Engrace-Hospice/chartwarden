@@ -232,6 +232,7 @@ export const updatesChartClinical = (c: Candidate, sud: SudStatus): boolean =>
  * by THIS reviewer in this session. High-risk fields are never in scope (spec: per-field only).
  */
 export const bulkEligible = (c: Candidate, confirmed: ReadonlySet<string>): boolean =>
+  !c.redacted &&
   c.riskLevel === "low" &&
   !c.sudDetected &&
   c.vision.status !== "disagreed" &&
@@ -327,3 +328,7 @@ export const RECORDS_REQUEST_CONFLICT_LABEL: Readonly<Record<RecordsRequestConfl
     code_names_another_referral: "Request code is for another referral",
     code_names_another_patient: "Request code is for another patient",
   };
+
+/** GAP-067 — shown wherever 42 CFR Part 2 content is withheld from a viewer without the need-to-know. */
+export const PART2_WITHHELD_MESSAGE =
+  "Part 2 content withheld — you need a licensed reviewer with a Part 2 need-to-know.";

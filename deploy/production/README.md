@@ -41,6 +41,23 @@ present, starts MinIO, and verifies `http://127.0.0.1:9000/minio/health/ready`. 
 TLS automation. The application reads the public S3 origin from `STORAGE_PUBLIC_ORIGIN`; if it is
 missing or unreachable, `/ready` will fail and document uploads will show storage unavailable.
 
+### Nginx logging (PHI)
+
+The stock `combined` access-log format records the full request URI, so patient search terms
+(`?q=Smith`), cursors and S3 presigned signatures (`X-Amz-Signature`, `X-Amz-Credential`) would land in
+`/var/log/nginx`. The repo's vhosts therefore name `wardenx_phi_safe` (defined in
+`nginx/wardenx-log-format.conf`, installed to `/etc/nginx/conf.d/` by `bootstrap-vps.sh`), which logs
+`$uri` (path only, no query string) and omits the Referer. The storage vhost has `access_log off`.
+
+Host requirements — the repo cannot enforce these, so check them once per host:
+
+- `/etc/nginx/nginx.conf` must include `conf.d/*.conf` **before** `sites-enabled/*` (the Debian/Ubuntu
+  default), and must not set a server-wide `access_log` with the `combined`/`main` format.
+- `error_log` can still echo the request line on upstream errors (`request: "GET /x?q=..."`). Keep it at
+  `warn` or above and treat it as PHI-bearing: same retention and access controls as the application logs.
+- Verify: `nginx -T | grep -n wardenx_phi_safe`, then `curl -s "https://<host>/api/health?q=Smith" >/dev/null`
+  and confirm the new `/var/log/nginx/wardenx-*.access.log` line shows `/api/health` with no `?q=Smith`.
+
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
 images, runs strict schema-only migrations and runtime-role provisioning, recreates `api`, `worker` and
 `web`, then runs `smoke.sh`. If any step fails it restores the previous image references and recreates

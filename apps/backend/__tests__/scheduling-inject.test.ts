@@ -257,7 +257,9 @@ describe("M17-T07 — routes 1-4: list / get / create / edit a visit", () => {
 });
 
 describe("M17-T07 — route 5: self-attest EVV start", () => {
-  it("starts a published visit via the EVV path (no self-attest reason) → 200", async () => {
+  // GAP-050 — the full start / arrive matrix lives in gap-050-visit-start-self-attest.test.ts; here the
+  // scheduler (a `visit.start` holder who is NOT the assignee) is refused, never marked evv_present.
+  it("refuses a visit.start holder who is not the assigned clinician → 403", async () => {
     const { app } = makeServer();
     const created = await app.inject({
       method: "POST",
@@ -273,10 +275,9 @@ describe("M17-T07 — route 5: self-attest EVV start", () => {
       method: "POST",
       url: `/api/v1/visits/${id}/start`,
       headers: SCHED,
-      payload: {},
+      payload: { evvMissingReason: "x".repeat(40) },
     });
-    expect(started.statusCode).toBe(200);
-    expect(started.json().status).toBe("en_route");
+    expect(started.statusCode).toBe(403);
     await app.close();
   });
 });

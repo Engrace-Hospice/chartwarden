@@ -32,9 +32,22 @@ import {
 } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
-import { ConflictError, NotFoundError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { getIpuBodyReleaseDocumentReader, getIpuMdmDirectoryReader } from "../seams";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
+import {
+  type AdmissionDischargeReader,
+  type BodyReleaseDocumentReader,
+  type MdmDirectoryReader,
+  type RestraintOrderReader,
+  type VisitorConsentGate,
+  evaluateGipAttesterEligibility,
+  resolveBodyReleaseEventFacts,
+} from "./ipu-trust-gates";
+
+// Re-exported for existing importers; the definitions live in ipu-trust-gates (see the note there).
+export type { AdmissionDischargeReader, RestraintOrderReader, VisitorConsentGate };
 import type {
   AdvanceBodyReleaseBody,
   ApplyRestraintBody,
@@ -45,7 +58,6 @@ import type {
   AttestGipBody,
   BedCleaningBody,
   CheckInVisitorBody,
-  ConfirmBody,
   ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
@@ -94,6 +106,7 @@ import type {
   VisitorRestrictionView,
   VisitorView,
 } from "./service";
+import { type IpuActor, type IpuSystemActor, isIpuSystemActor } from "./system-actor";
 
 /** The transactional-outbox port the composition root binds (the catalog-validating `m37` publisher). */
 export interface WriteOutboxPort {
@@ -126,49 +139,6 @@ const UNBOUND_ROOMING: RoomingFactsPort = {
   },
 };
 
-/**
- * The M39 `ConsentEvaluator` narrowed to the ONE method §2.7's visitor gate calls (GAP-062) — the M12
- * `DoseSpotConsentValidator` precedent. M39's rich interface lives in @wardenx/consent, which M37 does
- * not import; the seam is registered opaquely (`SeamContracts["ConsentEvaluator"] = unknown`) and this
- * subset is what M37 depends on, so no manifest edge appears.
- *
- * The spec asks for `ConsentEvaluator.evaluateForVisit(patientId, visitorRelationship)`. M39 publishes
- * no such method, and adding one would put IPU visitation vocabulary inside the consent module — so the
- * relationship → consent-type mapping stays in M37's pure core (`visitorConsentTypesFor`) and this calls
- * M39's real, general `evaluate` per candidate type.
- */
-/**
- * The slice of M11's `OrderProvider` the restraint gate reads. Narrowed rather than imported whole for
- * the same reason `VisitorConsentGate` is: M37 consumes one method, and a narrow port is a smaller
- * thing for a test to fake honestly.
- */
-export interface RestraintOrderReader {
-  getOrder(input: { orderId: string }): Promise<{
-    readonly orderId: string;
-    readonly patientId: string;
-    readonly status: string;
-    readonly signedAt: string | null;
-    readonly orderingPhysicianMdmId: string | null;
-  } | null>;
-}
-
-export interface VisitorConsentGate {
-  evaluate(args: {
-    organizationId: string;
-    patientId: string;
-    consentType: string;
-    sessionContext: { sessionClass: string; membershipId?: string };
-    callerModule: string;
-    callerRoute?: string;
-  }): Promise<{
-    allowed: boolean;
-    consentRecordId?: string;
-    consentVersionAtEval?: number;
-    expiresAt?: string;
-    denyReason?: string;
-  }>;
-}
-
 /** Unbound default: THROWS, and the check-in gate turns that into the same 412 a denial produces. */
 const UNBOUND_CONSENT: VisitorConsentGate = {
   evaluate() {
@@ -186,21 +156,6 @@ const UNBOUND_ORDERS: RestraintOrderReader = {
     throw new Error("OrderProvider is not bound");
   },
 };
-
-/**
- * The slice of M6's `AdmissionStatusReader` the discharge gate reads (F-070). Narrowed for the same
- * reason `RestraintOrderReader` is: M37 consumes one method, and a narrow port is a smaller thing for a
- * test to fake honestly.
- */
-export interface AdmissionDischargeReader {
-  getAdmissionSummary(
-    organizationId: string,
-    admissionId: string,
-  ): Promise<{
-    readonly status: string;
-    readonly dischargedAt: string | null;
-  }>;
-}
 
 /**
  * Unbound default: THROWS — the `UNBOUND_ORDERS` rule. An unreadable M6 admission is indistinguishable
@@ -258,10 +213,23 @@ export interface IpuRouteServiceDeps {
   readonly orders?: RestraintOrderReader | (() => RestraintOrderReader);
   /** M6 `AdmissionStatusReader` (F-070) — the discharge gate's M6-state read, same thunk posture. */
   readonly admissions?: AdmissionDischargeReader | (() => AdmissionDischargeReader);
+  /**
+   * GAP-106 — M22's `DocumentReader`, narrowed to the one read the body-release gate makes. Defaults to the
+   * seam registry (`getIpuBodyReleaseDocumentReader`), whose deny-stub THROWS — and a throw reads as "the
+   * document is not proven", so an unbound M22 refuses the release (422).
+   */
+  readonly releaseDocuments?: BodyReleaseDocumentReader | (() => BodyReleaseDocumentReader);
+  /**
+   * GAP-106 — M40's `MdmEntityProvider`, narrowed to the funeral-home / physician resolves. Same default
+   * and the same fail-closed reading of a throwing deny-stub.
+   */
+  readonly mdmDirectory?: MdmDirectoryReader | (() => MdmDirectoryReader);
 }
 
 const iso = (d: Date): string => d.toISOString();
-const ctx = (actor: IpuReadActor) => ({
+/** An M2 session / step-up assertion id is a uuid; anything else cannot be the assertion the column holds. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ctx = (actor: Pick<IpuReadActor, "organizationId" | "userId">) => ({
   organizationId: actor.organizationId,
   userId: actor.userId,
 });
@@ -284,6 +252,11 @@ export function buildDrizzleIpuRouteService(
   const admissionsDep = deps.admissions ?? UNBOUND_ADMISSIONS;
   const admissionReader = (): AdmissionDischargeReader =>
     typeof admissionsDep === "function" ? admissionsDep() : admissionsDep;
+  const releaseDocsDep = deps.releaseDocuments ?? getIpuBodyReleaseDocumentReader;
+  const releaseDocuments = (): BodyReleaseDocumentReader =>
+    typeof releaseDocsDep === "function" ? releaseDocsDep() : releaseDocsDep;
+  const mdmDep = deps.mdmDirectory ?? getIpuMdmDirectoryReader;
+  const mdmDirectory = (): MdmDirectoryReader => (typeof mdmDep === "function" ? mdmDep() : mdmDep);
   const gipDep = deps.gipProposals ?? UNBOUND_GIP_PROPOSALS;
   const gipProposals = (): GipProposalReader => (typeof gipDep === "function" ? gipDep() : gipDep);
 
@@ -499,7 +472,7 @@ export function buildDrizzleIpuRouteService(
 
   async function applyAdmissionTransition(
     t: DbClient,
-    actor: IpuWriteActor,
+    actor: Pick<IpuWriteActor, "organizationId" | "membershipId">,
     admission: typeof A.$inferSelect,
     transition: AdmissionTransition,
     opts: { sourceBedId?: string; sourceBedStatus?: string; events?: AdmissionEventFacts } = {},
@@ -1114,21 +1087,39 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async confirm(actor: IpuWriteActor, admissionId: string, _body: ConfirmBody) {
+    async confirm(actor: IpuSystemActor, admissionId: string) {
+      // GAP-106 — the handshake is the PLATFORM's, and the type says so. Re-assert at the service layer
+      // (defence in depth behind the route, which refuses every tenant session): a caller that is not the
+      // typed M6 LCP-ack actor — a structurally-similar object, a tenant write actor cast through — is refused.
+      if (!isIpuSystemActor(actor) || actor.source !== "m6_lcp_ack") {
+        throw new ForbiddenError(
+          "confirm is system-internal: only the M6 LCP acknowledgement drives it",
+        );
+      }
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
+        // `lcpConfirmed` is a FACT, not a constant: M6 acknowledged THIS admission's level-of-care period.
+        // The acked period id rides on the typed actor and must equal the one the admission was opened for.
+        const lcpConfirmed =
+          actor.ackedLevelOfCarePeriodId !== null &&
+          actor.ackedLevelOfCarePeriodId === adm.levelOfCarePeriodId;
+        if (!lcpConfirmed) {
+          throw new IpuStateError(
+            "IPU_LCP_ACK_MISMATCH",
+            "the acknowledged M6 level-of-care period is not this admission's.",
+          );
+        }
         const [gip] = await t
           .select({ id: GC.id })
           .from(GC)
           .where(eq(GC.ipuAdmissionId, admissionId))
           .limit(1);
         const bed = await activeBedFor(t, admissionId);
-        // The route IS the M6 LCP ack handler (or force-flagged), so lcpConfirmed holds.
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "confirm",
-          lcpConfirmed: true,
+          lcpConfirmed,
           gipCriteriaExists: gip !== undefined,
         });
         const activatedAt = new Date();
@@ -1204,6 +1195,34 @@ export function buildDrizzleIpuRouteService(
     },
 
     async attestGip(actor: IpuWriteActor, admissionId: string, body: AttestGipBody) {
+      // GAP-106 — the step-up assertion is the SESSION's (server-assembled), never a client value and never
+      // the membership id it used to be. No fresh step-up, or a session that carries no assertion id → no
+      // attestation. The route's STEP_UP guard says the same; this is the second wall.
+      const stepUpAssertionId = actor.stepUpAssertionId ?? null;
+      if (
+        !actor.stepUpRecent ||
+        stepUpAssertionId === null ||
+        !UUID_SHAPE.test(stepUpAssertionId)
+      ) {
+        throw new IpuStateError(
+          "GIP_STEP_UP_ASSERTION_MISSING",
+          "GIP attestation requires a fresh step-up on a session that carries an assertion id.",
+        );
+      }
+      // §2.4 `attester_eligible` composed: the actor's discipline (server roles) AND an active M40 physician
+      // for the physician the attestation names. Evaluated BEFORE any write; fail closed (403).
+      const eligible = await evaluateGipAttesterEligibility({
+        organizationId: actor.organizationId,
+        roles: actor.roles,
+        attestingPhysicianId: body.attestingPhysicianId,
+        directory: mdmDirectory(),
+      });
+      if (!eligible) {
+        throw new IpuStateError(
+          "GIP_ATTESTER_NOT_ELIGIBLE",
+          "GIP criteria may be attested only by a hospice physician with an active M40 physician record.",
+        );
+      }
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
@@ -1218,10 +1237,23 @@ export function buildDrizzleIpuRouteService(
             data: payload,
             attestingPhysicianId: body.attestingPhysicianId,
             attestingMembershipId: actor.membershipId,
-            stepUpAssertionId: actor.membershipId,
+            stepUpAssertionId,
           })
           .returning();
         if (!row) throw new ConflictError("gip criteria insert failed");
+        await outbox.publish(t, {
+          eventName: "m37.gip_criteria.attested",
+          payload: {
+            ipuAdmissionId: admissionId,
+            organizationId: actor.organizationId,
+            gipAdmissionCriteriaId: row.id,
+            criterionKind: payload.criterion_kind,
+            attestedAt: row.attestedAt.toISOString(),
+          },
+          organizationId: actor.organizationId,
+          aggregateKind: "gip_admission_criteria",
+          aggregateId: row.id,
+        });
         return gipView(row);
       });
     },
@@ -2294,11 +2326,7 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async advanceBodyRelease(
-      actor: IpuWriteActor,
-      admissionId: string,
-      body: AdvanceBodyReleaseBody,
-    ) {
+    async advanceBodyRelease(actor: IpuActor, admissionId: string, body: AdvanceBodyReleaseBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [br] = await t
@@ -2307,18 +2335,22 @@ export function buildDrizzleIpuRouteService(
           .where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId))
           .limit(1);
         if (!br) throw new NotFoundError("ipu_body_release not found");
-        const event =
-          body.action === "identifyFuneralHome"
-            ? {
-                type: "identifyFuneralHome" as const,
-                funeralHomeResolved: body.funeralHomeId !== undefined,
-              }
-            : body.action === "releaseBody"
-              ? {
-                  type: "releaseBody" as const,
-                  hasReleaseDocument: body.releaseDocumentId !== undefined,
-                }
-              : { type: "postClose" as const, isSystemActor: true };
+        // GAP-106 — every fact the machine guards on is PROVEN by a seam (M40 funeral home, M22 signed
+        // release document) or by the typed actor (the sweep); none is "the body field was non-empty".
+        const event = await resolveBodyReleaseEventFacts({
+          action: body.action,
+          organizationId: actor.organizationId,
+          bodyRelease: {
+            id: br.id,
+            patientId: br.patientId,
+            releaseDocumentId: br.releaseDocumentId,
+          },
+          funeralHomeId: body.funeralHomeId,
+          releaseDocumentId: body.releaseDocumentId,
+          actorIsSweep: isIpuSystemActor(actor) && actor.source === "body_release_sweep",
+          documents: releaseDocuments(),
+          directory: mdmDirectory(),
+        });
         const transition = transitionBodyRelease(br.state, event);
         const bed = body.action === "releaseBody" ? await activeBedFor(t, admissionId) : null;
         const patch: Record<string, unknown> = {
@@ -2329,6 +2361,7 @@ export function buildDrizzleIpuRouteService(
         if (body.action === "identifyFuneralHome" && body.funeralHomeId)
           patch.funeralHomeId = body.funeralHomeId;
         if (body.action === "releaseBody") {
+          // The id the gate VERIFIED (the body's, else the row's), never an unverified body value.
           patch.releaseDocumentId = body.releaseDocumentId ?? br.releaseDocumentId;
           patch.releasedAt = new Date();
           patch.releasedByMembershipId = actor.membershipId;
