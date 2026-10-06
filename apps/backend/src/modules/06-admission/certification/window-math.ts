@@ -4,7 +4,8 @@
 // (23:59:59.999 org-TZ for "end of day"; D8). This is the single source of truth for the two §7.3/§7.4
 // deadlines the slice and the screens key off:
 //   • D4  — late-CTI written-cert deadline = period_start + 2 calendar days at 23:59 org-TZ (§7.3).
-//   • CMS 418.22 — the F2F prior-to window = [period_start − 30, period_start − 1] (§7.4 W-F2F-01).
+//   • CMS 418.22 — the F2F window = [period_start − 30, period_start] (§7.4 W-F2F-01; the period's first day is
+//     timely per MBPM ch. 9 §20.1(5)(a)).
 // No IO and no `Date.now()`: every fact (the period start date, the org timezone, the "as of" instant
 // for an overdue check) is passed in, so the math is deterministic across timezones and DST boundaries.
 import type { LocalDate } from "@wardenx/types";
@@ -12,10 +13,11 @@ import type { LocalDate } from "@wardenx/types";
 /** Org timezone default when M2 `organization.timezone` is unset (D8). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";
 
-/** Whole calendar days CMS 418.22 spans the F2F prior-to window over (§7.4 / R-F2F-02). */
+/** Whole calendar days CMS 418.22 spans the F2F window over (§7.4 / R-F2F-02): 30 days before through the
+ *  period's first day (MBPM ch. 9 §20.1(5)(a) — an encounter on the first day "is still considered timely"). */
 export const F2F_PRIOR_WINDOW = {
   earliestDaysBefore: 30,
-  latestDaysBefore: 1,
+  latestDaysBefore: 0,
 } as const;
 
 /** Calendar days the oral-then-written CTI path allows before the written cert is overdue (D4). */
@@ -125,7 +127,7 @@ export interface F2fWindow {
   readonly windowEndInstant: string;
 }
 
-/** Compute the F2F window `[period_start − 30, period_start − 1]` in org-local calendar days (§7.4). */
+/** Compute the F2F window `[period_start − 30, period_start]` in org-local calendar days (§7.4). */
 export function computeF2fWindow(periodStartDate: LocalDate, timeZone: string): F2fWindow {
   const windowStart = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.earliestDaysBefore);
   const windowEnd = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.latestDaysBefore);

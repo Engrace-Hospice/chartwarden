@@ -21,13 +21,15 @@
 //     hospice medical director / IDG physician only (418.22(c)). CMS retracted its 2024 "certify every re-election
 //     as an initial certification" guidance on 2024-06-06;
 //   • face-to-face: required entering period 3 or later — by a hospice physician or hospice-employed NP, within 30
-//     calendar days before the period start (418.22(a)(4)). For a NEW admission in period 3+ with documented
+//     calendar days before the period start, the period's first day included (418.22(a)(4); MBPM ch. 9
+//     §20.1(5)(a): "may occur on the first day of the benefit period and still be considered timely"). For a NEW admission in period 3+ with documented
 //     exceptional circumstances (a weekend emergency admission, CMS systems down so the period was unknown) an
 //     encounter within 2 days after admission is timely, and a patient who dies within those 2 days has the F2F
 //     deemed complete (MBPM ch. 9 §20.1(5)(d)). §20.1 applies these "to individuals who had been previously
 //     discharged during a benefit period" too;
 //   • the readmission repeats the whole admission: a new signed election statement (418.24), a new NOE (8xA)
-//     within 5 calendar days (admission date = day 1), the initial (48 h, 418.54(a)) and comprehensive (5 days,
+//     within 5 calendar days AFTER the admission date (the day after admission is day 1 — Claims Processing
+//     Manual ch. 11 §20.1.1: admitted Fri 10/10, "Day 5 = Weds. 10/15 is the NOE Due Date"), the initial (48 h, 418.54(a)) and comprehensive (5 days,
 //     418.54(b)) assessments, and a new HOPE Admission record (A0220 = the re-election date).
 //   • two-tier RHC: readmitted within 60 days of a discharge, the prior hospice days carry over for the day 1–60
 //     high rate; after a longer gap the day count resets (Claims Processing Manual ch. 11, two-tier RHC).
@@ -66,7 +68,8 @@ export const F2F_EXCEPTION_DAYS_AFTER_ADMISSION = F2F_EXCEPTION_GRACE_DAYS;
 export const RHC_CARRYOVER_GAP_DAYS = 60;
 /** The RHC high rate covers days 1–60 of the (carried) day count. */
 export const RHC_HIGH_RATE_DAYS = 60;
-/** 42 CFR 418.24 / Claims Processing Manual ch. 11 §20.1.1 — NOE within 5 calendar days, admission = day 1. */
+/** 42 CFR 418.24 / Claims Processing Manual ch. 11 §20.1.1 — NOE due 5 calendar days after the admission date
+ *  (admission day is NOT day 1: admitted 10/10 ⇒ due 10/15). Matches M23's NOE `window_target_at` (+5). */
 export const NOE_CALENDAR_DAYS = 5;
 /** 42 CFR 418.54(a) / (b) — initial assessment within 48 hours, comprehensive within 5 calendar days. */
 export const INITIAL_ASSESSMENT_DAYS = 2;
@@ -228,14 +231,15 @@ export interface BenefitPeriodRequirements {
   };
   readonly faceToFace: {
     readonly required: boolean;
-    /** The ordinary window: 30 calendar days before the period start, through the day before (R-F2F-02). */
+    /** The ordinary window: 30 calendar days before the period start through the period's first day
+     *  (MBPM ch. 9 §20.1(5)(a)). */
     readonly windowStart: LocalDate | null;
     readonly windowEnd: LocalDate | null;
     /** With documented exceptional circumstances: an encounter through this day is still timely. */
     readonly exceptionWindowEnd: LocalDate | null;
   };
   readonly electionStatementRequired: true;
-  /** The NOE (8xA) must be filed and accepted by this day (admission date = day 1). */
+  /** The NOE (8xA) must be filed and accepted by this day (admission date + 5 calendar days). */
   readonly noeDueBy: LocalDate;
   readonly initialAssessmentDueBy: LocalDate;
   readonly comprehensiveAssessmentDueBy: LocalDate;
@@ -270,7 +274,7 @@ export function requirementsForBenefitPeriod(
         : null,
     },
     electionStatementRequired: true,
-    noeDueBy: addCalendarDays(startDate, NOE_CALENDAR_DAYS - 1),
+    noeDueBy: addCalendarDays(startDate, NOE_CALENDAR_DAYS),
     initialAssessmentDueBy: addCalendarDays(startDate, INITIAL_ASSESSMENT_DAYS),
     comprehensiveAssessmentDueBy: addCalendarDays(startDate, COMPREHENSIVE_ASSESSMENT_DAYS - 1),
     hopeAdmissionA0220: startDate,

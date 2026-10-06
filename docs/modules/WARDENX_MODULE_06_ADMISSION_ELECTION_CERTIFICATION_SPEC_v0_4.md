@@ -584,7 +584,7 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-CTI-02` Terminal diagnosis ICD-10 must be a valid current code (M38 lookup) AND on the CMS hospice-allowable list | `submitToHospiceMd` | `TERMINAL_DX_NOT_ALLOWABLE` (422) |
 | `R-CTI-03` Attending signature required on the period-1 CTI if `patient.attending_physician_id IS NOT NULL`; the signer's NPI must match the attending on file. The CTI stays `awaiting_attending` (not `signed`) until then. **Not an activation gate** — M23 `cti_signed_per_period` blocks the claim instead (§11 D3) | `signByAttending` | `ATTENDING_SIGNATURE_REQUIRED` (409) |
 | `R-F2F-01` Performer must be hospice MD or hospice NP (not attending) | `recordCompletion` | `F2F_INVALID_PERFORMER` (422) |
-| `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start - 1 day] (CMS 418.22 prior-to-window) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
+| `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start] (CMS 418.22(a)(4); the period's first day is timely per MBPM ch. 9 §20.1(5)(a)) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
 | `R-F2F-03` Window override requires actor role `hospice_medical_director` AND a reason ≥ 20 chars | `requestWindowOverride` | `F2F_OVERRIDE_FORBIDDEN` (403) / `F2F_OVERRIDE_REASON_TOO_SHORT` (422) |
 | `R-F2F-04` Recert period (sequence ≥ 3) cannot transition to `active` without an `attested` F2F | `ElectionPeriod.setActive` | `F2F_REQUIRED_FOR_RECERT` (409) |
 | `R-ADM-01` Admission `activate` requires NOR acknowledged | `activate` | `NOTICE_OF_RIGHTS_REQUIRED` (409) |
@@ -3158,7 +3158,7 @@ Each user story uses the architecture's standard form: **Given / When / Then**, 
 
 | ID | Given | When | Then |
 |---|---|---|---|
-| W-F2F-01 | Period 3 is approaching for an admission I have caseload on | I schedule an F2F | Window is computed (period_start − 30 to period_start − 1); the scheduled date must fall within; `m6.f2f.scheduled` emitted |
+| W-F2F-01 | Period 3 is approaching for an admission I have caseload on | I schedule an F2F | Window is computed (period_start − 30 to period_start, the first day included per MBPM ch. 9 §20.1(5)(a)); the scheduled date must fall within; `m6.f2f.scheduled` emitted |
 | W-F2F-02 | I am on the F2F screen on iPad in the patient's home | I tap "Complete" | `encounter_date` and `encounter_time` are stamped; the row state moves to `completed` |
 | W-F2F-03 | The encounter is `completed` | I type the attestation narrative and sign with my NPI | F2F moves to `attested`; the F2F compliance window for the next period closes; `m6.f2f.attested` emitted |
 | W-F2F-04 | The F2F was missed (window closed without attestation) | The window-monitor job fires | `m6.f2f.window_missed` emits; M30 surfaces in red; period 3 cannot start until either a corrective F2F attestation is recorded (back-date within window only) or a compliance officer files OVR-F2F-01 |

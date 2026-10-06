@@ -143,7 +143,7 @@ export class LocationProviderMismatchError extends WardenXError {
 
 /**
  * 422 F2F_OUTSIDE_WINDOW — a scheduled F2F date falls outside the CMS 418.22 prior-to window
- * `[period_start − 30, period_start − 1]` (§7.4 W-F2F-01). The window is server-computed in org TZ.
+ * `[period_start − 30, period_start]` (§7.4 W-F2F-01). The window is server-computed in org TZ.
  */
 export class F2fScheduleOutOfWindowError extends WardenXError {
   constructor(scheduledDate: string, windowStart: string, windowEnd: string) {

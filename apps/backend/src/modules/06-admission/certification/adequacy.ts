@@ -29,7 +29,7 @@
 //   F2F  (REQUIRED from sequence 3 onward — R-F2F-04, 42 CFR 418.22(a)(4), D9: follows the INHERITED sequence)
 //     · an F2F row for this period, `attested`, with an attestation signature timestamp
 //     · performed by a hospice MD or hospice NP (R-F2F-01; the `f2f_performer_role` enum)
-//     · inside [period_start − 30, period_start − 1] org-local days (R-F2F-02) — OR carrying a valid window
+//     · inside [period_start − 30, period_start] org-local days (R-F2F-02) — OR carrying a valid window
 //       override (R-F2F-03 / D5: reason ≥ 20 chars + an overriding user), which passes with the non-blocking
 //       flag F2F_WINDOW_OVERRIDDEN. See `windowBasis` below for how "inside the window" is established.
 //   PERIOD: `period_kind` agrees with the 90/90/60… sequence (§2.2 CHECK; 42 CFR 418.21(a)).
@@ -106,7 +106,7 @@ export interface AdequacyPeriodFact {
   /** Org-local calendar date the period starts (effective) — the anchor of the F2F window and late math. */
   readonly startDate: LocalDate;
   /**
-   * F-226 — the start the F2F prior-to window [start-30, start-1] is anchored to, when it differs from
+   * F-226 — the start the F2F prior-to window [start-30, start] is anchored to, when it differs from
    * `startDate` (a pending recert period activates "today" but its benefit period started at prior end + 1).
    * `undefined` = use `startDate`; `null` = not derivable (unverifiable, fail closed).
    */

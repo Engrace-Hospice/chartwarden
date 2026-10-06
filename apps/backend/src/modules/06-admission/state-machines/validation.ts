@@ -63,8 +63,12 @@ export const TEXT_MINIMUMS = {
 /** Inclusive day window for a CTI's `period_start` at submission (§2.3.3: [today-14d, today+30d]). */
 export const CTI_SUBMIT_WINDOW = { backDays: 14, forwardDays: 30 } as const;
 
-/** Inclusive prior-to F2F window relative to `period_start` (§2.4 R-F2F-02 / CMS 418.22). */
-export const F2F_PRIOR_WINDOW = { earliestDaysBefore: 30, latestDaysBefore: 1 } as const;
+/**
+ * Inclusive F2F window relative to `period_start` (§2.4 R-F2F-02 / CMS 418.22(a)(4)): 30 calendar days before
+ * through the period's FIRST DAY — MBPM ch. 9 §20.1(5)(a): "A face-to-face encounter may occur on the first day
+ * of the benefit period and still be considered timely."
+ */
+export const F2F_PRIOR_WINDOW = { earliestDaysBefore: 30, latestDaysBefore: 0 } as const;
 
 /** MBPM ch. 9 §20.1(5)(d) — days after admission a documented-exception F2F is still timely. */
 export const F2F_EXCEPTION_GRACE_DAYS = 2;
@@ -174,12 +178,13 @@ export function checkF2fPerformer(input: {
 }
 
 /**
- * R-F2F-02: encounter date must be in [period_start-30d, period_start-1d] unless overridden. Returns
+ * R-F2F-02: encounter date must be in [period_start-30d, period_start] unless overridden. Returns
  * whether the encounter is `within_window` (the machine persists it; an out-of-window date with no
  * override raises `F2F_OUTSIDE_WINDOW`). F-226: `periodStart` is the period's EXPECTED start; `null` means
  * it cannot be derived yet - the window is then unverifiable, so without an override it is refused
  * (`F2F_PERIOD_START_UNKNOWN`) and with one `withinWindow` is `null` (unverified; fail closed downstream).
- * Same-day (daysBefore 0) and later are outside the window (R-F2F-02 "strict prior").
+ * The period's first day (daysBefore 0) is timely (MBPM ch. 9 §20.1(5)(a)); later days are outside the window
+ * unless the period-3+ new-admission exception applies (then through +2 days).
  */
 export function checkF2fWindow(input: {
   periodStart: LocalDate | null;

@@ -226,7 +226,7 @@ export function requirementChecklist(
     title: `NOE (8xA) due by ${fmt(r.noeDueBy)}`,
     detail: plan.noeBlocked
       ? "Held: Medicare rejects it until the previous stay's NOTR (8xB) or final claim is filed."
-      : "Five calendar days, the admission date counting as day 1.",
+      : "Five calendar days after the admission date (the day after admission is day 1).",
     tone: plan.noeBlocked ? "warning" : "info",
   });
   items.push({

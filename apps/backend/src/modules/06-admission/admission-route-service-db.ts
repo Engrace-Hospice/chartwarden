@@ -4765,8 +4765,8 @@ export function createDbAdmissionRouteService(
         // F-226 - the REAL encounter date (validated: a calendar date, not in the future, not absurdly old)
         // against the period's REAL expected start (prior end + 1, see `resolvePeriodF2fWindowStart`).
         // Before this the body's `encounterDate` was dropped, "today" was stamped, and the window was
-        // computed against today + 7, so `within_window` was true on every production write. Same-day and
-        // later dates are outside [start-30, start-1] (R-F2F-02) and are refused unless a window override
+        // computed against today + 7, so `within_window` was true on every production write. Dates after the
+        // period's first day are outside [start-30, start] (R-F2F-02; MBPM ch. 9 §20.1(5)(a)) and are refused unless a window override
         // (R-F2F-03, `overrideF2fWindow`, legal from `scheduled`) is already on file.
         assertPlausibleEncounterDate(
           encounterDate,

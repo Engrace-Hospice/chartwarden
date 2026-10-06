@@ -99,7 +99,9 @@ describe("requirementsForBenefitPeriod — everything keys off the chosen number
     expect(r.endDate).toBe("2026-07-29");
     expect(r.certification.attendingIfDesignated).toBe(true);
     expect(r.faceToFace.required).toBe(false);
-    expect(r.noeDueBy).toBe("2026-05-05"); // admission date = day 1 of 5
+    // Claims Processing Manual ch. 11: admitted 10/10 ⇒ Day 1 = 10/11 … Day 5 = 10/15 is the NOE due date
+    expect(r.noeDueBy).toBe("2026-05-06");
+    expect(requirementsForBenefitPeriod(1, "2026-10-10").noeDueBy).toBe("2026-10-15");
     expect(r.initialAssessmentDueBy).toBe("2026-05-03");
     expect(r.comprehensiveAssessmentDueBy).toBe("2026-05-05");
     expect(r.hopeAdmissionA0220).toBe("2026-05-01");
@@ -112,14 +114,14 @@ describe("requirementsForBenefitPeriod — everything keys off the chosen number
     expect(r.faceToFace.required).toBe(false);
   });
 
-  it("period 3+: 60 days and a face-to-face in the 30 days before the start, with the 2-day exception", () => {
+  it("period 3+: 60 days and a face-to-face from 30 days before through the first day, with the 2-day exception", () => {
     const r = requirementsForBenefitPeriod(3, "2026-05-01");
     expect(r.periodKind).toBe("sixty_day");
     expect(r.endDate).toBe("2026-06-29");
     expect(r.faceToFace).toEqual({
       required: true,
       windowStart: "2026-04-01",
-      windowEnd: "2026-04-30",
+      windowEnd: "2026-05-01",
       exceptionWindowEnd: "2026-05-03",
     });
   });
@@ -171,11 +173,25 @@ describe("assertBenefitPeriodEntry / assertF2fExceptionReason", () => {
 });
 
 describe("F2F — the 2-day exceptional-circumstance path (MBPM ch. 9 §20.1(5)(d))", () => {
-  it("an encounter on or within 2 days after admission is timely only with a documented exception", () => {
+  it("an encounter within 2 days after admission is timely only with a documented exception", () => {
     const base = { periodStart: "2026-05-01", hasOverride: false };
+    // day −31 out, day −30 in, day 0 (the period's first day) in without any exception
+    expect(() => checkF2fWindow({ ...base, encounterDate: "2026-03-31" })).toThrow(
+      expect.objectContaining({ code: "F2F_OUTSIDE_WINDOW" }),
+    );
+    expect(checkF2fWindow({ ...base, encounterDate: "2026-04-01" })).toEqual({
+      withinWindow: true,
+    });
+    expect(checkF2fWindow({ ...base, encounterDate: "2026-05-01" })).toEqual({
+      withinWindow: true,
+    });
+    // day +1 only with the documented exception
     expect(() => checkF2fWindow({ ...base, encounterDate: "2026-05-02" })).toThrow(
       expect.objectContaining({ code: "F2F_OUTSIDE_WINDOW" }),
     );
+    expect(
+      checkF2fWindow({ ...base, encounterDate: "2026-05-02", exceptionDocumented: true }),
+    ).toEqual({ withinWindow: true });
     expect(
       checkF2fWindow({ ...base, encounterDate: "2026-05-03", exceptionDocumented: true }),
     ).toEqual({ withinWindow: true });
