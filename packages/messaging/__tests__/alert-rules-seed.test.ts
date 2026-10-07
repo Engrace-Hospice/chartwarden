@@ -132,6 +132,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.sra_due_30",
       "m30.alerts.sra_overdue",
       "m30.incident.cap_overdue",
+      "m39.consent.revoked_cascade_failed",
+      "mdm.license_expiring",
+      "mdm.baa_expiring",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

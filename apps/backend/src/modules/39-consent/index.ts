@@ -111,6 +111,34 @@ export {
   runExpirationReminderCron,
   runExpirationReminderForOrg,
 } from "./jobs/expiration";
+// GAP-171 — revocation-cascade ACK tracking + the stuck-cascade retry sweep (alert on `partial_failed`).
+export {
+  CASCADE_DEFERRED_CONSUMERS,
+  CASCADE_LIVE_CONSUMERS,
+  type CascadeAckInput,
+  type CascadeAckResult,
+  evaluateCascade,
+  liveConsumerAcks,
+  recordCascadeAckForOrg,
+} from "./cascade-ack";
+export {
+  DRAFT_TTL_MS,
+  draftCutoff,
+  planRenewalCycleClose,
+  runDraftAutoExpireCron,
+  runDraftAutoExpireForOrg,
+  runRenewalCycleCloseCron,
+  runRenewalCycleCloseForOrg,
+} from "./jobs/housekeeping";
+export {
+  CASCADE_STUCK_AFTER_MS,
+  type CascadeRetryDeps,
+  type CascadeRetrySummary,
+  type M39AlertPort,
+  planCascadeSweep,
+  runCascadeRetryCron,
+  runCascadeRetryForOrg,
+} from "./jobs/cascade-retry";
 export {
   type M39WorkerDeps,
   buildM39WorkerDeps,

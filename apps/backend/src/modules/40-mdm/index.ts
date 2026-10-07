@@ -13,6 +13,39 @@ export {
   getMdmEntityProvider,
   getBaaStatusProvider,
 } from "./seams";
+// GAP-172 — the platform-only ABAC conjunct on `/api/v1/admin/mdm/*` (registered at the composition root).
+export {
+  M40_ABAC_PREDICATES,
+  buildMdmAbacPredicates,
+  registerMdmAbacPredicates,
+} from "./abac-predicates";
+// GAP-173 — the §4.3 `mdm.baa_expiration_scan` cron (BullMQ shell + I/O body) and its platform job id.
+export {
+  type BaaScanDeps,
+  type BaaScanSummary,
+  runBaaExpirationScan,
+  runBaaExpirationScanForOrg,
+} from "./jobs/baa-scan";
+export { runLicenseExpirationScan, runLicenseExpirationScanForOrg } from "./jobs/license-scan";
+export { runProvisionalAgingScan, runProvisionalAgingForOrg } from "./jobs/provisional-aging";
+export { FUZZY_DEDUP_KINDS, runFuzzyDedupScan } from "./jobs/fuzzy-dedup";
+export {
+  type NppesFallbackDeps,
+  buildNppesFallbackPorts,
+  runNppesNightlyDeltaJob,
+  runNppesWeeklyFullJob,
+} from "./jobs/nppes-fallback";
+export {
+  type PlatformOpsNotice,
+  type PlatformOpsSink,
+  notifyPlatformOps,
+} from "./jobs/platform-ops";
+export {
+  type M40WorkerDeps,
+  registerM40CronWorkers,
+  scheduleM40Jobs,
+} from "./jobs/cron-workers";
+export { M40_PLATFORM_JOB_ID, wireM40Tenancy } from "./wiring";
 // M40-T07 — the §4.1–4.2 route inventory behind `requirePermission` on the §4.4 keys (registered
 // into M3's catalog as M40_CONTRIBUTED_PERMISSIONS); merge approval & re-pointing (§7.6).
 export { type MdmRouteDeps, registerMdmRoutes } from "./routes/mdm-routes";

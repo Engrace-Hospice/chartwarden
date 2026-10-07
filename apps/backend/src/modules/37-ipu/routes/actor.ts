@@ -12,13 +12,21 @@ export interface IpuReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /** The active membership id, when the session carries one (GAP-169: the `staff_member` roster match). */
+  readonly membershipId?: string | null;
 }
 
 /** Extract the org-scoped read actor from `request.context`, or 401. */
 export function actorOf(request: FastifyRequest): IpuReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  const membershipId = ctx.attributes?.membershipId;
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    membershipId: typeof membershipId === "string" && membershipId.length > 0 ? membershipId : null,
+  };
 }
 
 /** The MUTATING-route actor: the read actor PLUS the active membership id + step-up flag. */

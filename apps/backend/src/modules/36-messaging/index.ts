@@ -76,6 +76,15 @@ export {
 // rules + send / edit / delete / receipts / DM / member admin / announce / preference + endpoint /
 // alert-rule override). The staff-messaging + notifications-inbox screens read/write live through these.
 export { createDbMessagingRouteService } from "./messaging-route-service-db";
+export {
+  ADMIN_PLATFORM_PREDICATE as M36_ADMIN_PLATFORM_PREDICATE,
+  type AdminAlertDeliveriesDeps,
+  AlertDeliveriesQuerySchema,
+  AlertDeliveriesResponseSchema,
+  buildAdminAlertDeliveriesDeps,
+  registerAdminAlertDeliveriesRoutes,
+  registerMessagingAdminPredicates,
+} from "./routes/admin-alert-deliveries-routes";
 // FB-T05 — the production Drizzle `MessagingProvider` seam (§4.6): the cross-module channel/message
 // CRUD surface, registered into the M1 registry over the deny-stub so `validateSeams()` sees it real.
 export { createDbMessagingProvider } from "./messaging-provider-db";
@@ -125,6 +134,11 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import {
+  buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
+  registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
+  registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
+} from "./routes/admin-alert-deliveries-routes";
+import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
@@ -141,6 +155,10 @@ export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {
   const service = _createDbMessagingRouteService(db);
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   _registerMessagingRoutes(app, { service });
+  // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
+  // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
+  _registerMessagingAdminPredicates();
+  _registerAdminAlertDeliveriesRoutes(app, _buildAdminAlertDeliveriesDeps(db));
 }
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).

@@ -68,6 +68,16 @@ export interface ConsentRevokedGrantCascadeConsumerDeps {
   readonly db: DbClient;
   /** GAP-159 - same-tx `m31.portal_access_grant.revoked` emit (absent in slice/tests). */
   readonly events?: M31EventEmitter;
+  /**
+   * GAP-171 — records M31's `m31_portal` ACK on M39's revocation cascade. Injected (the composition root binds
+   * M39's org-explicit `recordCascadeAckForOrg`) so M31 never writes M39's `consent_revocation` table nor
+   * imports M39. Called only AFTER the grant revocation committed; a throw fails the delivery so the outbox
+   * retries it (the revoke is idempotent), which is exactly the at-least-once the cascade promises.
+   */
+  readonly ackCascade?: (input: {
+    readonly organizationId: string;
+    readonly consentRecordId: string;
+  }) => Promise<unknown>;
 }
 
 interface ConsentRevokedFacts {
@@ -132,6 +142,7 @@ export function buildM31ConsentRevokedGrantCascadeConsumer(
           await emitGrantsRevoked(deps.events, tx, organizationId, revoked, "consent_revoked");
         },
       );
+      await deps.ackCascade?.({ organizationId, consentRecordId: facts.consentRecordId });
     },
   };
 }

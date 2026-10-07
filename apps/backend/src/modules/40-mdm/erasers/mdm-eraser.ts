@@ -44,6 +44,7 @@ export function createDrizzleMdmEraseStore(db: DbClient): MdmEraseStore {
   const OVERLAY = schema.externalPhysicianOverlay;
   const PROV = schema.mdmProvisional;
   const BAA = schema.mdmBaaRecords;
+  const LIC = schema.mdmLicenseRecords;
 
   return {
     async eraseTenantOverlays(orgId) {
@@ -73,7 +74,13 @@ export function createDrizzleMdmEraseStore(db: DbClient): MdmEraseStore {
           .delete(BAA)
           .where(eq(BAA.organizationId, orgId))
           .returning({ id: BAA.id });
-        return { erased: deleted.length };
+        // GAP-173 — the tenant's manual license entries (`mdm_license_record`) are the same class of
+        // compliance record as its BAA register, so they go with it and are counted with it.
+        const deletedLicenses = await tx
+          .delete(LIC)
+          .where(eq(LIC.organizationId, orgId))
+          .returning({ id: LIC.id });
+        return { erased: deleted.length + deletedLicenses.length };
       });
     },
   };

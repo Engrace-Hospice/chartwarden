@@ -1042,6 +1042,39 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-171 — M39 §2.2.3 / §4.10: a consent-revocation cascade exhausted its retry budget with a consumer still
+  // un-ACKed (`partial_failed`). A revoked consent that some surface still honours is a privacy exposure, so it is
+  // `critical` and goes to the Compliance Officer + org admin on in-app + email. Raised by the M39
+  // `revocation_cascade_retry` cron / manual retry through AlertEmitter (no outbox consumer). Payload: ids and
+  // consumer names only — no PHI.
+  {
+    eventType: "m39.consent.revoked_cascade_failed",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-173 — M40 §4.3 `mdm.baa_expiration_scan` / §4.4: a facility/payer BAA is 90, 30 or 0 days from expiry.
+  // Once it lapses the §7.7 gate denies disclosure to that entity, so the Compliance Officer + org admin hear
+  // about it in time to renew. The scan's own severity ladder (info / warn / critical per window) is the input
+  // severity; this rule's floor is `info` so the 90-day heads-up is not inflated. Raised through AlertEmitter
+  // by the M40 daily cron (no outbox consumer); payload is a BAA record id + entity ref + dates, no PHI.
+  // GAP-173 — M40 §4.4 `mdm.license_expiring` (Phase 1: from manual entry): a physician/credential license is 90, 30
+  // or 0 days from expiry. Compliance Officer + org admin, in-app + email; payload `{ physicianId, state,
+  // daysUntilExpiry }` + entity ref and window, no PHI. Raised by the M40 daily cron through AlertEmitter.
+  {
+    eventType: "mdm.license_expiring",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m30.incident.cap_overdue",
     category: "administrative",
@@ -1049,6 +1082,16 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["qapi_coordinator", "compliance_officer", "clinical_lead"] },
     channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "mdm.baa_expiring",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
     systemLocked: false,
     enabled: true,
   },

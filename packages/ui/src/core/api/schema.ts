@@ -1273,6 +1273,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/messaging/alert-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform-ops: notification delivery failures across tenants (metadata only; platform_ops-only, audited per read, keyset-paginated) */
+        get: operations["getApiV1AdminMessagingAlertdeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/regenerate-verbal-timer/{id}": {
         parameters: {
             query?: never;
@@ -24707,6 +24724,47 @@ export interface operations {
                 content: {
                     "application/json": {
                         canonicalId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminMessagingAlertdeliveries: {
+        parameters: {
+            query?: {
+                status?: "failed" | "pending" | "sent" | "delivered" | "skipped_quiet_hours" | "forwarded" | "all";
+                limit?: number;
+                before?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            deliveryId: string;
+                            organizationId: string;
+                            alertId: string;
+                            alertCategory: string;
+                            alertSeverity: string;
+                            channel: string;
+                            status: string;
+                            failReason: string | null;
+                            queuedAt: string;
+                            sentAt: string | null;
+                            settledAt: string | null;
+                        }[];
+                        nextBefore: string | null;
                     };
                 };
             };

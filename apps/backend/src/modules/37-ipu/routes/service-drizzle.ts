@@ -47,6 +47,7 @@ import {
   sessionStepUpAssertionId,
 } from "./ipu-trust-gates";
 import { openIrcEpisodeRow } from "./irc-episode-open";
+import { STAFF_MEMBER_REFUSAL_MESSAGE, resolveIpuStaffMembership } from "./staff-membership";
 
 // Re-exported for existing importers; the definitions live in ipu-trust-gates (see the note there).
 export type { AdmissionDischargeReader, RestraintOrderReader, VisitorConsentGate };
@@ -297,6 +298,28 @@ export function buildDrizzleIpuRouteService(
       .where(and(eq(BG.unitId, unitId), isNull(BG.revokedAt), gt(BG.expiresAt, at)))
       .limit(1);
     return { covered: bg !== undefined, viaBreakGlass: bg !== undefined };
+  };
+  /**
+   * GAP-169 — `m37.ipu.staff_member`: refuse an actor who is not on the unit's staff (see
+   * `./staff-membership.ts` for the rule and why it is not shift-only). Runs inside the caller's RLS tx.
+   * A null unit (an `arranged` / remote admission has no physical unit) has no roster to be on → no check.
+   */
+  const requireUnitStaff = async (
+    t: DbClient,
+    actor: { readonly roles: readonly string[]; readonly membershipId?: string | null },
+    unitId: string | null,
+  ): Promise<void> => {
+    if (unitId === null) return;
+    const decision = await resolveIpuStaffMembership(t, actor, unitId, new Date());
+    if (!decision.allowed) throw new ForbiddenError(STAFF_MEMBER_REFUSAL_MESSAGE);
+  };
+  const unitOfAdmission = async (t: DbClient, admissionId: string): Promise<string | null> => {
+    const [adm] = await t
+      .select({ unitId: schema.ipuAdmission.unitId })
+      .from(schema.ipuAdmission)
+      .where(eq(schema.ipuAdmission.id, admissionId))
+      .limit(1);
+    return adm?.unitId ?? null;
   };
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
@@ -844,7 +867,10 @@ export function buildDrizzleIpuRouteService(
 
     async listBeds(actor, roomId: string) {
       return withOrgContext(db, ctx(actor), async (tx) => {
-        const rows = await (tx as DbClient).select().from(B).where(eq(B.roomId, roomId));
+        const t = tx as DbClient;
+        const [room] = await t.select().from(RM).where(eq(RM.id, roomId)).limit(1);
+        if (room) await requireUnitStaff(t, actor, room.unitId); // GAP-169 — the bed grid is unit-staff only
+        const rows = await t.select().from(B).where(eq(B.roomId, roomId));
         return rows.map(bedView);
       });
     },
@@ -1841,6 +1867,7 @@ export function buildDrizzleIpuRouteService(
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
+        await requireUnitStaff(t, actor, adm.unitId ?? null); // GAP-169
         // §2.3 D3 — the same RN-coverage gate `openAdmission`/`requestBed`/`initiateTransfer` already
         // enforce server-side (mirrors their exact query — arranged admissions bypass; an unbuilt coverage
         // grid reads uncovered, fail-closed). This was previously ONLY gated by the `RN_COVERAGE` route
@@ -1951,6 +1978,7 @@ export function buildDrizzleIpuRouteService(
         const t = tx as DbClient;
         const [ev] = await t.select().from(RE).where(eq(RE.id, restraintId)).limit(1);
         if (!ev) throw new NotFoundError("ipu_restraint_event not found");
+        await requireUnitStaff(t, actor, await unitOfAdmission(t, ev.ipuAdmissionId)); // GAP-169
         // §2.10 — the machine decides the disposition (continue keeps active; modify/release close it).
         const result = planReassessmentOutcome(ev.state, body.outcome);
         await t.insert(RR).values({
@@ -1995,6 +2023,7 @@ export function buildDrizzleIpuRouteService(
         const t = tx as DbClient;
         const [ev] = await t.select().from(RE).where(eq(RE.id, restraintId)).limit(1);
         if (!ev) throw new NotFoundError("ipu_restraint_event not found");
+        await requireUnitStaff(t, actor, await unitOfAdmission(t, ev.ipuAdmissionId)); // GAP-169
         const result = planReassessmentOutcome(ev.state, "release");
         const [u] = await t
           .update(RE)
