@@ -11,8 +11,15 @@
       "input_tokens": 495126,
       "output_tokens": 24826,
       "files": 5949
+    },
+    {
+      "date": "2026-10-07T01:41:41.307784+00:00",
+      "input_tokens": 4800000,
+      "output_tokens": 0,
+      "files": 6581,
+      "note": "Claude subagents (approx.)"
     }
   ],
-  "total_input_tokens": 4982450,
+  "total_input_tokens": 9782450,
   "total_output_tokens": 57267
 }
