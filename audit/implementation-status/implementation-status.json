@@ -38,7 +38,7 @@
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 6,
+        "tables": 7,
         "covered": 6
       }
     },
@@ -91,8 +91,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 26,
-        "enriched": 26
+        "routes": 39,
+        "enriched": 39
       },
       "screens": true,
       "tests": true,

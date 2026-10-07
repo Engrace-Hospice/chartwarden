@@ -22,8 +22,8 @@ import type { ActiveOrgListPort } from "./standing-spawn-worker";
 
 export const M11_VERBAL_TIMER_QUEUE = "orders.verbal_timer";
 /** Hourly — the §4.8 cadence `packages/orders/src/lifecycle/verbal-window.ts`'s own header names for this
- *  cron (distinct from the quarter-hourly `orders.verbal_pre_expiry` M36 pre-expiry-alert cron, which is
- *  NOT built here — see this module's CLAUDE.md entry / the handback report for that scoping decision). */
+ *  cron (distinct from the quarter-hourly `orders.verbal_pre_expiry` pre-expiry-alert cron, which GAP-032
+ *  built in `./order-sweeps-worker.ts` / `../order-sweeps.ts`). */
 export const M11_VERBAL_TIMER_SCHEDULE = "0 * * * *";
 /** The platform job id this fan-out enters `withPlatformContext` under to enumerate active orgs — distinct
  *  from `M11_PLATFORM_JOB_ID` ("m11.standing_spawn"), so each cron's cross-tenant reads audit under its own

@@ -419,6 +419,27 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-026 — any other compliance window (CTI, NOR, assessments, care plan, recert) passing its due time.
+  {
+    eventType: "m6.compliance.window.overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.compliance.window.overdue_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m6.admission.discharged",
     category: "clinical_routine",
@@ -749,6 +770,27 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // who can act — a tenant's operator (`org_admin`) and the clinical leads who own lab orders (the §5.3 "operator, M11
   // owners" pairing F-188 used for the outbound-failure alert). Warn at 4 h, critical at 24 h (the emit severity carries the
   // stage; ids + a fixed reason token only in the payload).
+  // GAP-032 — the verbal-order pre-expiry (12h warn / 2h critical) and lab-results-overdue sweeps.
+  {
+    eventType: "m11.order.verbal_expiring_soon",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.results_overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m11.order.transmission_held_aging",
     category: "operational",

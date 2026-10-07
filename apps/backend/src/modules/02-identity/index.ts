@@ -7,6 +7,10 @@
 // adds the `/api/v1/*` identity route inventory. M2-T07 (./seams) registers M2's published
 // cross-module seams (SessionContextResolver + AuditorSessionMinter, §4.7) into the M1 registry.
 export { type IdentitySeamDeps, registerIdentitySeams } from "./seams";
+export {
+  consumeAuditorMagicLink,
+  revokeAuditorMagicLinksForEngagement,
+} from "./auditor-magic-link-store";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`

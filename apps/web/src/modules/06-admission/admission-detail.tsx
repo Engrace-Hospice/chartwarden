@@ -44,6 +44,7 @@ import {
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import { AdmissionHoldAction } from "./admission-hold-action";
 import {
   AdmissionRecommendationDrawer,
   AdmissionRecommendationSection,
@@ -1311,6 +1312,14 @@ export function AdmissionDetail(): JSX.Element {
                 <button type="button" onClick={() => setCeremony("activate")} style={primaryBtn}>
                   Activate
                 </button>
+              ) : null}
+              {hasPermission("admission.hold") ? (
+                <AdmissionHoldAction
+                  admissionId={admission.id}
+                  state={admission.state}
+                  version={admission.version}
+                  onChanged={() => void load()}
+                />
               ) : null}
               {canEndService ? (
                 <Link to={`/admissions/${admission.id}/discharge`} className="wx-btn-secondary">

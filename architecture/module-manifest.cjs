@@ -155,6 +155,7 @@ exports.MODULES = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      "auditor_magic_link",
       "membership_elevated_approval",
       "device_attestation",
     ],

@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 165,
+  "totalStaticWebScreens": 166,
   "e2eReachedCount": 19,
-  "axeReachedCount": 159,
+  "axeReachedCount": 160,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -353,6 +353,14 @@
       "module": "05-patient",
       "path": "/compliance/privacy",
       "permission": "privacy.admin",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "audit.privacy-requests",
+      "module": "04-audit",
+      "path": "/compliance/privacy-requests",
+      "permission": "audit.disclosure_report",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1605,6 +1613,14 @@
       "module": "05-patient",
       "path": "/compliance/privacy",
       "permission": "privacy.admin",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "audit.privacy-requests",
+      "module": "04-audit",
+      "path": "/compliance/privacy-requests",
+      "permission": "audit.disclosure_report",
       "e2eReached": false,
       "axeReached": true
     },

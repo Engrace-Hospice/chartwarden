@@ -16,6 +16,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { M5OutboxPort } from "./deceased-db";
 import { type FieldResolutions, type PatientMergeSubject, planMerge } from "./merges";
+import { SOURCE_PRIOR_STATUS_KEY } from "./patient-lifecycle";
 
 const P = schema.patients;
 const PM = schema.patientMerges;
@@ -90,71 +91,85 @@ export async function mergePatients(
   return withOrgContext<DbClient, MergePatientsResult>(
     db,
     { organizationId: input.organizationId, userId: input.actorUserId },
-    async (tx) => {
-      const [sourceRow] = await tx
-        .select(SUBJECT_COLUMNS)
-        .from(P)
-        .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.sourcePatientId)))
-        .limit(1);
-      if (!sourceRow) throw new PatientNotFoundError(input.sourcePatientId);
+    (tx) => mergePatientsInTx(tx, outbox, input),
+  );
+}
 
-      const [targetRow] = await tx
-        .select(SUBJECT_COLUMNS)
-        .from(P)
-        .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.targetPatientId)))
-        .limit(1);
-      if (!targetRow) throw new PatientNotFoundError(input.targetPatientId);
+/** The merge body on a caller-supplied `withOrgContext` tx — so the §7.3 review-queue merge closes its
+ *  `patient_match_review` row in the SAME transaction as the merge itself. */
+export async function mergePatientsInTx(
+  tx: DbClient,
+  outbox: M5OutboxPort,
+  input: MergePatientsInput,
+): Promise<MergePatientsResult> {
+  {
+    const [sourceRow] = await tx
+      .select(SUBJECT_COLUMNS)
+      .from(P)
+      .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.sourcePatientId)))
+      .limit(1);
+    if (!sourceRow) throw new PatientNotFoundError(input.sourcePatientId);
 
-      const planned = planMerge({
-        source: toSubject(sourceRow),
-        target: toSubject(targetRow),
-        fieldResolutions: input.fieldResolutions,
-        reason: input.reason,
-      });
+    const [targetRow] = await tx
+      .select(SUBJECT_COLUMNS)
+      .from(P)
+      .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.targetPatientId)))
+      .limit(1);
+    if (!targetRow) throw new PatientNotFoundError(input.targetPatientId);
 
-      if (Object.keys(planned.targetFieldUpdates).length > 0) {
-        await tx
-          .update(P)
-          .set({ ...planned.targetFieldUpdates, updatedAt: new Date() })
-          .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.targetPatientId)));
-      }
+    const planned = planMerge({
+      source: toSubject(sourceRow),
+      target: toSubject(targetRow),
+      fieldResolutions: input.fieldResolutions,
+      reason: input.reason,
+    });
 
+    if (Object.keys(planned.targetFieldUpdates).length > 0) {
       await tx
         .update(P)
-        .set({ status: "merged", mergedIntoId: input.targetPatientId, updatedAt: new Date() })
-        .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.sourcePatientId)));
+        .set({ ...planned.targetFieldUpdates, updatedAt: new Date() })
+        .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.targetPatientId)));
+    }
 
-      const [mergeRow] = await tx
-        .insert(PM)
-        .values({
-          organizationId: input.organizationId,
-          sourcePatientId: input.sourcePatientId,
-          targetPatientId: input.targetPatientId,
-          reason: input.reason,
-          mergedFieldDiff: planned.mergedFieldDiff,
-          performedBy: input.actorUserId || null,
-        })
-        .returning({ id: PM.id });
-      if (!mergeRow) throw new Error("patient_merge insert returned no row");
+    await tx
+      .update(P)
+      .set({ status: "merged", mergedIntoId: input.targetPatientId, updatedAt: new Date() })
+      .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.sourcePatientId)));
 
-      await outbox.publish(tx, {
-        eventName: "m5.patient.merged",
-        payload: {
-          patientId: input.targetPatientId,
-          organizationId: input.organizationId,
-          sourcePatientId: input.sourcePatientId,
-        },
+    const [mergeRow] = await tx
+      .insert(PM)
+      .values({
         organizationId: input.organizationId,
-        aggregateKind: "patient",
-        aggregateId: input.targetPatientId,
-      });
-
-      return {
-        mergeId: mergeRow.id,
         sourcePatientId: input.sourcePatientId,
         targetPatientId: input.targetPatientId,
-        targetFieldsApplied: Object.keys(planned.targetFieldUpdates),
-      };
-    },
-  );
+        reason: input.reason,
+        // The source's pre-merge status rides along under a reserved key so an unmerge restores it.
+        mergedFieldDiff: {
+          ...planned.mergedFieldDiff,
+          [SOURCE_PRIOR_STATUS_KEY]: sourceRow.status,
+        },
+        performedBy: input.actorUserId || null,
+      })
+      .returning({ id: PM.id });
+    if (!mergeRow) throw new Error("patient_merge insert returned no row");
+
+    await outbox.publish(tx, {
+      eventName: "m5.patient.merged",
+      payload: {
+        patientId: input.targetPatientId,
+        organizationId: input.organizationId,
+        sourcePatientId: input.sourcePatientId,
+      },
+      organizationId: input.organizationId,
+      aggregateKind: "patient",
+      aggregateId: input.targetPatientId,
+    });
+
+    return {
+      mergeId: mergeRow.id,
+      sourcePatientId: input.sourcePatientId,
+      targetPatientId: input.targetPatientId,
+      targetFieldsApplied: Object.keys(planned.targetFieldUpdates),
+    };
+  }
 }

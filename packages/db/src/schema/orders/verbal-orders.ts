@@ -49,6 +49,11 @@ export const verbalOrders = pgTable(
     status: verbalOrderStatus("status").notNull().default("pending"),
     signedAt: timestamp("signed_at", { withTimezone: true }),
     expiredAt: timestamp("expired_at", { withTimezone: true }),
+    // GAP-032 (mig 0405) — the pre-expiry alert tiers ('12h' | '2h') already emitted for this verbal.
+    preExpiryTiersAlerted: text("pre_expiry_tiers_alerted")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

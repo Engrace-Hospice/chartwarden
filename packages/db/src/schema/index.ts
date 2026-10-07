@@ -63,6 +63,7 @@ export * from "./membership-roles";
 // window for external auditors (§7.5).
 export * from "./break-glass";
 export * from "./auditor-engagements";
+export * from "./auditor-magic-links";
 // M4-T04 — Audit lifecycle / integrity / catalog tables (M4 spec §3.5). legal_hold,
 // destruction_certificate, audit_export are org-scoped (standard app.org_id RLS lands in
 // M4-T05); audit_seal is the Phase-2 tamper-evidence chain (nullable org). state_retention_override,

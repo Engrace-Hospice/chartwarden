@@ -51,6 +51,10 @@ export {
   registerM11StuckTransmissionWorker,
   runStuckTransmissionFanout,
   scheduleM11StuckTransmission,
+  // GAP-032 — verbal pre-expiry alert, lab-results-overdue sweep and completion-watcher (M11 §4.8 / §4.11).
+  M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
+  registerM11OrderSweepWorkers,
+  scheduleM11OrderSweeps,
 } from "./jobs";
 // F-201 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
 export {

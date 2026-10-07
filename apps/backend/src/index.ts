@@ -178,6 +178,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
@@ -205,6 +206,8 @@ import {
   registerAuthorizationAbacPredicates,
   registerAuthorizationSeams,
 } from "./modules/03-authorization/index";
+import { M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID } from "./modules/03-authorization/jobs/close-engagements";
+import { registerCloseEngagementsWorker } from "./modules/03-authorization/jobs/close-engagements-worker";
 import {
   M4_OUTBOX_EVENTS,
   assertAuditActionCatalog,
@@ -213,6 +216,11 @@ import {
   mountAuditRoutes,
   registerAuditErasers,
 } from "./modules/04-audit/index";
+import {
+  M4_AUDIT_JOBS_PLATFORM_JOB_ID,
+  registerAuditOpsWorkers,
+  scheduleAuditOpsJobs,
+} from "./modules/04-audit/jobs/audit-ops-workers";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
@@ -301,6 +309,7 @@ import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/
 // restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
 import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
+import { orderTriggeredRecordsForOrg } from "./modules/06-admission/seams/order-triggered-records-for-org";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -380,6 +389,7 @@ import {
   wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
+  M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
   M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
@@ -406,6 +416,7 @@ import {
   orderPatientAndKindForOrg,
   parseRecoveryBound,
   registerHeldTransmissionRoutes,
+  registerM11OrderSweepWorkers,
   registerM11StandingSpawnWorker,
   registerM11StuckTransmissionWorker,
   registerM11VerbalOrderExpiryWorker,
@@ -413,6 +424,7 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  scheduleM11OrderSweeps,
   scheduleM11StandingSpawn,
   scheduleM11StuckTransmission,
   scheduleM11VerbalOrderExpiry,
@@ -683,6 +695,7 @@ import {
   registerSupplyEraser,
   scheduleM21Jobs,
 } from "./modules/21-supplies/index";
+import { deliveredSourceOrderIdsForOrg } from "./modules/21-supplies/seams/delivered-source-orders-for-org";
 import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
 import {
   type DocLensClassifierPort,
@@ -1898,6 +1911,7 @@ export function wireModuleSeams(
   wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
+  registerPlatformJob(M11_ORDER_SWEEPS_PLATFORM_JOB_ID); // GAP-032 — verbal pre-expiry / lab-results-overdue / completion-watcher org enumeration
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
@@ -2739,6 +2753,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID); // GAP-011 — authz.close_engagements fan-out
+  if (platformDbHandle) registerPlatformJob(M4_AUDIT_JOBS_PLATFORM_JOB_ID); // GAP-014 — M4 audit jobs' active-org fan-out
   if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
@@ -3529,13 +3545,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             liveRbacHandle,
             m3OutboxPublisher as M3OutboxPublisher,
           );
-          // TASK-001 ledger (ARCH-005) — three M3 route deps are still in-memory.
-          noteInMemoryBinding({
-            kind: "route-dep",
-            label:
-              "M3 mountAuthorizationRoutes — auditorSessions in-memory (engagements are durable since GAP-011: createDbEngagementStore; the auditor magic-link mint/consume still needs a persisted invite token store, which needs a migration; GAP-010 made the break-glass Compliance notification durable via the m3.breakglass.invoked outbox event)",
-            task: "GAP-011 (auditor magic-link token store + session consume)",
-          });
+          // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
+          // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the
+          // break-glass Compliance notification is durable via the m3.breakglass.invoked outbox event (GAP-010).
           if (!liveRbacHandle) {
             // Should be unreachable on a db boot (wireModuleSeams runs first inside buildServer) —
             // recorded rather than assumed, so a future boot-order change cannot silently revert
@@ -4786,8 +4798,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // app close. Guarded by a Valkey connection (constructing a Worker opens the connection — never at import,
   // never in tests). When REDIS_URL is unset the workers are NOT constructed (the host still boots; the
   // command routes' enqueue ports already fail closed without a connection). The M4 audit workers
-  // (registerAuditWorkers/scheduleAuditJobs) stay deferred here until their production AuditJobAdapters have
-  // a boot accessor — they are the SAME construction shape and slot in beside the M34 block when bound.
+  // (GAP-014: registerAuditOpsWorkers/scheduleAuditOpsJobs) are constructed right after the M34 block below.
   // TASK-040A — also gated on `role !== "api"`: an API-only replica must not construct these (it would
   // re-register the same repeatable cron schedules on every replica and compete for the same jobs);
   // the "worker" role (or the default "all") does.
@@ -4959,6 +4970,91 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.warn(
         "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
       );
+    }
+
+    // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──
+    // Same worker-runner shape as the M34 block above. Needs the platform pool for the active-org fan-out;
+    // exports additionally need the MINIO_* object store, destruction the DATABASE_DESTRUCTION_URL credential.
+    // integrity_sample (needs a pgBackRest reader) and seal_partition (Phase 2) stay unconstructed — see
+    // 04-audit/jobs/audit-job-ops.ts.
+    if (platformDbHandle) {
+      const m4AuditOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M4_AUDIT_JOBS_PLATFORM_JOB_ID,
+        reason: "GAP-014 M4 audit jobs (export/retention/destruction) active-org fan-out",
+      });
+      const m4Ops = {
+        db: dbHandle.db,
+        listOrgs: () => m4AuditOrgs.listActiveOrgs(),
+        ...(m34DsarObjectStore
+          ? {
+              objectStore: {
+                putObject: (args: {
+                  organizationId: string;
+                  objectKey: string;
+                  bytes: Uint8Array;
+                  mimeType: string;
+                }) =>
+                  m34DsarObjectStore.putObject({
+                    bucket: deriveTenantBucket(args.organizationId),
+                    objectKey: args.objectKey,
+                    bytes: args.bytes,
+                    mimeType: args.mimeType,
+                  }),
+              },
+            }
+          : {}),
+        ...(destructionDbHandle
+          ? {
+              eraserPorts: createDrizzleAuditEraserPorts(dbHandle.db, {
+                destructionDb: destructionDbHandle.db,
+              }),
+            }
+          : {}),
+        log: (message: string, detail: Record<string, unknown>) => app.log.warn(detail, message),
+      };
+      const m4Workers = registerAuditOpsWorkers({ connection: queueConnection, ops: m4Ops });
+      attachDlqAlertsToAll(m4Workers, "m4");
+      app.addHook("onClose", () => Promise.all(m4Workers.map((w) => w.close())));
+      void scheduleAuditOpsJobs(queueConnection, {
+        exports: m34DsarObjectStore !== null,
+        destruction: destructionDbHandle !== undefined,
+      })
+        .then((queues) => {
+          app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
+        })
+        .catch((err) => app.log.error(err, "M4 audit job schedule registration failed"));
+      app.log.info(
+        `M4 audit workers constructed: retention_scan${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
+      );
+    } else {
+      app.log.warn(
+        "M4 audit workers disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required",
+      );
+    }
+
+    // ── GAP-011 — M3 §4.5.1 `authz.close_engagements` cron (activate/close engagements, revoke auditor links) ──
+    if (platformDbHandle) {
+      const m3CloseEngagementsOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID,
+        reason: "GAP-011 authz.close_engagements active-org fan-out",
+      });
+      void registerCloseEngagementsWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m3OutboxPublisher as M3OutboxPublisher,
+        revokeAuditorLinks: (organizationId, engagementId) =>
+          revokeAuditorMagicLinksForEngagement(dbHandle.db, organizationId, engagementId),
+        activeOrgs: m3CloseEngagementsOrgs,
+      })
+        .then(({ worker, queue }) => {
+          attachDlqAlertsToAll([worker], "m3");
+          app.addHook("onClose", () => Promise.all([worker.close(), queue.close()]));
+        })
+        .catch((err) => app.log.error(err, "M3 close_engagements worker construction failed"));
     }
 
     // ── M33 §4.8 reporting workers + cron schedules (the same worker-runner shape) ──────────────────────
@@ -6616,6 +6712,57 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       });
     } catch (err) {
       app.log.error(err, "M11 stuck-transmission schedule registration failed");
+    }
+    // GAP-032 — M11 §4.8 verbal pre-expiry alert (15 min), lab-results-overdue sweep (daily 04:00 UTC, D18) and
+    // completion-watcher (daily). Per-org fan-out like the sweeps above; grep `registerM11OrderSweepWorkers`: a
+    // worker that is bound but never constructed is dead code.
+    const m11OrderSweepWorkers = registerM11OrderSweepWorkers({
+      connection: queueConnection,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
+        reason: "M11 §4.8 verbal pre-expiry / lab-results-overdue / completion-watcher fan-out",
+      }),
+      sweep: { db: dbHandle.db, outbox: m11OutboxPublisher },
+      // The completion criterion is answered by the owners' own reads (M21 delivery; M6's order-triggered periods).
+      facts: {
+        async factsFor(tx, organizationId, candidates) {
+          const idsOf = (...kinds: string[]) =>
+            candidates.filter((c) => kinds.includes(c.kind)).map((c) => c.id);
+          const delivered = await deliveredSourceOrderIdsForOrg(
+            tx,
+            organizationId,
+            idsOf("supply", "comfort_kit"),
+          );
+          const m6 = await orderTriggeredRecordsForOrg(tx, organizationId, {
+            recertOrderIds: idsOf("recertification"),
+            locOrderIds: idsOf("level_of_care_change"),
+          });
+          return new Map(
+            candidates.map((c) => [
+              c.id,
+              {
+                supplyDelivered: delivered.has(c.id),
+                recertPeriodLive: m6.recertOrderIds.has(c.id),
+                locPeriodExists: m6.locOrderIds.has(c.id),
+              },
+            ]),
+          );
+        },
+      },
+    });
+    attachDlqAlertsToAll(m11OrderSweepWorkers, "m11");
+    app.addHook("onClose", async () => {
+      await Promise.all(m11OrderSweepWorkers.map((w) => w.close()));
+    });
+    try {
+      const m11OrderSweepQueues = await scheduleM11OrderSweeps(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m11OrderSweepQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M11 order-sweep schedule registration failed");
     }
     // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
     // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each

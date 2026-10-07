@@ -25,6 +25,7 @@ import {
   planDueReminder,
   planF2fWindowMissedScan,
 } from "./index";
+import { escalateComplianceWindowsInTx, openRecertDueWindowsInTx } from "./window-escalation";
 
 const CW = schema.complianceWindows;
 
@@ -211,9 +212,8 @@ export async function runCtiSignatureNotifyCron(deps: M6WorkerDeps): Promise<voi
  * CMS 418.22 F2F "prior-to" window has newly lapsed unattested and emit `m6.f2f.window_missed` exactly
  * once per window. `M6_QUEUES.windowAlert` / `M6_JOB_SCHEDULES.windowAlert` were declared (§4.3) but had
  * no runner or schedule registration anywhere — this is the first work on that queue; the OTHER
- * compliance-window kinds `planWindowAlert`/`promoteWindowStatus` (./index) are still unwired (out of
- * scope here — those assume an already-open `compliance_window` row, which `f2f_recert_30d_prior` never
- * gets outside this scan; see ./index's own comment on `planF2fWindowMissedScan`).
+ * compliance-window kinds are escalated by `runComplianceWindowEscalationCron` (GAP-026; those assume an
+ * already-open `compliance_window` row, which `f2f_recert_30d_prior` never gets outside this scan).
  *
  * Idempotent: `f2fWindowMissedCandidatesForOrg` excludes a period once its compliance_window row is
  * open (opened here, in the same tx as the outbox publish); `attestF2f`'s existing `close_window`
@@ -295,6 +295,41 @@ export async function runElectionAddendumOverdueScanCron(deps: M6WorkerDeps): Pr
 }
 
 /**
+ * `admission.window_alert` (every-kind half, GAP-026) — move every non-F2F/non-addendum compliance window
+ * (CTI, NOR, assessments, care plan, recert-due, ...) through `open -> closing_soon -> overdue` and publish
+ * `m6.compliance.window.overdue` (M36 pages) once per window. Pure core: `planWindowEscalation`.
+ */
+export async function runComplianceWindowEscalationCron(deps: M6WorkerDeps): Promise<number> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  let total = 0;
+  for (const { organizationId } of orgs) {
+    total += await withOrgContext(deps.db, systemOrgContext(organizationId), (tx) =>
+      escalateComplianceWindowsInTx(tx as unknown as DbClient, deps.outbox, organizationId, now),
+    );
+  }
+  return total;
+}
+
+/**
+ * `admission.recert_due_notify` (daily 06:00) — open the 14-day recert-due compliance window for every
+ * active benefit period nearing its end (GAP-026). The window then escalates like any other kind.
+ */
+export async function runRecertDueNotifyCron(deps: M6WorkerDeps): Promise<number> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  let total = 0;
+  for (const { organizationId } of orgs) {
+    total += await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
+      const today = localDateInTimeZone(now, await organizationTimezone(t, organizationId));
+      return openRecertDueWindowsInTx(t, deps.outbox, organizationId, today, now);
+    });
+  }
+  return total;
+}
+
+/**
  * Hourly benefit-period auto-end (GAP-025, spec §2.3.2 "period auto-ended at midnight on its endDate").
  * For each active org, completes every ACTIVE period whose last covered day is before the org's local
  * date and publishes `m6.election.period_ended` (M23's revalidate consumer re-checks the claims the
@@ -353,12 +388,18 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
       async () => {
         await runF2fWindowMissedScanCron(deps);
         await runElectionAddendumOverdueScanCron(deps);
+        await runComplianceWindowEscalationCron(deps);
       },
       {
         connection: deps.connection,
         concurrency: 1,
       },
     ),
+
+    new Worker(M6_QUEUES.recertDueNotify, async () => runRecertDueNotifyCron(deps), {
+      connection: deps.connection,
+      concurrency: 1,
+    }),
 
     new Worker(M6_QUEUES.periodAutoEnd, async () => runElectionPeriodAutoEndCron(deps), {
       connection: deps.connection,
@@ -383,6 +424,10 @@ export async function scheduleM6Jobs(connection: ConnectionOptions): Promise<Que
     {
       name: M6_QUEUES.windowAlert,
       pattern: M6_JOB_SCHEDULES.windowAlert,
+    },
+    {
+      name: M6_QUEUES.recertDueNotify,
+      pattern: M6_JOB_SCHEDULES.recertDueNotify,
     },
     {
       name: M6_QUEUES.periodAutoEnd,

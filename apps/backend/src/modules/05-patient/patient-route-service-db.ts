@@ -16,6 +16,7 @@ import { NotFoundError } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { M5OutboxPort } from "./deceased-db";
+import { insertSoftMatchReviews } from "./match-review-db";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
 import { type PrivacyFlag, isSudReadAllowed } from "./privacy/index";
@@ -379,9 +380,17 @@ export function createDbPatientRouteService(
           };
         }
         const patientId = await insertPatient(tx, organizationId, input);
-        // soft_review match-review rows (patient_match_review) are a follow-up — return no ids for now.
-        if (result.outcome === "soft_review")
-          return { outcome: "soft_review", patientId, matchReviewIds: [] };
+        // §7.3 (GAP-019): one open patient_match_review per soft candidate, in this same transaction.
+        if (result.outcome === "soft_review") {
+          const matchReviewIds = await insertSoftMatchReviews(
+            tx,
+            organizationId,
+            patientId,
+            incoming,
+            result.reviewCandidates,
+          );
+          return { outcome: "soft_review", patientId, matchReviewIds };
+        }
         return { outcome: "created", patientId };
       }
       return { outcome: "created", patientId: await insertPatient(tx, organizationId, input) };
@@ -944,7 +953,12 @@ export function createDbPatientRouteService(
       const status = decision.accept ? ("accepted" as const) : ("denied" as const);
       await tx
         .update(schema.patientAmendmentRequests)
-        .set({ status, denialReason: decision.denialReason ?? null })
+        .set({
+          status,
+          denialReason: decision.denialReason ?? null,
+          reviewerUserId: actorUserId || null,
+          decidedAt: new Date(),
+        })
         .where(eq(schema.patientAmendmentRequests.id, amendmentId));
       await emitPatientEvent(tx, organizationId, row.patientId, "m5.patient.amendment_decided", {
         amendmentId,

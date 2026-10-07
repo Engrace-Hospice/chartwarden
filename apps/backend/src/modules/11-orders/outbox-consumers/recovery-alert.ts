@@ -28,6 +28,10 @@ export const M11_RECOVERY_ALERT_TYPES = [
   "m11.order.recovery_cancelled",
   "m11.order.recovery_expired",
   "m11.order.recovery_anomaly",
+  // GAP-032 — the sweeps' care-team alerts ride the same durable intent: `verbal-pre-expiry-alert` and
+  // `lab-results-overdue-sweep` (M11 §4.8 / §4.11), published on the sweep's own transaction.
+  "m11.order.verbal_expiring_soon",
+  "m11.order.results_overdue",
 ] as const;
 
 export interface RecoveryAlertDeps {

@@ -59,6 +59,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // FY2027 — the 42 CFR 418.24(d) election addendum window missed (care team + compliance audiences).
       "m6.election_addendum.overdue",
       "m6.election_addendum.overdue_compliance",
+      // GAP-026 — the generic (non-addendum) compliance window miss.
+      "m6.compliance.window.overdue",
+      "m6.compliance.window.overdue_compliance",
       "m6.admission.discharged",
       "visit.late",
       "m17.visit.cancelled",
@@ -97,6 +100,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "external_feed.baa_missing",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
+      // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
+      "m11.order.verbal_expiring_soon",
+      "m11.order.results_overdue",
       // F-201 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
       // sweep giving up.
       "m11.order.transmission_held_aging",
