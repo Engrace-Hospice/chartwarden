@@ -379,3 +379,22 @@ chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dat
   recognises `apps/portal`).
 - Still not proven live: M29 feed revoke / acknowledge-abnormal SQL, the M31 cron jobs (late-join watchdog,
   post-discharge sweep), the M34 sweep workers, and the M32 BullMQ workers (unit-tested; no Redis in the live run).
+
+## GAP-133 (M18) — EVV GPS coordinates are really encrypted at rest (§D10)
+
+`evv_event.coords_cipher` / `evv_geofence_evaluation.device_coords_cipher` held `base64("lat,lng")` stamped
+`coords_dek_version = 1`: encoding under a version stamp that claimed a DEK. `apps/backend/src/modules/18-evv/coords.ts`
+is now the §D10 envelope, mirroring M20's `safety-crypto.ts`: AES-256-GCM under the tenant's M34 DEK (injected key
+provider; the composition root binds `getTenantKeyProvider()` lazily), AAD `m18:evv:coords:<orgId>`, envelope
+`v1.<dekVersion>.<nonce>.<tag>.<ct>`, and `coords_dek_version` (text since migration **0491**) is the version the key
+ring sealed under. The capture seals before its tx opens; the route read, the `EvvLocationProvider` seam store and the
+spoof detector open through the same cipher.
+- **Fail closed:** no key bound (`UNBOUND_EVV_COORDS_CIPHER`, or M34's unbound-KEK stub) ⇒ the capture is refused
+  and nothing is written; there is no base64 fallback. A missing/destroyed key, an unknown version, a blob sealed for
+  another tenant or a tampered blob THROWS on read (§3.4 fail-loud).
+- **Legacy rows:** no backfill (prod is demo data, reseeded). 0491 re-stamps every pre-existing row
+  `'legacy-unencrypted'`; the reader recognises them by format (base64 has no `.`) and answers `null` ("coordinate
+  unavailable") without decoding them or consulting a key.
+- Proof: `coords.test.ts` (round-trip, rotation, wrong-tenant/wrong-key/tamper failure, fail-closed, legacy); the
+  `m18-evv-write` live suite asserts the at-rest value is the envelope with the real DEK version, an unbound capture
+  writes nothing, and a cross-tenant blob fails loud through the route read; the workers suite seals its fixtures.

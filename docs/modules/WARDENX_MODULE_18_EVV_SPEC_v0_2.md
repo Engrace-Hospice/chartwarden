@@ -259,6 +259,7 @@ The evaluation is a snapshot — the policy or address may change later, but the
 - An `evv_event.captured_at` ≤ `evv_event.recorded_at` is enforced by DB CHECK (clinician's device clock may lag behind server, never lead).
 - An `evv_event.accuracy_m > 0` and `≤ 500` are enforced by DB CHECK (a device reporting 1000m accuracy is reporting garbage; refuse at the boundary).
 - An `evv_event.coords_cipher` is non-NULL on insert; the decryption fails-loud if the per-tenant DEK is missing at read time (no silent fallback to null).
+  > **As-built (GAP-133, 2026-10).** The §D10 envelope is bound: `apps/backend/src/modules/18-evv/coords.ts` seals `"lat,lng"` with AES-256-GCM under the tenant's M34 DEK (the `TenantKeyProvider` is injected by the composition root, the M20 `safety-crypto.ts` pattern; AAD binds module + org), stored as `v1.<dekVersion>.<nonce>.<tag>.<ciphertext>`; `evv_geofence_evaluation.device_coords_cipher` carries the same envelope. `coords_dek_version` is the M34 DEK version the row was sealed under (text since migration 0491, matching `tenant_key_ring.current_dek_version`). With no key bound the capture is **refused** (no clear-text fallback). On read, a missing/destroyed key, unknown version, cross-tenant or tampered blob throws. Rows written before GAP-133 held `base64("lat,lng")` (encoding, not encryption); 0491 re-stamps them `coords_dek_version = 'legacy-unencrypted'` and the reader answers "coordinate unavailable" (`null`) for them without decoding — there is no backfill (demo data is reseeded). The `m18.dek-rotation` re-encryption worker (§4.8) is still not built; rotation is survivable because the version travels in the envelope.
 - An `evv_event.posting_membership_id` must equal the M17 visit's `assigned_membership_id` at the time of recording (re-checked via M17 reader; a reassignment-in-flight race is handled by the M17 outbox event ordering).
 - An `evv_event.evv_device_id` must reference an `evv_device.status='approved'` row; otherwise reject with `DEVICE_NOT_APPROVED`.
 - An `evv_geofence_policy.radius_m ≥ 50 AND ≤ 1000` (DB CHECK); platform floor 200m, tenant may narrow to 50m, may not loosen above 1000m.
@@ -471,8 +472,8 @@ export const evvEvent = pgTable('evv_event', {
   eventAt: timestamp('event_at', { withTimezone: true }).notNull(),         // = capturedAt; the partition key
 
   // GPS coordinate, encrypted at rest (D10):
-  coordsCipher: text('coords_cipher').notNull(),         // base64-encoded ciphertext of "lat,lng"
-  coordsDekVersion: integer('coords_dek_version').notNull(),  // for DEK rotation
+  coordsCipher: text('coords_cipher').notNull(),         // AES-256-GCM envelope of "lat,lng" (GAP-133: v1.<dekVersion>.<nonce>.<tag>.<ct>)
+  coordsDekVersion: text('coords_dek_version').notNull(),  // the M34 DEK version sealed under (text since 0491; for DEK rotation)
   accuracyM: real('accuracy_m').notNull(),               // device-reported accuracy in meters
   gpsQuality: evvEventGpsQuality('gps_quality').notNull(),
 

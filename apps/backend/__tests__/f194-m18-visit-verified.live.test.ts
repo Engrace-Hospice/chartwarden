@@ -34,6 +34,7 @@ const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
 import { evvVisitProviderEntityForOrg } from "../src/modules/18-evv/seams/evv-visit-provider-entity-for-org";
 import { buildM30VisitVerifiedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -202,6 +203,7 @@ describe.skipIf(!DB_URL)(
       };
       // GAP-054 — the geofence baseline is the address coordinate; pin it to the capture coordinate used below.
       svc = createDbEvvBackend(handle.db, outbox, {
+        coordsCipher: createTestEvvCoordsCipher(), // GAP-133 — the §D10 envelope
         addressCoordinate: async () => ({ lat: 45.523, lng: -122.6789 }),
       });
     }, 180_000);

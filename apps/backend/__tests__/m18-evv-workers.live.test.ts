@@ -46,6 +46,7 @@ import {
 } from "../src/modules/18-evv/index";
 import { M18_POLL_DEADLINE_MS, M18_SUBMIT_MAX_ATTEMPTS } from "../src/modules/18-evv/jobs/queues";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -56,6 +57,8 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const PORTLAND = { lat: 45.523, lng: -122.6789 };
 const SEATTLE = { lat: 47.6062, lng: -122.3321 };
+/** GAP-133 — the §D10 coordinate envelope (production code) over an in-memory per-tenant DEK ring. */
+const coordsCipher = createTestEvvCoordsCipher();
 const HOUR = 3_600_000;
 
 type Seed = { pe: string; location: string; member: string; device: string };
@@ -164,13 +167,15 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
     accuracyM = 9,
   ): Promise<string> {
     const s = seeded[org];
+    // GAP-133 — the coordinate is SEALED exactly as the capture seals it, so the spoof detector opens it.
+    const sealed = await coordsCipher.seal(org, coords);
     return (
       await admin.query(
         `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id, kind,
            service_type_code, posting_membership_id, posting_discipline_at_recording, evv_device_id,
            captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
            device_attestation_id_at_record)
-         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit',$7,'rn',$8,$9,$9,$10,1,$11,'acceptable',$12) RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit',$7,'rn',$8,$9,$9,$10,$13,$11,'acceptable',$12) RETURNING id`,
         [
           org,
           s.pe,
@@ -181,9 +186,10 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
           s.member,
           s.device,
           at,
-          Buffer.from(`${coords.lat},${coords.lng}`).toString("base64"),
+          sealed.cipher,
           accuracyM,
           "66666666-6666-6666-6666-666666666666",
+          sealed.dekVersion,
         ],
       )
     ).rows[0].id as string;
@@ -280,7 +286,10 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
     outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m18" }),
     };
-    svc = createDbEvvBackend(handle.db, outbox, { addressCoordinate: async () => PORTLAND });
+    svc = createDbEvvBackend(handle.db, outbox, {
+      addressCoordinate: async () => PORTLAND,
+      coordsCipher,
+    });
     adapter = new FakeAdapter();
     aggregator = {
       registry: new StateAggregatorRegistry(
@@ -626,7 +635,7 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
       SEATTLE,
       12,
     );
-    const detector = buildM18SpoofDetectorConsumer({ db: handle.db, outbox });
+    const detector = buildM18SpoofDetectorConsumer({ db: handle.db, outbox, coordsCipher });
 
     await detector.handle({
       organizationId: ORG_A,
@@ -702,7 +711,7 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
       SEATTLE,
       12,
     );
-    const detector = buildM18SpoofDetectorConsumer({ db: handle.db, outbox });
+    const detector = buildM18SpoofDetectorConsumer({ db: handle.db, outbox, coordsCipher });
     await detector.handle({ organizationId: ORG_B, payload: { eventId: jump } }); // wrong tenant: event_not_found
     expect(
       (await admin.query("SELECT gps_quality FROM evv_event WHERE id=$1", [jump])).rows[0]
