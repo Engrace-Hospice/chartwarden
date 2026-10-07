@@ -3,7 +3,7 @@
 // Exercises the in-memory M29Store the route handlers compose over — the FSM + propose-then-review + rejection
 // rules the Drizzle store shares from the same T03/T04 cores, so a passing test here tests the RULE, not a
 // second spelling of it.
-import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
 import { createInMemoryM29Store } from "../routes/store";
@@ -60,7 +60,15 @@ describe("feed onboarding FSM (§2.2)", () => {
     expect(suspended.status).toBe("suspended");
     const reactivated = await store.activateFeed(ORG, OP, feed.id);
     expect(reactivated.status).toBe("active");
-    const revoked = await store.revokeFeed(ORG, OP, feed.id, { reason: "partner offboarded" });
+    // GAP-153 — the first approval only records the request; a distinct second approver completes it.
+    const pending = await store.revokeFeed(ORG, OP, feed.id, { reason: "partner offboarded" });
+    expect(pending.status).toBe("active");
+    await expect(
+      store.revokeFeed(ORG, OP, feed.id, { reason: "partner offboarded" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const revoked = await store.revokeFeed(ORG, COMPLIANCE, feed.id, {
+      reason: "partner offboarded",
+    });
     expect(revoked.status).toBe("revoked");
     await expect(store.updateFeed(ORG, OP, feed.id, { displayName: "x" })).rejects.toBeInstanceOf(
       ConflictError,

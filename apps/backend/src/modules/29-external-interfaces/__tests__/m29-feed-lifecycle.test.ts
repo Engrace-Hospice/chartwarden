@@ -12,12 +12,25 @@ import { canRetireCredential, planCredentialRotation } from "../feed/credential-
 import {
   EXTERNAL_FEED_INITIAL_STATUS,
   canExternalFeedTransition,
+  decideFeedRevokeStep,
   externalFeedCoApprovalSatisfied,
   externalFeedEdgeBindsListener,
   externalFeedEdgeRequiresComplianceCoApproval,
   externalFeedServePosture,
   externalFeedTransition,
 } from "../feed/lifecycle";
+
+describe("decideFeedRevokeStep (GAP-153)", () => {
+  it("the first call is the first approval", () => {
+    expect(decideFeedRevokeStep(null, "m1")).toBe("request");
+  });
+  it("a distinct second approver completes the revoke", () => {
+    expect(decideFeedRevokeStep("m1", "m2")).toBe("complete");
+  });
+  it("the same membership cannot approve twice", () => {
+    expect(decideFeedRevokeStep("m1", "m1")).toBe("self_approval");
+  });
+});
 
 describe("external_feed onboarding FSM (§2.2)", () => {
   it("starts at proposed", () => {

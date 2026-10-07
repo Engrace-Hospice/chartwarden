@@ -20,6 +20,7 @@ import {
   type ExternalFeedKind,
   type ExternalFeedProtocol,
   type ExternalFeedStatus,
+  ForbiddenError,
   type Hl7InboundParseStatus,
   type Hl7InboundProposalKind,
   type Hl7InboundProposalStatus,
@@ -32,7 +33,11 @@ import {
   WardenXError,
 } from "@wardenx/types";
 
-import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
+import {
+  canExternalFeedTransition,
+  decideFeedRevokeStep,
+  externalFeedCoApprovalSatisfied,
+} from "../feed/lifecycle";
 import type { UnmatchedReviewRefused } from "../inbound/unmatched-lab-review";
 import {
   type UnmatchedLabQueueItem,
@@ -181,6 +186,9 @@ export interface LabObservationSummary {
   readonly abnormalSummary: LabAbnormalSummary;
   readonly attachedDocumentId: string | null;
   readonly receivedAt: string;
+  /** GAP-152 - set once an RN acknowledges the abnormal flag (migration 0461); null until then. */
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedByMembershipId: string | null;
 }
 
 export interface LabObservationDetail extends LabObservationSummary {
@@ -362,7 +370,7 @@ export interface M29Store {
     orgId: string,
     membershipId: string,
     feedId: string,
-    args: { reason: string; primaryApproverId?: string },
+    args: { reason: string },
   ): Promise<FeedDetail>;
   listCredentials(orgId: string, feedId: string): Promise<readonly CredentialSummary[]>;
   mintCredential(
@@ -426,6 +434,19 @@ export interface M29Store {
     filter: ObservationListFilter,
   ): Promise<Page<LabObservationSummary>>;
   getObservation(orgId: string, observationId: string): Promise<LabObservationDetail | null>;
+  /**
+   * GAP-152 - persist the RN's acknowledgement of an abnormal result (stamped once; a repeat is a no-op that
+   * returns the stored acknowledgement) and emit `m29.lab_observation.abnormal_acknowledged` so M36 clears
+   * the abnormal-flag alert badge. Returns null when the observation does not exist in the org.
+   */
+  acknowledgeAbnormalObservation(
+    orgId: string,
+    membershipId: string,
+    observationId: string,
+  ): Promise<{
+    readonly acknowledgedAt: string;
+    readonly acknowledgedByMembershipId: string;
+  } | null>;
   listUnmatchedObservations(
     orgId: string,
     filter: { limit?: number; cursor?: string },
@@ -529,6 +550,8 @@ export function createInMemoryM29Store(
   const now = opts.now ?? (() => new Date().toISOString());
   const feeds = new Map<string, MemFeed & { organizationId: string }>();
   const creds = new Map<string, MemCredential & { organizationId: string }>();
+  /** feedId → the first approver of a pending dual-approval revoke (GAP-153). */
+  const revokeRequesters = new Map<string, string>();
   const proposals = new Map<string, MemProposal & { organizationId: string }>();
   const observations = new Map<string, LabObservationDetail & { organizationId: string }>();
   const unmatched = new Map<
@@ -663,6 +686,8 @@ export function createInMemoryM29Store(
       abnormalSummary: o.abnormalSummary ?? "all_normal",
       attachedDocumentId: o.attachedDocumentId ?? null,
       receivedAt: o.receivedAt ?? now(),
+      acknowledgedAt: o.acknowledgedAt ?? null,
+      acknowledgedByMembershipId: o.acknowledgedByMembershipId ?? null,
       values: o.values ?? [],
     });
   }
@@ -798,13 +823,25 @@ export function createInMemoryM29Store(
       f.status = "suspended";
       return feedDetailOf(f);
     },
-    async revokeFeed(orgId, _membershipId, feedId, _args) {
+    async revokeFeed(orgId, membershipId, feedId, _args) {
       const f = requireFeed(orgId, feedId);
       if (!canExternalFeedTransition(f.status, "revoked")) {
         throw new ConflictError(`feed ${feedId} cannot revoke from ${f.status}`);
       }
+      // GAP-153 / D20 — dual approval: the first call records the requester, a DISTINCT second completes.
+      const step = decideFeedRevokeStep(revokeRequesters.get(feedId), membershipId);
+      if (step === "self_approval") {
+        throw new ForbiddenError("a feed revoke needs a second, distinct approver");
+      }
+      if (step === "request") {
+        revokeRequesters.set(feedId, membershipId);
+        return feedDetailOf(f);
+      }
       f.status = "revoked";
       f.revokedAt = now();
+      for (const c of creds.values()) {
+        if (c.feedId === feedId && c.status === "active") c.status = "retired";
+      }
       return feedDetailOf(f);
     },
     async listCredentials(orgId, feedId) {
@@ -976,6 +1013,8 @@ export function createInMemoryM29Store(
           abnormalSummary: o.abnormalSummary,
           attachedDocumentId: o.attachedDocumentId,
           receivedAt: o.receivedAt,
+          acknowledgedAt: o.acknowledgedAt,
+          acknowledgedByMembershipId: o.acknowledgedByMembershipId,
         }),
       );
       const last = pageRows[pageRows.length - 1];
@@ -992,6 +1031,22 @@ export function createInMemoryM29Store(
     async getObservation(orgId, observationId) {
       const o = observations.get(observationId);
       return o && o.organizationId === orgId ? { ...o } : null;
+    },
+    async acknowledgeAbnormalObservation(orgId, membershipId, observationId) {
+      const o = observations.get(observationId);
+      if (!o || o.organizationId !== orgId) return null;
+      const stored = o as {
+        acknowledgedAt: string | null;
+        acknowledgedByMembershipId: string | null;
+      };
+      if (stored.acknowledgedAt === null) {
+        stored.acknowledgedAt = now();
+        stored.acknowledgedByMembershipId = membershipId;
+      }
+      return {
+        acknowledgedAt: stored.acknowledgedAt as string,
+        acknowledgedByMembershipId: stored.acknowledgedByMembershipId ?? membershipId,
+      };
     },
     async listUnmatchedObservations(orgId, filter) {
       const items = [...unmatched.values()]

@@ -141,6 +141,11 @@ export {
   registerM34TenantExportWorker,
   scheduleM34Jobs,
 } from "./jobs/saas-jobs";
+// GAP-163 — the nightly bundle-expiry reaper (worker + its own schedule).
+export {
+  registerM34BundleExpiryWorker,
+  scheduleM34BundleExpiryJob,
+} from "./jobs/bundle-expiry-worker";
 
 export {
   buildM34ProvisionQueue,

@@ -69,8 +69,14 @@ export function createElectionPeriodReader(store: AdmissionReaderStore): Electio
 }
 
 /** §4.7 AdmissionStatusReader (M14 queues, M30 dashboards). Throws when the admission is unknown. */
-export function createAdmissionStatusReader(store: AdmissionReaderStore): AdmissionStatusReader {
+export function createAdmissionStatusReader(
+  store: AdmissionReaderStore,
+  options: {
+    readonly isDischargedReadOnly?: (organizationId: string, patientId: string) => Promise<boolean>;
+  } = {},
+): AdmissionStatusReader {
   return {
+    ...(options.isDischargedReadOnly ? { isDischargedReadOnly: options.isDischargedReadOnly } : {}),
     async getAdmissionSummary(organizationId, admissionId) {
       const summary = await store.admissionSummary(organizationId, admissionId);
       if (summary === null) throw new AdmissionNotFoundError(admissionId);

@@ -96,6 +96,14 @@ export interface M29AbacResolver {
   isInCaseload(orgId: string, userId: string, patientId: string): Promise<boolean | null>;
   /** Whether the feed's M40 BAA gate is satisfied (or the feed kind requires none). `null` ⇒ deny. */
   feedBaaSatisfied(orgId: string, feedId: string): Promise<boolean | null>;
+  /**
+   * GAP-153 — the first approver of a pending feed revoke, read from the STORED feed row (never the request
+   * body): `{ requestedBy: null }` ⇒ no revoke pending; `null` ⇒ feed absent/cross-tenant/unreadable (denies).
+   */
+  feedRevokeRequester(
+    orgId: string,
+    feedId: string,
+  ): Promise<{ readonly requestedBy: string | null } | null>;
 }
 
 /** A resolver that denies everything — the shape a boot-without-DB path binds (fail-closed, never open). */
@@ -116,6 +124,9 @@ export const denyStubM29AbacResolver: M29AbacResolver = {
     return null;
   },
   async feedBaaSatisfied() {
+    return null;
+  },
+  async feedRevokeRequester() {
     return null;
   },
 };
@@ -233,10 +244,15 @@ export function buildM29AbacPredicates(
       if (!context.organizationId) return false;
       const membershipId = membershipIdOf(context);
       if (membershipId === null) return false;
-      const primaryApproverId = targetStr(target, "primaryApproverId", "approvedByOpId");
-      // No primary approver on file yet ⇒ this IS the first approver; distinctness is trivially met.
-      if (primaryApproverId === null) return true;
-      return membershipId !== primaryApproverId;
+      const feedId = targetStr(target, "feedId");
+      if (feedId === null) return false;
+      const pending = await resolver
+        .feedRevokeRequester(context.organizationId, feedId)
+        .catch(() => null);
+      if (pending === null) return false;
+      // No first approver on file yet ⇒ this IS the first approver; distinctness is trivially met.
+      if (pending.requestedBy === null) return true;
+      return membershipId !== pending.requestedBy;
     },
 
     /** §4.8 — a tenant-scoped role cannot trigger a platform-shared NPPES sync; a platform-ops role can

@@ -166,8 +166,6 @@ export type SuspendFeedInput = Static<typeof SuspendFeedBody>;
 
 export const RevokeFeedBody = Type.Object({
   reason: Type.String({ minLength: 1, maxLength: 500 }),
-  /** The primary approver's membership id (the co-approver must be distinct — D20). */
-  primaryApproverId: Type.Optional(Uuid),
 });
 export type RevokeFeedInput = Static<typeof RevokeFeedBody>;
 

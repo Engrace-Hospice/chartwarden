@@ -1863,10 +1863,6 @@
                     "minLength": 1,
                     "maxLength": 500,
                     "type": "string"
-                  },
-                  "primaryApproverId": {
-                    "format": "uuid",
-                    "type": "string"
                   }
                 }
               }

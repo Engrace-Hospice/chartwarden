@@ -1079,6 +1079,7 @@ import {
 import {
   type BootstrapModule34Deps,
   M34_OUTBOX_EVENTS,
+  M34_PLATFORM_JOB_ID,
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
@@ -1098,6 +1099,7 @@ import {
   m34ProvisionGatewayConfigFromEnv,
   mountTenantPlatformRoutes,
   registerLiveM34Seams,
+  registerM34BundleExpiryWorker,
   registerM34DekRotateWorker,
   registerM34DsarExportWorker,
   registerM34ProvisionWorker,
@@ -1105,6 +1107,7 @@ import {
   registerM34TenantExportWorker,
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
+  scheduleM34BundleExpiryJob,
   validateModule34Seams,
   wireM34AlertRuleSeed,
   wireM34Tenancy,
@@ -3938,7 +3941,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // #107 item 3 — resolve provider_entity_id server-side for the NOT-NULL provider-scoped
               // compliance inserts (incident / infection / QAPI program / CAHPS ingest), inside the
               // mutation's own org-context tx. Removes the prior fail-closed 503.
-              providerEntity: buildPrimaryProviderEntityResolver(),
+              // GAP-154 — a patient-linked write is stamped with the SUBJECT's admission provider entity
+              // (M6's org-explicit siting seam), not the org's primary one; the primary stays the fallback.
+              providerEntity: {
+                ...buildPrimaryProviderEntityResolver(),
+                providerEntityIdForPatient: async (organizationId, patientId) =>
+                  (
+                    await activeAdmissionSitingForPatientForOrg(
+                      dbHandle.db,
+                      organizationId,
+                      patientId,
+                    )
+                  )?.providerEntityId ?? null,
+              },
             }),
           });
           // M27 (Cost Report) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Each
@@ -4923,6 +4938,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         app.addHook("onClose", () => tenantExportWorker.close());
         enableM34JobCapability("tenant.export");
       }
+      // GAP-163 — the nightly 7-day bundle reaper: DSAR / tenant-export bundles (PHI) are destroyed once their
+      // presigned-URL TTL passes. Org-scoped sweep per active org (enumerated on the audited platform pool),
+      // the object destroyed through the SAME stateless S3 client the export workers write with.
+      if (m34DsarObjectStore) {
+        const bundleExpiryWorker = registerM34BundleExpiryWorker({
+          connection: queueConnection,
+          db: dbHandle.db,
+          listActiveOrgs: () =>
+            buildActiveOrgEnumerator({
+              platformDb: platformDbHandle.db,
+              auditBypass: m34PlatformBypassAuditor,
+              jobId: M34_PLATFORM_JOB_ID,
+              reason: "M34 bundle-expiry sweep (active-org enumeration)",
+            }).listActiveOrgs(),
+          destroyObject: (args) =>
+            m34DsarObjectStore.destroyAllVersions({
+              bucket: deriveTenantBucket(args.organizationId),
+              objectKey: args.objectKey,
+              organizationId: args.organizationId,
+            }),
+          warn: (message, context) => app.log.warn(context, message),
+        });
+        m34Workers.push(bundleExpiryWorker);
+        const bundleExpirySchedule = await scheduleM34BundleExpiryJob(queueConnection);
+        app.addHook("onClose", () =>
+          Promise.all([bundleExpiryWorker.close(), bundleExpirySchedule.close()]),
+        );
+      }
       attachDlqAlertsToAll(m34Workers, "m34");
       app.log.info(
         `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}${m34DsarExportDeps ? ", dsar_export" : ""}${m34TenantExportDeps ? ", tenant_export" : ""}`,
@@ -5145,6 +5188,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       ),
       recomputeEnqueue: m30CronRecompute.enqueue,
       outboxPublisher: m30OutboxPublisher,
+      // GAP-155 — the SRA-reminder cron's §4.9 dispatch (sra_due_90/60/30 + sra_overdue) emits through M36.
+      alertEmitter: getSeam("AlertEmitter") as Parameters<
+        typeof buildM30WorkerDeps
+      >[0]["alertEmitter"],
     });
     const m30Workers = [
       ...registerM30Workers(m30WorkerDeps),
