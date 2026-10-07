@@ -1005,6 +1005,7 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 2, 3, 4, 10, 23, 27, 36, 38],
     ownedTables: [
       "cahps_decedent_sample",
+      "cahps_export_job",
       "cahps_result_summary",
       "cahps_vendor_binding",
       "cop_compliance_status",
@@ -1029,7 +1030,14 @@ export const MODULES: ModuleDef[] = [
     name: "Patient/Family Portal & Telehealth",
     codePaths: ["packages/telehealth-client", "apps/portal", "apps/backend/src/modules/31-portal"],
     dependsOn: [1, 5, 7, 8, 22, 36, 39], // +1: M31-T03 consumes the M39 ConsentEvaluator + M16 BereavedPortalScopeProvider seams OPAQUELY via the M1-owned bootstrap registry (getSeam); the seam-task precedent every consuming module carries
-    ownedTables: ["portal_account", "portal_access_grant", "telehealth_visit"],
+    ownedTables: [
+      "portal_access_grant",
+      "portal_account",
+      "portal_document_upload",
+      "portal_invitation",
+      "portal_notification_preference",
+      "telehealth_visit",
+    ],
   },
   {
     id: 32,

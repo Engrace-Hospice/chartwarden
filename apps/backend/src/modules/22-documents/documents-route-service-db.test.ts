@@ -49,3 +49,16 @@ describe("production document upload without an object store (GAP-068: the only 
     ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
   });
 });
+
+describe("production PHI export bundle (GAP-065: no fabricated tracking id)", () => {
+  const service = createDbDocumentRouteService(UNTOUCHED_DB);
+
+  it("fails closed with 503 instead of returning a made-up bundle id", async () => {
+    await expect(
+      service.exportPhiBundle("11111111-1111-4111-8111-111111111111", ACTOR, {
+        patientId: "33333333-3333-4333-8333-333333333333",
+        purpose: "patient_request",
+      } as never),
+    ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
+  });
+});

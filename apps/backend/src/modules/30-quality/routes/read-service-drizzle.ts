@@ -49,6 +49,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { toCahpsExportJobView } from "../cahps/export-job-store";
 import type { M30ReadActor } from "./actor";
 import { type CursorPage, pageSizeOf, paginate } from "./concurrency";
 import { incidentOwnedBy } from "./incident-ownership";
@@ -538,11 +539,23 @@ export function buildDrizzleM30ReadService(
       });
     },
 
-    async getCahpsExport(_actor, _exportId): Promise<CahpsExportJobView> {
-      // §R-15 reads a CAHPS export-JOB store. No M30 base table backs export jobs (export is a BullMQ
-      // worker concern bound in P2c — the §4.8 producer + the M22 signed-URL mint); until that store is
-      // bound the read is a non-leaking 404 rather than a fabricated job.
-      throw new NotFoundError("cahps export");
+    async getCahpsExport(actor, exportId): Promise<CahpsExportJobView> {
+      // §R-15 — the durable `cahps_export_job` row (GAP-087). RLS + the explicit org predicate make another
+      // tenant's job indistinguishable from an unknown id (404).
+      return read(actor, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.cahpsExportJob)
+          .where(
+            and(
+              eq(schema.cahpsExportJob.organizationId, actor.organizationId),
+              eq(schema.cahpsExportJob.id, exportId),
+            ),
+          )
+          .limit(1);
+        if (!row) throw new NotFoundError("cahps export");
+        return toCahpsExportJobView(row);
+      });
     },
 
     async listCahpsResults(actor, filter, cursor, limit) {

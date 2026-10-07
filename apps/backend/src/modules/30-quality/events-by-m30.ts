@@ -157,6 +157,21 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m30.cahps.export_failed",
+    moduleOwner: "m30",
+    description:
+      "The R-14 export worker exhausted its §4.8 retry budget (GAP-087); the cycle's sample rows are `export_failed` and M36 raises the §4.9 alert to the QAPI Coordinator, who re-triggers via R-14.",
+    payloadSchema: Type.Object({
+      orgId: id,
+      samplePeriod: period,
+      vendor: id,
+      reason: Type.String(),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m30.cahps.results_ingested",
     moduleOwner: "m30",
     description:

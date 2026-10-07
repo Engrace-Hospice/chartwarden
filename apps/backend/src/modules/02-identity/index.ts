@@ -456,3 +456,4 @@ export {
   createProductionStepUpVerifier,
   type StepUpVerifierOptions,
 } from "./step-up-verifier";
+export { createPortalInviteeUserPort } from "./portal-invitee-user";

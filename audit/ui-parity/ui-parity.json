@@ -2516,6 +2516,14 @@
       "app": "portal",
       "module": "31-portal",
       "moduleId": 31,
+      "id": "portal.accept-invitation",
+      "path": "/accept-invitation",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
       "id": "portal.patient-picker",
       "path": "/patient-picker",
       "permission": "portal.session.read_own"

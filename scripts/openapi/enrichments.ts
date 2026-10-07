@@ -1731,6 +1731,8 @@ import {
   PortalDocumentUploadInitRequest as M31PortalDocumentUploadInitRequest,
   PortalDocumentUploadInitResponse as M31PortalDocumentUploadInitResponse,
   PortalEngagementResponse as M31PortalEngagementResponse,
+  PortalInvitationAcceptRequest as M31PortalInvitationAcceptRequest,
+  PortalInvitationAcceptResponse as M31PortalInvitationAcceptResponse,
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
@@ -1743,6 +1745,8 @@ import {
   TelehealthVisitDetailResponse as M31TelehealthVisitDetailResponse,
   TelehealthVisitListResponse as M31TelehealthVisitListResponse,
   UploadCompleteResponse as M31UploadCompleteResponse,
+  UploadContentBody as M31UploadContentBody,
+  UploadStageResponse as M31UploadStageResponse,
   WebhookAckResponse as M31WebhookAckResponse,
   WithinQuery as M31WithinQuery,
 } from "../../apps/backend/src/modules/31-portal/routes/portal-typebox";
@@ -2522,6 +2526,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/cahps/vendor": {
     summary: "The org's active CAHPS vendor binding (null before the first binding)",
     response: CahpsVendorResponseSchema,
+  },
+  "GET /api/v1/quality/cahps/export/:exportId/file": {
+    summary: "Download the completed CAHPS export file (decrypted from its tenant-DEK envelope)",
+    response: Type.String({ format: "binary", description: "the vendor export file's raw bytes" }),
   },
   "GET /api/v1/quality/cahps/export/:exportId": {
     summary: "A CAHPS export job + its signed download URL once complete",
@@ -3402,8 +3410,21 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Mint a 60-min watermarked download URL (M22)",
     response: M31DocumentDownloadUrlResponse,
   },
+  "PUT /api/v1/portal/documents/uploads/:uploadId/content": {
+    summary:
+      "Upload the file bytes for an initiated upload (raw body; magic-byte checked; kept only as a tenant-DEK envelope)",
+    body: M31UploadContentBody,
+    response: M31UploadStageResponse,
+  },
+  "POST /api/v1/portal/invitations/accept": {
+    summary:
+      "Accept a portal invitation by its single-use token (public; activates the account and creates the grant)",
+    body: M31PortalInvitationAcceptRequest,
+    response: M31PortalInvitationAcceptResponse,
+  },
   "POST /api/v1/portal/documents/upload-init": {
-    summary: "Stage an M22 intake upload; returns a signed URL",
+    summary:
+      "Record an upload intent (validated size / MIME); returns the content route to PUT the bytes to",
     body: M31PortalDocumentUploadInitRequest,
     response: M31PortalDocumentUploadInitResponse,
   },

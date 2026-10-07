@@ -5,6 +5,7 @@ import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@wa
 // registry contract (`@wardenx/types` ScreenRegistry) so the portal is a first-class, gate-shaped SPA rather
 // than an ad-hoc router.
 import type { ComponentType } from "react";
+import { PortalAcceptInvitation } from "./accept-invitation";
 import { PortalAccount } from "./account";
 import { PortalAmendments } from "./amendments";
 import { PortalBereavement } from "./bereavement";
@@ -25,6 +26,7 @@ export type PortalScreen = ComponentType;
 /** id → component. Every PORTAL_SCREEN_MANIFEST id must resolve here (asserted at module build below). */
 const COMPONENTS: Record<string, PortalScreen> = {
   "portal.sign-in": PortalSignIn,
+  "portal.accept-invitation": PortalAcceptInvitation,
   "portal.patient-picker": PortalPatientPicker,
   "portal.dashboard": PortalPatientDashboard,
   "portal.care-plan": PortalCarePlanView,

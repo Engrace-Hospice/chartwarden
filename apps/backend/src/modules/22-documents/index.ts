@@ -336,3 +336,4 @@ export {
   createSignedUrlService,
 } from "./routes/signed-url-service";
 export { M22_OUTBOX_EVENTS, M22_DOCUMENT_RENDERED_EVENT } from "./events-by-m22";
+export { buildPortalUploadIntakePort } from "./portal-upload-intake";

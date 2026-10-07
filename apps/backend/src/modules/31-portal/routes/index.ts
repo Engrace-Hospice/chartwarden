@@ -33,6 +33,8 @@ export {
 export { parse, parseQuery } from "./portal-typebox";
 
 import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
+import type { PortalProvisioning } from "../provisioning";
+import type { PortalAccountAuditPort, PortalBereavementOptOutPort } from "../provisioning/types";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
 
@@ -97,6 +99,21 @@ export interface PortalRouteDeps {
    */
   readonly amendmentIntake?: PortalAmendmentIntakePort;
   /**
+   * GAP-092 — M13's caregiver-attested administration write (M13 owns `administration_record`; the composition
+   * root binds M13's Drizzle backend here). ABSENT ⇒ the attest route refuses 503: a portal that tells a
+   * caregiver "attested" must have written the M13 record, so there is no fake-success fallback.
+   */
+  readonly caregiverAttestation?: PortalCaregiverAttestationPort;
+  /**
+   * GAP-092 — the provisioning services: account + grant creation (invitations), encrypted upload staging, notification
+   * preferences. ABSENT ⇒ every route that needs them refuses 503 (preferences GET alone falls back to its defaults).
+   */
+  readonly provisioning?: PortalProvisioning;
+  /** GAP-092 — M16's self-service opt-out (a bereaved family member's own D9 opt-out). ABSENT ⇒ 503. */
+  readonly bereavementOptOut?: PortalBereavementOptOutPort;
+  /** GAP-092 — M4's read trail for the admin audit-views list. ABSENT ⇒ 503. */
+  readonly accountAudit?: PortalAccountAuditPort;
+  /**
    * GAP-093(d) — M3's engagement coverage reader for the auditor view. Absent ⇒ the `AuditorEngagementReader`
    * seam (deny-stub until M3 registers it, which 403s the view). Injectable so the route suite needs no registry.
    */
@@ -127,4 +144,19 @@ export interface PortalAmendmentIntakePort {
       decidedAt: string | null;
     }>
   >;
+}
+
+/** M13's caregiver-attested write as M31 calls it (structurally satisfied by the M13 backend adapter). */
+export interface PortalCaregiverAttestationPort {
+  record(input: {
+    organizationId: string;
+    patientId: string;
+    medicationOrderId: string;
+    administeredAt: string;
+    /** The authenticated portal account the dose is attributed to (§7.7 step 3). */
+    caregiverSessionId: string;
+    route: string;
+    doseAmount: number;
+    doseUnit: string;
+  }): Promise<{ administrationId: string; status: string }>;
 }

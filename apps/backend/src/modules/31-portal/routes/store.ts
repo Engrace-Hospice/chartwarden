@@ -77,6 +77,15 @@ function toVisitDigest(r: VisitRow): TelehealthVisitDigest {
   };
 }
 
+/** GAP-095 — the telehealth room facts the vendor-facing routes read (ciphers stay sealed here). */
+export interface TelehealthRoomFacts {
+  readonly vendorRoomIdCipher: string;
+  readonly vendorRoomUrlCipher: string;
+  readonly vendorRecordingId: string | null;
+  readonly patientLeftAt: string | null;
+  readonly clinicianLeftAt: string | null;
+}
+
 /** The extra owned-table operations the §4.1 routes need beyond the seven seam ports. */
 export interface PortalOwnedTableOps {
   /** Account facts for the §4.7 predicate resolver + admin detail (fail-null on absent/cross-tenant). */
@@ -142,6 +151,11 @@ export interface PortalOwnedTableOps {
     orgId: string,
     id: string,
   ): Promise<{ enabled: boolean; startedByUserId: string | null } | null>;
+  /**
+   * GAP-095 — the room facts the join/leave/recording/end routes drive the VENDOR with: the sealed room id/url
+   * (decrypted only by the room cipher), the vendor's recording id and who has left. `null` ⇒ no such visit.
+   */
+  telehealthRoomFacts(orgId: string, id: string): Promise<TelehealthRoomFacts | null>;
   /** Apply a telehealth lifecycle transition + optional side-effect columns, returning the new digest. */
   updateTelehealthLifecycle(
     orgId: string,
@@ -159,6 +173,11 @@ export interface PortalOwnedTableOps {
       endReason?: TelehealthEndReason;
       totalDurationSec?: number;
       firstParticipantJoinedAt?: Date;
+      /** GAP-095 — set on leave, cleared (null) on re-join. */
+      patientLeftAt?: Date | null;
+      clinicianLeftAt?: Date | null;
+      /** GAP-095 — the vendor's opaque recording id (null once stopped). */
+      vendorRecordingId?: string | null;
     },
   ): Promise<TelehealthVisitDigest | null>;
 }
@@ -542,6 +561,30 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           .limit(1);
         // GAP-093(b): NULL ⇒ no recording, or one started before 0339 (stop falls back to the assignee).
         return row ? { enabled: row.enabled, startedByUserId: row.startedBy } : null;
+      });
+    },
+    async telehealthRoomFacts(orgId, id) {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const [row] = await tx
+          .select({
+            vendorRoomIdCipher: telehealthVisits.vendorRoomIdCipher,
+            vendorRoomUrlCipher: telehealthVisits.vendorRoomUrlCipher,
+            vendorRecordingId: telehealthVisits.vendorRecordingId,
+            patientLeftAt: telehealthVisits.patientLeftAt,
+            clinicianLeftAt: telehealthVisits.clinicianLeftAt,
+          })
+          .from(telehealthVisits)
+          .where(eq(telehealthVisits.id, id))
+          .limit(1);
+        return row
+          ? {
+              vendorRoomIdCipher: row.vendorRoomIdCipher,
+              vendorRoomUrlCipher: row.vendorRoomUrlCipher,
+              vendorRecordingId: row.vendorRecordingId ?? null,
+              patientLeftAt: iso(row.patientLeftAt),
+              clinicianLeftAt: iso(row.clinicianLeftAt),
+            }
+          : null;
       });
     },
     async updateTelehealthLifecycle(orgId, userId, id, patch) {

@@ -38,10 +38,9 @@ describe("portal screen registry (M31 §5.1)", () => {
     }
   });
 
-  it("exposes exactly one chromeless entry surface (sign-in at /)", () => {
+  it("exposes exactly the two chromeless pre-session surfaces (sign-in at /, accept-invitation)", () => {
     const chromeless = portalScreens.screens.filter((s) => s.chrome === false);
-    expect(chromeless).toHaveLength(1);
-    expect(chromeless[0]?.path).toBe("/");
+    expect(chromeless.map((s) => s.path).sort()).toEqual(["/", "/accept-invitation"]);
   });
 
   it("rejects a duplicate screen id at registration", () => {
