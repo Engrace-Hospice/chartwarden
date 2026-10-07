@@ -16,8 +16,8 @@
 // do not apply here; the org-scoped audit + the context guard are the controls.
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
 import { requireSession, resolvePasskeyRpId } from "@wardenx/auth";
-import { STEP_UP_POLICY, UnauthorizedError, ValidationError } from "@wardenx/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { STEP_UP_POLICY, UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditStepUpCompleted,
   auditStepUpFailed,
@@ -60,13 +60,16 @@ async function resolveSessionOrThrow(
 /**
  * Read `factor` from a request body. SMS is refused with the spec's flat domain error +
  * 400 (W-M2-11 route-logic layer); anything not in the qualifying set is a 422 schema
- * violation (the validation layer). Returns null after the reply has been sent for SMS.
+ * violation (the validation layer). SMS is a 400 domain error (enveloped).
  */
-function readFactor(body: unknown, reply: FastifyReply): StepUpQualifyingFactor | null {
+function readFactor(body: unknown): StepUpQualifyingFactor {
   const factor = (body as { factor?: unknown } | null)?.factor;
   if (factor === "sms") {
-    reply.code(400).send({ error: "sms_not_step_up_qualifying" });
-    return null;
+    throw new WardenXError(
+      "SMS_NOT_STEP_UP_QUALIFYING",
+      "sms is not a step-up qualifying factor",
+      400,
+    );
   }
   if (factor !== "webauthn" && factor !== "totp") {
     throw new ValidationError("invalid step-up factor", [
@@ -127,14 +130,15 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
   // --- Initiate a step-up challenge --------------------------------------------------------
   app.post("/api/v1/sessions/step-up/initiate", async (request, reply) => {
     const session = await resolveSessionOrThrow(deps, request);
-    const factor = readFactor(request.body, reply);
-    if (factor === null) return reply; // SMS already answered (400)
+    const factor = readFactor(request.body);
 
     const enrolled = await deps.enrollment.hasFactor({ userId: session.userId, factor });
     if (!enrolled) {
-      return reply.code(400).send({
-        error: factor === "webauthn" ? "webauthn_not_enrolled" : "totp_not_enrolled",
-      });
+      throw new WardenXError(
+        factor === "webauthn" ? "WEBAUTHN_NOT_ENROLLED" : "TOTP_NOT_ENROLLED",
+        `${factor} is not enrolled`,
+        400,
+      );
     }
 
     const challengeId = newChallengeId();
@@ -160,8 +164,7 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
   // --- Verify a step-up challenge ----------------------------------------------------------
   app.post("/api/v1/sessions/step-up", async (request, reply) => {
     const session = await resolveSessionOrThrow(deps, request);
-    const factor = readFactor(request.body, reply);
-    if (factor === null) return reply; // SMS already answered (400)
+    const factor = readFactor(request.body);
 
     const body = (request.body ?? {}) as {
       challengeId?: unknown;
@@ -175,23 +178,24 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
     }
 
     const challenge = await deps.challenges.get(body.challengeId);
-    if (!challenge) return reply.code(400).send({ error: "challenge_expired_or_invalid" });
+    if (!challenge)
+      throw new WardenXError("CHALLENGE_EXPIRED_OR_INVALID", "challenge expired or invalid", 400);
     if (challenge.sessionId !== session.sessionId) {
-      return reply.code(400).send({ error: "challenge_session_mismatch" });
+      throw new WardenXError("CHALLENGE_SESSION_MISMATCH", "challenge session mismatch", 400);
     }
     if (challenge.factor !== factor) {
-      return reply.code(400).send({ error: "challenge_factor_mismatch" });
+      throw new WardenXError("CHALLENGE_FACTOR_MISMATCH", "challenge factor mismatch", 400);
     }
 
     // Payload shape per factor (the spec's TypeBox `assertion` / `^[0-9]{6}$` gates).
     if (factor === "webauthn" && body.assertion == null) {
-      return reply.code(400).send({ error: "malformed_verify_payload" });
+      throw new WardenXError("MALFORMED_VERIFY_PAYLOAD", "malformed verify payload", 400);
     }
     if (
       factor === "totp" &&
       (typeof body.totpCode !== "string" || !/^[0-9]{6}$/.test(body.totpCode))
     ) {
-      return reply.code(400).send({ error: "malformed_verify_payload" });
+      throw new WardenXError("MALFORMED_VERIFY_PAYLOAD", "malformed verify payload", 400);
     }
 
     const verdict = await deps.verifier.verify({
@@ -239,9 +243,11 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
           aggregateKind: "session",
           aggregateId: session.sessionId,
         });
-        return reply.code(423).send({ error: "session_locked", reason: "step_up_lockout" });
+        throw new WardenXError("SESSION_LOCKED", "session locked", 423, [
+          { code: "STEP_UP_LOCKOUT", message: "too many failed step-up attempts" },
+        ]);
       }
-      return reply.code(401).send({ error: "step_up_failed" });
+      throw new WardenXError("STEP_UP_FAILED", "step up failed", 401);
     }
 
     // Success: paired-write the step-up freshness, clear the challenge + failure counter.

@@ -130,7 +130,7 @@ import type { Outbox } from '@wardenx/foundation/outbox'
 import type { NotificationDispatcher } from '@wardenx/foundation/seams'
 import { eq, and } from 'drizzle-orm'
 import { externalFeed, type ExternalFeed } from '@wardenx/db/schema/external-interfaces'
-import { withPlatformContext, withTenantContext } from '@wardenx/tenancy'
+import { withPlatformContext, withOrgContext } from '@wardenx/tenancy'
 import type { MdmBaaStatusProvider } from '@wardenx/foundation/seams'
 import type { KmsEnvelopeEncryptor } from '@wardenx/foundation/seams'
 import { PerFeedListener } from './per-feed-listener'
@@ -703,7 +703,7 @@ import { ulid } from 'ulid'
 import type { ExternalFeed } from '@wardenx/db/schema/external-interfaces'
 import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { PerFeedListenerDeps } from './per-feed-listener'
 
 export class FrameHandler {
@@ -737,7 +737,7 @@ export class FrameHandler {
       .digest('hex')
 
     // Idempotency check
-    const existing = await withTenantContext(
+    const existing = await withOrgContext(
       this.deps.db,
       { organizationId: this.feed.organizationId },
       async (tx) => {
@@ -770,7 +770,7 @@ export class FrameHandler {
 
     // Persist
     const messageId = ulid()
-    await withTenantContext(this.deps.db, { organizationId: this.feed.organizationId }, async (tx) => {
+    await withOrgContext(this.deps.db, { organizationId: this.feed.organizationId }, async (tx) => {
       await tx.insert(hl7MessageInbound).values({
         id: messageId,
         organizationId: this.feed.organizationId,
@@ -900,7 +900,7 @@ function mintAck(code: 'AA' | 'AE' | 'AR', mcid: string, sendingFacility: string
 import type { SupervisorDeps } from './supervisor'
 import type { PerFeedListener } from './per-feed-listener'
 import { externalFeedHealth } from '@wardenx/db/schema/external-interfaces'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 const LISTENER_DOWN_THRESHOLD_MS = 5 * 60 * 1000  // 5min platform-floor (D17)
 
@@ -1019,7 +1019,7 @@ export class HealthProbe {
     const orgId = (listener as { feedOrg?: string }).feedOrg ?? ''
     if (!orgId) return
 
-    await withTenantContext(this.deps.db, { organizationId: orgId }, async (tx) => {
+    await withOrgContext(this.deps.db, { organizationId: orgId }, async (tx) => {
       await tx
         .insert(externalFeedHealth)
         .values({
@@ -1215,7 +1215,7 @@ import { pino } from 'pino'
 import { db } from '@wardenx/db'
 import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { createSidecarClient } from '@wardenx/hl7-worker'
 import { mkKmsEnvelope } from '@wardenx/foundation/seams/kms'
 import { mkOutbox } from '@wardenx/foundation/seams/outbox'
@@ -1244,7 +1244,7 @@ export const hl7InboundParseWorker = new Worker<ParseJobData>(
     logger.info({ messageId, feedId }, 'hl7.parse.worker.begin')
 
     // 1. Load the row
-    const message = await withTenantContext(db, { organizationId }, async (tx) => {
+    const message = await withOrgContext(db, { organizationId }, async (tx) => {
       const [row] = await tx
         .select()
         .from(hl7MessageInbound)
@@ -1268,7 +1268,7 @@ export const hl7InboundParseWorker = new Worker<ParseJobData>(
       })
 
       // 4. Persist parse_status = 'parsed'
-      await withTenantContext(db, { organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId }, async (tx) => {
         await tx
           .update(hl7MessageInbound)
           .set({ parseStatus: 'parsed' })
@@ -1297,7 +1297,7 @@ export const hl7InboundParseWorker = new Worker<ParseJobData>(
       logger.info({ messageId, messageType: message.messageType, parsedSegments: parsed.segmentsList?.length ?? 0 }, 'hl7.parse.worker.success')
     } catch (err) {
       logger.error({ err, messageId }, 'hl7.parse.worker.error')
-      await withTenantContext(db, { organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId }, async (tx) => {
         await tx
           .update(hl7MessageInbound)
           .set({

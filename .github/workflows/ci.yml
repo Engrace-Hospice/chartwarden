@@ -113,6 +113,7 @@ jobs:
           - { name: "M8 Encounters", script: "test:rls:live:m8" }
           - { name: "M9 Assessments", script: "test:rls:live:m9" }
           - { name: "M10 HOPE", script: "test:rls:live:m10" }
+          - { name: "FK index coverage", script: "test:fk-indexes:live" }
           - { name: "M11 Orders", script: "test:rls:live:m11" }
           - { name: "M12 DoseSpot", script: "test:rls:live:m12" }
           - { name: "M13 eMAR", script: "test:rls:live:m13" }

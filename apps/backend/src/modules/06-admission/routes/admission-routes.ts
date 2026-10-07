@@ -436,7 +436,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const q = parse(ReferralListQuerySchema, request.query);
-      return service.listReferrals(organizationId, q, userId);
+      // GAP-182 — `referral.scope` guards the single-referral routes; the list applies the same location
+      // scope as a row filter (a location-restricted caller no longer sees every site's referrals).
+      const locationIds = request.context.locationIds;
+      return service.listReferrals(
+        organizationId,
+        q,
+        userId,
+        locationIds.length > 0 ? { locationIds: [...locationIds] } : undefined,
+      );
     },
   );
 

@@ -1601,7 +1601,7 @@ export interface PatientReader {
 import { db } from '@wardenx/db'
 import { patient, patientIdentifier } from '@wardenx/db/schema/patient'
 import { sql, eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { PatientReader, PatientIdentity } from '@wardenx/foundation/seams'
 import type { Logger } from 'pino'
 
@@ -1613,7 +1613,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByMrn(input: { organizationId: string; mrn: string }): Promise<PatientIdentity | null> {
     return await this.timed('findByMrn', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select({
             id: patient.id,
@@ -1642,7 +1642,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByExternalMrn(input: { organizationId: string; assigningAuthority: string; value: string }): Promise<PatientIdentity | null> {
     return await this.timed('findByExternalMrn', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const normalized = input.assigningAuthority.toUpperCase()
         const rows = await tx
           .select({
@@ -1673,7 +1673,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findBySsnLast4AndDob(input: { organizationId: string; ssnLast4: string; dateOfBirth: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findBySsnLast4AndDob', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select({
             id: patient.id,
@@ -1703,7 +1703,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByNameDobSex(input: { organizationId: string; lastName: string; firstName: string; dateOfBirth: string; administrativeSex: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findByNameDobSex', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select(/* same projection as above */)
           .from(patient)
@@ -1724,7 +1724,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByLooseName(input: { organizationId: string; lastName: string; firstNameInitial?: string; dateOfBirth: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findByLooseName', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const conds = [
           eq(patient.organizationId, input.organizationId),
           sql`LOWER(${patient.legalLastName}) = LOWER(${input.lastName})`,
@@ -1748,7 +1748,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findById(input: { organizationId: string; id: string }): Promise<PatientIdentity | null> {
     return await this.timed('findById', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const [row] = await tx
           .select(/* projection */)
           .from(patient)
@@ -1954,7 +1954,7 @@ export interface PatientMutator {
 import { db } from '@wardenx/db'
 import { patient, patientIdentifier, patientAddress, patientNameAlias, patientPhone, patientEmail, patientCommunicationPreference } from '@wardenx/db/schema/patient'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { ulid } from 'ulid'
 import type { PatientMutator, PatientMutatorInput, PatientMutatorResult } from '@wardenx/foundation/seams'
 import { PatientNotFoundError, PatientMergeRedirectError } from '@wardenx/foundation/seams'
@@ -2012,7 +2012,7 @@ export class PatientMutatorImpl implements PatientMutator {
     }
 
     // 2. Load patient + check merge-redirect refusal
-    return await withTenantContext(db, { organizationId }, async (tx) => {
+    return await withOrgContext(db, { organizationId }, async (tx) => {
       const [row] = await tx
         .select({ id: patient.id, mergedIntoId: patient.mergedIntoId, status: patient.status })
         .from(patient)

@@ -1799,7 +1799,7 @@ Ten scenarios; each is implemented as both an integration test (Testcontainers +
 
 ### 8.1 Row-Level Security (RLS)
 
-All eleven owned tables (§13 manifest patch) enable RLS with the platform-standard `tenant_isolation_pgrole` policy: every connection sets `app.tenant_id` via `set_config()`; the RLS policy requires `tenant_id = current_setting('app.tenant_id')::uuid`. There is no SUPERUSER bypass in application code; the only roles permitted to bypass RLS are migration roles (`migrator_pgrole`) used during schema deployment and the platform-admin break-glass role audited via M4.
+All eleven owned tables (§13 manifest patch) enable RLS with the platform-standard `tenant_isolation_pgrole` policy: every connection sets `app.org_id` via `set_config()`; the RLS policy requires `organization_id = current_setting('app.org_id', true)::uuid`. There is no SUPERUSER bypass in application code; the only roles permitted to bypass RLS are migration roles (`migrator_pgrole`) used during schema deployment and the platform-admin break-glass role audited via M4.
 
 `patient_responsibility_ledger` and `appeal_case` carry an additional `patient_id`-scoped row filter applied at the M3 ABAC layer (not RLS) so that field-clinical role queries (read-only) return only patients in the caller's caseload via `belongsToCaseload.<role>` predicates.
 

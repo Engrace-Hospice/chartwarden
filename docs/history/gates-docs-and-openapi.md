@@ -103,3 +103,22 @@
   runs `--check` mode (`arch:frame-fidelity`) to keep `audit/frame-fidelity/` fresh and to hard-fail
   on an unknown frame node, a duplicate mapping, or a dangling screen id. Writes
   `audit/frame-fidelity/FRAME_FIDELITY.md` (+ `.json`).
+
+- **`check-module-docs` rule 6, BANNED (GAP-180).** ADR-0010 D2 bans `app.tenant_id` / `withTenantContext`
+  (canonical: `app.org_id` / `withOrgContext`), yet the M22/M25/M05/M11/M29 specs and the module-29 task
+  docs still prescribed them in ~90 code samples — an implementer following one writes an RLS policy on a
+  GUC nothing sets. They are normalised (including `tenant_id` columns in the M22/M25 policy prose), and
+  the gate now fails any module doc that prescribes either spelling; a line that says the token is
+  banned/removed/renamed (the M02/M31 changelog rows) is exempt (`scripts/lib/banned-rls-tokens.ts`).
+- **`check-ui-screens` check 6, STATUS PARITY (GAP-186).** `ui:parity` only counts specs against screens.
+  `docs/design/SCREEN_SPEC_STATUS.md` is the per-spec join — one row per indexed spec, `built` / `partial` /
+  `deferred`, the registered screen set(s) (`<app>/<module-dir>`, validated against `ui-parity.json`) and,
+  for every spec with no screen (wound care, prior auth, grievances, accreditation, OIG, the six external
+  portals, …), the reason. `docs:ui` fails on a missing/duplicate/orphan row, an unknown screen set, or a
+  deferred row without a reason.
+- **GAP-179 / GAP-187 / GAP-188 (stale prose).** The frame-fidelity notes for the eMAR, Encounter and
+  Patient-chart frames described unbuilt write paths / unbound reads that exist (the eMAR `AdministerModal`,
+  the bound HearthNote selections, the care-plan and admission chart cards); `DEFERRED_SCREENS.md` no longer
+  calls read-only M26 "done" or restates a screen count; the `main.tsx` composition-root headers no longer say
+  nothing is registered; the M23 boot comment, the M22 eraser and the dead `M39_CONSENT_CONSUMER_DEFERRED`
+  constant no longer describe live wiring as unbound.

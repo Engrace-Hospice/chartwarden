@@ -133,7 +133,7 @@ const parsedJson = JSON.stringify(parsed)
 const parsedSegmentsCipher = await envelope.encrypt(parsedJson, { organizationId })
 const parsedSegmentsSha256 = crypto.createHash('sha256').update(parsedJson).digest('hex')
 
-await withTenantContext(db, { organizationId }, async (tx) => {
+await withOrgContext(db, { organizationId }, async (tx) => {
   await tx
     .update(hl7MessageInbound)
     .set({ parseStatus: 'parsed', parsedSegmentsCipher, parsedSegmentsSha256 })
@@ -248,7 +248,7 @@ import type { Logger } from 'pino'
 import { ulid } from 'ulid'
 import { hl7MessageInbound, hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { KmsEnvelopeEncryptor } from '@wardenx/foundation/seams'
 import { MESSAGE_TYPE_ROUTING, isSupportedAdt, type Hl7InboundProposalKind, type OwnerModule } from './message-type-routing'
 import { db } from '@wardenx/db'
@@ -435,7 +435,7 @@ async function createPendingProposal(input: CreatePendingProposalInput, deps: Ca
   // For T-29.06 we rely on the cascade-consumer being run once per outbox event (BullMQ idempotency)
   // and the outbox table's own dedup. A subsequent migration may add a hard UNIQUE constraint.
 
-  await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
     await tx.insert(hl7InboundProposal).values({
       id: proposalId,
       organizationId: input.organizationId,
@@ -474,7 +474,7 @@ async function createPendingProposal(input: CreatePendingProposalInput, deps: Ca
 }
 
 async function loadParsedPid(messageId: string, organizationId: string, deps: CascadeConsumerDeps): Promise<object | null> {
-  const [row] = await withTenantContext(db, { organizationId }, async (tx) =>
+  const [row] = await withOrgContext(db, { organizationId }, async (tx) =>
     tx.select({
       cipher: hl7MessageInbound.parsedSegmentsCipher,
     }).from(hl7MessageInbound).where(eq(hl7MessageInbound.id, messageId)).limit(1),
@@ -500,7 +500,7 @@ Path: `apps/backend/src/modules/29-external-interfaces/proposals/decision-engine
 // apps/backend/src/modules/29-external-interfaces/proposals/decision-engine.ts
 import { hl7InboundProposal, type Hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { db } from '@wardenx/db'
 import type { Outbox } from '@wardenx/foundation/outbox'
 import type { Logger } from 'pino'
@@ -562,7 +562,7 @@ export class DecisionEngine {
    * Returns the post-update row. Throws ConcurrentDecisionError if 0 rows affected.
    */
   async accept(input: AcceptInput): Promise<Hl7InboundProposal> {
-    const row = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const row = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       const result = await tx
         .update(hl7InboundProposal)
         .set({
@@ -618,7 +618,7 @@ export class DecisionEngine {
       throw new DecisionNoteRequiredError()
     }
 
-    const row = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const row = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       const result = await tx
         .update(hl7InboundProposal)
         .set({
@@ -663,7 +663,7 @@ export class DecisionEngine {
       throw new DecisionNoteRequiredError()
     }
 
-    const row = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const row = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       const result = await tx
         .update(hl7InboundProposal)
         .set({
@@ -706,7 +706,7 @@ export class DecisionEngine {
    * expire-sweep worker. Single statement; no per-row work.
    */
   async expireSweep(organizationId: string, now: Date = new Date()): Promise<number> {
-    const rows = await withTenantContext(db, { organizationId }, async (tx) =>
+    const rows = await withOrgContext(db, { organizationId }, async (tx) =>
       tx
         .update(hl7InboundProposal)
         .set({
@@ -739,7 +739,7 @@ export class DecisionEngine {
   }
 
   private async exists(proposalId: string, organizationId: string): Promise<boolean> {
-    const [row] = await withTenantContext(db, { organizationId }, async (tx) =>
+    const [row] = await withOrgContext(db, { organizationId }, async (tx) =>
       tx
         .select({ id: hl7InboundProposal.id })
         .from(hl7InboundProposal)
@@ -766,7 +766,7 @@ import { Type } from '@sinclair/typebox'
 import { DecisionEngine, ConcurrentDecisionError, DecisionNoteRequiredError, UnknownProposalError } from '../proposals/decision-engine'
 import { hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
 import { and, eq, desc } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { db } from '@wardenx/db'
 import { requirePermissions } from '@wardenx/foundation/auth'
 import { requirePredicate } from '@wardenx/foundation/abac'
@@ -805,7 +805,7 @@ export function registerProposalRoutes(app: FastifyInstance, decisionEngine: Dec
       const { ownerModule, proposalStatus = 'pending', limit = 50 } = req.query as { ownerModule?: string; proposalStatus?: string; limit?: number }
       const organizationId = req.user!.organizationId
 
-      const rows = await withTenantContext(db, { organizationId }, async (tx) => {
+      const rows = await withOrgContext(db, { organizationId }, async (tx) => {
         const conds = [eq(hl7InboundProposal.proposalStatus, proposalStatus as any)]
         if (ownerModule) conds.push(eq(hl7InboundProposal.ownerModule, ownerModule))
         return tx
@@ -839,7 +839,7 @@ export function registerProposalRoutes(app: FastifyInstance, decisionEngine: Dec
     async (req) => {
       const { id } = req.params as { id: string }
       const organizationId = req.user!.organizationId
-      const [row] = await withTenantContext(db, { organizationId }, async (tx) =>
+      const [row] = await withOrgContext(db, { organizationId }, async (tx) =>
         tx
           .select()
           .from(hl7InboundProposal)
@@ -969,7 +969,7 @@ This predicate is **owned by M3** (Authorization) per the architecture; M29 cont
 import type { PredicateContext } from '../predicate-types'
 import { hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 /**
  * Enforces that the caller deciding a proposal holds the EDIT permission on the
@@ -991,7 +991,7 @@ export const hl7InboundProposalOwnerModuleMatch = {
       return { allow: false, reason: 'predicate_misconfigured_no_proposal_resource' }
     }
 
-    const [row] = await withTenantContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
+    const [row] = await withOrgContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
       tx
         .select({ ownerModule: hl7InboundProposal.ownerModule, organizationId: hl7InboundProposal.organizationId })
         .from(hl7InboundProposal)

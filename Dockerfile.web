@@ -18,6 +18,7 @@ RUN apk upgrade --no-cache
 USER nginx
 
 COPY deploy/production/web-nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/production/web-security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/apps/web/dist/app /usr/share/nginx/html
 
 EXPOSE 8080

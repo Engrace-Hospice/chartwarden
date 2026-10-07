@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1402,
     "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "directRoutesReferenced": 1352
   },
   "modules": [
     {
@@ -121,7 +121,7 @@
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
-      "directRoutesReferenced": 24
+      "directRoutesReferenced": 25
     },
     {
       "module": "08-encounters",
@@ -142,7 +142,7 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 15
+      "directRoutesReferenced": 17
     },
     {
       "module": "10-hope",

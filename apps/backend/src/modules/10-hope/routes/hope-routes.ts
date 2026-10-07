@@ -20,9 +20,10 @@
 // predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
 // /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
 // this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import {
   AdmissionParamsSchema,
   AssembleSubmissionSchema,
@@ -64,6 +65,35 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface HopeRouteDeps {
   service: HopeRouteService;
+  /**
+   * The patients on a clinician's caseload (GAP-182) — defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
+   */
+  caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<
+    readonly string[]
+  >;
+}
+
+/**
+ * GAP-182 — the caseload narrowing the org-wide HOPE SFV worklist applies. Org-wide scope
+ * roles are unrestricted (`null`); everyone else sees their caseload plus the one patient a pinned
+ * session names. Fail-CLOSED: a caseload that cannot be resolved narrows to the session patient (or nothing).
+ */
+async function listScopeOf(
+  request: FastifyRequest,
+  lookup: NonNullable<HopeRouteDeps["caseloadPatientIds"]>,
+): Promise<readonly string[] | null> {
+  const ctx = request.context;
+  if (hasOrgWideScope(ctx.roles)) return null;
+  const pinned = ctx.attributes?.sessionPatientId;
+  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
+  if (!ctx.userId) return sessionIds;
+  try {
+    const caseload = await lookup({ organizationId: ctx.organizationId, userId: ctx.userId });
+    return [...new Set([...caseload, ...sessionIds])];
+  } catch {
+    return sessionIds;
+  }
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -162,6 +192,8 @@ const SCOPE_BODY_PE = (action: string): PreHandler =>
 
 export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): void {
   const { service } = deps;
+  const caseloadPatientIds =
+    deps.caseloadPatientIds ?? ((q) => getSeam("CaseloadProvider").caseloadPatientIds(q));
 
   // 0 — admission-scoped operational HOPE workflow summary. This Phase-2 read model lets the web
   // overview render fixed RFA schedules and dynamic SFVs from one PHI-minimal M10 response.
@@ -189,6 +221,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ScheduleListQuerySchema, request.query);
+      // No caseload narrowing here: `hope.scope` (SCOPE_QUERY_PATIENT) already admits an unfiltered list only
+      // to the org-wide scope roles, and a named `patientId` is checked against the caseload.
       return service.listSchedules(organizationId, {
         patientId: q.patientId,
         status: q.status,
@@ -430,9 +464,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 12 — open / overdue / missed SFV worklist. §4.1 ABAC = "caseload", but this route names no patient
-  // filter at all (state-only query) — a pure org-wide worklist, deliberately left unwired to `hope.scope`
-  // (M6/M7/M8/M9 precedent: a route with nothing to scope by gets RBAC + RLS only, not a guard that would
-  // always fall through to its permissive empty-target branch).
+  // filter at all (state-only query), so there is no id for `hope.scope` to guard. GAP-182: the caseload is
+  // applied as a QUERY narrowing instead (`listScopeOf`) — org-wide scope roles see the whole worklist,
+  // everyone else only their caseload's rows.
   app.get(
     "/api/v1/hope/sfv",
     {
@@ -442,7 +476,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(SfvWorklistQuerySchema, request.query);
-      return service.listSfv(organizationId, q.state);
+      return service.listSfv(
+        organizationId,
+        q.state,
+        (await listScopeOf(request, caseloadPatientIds)) ?? undefined,
+      );
     },
   );
 

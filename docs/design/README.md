@@ -19,6 +19,7 @@ module specs (`docs/modules/`), but it is grounded in them.
 | **Module ↔ Pencil ledger** | [`SCREENS.md`](./SCREENS.md) | *Which module owns it, and is it designed yet?* Maps every screen to M1–M40 + pattern + Pencil status. |
 | **Pencil prompts** | [`pencil-prompts/`](./pencil-prompts/) | *How do we generate it?* Phase-batched (P0→P14 core+breadth, D1→D7 depth) per-screen prompts fusing design system + pattern + spec, plus the Pencil MCP workflow. |
 | **Frontend status** | [`DEFERRED_SCREENS.md`](./DEFERRED_SCREENS.md) | *Is it built in the app?* Implementation tracking (Track B / ADR-0030). |
+| **Per-spec status** | [`SCREEN_SPEC_STATUS.md`](./SCREEN_SPEC_STATUS.md) | *Which specs have no screen?* One row per indexed spec, built / partial / deferred, with the reason (enforced by `docs:ui`). |
 | **Frame fidelity** | [`FRAME_FIDELITY_PLAYBOOK.md`](./FRAME_FIDELITY_PLAYBOOK.md) | *Does a built screen's layout match its Pencil frame?* The repeatable process + the `bun run frame:fidelity` tracker (`audit/frame-fidelity/`). |
 
 ## The four-layer model

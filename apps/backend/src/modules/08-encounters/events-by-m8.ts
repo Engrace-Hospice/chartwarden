@@ -312,8 +312,9 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: Type.String({ minLength: 1 }),
       recordedAt: Type.String({ minLength: 1 }),
     }),
-    // F-164 (#248) — m17 REMOVED: this event has NO production emitter anywhere in `08-encounters/`
-    // (grep-confirmed against all 13 real `emit(...)` call sites), so binding an M17 consumer to it
+    // GAP-177 — emitted at sign time (beside `.signed`) when `visit_id` is NULL; record/seam-only.
+    // F-164 (#248) — m17 REMOVED: this event had NO production emitter in `08-encounters/` when F-164
+    // grep-confirmed it (against all 13 real `emit(...)` call sites), so binding an M17 consumer to it
     // would wire a line to a house never built. Independently redundant even if it were built: the
     // identical fact — a just-signed encounter with no `visit_id` — is already delivered to M17 TODAY
     // via the live `m17.m8-encounter-signed` consumer (`17-scheduling/consumers/index.ts`), whose own

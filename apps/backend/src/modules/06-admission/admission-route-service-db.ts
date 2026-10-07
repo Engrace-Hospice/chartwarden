@@ -2086,11 +2086,19 @@ export function createDbAdmissionRouteService(
 
   return {
     // ── Referral reads ───────────────────────────────────────────────────────────────────────────
-    async listReferrals(organizationId, query, actorUserId) {
+    async listReferrals(organizationId, query, actorUserId, scope) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const limit = clampLimit(query.limit);
         const offset = parseOffset(query.cursor);
         const filters: SQL[] = [];
+        // GAP-182 — mirror `referral.scope`: no location (org-level) OR one of the caller's locations.
+        if (scope) {
+          filters.push(
+            scope.locationIds.length > 0
+              ? (or(isNull(REF.locationId), inArray(REF.locationId, [...scope.locationIds])) as SQL)
+              : isNull(REF.locationId),
+          );
+        }
         const status = query.status ?? query.state;
         if (status) filters.push(eq(REF.status, status as never));
         else if (!query.includeConverted) filters.push(ne(REF.status, "converted"));
@@ -2835,6 +2843,14 @@ export function createDbAdmissionRouteService(
           aggregateKind: "referral",
           aggregateId: id,
         });
+        // GAP-177 — the triage OUTCOME itself is catalogued (`m6.referral.triaged`) and had no emit site.
+        await outbox.publish(tx, {
+          eventName: "m6.referral.triaged",
+          payload: { referralId: id, outcome },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -2845,7 +2861,9 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult & { admissionId: string }> {
-      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
+      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId, {
+        emitAccepted: true,
+      });
     },
     async startReferralReview(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -3106,6 +3124,7 @@ export function createDbAdmissionRouteService(
       input,
       ifVersion,
       actorUserId,
+      opts,
     ): Promise<MutationResult & { admissionId: string }> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
@@ -3235,6 +3254,17 @@ export function createDbAdmissionRouteService(
           aggregateKind: "referral",
           aggregateId: id,
         });
+        // GAP-177 — route 6 (accept) is the same transition seen from the intake desk; it is catalogued
+        // as its own event (record-only, M36 seam) and had no emit site.
+        if (opts?.emitAccepted) {
+          await outbox.publish(tx, {
+            eventName: "m6.referral.accepted",
+            payload: { referralId: id, patientId, admissionId: adm.id },
+            organizationId,
+            aggregateKind: "referral",
+            aggregateId: id,
+          });
+        }
         return {
           id: r.id,
           state: r.status,
@@ -3471,6 +3501,13 @@ export function createDbAdmissionRouteService(
           authorId: actorUserId || null,
           content: `Pending information requested: ${reason}`,
         });
+        await outbox.publish(tx, {
+          eventName: "m6.referral.pending_information",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -3510,6 +3547,13 @@ export function createDbAdmissionRouteService(
             reason: reason ?? null,
           },
         );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.duplicate",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

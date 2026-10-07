@@ -175,6 +175,22 @@ echo "$body" | grep -qi "<div id=\"root\"\|<!doctype html" \
   || fail "tier3/web" "$app_url/ answered but did not serve the SPA document"
 ok "web app served at $app_url over TLS"
 
+# §9.6 / GAP-185 — the SPA document must carry the browser-side defenses. They are set by the web
+# container's nginx (deploy/production/web-security-headers.conf), which the host vhost proxies; a
+# missing header means the include was dropped from a location (nginx does not inherit add_header) or
+# the host vhost started stripping them. Assert on the real response, not on the config.
+app_headers=$($CURL -I "$app_url/" || true)
+for expected in \
+  "content-security-policy:.*frame-ancestors 'none'" \
+  "x-frame-options: *deny" \
+  "x-content-type-options: *nosniff" \
+  "referrer-policy:" \
+  "strict-transport-security:"; do
+  echo "$app_headers" | grep -qi "^$expected" \
+    || fail "tier3/headers" "$app_url/ response is missing the security header matching /$expected/ (SECURITY_HARDENING §9.6)"
+done
+ok "web app carries the §9.6 security headers (CSP frame-ancestors, X-Frame-Options, nosniff, Referrer-Policy, HSTS)"
+
 # ── tier 4: a real session, and a tenant-scoped read ────────────────────────────────────────────────
 #
 # The synthetic account should hold the LEAST privilege that still proves the stack: it needs to

@@ -251,7 +251,7 @@ import {
   externalFeed,
 } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { rotationMachine } from './rotation-state-machine'
 import { createActor } from 'xstate'
 import type { CredentialBuilder } from './credential-builder'
@@ -293,7 +293,7 @@ export class RotationService {
       throw new Error('rationale_too_short')
     }
 
-    const result = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const result = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       // Resolve the current active credential for the feed
       const [active] = await tx
         .select()
@@ -344,7 +344,7 @@ export class RotationService {
     if (row.requesterMembershipId === input.coApproverMembershipId) throw new DistinctApproverRequiredError()
 
     // Atomic transition: UPDATE WHERE state = 'requested'
-    const updated = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const updated = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       const result = await tx
         .update(credentialRotationRequest)
         .set({
@@ -386,7 +386,7 @@ export class RotationService {
     if (row.state !== 'co_approved') throw new RotationNotInRequiredStateError(row.state, 'co_approved')
 
     // Atomic transition to executing (guards against double-execute race)
-    const reserved = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    const reserved = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       const result = await tx
         .update(credentialRotationRequest)
         .set({ state: 'executing', executorMembershipId: input.executorMembershipId, executedAt: new Date() })
@@ -402,7 +402,7 @@ export class RotationService {
 
     try {
       // 1. Get the feed to determine credential kind (inbound vs outbound)
-      const [feed] = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) =>
+      const [feed] = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) =>
         tx.select().from(externalFeed).where(eq(externalFeed.id, row.feedId)).limit(1),
       )
       if (!feed) throw new Error('feed_not_found')
@@ -417,7 +417,7 @@ export class RotationService {
 
       // 3. Persist new credential as 'pending' (atomically, also flipping the old to 'retired')
       const newCredentialId = ulid()
-      const [oldCred] = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      const [oldCred] = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         // Insert new
         await tx.insert(externalFeedCredential).values({
           id: newCredentialId,
@@ -442,7 +442,7 @@ export class RotationService {
       })
 
       // 4. Mark rotation completed
-      await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         await tx
           .update(credentialRotationRequest)
           .set({ state: 'completed', newCredentialId })
@@ -485,7 +485,7 @@ export class RotationService {
     } catch (err) {
       // Rollback: flip rotation to rolled_back, attempt to leave old credential as 'active'
       this.deps.logger.error({ err, rotationId: input.rotationId }, 'rotation.execute.failed')
-      await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         await tx
           .update(credentialRotationRequest)
           .set({ state: 'rolled_back', errorMessage: (err as Error).message })
@@ -518,7 +518,7 @@ export class RotationService {
       throw new Error('only_requester_or_coapprover_may_cancel')
     }
 
-    await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       await tx
         .update(credentialRotationRequest)
         .set({ state: 'cancelled' })
@@ -543,7 +543,7 @@ export class RotationService {
   }
 
   private async loadRotation(rotationId: string, organizationId: string) {
-    const [row] = await withTenantContext(db, { organizationId }, async (tx) =>
+    const [row] = await withOrgContext(db, { organizationId }, async (tx) =>
       tx
         .select()
         .from(credentialRotationRequest)
@@ -851,7 +851,7 @@ Per M29 v0.3 §4.7 (D20), the predicate `external_feed_compliance_co_approver_di
 import type { PredicateContext } from '../predicate-types'
 import { credentialRotationRequest } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 export const externalFeedComplianceCoApproverDistinct = {
   name: 'external_feed_compliance_co_approver_distinct' as const,
@@ -862,7 +862,7 @@ export const externalFeedComplianceCoApproverDistinct = {
       return { allow: false, reason: 'predicate_misconfigured_wrong_resource' }
     }
 
-    const [row] = await withTenantContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
+    const [row] = await withOrgContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
       tx
         .select({
           requesterMembershipId: credentialRotationRequest.requesterMembershipId,

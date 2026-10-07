@@ -2071,7 +2071,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { document, documentVersion } from '@wardenx/db/schema/documents'
 import { renderFormTemplate } from '@wardenx/forms'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface M11ResultsReceivedPayload {
   readonly orderId: string
@@ -2104,7 +2104,7 @@ async function renderLabResultsPdf(
   payload: M11ResultsReceivedPayload,
   opts: { logger: Logger; critical: boolean },
 ): Promise<void> {
-  await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) => {
     // 1. Load the observation via M29's LabObservationReader seam (NOT direct schema import)
     const observation = await SeamRegistry.get('LabObservationReader').loadById(
       payload.organizationId, payload.observationId,
@@ -2832,11 +2832,11 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 
 All tables in §3.3 ship with RLS enabled. Policy patterns:
 
-- **`document`, `document_version`, `document_tag`, `document_access_log`, `document_legal_hold`**: SELECT/INSERT/UPDATE/DELETE policies all check `tenant_id = current_setting('app.tenant_id')::uuid`. Additionally, SELECT on `document` and `document_version` checks `EXISTS (assigned_to_patient_or_role_bypass)` via a SECURITY INVOKER function `m22.user_can_read_document(document_id)` that wraps M5 care-team checks.
-- **`form_template`, `form_template_version`**: tenant_id is nullable for platform-floor rows; SELECT policy: `tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id')::uuid`. INSERT/UPDATE/DELETE on platform-floor rows requires the special `platform_owner_session` setting (set only by platform-level migration/admin processes, never by tenant sessions).
-- **`tenant_template_overlay`**: standard tenant_id RLS.
-- **`form_fill`**: standard tenant_id RLS; additionally, an `executor_id` check restricts non-admin to their own fills.
-- **`intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_discrepancy`, `extraction_review`, `extraction_decision`, `extraction_provenance`**: standard tenant_id RLS plus, for non-admin roles, an additional check that the user is in the patient's care team OR is the assigned reviewer.
+- **`document`, `document_version`, `document_tag`, `document_access_log`, `document_legal_hold`**: SELECT/INSERT/UPDATE/DELETE policies all check `organization_id = current_setting('app.org_id', true)::uuid`. Additionally, SELECT on `document` and `document_version` checks `EXISTS (assigned_to_patient_or_role_bypass)` via a SECURITY INVOKER function `m22.user_can_read_document(document_id)` that wraps M5 care-team checks.
+- **`form_template`, `form_template_version`**: `organization_id` is nullable for platform-floor rows; SELECT policy: `organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid`. INSERT/UPDATE/DELETE on platform-floor rows requires the special `platform_owner_session` setting (set only by platform-level migration/admin processes, never by tenant sessions).
+- **`tenant_template_overlay`**: standard `organization_id` RLS.
+- **`form_fill`**: standard `organization_id` RLS; additionally, an `executor_id` check restricts non-admin to their own fills.
+- **`intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_discrepancy`, `extraction_review`, `extraction_decision`, `extraction_provenance`**: standard `organization_id` RLS plus, for non-admin roles, an additional check that the user is in the patient's care team OR is the assigned reviewer.
 
 ### 8.3 Field-Level Encryption
 

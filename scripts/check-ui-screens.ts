@@ -13,6 +13,10 @@
  *   3. PATTERN RESOLUTION — every pattern token in a `Use A + B.` declaration
  *      resolves to a pattern defined in WARDENX_UI_LAYOUT_PATTERNS.md (a `### Name`
  *      base/foundational heading, or a Tier-3 modifier table row).
+ *   6. STATUS PARITY (GAP-186) — SCREEN_SPEC_STATUS.md has exactly one row per indexed spec,
+ *      a status of built|partial|deferred, a registered screen set (as listed in
+ *      audit/ui-parity/ui-parity.json) on every built/partial row, and a reason on every
+ *      deferred row. `ui:parity` only COUNTS specs vs screens; this is the per-spec join.
  *
  * Authoritative-by-construction: the glossary is the source of truth for pattern
  * names; the index is the source of truth for the screen set. This check asserts
@@ -144,6 +148,70 @@ for (const rel of listAllMd(UI_DIR)) {
         fail("dead-link", `${rel}:${i + 1} relative link \`${m[1]}\` does not resolve`);
     }
   }
+}
+
+// ---- 6. STATUS PARITY: docs/design/SCREEN_SPEC_STATUS.md joins every indexed spec to a screen set ----
+const STATUS_FILE = join(UI_DIR, "SCREEN_SPEC_STATUS.md");
+const STATUS_VALUES = new Set(["built", "partial", "deferred"]);
+const statusRows = new Map<string, { status: string; modules: string[]; note: string }>();
+if (!existsSync(join(REPO_ROOT, STATUS_FILE))) {
+  fail("status-missing", `${STATUS_FILE} is missing — every indexed spec needs a status row`);
+} else {
+  let registered = new Set<string>();
+  try {
+    const parity = JSON.parse(read("audit/ui-parity/ui-parity.json")) as {
+      registeredModules?: string[];
+    };
+    registered = new Set(parity.registeredModules ?? []);
+  } catch {
+    fail(
+      "status-parity-json",
+      "audit/ui-parity/ui-parity.json is unreadable (run `bun run ui:parity`)",
+    );
+  }
+  for (const line of read(STATUS_FILE).split("\n")) {
+    const m = /^\|\s*`(screens\/[^`]+\.md)`\s*\|\s*([a-z]+)\s*\|([^|]*)\|([^|]*)\|\s*$/.exec(line);
+    if (!m) continue;
+    const [, spec, status, modulesCell, note] = m as unknown as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
+    if (statusRows.has(spec))
+      fail("status-duplicate", `${spec} has more than one row in SCREEN_SPEC_STATUS.md`);
+    const modules = [...modulesCell.matchAll(/`([^`]+)`/g)].map((x) => x[1]!);
+    statusRows.set(spec, { status, modules, note: note.trim() });
+    if (!STATUS_VALUES.has(status))
+      fail("status-value", `${spec}: status '${status}' is not built|partial|deferred`);
+    if (status === "deferred" && note.trim().length === 0)
+      fail("status-reason", `${spec}: a deferred spec must state why it has no screen`);
+    if (status !== "deferred") {
+      if (modules.length === 0)
+        fail("status-modules", `${spec}: ${status} but cites no screen set`);
+      for (const mod of modules)
+        if (registered.size > 0 && !registered.has(mod))
+          fail(
+            "status-unknown-module",
+            `${spec}: '${mod}' is not a registered screen set in ui-parity.json`,
+          );
+    }
+    if (status === "deferred" && modules.length > 0)
+      fail(
+        "status-deferred-modules",
+        `${spec}: deferred but cites screen set(s) ${modules.join(", ")}`,
+      );
+  }
+  for (const e of indexEntries)
+    if (!statusRows.has(e))
+      fail("status-row-missing", `${e} is indexed but has no row in SCREEN_SPEC_STATUS.md`);
+  for (const spec of statusRows.keys())
+    if (!indexSet.has(spec))
+      fail(
+        "status-row-orphan",
+        `SCREEN_SPEC_STATUS.md has a row for ${spec}, which is not in the index`,
+      );
 }
 
 // ---- report ----

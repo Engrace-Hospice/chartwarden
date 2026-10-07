@@ -46,6 +46,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // GAP-182 — the M2 authenticate hook stamps `actorKind` ("system" for the internal-service credential).
+  const actorKind = request.headers["x-test-actor-kind"];
+  request.context.attributes.actorKind = typeof actorKind === "string" ? actorKind : "user";
 }
 
 const ORG = "org_a";
@@ -839,5 +842,29 @@ describe("GAP-015 — caseload scoping", () => {
       payload: {},
     });
     expect(allowed.statusCode).toBe(200);
+  });
+});
+
+describe("GAP-182 — /internal/assessments/* are system-principal-only seam routes", () => {
+  const LATEST = `/api/v1/internal/assessments/latest-batch?patientId=${PATIENT}&scaleTypes=pps`;
+  const SERIES = `/api/v1/internal/assessments/series-batch?patientId=${PATIENT}&scaleType=pps&from=2026-06-01&to=2026-06-30`;
+  const SYSTEM = { ...RN, "x-test-actor-kind": "system" };
+
+  it("refuses a HUMAN session that holds assessment.read (any patientId, no caseload check)", async () => {
+    const { app } = makeServer({}, { isInCaseload: async () => false });
+    for (const url of [LATEST, SERIES]) {
+      const res = await app.inject({ method: "GET", url, headers: RN });
+      expect(res.statusCode, url).toBe(403);
+    }
+    await app.close();
+  });
+
+  it("still serves the system principal that the M7/M10/M32 seams run as", async () => {
+    const { app } = makeServer();
+    for (const url of [LATEST, SERIES]) {
+      const res = await app.inject({ method: "GET", url, headers: SYSTEM });
+      expect(res.statusCode, url).toBe(200);
+    }
+    await app.close();
   });
 });

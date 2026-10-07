@@ -5,6 +5,7 @@
 // step-up decrypt route). Replay re-enqueues a parse_error/rejected inbound message; retry re-queues a
 // failed/dlq outbound message (D9). The compliance decrypt of a stored payload needs the per-tenant DEK,
 // which no module binds in Phase 1, so it fails closed with a typed 501 (honest "not yet", not a 404).
+import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -55,8 +56,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
       const actor = actorOf(request);
       const { messageId } = request.params as { messageId: string };
       const message = await store.getInboundMessage(actor.organizationId, messageId);
-      if (!message)
-        return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
+      if (!message) throw new NotFoundError("message");
       return { message };
     },
   );
@@ -142,8 +142,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
       const actor = actorOf(request);
       const { messageId } = request.params as { messageId: string };
       const message = await store.getOutboundMessage(actor.organizationId, messageId);
-      if (!message)
-        return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
+      if (!message) throw new NotFoundError("message");
       return { message };
     },
   );

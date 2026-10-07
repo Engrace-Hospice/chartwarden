@@ -724,9 +724,12 @@ import {
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
 // (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
-// stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
-// fail-closed-unbound at boot (RULE 4), so Phase-0 containment disables their construction; the assembly
-// reader seams + the live MAC/X12 binds are follow-ups.
+// stale-watch, MAC-portal health, the revalidate consumer). The domain + watchdog workers construct on every
+// db boot ("M23 domain + watchdog (+ launch) workers constructed"); the LAUNCH workers (claim/NOE/NOTR submit,
+// 999/277CA pulls) additionally need the X12 + MAC gateways, which bind from `M23_X12_GATEWAY_*` /
+// `M23_MAC_GATEWAY_*` (opt-out via `M23_LAUNCH_GATEWAY_ENABLED=false`; the production env validator
+// requires them). A port whose gateway is not configured stays fail-closed-unbound (RULE 4) — it is never
+// silently absent, and the other workers are unaffected.
 import {
   type M23BootAssemblyPorts,
   type M23HetsConfig,

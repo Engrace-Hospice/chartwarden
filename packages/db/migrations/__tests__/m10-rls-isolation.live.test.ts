@@ -48,6 +48,8 @@ type SeedIds = {
   finding: string;
   submission: string;
   submissionItem: string;
+  answer: string;
+  resultEvent: string;
 };
 
 // All six M10-owned tables are org-scoped (organization_id NOT NULL) and each carries a direct `<table>_org`
@@ -61,6 +63,14 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "hope_validation_finding", key: "finding" },
   { table: "hope_submission", key: "submission" },
   { table: "hope_submission_item", key: "submissionItem" },
+];
+
+// GAP-183 — org-scoped PHI tables whose RLS landed in a later migration than 0035 (the result event had NO
+// RLS until 0233) and so were never in the policy-shape list above: the per-item HOPE answers and the
+// iQIES validation-report result events.
+const EXTRA_COVERED: { table: string; key: keyof SeedIds }[] = [
+  { table: "hope_assessment_answer", key: "answer" },
+  { table: "hope_submission_result_event", key: "resultEvent" },
 ];
 
 describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -191,6 +201,45 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
       )
     ).rows[0].id as string;
 
+    // hope_spec_* are global (non-org) catalog tables; one fixture version/item per org keeps `code` unique.
+    const specVersion = (
+      await db.query(
+        `INSERT INTO hope_spec_version
+           (code, item_set_version, effective_from, effective_to, source_label, source_release)
+         VALUES ($1,'1.00','2025-10-01',NULL,'RLS fixture','FINAL') RETURNING id`,
+        [`RLS-M10-${n}`],
+      )
+    ).rows[0].id as string;
+    const specItem = (
+      await db.query(
+        `INSERT INTO hope_spec_item (spec_version_id, cms_item_master_key, item_code, database_item_code,
+           short_label, section_label, item_sort_order, section_sort_order, cms_item_type_code, kind,
+           source_metadata)
+         VALUES ($1,$2,'A0000',$3,'Fixture','Administrative',10,1,'C','assessment','{}'::jsonb)
+         RETURNING id`,
+        [specVersion, `RLS-KEY-${n}`, `A0000_DB_${n}`],
+      )
+    ).rows[0].id as string;
+
+    // hope_assessment_id carries NO FK (the table is range-partitioned), so the real assessment id is used.
+    const answer = (
+      await db.query(
+        `INSERT INTO hope_assessment_answer (organization_id, provider_entity_id, location_id,
+           hope_assessment_id, spec_version_id, spec_item_id, state, value, source)
+         VALUES ($1,$2,$3,$4,$5,$6,'answered','"yes"'::jsonb,'user') RETURNING id`,
+        [org, providerEntity, location, assessment, specVersion, specItem],
+      )
+    ).rows[0].id as string;
+
+    const resultEvent = (
+      await db.query(
+        `INSERT INTO hope_submission_result_event (organization_id, hope_submission_id, hope_submission_item_id,
+           report_hash, result_status)
+         VALUES ($1,$2,$3,'hash-abc','accepted') RETURNING id`,
+        [org, submission, submissionItem],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -201,6 +250,8 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
       finding,
       submission,
       submissionItem,
+      answer,
+      resultEvent,
     };
   }
 
@@ -247,7 +298,9 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
     }
   });
 
-  it.each(COVERED)(
+  // GAP-183 — tables whose RLS policy lives in a LATER migration than the file the policy-shape case above
+  // reads, so they are proven here by behaviour (and the catalog check below) rather than by policy text.
+  it.each([...COVERED, ...EXTRA_COVERED])(
     "$table: org A sees its row, org B cannot (cross-tenant denial)",
     async ({ table, key }) => {
       const id = a[key];

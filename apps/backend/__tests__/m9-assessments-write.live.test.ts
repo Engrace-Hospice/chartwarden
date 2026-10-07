@@ -234,13 +234,27 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
   });
 
   it("policy gate — a tenant-disabled scale is refused (SCALE_NOT_ENABLED → 403)", async () => {
+    const policyEvents = async (): Promise<number> =>
+      Number(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m9.scale.policy_changed'",
+          )
+        ).rows[0]?.n,
+      );
+    const before = await policyEvents();
     await svc.updatePolicy(ORG_A, "painad" as never, false);
+    // GAP-177 — a real change emits `m9.scale.policy_changed`; a repeat of the same value emits nothing.
+    expect(await policyEvents()).toBe(before + 1);
+    await svc.updatePolicy(ORG_A, "painad" as never, false);
+    expect(await policyEvents()).toBe(before + 1);
     await expect(
       svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
     ).rejects.toMatchObject({
       statusCode: 403,
     });
     await svc.updatePolicy(ORG_A, "painad" as never, true); // re-enable for the rest of the suite
+    expect(await policyEvents()).toBe(before + 2);
     const v = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
     expect(v.score).toBe(5);
   });
@@ -352,8 +366,13 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
         [ORG_A, providerA, locationA, rec.id],
       )
     ).rows[0]?.id as string;
-    const ack = await svc.acknowledgeChange(ORG_A, eventId);
+    const ack = await svc.acknowledgeChange(ORG_A, eventId, {
+      ackBy: recorderOf[ORG_A],
+      note: "seen",
+    });
     expect(ack.status).toBe("acknowledged");
+    // GAP-177 — the catalogued ack event is emitted (the real publisher validates its payload schema).
+    expect(await eventsFor(eventId)).toContain("m9.assessment.significant_change_acknowledged");
   });
 
   it("change-escalation cron escalates a 24h-unacknowledged CRITICAL change under the NULL (system) audit actor", async () => {
