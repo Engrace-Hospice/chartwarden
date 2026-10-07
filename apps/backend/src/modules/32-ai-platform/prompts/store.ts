@@ -23,6 +23,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import type { AiPromptTemplateStatus } from "@wardenx/types";
 import { and, asc, eq, like } from "drizzle-orm";
+import { type M32EventEmitter, capabilityIdentity } from "../events";
 
 /** An `ai_prompt_template` row, complete enough for both the summary and the detail projections. */
 export interface AiPromptTemplateRowProjection extends AiPromptTemplateSnapshot {
@@ -125,6 +126,8 @@ export interface AiPromptTemplateStoreDeps {
   readonly platformDb: DbClient;
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
   readonly jobId: string;
+  /** GAP-161 - same-tx `m32.prompt_template.activated` emit (absent in slice/tests). */
+  readonly events?: M32EventEmitter;
 }
 
 /** Escape LIKE's wildcards so a prefix containing `%` or `_` matches literally.
@@ -250,6 +253,19 @@ export function createDrizzleAiPromptTemplateStore(
             })
             .returning();
           if (!row) throw new Error("ai_prompt_template insert returned no row");
+          await deps.events?.emitInTx(tx, {
+            name: "m32.prompt_template.activated",
+            organizationId: null,
+            aggregate: { kind: "ai_prompt_template", id: row.id },
+            payload: {
+              ...(await capabilityIdentity(tx, { key: plan.insert.capabilityKey })),
+              promptTemplateId: row.id,
+              version: plan.insert.version,
+              supersededTemplateId: plan.deprecate?.id ?? null,
+              activatedByMembershipId: plan.insert.approvedByMembershipId,
+              contentHash: row.templateContentHash,
+            },
+          });
           return toTemplateRow(row);
         },
       ),

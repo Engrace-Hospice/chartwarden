@@ -175245,6 +175245,188 @@
         }
       }
     },
+    "/api/v1/platform/dsar-export-jobs": {
+      "get": {
+        "operationId": "getApiV1PlatformDsarexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Cross-tenant DSAR export jobs with SLA filtering (PHI-minimal; platform ops)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "requested",
+                  "type": "string"
+                },
+                {
+                  "const": "generating",
+                  "type": "string"
+                },
+                {
+                  "const": "review_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "extended",
+                  "type": "string"
+                },
+                {
+                  "const": "fulfilled",
+                  "type": "string"
+                },
+                {
+                  "const": "denied",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "slaBreached",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "orgSlug",
+                          "status",
+                          "requestSource",
+                          "requestedAt",
+                          "slaDueAt",
+                          "extendedUntil",
+                          "fulfilledAt",
+                          "slaBreached"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "orgSlug": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "requestSource": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "slaDueAt": {
+                            "type": "string"
+                          },
+                          "extendedUntil": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "fulfilledAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "slaBreached": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/feature-flags": {
       "get": {
         "operationId": "getApiV1PlatformFeatureflags",
@@ -178254,6 +178436,314 @@
                         "type": "string"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/onboarding": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugOnboarding",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's full onboarding task list and the machine's current step (platform ops)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "orgSlug",
+                    "tenantStatus",
+                    "currentStep",
+                    "tasks"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "orgSlug": {
+                      "type": "string"
+                    },
+                    "tenantStatus": {
+                      "type": "string"
+                    },
+                    "currentStep": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tasks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "templateKey",
+                          "status",
+                          "isCanonical",
+                          "canonicalOrder",
+                          "dueAt",
+                          "startedAt",
+                          "completedAt",
+                          "blockerReason",
+                          "skipRationale"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "isCanonical": {
+                            "type": "boolean"
+                          },
+                          "canonicalOrder": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "blockerReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skipRationale": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Skip an onboarding task with a recorded rationale (platform ops; step-up)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "templateKey",
+                    "status",
+                    "isCanonical",
+                    "canonicalOrder",
+                    "dueAt",
+                    "startedAt",
+                    "completedAt",
+                    "blockerReason",
+                    "skipRationale"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "isCanonical": {
+                      "type": "boolean"
+                    },
+                    "canonicalOrder": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockerReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skipRationale": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "skipRationale"
+                ],
+                "properties": {
+                  "skipRationale": {
+                    "minLength": 8,
+                    "maxLength": 2000,
+                    "type": "string"
                   }
                 }
               }
@@ -237023,6 +237513,103 @@
         }
       }
     },
+    "/api/v1/tenant/account": {
+      "get": {
+        "operationId": "getApiV1TenantAccount",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "The tenant's own account record",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "organizationId",
+                    "status",
+                    "planLabel",
+                    "legalBusinessName",
+                    "dbaName",
+                    "billingContactEmail",
+                    "breachNotificationEmail",
+                    "provisionedAt",
+                    "activatedAt",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "planLabel": {
+                      "type": "string"
+                    },
+                    "legalBusinessName": {
+                      "type": "string"
+                    },
+                    "dbaName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingContactEmail": {
+                      "type": "string"
+                    },
+                    "breachNotificationEmail": {
+                      "type": "string"
+                    },
+                    "provisionedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/tenant/baa": {
       "get": {
         "operationId": "getApiV1TenantBaa",
@@ -238311,6 +238898,208 @@
               "schema": {
                 "type": "object",
                 "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/feature-flags": {
+      "get": {
+        "operationId": "getApiV1TenantFeatureflags",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Feature flags effective for this tenant (own row overrides the platform row)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "flagKey",
+                          "flagKind",
+                          "valueType",
+                          "value",
+                          "rolloutPercent",
+                          "killSwitchActive",
+                          "scope",
+                          "tenantToggleable",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "flagKey": {
+                            "type": "string"
+                          },
+                          "flagKind": {
+                            "type": "string"
+                          },
+                          "valueType": {
+                            "type": "string"
+                          },
+                          "value": {},
+                          "rolloutPercent": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "killSwitchActive": {
+                            "type": "boolean"
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "tenant",
+                                "type": "string"
+                              },
+                              {
+                                "const": "platform",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "tenantToggleable": {
+                            "type": "boolean"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/feature-flags/{flagKey}": {
+      "post": {
+        "operationId": "postApiV1TenantFeatureflagsByFlagKey",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Toggle a tenant-toggleable feature flag (org admin; step-up)",
+        "parameters": [
+          {
+            "name": "flagKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "flagKey",
+                    "flagKind",
+                    "valueType",
+                    "value",
+                    "rolloutPercent",
+                    "killSwitchActive",
+                    "scope",
+                    "tenantToggleable",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "flagKey": {
+                      "type": "string"
+                    },
+                    "flagKind": {
+                      "type": "string"
+                    },
+                    "valueType": {
+                      "type": "string"
+                    },
+                    "value": {},
+                    "rolloutPercent": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "killSwitchActive": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tenantToggleable": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }

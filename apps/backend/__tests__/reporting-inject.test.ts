@@ -227,6 +227,16 @@ const SUPER: Record<string, string> = {
   "x-test-roles": "org_admin",
   "x-test-membership": MEMBER_SUPER,
 };
+// GAP-162 - the admin routes compose a scope predicate on top of the permission: SUPER (org_admin) holds the
+// permission but is neither a platform operator nor a compliance officer.
+const PLATFORM_ADMIN: Record<string, string> = {
+  ...SUPER,
+  "x-test-roles": "org_admin,platform_ops",
+};
+const COMPLIANCE: Record<string, string> = {
+  ...SUPER,
+  "x-test-roles": "org_admin,compliance_officer",
+};
 const NOPERM: Record<string, string> = {
   "x-test-user": "noperm_1",
   "x-test-org": ORG,
@@ -335,10 +345,44 @@ describe("M33-reporting-inject — catalog + admin + metric-seam reads", () => {
     },
   ];
 
+  const headersFor = (url: string): Record<string, string> =>
+    url.includes("/admin/audit/") ? COMPLIANCE : url.includes("/admin/") ? PLATFORM_ADMIN : SUPER;
+
   it.each(ROUTES)("$label → 200", async ({ url }) => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url, headers: SUPER });
+    const res = await app.inject({ method: "GET", url, headers: headersFor(url) });
     expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it.each([
+    "/api/v1/reporting/admin/mvs",
+    "/api/v1/reporting/admin/lag",
+    "/api/v1/reporting/admin/audit/drilldowns",
+  ])(
+    "GAP-162 - %s denies a permission-holding tenant org_admin without the scope role",
+    async (url) => {
+      const { app } = makeServer();
+      const res = await app.inject({ method: "GET", url, headers: SUPER });
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    },
+  );
+
+  it("GAP-162 - the audit trail is not readable by a platform operator, nor the MV list by a compliance officer", async () => {
+    const { app } = makeServer();
+    const audit = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/admin/audit/drilldowns",
+      headers: PLATFORM_ADMIN,
+    });
+    const mvs = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/admin/mvs",
+      headers: COMPLIANCE,
+    });
+    expect(audit.statusCode).toBe(403);
+    expect(mvs.statusCode).toBe(403);
     await app.close();
   });
 });
@@ -350,7 +394,7 @@ describe("M33-reporting-inject — admin MV commands (#38-39)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/reporting/admin/mvs/${MV_KEY}/refresh`,
-      headers: SUPER,
+      headers: PLATFORM_ADMIN,
     });
     expect(res.statusCode).toBe(202);
     expect(res.json().jobId).toBeTypeOf("string");
@@ -366,7 +410,7 @@ describe("M33-reporting-inject — admin MV commands (#38-39)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/reporting/admin/mvs/${MV_KEY}/suspend`,
-      headers: SUPER,
+      headers: PLATFORM_ADMIN,
     });
     expect(res.statusCode).toBe(202);
     expect(read.inspect.enqueuedJobs()).toContainEqual({

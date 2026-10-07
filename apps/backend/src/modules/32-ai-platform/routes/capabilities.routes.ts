@@ -137,7 +137,11 @@ export function registerCapabilityRoutes(app: FastifyInstance, deps: CapabilityR
     async (request, reply) => {
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(PublishCalibrationBody, request.body);
-      const row = await publishAiCapabilityCalibration(governance, { ...body, capabilityId });
+      const row = await publishAiCapabilityCalibration(governance, {
+        ...body,
+        capabilityId,
+        actorMembershipId: (await writeActorOf(request)).membershipId,
+      });
       return reply.code(201).send(row);
     },
   );

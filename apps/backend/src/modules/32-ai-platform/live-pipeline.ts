@@ -12,6 +12,7 @@
 import { type ModelBackend, createModelBackendRegistry } from "@wardenx/ai-platform";
 import type { DbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+import type { M32EventEmitter } from "./events";
 import { createDrizzleAiTenantConsentStore } from "./governance/store-drizzle";
 import { createRuleBasedAiChartContextValidator } from "./invocation/chart-context-rules";
 import { type AiPayloadKeyProvider, createAiPayloadCipher } from "./invocation/payload-cipher";
@@ -37,16 +38,27 @@ export function buildLiveAiInvocationPipeline(deps: {
   readonly keys: AiPayloadKeyProvider;
   readonly flags: { forOrg(orgId: string): Promise<Readonly<Record<string, boolean>>> };
   readonly backends: readonly ModelBackend[];
+  /** GAP-161 - the m32 outbox emitter; the pipeline's ledger, consent and override writes publish through it. */
+  readonly events?: M32EventEmitter;
 }): AiInvocationPipeline {
   return createAiInvocationPipeline({
     capabilities: createDrizzleAiInvocationCapabilityStore(deps.db),
-    consent: createDrizzleAiTenantConsentStore({ db: deps.db, userId: PIPELINE_SYSTEM_USER_ID }),
+    consent: createDrizzleAiTenantConsentStore({
+      db: deps.db,
+      userId: PIPELINE_SYSTEM_USER_ID,
+      events: deps.events,
+    }),
     backends: createDrizzleAiBackendRegistryStore(deps.db),
     overrides: createDrizzleAiRoutingOverrideStore({
       db: deps.db,
       userId: PIPELINE_SYSTEM_USER_ID,
+      events: deps.events,
     }),
-    ledger: createDrizzleAiInvocationLedgerStore({ db: deps.db, userId: PIPELINE_SYSTEM_USER_ID }),
+    ledger: createDrizzleAiInvocationLedgerStore({
+      db: deps.db,
+      userId: PIPELINE_SYSTEM_USER_ID,
+      events: deps.events,
+    }),
     flags: { readFlags: (orgId) => deps.flags.forOrg(orgId) },
     cipher: createAiPayloadCipher(deps.keys),
     killSwitch: createAiKillSwitchGate(
@@ -56,6 +68,7 @@ export function buildLiveAiInvocationPipeline(deps: {
         auditBypass: deps.auditBypass,
         jobId: M32_PLATFORM_JOB_ID,
         userId: PIPELINE_SYSTEM_USER_ID,
+        events: deps.events,
       }),
     ),
     modelBackends: createModelBackendRegistry(deps.backends),

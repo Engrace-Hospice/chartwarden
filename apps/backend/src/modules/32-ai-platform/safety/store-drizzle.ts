@@ -38,6 +38,7 @@ import type {
   AiKillSwitchReason,
 } from "@wardenx/types";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { type M32EventEmitter, capabilityIdentity } from "../events";
 
 import type {
   AiEvaluationRunRowProjection,
@@ -130,6 +131,8 @@ export interface AiSafetyStoreDeps {
   readonly jobId: string;
   /** `app.user_id` for the session; the M4 write-audit trigger reads it. */
   readonly userId: string;
+  /** GAP-161 - same-tx `m32.kill_switch.*` / `m32.evaluation.completed` emits (absent in slice/tests). */
+  readonly events?: M32EventEmitter;
 }
 
 /** `ai_kill_switch_state` — the mixed-scope store (see the header). */
@@ -154,6 +157,28 @@ export function createDrizzleAiKillSwitchStore(deps: AiSafetyStoreDeps): AiKillS
         ? isNull(schema.aiKillSwitchState.organizationId)
         : eq(schema.aiKillSwitchState.organizationId, organizationId),
     );
+
+  const emitKillActivated = async (
+    tx: DbClient,
+    organizationId: string | null,
+    row: typeof schema.aiKillSwitchState.$inferSelect,
+    actorKind: string | null,
+  ): Promise<void> => {
+    await deps.events?.emitInTx(tx, {
+      name: "m32.kill_switch.activated",
+      organizationId,
+      aggregate: { kind: "ai_kill_switch_state", id: row.id },
+      payload: {
+        ...(await capabilityIdentity(tx, { id: row.capabilityId })),
+        killSwitchId: row.id,
+        scope: organizationId === null ? "platform" : "tenant",
+        activatedByMembershipId: row.activationActorMembershipId,
+        activationActorKind: actorKind ?? "unknown",
+        reasonCategory: row.reason ?? "unspecified",
+        severity: organizationId === null ? "sev1" : "tenant",
+      },
+    });
+  };
 
   return {
     findForCapability: (organizationId, capabilityId) =>
@@ -203,7 +228,10 @@ export function createDrizzleAiKillSwitchStore(deps: AiSafetyStoreDeps): AiKillS
           })
           .where(scoped(organizationId, capabilityId))
           .returning();
-        if (updated) return toKillSwitchRow(updated);
+        if (updated) {
+          await emitKillActivated(tx, organizationId, updated, patch.activationActorKind);
+          return toKillSwitchRow(updated);
+        }
         // No row yet for this scope. §3.2.12's two partial unique indexes make the pair at most one
         // row, so an INSERT here cannot race a second platform kill into existence.
         const [inserted] = await tx
@@ -221,6 +249,7 @@ export function createDrizzleAiKillSwitchStore(deps: AiSafetyStoreDeps): AiKillS
           .returning();
         if (!inserted)
           throw new Error(`ai_kill_switch_state insert returned no row for ${capabilityId}`);
+        await emitKillActivated(tx, organizationId, inserted, patch.activationActorKind);
         return toKillSwitchRow(inserted);
       };
       return organizationId === null
@@ -250,6 +279,18 @@ export function createDrizzleAiKillSwitchStore(deps: AiSafetyStoreDeps): AiKillS
             `ai_kill_switch_state has no ${organizationId === null ? "platform" : "tenant"} row for capability ${capabilityId}`,
           );
         }
+        await deps.events?.emitInTx(tx, {
+          name: "m32.kill_switch.deactivated",
+          organizationId,
+          aggregate: { kind: "ai_kill_switch_state", id: row.id },
+          payload: {
+            ...(await capabilityIdentity(tx, { id: capabilityId })),
+            killSwitchId: row.id,
+            scope: organizationId === null ? "platform" : "tenant",
+            deactivatedByMembershipId: patch.deactivationActorMembershipId ?? null,
+            resolutionNarrative: patch.deactivationMessage ?? "",
+          },
+        });
         return toKillSwitchRow(row);
       };
       return organizationId === null
@@ -284,6 +325,8 @@ export function createDrizzleAiHallucinationReportStore(deps: {
   readonly db: DbClient;
   /** `app.user_id` for the session; the M4 write-audit trigger reads it. */
   readonly userId: string;
+  /** GAP-161 - same-tx `m32.hallucination_report.*` / `m32.output.flagged` emits. */
+  readonly events?: M32EventEmitter;
 }): AiHallucinationReportStore {
   const db = deps.db;
   const ctx = (organizationId: string) => ({ organizationId, userId: deps.userId });
@@ -311,6 +354,36 @@ export function createDrizzleAiHallucinationReportStore(deps: {
           })
           .returning();
         if (!row) throw new Error("ai_hallucination_report insert returned no row");
+        if (deps.events) {
+          const identity = await capabilityIdentity(tx, { id: insert.capabilityId });
+          await deps.events.emitInTx(tx, {
+            name: "m32.hallucination_report.filed",
+            organizationId: insert.organizationId,
+            aggregate: { kind: "ai_hallucination_report", id: row.id },
+            payload: {
+              ...identity,
+              reportId: row.id,
+              invocationId: insert.invocationId ?? null,
+              severity: insert.severity,
+              kind: insert.hallucinationKind,
+              reporterMembershipId: insert.reporterMembershipId,
+            },
+          });
+          // A report filed against a concrete invocation is the clinician FLAGGING that output.
+          if (insert.invocationId) {
+            await deps.events.emitInTx(tx, {
+              name: "m32.output.flagged",
+              organizationId: insert.organizationId,
+              aggregate: { kind: "ai_invocation", id: insert.invocationId },
+              payload: {
+                ...identity,
+                invocationId: insert.invocationId,
+                recordedByMembershipId: insert.reporterMembershipId,
+                flagReason: insert.hallucinationKind,
+              },
+            });
+          }
+        }
         return toReportRow(row);
       }),
 
@@ -360,6 +433,19 @@ export function createDrizzleAiHallucinationReportStore(deps: {
           throw new Error(
             `ai_hallucination_report ${reportId} not found for org ${organizationId}`,
           );
+        await deps.events?.emitInTx(tx, {
+          name: "m32.hallucination_report.triaged",
+          organizationId,
+          aggregate: { kind: "ai_hallucination_report", id: row.id },
+          payload: {
+            ...(await capabilityIdentity(tx, { id: row.capabilityId })),
+            reportId: row.id,
+            triagedByMembershipId: patch.triageOwnerMembershipId ?? "unassigned",
+            severity: row.severity,
+            triageStatus: row.triageStatus,
+            followUpAction: row.triageDisposition ?? "none",
+          },
+        });
         return toReportRow(row);
       }),
   };
@@ -442,6 +528,26 @@ export function createDrizzleAiEvaluationRunStore(deps: AiSafetyStoreDeps): AiEv
           .where(eq(schema.aiEvaluationRun.id, runId))
           .returning();
         if (!row) throw new Error(`ai_evaluation_run ${runId} not found`);
+        if (
+          deps.events &&
+          (row.status === "passed" || row.status === "failed" || row.status === "aborted")
+        ) {
+          await deps.events.emitInTx(tx, {
+            name: "m32.evaluation.completed",
+            organizationId: null,
+            aggregate: { kind: "ai_evaluation_run", id: row.id },
+            payload: {
+              ...(await capabilityIdentity(tx, { id: row.capabilityId })),
+              runId: row.id,
+              stage: row.stage,
+              status: row.status,
+              decision: row.decision,
+              summaryMetrics: (row.summaryMetrics ?? {}) as Record<string, unknown>,
+              mlflowRunId: row.mlflowRunId ?? null,
+              completedByMembershipId: null,
+            },
+          });
+        }
         return toEvaluationRow(row);
       }),
   };

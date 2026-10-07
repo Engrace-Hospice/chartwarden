@@ -186,6 +186,8 @@ export interface AiCapabilityRegistryStore {
         readonly baselineEvaluationRunId: string;
       };
     },
+    /** GAP-161 - who published it (rides the `m32.capability.calibrated` event). */
+    calibratedByMembershipId?: string,
   ): Promise<AiCalibrationRow>;
   listCalibrationHistory(
     capabilityId: string,
