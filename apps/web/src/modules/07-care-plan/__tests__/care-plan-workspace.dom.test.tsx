@@ -295,6 +295,28 @@ describe("M7 Care Plan workspace", () => {
     expect(screen.getByText("Comfort maintained")).toBeTruthy();
   });
 
+  it("opens the problem form preset to Terminal from the 'Add terminal problem' next action", async () => {
+    const [firstProblem] = baseProblems();
+    const client = clientFor({
+      plan: planWith([signedInitial, draftRevision], [{ ...firstProblem!, kind: "related" }]),
+      readiness: {
+        planId: "plan-1",
+        openVersionId: "version-draft",
+        openVersionStatus: "draft",
+        canFinalize: false,
+        canSign: false,
+        blockers: [
+          { code: "TERMINAL_PROBLEM_REQUIRED", message: "Active terminal problem required" },
+        ],
+        signatures: { required: [], collected: [], missing: [] },
+      },
+    });
+    renderWorkspace(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add terminal problem" }));
+    expect((screen.getByLabelText("Problem type") as HTMLSelectElement).value).toBe("terminal");
+  });
+
   it("posts problem authoring through the M7 write API", async () => {
     const client = clientFor({ plan: planWith([signedInitial, draftRevision]) });
     renderWorkspace(client);
