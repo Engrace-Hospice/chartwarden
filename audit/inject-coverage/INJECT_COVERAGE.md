@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1365/1365 route defs sit behind a covered module · 1322/1365 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1370/1370 route defs sit behind a covered module · 1327/1370 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -42,8 +42,8 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 33-reporting | 42 | ✅ | 42/42 | apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts, apps/backend/__tests__/reporting-inject.test.ts |
 | 34-saas-tenant-platform | 50 | ✅ | 49/50 | apps/backend/__tests__/saas-tenant-platform-inject.test.ts |
 | 35-subscription | 54 | ✅ | 54/54 | apps/backend/__tests__/subscription-inject.test.ts |
-| 36-messaging | 23 | ✅ | 22/23 | apps/backend/__tests__/messaging-member-admin.test.ts, apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
+| 36-messaging | 23 | ✅ | 22/23 | apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts, apps/backend/__tests__/messaging-member-admin.test.ts, apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
 | 37-ipu | 52 | ✅ | 52/52 | apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts, apps/backend/__tests__/ipu-inject.test.ts, apps/backend/__tests__/ipu-step-up-assertion.test.ts |
-| 38-terminology | 14 | ✅ | 14/14 | apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
+| 38-terminology | 19 | ✅ | 19/19 | apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-abac.test.ts, apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts |
 | 40-mdm | 14 | ✅ | 10/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

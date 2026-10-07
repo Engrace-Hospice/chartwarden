@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1365,
-    "coveredRoutes": 1365,
-    "directRoutesReferenced": 1322
+    "routes": 1370,
+    "coveredRoutes": 1370,
+    "directRoutesReferenced": 1327
   },
   "modules": [
     {
@@ -415,6 +415,7 @@
       "routes": 23,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
@@ -435,14 +436,14 @@
     },
     {
       "module": "38-terminology",
-      "routes": 14,
+      "routes": 19,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/terminology-admin-routes.test.ts",
         "apps/backend/__tests__/terminology-routes-mount.test.ts",
         "apps/backend/__tests__/terminology-routes.test.ts"
       ],
-      "directRoutesReferenced": 14
+      "directRoutesReferenced": 19
     },
     {
       "module": "39-consent",
