@@ -1,10 +1,9 @@
 // apps/backend/src/modules/26-cap/consumers — the M26 §4.4 upstream-consumer register surface (the M25/M27
 // consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts) and exposes
-// `registerM26Consumers` for the boot dispatcher. NO live inbound relay loop exists yet (the M25 posture);
-// until it lands the composition root calls this with NO registrar — it then merely returns the forward-
-// declared subscriptions. The Drizzle CapConsumerStore binding is deferred: recording a beneficiary accrual
-// needs the M5 MBI + M6 first-election facts (cap_beneficiary_accrual.mbi_normalized / first_election_in_period
-// are NOT NULL), so the live store binds when those readers bind.
+// `registerM26Consumers`. GAP-205: `registerM26Consumers` and `createInMemoryCapConsumerStore` are DEAD
+// SCAFFOLDING — nothing outside tests calls them. The LIVE M26 bindings are the `OutboxConsumerBinding`s in
+// `./outbox-binding.ts` over the Drizzle `CapConsumerStore` (`./drizzle-store.ts`), wired from
+// apps/backend/src/index.ts; `arch:outbox-bindings` proves them, not this file.
 import {
   type CapConsumerStore,
   handleClaimReversed,
@@ -26,7 +25,7 @@ export interface M26ConsumeReport {
   readonly handled: boolean;
 }
 
-/** The deferred-bind no-op store: records nothing (the live Drizzle store binds with the M5/M6 readers). */
+/** A no-op store for tests: records nothing. Production binds the Drizzle store (`./drizzle-store.ts`). */
 export function createInMemoryCapConsumerStore(): CapConsumerStore {
   return {
     async recordAccrualLine() {
@@ -72,8 +71,8 @@ export async function dispatchM26UpstreamEvent(
 /**
  * Register the M26 §4.4 upstream consumers (the M25 register-surface mirror). The boot dispatcher calls this
  * with its `bind(topic, handler)` registrar + the live store; each subscription is bound to a closure over
- * {@link dispatchM26UpstreamEvent}. Until the live inbound dispatcher lands the composition root calls this
- * with NO registrar — it then merely returns the forward-declared subscriptions.
+ * {@link dispatchM26UpstreamEvent}. NOT CALLED by the composition root (GAP-205): the live bindings are in
+ * `./outbox-binding.ts`; this only returns the forward-declared subscriptions.
  */
 export function registerM26Consumers(options?: {
   readonly store?: CapConsumerStore;

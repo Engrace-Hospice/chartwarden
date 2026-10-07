@@ -1,8 +1,10 @@
 // apps/backend/src/modules/25-remittance/consumers — the M25 §4.4 upstream-consumer register surface (the
 // M27/M23 consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts) and
-// exposes `registerM25Consumers` for the boot dispatcher. NO live inbound relay loop exists yet (RULE 3(d));
-// until it lands the composition root calls this with NO registrar — it then merely returns the
-// forward-declared subscriptions (nothing boots), the identical posture every other module is in.
+// exposes `registerM25Consumers`. GAP-205: `registerM25Consumers` is DEAD SCAFFOLDING — nothing outside its
+// own tests calls it and no boot dispatcher takes a registrar. The LIVE M25 consumer bindings are the
+// `OutboxConsumerBinding`s in `../outbox-consumers/` (see `live-binding.ts`), wired from
+// apps/backend/src/index.ts; `arch:outbox-bindings` is what proves them, not this file. Do not describe
+// this register surface as a call site.
 import {
   DENY_DENIAL_TERMINOLOGY,
   type DenialOpenedEmission,
@@ -85,8 +87,8 @@ export async function dispatchM25UpstreamEvent(
 /**
  * Register the M25 §4.4 upstream consumers (the M27 register-surface mirror). The boot dispatcher calls this
  * with its `bind(eventName, handler)` registrar + the live {@link M25ConsumerPorts}; each subscription is
- * bound to a closure over {@link dispatchM25UpstreamEvent}. Until the live inbound dispatcher lands the
- * composition root calls this with NO registrar — it then merely returns the forward-declared subscriptions.
+ * bound to a closure over {@link dispatchM25UpstreamEvent}. NOT CALLED by the composition root (GAP-205): the
+ * live bindings are `../outbox-consumers/*`; this only returns the forward-declared subscriptions.
  */
 export function registerM25Consumers(options?: {
   readonly ports?: M25ConsumerPorts;

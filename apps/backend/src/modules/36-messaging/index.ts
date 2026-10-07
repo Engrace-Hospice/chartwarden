@@ -148,7 +148,7 @@ import {
  * alerts) on a server — invoked by the composition root when a DB client is present. The READ surface
  * runs over the real Drizzle-backed `MessagingRouteService` (org-scoped reads under RLS), and the
  * `channel_visibility` ABAC predicate is registered against the same service so the channel-scoped
- * routes resolve live; the write paths defer to FB-T05 (501). Backs the staff-messaging +
+ * routes resolve live; the write paths are live too (no route returns 501). Backs the staff-messaging +
  * notifications-inbox screens (FB-T04).
  */
 export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {

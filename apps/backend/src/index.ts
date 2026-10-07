@@ -1219,7 +1219,8 @@ import {
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
 // injected platform runner (fail-closed until a platform credential binds — the M34 posture), and the §4.3
 // webhook ingest stays fail-closed (503) until the live Stripe transport binds. The §4.5/§4.6 seams were
-// bound as deny-stubs in T05 and stay so (M35's first consumer, M33, builds last in this wave).
+// bound as deny-stubs in T05 and are still dormant (GAP-208): nothing registers a live impl and no
+// in-repo consumer resolves them via `getSeam`.
 import {
   M35_OUTBOX_EVENTS,
   buildDrizzleM35RouteService,
@@ -3842,19 +3843,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
-          // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
-          // lifecycle lands. See each module's `*-route-service-db.ts`.
+          // RLS, replacing the retired in-memory scaffold. Each module's write lifecycle is live (no route
+          // returns 501). See each module's `*-route-service-db.ts`.
           mountCarePlanRoutes(app, dbHandle.db, m7OutboxPublisher); // M7 — reads + the T02 write lifecycle over Drizzle+RLS, m7.* transactional outbox
           // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox. Two DEK
           // envelopes over the SAME M34 key ring M39's consent notes and M31's status reasons use:
           // `hearthnote_selection.free_text_cipher` (§3.6, #114) and
-          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). On a db boot with the
-          // platform KEK configured (`M34_TENANT_KEK`, #105 / ADR-0045) `registerLiveM34Seams` binds the real
-          // key-ring provider, so both ciphers work. Only where it is NOT configured (a db-less slice, or a
-          // deployment missing the KEK — production refuses to boot without it) is the key ring the
-          // fail-closed deny-stub, and then both refuse with 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing
-          // PHI in the clear: a selection tree carrying clinician prose refuses and FINALIZE refuses. A tree
-          // with no prose still writes, so authoring a structured draft does not depend on the key ring.
+          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). On a DB boot the key
+          // ring is LIVE (`registerLiveM34Seams`, #105 / ADR-0045); only a DB-less slice boot, or a deployment
+          // with no platform KEK / provision gateway, leaves it unbound, and then both refuse with
+          // 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing PHI in the clear. That means: a selection
+          // tree carrying clinician prose refuses, and — since an assembled narrative is prose by
+          // construction and its columns are NOT NULL — FINALIZE refuses for every encounter. A tree with
+          // no prose still writes, so authoring a structured draft does not depend on the key ring.
           mountEncounterRoutes(
             app,
             dbHandle.db,
@@ -4624,9 +4625,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // unconfigured key. Every lay READ route composes the upstream portal-summary seams and fails
           // CLOSED; the owned-table reads/writes (accounts, grants, telehealth lifecycle) are live over RLS.
           // The reason cipher seals the operator's suspend/reinstate reason (#117); it composes over the
-          // SAME M34 key ring M39's consent notes use, which is a slice deny-stub until the Phase-2D
-          // KMS-backed provider lands — so those two routes refuse with 503 until then rather than
-          // recording an account status change with no reason. Every other admin route is unaffected.
+          // SAME M34 key ring M39's consent notes use, which is live on a DB boot (`registerLiveM34Seams`);
+          // it is a deny-stub only on a DB-less slice boot or when no platform KEK / provision gateway is
+          // configured, and then those two routes refuse with 503 rather than recording an account status
+          // change with no reason. Every other admin route is unaffected.
           // GAP-092 — the portal's provisioning services: account + grant creation (invitations), encrypted upload
           // staging handed to M22 intake, and notification preferences. Each cross-module fact arrives through a
           // locally-declared port bound HERE (M2 identity, M6 site, M39 consent, M22 intake); the sign-in credential

@@ -32,6 +32,7 @@ import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
+import { resolveServiceState } from "./service-state";
 import type {
   ApplyOverrideInput,
   AssembleClaimInput,
@@ -1150,20 +1151,38 @@ export function buildDrizzleM24WriteService(
           "this patient holds no Medicaid coverage in force on the requested service date",
         );
       }
-      const serviceState = await withOrgContext(db, actor, async (tx) => {
-        const creds = await tx
-          .select({ serviceState: TP.serviceState })
+      // GAP-196: the state comes from the credentials in force on the service date (narrowed to the named
+      // provider entity when the caller gives one), not from whichever row `LIMIT 1` returned.
+      const asOf = new Date(input.asOfServiceDate);
+      const credentials = await withOrgContext(db, actor, async (tx) =>
+        tx
+          .select({
+            serviceState: TP.serviceState,
+            activeFrom: TP.activeFrom,
+            activeTo: TP.activeTo,
+          })
           .from(TP)
-          .where(eq(TP.organizationId, actor.organizationId))
-          .limit(1);
-        return creds[0]?.serviceState ?? null;
-      });
-      if (!serviceState) {
+          .where(
+            and(
+              eq(TP.organizationId, actor.organizationId),
+              input.providerEntityId ? eq(TP.providerEntityId, input.providerEntityId) : undefined,
+            ),
+          ),
+      );
+      const stateResolution = resolveServiceState(credentials, asOf);
+      if (stateResolution.kind === "none") {
         throw new ConflictError(
           "MEDICAID_NO_ACTIVE_TRADING_PARTNER",
           "no state trading-partner credential is configured — the service state cannot be determined",
         );
       }
+      if (stateResolution.kind === "ambiguous") {
+        throw new ConflictError(
+          "MEDICAID_SERVICE_STATE_AMBIGUOUS",
+          `trading-partner credentials are active in several states (${stateResolution.states.join(", ")}) — name the provider entity to check eligibility against`,
+        );
+      }
+      const serviceState = stateResolution.state;
       // Only the last 4 of the member id is ever persisted (D12 / §3.6) — the full recipient id is read
       // from the seam, used to derive the tail, and dropped on this line.
       const maskedTail = resolved.subscriberId.slice(-4);

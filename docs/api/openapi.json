@@ -234198,10 +234198,31 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Read this org's resolved feature flags (flag key to enabled)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "flags"
+                  ],
+                  "properties": {
+                    "flags": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -262650,7 +262671,76 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "providerEntityId",
+                    "fiscalYear",
+                    "volunteerHourMinutes",
+                    "staffPatientCareMinutes",
+                    "ratio",
+                    "status"
+                  ],
+                  "properties": {
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "fiscalYear": {
+                      "type": "integer"
+                    },
+                    "volunteerHourMinutes": {
+                      "type": "integer"
+                    },
+                    "staffPatientCareMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ratio": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "green",
+                          "type": "string"
+                        },
+                        {
+                          "const": "yellow",
+                          "type": "string"
+                        },
+                        {
+                          "const": "red",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -264759,7 +264849,95 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "planId",
+                          "admissionId",
+                          "assessmentId",
+                          "factor",
+                          "severity",
+                          "icd10",
+                          "capturedAt"
+                        ],
+                        "properties": {
+                          "planId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "type": "string"
+                          },
+                          "factor": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "high",
+                                "type": "string"
+                              },
+                              {
+                                "const": "moderate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "low",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "icd10": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

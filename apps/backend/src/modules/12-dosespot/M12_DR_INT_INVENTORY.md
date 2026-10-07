@@ -58,7 +58,7 @@ destruction-cert eraser; the offline-draft sync worker is a later task.
 | publish | M5/M6/M9/M13/M21/M22/M28/M36 | `m12.*` outbox events (§4.4 / events-by-m12.ts) — draft/signed/transmitted/discontinued/corrected/verbal-received/refill-received/approved/denied/webhook-received/patient-synced/prescriber-enrolled/degraded/recovered | minimal (ids); free-text scrubbed (D14 / §7.6) |
 | consume (outbox) | M5/M6/M11 | M5 patient-change → DoseSpot patient sync; M6 discharge → in-flight discontinue cascade + MedHx fetch; M11 `verbal_expired_unsigned` → med-order backref (§4.5 / consumers/) | yes (ids) |
 | integrate (external) | **DoseSpot** | the vendor SDK confined to `packages/dosespot`: NewRx/refill/MedHx transmission + the HMAC-signed webhook return channel (§7.4 D7); circuit-breaker + idempotent retry (§2.6 D8) | yes (Rx + pharmacy) |
-| forward (deny-stub) | M22 (Wave F) / M28 (Wave H) | `MedicationOrderPdfRenderer` (chart/survey/portal PDF) + `FhirMedicationRequestPublisher` (FHIR resource store) — payload shaped here, no `dependsOn` edge, fail-closed until the consumer locks | minimal (ids) |
+| forward (outbox / pull) | M22 / M28 | M22 renders the medication-order PDF off the outbox; M28 pulls `MedicationRequest` through `MedicationOrderProvider.asFhirMedicationRequest` — the unconsumed PDF/FHIR deny-stubs were removed (GAP-192); no `dependsOn` edge | minimal (ids) |
 
 ## STRIDE — see spec §7.8 (authoritative)
 

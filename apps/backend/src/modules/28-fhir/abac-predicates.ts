@@ -184,7 +184,15 @@ export function buildFhirGatewayAbacPredicates(
       return org === context.organizationId;
     },
 
-    /** §4.7 / D8 — accept/reject a staged proposal only through the owner module's native write path. */
+    /**
+     * §4.7 / D8 — accept/reject a staged proposal only through the owner module's native write path.
+     *
+     * KNOWN GAP (GAP-198): the spec (§4.7) also requires `caseload_or_scope` on the proposal's patient. This
+     * predicate does not compose it because `fhir_inbound_resource` carries no patient reference (the subject
+     * lives inside the §3.6-denylisted `payload`, and an m5 Patient proposal may have no patient row yet), so
+     * there is no trustworthy patient id to evaluate. Closing it needs a `subject_patient_id` column stamped
+     * at staging time; until then the owner-module write permission is the only gate.
+     */
     fhir_inbound_owner_module_match: async (context, target) => {
       if (!context.organizationId) return false;
       const membershipId = membershipIdOf(context);

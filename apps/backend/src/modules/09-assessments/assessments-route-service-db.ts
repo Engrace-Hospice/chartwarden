@@ -222,7 +222,7 @@ const toView = (
 });
 
 /**
- * The production, RLS-backed AssessmentRouteService. Reads are real; writes fail-closed 501.
+ * The production, RLS-backed AssessmentRouteService. Reads and writes are real (Drizzle + RLS).
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbAssessmentRouteService(

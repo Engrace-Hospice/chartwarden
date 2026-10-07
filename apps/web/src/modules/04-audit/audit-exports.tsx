@@ -44,7 +44,7 @@ export function AuditExports(): JSX.Element {
   const [showCreate, setShowCreate] = useState(false);
 
   // GET /audit/exports has no list route (§4.2) — a request's id is the caller's only handle, so
-  // this screen tracks the ids it has created this session (persisted in localStorage) and polls
+  // this screen tracks the ids it has created this session (persisted in sessionStorage, GAP-191: record ids must not outlive the tab/sign-out) and polls
   // each one's status individually, matching the spec's actual route inventory rather than
   // inventing a list endpoint that doesn't exist.
   useEffect(() => {
@@ -52,7 +52,7 @@ export function AuditExports(): JSX.Element {
     // controller's `readStored()` (apps/web/src/shell/theme.ts) sets the precedent: try/catch,
     // fall back to empty rather than crash the screen.
     try {
-      const stored = window.localStorage.getItem("wx-audit-export-ids");
+      const stored = window.sessionStorage.getItem("wx-audit-export-ids");
       if (stored) setIds(JSON.parse(stored));
     } catch {
       // storage disabled or malformed — start with an empty list for this session.
@@ -86,7 +86,7 @@ export function AuditExports(): JSX.Element {
     setIds((prev) => {
       const next = [id, ...prev];
       try {
-        window.localStorage.setItem("wx-audit-export-ids", JSON.stringify(next));
+        window.sessionStorage.setItem("wx-audit-export-ids", JSON.stringify(next));
       } catch {
         // storage disabled — the in-memory list still works for the session.
       }

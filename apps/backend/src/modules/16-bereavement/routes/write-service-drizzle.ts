@@ -1625,10 +1625,9 @@ export function buildDrizzleM16WriteService(
     },
 
     // ── 20 — scheduled → in_progress ────────────────────────────────────────────────────────────────
-    async startOutreach(actor, outreachId, expectedVersion) {
+    async startOutreach(actor, outreachId) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
-        void expectedVersion;
         const plan = await planOr404(tx, outreach.planId);
         const at = now();
         const transition = transitionBereavementOutreach(outreach.status, {
@@ -1639,7 +1638,9 @@ export function buildDrizzleM16WriteService(
         const [row] = await tx
           .update(OUTREACH)
           .set({ status: transition.to, startedAt: new Date(at), updatedAt: new Date(at) })
-          .where(eq(OUTREACH.id, outreachId))
+          // bereavement_outreach has no version column (GAP-194): the status read above is the guard, so a
+          // concurrent transition matches no row instead of being overwritten.
+          .where(and(eq(OUTREACH.id, outreachId), eq(OUTREACH.status, outreach.status)))
           .returning();
         if (!row) throw new Error("m16: the outreach start returned no row");
         return toOutreachView(row);
