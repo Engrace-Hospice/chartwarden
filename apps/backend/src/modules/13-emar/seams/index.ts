@@ -41,6 +41,13 @@ export {
   idgMissedDosesForOrg,
   missedDoseSeverity,
 } from "./idg-missed-doses-for-org";
+// GAP-107 — the org-explicit IV-session activity read M37's `iv-bedside-check-watchdog` cron needs.
+export {
+  IV_SESSION_ACTIVITY_MAX_ORDERS,
+  type IvSessionActivity,
+  ivActivityOf,
+  ivSessionActivityForOrg,
+} from "./iv-session-activity-for-org";
 // TASK-002 — the FULL production Drizzle-backed store (per-consumer reads under the ambient request RLS
 // context; the two org-aggregate measure reads self-scope on their explicit organizationId).
 export { createDrizzleEmarSeamStore } from "./drizzle-store";

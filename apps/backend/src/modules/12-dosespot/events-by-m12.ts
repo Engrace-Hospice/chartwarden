@@ -121,6 +121,10 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       // `m12.medication_order.document_requested` from the same activation/sign path
       // (dosespot-route-service-db.ts) — the actual live-bound M22 render request.
       // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+      // GAP-107 — M37's §2.6 / D7 IV-continuous safety overlay WRITER. M37's spec triggers it on
+      // `m11.order.signed kind=medication_iv_continuous`, which does not exist (medication orders are M12's);
+      // the writer binds here and filters to continuous infusions (`37-ipu/consumers/m12-medication-order-iv-overlay.ts`).
+      "m37",
     ],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -266,7 +270,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       effectiveAt: isoInstant,
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m13", "m14"],
+    // GAP-107 — m37: the order's IV safety overlay stops gating (the M12 form of M37 §4.5's `m11.order.discontinued`).
+    declaredConsumers: ["m13", "m14", "m37"],
     isOutboxOnly: true,
   },
   {
@@ -279,7 +284,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       reason: Type.Optional(Type.String()),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: [],
+    // GAP-107 — m37: a completed infusion order's IV safety overlay stops gating.
+    declaredConsumers: ["m37"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

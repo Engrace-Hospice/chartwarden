@@ -63,6 +63,8 @@ export type TriageSideEffect =
       readonly from: TriageCallState | null;
       readonly to: TriageCallState;
       readonly systemActor: boolean;
+      /** §4.8 — set only by the awaiting-callback timeout transition (`auto_timeout` on the history row). */
+      readonly autoTimeout?: boolean;
     }
   /** Publish an `m19.*` outbox event in the same tx (§4.10 catalog). */
   | { readonly kind: "outbox"; readonly event: M19EventName }

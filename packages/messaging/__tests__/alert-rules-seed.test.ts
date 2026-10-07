@@ -37,6 +37,21 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m20.safety.check_in_escalated",
       "m20.safety.check_in_escalated_oncall",
       "m20.safety.coverage_gap_detected",
+      "m37.irc_episode.cap_approaching",
+      "m37.irc_episode.cap_breached",
+      "m37.restraint.reassessment_due",
+      "m37.bed.cleaning_overdue",
+      "m37.gip_criteria.reassessment_due",
+      "m37.shift.rn_uncovered",
+      "m37.shift.coverage_gap_projected",
+      "m37.equipment.inspection_due",
+      "m37.equipment.inspection_overdue",
+      "m37.nursing_note.shift_overdue",
+      "m37.bed.reservation_expired",
+      "m37.ipu_admission.transfer_unconfirmed",
+      "m19.oncall.coverage_gap_detected",
+      "m19.triage.callback_sla_breached",
+      "m19.triage.escalation_sla_breached",
       "patient.hospitalization_risk_high",
       "patient.pps_drop_20",
       "admission.recert_window_opening",
@@ -63,6 +78,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "claim.denied",
       // GAP-071 — M24 eligibility-stale-watchdog alert.
       "medicaid.eligibility.stale_at_assembly",
+      // GAP-084 — M28 inbound-proposal SLA breach alert.
+      "fhir.inbound.proposal_overdue",
       // M23 — the MAC rejected a Notice of Election / Termination-Revocation (999 or 277CA); raised by the
       // ack-pull crons. Before, a rejected NOE looked valid and a rejected NOTR counted as filed.
       "m23.noe.rejected",
@@ -96,6 +113,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m14.decision.non_quorate",
       "m14.review_clock.escalated",
       "m14.review_floor.override_recorded",
+      // GAP-107 — M37's IV-continuous bedside-check watchdog alert.
+      "m37.iv_safety_overlay.bedside_check_overdue",
+      // GAP-108 — M38's per-tenant deprecation-scan alert (the loader's follow-up job).
+      "m38.tenant_deprecation_scan.completed",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
@@ -124,6 +145,18 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       recipientResolver: "on_call",
       resolverArgs: { providerEntityIdPath: "providerEntityId" },
       systemLocked: false,
+    });
+  });
+
+  it("seeds the M19 coverage-gap rule (GAP-057): critical, org_admin + clinical_supervisor, system-locked", () => {
+    expect(
+      PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === "m19.oncall.coverage_gap_detected"),
+    ).toMatchObject({
+      severityFloor: "critical",
+      recipientResolver: "role_set",
+      resolverArgs: { roleKeys: ["org_admin", "clinical_supervisor"] },
+      systemLocked: true,
+      enabled: true,
     });
   });
 
@@ -195,8 +228,10 @@ describe("M36-T05 §7.4 system_locked floors", () => {
     expect([...SYSTEM_LOCKED_EVENT_TYPES].sort()).toEqual(
       [
         "field_safety.sos",
+        "m19.oncall.coverage_gap_detected",
         "m20.safety.coverage_gap_detected",
         "m3.breakglass.invoked",
+        "m37.shift.rn_uncovered",
         "noe.late_risk",
         "system.backup_failure",
       ].sort(),

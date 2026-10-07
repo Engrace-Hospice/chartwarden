@@ -52,6 +52,26 @@ export {
   type LcpActivatedConsumerDeps,
 } from "./consumers/m6-lcp-activated";
 
+// GAP-107 (M37 §2.6 / D7) — the IV-continuous safety overlay WRITER (M12 order signed -> overlay row; order
+// discontinued/completed -> overlay retired) and the §4.8 `iv-bedside-check-watchdog` cron.
+export {
+  M37_IV_OVERLAY_DEACTIVATE_CONSUMER,
+  M37_IV_OVERLAY_SIGNED_CONSUMER,
+  buildM37IvOverlayOnOrderEndedConsumer,
+  buildM37IvOverlayOnOrderSignedConsumer,
+  type IvOverlayConsumerDeps,
+  type IvOverlayOrderFacts,
+} from "./consumers/m12-medication-order-iv-overlay";
+export {
+  M37_IV_BEDSIDE_QUEUE,
+  M37_IV_BEDSIDE_SCHEDULE,
+  type IvActivityPort,
+  type IvBedsideWatchdogDeps,
+  registerM37IvBedsideWorker,
+  runIvBedsideCheckWatchdog,
+  scheduleM37IvBedsideWatchdog,
+} from "./jobs/iv-bedside-watchdog";
+
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,
@@ -89,4 +109,23 @@ export {
   runRnCoverageWatchdogCron,
   scheduleM37Jobs,
 } from "./jobs/cron-workers";
+// GAP-105 — the five remaining §4.8 watchdog crons (irc-cap, census, restraint, bed-cleaning, GIP staleness).
+export {
+  M37_WATCHDOG_JOBS,
+  runBedCleaningSlaWatchdogCron,
+  runCensusSnapshotBuilderCron,
+  runGipCriteriaStalenessSweepCron,
+  runIrcCapWatchdogCron,
+  runRestraintReassessmentWatchdogCron,
+} from "./jobs/watchdog-workers";
+// Batch 11 — the five §4.8 crons GAP-105 left unbuilt (reservation expiry, equipment inspection, nursing note,
+// transfer completion, post-close settlement).
+export {
+  M37_LIFECYCLE_JOBS,
+  runEquipmentInspectionWatchdogCron,
+  runNursingNoteShiftWatchdogCron,
+  runPostCloseSettlementSweepCron,
+  runReservationExpiryWatchdogCron,
+  runTransferCompletionWatchdogCron,
+} from "./jobs/lifecycle-workers";
 export { M37_PLATFORM_JOB_ID, wireM37Tenancy } from "./wiring";

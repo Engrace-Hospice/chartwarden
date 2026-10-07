@@ -5,7 +5,10 @@
 //   • ./shift-sync     §4.5 path 1 / D3 — reconciling M17's `tonightsOnCallRoster` into `on_call_shift`
 //                      rows, per ProviderEntity, without ever rewriting a night that already happened
 //
-// Both are PURE (facts in, plan/effects out). The §4.8 `shift-open.cron` / `shift-close.cron` /
-// `shift-sync.debounced` workers that execute them land with the M19-T07 service layer.
+//   • ./coverage-gap  §4.8 — the pure `coverage-gap-watchdog` predicate (GAP-057)
+//
+// All PURE (facts in, plan/effects out). The §4.8 `shift-open.cron` / `shift-close.cron` /
+// `coverage-gap-watchdog.cron` / `shift-sync.debounced` workers that execute them live in `../jobs`.
 export * from "./shift-machine";
 export * from "./shift-sync";
+export * from "./coverage-gap";

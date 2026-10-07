@@ -16,6 +16,7 @@ export {
   type SandataSubmissionBody,
   type SandataTransport,
   SandataAdapter,
+  createDenySandataTransport,
   createSandataSandboxTransport,
 } from "./adapters/sandata-adapter";
 export { type OpenModelSubmissionBody, OpenModelAdapter } from "./open-model";

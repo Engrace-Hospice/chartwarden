@@ -78,9 +78,15 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
-import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
+import {
+  countPublishedVisitsInWindow,
+  emitDueCaregiverReminders,
+  flagReassignmentsForTimeOff,
+  sweepApprovedTimeOffReassignments,
+} from "./reassignment-scan";
 import { assertAssignedClinician } from "./routes/assigned-clinician";
 import {
   type CallerAuthority,
@@ -114,6 +120,9 @@ import { orgContextFor } from "./system-actor";
 
 /** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
 const UNSCOPED_LIMIT = 50_000;
+/** `stale-visit-sweep` bounds: batch size per run, and the re-nag window before a still-stuck visit is flagged again. */
+const STALE_VISIT_SCAN_LIMIT = 500;
+const STALE_VISIT_RENAG_HOURS = 168;
 
 const V = schema.visit;
 const VSH = schema.visitStateHistory;
@@ -263,6 +272,18 @@ export interface SchedulingAutomationService {
     userId: string,
     options?: { now?: Date },
   ): Promise<{ staleVisits: number; possibleMissedVisits: number }>;
+  /** §4.8 `reassignment-scan` backstop: flag published visits inside every approved PTO window (idempotent). */
+  scanTimeOffReassignmentsForOrg(
+    orgId: string,
+    userId: string,
+    options?: { now?: Date },
+  ): Promise<{ timeOffsScanned: number; visitsFlagged: number }>;
+  /** §4.8 `caregiver-reminder`: emit `m17.caregiver_reminder_due` for opted-in visits ≤24h out (idempotent). */
+  emitCaregiverRemindersForOrg(
+    orgId: string,
+    userId: string,
+    options?: { now?: Date },
+  ): Promise<{ remindersEmitted: number }>;
 }
 
 /** The first eligible discipline for a visit purpose — the captured `assigned_discipline_at_assignment`
@@ -1846,16 +1867,24 @@ export function createDbSchedulingBackend(
         const tx = txRaw as DbClient;
         const staleCutoff = new Date(now.getTime() - 48 * 3_600_000);
         const possibleMissedCutoff = new Date(now.getTime() - 2 * 3_600_000);
+        const renagCutoff = new Date(now.getTime() - STALE_VISIT_RENAG_HOURS * 3_600_000);
+        // Idempotent per stale episode (mig 0360): flag a visit only for a new `actual_started_at` or after
+        // the re-nag window, so the 15-minute sweep does not re-emit for the same stuck visit.
         const stale = await tx
-          .select({ id: V.id, actualStartedAt: V.actualStartedAt })
+          .select({ id: V.id, serviceDate: V.serviceDate, actualStartedAt: V.actualStartedAt })
           .from(V)
           .where(
             and(
               eq(V.organizationId, orgId),
               eq(V.status, "in_visit"),
               lt(V.actualStartedAt, staleCutoff),
+              or(
+                sql`${V.staleFlaggedStartedAt} IS DISTINCT FROM ${V.actualStartedAt}`,
+                lt(V.staleFlaggedAt, renagCutoff),
+              ),
             ),
-          );
+          )
+          .limit(STALE_VISIT_SCAN_LIMIT);
         for (const v of stale) {
           await emit(tx, orgId, "m17.stale_visit_detected", "visit", v.id, {
             visitId: v.id,
@@ -1864,6 +1893,10 @@ export function createDbSchedulingBackend(
               (now.getTime() - (v.actualStartedAt?.getTime() ?? now.getTime())) / 3_600_000,
             ),
           });
+          await tx
+            .update(V)
+            .set({ staleFlaggedStartedAt: v.actualStartedAt, staleFlaggedAt: now })
+            .where(and(eq(V.id, v.id), eq(V.serviceDate, v.serviceDate)));
         }
         const possibleMissed = await tx
           .select({ id: V.id })
@@ -1877,6 +1910,28 @@ export function createDbSchedulingBackend(
           );
         return { staleVisits: stale.length, possibleMissedVisits: possibleMissed.length };
       });
+    },
+
+    async scanTimeOffReassignmentsForOrg(
+      orgId: string,
+      userId: string,
+      options: { now?: Date } = {},
+    ) {
+      const now = options.now ?? new Date();
+      return withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
+        sweepApprovedTimeOffReassignments(tx as DbClient, orgId, emit, now),
+      );
+    },
+
+    async emitCaregiverRemindersForOrg(
+      orgId: string,
+      userId: string,
+      options: { now?: Date } = {},
+    ) {
+      const now = options.now ?? new Date();
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => ({
+        remindersEmitted: await emitDueCaregiverReminders(tx as DbClient, orgId, emit, now),
+      }));
     },
 
     // ── availability ──────────────────────────────────────────────────────────────────────────────────
@@ -1986,6 +2041,16 @@ export function createDbSchedulingBackend(
       assertMayRequestTimeOff(userId, input.membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
+        const conflictingVisitCount = await countPublishedVisitsInWindow(
+          tx,
+          orgId,
+          {
+            membershipId: input.membershipId,
+            startsAt: new Date(input.startsAt),
+            endsAt: new Date(input.endsAt),
+          },
+          new Date(),
+        );
         const [inserted] = await tx
           .insert(TO)
           .values({
@@ -2004,7 +2069,7 @@ export function createDbSchedulingBackend(
           startsAt: input.startsAt,
           endsAt: input.endsAt,
           kind: input.kind,
-          conflictingVisitCount: 0,
+          conflictingVisitCount,
         });
         return {
           id: inserted.id,
@@ -2028,10 +2093,13 @@ export function createDbSchedulingBackend(
         const [t] = await tx.select().from(TO).where(eq(TO.id, id)).limit(1);
         if (!t) throw new NotFoundError("time_off");
         assertMayDecideTimeOff(userId, t.membershipId, authority);
-        transitionTimeOff(t.approvalState as TimeOffState, {
+        const now = new Date();
+        const pto = { id, membershipId: t.membershipId, startsAt: t.startsAt, endsAt: t.endsAt };
+        const affectedPublishedVisitCount = await countPublishedVisitsInWindow(tx, orgId, pto, now);
+        const transition = transitionTimeOff(t.approvalState as TimeOffState, {
           type: "approve",
           approverPresent: true,
-          conflictingVisitCount: 0,
+          conflictingVisitCount: affectedPublishedVisitCount,
         });
         await tx
           .update(TO)
@@ -2043,11 +2111,16 @@ export function createDbSchedulingBackend(
             updatedAt: new Date(),
           })
           .where(eq(TO.id, id));
+        // §2.4 `trigger_reassignment_scan` — the machine's effect, interpreted here in the approving tx
+        // (bounded; the cron backstop picks up any remainder and later-published visits).
+        if (transition.effects.some((e) => e.kind === "trigger_reassignment_scan")) {
+          await flagReassignmentsForTimeOff(tx, orgId, emit, pto, now);
+        }
         await emit(tx, orgId, "m17.time_off.approved", "time_off", id, {
           timeOffId: id,
           membershipId: t.membershipId,
           approvedBy: userId,
-          affectedPublishedVisitCount: 0,
+          affectedPublishedVisitCount,
         });
         return toTimeOffView(t, "approved");
       });

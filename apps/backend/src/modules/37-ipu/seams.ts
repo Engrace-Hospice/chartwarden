@@ -30,6 +30,7 @@ import type {
   RestraintOrderReader,
   VisitorConsentGate,
 } from "./routes/ipu-trust-gates";
+import { buildIpuIvSafetyOverlayProvider } from "./seams/iv-overlay-provider";
 
 type RegisterSeam = <K extends SeamName>(name: K, impl: SeamContracts[K]) => void;
 
@@ -185,34 +186,8 @@ export function buildIpuSeams(db: DbClient): {
       },
     },
 
-    IpuIvSafetyOverlayProvider: {
-      async getOverlayForOrder(organizationId, orderId) {
-        return withOrg(organizationId, async (tx) => {
-          const [o] = await tx
-            .select()
-            .from(schema.ipuIvSafetyOverlay)
-            .where(
-              and(
-                eq(schema.ipuIvSafetyOverlay.orderId, orderId),
-                eq(schema.ipuIvSafetyOverlay.overlayActive, true),
-              ),
-            )
-            .limit(1);
-          if (!o) return null;
-          return {
-            titrationMinRate: o.titrationMinRate ? Number(o.titrationMinRate) : 0,
-            titrationMaxRate: o.titrationMaxRate
-              ? Number(o.titrationMaxRate)
-              : Number.POSITIVE_INFINITY,
-            rateUnit: o.rateUnit,
-            dualWitnessRequired: o.dualWitnessRequired,
-            maxContinuousDurationHours: o.maxContinuousDurationHours,
-            bedsideCheckIntervalMinutes: o.bedsideCheckIntervalMinutes,
-            isSedationClass: o.isSedationClass,
-          };
-        });
-      },
-    },
+    // GAP-107 — the §2.6 overlay reader + M13's pre-administration gate (`./seams/iv-overlay-provider`).
+    IpuIvSafetyOverlayProvider: buildIpuIvSafetyOverlayProvider(db),
 
     IpuVisitorReader: {
       async visitsAllowedForPatient(organizationId, patientId) {

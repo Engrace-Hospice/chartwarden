@@ -24,6 +24,10 @@ export interface SubmissionPassResult {
   readonly status: EvvAggregatorSubmissionStatus;
   readonly transactionId: string | null;
   readonly rejectionCode: string | null;
+  /** The vendor's free-text rejection reason (denylisted from audit, §3.6); null unless rejected. */
+  readonly rejectionReason: string | null;
+  /** When the vendor said to look/retry again (`nextPollAt` / `nextRetryAt`, ISO); null when it named none. */
+  readonly nextActionAt: string | null;
   readonly effects: readonly EvvSideEffect[];
   /** True when the pass left the row awaiting an async poll (`submitted`) rather than reaching a terminal. */
   readonly awaitingPoll: boolean;
@@ -65,6 +69,13 @@ export async function dispatchSubmission(args: {
     status: t.status,
     transactionId,
     rejectionCode,
+    rejectionReason: result.result === "rejected" ? result.rejectionReason : null,
+    nextActionAt:
+      result.result === "pending_async"
+        ? result.nextPollAt
+        : result.result === "transport_failure"
+          ? result.nextRetryAt
+          : null,
     effects,
     awaitingPoll: t.status === "submitted",
   };
@@ -89,6 +100,8 @@ export async function pollSubmissionOnce(args: {
     status: t.status,
     transactionId: args.transactionId,
     rejectionCode,
+    rejectionReason: result.result === "rejected" ? result.rejectionReason : null,
+    nextActionAt: result.result === "still_pending" ? result.nextPollAt : null,
     effects: t.effects,
     awaitingPoll: t.status === "submitted",
   };

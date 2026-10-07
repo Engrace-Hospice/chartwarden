@@ -2,11 +2,10 @@
 //
 // The canonical names + cadences of the §4.3 background jobs (BullMQ on Valkey). Pure data, no
 // BullMQ import — the thin Worker/Queue construction lives in the app composition root
-// (apps/backend/src/modules/38-terminology/jobs) and is driven once a Valkey connection + the
-// production adapters exist (the loader/embedding adapters are M1 §6.23 packages, outside M38's
-// codePath; M38 owns the policy + the pure descriptors here, the same M1-owns-mechanism/M4-owns-
-// policy split as the audit jobs). The five `scheduled_*` jobs simply enqueue a `load_version` for
-// their system on the source's release cadence.
+// (apps/backend/src/modules/38-terminology/jobs, GAP-108: one real Worker per queue) over the
+// `packages/terminology-loader` orchestrators. The five `scheduled_*` jobs fetch (when egress is on /
+// a credential is configured), register and enqueue a `load_version` for their system on the source's
+// release cadence.
 
 /** The nine §4.3 queue names. */
 export const TERMINOLOGY_QUEUES = {
@@ -47,4 +46,12 @@ export const TERMINOLOGY_JOB_SCHEDULES = {
   scheduledRxnorm: "0 5 5 * *",
   /** LOINC: Feb 1 and Aug 1, 05:30 UTC (twice-yearly Regenstrief release). */
   scheduledLoinc: "30 5 1 2,8 *",
+  /**
+   * ICD-10-CM ACTIVATION: Oct 1, 04:00 UTC — the `scheduled_icd10cm` queue's second repeatable job. The Sep 15 run
+   * fetches and STAGES the next fiscal year (never activating); this run resumes that staged version (§4.3 "activate
+   * Oct 1 effective_from").
+   */
+  scheduledIcd10cmActivate: "0 4 1 10 *",
+  /** Catch-all (HCPCS quarterly / CARC / RARC ad hoc / CVX / NDC / revenue seed): monthly, the 1st at 06:00 UTC. */
+  scheduledOther: "0 6 1 * *",
 } as const;

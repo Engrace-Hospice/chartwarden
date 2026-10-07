@@ -161,7 +161,7 @@ export function registerM19CronWorkers(deps: M19WorkerDeps): Worker[] {
   ];
 }
 
-function parseBackoff(spec: string): { type: "exponential" | "fixed"; delay: number } {
+export function parseBackoff(spec: string): { type: "exponential" | "fixed"; delay: number } {
   const [type, duration] = spec.trim().split(/\s+/);
   const m = /^(\d+)(ms|s|m|h)$/.exec(duration ?? "");
   if ((type !== "exponential" && type !== "fixed") || !m) {

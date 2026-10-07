@@ -2,20 +2,18 @@
 // ADR-0018 D2). Pure, deterministic scan over the §4.8 queue catalog (pure data, no BullMQ import — the
 // worker construction binds at app boot, the M7/M9/M10/M25 precedent). Ships the ONE cron GAP-020/091
 // left open:
-//   • `idg.review-clock-sweep` (daily) — for every patient with an IDG packet in the org, escalate their
+//   • `idg.review-clock-sweep` (daily) — for every ACTIVE admission in the org, escalate its
 //     per-patient 15-day review floor (`last_idg_reviewed_at + 15d`, GAP-020's own anchor) at EXACTLY
 //     T-3 / T-0 / T+1 calendar days, emitting `m14.review_clock.escalated` (events-by-m14.ts). This is the
 //     ONLY path that catches a floor lapsing from pure inaction — no CANCEL/RESCHEDULE ever attempted, so
 //     neither GAP-020's guard nor GAP-091's override composition ever runs at all.
 //
-// SCOPE (documented, not silent — the M9 reassessment-due-scan precedent for the SAME limitation): M14
-// has no published "every actively-admitted patient in an org" seam, and none of M14's `dependsOn`
-// modules ([1, 7, 8, 36]) publish one either — this scans M14's OWN `idg_patient_packet` table for every
-// DISTINCT patient with at least one packet, not "every patient with an active admission". A patient
-// discharged after their last IDG review keeps escalating until they get no new packet ever again (their
-// floor stops advancing, so escalation is a one-time T-3/T-0/T+1 burst, not a permanent recurring alarm);
-// this is the same accepted bounded cut M9 made for its own cadence scan (`jobs/cron-store.ts`'s
-// `latestAssessmentsPerPatientScaleForOrg`).
+// POPULATION (GAP-042): every ACTIVE admission in the org, read through M6's org-explicit, keyset-paginated
+// `idgActiveAdmissionsForOrg` (a locally-declared structural port, {@link ActiveAdmissionPort}) — NOT the
+// `idg_patient_packet` table, which only holds patients who already have a packet and so made a never-
+// reviewed admission invisible (the exact citation-relevant case). The floor origin is the admission's
+// latest `last_idg_reviewed_at` (MAX across its packets), falling back to its `activated_at` (spec §4.8).
+// An admission that is no longer `active` (discharged, on hold) stops escalating.
 // F-171 (#248) adds the two crons `jobs/schedule-materialise.ts` / `jobs/packet-build.ts` document as
 // genuinely built and wired here — the §7.1 `materialise-future-meetings` worker (a prerequisite: without
 // it `idg_meeting` never gets a `scheduled` row for the packet-build cron to find) and the §7.2/§4.9.1
@@ -78,18 +76,40 @@ export const M14_QUEUE_PARAMS = {
 /** The M14-F01 15-day review floor (matches `idg-route-service-db.ts`'s `computeReviewFloorBreaches`). */
 export const REVIEW_FLOOR_DAYS = 15;
 
-/** The single per-patient projection the sweep evaluates — one row per DISTINCT patient with at least one
- * packet in the org (the store aggregates across ALL the patient's packets; see this file's header). */
+/** The single per-admission projection the sweep evaluates — one row per ACTIVE admission in the org
+ * (M6 population; the store adds the admission's latest review stamp; see this file's header). */
 export interface ReviewClockSnapshot {
   readonly patientId: string;
   readonly admissionId: string;
   readonly locationId: string;
-  /** MAX(last_idg_reviewed_at) across every packet for this patient, or null if never reviewed. */
+  /** MAX(last_idg_reviewed_at) across every packet for this admission, or null if never reviewed. */
   readonly lastIdgReviewedAt: string | null;
-  /** Fallback origin when never reviewed — the EARLIEST packet's `since_cursor_iso` (the packet worker's
-   * own admission-activation-anchored cursor; the same column GAP-020's guard reuses for the same reason). */
-  readonly earliestSinceCursorIso: string;
+  /** Floor origin when never reviewed — the admission's `activated_at` (spec §4.8; GAP-042). */
+  readonly activatedAtIso: string;
 }
+
+/** One active admission as the M6 seam returns it (structural mirror of `IdgActiveAdmission`). */
+export interface ActiveAdmissionRef {
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly locationId: string;
+  readonly activatedAtIso: string;
+}
+
+/** M6's org-explicit, keyset-paginated active-admission read (`idgActiveAdmissionsForOrg`), bound at the
+ * composition root. `afterAdmissionId` null = first page; ascending by id; at most `limit` rows. */
+export interface ActiveAdmissionPort {
+  activeAdmissionsForOrg(
+    organizationId: string,
+    afterAdmissionId: string | null,
+    limit: number,
+  ): Promise<readonly ActiveAdmissionRef[]>;
+}
+
+/** Rows per M6 page, and the page ceiling — a population past the ceiling THROWS (loud, never a silent
+ * truncation that would leave the tail's reviews un-escalated). 100 × 500 = 50k active admissions per org. */
+export const REVIEW_CLOCK_PAGE_SIZE = 500;
+export const REVIEW_CLOCK_MAX_PAGES = 100;
 
 /** One patient's escalation for this tick (events-by-m14.ts's `m14.review_clock.escalated` payload shape). */
 export interface ReviewClockEscalation {
@@ -121,7 +141,7 @@ function stageFor(daysUntilFloor: number): "t_minus_3" | "t_zero" | "t_plus_1" |
 
 /**
  * `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2) — for each patient, floor =
- * `(lastIdgReviewedAt ?? earliestSinceCursorIso) + 15 days`; escalate at EXACTLY T-3, T-0, or T+1
+ * `(lastIdgReviewedAt ?? activatedAtIso) + 15 days`; escalate at EXACTLY T-3, T-0, or T+1
  * calendar days from `now`. T-3 is `clinical_routine`; T-0/T+1 tighten to `critical` (alerts-by-m14.ts's
  * own severity note). Fires once per stage under the scheduled daily cadence.
  */
@@ -131,7 +151,7 @@ export function planReviewClockSweep(
 ): readonly ReviewClockEscalation[] {
   const escalations: ReviewClockEscalation[] = [];
   for (const p of patients) {
-    const origin = p.lastIdgReviewedAt ?? p.earliestSinceCursorIso;
+    const origin = p.lastIdgReviewedAt ?? p.activatedAtIso;
     const floorAt = new Date(new Date(origin).getTime() + REVIEW_FLOOR_DAYS * 86_400_000);
     const stage = stageFor(calendarDaysDiff(floorAt, now));
     if (!stage) continue;

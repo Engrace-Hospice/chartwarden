@@ -112,6 +112,17 @@ const NON_ORG_SCOPED = new Set<string>([
   "deprecation_mapping",
   "concept_embedding",
   "terminology_update_log",
+  // M38 loader pipeline (GAP-108, migration 0364): the seven common-shape concept tables, the loader-only staging
+  // area and the licence attestations — all platform-shared (no org column), loader-written, RLS FORCEd.
+  "concept_icd10pcs",
+  "concept_ndc",
+  "concept_hcpcs",
+  "concept_cvx",
+  "concept_revenue",
+  "concept_carc",
+  "concept_rarc",
+  "concept_staging",
+  "terminology_license_attestation",
   // M10 HOPE modernization Phase 1A: CMS HOPE Data Specification reference tables.
   // These carry no tenant data and are immutable platform reference rows shared by every org.
   // The tenant-scoped item answers live in hope_assessment_answer, which is intentionally NOT listed.

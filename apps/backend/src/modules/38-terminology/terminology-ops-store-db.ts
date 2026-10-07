@@ -18,11 +18,15 @@
 // Date at runtime and only looks like one to the type-checker.
 import { type DbClient, schema } from "@wardenx/db";
 import type { CodeSystemId } from "@wardenx/terminology";
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { rethrowRefusal } from "./db-errors";
 import type {
   EmbeddingRefreshResult,
+  LicenseAttestationEntry,
+  RecordAttestationInput,
   RegisterVersionInput,
   RegisterVersionResult,
+  SystemAttribution,
   SystemDeprecation,
   TenantExtensionGovernanceQuery,
   TenantExtensionGovernanceRow,
@@ -35,6 +39,7 @@ const VS = schema.valueSets;
 const DEP = schema.deprecationMapping;
 const LOG = schema.terminologyUpdateLog;
 const VER = schema.codeSystemVersions;
+const ATT = schema.terminologyLicenseAttestations;
 
 /** Normalise a driver value that is a `timestamptz` (Date via the query builder, string via `execute`). */
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v));
@@ -47,6 +52,21 @@ const rowsOf = (result: unknown): ExecRow[] => {
   const r = result as { rows?: ExecRow[] } | ExecRow[];
   return Array.isArray(r) ? r : (r.rows ?? []);
 };
+
+function toAttestationEntry(r: typeof ATT.$inferSelect): LicenseAttestationEntry {
+  return {
+    id: r.id,
+    systemId: r.systemId,
+    licensee: r.licensee,
+    licenseReference: r.licenseReference,
+    attestedBy: r.attestedBy,
+    attestedAt: iso(r.attestedAt),
+    effectiveFrom: String(r.effectiveFrom),
+    effectiveTo: r.effectiveTo === null ? null : String(r.effectiveTo),
+    attributionText: r.attributionText,
+    revokedAt: isoN(r.revokedAt),
+  };
+}
 
 /** Build the production {@link TerminologyOpsStore}. */
 export function createDbTerminologyOpsStore(db: DbClient): TerminologyOpsStore {
@@ -139,7 +159,8 @@ export function createDbTerminologyOpsStore(db: DbClient): TerminologyOpsStore {
     },
 
     async registerVersion(input: RegisterVersionInput): Promise<RegisterVersionResult> {
-      const result = await db.execute(sql`
+      const result = await db
+        .execute(sql`
         SELECT version_id, created, status
         FROM terminology_loader_register_version(
           ${input.system}::code_system_id,
@@ -150,7 +171,8 @@ export function createDbTerminologyOpsStore(db: DbClient): TerminologyOpsStore {
           ${input.effectiveFrom}::date,
           ${input.loadedBy}::uuid
         )
-      `);
+      `)
+        .catch(rethrowRefusal);
       const row = rowsOf(result)[0];
       if (!row) throw new Error("terminology_loader_register_version returned no row");
       return {
@@ -207,6 +229,65 @@ export function createDbTerminologyOpsStore(db: DbClient): TerminologyOpsStore {
         addedBy: r.added_by === null ? null : String(r.added_by),
         removedAt: isoN(r.removed_at),
         createdAt: iso(r.created_at),
+      }));
+    },
+
+    async listLicenseAttestations(system): Promise<readonly LicenseAttestationEntry[]> {
+      const rows = await db
+        .select()
+        .from(ATT)
+        .where(system === undefined ? undefined : eq(ATT.systemId, system))
+        .orderBy(desc(ATT.attestedAt));
+      return rows.map(toAttestationEntry);
+    },
+
+    async recordLicenseAttestation(input: RecordAttestationInput) {
+      const result = await db
+        .execute(sql`
+        SELECT terminology_loader_record_license_attestation(
+          ${input.system}::code_system_id, ${input.licensee}, ${input.licenseReference},
+          ${input.attestedBy}::uuid, ${input.effectiveFrom}::date, ${input.effectiveTo}::date,
+          ${input.attributionText}
+        ) AS id
+      `)
+        .catch(rethrowRefusal);
+      const row = rowsOf(result)[0];
+      if (!row) throw new Error("terminology_loader_record_license_attestation returned no row");
+      return { attestationId: String(row.id) };
+    },
+
+    async revokeLicenseAttestation(attestationId, revokedBy) {
+      const result = await db.execute(sql`
+        SELECT terminology_loader_revoke_license_attestation(${attestationId}::uuid, ${revokedBy}::uuid) AS revoked
+      `);
+      return rowsOf(result)[0]?.revoked === true;
+    },
+
+    async activeAttributions(): Promise<readonly SystemAttribution[]> {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = await db
+        .select({
+          systemId: ATT.systemId,
+          licensee: ATT.licensee,
+          attributionText: ATT.attributionText,
+          from: ATT.effectiveFrom,
+        })
+        .from(ATT)
+        .where(
+          and(
+            isNull(ATT.revokedAt),
+            lte(ATT.effectiveFrom, today),
+            or(isNull(ATT.effectiveTo), gte(ATT.effectiveTo, today)),
+          ),
+        )
+        .orderBy(desc(ATT.effectiveFrom));
+      // Newest attestation per system wins (rows are ordered newest first).
+      const newest = new Map<string, (typeof rows)[number]>();
+      for (const r of rows) if (!newest.has(r.systemId)) newest.set(r.systemId, r);
+      return [...newest.values()].map((r) => ({
+        systemId: r.systemId,
+        licensee: r.licensee,
+        attributionText: r.attributionText,
       }));
     },
   };

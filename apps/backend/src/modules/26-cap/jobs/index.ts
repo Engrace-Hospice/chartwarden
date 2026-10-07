@@ -8,6 +8,12 @@ import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, lte, or, sql } from "drizzle-orm";
+import {
+  type PsrFileStorePort,
+  type PsrReconcileEnqueuePort,
+  reconcilePsrImport,
+} from "../psr/psr-reconcile";
+import type { WriteOutboxPort } from "../routes/write-service";
 import { buildDrizzleM26WriteService } from "../routes/write-service-drizzle";
 import { M26_WORKER_SYSTEM_USER_ID } from "../system-actor";
 import {
@@ -62,10 +68,20 @@ export interface M26WorkerDeps {
   now?: () => Date;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly alerts?: WorkerAlertPort;
+  /** GAP-078 — the `cap:psr-reconcile` worker is only constructed when both are bound (it would otherwise
+   *  have no file to read / nowhere to publish `psr_variance_raised`). */
+  readonly psrFiles?: PsrFileStorePort;
+  readonly outbox?: WriteOutboxPort;
 }
 
-/** Build the Drizzle-backed cron stores over a db handle. */
-function buildStores(db: DbClient): {
+/** The `cap:psr-reconcile` job payload — ids only, PHI-free. */
+export interface PsrReconcileJobData {
+  readonly organizationId: string;
+  readonly importId: string;
+}
+
+/** Build the Drizzle-backed cron stores over a db handle (exported for the live system-actor suite). */
+export function buildStores(db: DbClient): {
   projection: NightlyProjectionStore;
   close: CapYearCloseStore;
   watchdog: PsrWatchdogStore;
@@ -178,7 +194,56 @@ export function registerM26CronWorkers(deps: M26WorkerDeps): Worker[] {
     { ...opts, concurrency: M26_QUEUE_PARAMS.psrVarianceWatchdog.concurrency },
   );
 
-  return [nightly, close, watchdog];
+  const workers = [nightly, close, watchdog];
+  if (deps.psrFiles && deps.outbox) {
+    const { psrFiles, outbox } = deps;
+    workers.push(
+      new Worker(
+        M26_CRON_QUEUES.psrReconcile,
+        async (job) => {
+          const { organizationId, importId } = job.data as PsrReconcileJobData;
+          await reconcilePsrImport(
+            {
+              db: deps.db,
+              files: psrFiles,
+              outbox,
+            },
+            organizationId,
+            importId,
+          );
+        },
+        { ...opts, concurrency: M26_QUEUE_PARAMS.psrReconcile.concurrency },
+      ),
+    );
+  }
+  return workers;
+}
+
+/**
+ * The `cap:psr-reconcile` producer the import route calls after commit. The job id is deterministic per
+ * import (no ':' — BullMQ rejects it), so a duplicate enqueue of one import collapses; the finished job is
+ * removed so an operator re-trigger (re-upload of a `parse_failed` file) can queue it again.
+ */
+export function buildPsrReconcileEnqueuer(connection: ConnectionOptions): {
+  readonly port: PsrReconcileEnqueuePort;
+  readonly queue: Queue;
+} {
+  const queue = new Queue(M26_CRON_QUEUES.psrReconcile, { connection });
+  const { attempts, backoff } = M26_QUEUE_PARAMS.psrReconcile;
+  return {
+    queue,
+    port: {
+      async enqueue({ organizationId, importId }) {
+        await queue.add("reconcile", { organizationId, importId } satisfies PsrReconcileJobData, {
+          jobId: `cap-psr-reconcile-${importId}`,
+          attempts,
+          backoff,
+          removeOnComplete: true,
+          removeOnFail: true,
+        });
+      },
+    },
+  };
 }
 
 /** Register the §4.8 repeatable cron schedules (UTC) on the platform Valkey. Returns the Queues to close. */

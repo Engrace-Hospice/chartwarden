@@ -19,6 +19,17 @@
 export const M19_QUEUES = {
   rosterSyncDrain: "oncall.shift-sync.debounced",
   rosterSyncCatchup: "oncall.shift-sync.catchup-seed",
+  // GAP-057 — the three §4.8 Tier-1 queues (`m19.shift-open.cron`, `m19.shift-close.cron`,
+  // `m19.coverage-gap-watchdog.cron`), named in this file's `oncall.` dotted-segment convention.
+  shiftOpen: "oncall.shift-open.cron",
+  shiftClose: "oncall.shift-close.cron",
+  coverageGapWatchdog: "oncall.coverage-gap-watchdog.cron",
+  // GAP-057 follow-up (b11) — the four remaining §4.8 crons (`m19.callback-sla.cron`,
+  // `m19.awaiting-callback-timeout.cron`, `m19.close-documented.cron`, `m19.escalation-sla`).
+  callbackSla: "oncall.callback-sla.cron",
+  awaitingCallbackTimeout: "oncall.awaiting-callback-timeout.cron",
+  closeDocumented: "oncall.close-documented.cron",
+  escalationSla: "oncall.escalation-sla.cron",
 } as const;
 
 export type M19QueueName = (typeof M19_QUEUES)[keyof typeof M19_QUEUES];
@@ -29,12 +40,26 @@ export type M19QueueName = (typeof M19_QUEUES)[keyof typeof M19_QUEUES];
  *  the catch-up seeder's own INSERT is a single idempotent statement with nothing to retry meaningfully. */
 export const M19_DLQ = {
   rosterSyncDrain: "oncall.shift-sync.debounced.dlq",
+  shiftOpen: "oncall.shift-open.dlq",
+  shiftClose: "oncall.shift-close.dlq",
+  coverageGapWatchdog: "oncall.coverage-gap.dlq",
+  callbackSla: "oncall.callback-sla.dlq",
+  awaitingCallbackTimeout: "oncall.callback-timeout.dlq",
+  closeDocumented: "oncall.close-documented.dlq",
+  escalationSla: "oncall.escalation-sla.dlq",
 } as const;
 
 /** The reserved job names — used as the repeatable job's `name`, not the queue name, so a log line or
  *  BullMQ UI reads the same id the spec's own §4.8 table and this directory's comments already use. */
 export const M19_ROSTER_SYNC_DRAIN_JOB_NAME = "m19.shift-sync.debounced";
 export const M19_ROSTER_SYNC_CATCHUP_JOB_NAME = "m19.shift-sync.catchup-seed";
+export const M19_SHIFT_OPEN_JOB_NAME = "m19.shift-open.cron";
+export const M19_SHIFT_CLOSE_JOB_NAME = "m19.shift-close.cron";
+export const M19_COVERAGE_GAP_WATCHDOG_JOB_NAME = "m19.coverage-gap-watchdog.cron";
+export const M19_CALLBACK_SLA_JOB_NAME = "m19.callback-sla.cron";
+export const M19_AWAITING_CALLBACK_TIMEOUT_JOB_NAME = "m19.awaiting-callback-timeout.cron";
+export const M19_CLOSE_DOCUMENTED_JOB_NAME = "m19.close-documented.cron";
+export const M19_ESCALATION_SLA_JOB_NAME = "m19.escalation-sla";
 
 /**
  * §4.8: "debounced 30 s on `m17.visit.assigned`" — the window `OnCallRosterSyncQueueRepository
@@ -52,6 +77,16 @@ export const M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS = 30_000;
 export const M19_JOB_SCHEDULES = {
   rosterSyncDrainEveryMs: 10_000,
   rosterSyncCatchupEveryMs: 5 * 60_000,
+  /** §4.8 — `shift-open.cron` / `shift-close.cron` every 5 min; the watchdog every 30 min (canonical). */
+  shiftOpenEveryMs: 5 * 60_000,
+  shiftCloseEveryMs: 5 * 60_000,
+  coverageGapWatchdogEveryMs: 30 * 60_000,
+  /** §4.8 — `callback-sla` every minute, `awaiting-callback-timeout` every 10 min, `close-documented` every
+   *  15 min, `escalation-sla` every 5 min. */
+  callbackSlaEveryMs: 60_000,
+  awaitingCallbackTimeoutEveryMs: 10 * 60_000,
+  closeDocumentedEveryMs: 15 * 60_000,
+  escalationSlaEveryMs: 5 * 60_000,
 } as const;
 
 /**
@@ -67,6 +102,17 @@ export const M19_JOB_SCHEDULES = {
 export const M19_QUEUE_PARAMS = {
   rosterSyncDrain: { priority: 2, attempts: 3, backoff: "exponential 15s", concurrency: 2 },
   rosterSyncCatchup: { priority: 3, attempts: 1, backoff: "fixed 5s", concurrency: 1 },
+  // §4.8 Tier-1 rows, verbatim: priority 1, 1 per org (the tick is a sequential per-org fan-out, so one
+  // worker slot), attempts 3 and the spec's exponential schedules (base delay x 2^(attempt-1)).
+  shiftOpen: { priority: 1, attempts: 3, backoff: "exponential 30s", concurrency: 1 },
+  shiftClose: { priority: 1, attempts: 3, backoff: "exponential 30s", concurrency: 1 },
+  coverageGapWatchdog: { priority: 1, attempts: 3, backoff: "exponential 60s", concurrency: 1 },
+  // §4.8 rows, verbatim except `escalationSla`'s concurrency: the spec says "2 per org", but the tick is a
+  // sequential per-org fan-out, so one worker slot (two would only let ticks overlap on the same rows).
+  callbackSla: { priority: 2, attempts: 2, backoff: "fixed 15s", concurrency: 1 },
+  awaitingCallbackTimeout: { priority: 3, attempts: 2, backoff: "fixed 30s", concurrency: 1 },
+  closeDocumented: { priority: 3, attempts: 2, backoff: "fixed 30s", concurrency: 1 },
+  escalationSla: { priority: 2, attempts: 2, backoff: "fixed 30s", concurrency: 1 },
 } as const;
 
 // NOTE: this file stays PURE DATA with no BullMQ import (the M20 `jobs/index.ts` precedent) — `./worker.ts`

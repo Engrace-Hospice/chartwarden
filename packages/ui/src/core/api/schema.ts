@@ -1600,6 +1600,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/terminology/{system}/license-attestation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a licence attestation (licensee, reference, validity, attribution text) for a non-public code system (platform-ops + step-up) */
+        post: operations["postApiV1AdminTerminologyBySystemLicenseattestation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/terminology/{system}/load": {
         parameters: {
             query?: never;
@@ -1609,7 +1626,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a source version for a code system (platform-ops + step-up, §4.2) */
+        /** Register a source version and enqueue its load (platform-ops + step-up; non-public systems need a licence attestation, §4.2) */
         post: operations["postApiV1AdminTerminologyBySystemLoad"];
         delete?: never;
         options?: never;
@@ -1626,8 +1643,59 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request an embeddings recompute at the active version (platform-ops, §4.2) */
+        /** Enqueue an embeddings recompute at the active version (platform-ops, §4.2; 503 EMBEDDINGS_NOT_CONFIGURED while no embeddings backend is bound) */
         post: operations["postApiV1AdminTerminologyBySystemRefreshembeddings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/license-attestations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Licence attestations for non-public code systems (platform-ops) */
+        get: operations["getApiV1AdminTerminologyLicenseattestations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/license-attestations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a licence attestation (platform-ops + step-up); loads of the system are refused afterwards */
+        post: operations["postApiV1AdminTerminologyLicenseattestationsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Presign a checksum-enforced upload of a release file into the platform terminology bucket (platform-ops) */
+        post: operations["postApiV1AdminTerminologyUploads"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19689,6 +19757,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/terminology/attributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Licence attribution text in force for SNOMED CT / LOINC / RxNorm (any terminology.read caller) */
+        get: operations["getApiV1TerminologyAttributions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminology/remediation": {
         parameters: {
             query?: never;
@@ -25062,6 +25147,45 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdminTerminologyBySystemLicenseattestation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                system: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    licensee: string;
+                    licenseReference: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    attributionText: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attestationId: string;
+                        systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdminTerminologyBySystemLoad: {
         parameters: {
             query?: never;
@@ -25081,6 +25205,7 @@ export interface operations {
                     releasedOn?: string;
                     /** Format: date */
                     effectiveFrom?: string;
+                    activate?: boolean;
                 };
             };
         };
@@ -25096,7 +25221,7 @@ export interface operations {
                         status: string;
                         created: boolean;
                         /** @constant */
-                        ingestion: "pending_loader_worker";
+                        ingestion: "enqueued";
                     };
                 };
             };
@@ -25126,7 +25251,110 @@ export interface operations {
                         /** @constant */
                         status: "embedding";
                         /** @constant */
-                        recompute: "pending_embeddings_worker";
+                        recompute: "enqueued";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminTerminologyLicenseattestations: {
+        parameters: {
+            query?: {
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
+                            licensee: string;
+                            licenseReference: string;
+                            attestedBy: string;
+                            attestedAt: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            attributionText: string;
+                            revokedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminTerminologyLicenseattestationsByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        revoked: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminTerminologyUploads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
+                    fileName: string;
+                    sha256: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sourceFileRef: string;
+                        checksum: string;
+                        upload: {
+                            url: string;
+                            headers: {
+                                [key: string]: string;
+                            };
+                            expiresAt: string;
+                        };
                     };
                 };
             };
@@ -36083,6 +36311,16 @@ export interface operations {
                         parseError: string | null;
                         beneficiaryCountPsr: number | null;
                         paidTotalCentsPsr: number | null;
+                        rowsQuarantined?: number | null;
+                        quarantineDetail?: {
+                            lines: {
+                                line: number;
+                                code: string;
+                            }[];
+                            truncated: boolean;
+                            flaggedBeneficiaries: number;
+                            unattributableRows: number;
+                        } | null;
                         importedAt: string;
                     };
                 };
@@ -78583,6 +78821,34 @@ export interface operations {
                             guidance: string | null;
                         };
                         asOf: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TerminologyAttributions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
+                            licensee: string;
+                            attributionText: string;
+                        }[];
                     };
                 };
             };

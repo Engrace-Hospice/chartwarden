@@ -10,13 +10,11 @@
 //
 // These tests drive the loop directly with a fake db + fake outbox and a checkpoint that mimics what
 // BullMQ's `job.data` does across attempts of the same job.
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const snapshots = vi.hoisted(() => ({ byOrg: new Map<string, unknown[]>() }));
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/modules/14-idg/jobs/cron-store", () => ({
-  reviewClockPatientsForOrg: async (_tx: unknown, organizationId: string) =>
-    snapshots.byOrg.get(organizationId) ?? [],
+  // no IDG review ever stamped → every admission falls back to its activated_at
+  lastReviewedByAdmissionForOrg: async () => new Map<string, string>(),
   // the M36 alert's coordinator tier read (not under test here)
   locationCoordinatorsForOrg: async () => new Map<string, string>(),
 }));
@@ -28,12 +26,11 @@ const NOW = new Date("2026-06-20T12:00:00.000Z");
 const ORGS = ["org-1", "org-2", "org-3"] as const;
 
 /** A snapshot whose 15-day floor lands exactly on NOW → one `t_zero` escalation per org. */
-const snapFor = (org: string) => ({
+const admissionFor = (org: string) => ({
   patientId: `pat-${org}`,
   admissionId: `adm-${org}`,
   locationId: `loc-${org}`,
-  lastIdgReviewedAt: null,
-  earliestSinceCursorIso: "2026-06-05T00:00:00.000Z",
+  activatedAtIso: "2026-06-05T00:00:00.000Z",
 });
 
 /** Mimics BullMQ job data: the array survives across attempts of the SAME job, as Redis does. */
@@ -73,6 +70,9 @@ function harness(failFor: Set<string>) {
       connection: {} as never,
       db: fakeDb(),
       now: () => NOW,
+      activeAdmissions: {
+        activeAdmissionsForOrg: async (organizationId: string) => [admissionFor(organizationId)],
+      },
       activeOrgs: {
         listActiveOrgs: async () => ORGS.map((organizationId) => ({ organizationId })),
       },
@@ -93,11 +93,6 @@ function harness(failFor: Set<string>) {
 }
 
 describe("runReviewClockSweepCron — retry safety across a mid-loop failure", () => {
-  beforeEach(() => {
-    snapshots.byOrg.clear();
-    for (const org of ORGS) snapshots.byOrg.set(org, [snapFor(org)]);
-  });
-
   it("sweeps every org on a clean tick", async () => {
     const h = harness(new Set());
     await runReviewClockSweepCron(h.deps as never);

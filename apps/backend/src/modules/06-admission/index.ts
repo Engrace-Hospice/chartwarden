@@ -165,6 +165,8 @@ export {
   createDrizzleAdmissionReaderStore,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgActiveAdmissionsForOrg,
+  type IdgActiveAdmission,
   idgRecertWindowsForOrg,
   IDG_HOSPITAL_EVENTS_MAX_PATIENTS,
   type IdgHospitalEvent,

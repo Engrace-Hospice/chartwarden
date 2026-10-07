@@ -13,6 +13,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -53,6 +54,10 @@ export const capPsrImport = pgTable(
     beneficiaryCountPsr: integer("beneficiary_count_psr"),
     paidTotalCentsPsr: bigint("paid_total_cents_psr", { mode: "number" }),
     inpatientDaysPsr: integer("inpatient_days_psr"),
+    // Rows set aside by the reconcile job (malformed MBI / amount / column count) + a PHI-free detail
+    // document (line numbers + codes only). NULL until reconciled, and when nothing was quarantined.
+    rowsQuarantined: integer("rows_quarantined"),
+    quarantineDetail: jsonb("quarantine_detail"),
   },
   (t) => ({
     uniqFile: unique("cap_psr_import_file_uq").on(t.organizationId, t.capPeriodId, t.fileSha256),

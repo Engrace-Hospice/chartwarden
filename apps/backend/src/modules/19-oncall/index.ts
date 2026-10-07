@@ -130,6 +130,45 @@ export {
   scheduleM19Jobs,
 } from "./jobs/worker";
 export { M19_PLATFORM_JOB_ID, wireM19Tenancy } from "./jobs/wiring";
+// GAP-057 — the three §4.8 Tier-1 crons (shift-open, shift-close, coverage-gap watchdog).
+export {
+  M19_COVERAGE_GAP_WATCHDOG_JOB_NAME,
+  M19_SHIFT_CLOSE_JOB_NAME,
+  M19_SHIFT_OPEN_JOB_NAME,
+} from "./jobs/index";
+export {
+  type M19ShiftCronDeps,
+  type ShiftCronOrgResult,
+  runShiftCloseTick,
+  runShiftOpenTick,
+} from "./jobs/shift-cron";
+export { type M19CoverageGapDeps, runCoverageGapWatchdogTick } from "./jobs/coverage-gap-watchdog";
+export {
+  type M19Tier1WorkerDeps,
+  registerM19Tier1CronWorkers,
+  scheduleM19Tier1Jobs,
+} from "./jobs/tier1-workers";
+// GAP-057 follow-up — the four non-Tier-1 §4.8 crons (callback-sla, awaiting-callback-timeout,
+// close-documented, escalation-sla).
+export {
+  M19_AWAITING_CALLBACK_TIMEOUT_JOB_NAME,
+  M19_CALLBACK_SLA_JOB_NAME,
+  M19_CLOSE_DOCUMENTED_JOB_NAME,
+  M19_ESCALATION_SLA_JOB_NAME,
+} from "./jobs/index";
+export type {
+  M19TriageCronDeps,
+  TriageCronOrgResult,
+} from "./jobs/triage-cron-common";
+export { runCallbackSlaTick } from "./jobs/callback-sla";
+export { runAwaitingCallbackTimeoutTick } from "./jobs/awaiting-callback-timeout";
+export { runCloseDocumentedTick } from "./jobs/close-documented";
+export { runEscalationSlaTick } from "./jobs/escalation-sla";
+export {
+  type M19TriageWorkerDeps,
+  registerM19TriageCronWorkers,
+  scheduleM19TriageJobs,
+} from "./jobs/triage-workers";
 export {
   type EnsureCatchUpPendingInput,
   type TriggerDebounceInput,

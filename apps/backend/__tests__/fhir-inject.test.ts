@@ -252,6 +252,15 @@ function makeServer(options: MakeServerOptions = {}) {
     // GAP-083 — an absent BAA gate fails closed; these cases are about auth/scope/shape, so the partner's
     // BAA is in force (the BAA-denial cases live in gap-083-m28-client-enforcement.test.ts).
     baa: options.baa ?? { isBaaActive: async () => true },
+    // GAP-084 — without bound export machinery R32 answers 501 instead of accepting a job nothing runs.
+    exports: {
+      enqueue: { enqueue: async () => {} },
+      objects: {
+        put: async () => ({ sha256Hex: "" }),
+        presignGet: async () => ({ url: "https://minio.test/x", expiresAt: NOW }),
+        destroy: async () => {},
+      },
+    },
     ...(options.tokenEndpointUrl ? { tokenEndpointUrl: options.tokenEndpointUrl } : {}),
   });
   return { app, store };
@@ -609,7 +618,7 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
 
 // ── R7/R8/R9/R10/R11 — bulk $export lifecycle ────────────────────────────────────────────────────────
 describe("M28-fhir-inject — R7-R11: bulk $export lifecycle", () => {
-  it("system/patient/group $export all accept (202); poll shows accepted (202); cancel accepts (202)", async () => {
+  it("system $export accepts (202); a second is 429 while it is active; Group is 501; poll shows accepted (202); cancel accepts (202) and frees the slot", async () => {
     const { app } = makeServer();
 
     const systemExport = await app.inject({
@@ -621,19 +630,21 @@ describe("M28-fhir-inject — R7-R11: bulk $export lifecycle", () => {
     const contentLocation = systemExport.headers["content-location"] as string;
     const jobId = contentLocation.split("/").pop() as string;
 
+    // GAP-084 — one active export per client (§2.2): the patient-level export is refused while the first runs.
     const patientExport = await app.inject({
       method: "POST",
       url: "/fhir/r4/Patient/$export",
       headers: BEARER_FULL,
     });
-    expect(patientExport.statusCode).toBe(202);
+    expect(patientExport.statusCode).toBe(429);
 
+    // GAP-084 — no Group membership source exists, so Group export is an honest 501, not a 202.
     const groupExport = await app.inject({
       method: "POST",
       url: "/fhir/r4/Group/g1/$export",
       headers: BEARER_FULL,
     });
-    expect(groupExport.statusCode).toBe(202);
+    expect(groupExport.statusCode).toBe(501);
 
     const poll = await app.inject({
       method: "GET",
@@ -650,6 +661,13 @@ describe("M28-fhir-inject — R7-R11: bulk $export lifecycle", () => {
     });
     expect(cancel.statusCode).toBe(202);
     expect(cancel.json().resourceType).toBe("OperationOutcome");
+
+    const afterCancel = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/Patient/$export",
+      headers: BEARER_FULL,
+    });
+    expect(afterCancel.statusCode).toBe(202);
 
     await app.close();
   });

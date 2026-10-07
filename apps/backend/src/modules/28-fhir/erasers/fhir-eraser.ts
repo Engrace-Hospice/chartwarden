@@ -11,8 +11,9 @@
 //   · fhir_client             — soft-deleted to `status='revoked'`; the approvals + BAA reference retained.
 //   · fhir_client_credential  — `secret_cipher` + `secret_digest_sha256` destroyed; `fingerprint` retained.
 //   · fhir_client_session     — full delete (no PHI; routine-purged past 90 days anyway).
-//   · fhir_bulk_export_job    — soft-deleted to `status='expired'` (the MinIO purge is the sweeper's; the
-//     job metadata persists for audit reconstruction).
+//   · fhir_bulk_export_job    — soft-deleted to `status='expired'` (the MinIO purge is the `fhir.bulk-export-sweeper`'s —
+//     it also purges the artifacts of jobs this eraser already flipped, so `erased` counts the job rows
+//     flipped, never objects destroyed; the job metadata persists for audit reconstruction).
 //   · fhir_inbound_resource   — `payload` replaced with the shred sentinel `{"_destroyed":true}`; the
 //     `payload_sha256` + decision rationale + audit trail preserved.
 //   · fhir_capability_snapshot — NEVER erased (platform-shared, no PHI).
@@ -109,10 +110,13 @@ export function createDrizzleFhirGatewayEraseStore(db: DbClient): FhirGatewayEra
         const inbound = await tx
           .update(INBOUND)
           .set({ payload: SHRED_PAYLOAD as never })
+          // The shred marker lives in the PAYLOAD (`{"_destroyed":true}`); `payload_sha256` is deliberately
+          // kept as the §164.528 digest, so it can never carry the marker. Matching on the payload is what
+          // makes a second erase a no-op (count 0) instead of re-touching every row.
           .where(
             and(
               eq(INBOUND.organizationId, organizationId),
-              ne(INBOUND.payloadSha256, "_destroyed"),
+              sql`${INBOUND.payload} IS DISTINCT FROM ${SHRED_PAYLOAD}`,
             ),
           )
           .returning({ id: INBOUND.id });

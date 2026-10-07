@@ -252,6 +252,17 @@ export const CapPsrImportViewDto = Type.Object({
   parseError: NullStr(),
   beneficiaryCountPsr: NullInt(),
   paidTotalCentsPsr: NullInt(),
+  rowsQuarantined: Type.Optional(NullInt()),
+  quarantineDetail: Type.Optional(
+    Nullable(
+      Type.Object({
+        lines: Type.Array(Type.Object({ line: Type.Integer(), code: Type.String() })),
+        truncated: Type.Boolean(),
+        flaggedBeneficiaries: Type.Integer(),
+        unattributableRows: Type.Integer(),
+      }),
+    ),
+  ),
   importedAt: Type.String(),
 });
 

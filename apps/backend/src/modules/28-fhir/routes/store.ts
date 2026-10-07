@@ -79,6 +79,16 @@ export interface FhirBulkExportJobView {
   readonly expiresAt: string | null;
 }
 
+/** One NDJSON output of a completed export job (a `fhir_bulk_export_artifact` row). A blank `objectKey` means
+ *  the object was purged (the sweeper blanks it once the bytes are gone). */
+export interface FhirBulkExportArtifactView {
+  readonly resourceType: string;
+  readonly objectKey: string;
+  readonly byteSize: number;
+  readonly rowCount: number;
+  readonly checksumSha256: string;
+}
+
 export interface FhirInboundProposalView {
   readonly id: string;
   readonly resourceType: string;
@@ -238,6 +248,8 @@ export interface FhirGatewayStore {
     },
   ): Promise<FhirBulkExportJobView>;
   getJob(orgId: string, jobId: string): Promise<FhirBulkExportJobView | null>;
+  /** The output files of a `completed` job, ordered by resource type. */
+  listJobArtifacts(orgId: string, jobId: string): Promise<readonly FhirBulkExportArtifactView[]>;
   cancelJob(
     orgId: string,
     jobId: string,
@@ -384,6 +396,8 @@ export interface InMemoryFhirGatewaySeed {
     organizationId: string;
   })[];
   readonly jobs?: readonly (Partial<MemJob> & { clientId: string; organizationId: string })[];
+  /** Artifact rows by job id (the in-memory store has no worker to produce them). */
+  readonly artifacts?: Readonly<Record<string, readonly FhirBulkExportArtifactView[]>>;
   readonly now?: () => string;
   /**
    * Where `recordDisclosure` appends. Supplied by a test that needs to assert an accounting row was
@@ -419,6 +433,14 @@ function toDetail(c: MemClient, activeSessionCount: number): FhirClientDetail {
     activeSessionCount,
   };
 }
+
+/** §2.2 / §2.5 — one `accepted` / `in_progress` job per client; a second submission is a 429. */
+export const activeJobError = (): FhirStoreError =>
+  new FhirStoreError(
+    429,
+    "FHIR_EXPORT_ACTIVE_JOB",
+    "this client already has a bulk export in progress; wait for it to finish or cancel it",
+  );
 
 function toJobView(j: MemJob): FhirBulkExportJobView {
   return {
@@ -698,6 +720,13 @@ export function createInMemoryFhirGatewayStore(
     },
 
     async createJob(orgId, args) {
+      const active = [...jobs.values()].some(
+        (x) =>
+          x.organizationId === orgId &&
+          x.clientId === args.clientId &&
+          (x.status === "accepted" || x.status === "in_progress"),
+      );
+      if (active) throw activeJobError();
       const id = randomUUID();
       const j: MemJob = {
         id,
@@ -719,6 +748,12 @@ export function createInMemoryFhirGatewayStore(
       const j = jobs.get(jobId);
       if (!j || j.organizationId !== orgId) return null;
       return toJobView(j);
+    },
+
+    async listJobArtifacts(orgId, jobId) {
+      const j = jobs.get(jobId);
+      if (!j || j.organizationId !== orgId) return [];
+      return seed.artifacts?.[jobId] ?? [];
     },
 
     async cancelJob(orgId, jobId, _membershipId) {

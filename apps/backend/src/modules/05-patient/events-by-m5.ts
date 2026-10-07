@@ -95,7 +95,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
       clinicianUserId: Type.String(),
       role: Type.String(),
     }),
-    declaredConsumers: [],
+    // GAP-104 — m36 ADDED: `m36.channel-membership-sync` re-syncs the care_team channel roster.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -107,7 +108,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
       clinicianUserId: Type.String(),
       role: Type.String(),
     }),
-    declaredConsumers: [],
+    // GAP-104 — m36 ADDED: `m36.channel-membership-sync` re-syncs the care_team channel roster.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -151,8 +153,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // decedent's active non-survives-death consents (D13) — an outbox push, not a `PatientReader` pull.
     // GAP-071 — m24 ADDED: M24 §4.4 `m5-patient-deceased.consumer.ts` voids the decedent's not-yet-billed
     // `rb_day` rows after the date of death ("final R&B day finalization").
-    declaredConsumers: ["m23", "m24", "m26", "m29", "m35", "m39"],
-    seamConsumers: ["m36"],
+    // GAP-104 — m36 MOVED from seamConsumers to declaredConsumers: `m36.channel-membership-sync` archives the
+    // decedent's care_team channel (M36 spec §2.3 "auto-archived on discharge").
+    declaredConsumers: ["m23", "m24", "m26", "m29", "m35", "m36", "m39"],
     isOutboxOnly: false,
   },
   {

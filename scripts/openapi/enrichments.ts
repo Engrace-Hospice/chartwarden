@@ -1164,13 +1164,21 @@ import {
 // brings in `SearchQuerySchema as TerminologySearchQuerySchema` (line ~585) — keep that one; these
 // are the added response/echo schemas. Request query/param schemas are reused from source.
 import {
+  AdminAttestationBodySchema as M38AdminAttestationBodySchema,
+  AdminAttestationCreatedResponseSchema as M38AdminAttestationCreatedResponseSchema,
+  AdminAttestationRevokedResponseSchema as M38AdminAttestationRevokedResponseSchema,
+  AdminAttestationsQuerySchema as M38AdminAttestationsQuerySchema,
+  AdminAttestationsResponseSchema as M38AdminAttestationsResponseSchema,
   AdminExtensionsQuerySchema as M38AdminExtensionsQuerySchema,
   AdminExtensionsResponseSchema as M38AdminExtensionsResponseSchema,
   AdminLoadBodySchema as M38AdminLoadBodySchema,
   AdminLoadResponseSchema as M38AdminLoadResponseSchema,
   AdminRefreshEmbeddingsResponseSchema as M38AdminRefreshEmbeddingsResponseSchema,
+  AdminUploadBodySchema as M38AdminUploadBodySchema,
+  AdminUploadResponseSchema as M38AdminUploadResponseSchema,
   AdminVersionsQuerySchema as M38AdminVersionsQuerySchema,
   AdminVersionsResponseSchema as M38AdminVersionsResponseSchema,
+  AttributionsResponseSchema as M38AttributionsResponseSchema,
   ConceptResponseSchema as M38ConceptResponseSchema,
   DeprecationLookupResponseSchema as M38DeprecationLookupResponseSchema,
   ExpandQuerySchema as M38ExpandQuerySchema,
@@ -8477,16 +8485,48 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M38AdminVersionsQuerySchema,
     response: M38AdminVersionsResponseSchema,
   },
-  // Register a source version (§4.2 row 12) — step-up; idempotent on (system, version) → 409.
+  // Register a source version AND enqueue its load (§4.2 row 12, GAP-108) — step-up; licence-gated; 409 idempotent.
   "POST /api/v1/admin/terminology/:system/load": {
-    summary: "Register a source version for a code system (platform-ops + step-up, §4.2)",
+    summary:
+      "Register a source version and enqueue its load (platform-ops + step-up; non-public systems need a licence attestation, §4.2)",
     body: M38AdminLoadBodySchema,
     response: M38AdminLoadResponseSchema,
   },
   // Recompute embeddings at the system's ACTIVE version (§4.2 row 13).
   "POST /api/v1/admin/terminology/:system/refresh-embeddings": {
-    summary: "Request an embeddings recompute at the active version (platform-ops, §4.2)",
+    summary:
+      "Enqueue an embeddings recompute at the active version (platform-ops, §4.2; 503 EMBEDDINGS_NOT_CONFIGURED while no embeddings backend is bound)",
     response: M38AdminRefreshEmbeddingsResponseSchema,
+  },
+  // GAP-108 — presign the platform-bucket upload a release file goes through.
+  "POST /api/v1/admin/terminology/uploads": {
+    summary:
+      "Presign a checksum-enforced upload of a release file into the platform terminology bucket (platform-ops)",
+    body: M38AdminUploadBodySchema,
+    response: M38AdminUploadResponseSchema,
+  },
+  // GAP-108 — the licence attestations the load gate checks.
+  "GET /api/v1/admin/terminology/license-attestations": {
+    summary: "Licence attestations for non-public code systems (platform-ops)",
+    query: M38AdminAttestationsQuerySchema,
+    response: M38AdminAttestationsResponseSchema,
+  },
+  "POST /api/v1/admin/terminology/:system/license-attestation": {
+    summary:
+      "Record a licence attestation (licensee, reference, validity, attribution text) for a non-public code system (platform-ops + step-up)",
+    body: M38AdminAttestationBodySchema,
+    response: M38AdminAttestationCreatedResponseSchema,
+  },
+  "POST /api/v1/admin/terminology/license-attestations/:id/revoke": {
+    summary:
+      "Revoke a licence attestation (platform-ops + step-up); loads of the system are refused afterwards",
+    response: M38AdminAttestationRevokedResponseSchema,
+  },
+  // GAP-108 — the attributions a UI must display with licensed code systems.
+  "GET /api/v1/terminology/attributions": {
+    summary:
+      "Licence attribution text in force for SNOMED CT / LOINC / RxNorm (any terminology.read caller)",
+    response: M38AttributionsResponseSchema,
   },
   // Cross-tenant tenant-extension governance view (§4.1 row 14).
   "GET /api/v1/admin/terminology/value-set-extensions": {

@@ -651,6 +651,30 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(await eventsFor(rejected)).toContain("m18.evv.aggregator_cancelled");
   });
 
+  it("resubmit clears next_retry_at and the rejection fields so the submitter is not delayed by a stale retry time", async () => {
+    const visit = await seedVisit(ORG_A);
+    const timedOut = await seedSubmission(ORG_A, visit, "timeout");
+    await admin.query(
+      `UPDATE evv_aggregator_submission
+          SET next_retry_at = now() + interval '6 hours',
+              aggregator_rejection_code = 'E42', aggregator_rejection_reason = 'bad member id'
+        WHERE id = $1`,
+      [timedOut],
+    );
+    const requeued = await svc.resubmitSubmission(ORG_A, seeded[ORG_A].member, timedOut);
+    expect(requeued.status).toBe("queued");
+    const { rows } = await admin.query(
+      `SELECT next_retry_at, aggregator_rejection_code, aggregator_rejection_reason
+         FROM evv_aggregator_submission WHERE id = $1`,
+      [timedOut],
+    );
+    expect(rows[0]).toEqual({
+      next_retry_at: null,
+      aggregator_rejection_code: null,
+      aggregator_rejection_reason: null,
+    });
+  });
+
   it("editTenantPolicy tightens (allowed) and refuses to loosen beyond the floor; per-address override persists", async () => {
     const setter = seeded[ORG_A].member;
     const tightened = await svc.editTenantPolicy(ORG_A, setter, { radiusM: 80, maxAccuracyM: 30 });

@@ -154,6 +154,20 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m37.ipu_admission.transfer_unconfirmed",
+    moduleOwner: "m37",
+    description:
+      "A `transferring` admission has gone unconfirmed past the 1-hour window (`transfer-completion-watchdog`).",
+    // `initiatedAt` is the transfer's start; `reminderCycle` is the nag period (M36's correlation key).
+    payloadSchema: Type.Object({
+      ...admissionCore,
+      initiatedAt: iso,
+      reminderCycle: count,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   // ── bed cleaning (§2.12) ──────────────────────────────────────────────────────────────────────────
   {
     eventName: "m37.bed.cleaning_started",
@@ -177,9 +191,33 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.bed.cleaning_overdue",
     moduleOwner: "m37",
     description: "A bed exceeded the turnover SLA.",
-    payloadSchema: Type.Object({ bedId: id, organizationId: id, unitId: id }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      bedId: id,
+      organizationId: id,
+      unitId: id,
+      // GAP-105 — additive: the watchdog's SLA clock and nag cycle (M36's correlation key).
+      dischargedDirtyAt: Type.Optional(iso),
+      slaMinutes: Type.Optional(count),
+      reminderCycle: Type.Optional(count),
+    }),
+    // GAP-105 — M36 consumes this as a typed alert (`36-messaging/outbox-consumers/ipu-alerts.ts`).
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m37.bed.reservation_expired",
+    moduleOwner: "m37",
+    description:
+      "A `reserved` bed's 4-hour hold lapsed and the bed was released to `ready` (`reservation-expiry-watchdog`).",
+    payloadSchema: Type.Object({
+      bedId: id,
+      organizationId: id,
+      unitId: id,
+      // The admission whose assignment was released (absent when the reservation had no live assignment).
+      ipuAdmissionId: Type.Optional(id),
+      reservedAt: iso,
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── RN coverage (§2.3) ────────────────────────────────────────────────────────────────────────────
@@ -187,23 +225,31 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.shift.coverage_gap_projected",
     moduleOwner: "m37",
     description: "A forward RN-coverage gap within the alert horizon.",
+    // GAP-b11: the schema named `firstGapAt`/`uncoveredCount`, the rn-coverage-watchdog has always published
+    // `gapStartsAt`/`alertHorizonHours` (a catalog-validating publisher would have refused every gap alert).
+    // The schema now states what the producer actually knows; M36 binds it (`ipu-alerts.ts`).
     payloadSchema: Type.Object({
       unitId: id,
       organizationId: id,
-      firstGapAt: iso,
-      uncoveredCount: count,
+      gapStartsAt: iso,
+      alertHorizonHours: count,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m37.shift.rn_uncovered",
     moduleOwner: "m37",
     description: "The current hour is RN-uncovered (block severity).",
-    payloadSchema: Type.Object({ unitId: id, organizationId: id, hourAt: iso }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    // GAP-b11: was `hourAt`; the watchdog publishes `hourStartAt` (+ the grid's covered/total hour counts).
+    payloadSchema: Type.Object({
+      unitId: id,
+      organizationId: id,
+      hourStartAt: iso,
+      coveredHours: Type.Optional(count),
+      totalHours: Type.Optional(count),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -236,9 +282,15 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.gip_criteria.reassessment_due",
     moduleOwner: "m37",
     description: "A GIP reassessment is due (stale past the window).",
-    payloadSchema: Type.Object({ ...admissionCore, triggeredByEncounterId: nullableId }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      ...admissionCore,
+      triggeredByEncounterId: nullableId,
+      // GAP-105 — additive: the nightly staleness sweep's facts (no encounter triggers those).
+      lastAssessedAt: Type.Optional(iso),
+      staleHours: Type.Optional(count),
+      sweepDate: Type.Optional(iso),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -255,8 +307,7 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An IRC episode reached day 4 (approaching cap).",
     payloadSchema: Type.Object({ ...admissionCore, consecutiveDayCount: count }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -264,8 +315,7 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An IRC episode reached day 5+ (cap breached; blocks billing).",
     payloadSchema: Type.Object({ ...admissionCore, consecutiveDayCount: count }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -295,10 +345,23 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m37.iv_safety_overlay.bedside_check_overdue",
     moduleOwner: "m37",
-    description: "An IV bedside check is overdue.",
-    payloadSchema: Type.Object({ ...admissionCore, orderId: id }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    description:
+      "A running IV infusion's bedside check is overdue (`iv-bedside-check-watchdog`); M36 alerts the care team.",
+    // GAP-107 — `patientId` resolves the M36 care-team recipients; `lastCheckAt` + `missedIntervals` key the
+    // alert so each overdue interval is one alert and a re-run of a tick is deduped.
+    payloadSchema: Type.Object({
+      ...admissionCore,
+      orderId: id,
+      overlayId: id,
+      patientId: id,
+      lastCheckAt: Type.String({ minLength: 1 }),
+      intervalMinutes: Type.Integer({ minimum: 1 }),
+      minutesOverdue: Type.Integer({ minimum: 0 }),
+      missedIntervals: Type.Integer({ minimum: 1 }),
+    }),
+    // GAP-107 — M36 binds this live (`ipu-iv-alerts.ts`), so it is a DECLARED consumer: the dispatcher routes a
+    // declared+bound event to the consumer, whereas a seam-only event would be marked dispatched undelivered.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── visitor (§2.7) ────────────────────────────────────────────────────────────────────────────────
@@ -316,18 +379,27 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.equipment.inspection_due",
     moduleOwner: "m37",
     description: "An equipment biomed inspection is approaching due.",
-    payloadSchema: Type.Object({ equipmentId: id, organizationId: id, daysUntilDue: count }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      equipmentId: id,
+      organizationId: id,
+      daysUntilDue: count,
+      // additive — the due date keys M36's alert (a re-inspection moves it, so a new cycle re-raises).
+      dueDate: Type.Optional(iso),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m37.equipment.inspection_overdue",
     moduleOwner: "m37",
     description: "An equipment biomed inspection is overdue (blocks assignment).",
-    payloadSchema: Type.Object({ equipmentId: id, organizationId: id }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      equipmentId: id,
+      organizationId: id,
+      dueDate: Type.Optional(iso),
+      daysOverdue: Type.Optional(count),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── restraint (§2.10) ─────────────────────────────────────────────────────────────────────────────
@@ -344,9 +416,15 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.restraint.reassessment_due",
     moduleOwner: "m37",
     description: "An active restraint is past its reassessment interval.",
-    payloadSchema: Type.Object({ organizationId: id, restraintEventId: id }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      organizationId: id,
+      restraintEventId: id,
+      // GAP-105 — additive: the watchdog's facts + nag cycle (M36's correlation key).
+      ipuAdmissionId: Type.Optional(id),
+      dueAt: Type.Optional(iso),
+      reminderCycle: Type.Optional(count),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -440,6 +518,19 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceDate: iso,
       unitId: nullableId,
       remoteFacilityId: nullableId,
+      // GAP-105 — the full §2.13 snapshot the `census-snapshot-builder` cron now publishes.
+      censusCountGip: count,
+      censusCountIrc: count,
+      censusCountArrangedGip: count,
+      censusCountArrangedIrc: count,
+      bedDaysGip: count,
+      bedDaysIrc: count,
+      bedDaysArrangedGip: count,
+      bedDaysArrangedIrc: count,
+      roomTurnoverCount: count,
+      restraintIncidentCount: count,
+      fallIncidentCount: count,
+      infectionSurveillanceEventCount: count,
     }),
     // F-130 (#248) — m27 REMOVED: the description's "M27 S-3" claim has no support in M27's own spec —
     // its §1.1 dependency line documents Worksheet S-3's service-side census as an M6
@@ -459,9 +550,14 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m37.nursing_note.shift_overdue",
     moduleOwner: "m37",
     description: "No q-shift nursing note exists for an (admission × shift) pair.",
-    payloadSchema: Type.Object({ ...admissionCore, shiftId: id }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    payloadSchema: Type.Object({
+      ...admissionCore,
+      shiftId: id,
+      // additive — the unit and the shift end the 30-minute grace was measured from.
+      unitId: Type.Optional(id),
+      shiftEndAt: Type.Optional(iso),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
 ];

@@ -63,6 +63,7 @@ export type TriageCallCommand =
   | "completeProtocol"
   | "markAwaitingCallback"
   | "resumeAfterCallback"
+  | "autoTimeoutCallback"
   | "selectDisposition"
   | "escalateUnresolved"
   | "resolveEscalation"
@@ -89,6 +90,8 @@ export const TRIAGE_CALL_EDGES: readonly TriageCallEdge[] = [
   { from: "protocol_in_progress", command: "markAwaitingCallback", to: "awaiting_callback" },
   // The documented backwards edge: a caller who could not be reached resumes the same walk.
   { from: "awaiting_callback", command: "resumeAfterCallback", to: "protocol_in_progress" },
+  // §4.8 `awaiting-callback-timeout.cron` — a SYSTEM edge: the caller never rang back inside the grace window.
+  { from: "awaiting_callback", command: "autoTimeoutCallback", to: "disposition_pending" },
   {
     from: "disposition_pending",
     command: "selectDisposition",
@@ -233,6 +236,20 @@ export function resumeAfterCallback(call: TriageCallFacts): TriageCallTransition
     edge.to,
     withAuditAndHistory(edge.from, edge.to, false, []),
   );
+}
+
+/**
+ * §4.8 `awaiting_callback → disposition_pending` (`autoTimeoutCallback`) — a SYSTEM transition: after the
+ * grace window the caller is not coming back, so the call advances for a clinician to disposition on what
+ * was recorded. The history row carries `auto_timeout = true` (the spec's "record in state history").
+ * No outbox event and no alert: nothing downstream consumes this transition, and the spec names none.
+ */
+export function autoTimeoutCallback(call: TriageCallFacts): TriageCallTransition {
+  const edge = resolveEdge(call.state, "autoTimeoutCallback");
+  return result(edge.from, edge.command, edge.to, [
+    { kind: "audit" },
+    { kind: "state_history", from: edge.from, to: edge.to, systemActor: true, autoTimeout: true },
+  ]);
 }
 
 /**

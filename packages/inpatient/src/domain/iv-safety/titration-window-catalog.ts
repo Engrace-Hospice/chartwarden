@@ -64,15 +64,30 @@ export function normalizeMedName(displayName: string): string {
  */
 export function isSedationClassMedication(displayName: string): boolean {
   const norm = normalizeMedName(displayName);
-  const seeded = TITRATION_CATALOG[norm];
+  const seeded = seededWindowFor(norm);
   if (seeded) return seeded.isSedationClass;
   return SEDATION_CLASS_MED_NAMES.some((name) => norm.includes(name));
 }
 
+/**
+ * The seeded window for a normalized name: an exact key, else a catalog drug named as a whole word inside a
+ * longer product name (M12 stores `Midazolam 100 mg in 0.9% NaCl`, not the bare ingredient).
+ */
+function seededWindowFor(norm: string): TitrationWindow | undefined {
+  const exact = TITRATION_CATALOG[norm];
+  if (exact) return exact;
+  const key = Object.keys(TITRATION_CATALOG).find((k) => new RegExp(`\\b${k}\\b`).test(norm));
+  return key ? TITRATION_CATALOG[key] : undefined;
+}
+
+/** Is this medication in the seeded platform-floor catalog (as opposed to the unseeded wide default)? */
+export function isSeededMedication(displayName: string): boolean {
+  return seededWindowFor(normalizeMedName(displayName)) !== undefined;
+}
+
 /** Resolve the titration window for a medication by normalized name, falling back to the default. */
 export function resolveTitrationWindow(displayName: string): TitrationWindow {
-  const norm = normalizeMedName(displayName);
-  const seeded = TITRATION_CATALOG[norm];
+  const seeded = seededWindowFor(normalizeMedName(displayName));
   if (seeded) return seeded;
   // Unseeded: default bounds, but preserve the name-based sedation classification.
   return { ...DEFAULT_TITRATION_WINDOW, isSedationClass: isSedationClassMedication(displayName) };

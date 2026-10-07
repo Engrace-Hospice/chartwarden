@@ -84,3 +84,19 @@ export {
   registerM26CronWorkers,
   scheduleM26Jobs,
 } from "./jobs/index";
+
+// GAP-078 — the PS&R import: DEK-encrypted raw-file store + the `cap:psr-reconcile` job body / producer.
+export type { PsrImportDeps } from "./routes/write-service-drizzle";
+export {
+  type PsrFileStorePort,
+  type PsrReconcileDeps,
+  type PsrReconcileEnqueuePort,
+  type PsrReconcileOutcome,
+  reconcilePsrImport,
+} from "./psr/psr-reconcile";
+export {
+  type PsrKeyProvider,
+  type PsrObjectClient,
+  createPsrFileStore,
+} from "./psr/psr-file-store";
+export { buildPsrReconcileEnqueuer } from "./jobs/index";

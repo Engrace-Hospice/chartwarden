@@ -23,6 +23,8 @@ import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
 // These cases pin the distinction the fix rests on: a seam consumer is INERT for routing.
 import { buildM36AdmissionComplianceAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36ClinicalAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/clinical-alerts";
+import { buildM36IpuAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-alerts";
+import { buildM36IpuIvAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { M39_OUTBOX_EVENTS } from "../src/modules/39-consent/events-by-m39";
 
@@ -127,6 +129,11 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
    *  belongs in `declaredConsumers` — rule 3 of `arch:outbox-bindings` refuses the binding otherwise. */
   const M36_BOUND = new Set([
     ...buildM36ClinicalAlertConsumer({ emit: async () => {} } as never).eventTypes,
+    // GAP-107 — M37's IV bedside-check-overdue watchdog event, bound live by `ipu-iv-alerts.ts`.
+    ...buildM36IpuIvAlertConsumer({ emit: async () => {} } as never).eventTypes,
+    // GAP-105 / batch 11 — M37 §4.8 watchdog events (IRC cap, bed cleaning, restraint, GIP staleness, RN coverage,
+    // equipment inspection, nursing note, reservation expiry, transfer completion), bound by `ipu-alerts.ts`.
+    ...buildM36IpuAlertConsumer({ emit: async () => {} } as never).eventTypes,
     // FY2027 — the election-addendum overdue page (`m36.admission-compliance-alerts`).
     ...buildM36AdmissionComplianceAlertConsumer({ emit: async () => {} } as never).eventTypes,
   ]);
@@ -162,16 +169,16 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     }
   });
 
-  it("m37.shift.rn_uncovered — an alert-only event — is record-only now, and used to defer forever", () => {
-    // Its whole declared audience was M36, whose alert fires (or does not) through the AlertEmitter
-    // seam. Every emission used to leave a row re-claimed every 30 minutes for the life of the
-    // deployment; it now dispatches and becomes eligible for the retention purge.
-    const plan = buildOutboxRoutingPlan(catalog, []);
+  it("m37.shift.rn_uncovered — M36's block alert — is a real outbox consumer now, bound by ipu-alerts", () => {
+    // It used to be seam-only (record-only), which left the 24/7-RN block alert with NO consumer: the
+    // watchdog published it and nothing alerted anyone. M36 now binds it (`ipu-alerts.ts`), so it is a
+    // DECLARED consumer — rule 3 of `arch:outbox-bindings` refuses the binding otherwise, and a declared+bound
+    // event is routed to its consumer rather than recorded undelivered.
     const entry = catalog.get("m37.shift.rn_uncovered");
-    expect(entry?.seamConsumers).toContain("m36");
-    expect(entry?.declaredConsumers).toEqual([]);
-    expect(plan.recordOnly.has("m37.shift.rn_uncovered")).toBe(true);
-    expect(plan.deferred.has("m37.shift.rn_uncovered")).toBe(false);
+    expect(entry?.declaredConsumers).toEqual(["m36"]);
+    expect(entry?.seamConsumers ?? []).not.toContain("m36");
+    expect(M36_BOUND.has("m37.shift.rn_uncovered")).toBe(true);
+    expect(M36_BOUND.has("m37.shift.coverage_gap_projected")).toBe(true);
   });
 
   it("m37.restraint.applied is MIXED — it still defers, on its one real consumer (m30)", () => {

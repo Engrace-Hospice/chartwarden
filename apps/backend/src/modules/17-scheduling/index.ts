@@ -60,6 +60,8 @@ export {
 export {
   buildM17WorkerDeps,
   registerM17CronWorkers,
+  runCaregiverReminderCron,
+  runReassignmentScanCron,
   runRecurringMaterializationCron,
   runVisitAttentionCron,
   scheduleM17Jobs,

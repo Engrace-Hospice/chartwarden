@@ -247,14 +247,16 @@ describe.skipIf(!DB_URL)(
         status: "completed",
       });
 
-      await volunteerConsumer.handle({
+      const inactivation = {
         organizationId: ORG_A,
         payload: {
           volunteerMembershipId: memA,
           affectedPlanIds: [],
           reason: "gate_expired",
         },
-      });
+      };
+      const firstEventId = crypto.randomUUID();
+      await volunteerConsumer.handle({ id: firstEventId, ...inactivation });
 
       const events = await outboxRows(ORG_A, "m17.reassignment_needed");
       const visitIds = events.map((e) => e.aggregate_id).sort();
@@ -263,6 +265,13 @@ describe.skipIf(!DB_URL)(
       expect(events.every((e) => e.payload.affectedMembershipId === memA)).toBe(true);
       // The terminal visit never got one.
       expect(visitIds).not.toContain(completed);
+
+      // b11: a REPLAY of the same delivered event emits nothing more...
+      await volunteerConsumer.handle({ id: firstEventId, ...inactivation });
+      expect(await outboxRows(ORG_A, "m17.reassignment_needed")).toHaveLength(2);
+      // ...while a genuinely new inactivation (new event id) flags the still-assigned visits again.
+      await volunteerConsumer.handle({ id: crypto.randomUUID(), ...inactivation });
+      expect(await outboxRows(ORG_A, "m17.reassignment_needed")).toHaveLength(4);
     });
 
     it("is org-scoped — org A's inactivation cannot see org B's volunteer's visits", async () => {
@@ -275,6 +284,7 @@ describe.skipIf(!DB_URL)(
       });
 
       await volunteerConsumer.handle({
+        id: crypto.randomUUID(),
         organizationId: ORG_A,
         payload: { volunteerMembershipId: memB, affectedPlanIds: [], reason: "gate_expired" },
       });

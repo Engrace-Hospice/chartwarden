@@ -85,6 +85,7 @@ export {
   isAggregatorSubmissionTerminal,
   transitionAggregatorSubmission,
 } from "./domain/aggregator-submission";
+export * from "./jobs/index";
 export {
   type SubmissionPassResult,
   dispatchSubmission,

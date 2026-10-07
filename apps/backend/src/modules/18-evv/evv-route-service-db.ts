@@ -1314,6 +1314,11 @@ export function createDbEvvBackend(
           .set({
             status: transition.status,
             attemptCount: s.attemptCount + (transition.incrementsAttempt ? 1 : 0),
+            // A re-queued row starts clean: a stale `next_retry_at` would make the submitter delay (or skip) the
+            // operator's resubmit, and the prior rejection must not outlive the state it described.
+            nextRetryAt: null,
+            aggregatorRejectionCode: null,
+            aggregatorRejectionReason: null,
             resubmitTriggeredByMembershipId: userId || null,
             resubmitTriggeredAt: new Date(),
             version: (s.version as number) + 1,

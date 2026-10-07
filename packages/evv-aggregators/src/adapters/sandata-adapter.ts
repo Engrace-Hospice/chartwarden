@@ -83,6 +83,31 @@ export function createSandataSandboxTransport(clock: Clock = () => new Date()): 
   };
 }
 
+/** The fail-closed production-default transport (GAP-056): no live Sandata endpoint/credential is wired yet, so
+ * `post` reports a transport failure (the submitter retries with backoff, then the row lands in `timeout` for an
+ * operator), `pollStatus` never confirms, and `ping` reports unhealthy. It NEVER fabricates an acceptance — the
+ * sandbox transport above is for tests only. A real HTTPS transport replaces this at the composition root. */
+export function createDenySandataTransport(clock: Clock = () => new Date()): SandataTransport {
+  const retryDelayMs = 5 * 60 * 1000;
+  return {
+    async post() {
+      return {
+        result: "transport_failure",
+        nextRetryAt: new Date(clock().getTime() + retryDelayMs).toISOString(),
+      };
+    },
+    async pollStatus() {
+      return {
+        result: "still_pending",
+        nextPollAt: new Date(clock().getTime() + retryDelayMs).toISOString(),
+      };
+    },
+    async ping() {
+      return false;
+    },
+  };
+}
+
 /** Phase-1 Sandata adapter. Vendor `'sandata'`; states resolved from M40 master data at registry-build time but
  * defaulted to the launch set so a non-M40 boot still selects Sandata for its mandate states. */
 export class SandataAdapter implements EvvAggregatorAdapter {

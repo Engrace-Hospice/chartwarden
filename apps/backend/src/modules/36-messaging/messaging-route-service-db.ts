@@ -390,19 +390,18 @@ export function createDbMessagingRouteService(
     },
 
     async canViewChannel(orgId, userId, channelId): Promise<boolean> {
-      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      const access = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const c = await tx
-          .select({ kind: CH.channelKind })
+          .select({ kind: CH.channelKind, subjectId: CH.subjectId })
           .from(CH)
           .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
           .limit(1);
-        if (!c[0]) return false; // unknown / cross-org → no existence oracle
-        // §4.5: announcement is org-wide; the caseload/bereavement provider-seam refinement (care_team
-        // via CaseloadProvider, bereavement via M16) is a later cross-module integration — until then
-        // the channel-member check is the visibility rule (the slice's "otherwise" branch).
-        if (c[0].kind === "announcement") return true;
+        if (!c[0]) return null; // unknown / cross-org → no existence oracle
+        // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
+        // cross-module integration — until then the channel-member check is the visibility rule.
+        if (c[0].kind === "announcement") return { visible: true as const };
         const m = await tx
-          .select({ id: CM.id })
+          .select({ source: CM.source })
           .from(CM)
           .where(
             and(
@@ -413,8 +412,23 @@ export function createDbMessagingRouteService(
             ),
           )
           .limit(1);
-        return m.length > 0;
+        if (!m[0]) return { visible: false as const };
+        const patientId = c[0].subjectId;
+        return c[0].kind === "care_team" && m[0].source === "auto" && patientId
+          ? { visible: true as const, rosterPatientId: patientId }
+          : { visible: true as const };
       });
+      if (!access?.visible) return false;
+      if (!("rosterPatientId" in access) || !access.rosterPatientId) return true;
+      // GAP-104 — caseload_membership (§4.5, care_team): an AUTO member must also be on the patient's
+      // CURRENT care team. The roster read stays outside the tx above (the seam opens its own connection),
+      // and it revokes access the instant a clinician is unassigned, independent of the sync consumer's lag.
+      // A `manual` (admin-override) member is authorized by the override itself.
+      const roster = await getSeam("CareTeamProvider").careTeamMembers({
+        organizationId: orgId,
+        patientId: access.rosterPatientId,
+      });
+      return roster.includes(userId);
     },
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----

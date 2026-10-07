@@ -186,6 +186,8 @@ export {
 // GAP-092 — the §4.8 `idg.review-clock-sweep` BullMQ queue catalog + the pure T-3/T-0/T+1 escalation scan
 // (the M9 license/change-escalation/cadence precedent).
 export {
+  type ActiveAdmissionPort,
+  type ActiveAdmissionRef,
   type M14QueueName,
   type ReviewClockEscalation,
   type ReviewClockSnapshot,

@@ -45,6 +45,9 @@ export function mountEmarRoutes(
         return toAdministrationIdentity(ctx);
       },
     }),
+    // GAP-107 — M37's IV-continuous safety overlay (M37 §2.6 / D7), through its published seam; thunked so it
+    // resolves per call, after M37 has registered over the deny-stub.
+    () => getSeam("IpuIvSafetyOverlayProvider"),
   );
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });
@@ -72,6 +75,10 @@ export {
   createInMemoryEmarSeamStore,
   createMedicationAdministrationProvider,
   idgMissedDosesForOrg,
+  IV_SESSION_ACTIVITY_MAX_ORDERS,
+  type IvSessionActivity,
+  ivActivityOf,
+  ivSessionActivityForOrg,
   missedDoseSeverity,
   createReconciliationProvider,
   getMedicationAdministrationProvider,

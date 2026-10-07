@@ -432,6 +432,10 @@ export const M19_EVENT_NAMES = [
   "m19.oncall_shift.completed",
   "m19.oncall_shift.coverage_gap",
   "m19.triage.summary_requested",
+  // GAP-057 follow-up (b11) — the §4.8 `callback-sla` / `escalation-sla` crons' findings; M36 turns each into
+  // its `m19.triage.*_sla_breached` page (`36-messaging/outbox-consumers/oncall-alerts.ts`).
+  "m19.triage_call.callback_sla_breached",
+  "m19.triage_call.escalation_sla_breached",
 ] as const;
 
 /** One §4.10 outbox event name. */
@@ -626,6 +630,21 @@ export interface M19TriageSummaryRequestedPayload extends M19TriageCallEventBase
   readonly transportArrangedBy: "family" | "ems" | "facility" | "unknown" | null;
 }
 
+/** `m19.triage_call.callback_sla_breached` — an `awaiting_callback` call outlived its callback target. */
+export interface M19TriageCallCallbackSlaBreachedPayload extends M19TriageCallEventBase {
+  readonly slaTargetMinutes: number;
+  readonly minutesElapsed: number;
+}
+
+/** `m19.triage_call.escalation_sla_breached` — an escalation row stayed unacknowledged past its tier SLA. */
+export interface M19TriageCallEscalationSlaBreachedPayload extends M19TriageCallEventBase {
+  readonly escalationId: TriageEscalationId;
+  readonly tier: TriageEscalationTier;
+  readonly mandatory: boolean;
+  readonly slaTargetMinutes: number;
+  readonly minutesOpen: number;
+}
+
 /** The §4.10 topic → payload map every emitter and consumer type-checks against. */
 export interface M19EventPayloadMap {
   "m19.triage_call.opened": M19TriageCallOpenedPayload;
@@ -642,6 +661,8 @@ export interface M19EventPayloadMap {
   "m19.oncall_shift.completed": M19OnCallShiftCompletedPayload;
   "m19.oncall_shift.coverage_gap": M19OnCallShiftCoverageGapPayload;
   "m19.triage.summary_requested": M19TriageSummaryRequestedPayload;
+  "m19.triage_call.callback_sla_breached": M19TriageCallCallbackSlaBreachedPayload;
+  "m19.triage_call.escalation_sla_breached": M19TriageCallEscalationSlaBreachedPayload;
 }
 
 // ── §4.9 typed M36 alert payloads ────────────────────────────────────────────────────────────────────
@@ -1047,6 +1068,28 @@ export const TRIAGE_IDEMPOTENCY_WINDOW_HOURS = 24;
 
 /** §2.2.1 — the amendment grace after which `close-documented.cron` moves `documented → closed`. */
 export const TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES = 30;
+
+/** §4.8 `awaiting-callback-timeout.cron` — the default grace a call may sit in `awaiting_callback` before the
+ *  cron advances it to `disposition_pending` (a tenant may only TIGHTEN it, via `state_overrides`). */
+export const TRIAGE_AWAITING_CALLBACK_GRACE_MINUTES = 60;
+
+/** §4.8 `callback-sla.cron` — the platform floor for the callback target when the tenant's
+ *  `callback_sla_per_severity` names no usable number (the spec's own `clinical_urgent` example). */
+export const TRIAGE_CALLBACK_SLA_DEFAULT_MINUTES = 30;
+
+/** §4.8 `escalation-sla` — minutes an escalation may stay unacknowledged, per tier, when the tenant's
+ *  `escalation_tiers` carries no `slaMinutes` for it. Deliberately tight: the spec names no number. */
+export const TRIAGE_ESCALATION_SLA_DEFAULT_MINUTES = {
+  tier_1_rn_supervisor: 15,
+  tier_2_clinical_manager: 30,
+  tier_3_medical_director: 15,
+  tier_4_compliance_officer: 60,
+  tier_5_external: 15,
+} as const;
+
+/** §4.8 `escalation-sla` — an unacknowledged breach re-pages at most this often (a standing breach is still
+ *  a breach; M36 collapses redeliveries, this paces fresh emissions). */
+export const TRIAGE_ESCALATION_SLA_REPAGE_MINUTES = 30;
 
 /** §4.8 — the canonical coverage-gap watchdog cadence (M19-F12 resolves the spec's own hourly-vs-30-min
  *  disagreement in favour of 30 minutes: two checks an hour, inside the 1-hour CoP response window). */

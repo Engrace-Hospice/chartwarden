@@ -194,6 +194,8 @@ export interface FhirCodeSystemProjection {
   readonly version: string;
   readonly status: string;
   readonly content: "complete" | "fragment" | "not-present";
+  /** Licence-required attribution (SNOMED CT / LOINC / RxNorm); omitted for public systems. */
+  readonly copyright?: string;
   readonly concept: ReadonlyArray<{ readonly code: string; readonly display: string }>;
 }
 

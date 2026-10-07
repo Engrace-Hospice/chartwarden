@@ -12996,13 +12996,152 @@
         }
       }
     },
+    "/api/v1/admin/terminology/{system}/license-attestation": {
+      "post": {
+        "operationId": "postApiV1AdminTerminologyBySystemLicenseattestation",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Record a licence attestation (licensee, reference, validity, attribution text) for a non-public code system (platform-ops + step-up)",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attestationId",
+                    "systemId"
+                  ],
+                  "properties": {
+                    "attestationId": {
+                      "type": "string"
+                    },
+                    "systemId": {
+                      "anyOf": [
+                        {
+                          "const": "icd10cm",
+                          "type": "string"
+                        },
+                        {
+                          "const": "icd10pcs",
+                          "type": "string"
+                        },
+                        {
+                          "const": "snomed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "loinc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rxnorm",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ndc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hcpcs",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cvx",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revenue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "carc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rarc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms_hope",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "licensee",
+                  "licenseReference",
+                  "effectiveFrom",
+                  "attributionText"
+                ],
+                "properties": {
+                  "licensee": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "licenseReference": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "attributionText": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/terminology/{system}/load": {
       "post": {
         "operationId": "postApiV1AdminTerminologyBySystemLoad",
         "tags": [
           "38-terminology"
         ],
-        "summary": "Register a source version for a code system (platform-ops + step-up, §4.2)",
+        "summary": "Register a source version and enqueue its load (platform-ops + step-up; non-public systems need a licence attestation, §4.2)",
         "parameters": [
           {
             "name": "system",
@@ -13037,7 +13176,7 @@
                       "type": "boolean"
                     },
                     "ingestion": {
-                      "const": "pending_loader_worker",
+                      "const": "enqueued",
                       "type": "string"
                     }
                   }
@@ -13086,6 +13225,9 @@
                   "effectiveFrom": {
                     "format": "date",
                     "type": "string"
+                  },
+                  "activate": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -13100,7 +13242,7 @@
         "tags": [
           "38-terminology"
         ],
-        "summary": "Request an embeddings recompute at the active version (platform-ops, §4.2)",
+        "summary": "Enqueue an embeddings recompute at the active version (platform-ops, §4.2; 503 EMBEDDINGS_NOT_CONFIGURED while no embeddings backend is bound)",
         "parameters": [
           {
             "name": "system",
@@ -13132,7 +13274,7 @@
                       "type": "string"
                     },
                     "recompute": {
-                      "const": "pending_embeddings_worker",
+                      "const": "enqueued",
                       "type": "string"
                     }
                   }
@@ -13145,6 +13287,398 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/license-attestations": {
+      "get": {
+        "operationId": "getApiV1AdminTerminologyLicenseattestations",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Licence attestations for non-public code systems (platform-ops)",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "icd10cm",
+                  "type": "string"
+                },
+                {
+                  "const": "icd10pcs",
+                  "type": "string"
+                },
+                {
+                  "const": "snomed",
+                  "type": "string"
+                },
+                {
+                  "const": "loinc",
+                  "type": "string"
+                },
+                {
+                  "const": "rxnorm",
+                  "type": "string"
+                },
+                {
+                  "const": "ndc",
+                  "type": "string"
+                },
+                {
+                  "const": "hcpcs",
+                  "type": "string"
+                },
+                {
+                  "const": "cvx",
+                  "type": "string"
+                },
+                {
+                  "const": "revenue",
+                  "type": "string"
+                },
+                {
+                  "const": "carc",
+                  "type": "string"
+                },
+                {
+                  "const": "rarc",
+                  "type": "string"
+                },
+                {
+                  "const": "cms_hope",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "systemId",
+                          "licensee",
+                          "licenseReference",
+                          "attestedBy",
+                          "attestedAt",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "attributionText",
+                          "revokedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "systemId": {
+                            "anyOf": [
+                              {
+                                "const": "icd10cm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "icd10pcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snomed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loinc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rxnorm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ndc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hcpcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cvx",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revenue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "carc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rarc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "licensee": {
+                            "type": "string"
+                          },
+                          "licenseReference": {
+                            "type": "string"
+                          },
+                          "attestedBy": {
+                            "type": "string"
+                          },
+                          "attestedAt": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "attributionText": {
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/license-attestations/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1AdminTerminologyLicenseattestationsByIdRevoke",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Revoke a licence attestation (platform-ops + step-up); loads of the system are refused afterwards",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/uploads": {
+      "post": {
+        "operationId": "postApiV1AdminTerminologyUploads",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Presign a checksum-enforced upload of a release file into the platform terminology bucket (platform-ops)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sourceFileRef",
+                    "checksum",
+                    "upload"
+                  ],
+                  "properties": {
+                    "sourceFileRef": {
+                      "type": "string"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "upload": {
+                      "type": "object",
+                      "required": [
+                        "url",
+                        "headers",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "system",
+                  "fileName",
+                  "sha256"
+                ],
+                "properties": {
+                  "system": {
+                    "anyOf": [
+                      {
+                        "const": "icd10cm",
+                        "type": "string"
+                      },
+                      {
+                        "const": "icd10pcs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "snomed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "loinc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rxnorm",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ndc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hcpcs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cvx",
+                        "type": "string"
+                      },
+                      {
+                        "const": "revenue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "carc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rarc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cms_hope",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "fileName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -64603,6 +65137,61 @@
                       "anyOf": [
                         {
                           "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rowsQuarantined": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "quarantineDetail": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "lines",
+                            "truncated",
+                            "flaggedBeneficiaries",
+                            "unattributableRows"
+                          ],
+                          "properties": {
+                            "lines": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "line",
+                                  "code"
+                                ],
+                                "properties": {
+                                  "line": {
+                                    "type": "integer"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "flaggedBeneficiaries": {
+                              "type": "integer"
+                            },
+                            "unattributableRows": {
+                              "type": "integer"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -235055,6 +235644,110 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/terminology/attributions": {
+      "get": {
+        "operationId": "getApiV1TerminologyAttributions",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Licence attribution text in force for SNOMED CT / LOINC / RxNorm (any terminology.read caller)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "systemId",
+                          "licensee",
+                          "attributionText"
+                        ],
+                        "properties": {
+                          "systemId": {
+                            "anyOf": [
+                              {
+                                "const": "icd10cm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "icd10pcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snomed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loinc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rxnorm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ndc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hcpcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cvx",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revenue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "carc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rarc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "licensee": {
+                            "type": "string"
+                          },
+                          "attributionText": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }

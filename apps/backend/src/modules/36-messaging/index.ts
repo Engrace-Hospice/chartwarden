@@ -148,3 +148,32 @@ export {
   M36_BREAKGLASS_ALERT_CONSUMER,
   buildM36BreakGlassAlertConsumer,
 } from "./outbox-consumers/breakglass-alert";
+
+// GAP-101 — out-of-band delivery workers (the §4.4 send_push/sms/voice/email sweeps) + the §4.9 vendor webhooks
+// mounted over a real `delivery_reconcile` service (see ./delivery/*).
+export {
+  type DeliveryOutboxPort,
+  DELIVERY_FAILED_EVENT,
+  applyDeliveryTransition,
+} from "./delivery/delivery-settlement";
+export {
+  type DeliveryDispatchStore,
+  createDrizzleDeliveryDispatchStore,
+} from "./delivery/delivery-dispatch-store-db";
+export {
+  type DeliverySweepDeps,
+  type DeliverySweepResult,
+  runDeliverySweep,
+} from "./delivery/delivery-sweep";
+export {
+  type M36DeliveryWorkerDeps,
+  registerM36DeliveryWorkers,
+  scheduleM36DeliveryJobs,
+} from "./delivery/delivery-workers";
+export { createDbMessagingWebhookService } from "./delivery/webhook-service-db";
+export {
+  type MessagingWebhookConfig,
+  mountMessagingWebhookRoutes,
+  readMessagingWebhookConfig,
+} from "./delivery/webhook-mount";
+export { M36_DELIVERY_PLATFORM_JOB_ID, wireM36DeliveryTenancy } from "./delivery/wiring";

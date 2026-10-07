@@ -11,9 +11,21 @@ import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
 import { runCarryForwardCron } from "./carry-forward";
-import { locationCoordinatorsForOrg, reviewClockPatientsForOrg } from "./cron-store";
-import type { ActiveOrgListPort } from "./index";
-import { M14_JOB_SCHEDULES, M14_QUEUES, M14_QUEUE_PARAMS, planReviewClockSweep } from "./index";
+import { lastReviewedByAdmissionForOrg, locationCoordinatorsForOrg } from "./cron-store";
+import type {
+  ActiveAdmissionPort,
+  ActiveAdmissionRef,
+  ActiveOrgListPort,
+  ReviewClockSnapshot,
+} from "./index";
+import {
+  M14_JOB_SCHEDULES,
+  M14_QUEUES,
+  M14_QUEUE_PARAMS,
+  REVIEW_CLOCK_MAX_PAGES,
+  REVIEW_CLOCK_PAGE_SIZE,
+  planReviewClockSweep,
+} from "./index";
 import type {
   Idg6PacketPort,
   Idg6RecertWindowPort,
@@ -40,6 +52,8 @@ export interface M14WorkerDeps {
   readonly redis?: Redis;
   /** F-171 — the M6 §2.3 D9 inclusion + current-LOC org-explicit port (`packet-build.ts`). */
   readonly m6?: Idg6PacketPort;
+  /** GAP-042 — M6 `idgActiveAdmissionsForOrg`: the review-clock sweep's per-active-admission population. */
+  readonly activeAdmissions?: ActiveAdmissionPort;
   /** F-171 — the M7 §2.4 care-plan-summary org-explicit port (`packet-build.ts`). */
   readonly m7?: Idg7PacketPort;
   /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`); unbound ⇒ the cover fields stay null. */
@@ -90,6 +104,18 @@ function m6Of(deps: M14WorkerDeps): Idg6PacketPort {
   );
 }
 
+function activeAdmissionsOf(deps: M14WorkerDeps): ActiveAdmissionPort {
+  return (
+    deps.activeAdmissions ?? {
+      activeAdmissionsForOrg: () =>
+        unbound(
+          "activeAdmissions.activeAdmissionsForOrg",
+          "bind idgActiveAdmissionsForOrg (M6) at the composition root",
+        ),
+    }
+  );
+}
+
 function m7Of(deps: M14WorkerDeps): Idg7PacketPort {
   return (
     deps.m7 ?? {
@@ -132,6 +158,7 @@ export function buildM14WorkerDeps(deps: {
   activeOrgs?: ActiveOrgListPort;
   redis?: Redis;
   m6?: Idg6PacketPort;
+  activeAdmissions?: ActiveAdmissionPort;
   m7?: Idg7PacketPort;
   recertWindows?: Idg6RecertWindowPort;
   flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
@@ -148,6 +175,7 @@ export function buildM14WorkerDeps(deps: {
     activeOrgs: deps.activeOrgs,
     redis: deps.redis,
     m6: deps.m6,
+    activeAdmissions: deps.activeAdmissions,
     m7: deps.m7,
     recertWindows: deps.recertWindows,
     flaggedEventSources: deps.flaggedEventSources,
@@ -181,7 +209,47 @@ export interface ReviewClockSweepCheckpoint {
   record(organizationId: string): Promise<void>;
 }
 
-/** `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2, GAP-092) — escalate every patient at
+/** Drain M6's keyset-paginated active-admission read for one org. Bounded: at most
+ * `REVIEW_CLOCK_MAX_PAGES` pages — a larger population throws rather than silently skipping its tail. */
+async function readActiveAdmissions(
+  port: ActiveAdmissionPort,
+  organizationId: string,
+): Promise<readonly ActiveAdmissionRef[]> {
+  const all: ActiveAdmissionRef[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < REVIEW_CLOCK_MAX_PAGES; page += 1) {
+    const rows = await port.activeAdmissionsForOrg(organizationId, after, REVIEW_CLOCK_PAGE_SIZE);
+    all.push(...rows);
+    if (rows.length < REVIEW_CLOCK_PAGE_SIZE) return all;
+    after = rows[rows.length - 1]?.admissionId ?? null;
+  }
+  throw new Error(
+    `M14_REVIEW_CLOCK_SWEEP: org ${organizationId} has more than ` +
+      `${REVIEW_CLOCK_MAX_PAGES * REVIEW_CLOCK_PAGE_SIZE} active admissions — raise the page ceiling`,
+  );
+}
+
+/** Join M6's active admissions to M14's per-admission last-review stamps. */
+async function reviewClockSnapshots(
+  tx: DbClient,
+  organizationId: string,
+  admissions: readonly ActiveAdmissionRef[],
+): Promise<readonly ReviewClockSnapshot[]> {
+  const reviewed = await lastReviewedByAdmissionForOrg(
+    tx,
+    organizationId,
+    admissions.map((a) => a.admissionId),
+  );
+  return admissions.map((a) => ({
+    patientId: a.patientId,
+    admissionId: a.admissionId,
+    locationId: a.locationId,
+    lastIdgReviewedAt: reviewed.get(a.admissionId) ?? null,
+    activatedAtIso: a.activatedAtIso,
+  }));
+}
+
+/** `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2, GAP-092/042) — escalate every ACTIVE admission at
  * T-3/T-0/T+1 of their per-patient 15-day review floor.
  *
  * Two retry-safety properties, both load-bearing:
@@ -201,9 +269,11 @@ export async function runReviewClockSweepCron(
   for (const { organizationId } of orgs) {
     if (alreadySwept.has(organizationId)) continue;
     try {
+      // M6's own (org-explicit) tx — read BEFORE opening M14's so the two never nest on one pool.
+      const admissions = await readActiveAdmissions(activeAdmissionsOf(deps), organizationId);
       await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
         const t = tx as unknown as DbClient;
-        const patients = await reviewClockPatientsForOrg(t, organizationId);
+        const patients = await reviewClockSnapshots(t, organizationId, admissions);
         const escalations = planReviewClockSweep(patients, now);
         // The coordinator tier of the M36 alert (only read when something escalates; one batched read).
         const coordinators =

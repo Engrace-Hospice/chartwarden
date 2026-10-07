@@ -73,6 +73,12 @@ export const M13_ERROR_STATUS = {
   ILLEGAL_IV_SESSION_TRANSITION: 409,
   // §2.11 D11 — an `iv_continuous_rate_change` `newRate` fell outside the order's `[minRate, maxRate]` bounds.
   IV_RATE_OUT_OF_RANGE: 422,
+  // M37 §2.6 / D7 (GAP-107) — the IPU IV-continuous safety overlay's four pre-administration refusals. 412:
+  // the precondition M37 set on the infusion (window / witness / duration / bedside check) is not met.
+  IV_RATE_OUTSIDE_TITRATION_WINDOW: 412,
+  IV_DUAL_WITNESS_REQUIRED: 412,
+  IV_MAX_CONTINUOUS_DURATION_REACHED: 412,
+  IV_BEDSIDE_CHECK_OVERDUE: 412,
 } as const;
 
 /** A machine-readable M13 administration-lifecycle failure code (§2.2 / §5.11). */

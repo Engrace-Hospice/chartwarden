@@ -109,7 +109,13 @@ export type IpuAdmissionEvent =
       readonly type: "postCloseSettlement";
       readonly isSystemActor: boolean;
       readonly noOpenChildRows: boolean;
-    };
+    }
+  /**
+   * §2.12 — the `reservation-expiry-watchdog` released the 4-hour bed hold: the admission steps back to
+   * `bed_pending` so a coordinator can assign another bed. System-driven only (a person unassigns via the
+   * route); the bed's own `reserved → ready` is the machine in `ipu-bed.ts`.
+   */
+  | { readonly type: "expireReservation"; readonly isSystemActor: boolean };
 
 /** The legal §2.2 transition graph (from → events accepted). `closed` is terminal. */
 export const ADMISSION_GRAPH: Readonly<
@@ -117,7 +123,7 @@ export const ADMISSION_GRAPH: Readonly<
 > = {
   pending: ["requestBed"],
   bed_pending: ["assignBed"],
-  bed_assigned: ["confirm"],
+  bed_assigned: ["confirm", "expireReservation"],
   active: ["initiateTransfer", "discharge", "recordDeath"],
   transferring: ["confirmTransfer"],
   transferred: ["postCloseSettlement"],
@@ -306,6 +312,20 @@ export function transitionAdmission(
           { kind: "defer_bed_dirty_until_body_release" },
           { kind: "outbox", event: "m37.ipu_admission.death_recorded" },
         ],
+      };
+    }
+
+    case "expireReservation": {
+      requireIpu(
+        event.isSystemActor,
+        "ADMISSION_SYSTEM_ACTOR_REQUIRED",
+        "A bed reservation is released by the reservation-expiry watchdog (system actor).",
+      );
+      return {
+        from,
+        to: "bed_pending",
+        event: event.type,
+        effects: [{ kind: "state_history", to: "bed_pending" }],
       };
     }
 
