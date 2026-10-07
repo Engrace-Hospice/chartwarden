@@ -85,17 +85,15 @@ export async function ensureAddendumDraft(
 }
 
 const SETTLE_POLL_MS = 2_000;
-const SETTLE_QUIET_MS = 15_000;
 const SETTLE_MAX_MS = 180_000;
 
 /**
- * Let the asynchronous plan-of-care consumers finish with the v1 draft before it is furnished.
+ * Let the asynchronous plan-of-care consumers bring the v1 draft up to date before it is furnished.
  *
  * Coverage determinations (M12/M21) and unrelated problems (M7) reach the addendum through outbox consumers
- * that, once a version has been furnished, open a NEW version for every change they process (no diff check).
- * Furnishing while their events are still queued would leave a spurious v2. So this waits until the draft
- * lists what `expect` needs and has stopped changing for {@link SETTLE_QUIET_MS}; if the relay is slower than
- * {@link SETTLE_MAX_MS} it refreshes the draft synchronously instead (a late event may then still open v2).
+ * that refresh the draft. Once a version is furnished they open a new version only when the source items
+ * actually differ, so a late event for an item v1 already lists is a no-op. This waits until the draft lists
+ * what `expect` needs; if the relay is slower than {@link SETTLE_MAX_MS} it refreshes the draft synchronously.
  */
 export async function ensureAddendumSettled(
   run: ScenarioRun,
@@ -114,16 +112,9 @@ export async function ensureAddendumSettled(
     },
     async () => {
       const started = Date.now();
-      let last = "";
-      let quietSince = Date.now();
       while (Date.now() - started < SETTLE_MAX_MS) {
         const v = await v1();
-        const stamp = v ? `${v.version}:${v.items.length}` : "";
-        if (stamp !== last) {
-          last = stamp;
-          quietSince = Date.now();
-        }
-        if (v && expect(v.items) && Date.now() - quietSince >= SETTLE_QUIET_MS) return v;
+        if (v && expect(v.items)) return v;
         await new Promise((r) => setTimeout(r, SETTLE_POLL_MS));
       }
       await asAnyone("refresh addendum draft", ctx.sessions, (s) =>

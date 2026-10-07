@@ -18,7 +18,7 @@ import {
   ensureAdmission,
   requireOrgSetup,
 } from "./admission";
-import { RECERT_CTI_NOTE, ensureRecertF2f } from "./certification";
+import { ensureRecertCtiSigned, ensureRecertF2f } from "./certification";
 import {
   COMFORT_MORPHINE,
   UNRELATED_ATORVASTATIN,
@@ -253,7 +253,7 @@ export const SCENARIOS: readonly Scenario[] = [
           spec("03", "Julian", "1940-07-04", "male"),
           minDate(cal.today, "2026-07-15"),
         );
-        run.note("recert CTI (benefit period 2)", RECERT_CTI_NOTE);
+        await ensureRecertCtiSigned(run, ctx, cal, adm);
         await ensureCarePlan(run, ctx, adm);
         await ensureVisits(run, ctx, cal, adm, 0);
         await ensureMedication(run, ctx, adm, COMFORT_MORPHINE);
@@ -284,6 +284,7 @@ export const SCENARIOS: readonly Scenario[] = [
           spec("04", "Nora", "1944-03-22", "female"),
           election,
         );
+        await ensureRecertCtiSigned(run, ctx, cal, adm);
         await ensureCarePlan(run, ctx, adm);
         await ensureVisits(run, ctx, cal, adm, 2);
         await ensureMedication(run, ctx, adm, COMFORT_MORPHINE);
@@ -313,6 +314,7 @@ export const SCENARIOS: readonly Scenario[] = [
           spec("05", "Otis", "1939-12-01", "male"),
           fy27ElectionDate(cal, 4),
         );
+        await ensureRecertCtiSigned(run, ctx, cal, adm);
         await ensureAddendumDraft(run, ctx, adm.id);
       }),
   },
@@ -330,6 +332,7 @@ export const SCENARIOS: readonly Scenario[] = [
           spec("06", "Paula", "1946-08-15", "female"),
           election,
         );
+        await ensureRecertCtiSigned(run, ctx, cal, adm);
         await ensureAddendumDraft(run, ctx, adm.id);
         await ensureAddendumContent(run, ctx, adm.id, addendumContent(ctx, adm));
         await ensureAddendumFurnished(

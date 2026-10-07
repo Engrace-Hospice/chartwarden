@@ -8,7 +8,8 @@
  *   · transfer-in: the inherited benefit period is dated from `priorElectionStartDate` — the only public lever
  *     that gives an election an effective date in the past ("effective 2026-07-xx", "effective ~2026-10-02").
  *     The receiving hospice owes NOR + election statement + admission date on the inherited period but no CTI
- *     (D9); its own CTI is for the NEXT period.
+ *     (D9); its own CTI is for the NEXT period — drafted by the transfer-in without a narrative, which the
+ *     physician supplies at signature (see `ensureRecertCtiSigned` in ./certification).
  *
  * State is read from the admission aggregate's readiness checklist (admission-scoped, so the admin can read it
  * while the admission is unsited) and, where ids are needed, from the patient's election-certification
@@ -16,7 +17,7 @@
  */
 import type { SeedContext } from "./context";
 import { pastInstantOn } from "./dates";
-import { type Session, SkipStep, asAnyone, readAsAnyone } from "./http";
+import { ApiError, type Session, SkipStep, asAnyone, readAsAnyone } from "./http";
 import type { DemoPatient } from "./patients";
 import type { ScenarioRun } from "./run";
 
@@ -482,16 +483,36 @@ export async function ensureCtiDraft(
   );
 }
 
-async function signCti(ctx: SeedContext, physician: Session, ctiId: string): Promise<void> {
-  const cur = await asAnyone<{ version: number }>("read CTI", ctx.sessions, (s) =>
-    s.client.GET("/api/v1/cti/{id}", { params: { path: { id: ctiId } } }),
-  );
-  await asAnyone("sign CTI (hospice MD)", [physician], (s) =>
-    s.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
-      params: { path: { id: ctiId } },
-      body: { ifVersion: cur.version },
-    }),
-  );
+/**
+ * Sign a CTI as the hospice physician. A CTI drafted at transfer-in carries no 418.22(b)(3) narrative, and M6
+ * answers 422 `CTI_NARRATIVE_REQUIRED` until the signing physician supplies one; only then is
+ * `narrativeIfMissing` sent with the signature (a CTI that already has its narrative keeps it).
+ */
+export async function signCti(
+  ctx: SeedContext,
+  physician: Session,
+  ctiId: string,
+  narrativeIfMissing?: string,
+): Promise<void> {
+  const sign = async (narrative?: string) => {
+    const cur = await asAnyone<{ version: number }>("read CTI", ctx.sessions, (s) =>
+      s.client.GET("/api/v1/cti/{id}", { params: { path: { id: ctiId } } }),
+    );
+    await asAnyone("sign CTI (hospice MD)", [physician], (s) =>
+      s.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
+        params: { path: { id: ctiId } },
+        body: { ifVersion: cur.version, ...(narrative ? { narrative } : {}) },
+      }),
+    );
+  };
+  try {
+    await sign();
+  } catch (err) {
+    const narrativeOwed =
+      err instanceof ApiError && err.status === 422 && err.code === "CTI_NARRATIVE_REQUIRED";
+    if (!narrativeOwed || !narrativeIfMissing) throw err;
+    await sign(narrativeIfMissing);
+  }
 }
 
 async function signPeriodCti(

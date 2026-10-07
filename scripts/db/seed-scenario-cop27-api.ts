@@ -12,7 +12,8 @@
  *   01 referral only (intake inbox)
  *   02 admission in intake, not activated — readiness shows the CTI signature and the 418.25(a) physician
  *      admission recommendation as still owed
- *   03 active, election effective 2026-07 (addendum not mandatory) — care plan, RN visits, comfort medication
+ *   03 active, election effective 2026-07 (addendum not mandatory) — care plan, RN visits, comfort medication;
+ *      the benefit-period-2 recertification CTI signed ahead of the period, which stays pending until it starts
  *   04 active, election ~5 days ago — addendum furnished + signed by the beneficiary, listing one drug and one
  *      supply request determined not covered (unrelated) and the unrelated care-plan condition
  *   05 active, election ~4 days ago — addendum drafted, NOT furnished: the 5-day initial window is due
@@ -20,8 +21,8 @@
  *      opens version 2 and the 3-day update window
  *   07 active (ordinary activation today) — addendum refused, the refusal reason naming the representative
  *   08 recertification into benefit period 3: telehealth F2F with the 418.22(a)(4)(ii) eligibility answers,
- *      attested by narrative
- *   09 recertification into benefit period 4: in-person F2F, attested by narrative
+ *      attested by narrative, then the recertification CTI signed (period 3 pending until its start date)
+ *   09 recertification into benefit period 4: in-person F2F, attested by narrative, then the CTI signed
  *   10 live discharge (no longer terminally ill) with the 418.26(b) physician discharge order
  *   11 for-cause discharge, then the physician cosign
  *   12 death discharge with place of death — the open addendum settles (no signature owed)
@@ -35,7 +36,10 @@
  *     need an account with `medical_director` / `hospice_physician`: the admin when it holds one, otherwise an
  *     EXISTING physician account passed in the environment. The admin alone covers 01, 02 (up to the drafted
  *     election statement) and the rate table; the rest are skipped with the reason.
- *   · Recertification CTIs are left drafted: M6 starts the next period at the signature, dated that day.
+ *   · A transfer-in drafts the CTI for the period after the inherited one, without a narrative; the physician
+ *     signs it with a 418.22(b)(3) narrative once 418.22(a)(3)'s window opens (15 days before the period
+ *     starts — 03, 08, 09 today; 04-06 stay drafted until a later re-run). M6 keeps the signed period pending
+ *     until the day after the prior period ends, so no two benefit periods are ever active at once.
  *   · Signing a visit note (to attest an F2F by note) needs a fresh MFA step-up, which this script cannot do.
  *   · Nothing is ever created with a known password: the script signs in only to accounts that already exist.
  *

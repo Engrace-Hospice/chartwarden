@@ -12,7 +12,7 @@
  * a small result type that keeps the server's error `code` — the per-step log reports it verbatim.
  */
 import { type ApiClient, createApiClient } from "@wardenx/ui";
-import { fetchAuthWithRateLimitRetry } from "../lib/auth-rate-limit";
+import { fetchAuthWithRateLimitRetry, retryDelaySeconds } from "../lib/auth-rate-limit";
 
 export interface Session {
   readonly client: ApiClient;
@@ -156,6 +156,24 @@ export interface SignInInput {
   readonly organizationId?: string;
 }
 
+/** One run makes a few thousand calls; SD-055's authenticated tier is a fixed per-minute window. */
+const MAX_RATE_LIMIT_RETRIES = 5;
+
+/**
+ * Send an API request, waiting out a 429 (the server's `Retry-After`) and resending it. A 429 is refused
+ * before the handler runs, so resending a write cannot apply it twice; any other answer is returned as is.
+ */
+async function fetchWithRateLimitRetry(request: Request, jar: Jar): Promise<Response> {
+  for (let retries = 0; ; retries += 1) {
+    const response = await fetch(request.clone());
+    absorbSetCookie(jar, response);
+    if (response.status !== 429 || retries === MAX_RATE_LIMIT_RETRIES) return response;
+    const delaySeconds = retryDelaySeconds(response);
+    console.log(`  … rate-limited (HTTP 429); retrying in ${delaySeconds}s`);
+    await new Promise<void>((resolve) => setTimeout(resolve, delaySeconds * 1_000));
+  }
+}
+
 /** Sign in, select the organization and return a typed client bound to that session. */
 export async function signIn(input: SignInInput): Promise<Session> {
   const { baseUrl, email, password } = input;
@@ -227,9 +245,7 @@ export async function signIn(input: SignInInput): Promise<Session> {
       headers.set("cookie", cookieHeader(jar));
       const token = jar.get("wardenx_csrf");
       if (token) headers.set("x-csrf-token", token);
-      const response = await fetch(new Request(request, { headers }));
-      absorbSetCookie(jar, response);
-      return response;
+      return fetchWithRateLimitRetry(new Request(request, { headers }), jar);
     }) as typeof fetch,
   });
   return {
