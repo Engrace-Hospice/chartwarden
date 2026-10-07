@@ -20,7 +20,7 @@
 // a list of NPIs rather than reaching into another module's table.
 import { type DbClient, schema } from "@wardenx/db";
 import type { NppesSyncRunId } from "@wardenx/types";
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
   type CachedProviderView,
   type ProviderCachePort,
@@ -86,6 +86,23 @@ export function createDrizzleNppesProviderCache(db: DbClient): ProviderCachePort
       return decision;
     },
   };
+}
+
+/**
+ * When M29's platform NPPES sync last COMPLETED, or `null` if it never has (GAP-173). M40's fallback nightly
+ * delta asks this (through the composition root — M40 never reads M29's table) to decide whether M29 synced
+ * recently enough that the fallback should stand down (§4.3, 25 h). `nppes_sync_run` is platform-shared and
+ * SELECT-able by `wardenx_app` (`USING (true)`), so this is a plain read on the pooled handle.
+ */
+export async function lastCompletedNppesSyncAt(db: DbClient): Promise<Date | null> {
+  const RUN = schema.nppesSyncRun;
+  const [row] = await db
+    .select({ completedAt: RUN.completedAt })
+    .from(RUN)
+    .where(eq(RUN.status, "completed"))
+    .orderBy(desc(RUN.completedAt))
+    .limit(1);
+  return row?.completedAt ?? null;
 }
 
 /** The `nppes_sync_run` orchestration log, written entirely through the SECURITY DEFINER functions. */

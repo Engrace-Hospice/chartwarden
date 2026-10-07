@@ -25,6 +25,7 @@ import { buildM36AdmissionComplianceAlertConsumer } from "../src/modules/36-mess
 import { buildM36ClinicalAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/clinical-alerts";
 import { buildM36IpuAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-iv-alerts";
+import { buildM36ConsentRevokedConsumer } from "../src/modules/36-messaging/outbox-consumers/m39-consent-revoked";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { M39_OUTBOX_EVENTS } from "../src/modules/39-consent/events-by-m39";
 
@@ -136,6 +137,8 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     ...buildM36IpuAlertConsumer({ emit: async () => {} } as never).eventTypes,
     // FY2027 — the election-addendum overdue page (`m36.admission-compliance-alerts`).
     ...buildM36AdmissionComplianceAlertConsumer({ emit: async () => {} } as never).eventTypes,
+    // GAP-171 — the M39 revocation-cascade ACK consumer (`m36.m39-consent-revoked`).
+    ...buildM36ConsentRevokedConsumer({ ackCascade: async () => {} }).eventTypes,
   ]);
 
   it("no event in these contributions declares a seam module as an outbox consumer", () => {

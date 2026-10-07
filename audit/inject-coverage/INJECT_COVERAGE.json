@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1402,
-    "coveredRoutes": 1402,
-    "directRoutesReferenced": 1350
+    "routes": 1403,
+    "coveredRoutes": 1403,
+    "directRoutesReferenced": 1351
   },
   "modules": [
     {
@@ -442,16 +442,17 @@
     },
     {
       "module": "36-messaging",
-      "routes": 23,
+      "routes": 24,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 22
+      "directRoutesReferenced": 23
     },
     {
       "module": "37-ipu",

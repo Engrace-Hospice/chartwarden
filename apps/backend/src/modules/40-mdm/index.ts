@@ -26,6 +26,20 @@ export {
   runBaaExpirationScan,
   runBaaExpirationScanForOrg,
 } from "./jobs/baa-scan";
+export { runLicenseExpirationScan, runLicenseExpirationScanForOrg } from "./jobs/license-scan";
+export { runProvisionalAgingScan, runProvisionalAgingForOrg } from "./jobs/provisional-aging";
+export { FUZZY_DEDUP_KINDS, runFuzzyDedupScan } from "./jobs/fuzzy-dedup";
+export {
+  type NppesFallbackDeps,
+  buildNppesFallbackPorts,
+  runNppesNightlyDeltaJob,
+  runNppesWeeklyFullJob,
+} from "./jobs/nppes-fallback";
+export {
+  type PlatformOpsNotice,
+  type PlatformOpsSink,
+  notifyPlatformOps,
+} from "./jobs/platform-ops";
 export {
   type M40WorkerDeps,
   registerM40CronWorkers,

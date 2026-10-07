@@ -1130,6 +1130,10 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+import {
+  AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
+  AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -8402,6 +8406,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/alerts/:id/read": {
     summary: "Mark one alert read for the current actor (204)",
+  },
+  // Platform-ops cross-tenant delivery drill (§4.1, GAP-165) — metadata only, audited per read.
+  "GET /api/v1/admin/messaging/alert-deliveries": {
+    summary:
+      "Platform-ops: notification delivery failures across tenants (metadata only; platform_ops-only, audited per read, keyset-paginated)",
+    query: M36AlertDeliveriesQuerySchema,
+    response: M36AlertDeliveriesResponseSchema,
   },
 
   // vendor delivery webhooks (§4.9) — signature-authed, raw urlencoded vendor body, 204 → summary-only

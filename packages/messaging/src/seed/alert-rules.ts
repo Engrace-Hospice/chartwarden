@@ -954,6 +954,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // about it in time to renew. The scan's own severity ladder (info / warn / critical per window) is the input
   // severity; this rule's floor is `info` so the 90-day heads-up is not inflated. Raised through AlertEmitter
   // by the M40 daily cron (no outbox consumer); payload is a BAA record id + entity ref + dates, no PHI.
+  // GAP-173 — M40 §4.4 `mdm.license_expiring` (Phase 1: from manual entry): a physician/credential license is 90, 30
+  // or 0 days from expiry. Compliance Officer + org admin, in-app + email; payload `{ physicianId, state,
+  // daysUntilExpiry }` + entity ref and window, no PHI. Raised by the M40 daily cron through AlertEmitter.
+  {
+    eventType: "mdm.license_expiring",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "mdm.baa_expiring",
     category: "administrative",

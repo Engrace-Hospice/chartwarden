@@ -442,9 +442,28 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
       return { id: inserted[0]!.id };
     },
 
-    async recordLicense() {
-      // Phase 1 ships no canonical license table (manifest owns 11 tables) — record is a documented
-      // no-op until the license surface lands. The route still 201s so the screen flow is intact.
+    async recordLicense(orgId, input, actorUserId) {
+      // GAP-173 — a real write now: the Phase-1 manual license entry (D6) lands in `mdm_license_record`
+      // (migration 0473), one row per (org, entity, state) so re-entering a renewed expiry updates in place.
+      // It used to be a documented no-op that still answered 201 — a fake success with nothing for the
+      // `mdm.license_expiration_scan` to read.
+      const LIC = schema.mdmLicenseRecords;
+      await withOrgContext(db, { organizationId: orgId, userId: actorUserId }, (tx) =>
+        tx
+          .insert(LIC)
+          .values({
+            organizationId: orgId,
+            entityKind: input.kind,
+            canonicalId: input.canonicalId,
+            licenseState: input.licenseState.toUpperCase(),
+            expiresOn: input.expiresOn,
+            enteredBy: actorUserId,
+          })
+          .onConflictDoUpdate({
+            target: [LIC.organizationId, LIC.entityKind, LIC.canonicalId, LIC.licenseState],
+            set: { expiresOn: input.expiresOn, enteredBy: actorUserId, updatedAt: new Date() },
+          }),
+      );
       return { recorded: true };
     },
 

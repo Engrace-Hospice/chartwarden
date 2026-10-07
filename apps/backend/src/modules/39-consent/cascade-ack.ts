@@ -8,12 +8,12 @@
 //   • `evaluateCascade` — the pure status arbiter over the consumers that can ACK (below), used by the ACK
 //     writer, the retry cron and the manual retry route so the three can never disagree.
 //
-// WHICH CONSUMERS COUNT. The spec names four (`CASCADE_CONSUMERS`), but only M31 has a live
-// `m39.consent.revoked` binding: M36 / M28 / M22 do not subscribe to the event (grep the outbox bindings), so
-// they can never ACK. Counting them would hold EVERY cascade open until the retry budget burns and then raise a
-// CRITICAL "cascade failed" alert for a consumer that does not exist — an alarm that is always true is
-// ignored. They are listed in {@link CASCADE_DEFERRED_CONSUMERS} with the reason; the day one gains a binding
-// it moves to {@link CASCADE_LIVE_CONSUMERS} and starts to gate completion (no data migration: rows keep every
+// WHICH CONSUMERS COUNT. All four §2.2.3 consumers (`CASCADE_CONSUMERS`) now have a live `m39.consent.revoked`
+// binding that ACKs after its leg ran (M31 grants; M22 disclosure restriction; M28 / M36 pull-path attestations —
+// see each consumer's header), so a cascade completes only when every one has ACKed. A consumer with NO binding
+// must NOT be listed live: it could never ACK, every cascade would burn its budget and raise a CRITICAL "cascade
+// failed" alert that is always true, and an alarm that is always true is ignored. Such a consumer goes in
+// {@link CASCADE_DEFERRED_CONSUMERS} (empty today) until it gains a binding (no data migration: rows keep every
 // key, the arbiter just filters).
 import { CASCADE_MAX_ATTEMPTS, nextCascadeStatus } from "@wardenx/consent";
 import { type DbClient, schema } from "@wardenx/db";
@@ -22,15 +22,16 @@ import { and, eq } from "drizzle-orm";
 
 const REV = schema.consentRevocation;
 
-/** Consumers that have a live `m39.consent.revoked` binding and therefore ACK; completion requires them all. */
-export const CASCADE_LIVE_CONSUMERS: readonly string[] = ["m31_portal"];
+/** Consumers with a live `m39.consent.revoked` binding (each ACKs after its leg); completion requires them all. */
+export const CASCADE_LIVE_CONSUMERS: readonly string[] = [
+  "m31_portal",
+  "m36_messaging",
+  "m28_fhir",
+  "m22_documents",
+];
 
-/** §2.2.3 consumers with NO subscription yet — they cannot ACK, so they do not gate completion. */
-export const CASCADE_DEFERRED_CONSUMERS: Readonly<Record<string, string>> = {
-  m36_messaging: "M36 has no m39.consent.revoked binding (arch:outbox-bindings deferral).",
-  m28_fhir: "M28 has no m39.consent.revoked binding (arch:outbox-bindings deferral).",
-  m22_documents: "M22 has no m39.consent.revoked binding (arch:outbox-bindings deferral).",
-};
+/** §2.2.3 consumers with NO subscription — they cannot ACK, so they do not gate completion. Empty today. */
+export const CASCADE_DEFERRED_CONSUMERS: Readonly<Record<string, string>> = {};
 
 /** Bookkeeping keys that live beside the consumer flags in `cascade_consumer_status_jsonb`. */
 export const CASCADE_ATTEMPTS_KEY = "__attempts";

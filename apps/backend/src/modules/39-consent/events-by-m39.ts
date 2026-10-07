@@ -94,6 +94,11 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // grant revocation and closes active sessions — a genuinely broader fact than
     // `m39.consent.delegated_access.revoked` (which covers only the `family_caregiver_access`
     // projection row), so this is not redundant with that kept declaration.
+    // GAP-171 — m22 / m28 / m36 RE-ADDED as cascade ACKers. The F-197 / F-115 analyses below stand (their effect is
+    // a PULL at mint/read time, not a push), but M39's own revocation-cascade ledger (§2.2.3) needs each of the four
+    // spec'd consumers to ACK for a cascade to reach `completed` — without it every cascade burned its retry budget
+    // or sat `pending` forever. Each consumer's header states its real effect (M22 additionally restricts
+    // disclosure-attached documents on `media_release`; M28 / M36 attest the pull path).
     // F-197 (#248) — m22 REMOVED. The #248 declared-but-unbound registry's prior reason for this pair
     // ("`media_release` unseeded") was stale/unclear; the REAL gap, found and fixed this round, is that
     // M22's §7.16 SUD-consent gate (`consent-gate.ts`'s `resolveSudConsentPresent`) only ever ran ONCE, at
@@ -105,7 +110,7 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // signed-URL/subsetter state a push could act on; the real control gap is a consent re-check at URL
     // mint, in M22's mint path"). `m5`/`m16`/`m2`/`m31` are unaffected — each has its own real, separately
     // verified reason to stay declared.
-    declaredConsumers: ["m5", "m16", "m2", "m31"],
+    declaredConsumers: ["m5", "m16", "m2", "m31", "m22", "m28", "m36"],
     isOutboxOnly: true,
   },
   {

@@ -29,7 +29,22 @@ export {
 } from "./baa-scan";
 
 export {
+  planLicenseExpiryAlerts,
+  type LicenseExpiryAlertPlan,
+  type LicenseScanRecord,
+} from "./license-scan";
+
+export {
+  PROVISIONAL_AGING_MAX_IDS,
+  PROVISIONAL_AGING_THRESHOLD_DAYS,
+  planProvisionalAging,
+  type ProvisionalAgingPlan,
+  type ProvisionalRow,
+} from "./provisional-aging";
+
+export {
   runNppesNightlyDelta,
+  runNppesWeeklyFull,
   type NppesNightlyPorts,
   type NppesNightlyResult,
   type NppesSyncLogEntry,

@@ -380,6 +380,7 @@ export { NPPES_SYNC_SCHEDULE, type NppesSyncSchedule } from "./nppes/schedule";
 export {
   createDrizzleNppesProviderCache,
   createDrizzleNppesSyncRunStore,
+  lastCompletedNppesSyncAt,
 } from "./nppes/stores-drizzle";
 export {
   type NppesOutboxPublishPort,

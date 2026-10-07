@@ -503,6 +503,61 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     });
   });
 
+  // ── GAP-169 · m37.ipu.staff_member on restraint + the bed grid ─────────────────────────────────
+  it("refuses an off-unit clinician on a built roster, and admits them once on the unit's roster", async () => {
+    const unit = await svc.createUnit(actor, {
+      facilityId: "77777777-7777-4777-8777-777777777769",
+      displayName: "IPU Staff Member Rule",
+      bedCount: 1,
+    });
+    await admin.query(
+      "INSERT INTO ipu_rn_coverage_window (organization_id,unit_id,hour_start_at,is_covered,rn_assignment_ids) VALUES ($1,$2,date_trunc('hour', now()),true,'{}')",
+      [ORG_A, unit.id],
+    );
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "99999999-aaaa-4aaa-8aaa-999999999991",
+      levelOfCarePeriodId: "99999999-bbbb-4bbb-8bbb-999999999992",
+      providerEntityId: PE,
+      unitId: unit.id,
+      kind: "gip",
+    });
+    // The roster is built, with SOMEONE ELSE on it: a day shift around now.
+    const start = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const end = new Date(Date.now() + 6 * 3_600_000).toISOString();
+    const shift = await svc.createShift(actor, {
+      unitId: unit.id,
+      shiftStartAt: start,
+      shiftEndAt: end,
+    });
+    await svc.assignStaff(actor, shift.id, {
+      membershipId: "99999999-cccc-4ccc-8ccc-999999999993",
+      role: "rn",
+    });
+    const body = {
+      restraintKind: "posey_vest" as const,
+      restraintJustificationText: "x".repeat(120),
+      orderingOrderId: SIGNED_ORDER,
+      category: "medical" as const,
+      reassessmentIntervalMinutes: 120,
+    };
+    await expect(svc.applyRestraint(actor, adm.id, body)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    await svc.assignStaff(actor, shift.id, { membershipId: MEMBER, role: "rn" });
+    const restraint = await svc.applyRestraint(actor, adm.id, body);
+    expect(restraint.state).toBe("active");
+    // An org-wide authority role is admitted regardless of the roster.
+    const director = {
+      ...actor,
+      membershipId: "99999999-dddd-4ddd-8ddd-999999999994",
+      roles: ["medical_director"],
+    };
+    const released = await svc.releaseRestraint(director, restraint.id);
+    expect(released.state).not.toBe("active");
+  });
+
   it("lists a shift's staff assignments, and unassign is scoped to the shift in the path", async () => {
     const [unit] = await svc.listUnits(readActor);
     if (!unit) throw new Error("expected a unit");

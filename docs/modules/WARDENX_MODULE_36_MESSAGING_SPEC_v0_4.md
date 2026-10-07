@@ -1557,7 +1557,7 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | POST | `/api/v1/webhooks/twilio/sms-status` | signature | — | inbound delivery callback |
 | POST | `/api/v1/webhooks/twilio/voice-status` | signature | — | inbound call status |
 | POST | `/api/v1/webhooks/postmark/event` | signature | — | bounce / delivery / complaint |
-| GET | `/api/v1/admin/messaging/alert-deliveries` | session | `messaging.admin.read` | platform-ops: failures and audit drill. **DEFERRED (GAP-165) — not implemented.** `messaging.admin.read` is contributed (platform category) but bound to no route. This is a CROSS-TENANT read of `notification_delivery`, so it cannot run on the tenant-RLS app pool: it needs a platform-ops ABAC conjunct (the M38 `terminology_admin_platform_ops` / M40 `mdm_admin_platform_ops` shape), a `SECURITY DEFINER` reader that returns delivery metadata only (no recipient identity, no payload), and an audited platform read. Per-tenant failure visibility is served today by the M36 inbox's own delivery status. |
+| GET | `/api/v1/admin/messaging/alert-deliveries` | session | `messaging.admin.read` | platform-ops: failures and audit drill. **IMPLEMENTED (GAP-165).** Cross-tenant, so: RBAC key AND the `messaging_admin_platform_ops` ABAC conjunct (a tenant role holding the key is refused); data comes only through the `SECURITY DEFINER` reader `messaging_admin_list_alert_deliveries` (migration 0474 — delivery metadata only: no recipient, destination or payload; bounded, keyset-paginated by `before`); every call writes an org-less platform audit event before the response is released. |
 
 > All `/api/v1/admin/messaging/*` routes are platform-ops only and audited as `audit.elevated_access` per M4 §6.
 

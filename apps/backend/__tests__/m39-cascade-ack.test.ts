@@ -9,31 +9,43 @@ import {
 import { planCascadeSweep } from "../src/modules/39-consent/jobs/cascade-retry";
 
 /** The shape the store writes at revocation time: all four §2.2.3 consumers, none ACKed. */
+const ALL_ACKED = { m31_portal: true, m36_messaging: true, m28_fhir: true, m22_documents: true };
 const FRESH = { m31_portal: false, m36_messaging: false, m28_fhir: false, m22_documents: false };
 
 describe("GAP-171 — cascade arbiter", () => {
-  it("only counts consumers that have a live binding", () => {
-    expect(CASCADE_LIVE_CONSUMERS).toEqual(["m31_portal"]);
-    expect(Object.keys(CASCADE_DEFERRED_CONSUMERS).sort()).toEqual([
-      "m22_documents",
-      "m28_fhir",
-      "m36_messaging",
-    ]);
+  it("counts all four §2.2.3 consumers, each of which has a live binding", () => {
+    expect([...CASCADE_LIVE_CONSUMERS].sort()).toEqual(
+      ["m22_documents", "m28_fhir", "m31_portal", "m36_messaging"].sort(),
+    );
+    expect(Object.keys(CASCADE_DEFERRED_CONSUMERS)).toEqual([]);
   });
 
-  it("completes once the live consumer ACKs, even though deferred consumers never can", () => {
-    const evaluation = evaluateCascade(
-      { status: "pending", consumerJson: { ...FRESH, m31_portal: true } },
+  it("completes only once EVERY consumer has ACKed", () => {
+    const partial = evaluateCascade(
+      { status: "pending", consumerJson: { ...FRESH, m31_portal: true, m22_documents: true } },
       0,
     );
-    expect(evaluation.status).toBe("completed");
-    expect(evaluation.pendingConsumers).toEqual([]);
+    expect(partial.status).toBe("in_progress");
+    expect([...partial.pendingConsumers].sort()).toEqual(["m28_fhir", "m36_messaging"]);
+    const all = evaluateCascade(
+      {
+        status: "in_progress",
+        consumerJson: {
+          m31_portal: true,
+          m36_messaging: true,
+          m28_fhir: true,
+          m22_documents: true,
+        },
+      },
+      1,
+    );
+    expect(all.status).toBe("completed");
   });
 
   it("stays in_progress while the live consumer has not ACKed and budget remains", () => {
     const evaluation = evaluateCascade({ status: "pending", consumerJson: FRESH }, 1);
     expect(evaluation.status).toBe("in_progress");
-    expect(evaluation.pendingConsumers).toEqual(["m31_portal"]);
+    expect(evaluation.pendingConsumers).toHaveLength(4);
   });
 
   it("declares partial_failed naming the un-ACKed consumer when the budget is spent", () => {
@@ -42,12 +54,12 @@ describe("GAP-171 — cascade arbiter", () => {
       CASCADE_MAX_ATTEMPTS,
     );
     expect(evaluation.status).toBe("partial_failed");
-    expect(evaluation.pendingConsumers).toEqual(["m31_portal"]);
+    expect(evaluation.pendingConsumers).toHaveLength(4);
   });
 
-  it("a spent budget does not fail a cascade whose live consumer already ACKed", () => {
+  it("a spent budget does not fail a cascade whose consumers all ACKed", () => {
     const evaluation = evaluateCascade(
-      { status: "in_progress", consumerJson: { ...FRESH, m31_portal: true } },
+      { status: "in_progress", consumerJson: ALL_ACKED },
       CASCADE_MAX_ATTEMPTS,
     );
     expect(evaluation.status).toBe("completed");

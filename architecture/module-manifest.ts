@@ -329,6 +329,7 @@ export const MODULES: ModuleDef[] = [
       "facility",
       "mdm_baa_record",
       "mdm_baa_required",
+      "mdm_license_record",
       "mdm_provisional",
       "merge_request",
       "nppes_sync_coordination",

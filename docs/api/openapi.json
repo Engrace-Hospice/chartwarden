@@ -10565,6 +10565,182 @@
         }
       }
     },
+    "/api/v1/admin/messaging/alert-deliveries": {
+      "get": {
+        "operationId": "getApiV1AdminMessagingAlertdeliveries",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Platform-ops: notification delivery failures across tenants (metadata only; platform_ops-only, audited per read, keyset-paginated)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "sent",
+                  "type": "string"
+                },
+                {
+                  "const": "delivered",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped_quiet_hours",
+                  "type": "string"
+                },
+                {
+                  "const": "forwarded",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T[0-9:.]+(Z|[+-]\\d{2}:\\d{2})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextBefore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "deliveryId",
+                          "organizationId",
+                          "alertId",
+                          "alertCategory",
+                          "alertSeverity",
+                          "channel",
+                          "status",
+                          "failReason",
+                          "queuedAt",
+                          "sentAt",
+                          "settledAt"
+                        ],
+                        "properties": {
+                          "deliveryId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "alertId": {
+                            "type": "string"
+                          },
+                          "alertCategory": {
+                            "type": "string"
+                          },
+                          "alertSeverity": {
+                            "type": "string"
+                          },
+                          "channel": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "failReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "queuedAt": {
+                            "type": "string"
+                          },
+                          "sentAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "settledAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextBefore": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/orders/regenerate-verbal-timer/{id}": {
       "post": {
         "operationId": "postApiV1AdminOrdersRegenerateverbaltimerById",

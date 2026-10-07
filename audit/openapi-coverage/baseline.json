@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 23,
+      "routes": 24,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -182,7 +182,7 @@
       "mutatingNoBody": 0
     },
     "38-terminology": {
-      "routes": 14,
+      "routes": 19,
       "deficit": 0,
       "mutatingNoBody": 0
     },
