@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1403,
-    "coveredRoutes": 1403,
-    "directRoutesReferenced": 1350
+    "routes": 1442,
+    "coveredRoutes": 1442,
+    "directRoutesReferenced": 1391
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 26,
+      "routes": 41,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -19,13 +19,17 @@
         "apps/backend/__tests__/authz-routes.test.ts",
         "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/device-attestation-routes.test.ts",
+        "apps/backend/__tests__/gap-115-m2-funeral-invite.test.ts",
+        "apps/backend/__tests__/gap-115-m2-me-session.test.ts",
+        "apps/backend/__tests__/gap-115-m2-org-admin.test.ts",
+        "apps/backend/__tests__/gap-115-m2-step-up-overrides.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 25
+      "directRoutesReferenced": 40
     },
     {
       "module": "03-authorization",
@@ -55,7 +59,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 26,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -66,15 +70,16 @@
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 39
     },
     {
       "module": "06-admission",
-      "routes": 84,
+      "routes": 85,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -89,7 +94,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 84
+      "directRoutesReferenced": 85
     },
     {
       "module": "07-care-plan",
@@ -110,6 +115,7 @@
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
@@ -121,7 +127,7 @@
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
-      "directRoutesReferenced": 24
+      "directRoutesReferenced": 25
     },
     {
       "module": "08-encounters",
@@ -142,7 +148,7 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 15
+      "directRoutesReferenced": 17
     },
     {
       "module": "10-hope",
@@ -152,7 +158,7 @@
         "apps/backend/__tests__/hope-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 28
     },
     {
       "module": "11-orders",
@@ -286,7 +292,7 @@
     },
     {
       "module": "22-documents",
-      "routes": 57,
+      "routes": 58,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
@@ -305,7 +311,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 68,
+      "routes": 72,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
@@ -316,7 +322,7 @@
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 59
+      "directRoutesReferenced": 61
     },
     {
       "module": "24-billing-medicaid",
@@ -329,14 +335,14 @@
     },
     {
       "module": "25-remittance",
-      "routes": 32,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 31
+      "directRoutesReferenced": 32
     },
     {
       "module": "26-cap",
@@ -380,7 +386,7 @@
     },
     {
       "module": "30-quality",
-      "routes": 60,
+      "routes": 61,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-091-m30-phi-scope.test.ts",
@@ -388,18 +394,18 @@
         "apps/backend/__tests__/m30-mortality-patient-display.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
-      "directRoutesReferenced": 60
+      "directRoutesReferenced": 61
     },
     {
       "module": "31-portal",
-      "routes": 53,
+      "routes": 55,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 53
+      "directRoutesReferenced": 55
     },
     {
       "module": "32-ai-platform",
@@ -442,16 +448,17 @@
     },
     {
       "module": "36-messaging",
-      "routes": 23,
+      "routes": 24,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 22
+      "directRoutesReferenced": 23
     },
     {
       "module": "37-ipu",
@@ -499,7 +506,7 @@
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],
-      "directRoutesReferenced": 10
+      "directRoutesReferenced": 11
     }
   ]
 }

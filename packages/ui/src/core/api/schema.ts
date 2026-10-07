@@ -7213,6 +7213,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discharges/{id}/decline-for-cause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides) */
+        post: operations["postApiV1DischargesByIdDeclineforcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discharges/{id}/place-of-death": {
         parameters: {
             query?: never;
@@ -9244,6 +9261,23 @@ export interface paths {
         get: operations["getApiV1FormtemplatesByKeyVersionsByVersionId"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/funeral/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased) */
+        post: operations["postApiV1FuneralInvite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11611,11 +11645,30 @@ export interface paths {
         /** Search service locations for selector controls (provider-scoped, cursor-paginated, non-PHI) */
         get: operations["getApiV1Locations"];
         put?: never;
-        post?: never;
+        /** Create a service location under one of the caller's provider entities */
+        post: operations["postApiV1Locations"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One service location of the caller's org */
+        get: operations["getApiV1LocationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a location's address / contact / timezone / lifecycle status */
+        patch: operations["patchApiV1LocationsById"];
         trace?: never;
     };
     "/api/v1/map-view": {
@@ -11764,6 +11817,23 @@ export interface paths {
         };
         /** The caller's effective permission keys (drives UI gating, §4.3) */
         get: operations["getApiV1MePermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's session metadata incl. last step-up and its freshness against the platform floor (D8) */
+        get: operations["getApiV1MeSession"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13489,6 +13559,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organizations: the caller's own org (org admin) or every org, searchable (platform operator) */
+        get: operations["getApiV1Orgs"];
+        put?: never;
+        /** Create an organization spine row (platform operator only) */
+        post: operations["postApiV1Orgs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One organization (own org, or any for a platform operator) */
+        get: operations["getApiV1OrgsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit an organization's display name (own org) / legal name (platform operator) */
+        patch: operations["patchApiV1OrgsById"];
+        trace?: never;
+    };
     "/api/v1/orgs/{id}/invitations": {
         parameters: {
             query?: never;
@@ -13606,6 +13712,41 @@ export interface paths {
         post?: never;
         /** Revoke a membership's named approval authority; the row is retained as history (member.manage, §3.7) */
         delete: operations["deleteApiV1OrgsByIdMembersByMIdElevatedapprovalsByKind"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}/step-up-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's per-operation step-up overrides (tighten-only) */
+        get: operations["getApiV1OrgsByIdStepupoverrides"];
+        put?: never;
+        /** Set / replace one operation's step-up override — may only TIGHTEN the platform floor; needs a fresh step-up (W-M2-10) */
+        post: operations["postApiV1OrgsByIdStepupoverrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}/step-up-overrides/{operationKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an override (the platform floor applies again); needs a fresh step-up */
+        delete: operations["deleteApiV1OrgsByIdStepupoverridesByOperationKey"];
         options?: never;
         head?: never;
         patch?: never;
@@ -15747,11 +15888,30 @@ export interface paths {
         /** Search provider entities for selector controls (cursor-paginated, non-PHI) */
         get: operations["getApiV1Providerentities"];
         put?: never;
-        post?: never;
+        /** Create a provider entity (CCN, NPI check digit, EIN enveloped by the cipher; 503 TAX_ID_CIPHER_UNBOUND until the KMS cipher is bound) */
+        post: operations["postApiV1Providerentities"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider-entities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One provider entity of the caller's org (the tax id is never returned) */
+        get: operations["getApiV1ProviderentitiesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit names / iQIES id / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here */
+        patch: operations["patchApiV1ProviderentitiesById"];
         trace?: never;
     };
     "/api/v1/public/signup-intents": {
@@ -19545,7 +19705,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read this org's resolved feature flags (flag key to enabled) */
+        /** This org's resolved feature flags */
         get: operations["getApiV1SystemFeatureflags"];
         put?: never;
         post?: never;
@@ -21325,6 +21485,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Liveness probe (unauthenticated) */
         get: operations["getHealth"];
         put?: never;
         post?: never;
@@ -21409,6 +21570,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Prometheus text-format metrics for internal scraping (unauthenticated, not a public route) */
         get: operations["getMetrics"];
         put?: never;
         post?: never;
@@ -21425,6 +21587,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down */
         get: operations["getReady"];
         put?: never;
         post?: never;
@@ -21441,6 +21604,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Build identity: version, git SHA and build time (unauthenticated) */
         get: operations["getVersion"];
         put?: never;
         post?: never;
@@ -28281,6 +28445,11 @@ export interface operations {
                     reason: string;
                     /** Format: uuid */
                     facilityId?: string;
+                    gipAttestations?: {
+                        symptomsNotManageableElsewhere?: boolean;
+                        intensityWarrantsGip?: boolean;
+                        inpatientSettingIdentified?: boolean;
+                    };
                 };
             };
         };
@@ -38193,8 +38362,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
-                        sessionClass: "external_collaborator";
+                        sessionClass: "external_collaborator" | "funeral_home";
                         scope: {
                             patientId: string;
                         };
@@ -42353,6 +42521,35 @@ export interface operations {
                     capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
                     orderText?: string;
                     orderReference?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DischargesByIdDeclineforcause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    declineReason: string;
                     ifVersion: number;
                 };
             };
@@ -47783,6 +47980,37 @@ export interface operations {
                     "application/json": {
                         key: string;
                         versionId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1FuneralInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        linkId: string;
+                        expiresAt: string;
                     };
                 };
             };
@@ -54984,6 +55212,159 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1Locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    name: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    city: string;
+                    state: string;
+                    postalCode: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1LocationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1LocationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    addressLine1?: string;
+                    addressLine2?: string;
+                    city?: string;
+                    state?: string;
+                    postalCode?: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Mapview: {
         parameters: {
             query: {
@@ -55431,6 +55812,37 @@ export interface operations {
                 content: {
                     "application/json": {
                         permissions: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        userId: string;
+                        organizationId: string;
+                        lastStepUpAt: string | null;
+                        lastStepUpFactor: ("webauthn" | "totp" | "sms") | null;
+                        stepUpStatus: "none" | "fresh" | "expired";
+                        stepUpExpiresAt: string | null;
+                        stepUpSecondsRemaining: number;
                     };
                 };
             };
@@ -60779,6 +61191,158 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Orgs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            slug: string;
+                            legalName: string;
+                            displayName: string;
+                            status: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Orgs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName: string;
+                    displayName?: string;
+                    /** @description 3-40 lower-case letters, digits or hyphens; derived from legalName when absent. */
+                    slug?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrgsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OrgsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    /** @description Platform operators only. */
+                    legalName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OrgsByIdInvitations: {
         parameters: {
             query?: never;
@@ -61134,6 +61698,110 @@ export interface operations {
                         revokedAt: string | null;
                         revokedByMembershipId: string | null;
                         revokedReason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrgsByIdStepupoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        overrides: {
+                            operationKey: string;
+                            qualifyingFactors: ("webauthn" | "totp")[];
+                            maxAgeSec: number;
+                            rationale: string;
+                            configuredByMembershipId: string;
+                            /** Format: date-time */
+                            configuredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByIdStepupoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operationKey: string;
+                    /** @description A non-empty subset of the platform floor [webauthn, totp]. SMS is refused (a loosening). */
+                    qualifyingFactors: ("webauthn" | "totp")[];
+                    /** @description At most the platform floor's 300s: a tenant may only shorten the freshness window. */
+                    maxAgeSec: number;
+                    rationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        operationKey: string;
+                        qualifyingFactors: ("webauthn" | "totp")[];
+                        maxAgeSec: number;
+                        rationale: string;
+                        configuredByMembershipId: string;
+                        /** Format: date-time */
+                        configuredAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1OrgsByIdStepupoverridesByOperationKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                operationKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        removed: boolean;
                     };
                 };
             };
@@ -61667,6 +62335,10 @@ export interface operations {
                 "application/json": {
                     scope: "demographic" | "clinical" | "narrative";
                     rationale: string;
+                    requestedChange?: {
+                        fieldPath: string;
+                        requestedValue: string | null;
+                    };
                 };
             };
         };
@@ -63720,6 +64392,16 @@ export interface operations {
                         byStatus: {
                             [key: string]: number;
                         };
+                        admissions?: {
+                            admissionsToday: number;
+                            dischargesToday: number;
+                            /** @description Patients in an active general-inpatient-care period. */
+                            gipActive: number;
+                            /** @description Active benefit periods ending within 14 days (the next period needs a recert). */
+                            recertsDue: number;
+                            /** Format: date */
+                            asOfDate: string;
+                        } | null;
                     };
                 };
             };
@@ -66527,6 +67209,151 @@ export interface operations {
                             status: string;
                         }[];
                         nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Providerentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description CMS Certification Number. */
+                    ccn: string;
+                    /** @description 10 digits with a correct NPI check digit. */
+                    npi: string;
+                    legalName: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    /** @description 9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound. */
+                    taxId: string;
+                    /** @description MMDD */
+                    fiscalYearEnd: string;
+                    iqiesFacilityId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1ProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName?: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    iqiesFacilityId?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -84574,7 +85401,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -84799,7 +85631,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "ready" | "not_ready";
+                        checks: {
+                            db: "ok" | "fail";
+                            valkey: "ok" | "fail";
+                            minio: "ok" | "fail";
+                            outbox: "ok" | "fail";
+                            capabilities?: {
+                                [key: string]: "ready" | "disabled";
+                            };
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -84819,7 +85664,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        version: string;
+                        gitSha: string;
+                        buildTime: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

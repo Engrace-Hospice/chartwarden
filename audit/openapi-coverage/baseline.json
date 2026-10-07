@@ -17,7 +17,7 @@
       "mutatingNoBody": 0
     },
     "05-patient": {
-      "routes": 26,
+      "routes": 39,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -97,7 +97,7 @@
       "mutatingNoBody": 0
     },
     "21-supplies": {
-      "routes": 39,
+      "routes": 40,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -142,12 +142,12 @@
       "mutatingNoBody": 0
     },
     "30-quality": {
-      "routes": 60,
+      "routes": 61,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "31-portal": {
-      "routes": 53,
+      "routes": 55,
       "deficit": 0,
       "mutatingNoBody": 0
     },

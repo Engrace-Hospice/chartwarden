@@ -64,7 +64,9 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 - `check-outbox-bindings` (`arch:outbox-bindings`) — live consumer bindings ↔ event catalog agree; unbound (module, event) pairs must be in `scripts/outbox-deferred-consumers.ts` with a reason; per-module `*_SUBSCRIBED_EVENT_NAMES`-style lists must match the catalog (rule 6, exceptions in `scripts/outbox-subscription-exceptions.ts`). `bun run outbox:deferrals:update` regenerates lists, never reasons.
 - `check-architecture-docs`, `check-module-docs`, `check-adr-docs` — architecture/module-spec/ADR corpus consistency (cited paths, versions, index parity, links).
 - `check-openapi-provenance` (`arch:openapi-provenance`) — no duplicate/shadowed enrichment keys or imports, schemas from own directory. `report-openapi-coverage` (`arch:openapi-coverage`) — unenriched-route ratchet against `audit/openapi-coverage/baseline.json`; `client:check` keeps the typed client in sync.
-- Advisory/parity reports (each has a `--check` mode inside `arch:fitness`): `status:matrix`, `ui:parity`, `frame:fidelity` (playbook: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`), `audit-fitness`, `arch:e2e-coverage`.
+- `check-error-envelope` (`arch:error-envelope`) — route handlers throw typed `WardenXError`/`NotFoundError`/`ConflictError`; no flat `{ error: ... }` replies, so every error carries the standard envelope.
+- Live suites that guard a rule rather than a route (need a real catalog/DB, so not `arch:*` gates): `test:fk-indexes:live` asserts foreign keys are index-covered (the deliberately unindexed soft-deleted-parent FKs are an explicit, reasoned list); `test:m10:retention:live` proves the HOPE retention scan flags but never deletes and honours legal holds.
+- Advisory/parity reports (each has a `--check` mode inside `arch:fitness`): `status:matrix`, `ui:parity`, `frame:fidelity` (playbook: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`), `arch:e2e-coverage`.
 
 ## Standing verification habits (learned the hard way — see [`docs/history/`](./docs/history/README.md))
 

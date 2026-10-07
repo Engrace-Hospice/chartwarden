@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 166 statically-routable `web` screen(s) — 19/166 E2E-reached, 160/166 axe-reached.
+**Coverage:** 166 statically-routable `web` screen(s) — 19/166 E2E-reached, 161/166 axe-reached.
 
 ## Zero E2E coverage
 
@@ -76,7 +76,7 @@
 | `ipu.equipment` | 37-ipu | `/ipu/equipment` | m37.equipment.read |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.organization-select` | 02-identity | `/login/organization` | (none) |
-| `mdm.console` | 40-mdm | `/mdm` | (none) |
+| `mdm.console` | 40-mdm | `/mdm` | mdm.physician.read |
 | `ai.my-preferences` | 32-ai-platform | `/me/ai-preferences` | ai.clinician_opt_out.read |
 | `oncall.me` | 19-oncall | `/me/oncall` | oncall.read_schedule |
 | `safety.me` | 20-field-safety | `/me/safety` | safety.sos.raise |
@@ -143,7 +143,7 @@
 | `supplies.items` | 21-supplies | `/supplies/items` | supplies.item.read |
 | `supplies.par_stock` | 21-supplies | `/supplies/par-stock` | par_stock.read |
 | `supplies.vendor_routing` | 21-supplies | `/supplies/vendor-routing` | vendor_routing.read |
-| `terminology.admin` | 38-terminology | `/terminology` | (none) |
+| `terminology.admin` | 38-terminology | `/terminology` | terminology.read |
 | `triage.queue` | 19-oncall | `/triage` | triage.read |
 | `triage.escalations` | 19-oncall | `/triage/escalations` | triage.read_escalations |
 | `triage.intake` | 19-oncall | `/triage/intake` | triage.open |
@@ -163,7 +163,6 @@
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
-| `mdm.console` | 40-mdm | `/mdm` | (none) |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
 

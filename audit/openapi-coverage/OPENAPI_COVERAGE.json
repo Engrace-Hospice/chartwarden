@@ -1,22 +1,22 @@
 {
   "totals": {
-    "routes": 1414,
-    "enriched": 1409,
-    "deficit": 5,
-    "mutating": 801,
+    "routes": 1453,
+    "enriched": 1453,
+    "deficit": 0,
+    "mutating": 826,
     "mutatingNoBody": 1,
-    "gets": 581,
-    "getsNoResponse": 10
+    "gets": 593,
+    "getsNoResponse": 8
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 26,
-      "enriched": 26,
+      "routes": 41,
+      "enriched": 41,
       "deficit": 0,
-      "mutating": 16,
+      "mutating": 24,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {
@@ -41,20 +41,20 @@
     },
     {
       "module": "05-patient",
-      "routes": 26,
-      "enriched": 26,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
-      "mutating": 13,
+      "mutating": 22,
       "mutatingNoBody": 0,
-      "gets": 13,
-      "getsNoResponse": 0
+      "gets": 17,
+      "getsNoResponse": 4
     },
     {
       "module": "06-admission",
-      "routes": 84,
-      "enriched": 84,
+      "routes": 85,
+      "enriched": 85,
       "deficit": 0,
-      "mutating": 60,
+      "mutating": 61,
       "mutatingNoBody": 0,
       "gets": 24,
       "getsNoResponse": 0
@@ -147,7 +147,7 @@
       "mutating": 17,
       "mutatingNoBody": 0,
       "gets": 11,
-      "getsNoResponse": 2
+      "getsNoResponse": 0
     },
     {
       "module": "16-bereavement",
@@ -211,22 +211,22 @@
     },
     {
       "module": "22-documents",
-      "routes": 57,
-      "enriched": 57,
+      "routes": 58,
+      "enriched": 58,
       "deficit": 0,
-      "mutating": 30,
+      "mutating": 31,
       "mutatingNoBody": 0,
       "gets": 25,
       "getsNoResponse": 2
     },
     {
       "module": "23-billing-medicare",
-      "routes": 68,
-      "enriched": 68,
+      "routes": 72,
+      "enriched": 72,
       "deficit": 0,
-      "mutating": 30,
+      "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 36,
+      "gets": 37,
       "getsNoResponse": 0
     },
     {
@@ -241,10 +241,10 @@
     },
     {
       "module": "25-remittance",
-      "routes": 32,
-      "enriched": 32,
+      "routes": 33,
+      "enriched": 33,
       "deficit": 0,
-      "mutating": 19,
+      "mutating": 20,
       "mutatingNoBody": 0,
       "gets": 13,
       "getsNoResponse": 0
@@ -291,20 +291,20 @@
     },
     {
       "module": "30-quality",
-      "routes": 60,
-      "enriched": 60,
+      "routes": 61,
+      "enriched": 61,
       "deficit": 0,
       "mutating": 36,
       "mutatingNoBody": 0,
-      "gets": 24,
+      "gets": 25,
       "getsNoResponse": 0
     },
     {
       "module": "31-portal",
-      "routes": 53,
-      "enriched": 53,
+      "routes": 55,
+      "enriched": 55,
       "deficit": 0,
-      "mutating": 25,
+      "mutating": 27,
       "mutatingNoBody": 0,
       "gets": 28,
       "getsNoResponse": 0
@@ -402,12 +402,12 @@
     {
       "module": "bootstrap",
       "routes": 11,
-      "enriched": 6,
-      "deficit": 5,
+      "enriched": 11,
+      "deficit": 0,
       "mutating": 1,
       "mutatingNoBody": 0,
       "gets": 10,
-      "getsNoResponse": 5
+      "getsNoResponse": 1
     }
   ]
 }

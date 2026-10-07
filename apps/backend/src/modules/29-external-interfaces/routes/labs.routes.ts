@@ -172,7 +172,7 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
         observationId,
       );
       if (!ack) {
-        return reply.code(404).send({ code: "NOT_FOUND", message: "observation not found" });
+        throw new NotFoundError("observation");
       }
       return {
         acknowledged: true,

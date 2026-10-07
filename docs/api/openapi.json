@@ -27623,6 +27623,20 @@
                   "facilityId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "gipAttestations": {
+                    "type": "object",
+                    "properties": {
+                      "symptomsNotManageableElsewhere": {
+                        "type": "boolean"
+                      },
+                      "intensityWarrantsGip": {
+                        "type": "boolean"
+                      },
+                      "inpatientSettingIdentified": {
+                        "type": "boolean"
+                      }
+                    }
                   }
                 }
               }
@@ -69975,8 +69989,16 @@
                   ],
                   "properties": {
                     "sessionClass": {
-                      "const": "external_collaborator",
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "const": "external_collaborator",
+                          "type": "string"
+                        },
+                        {
+                          "const": "funeral_home",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "scope": {
                       "type": "object",
@@ -86817,6 +86839,61 @@
                   "orderReference": {
                     "minLength": 1,
                     "maxLength": 200,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/discharges/{id}/decline-for-cause": {
+      "post": {
+        "operationId": "postApiV1DischargesByIdDeclineforcause",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "declineReason",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "declineReason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
                     "type": "string"
                   },
                   "ifVersion": {
@@ -107560,6 +107637,65 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/funeral/invite": {
+      "post": {
+        "operationId": "postApiV1FuneralInvite",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "linkId",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "linkId": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId"
+                ],
+                "properties": {
+                  "patientId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -133806,6 +133942,539 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "post": {
+        "operationId": "postApiV1Locations",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Create a service location under one of the caller's provider entities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "name",
+                    "addressLine1",
+                    "addressLine2",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "phone",
+                    "fax",
+                    "timezone",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "addressLine1": {
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "name",
+                  "addressLine1",
+                  "city",
+                  "state",
+                  "postalCode",
+                  "timezone"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine1": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine2": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "city": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "pattern": "^\\d{5}(-\\d{4})?$",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "fax": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "description": "IANA zone, e.g. America/Los_Angeles.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/locations/{id}": {
+      "get": {
+        "operationId": "getApiV1LocationsById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "One service location of the caller's org",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "name",
+                    "addressLine1",
+                    "addressLine2",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "phone",
+                    "fax",
+                    "timezone",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "addressLine1": {
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1LocationsById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Edit a location's address / contact / timezone / lifecycle status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "name",
+                    "addressLine1",
+                    "addressLine2",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "phone",
+                    "fax",
+                    "timezone",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "addressLine1": {
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine1": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine2": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "city": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "pattern": "^\\d{5}(-\\d{4})?$",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "fax": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "description": "IANA zone, e.g. America/Los_Angeles.",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "created",
+                        "type": "string"
+                      },
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/map-view": {
@@ -135733,6 +136402,120 @@
                       "items": {
                         "type": "string"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/me/session": {
+      "get": {
+        "operationId": "getApiV1MeSession",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "The caller's session metadata incl. last step-up and its freshness against the platform floor (D8)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionId",
+                    "userId",
+                    "organizationId",
+                    "lastStepUpAt",
+                    "lastStepUpFactor",
+                    "stepUpStatus",
+                    "stepUpExpiresAt",
+                    "stepUpSecondsRemaining"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "userId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "lastStepUpAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastStepUpFactor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "webauthn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "totp",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sms",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stepUpStatus": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "fresh",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "stepUpExpiresAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stepUpSecondsRemaining": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -160582,6 +161365,342 @@
         }
       }
     },
+    "/api/v1/orgs": {
+      "get": {
+        "operationId": "getApiV1Orgs",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Organizations: the caller's own org (org admin) or every org, searchable (platform operator)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "slug",
+                          "legalName",
+                          "displayName",
+                          "status",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "legalName": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Orgs",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Create an organization spine row (platform operator only)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "slug",
+                    "legalName",
+                    "displayName",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "legalName"
+                ],
+                "properties": {
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "slug": {
+                    "description": "3-40 lower-case letters, digits or hyphens; derived from legalName when absent.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}": {
+      "get": {
+        "operationId": "getApiV1OrgsById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "One organization (own org, or any for a platform operator)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "slug",
+                    "legalName",
+                    "displayName",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1OrgsById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Edit an organization's display name (own org) / legal name (platform operator)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "slug",
+                    "legalName",
+                    "displayName",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "Platform operators only.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/orgs/{id}/invitations": {
       "get": {
         "operationId": "getApiV1OrgsByIdInvitations",
@@ -161648,6 +162767,278 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}/step-up-overrides": {
+      "get": {
+        "operationId": "getApiV1OrgsByIdStepupoverrides",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "The tenant's per-operation step-up overrides (tighten-only)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "overrides"
+                  ],
+                  "properties": {
+                    "overrides": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "operationKey",
+                          "qualifyingFactors",
+                          "maxAgeSec",
+                          "rationale",
+                          "configuredByMembershipId",
+                          "configuredAt"
+                        ],
+                        "properties": {
+                          "operationKey": {
+                            "type": "string"
+                          },
+                          "qualifyingFactors": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "webauthn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "totp",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "maxAgeSec": {
+                            "minimum": 1,
+                            "maximum": 300,
+                            "type": "integer"
+                          },
+                          "rationale": {
+                            "type": "string"
+                          },
+                          "configuredByMembershipId": {
+                            "type": "string"
+                          },
+                          "configuredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OrgsByIdStepupoverrides",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Set / replace one operation's step-up override — may only TIGHTEN the platform floor; needs a fresh step-up (W-M2-10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "operationKey",
+                    "qualifyingFactors",
+                    "maxAgeSec",
+                    "rationale",
+                    "configuredByMembershipId",
+                    "configuredAt"
+                  ],
+                  "properties": {
+                    "operationKey": {
+                      "type": "string"
+                    },
+                    "qualifyingFactors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "webauthn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "totp",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "maxAgeSec": {
+                      "minimum": 1,
+                      "maximum": 300,
+                      "type": "integer"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "configuredByMembershipId": {
+                      "type": "string"
+                    },
+                    "configuredAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "operationKey",
+                  "qualifyingFactors",
+                  "maxAgeSec",
+                  "rationale"
+                ],
+                "properties": {
+                  "operationKey": {
+                    "pattern": "^[a-z][a-z0-9_.]{0,99}$",
+                    "type": "string"
+                  },
+                  "qualifyingFactors": {
+                    "minItems": 1,
+                    "description": "A non-empty subset of the platform floor [webauthn, totp]. SMS is refused (a loosening).",
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "webauthn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "totp",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "maxAgeSec": {
+                    "minimum": 1,
+                    "maximum": 300,
+                    "description": "At most the platform floor's 300s: a tenant may only shorten the freshness window.",
+                    "type": "integer"
+                  },
+                  "rationale": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}/step-up-overrides/{operationKey}": {
+      "delete": {
+        "operationId": "deleteApiV1OrgsByIdStepupoverridesByOperationKey",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Remove an override (the platform floor applies again); needs a fresh step-up",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operationKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "removed"
+                  ],
+                  "properties": {
+                    "removed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -163426,6 +164817,31 @@
                     "minLength": 1,
                     "maxLength": 2000,
                     "type": "string"
+                  },
+                  "requestedChange": {
+                    "type": "object",
+                    "required": [
+                      "fieldPath",
+                      "requestedValue"
+                    ],
+                    "properties": {
+                      "fieldPath": {
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      "requestedValue": {
+                        "anyOf": [
+                          {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               }
@@ -172416,6 +173832,43 @@
                           "type": "integer"
                         }
                       }
+                    },
+                    "admissions": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "admissionsToday",
+                            "dischargesToday",
+                            "gipActive",
+                            "recertsDue",
+                            "asOfDate"
+                          ],
+                          "properties": {
+                            "admissionsToday": {
+                              "type": "integer"
+                            },
+                            "dischargesToday": {
+                              "type": "integer"
+                            },
+                            "gipActive": {
+                              "description": "Patients in an active general-inpatient-care period.",
+                              "type": "integer"
+                            },
+                            "recertsDue": {
+                              "description": "Active benefit periods ending within 14 days (the next period needs a recert).",
+                              "type": "integer"
+                            },
+                            "asOfDate": {
+                              "format": "date",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -179847,6 +181300,487 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Providerentities",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Create a provider entity (CCN, NPI check digit, EIN enveloped by the cipher; 503 TAX_ID_CIPHER_UNBOUND until the KMS cipher is bound)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "ccn",
+                    "legalName",
+                    "doingBusinessAs",
+                    "fiscalIntermediary",
+                    "npi",
+                    "fiscalYearEnd",
+                    "iqiesFacilityId",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "doingBusinessAs": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fiscalIntermediary": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "fiscalYearEnd": {
+                      "description": "MMDD",
+                      "type": "string"
+                    },
+                    "iqiesFacilityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "npi",
+                  "legalName",
+                  "taxId",
+                  "fiscalYearEnd"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Z]{6}$",
+                    "description": "CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "npi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "10 digits with a correct NPI check digit.",
+                    "type": "string"
+                  },
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "doingBusinessAs": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "fiscalIntermediary": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "taxId": {
+                    "description": "9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound.",
+                    "type": "string"
+                  },
+                  "fiscalYearEnd": {
+                    "pattern": "^[0-9]{4}$",
+                    "description": "MMDD",
+                    "type": "string"
+                  },
+                  "iqiesFacilityId": {
+                    "maxLength": 50,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider-entities/{id}": {
+      "get": {
+        "operationId": "getApiV1ProviderentitiesById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "One provider entity of the caller's org (the tax id is never returned)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "ccn",
+                    "legalName",
+                    "doingBusinessAs",
+                    "fiscalIntermediary",
+                    "npi",
+                    "fiscalYearEnd",
+                    "iqiesFacilityId",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "doingBusinessAs": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fiscalIntermediary": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "fiscalYearEnd": {
+                      "description": "MMDD",
+                      "type": "string"
+                    },
+                    "iqiesFacilityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1ProviderentitiesById",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Edit names / iQIES id / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "ccn",
+                    "legalName",
+                    "doingBusinessAs",
+                    "fiscalIntermediary",
+                    "npi",
+                    "fiscalYearEnd",
+                    "iqiesFacilityId",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "doingBusinessAs": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fiscalIntermediary": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "fiscalYearEnd": {
+                      "description": "MMDD",
+                      "type": "string"
+                    },
+                    "iqiesFacilityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "doingBusinessAs": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "fiscalIntermediary": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "iqiesFacilityId": {
+                    "maxLength": 50,
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "created",
+                        "type": "string"
+                      },
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -234198,7 +236132,7 @@
         "tags": [
           "bootstrap"
         ],
-        "summary": "Read this org's resolved feature flags (flag key to enabled)",
+        "summary": "This org's resolved feature flags",
         "parameters": [],
         "responses": {
           "200": {
@@ -264796,10 +266730,27 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Liveness probe (unauthenticated)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -265538,6 +267489,7 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Prometheus text-format metrics for internal scraping (unauthenticated, not a public route)",
         "parameters": [],
         "responses": {
           "200": {
@@ -265558,10 +267510,112 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_ready",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "checks": {
+                      "type": "object",
+                      "required": [
+                        "db",
+                        "valkey",
+                        "minio",
+                        "outbox"
+                      ],
+                      "properties": {
+                        "db": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "valkey": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "minio": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "outbox": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "capabilities": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "anyOf": [
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "disabled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -265578,10 +267632,34 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Build identity: version, git SHA and build time (unauthenticated)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "gitSha",
+                    "buildTime"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "gitSha": {
+                      "type": "string"
+                    },
+                    "buildTime": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
