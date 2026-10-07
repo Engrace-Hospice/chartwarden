@@ -44,6 +44,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const pinnedPatient = request.headers["x-test-session-patient"];
+  if (typeof pinnedPatient === "string" && pinnedPatient.length > 0)
+    request.context.attributes.sessionPatientId = pinnedPatient;
   // F-028 — the §2.3 correction and the D6 supervisor override used to take their step-up from
   // `request.headers["x-step-up"]`, a string the gated caller supplies. They resolve the REAL session
   // through M2's `SessionContextResolver` seam now, so the shim stamps a session id the way the
@@ -784,11 +787,26 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
-      headers: PORTAL,
+      headers: { ...PORTAL, "x-test-session-patient": PATIENT },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     expect(res.json().arrivedAt).not.toBeNull();
+
+    // GAP-132 — another patient's portal session must not learn this visit's arrival; an unpinned one is a 404.
+    const other = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+      headers: { ...PORTAL, "x-test-session-patient": "99999999-9999-4999-8999-999999999999" },
+    });
+    expect(other.statusCode).toBe(200);
+    expect(other.json().arrivedAt).toBeNull();
+    const unpinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+      headers: PORTAL,
+    });
+    expect(unpinned.statusCode).toBe(404);
     await app.close();
   });
 });

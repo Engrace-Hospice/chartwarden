@@ -91,6 +91,8 @@ import type {
 } from "./routes/service";
 import {
   NOTE_PRESENT_STATUSES,
+  actionItemMeetingAdjournedError,
+  actionItemNotAssigneeError,
   addendumEligibilityUnavailableError,
   addendumImmutableError,
   assertMayWriteDisciplineNote,
@@ -1983,10 +1985,13 @@ export function createDbIdgBackend(
       userId,
       id,
       status: ActionItemPatchStatus,
+      isCoordinator = false,
     ): Promise<ActionItemView> {
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ACT).where(eq(ACT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
+        if (!isCoordinator && row.assignedToMembershipId !== userId)
+          throw actionItemNotAssigneeError();
         const t = transitionActionItem(row.status, { type: PATCH_STATUS_EVENT[status] });
         const at = new Date();
         const closed = t.to === "completed" || t.to === "cancelled";
@@ -2012,11 +2017,17 @@ export function createDbIdgBackend(
       // No DELETE grant (compromise #2) → soft-remove by transitioning to `cancelled`.
       return withOrg(orgId, async (tx) => {
         const [row] = await tx
-          .select({ id: ACT.id, status: ACT.status })
+          .select({ id: ACT.id, status: ACT.status, meetingId: ACT.idgMeetingId })
           .from(ACT)
           .where(eq(ACT.id, id))
           .limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
+        const [meeting] = await tx
+          .select({ status: MTG.status })
+          .from(MTG)
+          .where(eq(MTG.id, row.meetingId))
+          .limit(1);
+        if (meeting?.status === "adjourned") throw actionItemMeetingAdjournedError();
         transitionActionItem(row.status, { type: "cancel" });
         await tx
           .update(ACT)

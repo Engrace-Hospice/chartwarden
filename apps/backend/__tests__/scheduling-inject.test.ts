@@ -54,6 +54,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const pinnedPatient = request.headers["x-test-session-patient"];
+  if (typeof pinnedPatient === "string" && pinnedPatient.length > 0)
+    request.context.attributes.sessionPatientId = pinnedPatient;
 }
 
 const ORG = "org_a";
@@ -654,10 +657,25 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
     const portal = await app.inject({
       method: "GET",
       url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
-      headers: SCHED,
+      headers: { ...SCHED, "x-test-session-patient": PATIENT },
     });
     expect(portal.statusCode).toBe(200);
     expect((portal.json() as Array<{ visitId: string }>).map((v) => v.visitId)).toContain(id);
+
+    // GAP-132 — a portal session pinned to patient B asking for patient A (or an unpinned session) is a 404.
+    const OTHER_PATIENT = "99999999-9999-4999-8999-999999999999";
+    const crossPatient = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: { ...SCHED, "x-test-session-patient": OTHER_PATIENT },
+    });
+    expect(crossPatient.statusCode).toBe(404);
+    const unpinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: SCHED,
+    });
+    expect(unpinned.statusCode).toBe(404);
     await app.close();
   });
 });
@@ -681,7 +699,7 @@ describe("M17-T07 — route 26: on-demand route optimisation", () => {
 });
 
 describe("M17-T07 — routes 28-29: dashboard metrics", () => {
-  it("reads org-wide visit metrics and per-clinician route-efficiency metrics", async () => {
+  it("reads org-wide visit metrics; route-efficiency is 501 (no fabricated data)", async () => {
     const { app } = makeServer();
     const window = "from=2026-06-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z";
     const visits = await app.inject({
@@ -697,8 +715,7 @@ describe("M17-T07 — routes 28-29: dashboard metrics", () => {
       url: `/api/v1/metrics/route-efficiency?membership=${RN_MEMBERSHIP}&${window}`,
       headers: SCHED,
     });
-    expect(routeEff.statusCode).toBe(200);
-    expect(routeEff.json().membershipId).toBe(RN_MEMBERSHIP);
+    expect(routeEff.statusCode).toBe(501); // GAP-131 — no fabricated zeros while route optimisation is off
     await app.close();
   });
 });

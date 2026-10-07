@@ -22,6 +22,8 @@ export interface ActorScopeFacts {
   readonly orgWide?: boolean;
   readonly sessionPatientId?: string | null;
   readonly disciplines: readonly string[];
+  readonly membershipId?: string;
+  readonly roles?: readonly string[];
 }
 
 /** The patients on a clinician's caseload. `userId` is the M2 USER id (`patient_assignment.clinician_user_id`). */
@@ -68,4 +70,24 @@ export async function assertPatientInActorScope(
     }
   }
   throw new NotFoundError("order or patient not found");
+}
+
+const DRAFT_SUPERVISOR_ROLES: ReadonlySet<string> = new Set([
+  "clinical_supervisor",
+  "medical_director",
+]);
+
+/**
+ * GAP-126 — only a draft's author or a supervisor (org-wide role / clinical supervisor / medical director) may
+ * edit it. A non-human caller is exempt. Refused as a 404 so another clinician's draft is not disclosed.
+ */
+export function assertMayEditDraft(
+  actor: ActorScopeFacts,
+  order: { readonly id: string; readonly drafterMembershipId: string },
+): void {
+  if (actor.kind === "system") return;
+  if (actor.membershipId !== undefined && order.drafterMembershipId === actor.membershipId) return;
+  if (actor.orgWide === true || (actor.roles ?? []).some((r) => DRAFT_SUPERVISOR_ROLES.has(r)))
+    return;
+  throw new NotFoundError(`order ${order.id} is not a draft you may edit`);
 }

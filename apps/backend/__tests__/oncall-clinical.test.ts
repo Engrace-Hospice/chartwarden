@@ -27,6 +27,7 @@ import {
   VERBAL_ATTESTATION_MAX_CHARS,
   VERBAL_ATTESTATION_MIN_CHARS,
   appendLinkedVerbalOrderId,
+  assertVerbalOrderBelongsToCall,
   assertVerbalOrderScope,
   assertVerbalOrderStepUp,
   buildVerbalOrderInput,
@@ -847,6 +848,30 @@ describe("M19 D15 — the M12 medication and refill surface", () => {
     await expectCodeAsync(
       () => validatePrnAuthorizationTarget({ organizationId: ORG, medicationOrderId: MED_ORDER }),
       "PRN_TARGET_NOT_FOUND",
+    );
+  });
+});
+
+describe("assertVerbalOrderBelongsToCall (GAP-134)", () => {
+  it("accepts an M11 order of the call's own patient", () => {
+    expect(() => assertVerbalOrderBelongsToCall({ patientId: "p1" }, "p1")).not.toThrow();
+  });
+
+  it("refuses a fabricated id (no such order) with DISPOSITION_PAYLOAD_INVALID", () => {
+    expectCode(() => assertVerbalOrderBelongsToCall(null, "p1"), "DISPOSITION_PAYLOAD_INVALID");
+  });
+
+  it("refuses any order while the caller is not yet matched to a patient", () => {
+    expectCode(
+      () => assertVerbalOrderBelongsToCall({ patientId: "p1" }, null),
+      "DISPOSITION_PAYLOAD_INVALID",
+    );
+  });
+
+  it("refuses another patient's order with DISPOSITION_PAYLOAD_INVALID", () => {
+    expectCode(
+      () => assertVerbalOrderBelongsToCall({ patientId: "p2" }, "p1"),
+      "DISPOSITION_PAYLOAD_INVALID",
     );
   });
 });

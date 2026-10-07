@@ -710,7 +710,11 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(PortalUpcomingQuerySchema, request.query);
-      return service.portalUpcoming(organizationId, q.patient, q.withinHours ?? 168);
+      // GAP-132 — the portal session is pinned to one patient; a caller-named patient must be that patient.
+      // Anything else (another patient, or an unpinned session) is a 404 — no existence oracle.
+      const pinned = request.context?.attributes.sessionPatientId;
+      if (typeof pinned !== "string" || pinned !== q.patient) throw new NotFoundError("patient");
+      return service.portalUpcoming(organizationId, pinned, q.withinHours ?? 168);
     },
   );
 

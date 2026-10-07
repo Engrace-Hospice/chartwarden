@@ -16,7 +16,7 @@ import {
   requireAbac,
   requirePermission,
 } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { clinicianCapture } from "../capture-guards";
@@ -601,7 +601,11 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);
-      return service.portalArrival(organizationId, visitId);
+      // GAP-132 — only the patient the portal session is pinned to may read a visit's arrival; the service
+      // scopes the events to that patient, so another patient's visit reads as "not yet arrived".
+      const pinned = request.context?.attributes.sessionPatientId;
+      if (typeof pinned !== "string" || pinned.length === 0) throw new NotFoundError("visit");
+      return service.portalArrival(organizationId, visitId, pinned);
     },
   );
 }

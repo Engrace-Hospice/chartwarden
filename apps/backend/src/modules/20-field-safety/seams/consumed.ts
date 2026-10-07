@@ -36,6 +36,7 @@ import type {
   EvvLocationProvider,
   OnCallProvider,
   PatientReader,
+  PortalVisitReader,
   VisitAssignmentReader,
   VisitReader,
 } from "@wardenx/types";
@@ -52,6 +53,15 @@ import { getSeam } from "../../../bootstrap/index";
  */
 export function getVisitReader(): VisitReader {
   return getSeam("VisitReader");
+}
+
+/**
+ * M20 CONSUMES M17's §4.3 `PortalVisitReader.upcomingForPatient` for ONE purpose: resolving a decedent's upcoming
+ * visit ids (GAP-135). `safety_check_in_schedule` carries no patient column and `m5.patient.deceased` names no visits,
+ * so this is the only published patient -> visits read. Only `visitId` is used; the lay-language fields are ignored.
+ */
+export function getUpcomingVisitReader(): PortalVisitReader {
+  return getSeam("PortalVisitReader");
 }
 
 /**

@@ -234,3 +234,24 @@ describe("SYSTEM_ORDER_ACTOR (workers / consumers / service-level suites)", () =
     expect(SYSTEM_ORDER_ACTOR.kind).toBe("system");
   });
 });
+
+describe("draft edit ownership (GAP-126)", () => {
+  it("lets the author edit but refuses another on-caseload RN with a not-found", async () => {
+    const svc = backend();
+    const draft = await seededDraft(svc);
+    const edited = await svc.editDraft(ORG, draft.id, {}, undefined, actor());
+    expect(edited.version).toBe(2);
+    const colleague = actor({ membershipId: "m_other_rn" });
+    await expect(svc.editDraft(ORG, draft.id, {}, undefined, colleague)).rejects.toEqual(
+      expect.objectContaining({ statusCode: 404 }),
+    );
+  });
+
+  it("lets a supervisor and the system actor edit another author's draft", async () => {
+    const svc = backend();
+    const draft = await seededDraft(svc);
+    const supervisor = actor({ membershipId: "m_sup", roles: ["clinical_supervisor"] });
+    expect((await svc.editDraft(ORG, draft.id, {}, undefined, supervisor)).version).toBe(2);
+    expect((await svc.editDraft(ORG, draft.id, {}, undefined, SYSTEM_ORDER_ACTOR)).version).toBe(3);
+  });
+});

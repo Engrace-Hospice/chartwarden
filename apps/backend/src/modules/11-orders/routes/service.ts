@@ -51,6 +51,7 @@ import { deriveCosignFacts, isVerbalRecorderDiscipline } from "./server-derived-
 import {
   type OrderCaseloadResolver,
   assertActorHoldsDiscipline,
+  assertMayEditDraft,
   assertPatientInActorScope,
   seamCaseloadResolver,
 } from "./service-actor-guards";
@@ -338,6 +339,8 @@ export interface CreateOrderArgs {
   readonly replacesOrderId?: string;
   /** F-232 — payload contract version to stamp (default `<kind>.v1`); see `ORDER_KIND_SUPPORTED_VERSIONS`. */
   readonly kindVersion?: string;
+  /** GAP-126 — the clinical indication; persisted to `order_record.indication_text` (denylisted in audit). */
+  readonly indicationText?: string;
 }
 export interface RequestSignatureArgs {
   readonly signerDiscipline: string;
@@ -498,6 +501,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     data: unknown,
     priority?: OrderPriority,
     actor?: OrderDetailActor,
+    indicationText?: string,
   ): Promise<OrderDetailView>;
   requestSignature(
     organizationId: string,
@@ -1106,6 +1110,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       await assertInScope(actor, organizationId, r.patientId);
       if (r.status !== "draft")
         throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
+      assertMayEditDraft(actor, r);
       r.data = data;
       if (priority) r.priority = priority;
       r.version += 1;

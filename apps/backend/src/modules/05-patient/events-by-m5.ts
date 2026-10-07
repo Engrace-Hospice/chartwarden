@@ -155,7 +155,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // `rb_day` rows after the date of death ("final R&B day finalization").
     // GAP-104 — m36 MOVED from seamConsumers to declaredConsumers: `m36.channel-membership-sync` archives the
     // decedent's care_team channel (M36 spec §2.3 "auto-archived on discharge").
-    declaredConsumers: ["m23", "m24", "m26", "m29", "m35", "m36", "m39"],
+    // GAP-135 — m20 ADDED: M20's own §4.4 `m5-patient-deceased.consumer` closes the decedent's open safety
+    // obligations (`20-field-safety/consumers/m5-patient-deceased.ts`, bound in `consumers/bindings.ts`).
+    declaredConsumers: ["m20", "m23", "m24", "m26", "m29", "m35", "m36", "m39"],
     isOutboxOnly: false,
   },
   {

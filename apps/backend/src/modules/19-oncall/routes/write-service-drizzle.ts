@@ -59,6 +59,10 @@ import {
   triageSummaryContent,
 } from "../clinical/triage-summary";
 import {
+  appendLinkedVerbalOrderId,
+  assertVerbalOrderBelongsToCall,
+} from "../clinical/verbal-order";
+import {
   DEFAULT_UNRESOLVED_ESCALATION_TIER,
   type SelectableDisposition,
 } from "../lifecycle/disposition";
@@ -98,7 +102,11 @@ import {
   completeShift,
   shiftCoversInstant,
 } from "../roster/shift-machine";
-import { getHospitalizationRiskProvider, getProtocolSuggestionProvider } from "../seams/consumed";
+import {
+  getHospitalizationRiskProvider,
+  getOrderProvider,
+  getProtocolSuggestionProvider,
+} from "../seams/consumed";
 import { type M19WriteActor, disciplineOf, isVendorActor } from "./actor";
 import { type EffectPatch, type StateHistoryPort, runEffects } from "./effects-runner";
 import type {
@@ -859,6 +867,21 @@ export function buildDrizzleM19WriteService(
       const at = now();
       const data = input.dispositionData as TriageDispositionData;
 
+      // GAP-134 (D9) — a `verbal_order_recorded` disposition must name a REAL M11 order for THIS call's patient.
+      // Resolved through M11's `OrderProvider` seam BEFORE the transaction (a cross-module probe inside our own
+      // tx self-deadlocks the pool — M21-T05), so a fabricated or cross-patient id is a 422 and never stored.
+      const verbalOrderId =
+        data.disposition === "verbal_order_recorded" ? data.orderRecordId : null;
+      if (verbalOrderId !== null) {
+        const callPatientId = (
+          await withOrgContext(db, ctx(actor), async (tx) =>
+            loadCall(tx as Tx, actor, triageCallId),
+          )
+        ).patientId;
+        const order = await getOrderProvider().getOrder({ orderId: verbalOrderId as never });
+        assertVerbalOrderBelongsToCall(order, callPatientId);
+      }
+
       const committed = await withOrgContext(db, ctx(actor), async (tx) =>
         tx.transaction(async (inner) => {
           const call = await loadCall(inner, actor, triageCallId);
@@ -904,7 +927,21 @@ export function buildDrizzleM19WriteService(
             aggregateId: call.id,
             payloads: dispositionPayloads(call, data, iso(at)),
           });
-          await applyCallPatch(inner, call.id, call.version, patch, { state: transition.to });
+          await applyCallPatch(inner, call.id, call.version, patch, {
+            state: transition.to,
+            // GAP-134 — the `link_verbal_order` effect is caller-owned (a second aggregate's column), so the
+            // back-reference is appended HERE, in the same transaction as the disposition (de-duplicated).
+            ...(verbalOrderId !== null
+              ? {
+                  linkedVerbalOrderIds: appendLinkedVerbalOrderId(
+                    Array.isArray(call.linkedVerbalOrderIds)
+                      ? (call.linkedVerbalOrderIds as string[])
+                      : [],
+                    verbalOrderId as never,
+                  ),
+                }
+              : {}),
+          });
           return call;
         }),
       );

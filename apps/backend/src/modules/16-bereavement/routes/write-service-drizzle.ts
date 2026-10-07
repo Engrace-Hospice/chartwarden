@@ -40,7 +40,7 @@ import {
 } from "@wardenx/bereavement";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type {
   BereavedContactRelationship,
   BereavementAnniversaryMark,
@@ -155,6 +155,22 @@ export interface M16WriteDeps {
   }) => Promise<boolean>;
   /** GAP-049 — resolves M8's BereavementEncounterReader per call (default: the M1 seam registry). */
   readonly encounterReader?: () => BereavementEncounterReader;
+}
+
+/**
+ * GAP-129 — counselor notes are stored in `contact_notes_cipher`, which this layer writes NULL until the M34-backed
+ * cipher port binds (decision 4 above). Accepting a note and silently discarding it told the counselor it was saved;
+ * so a request that CARRIES a note is refused (503) until the port binds, and the counselor keeps the note elsewhere
+ * rather than losing it. A request without a note is unaffected.
+ */
+export const NOTES_STORAGE_UNAVAILABLE = "NOTES_STORAGE_UNAVAILABLE";
+export function assertNotesStorable(notes: string | undefined | null): void {
+  if (notes === undefined || notes === null || notes.trim().length === 0) return;
+  throw new WardenXError(
+    NOTES_STORAGE_UNAVAILABLE,
+    "counselor notes cannot be stored until the encrypted notes store is available; submit without a note",
+    503,
+  );
 }
 
 export function buildDrizzleM16WriteService(
@@ -1490,6 +1506,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 21 — in_progress → completed (writes the contact-log row in the SAME tx) ────────────────────
     async completeOutreach(actor, outreachId, input: CompleteOutreachInput) {
+      assertNotesStorable(input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1563,6 +1580,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 22 — the survivor declined THIS touchpoint ──────────────────────────────────────────────────
     async declineOutreach(actor, outreachId, input: OutreachOutcomeInput) {
+      assertNotesStorable(input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1608,6 +1626,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 23 — no response after retries ──────────────────────────────────────────────────────────────
     async noResponseOutreach(actor, outreachId, input: OutreachOutcomeInput) {
+      assertNotesStorable(input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1705,6 +1724,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 26 — an ad-hoc contact-log row ──────────────────────────────────────────────────────────────
     async logDirectContact(actor, contactId, input: LogDirectContactInput) {
+      assertNotesStorable(input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         const plan = await planOr404(tx, contact.planId);
@@ -1828,6 +1848,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 32 — log an external referral WITHOUT ending the program ────────────────────────────────────
     async referExternal(actor, contactId, input: ReferExternalInput) {
+      assertNotesStorable(input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         const plan = await planOr404(tx, contact.planId);

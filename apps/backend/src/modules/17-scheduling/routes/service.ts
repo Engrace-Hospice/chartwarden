@@ -24,9 +24,10 @@ import type {
   VisitSetting,
   VisitStatus,
 } from "@wardenx/types";
-import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
+import { computeVisitMetrics } from "../visit-metrics";
 import { assertAssignedClinician } from "./assigned-clinician";
 import {
   type CallerAuthority,
@@ -817,20 +818,28 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   visitMetrics(
     orgId: string,
-    _window: { from: string; to: string },
+    window: { from: string; to: string },
   ): { onTimeRate: number; noShowRate: number; rescheduleRate: number } {
-    const visits = this.listVisits(orgId, {});
-    const total = visits.length || 1;
-    const noShow = visits.filter((v) => v.status === "no_show").length;
-    const rescheduled = visits.filter((v) => v.status === "rescheduled").length;
-    return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
+    // The in-memory slice has no arrival (M18) data, so on-time reads 0; the rates are windowed like production.
+    return computeVisitMetrics(
+      this.listVisits(orgId, {}).map((v) => ({
+        scheduledStartedAt: v.scheduledStartedAt,
+        actualStartedAt: null,
+        status: v.status,
+      })),
+      window,
+    );
   }
 
   routeEfficiencyMetrics(
     _orgId: string,
     membershipId: string,
   ): { membershipId: string; totalProposedMiles: number; overrideRate: number } {
-    return { membershipId, totalProposedMiles: 0, overrideRate: 0 };
+    throw new WardenXError(
+      "NOT_IMPLEMENTED",
+      `route-efficiency metrics for ${membershipId} are unavailable until route optimisation is enabled`,
+      501,
+    );
   }
 
   // ── SchedulingAbacResolver (§4.7) — resolves over the same dataset ────────────────────────────────────

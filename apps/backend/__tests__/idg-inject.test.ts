@@ -49,6 +49,10 @@ import {
 } from "../src/modules/14-idg/index";
 import type { IdgMeetingSeed } from "../src/modules/14-idg/routes/service";
 
+// GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> =>
+  ({ includes: () => true }) as unknown as readonly string[];
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -156,6 +160,7 @@ function makeServer(
   registerIdgRoutes(app, {
     service: backend,
     enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES, ...enrichment },
+    caseload: COVERS_EVERY_PATIENT,
   });
   return { app, backend };
 }
@@ -791,7 +796,7 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const policyPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/recurring-policies/${policyId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-1" },
       payload: { locationId: LOC, cadenceDays: 7 },
     });
     expect(policyPatch.statusCode).toBe(422);
@@ -828,14 +833,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const attPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/attendance/${attendanceId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-2" },
       payload: { status: "tardy" },
     });
     expect(attPatch.statusCode).toBe(422);
     const attDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/attendance/${attendanceId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-3" },
     });
     expect(attDelete.statusCode).toBe(422);
 
@@ -850,14 +855,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const agendaPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/agenda/${agendaId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-4" },
       payload: { noteText: "revised" },
     });
     expect(agendaPatch.statusCode).toBe(422);
     const agendaDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/agenda/${agendaId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-5" },
     });
     expect(agendaDelete.statusCode).toBe(422);
 
@@ -880,7 +885,7 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const decisionPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
-      headers: { ...SUPER, "if-match": "0" },
+      headers: { ...SUPER, "if-match": "0", "idempotency-key": "idem-dp" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(decisionPatch.statusCode).toBe(422);
@@ -888,14 +893,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const noIfMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-6" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(noIfMatch.statusCode).toBe(428);
     const badIfMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
-      headers: { ...SUPER, "if-match": "abc" },
+      headers: { ...SUPER, "if-match": "abc", "idempotency-key": "idem-bad" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(badIfMatch.statusCode).toBe(400);
@@ -922,14 +927,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const actionItemPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/action-items/${actionItemId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-7" },
       payload: { status: "in_progress" },
     });
     expect(actionItemPatch.statusCode).toBe(422);
     const actionItemDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/action-items/${actionItemId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "idempotency-key": "idem-8" },
     });
     expect(actionItemDelete.statusCode).toBe(422);
 
@@ -1257,7 +1262,11 @@ describe("M14-idg-inject — supersede route scope + quorum gates", () => {
     }
     registerAbacRegistry(reg);
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    registerIdgRoutes(app, { service, enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES } });
+    registerIdgRoutes(app, {
+      service,
+      enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES },
+      caseload: COVERS_EVERY_PATIENT,
+    });
     return { app, backend, real };
   }
   const supersede = (

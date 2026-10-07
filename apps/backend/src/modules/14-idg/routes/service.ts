@@ -296,6 +296,18 @@ export const NOTE_PRESENT_STATUSES: readonly IdgAttendanceStatus[] = [
   "partial",
 ];
 
+/** GAP-127 — 403: an action item may be moved only by its assignee or a coordinator. */
+export function actionItemNotAssigneeError(): ForbiddenError {
+  return new ForbiddenError("only the assignee or an IDG coordinator may update this action item");
+}
+/** GAP-127 — 409: an action item of an adjourned meeting is part of the closed record and cannot be removed. */
+export function actionItemMeetingAdjournedError(): WardenXError {
+  return new WardenXError(
+    "MEETING_ADJOURNED",
+    "the meeting is adjourned: its action items can no longer be removed",
+    409,
+  );
+}
 /** The 422 for a note write on a meeting that is neither `live` nor (in-window) `adjourned`. */
 export function noteMeetingNotLiveError(): WardenXError {
   return new WardenXError(
@@ -758,6 +770,8 @@ export interface IdgRouteService {
     userId: string,
     id: string,
     status: ActionItemPatchStatus,
+    /** GAP-127 — the caller holds `idg.coordinate`; without it the caller must be the assignee. */
+    isCoordinator?: boolean,
   ): Promise<ActionItemView>;
   removeActionItem(
     orgId: string,
@@ -1564,10 +1578,12 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async updateActionItem(orgId, _userId, id, status) {
+    async updateActionItem(orgId, userId, id, status, isCoordinator = false) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
       meetingOf(orgId, row.meetingId);
+      if (!isCoordinator && row.assignedToMembershipId !== userId)
+        throw actionItemNotAssigneeError();
       const t = transitionActionItem(row.status, { type: PATCH_STATUS_EVENT[status] });
       const from = row.status;
       row.status = t.to;
@@ -1581,7 +1597,8 @@ export function createInMemoryIdgBackend(
     async removeActionItem(orgId, _userId, id) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
-      meetingOf(orgId, row.meetingId);
+      if (meetingOf(orgId, row.meetingId).status === "adjourned")
+        throw actionItemMeetingAdjournedError();
       actionItems.delete(id);
       return { id, removed: true };
     },

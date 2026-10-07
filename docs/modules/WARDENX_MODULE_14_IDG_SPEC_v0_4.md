@@ -872,6 +872,7 @@ The migration file is `migrations/0014_idg.sql`. It applies in this order: creat
 | DELETE | `/api/v1/idg/attendance/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | GET | `/api/v1/idg/meetings/:id/packets` | required | `idg.read` | `idg_meeting_scope` + per-patient `caseload_or_scope` | n/a |
 | GET | `/api/v1/idg/meetings/:meetingId/packets/:patientId` | required | `idg.read` | `idg_meeting_scope` + `caseload_or_scope` + `sud_disclosure_allowed` (filter applied) | n/a |
+| GET | `/api/v1/patients/:patientId/idg-history` | required | `idg.read` | `caseload_or_scope` (org-wide role, M5 caseload, or the session-pinned patient; else 404) — metadata only, no packet/decision narrative (GAP-128) | n/a |
 | POST | `/api/v1/idg/meetings/:id/agenda` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | PATCH | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` + `If-Match` |
 | DELETE | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
