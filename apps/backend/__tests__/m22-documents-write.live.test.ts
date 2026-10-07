@@ -705,6 +705,13 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
           [id],
         )
       ).rows[0];
+    // Earlier tests in this file leave queued fills for the same org; the worker renders those too, so count them.
+    const alreadyQueued = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM form_fill WHERE organization_id=$1 AND status='queued'",
+        [ORG_A],
+      )
+    ).rows[0].n as number;
     const okFill = await insertFill();
     const docId = await seedDocument(ORG_A);
     const flakyFill = await insertFill();
@@ -724,7 +731,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     };
     const deps = { db: handle.db, renderer };
     const first = await renderQueuedFormFillsForOrg(deps, ORG_A);
-    expect(first).toMatchObject({ rendered: 1, retried: 1, failed: 0 });
+    expect(first).toMatchObject({ rendered: 1 + alreadyQueued, retried: 1, failed: 0 });
     expect((await statusOf(okFill)).status).toBe("rendered");
     expect((await statusOf(okFill)).result_document_id).toBe(docId);
     expect((await statusOf(flakyFill)).status).toBe("queued"); // retried, not settled
@@ -779,8 +786,8 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).rows[0].id as string;
     const cand = (await seedCandidates(ORG_A, written.batch, 1))[0] as string;
     await admin.query(
-      `INSERT INTO extraction_decision (organization_id, extraction_candidate_id, extraction_review_id, decision)
-       VALUES ($1,$2,$3,'approve')`,
+      `INSERT INTO extraction_decision (organization_id, extraction_candidate_id, extraction_review_id, decision, source_view_confirmed)
+       VALUES ($1,$2,$3,'approve',true)`,
       [ORG_A, cand, reviewId],
     );
     await admin.query(

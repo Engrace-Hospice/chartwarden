@@ -17,7 +17,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DocumentRenderer } from "@wardenx/types";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import { UnknownTemplateError } from "../seams/renderer";
@@ -112,7 +112,10 @@ export async function renderQueuedFormFillsForOrg(
           row.templateKey,
           payload,
         );
-        await tx
+        // Match on `id` ALONE: `created_at` is microsecond-precision in Postgres but a JS `Date` is millisecond, so
+        // `created_at = row.createdAt` never matched — the UPDATE touched 0 rows while the tick still counted the
+        // fill rendered (found by the live suite). `.returning` makes a no-op update visible instead of silent.
+        const rendered = await tx
           .update(FF)
           .set({
             status: "rendered",
@@ -121,19 +124,22 @@ export async function renderQueuedFormFillsForOrg(
             renderAttempts: String(attempt),
             renderedAt: now(),
           })
-          .where(and(eq(FF.id, row.id), eq(FF.createdAt, row.createdAt)));
-        counts.rendered += 1;
+          .where(eq(FF.id, row.id))
+          .returning({ id: FF.id });
+        if (rendered.length > 0) counts.rendered += 1;
       } catch (error) {
         const reason = failureReasonOf(error);
         const settle = isPermanentRenderFailure(error) || attempt >= MAX_RENDER_ATTEMPTS;
-        await tx
+        const settled = await tx
           .update(FF)
           .set({
             status: settle ? "failed" : "queued",
             failureReason: reason,
             renderAttempts: String(attempt),
           })
-          .where(and(eq(FF.id, row.id), eq(FF.createdAt, row.createdAt)));
+          .where(eq(FF.id, row.id))
+          .returning({ id: FF.id });
+        if (settled.length === 0) continue;
         if (settle) {
           counts.failed += 1;
           terminal.push({
