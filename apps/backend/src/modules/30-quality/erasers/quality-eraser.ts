@@ -102,6 +102,16 @@ export function createDrizzleQualityEraseStore(
       });
     },
 
+    async deleteCahpsExportJobs(organizationId) {
+      return inOrg(organizationId, async (tx) => {
+        const rows = await tx
+          .delete(schema.cahpsExportJob)
+          .where(eq(schema.cahpsExportJob.organizationId, organizationId))
+          .returning({ org: schema.cahpsExportJob.organizationId });
+        return rows.length;
+      });
+    },
+
     async deleteCahpsDecedentSamples(organizationId) {
       return inOrg(organizationId, async (tx) => {
         const rows = await tx

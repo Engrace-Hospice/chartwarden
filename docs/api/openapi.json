@@ -11863,6 +11863,9 @@
                     "expiresAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "inviteUrl": {
+                      "type": "string"
                     }
                   }
                 }
@@ -176115,7 +176118,7 @@
         "tags": [
           "31-portal"
         ],
-        "summary": "Stage an M22 intake upload; returns a signed URL",
+        "summary": "Record an upload intent (validated size / MIME); returns the content route to PUT the bytes to",
         "parameters": [],
         "responses": {
           "200": {
@@ -176135,7 +176138,6 @@
                       "type": "string"
                     },
                     "signedUploadUrl": {
-                      "format": "uri",
                       "type": "string"
                     },
                     "signedUploadUrlExpiresAt": {
@@ -176209,6 +176211,72 @@
         }
       }
     },
+    "/api/v1/portal/documents/uploads/{uploadId}/content": {
+      "put": {
+        "operationId": "putApiV1PortalDocumentsUploadsByUploadIdContent",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Upload the file bytes for an initiated upload (raw body; magic-byte checked; kept only as a tenant-DEK envelope)",
+        "parameters": [
+          {
+            "name": "uploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "uploadId",
+                    "status",
+                    "byteSize"
+                  ],
+                  "properties": {
+                    "uploadId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "format": "binary",
+                "description": "the raw file bytes; the Content-Type is the declared MIME from upload-init",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/portal/hope/timepoints": {
       "get": {
         "operationId": "getApiV1PortalHopeTimepoints",
@@ -176251,6 +176319,80 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/invitations/accept": {
+      "post": {
+        "operationId": "postApiV1PortalInvitationsAccept",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Accept a portal invitation by its single-use token (public; activates the account and creates the grant)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "portalAccountId",
+                    "patientId",
+                    "grantKind",
+                    "status",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "portalAccountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "grantKind": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "minLength": 40,
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -176434,6 +176576,10 @@
                           "enabled"
                         ],
                         "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
                           "channel": {
                             "type": "string"
                           },
@@ -178507,6 +178653,45 @@
         }
       }
     },
+    "/api/v1/quality/cahps/export/{exportId}/file": {
+      "get": {
+        "operationId": "getApiV1QualityCahpsExportByExportIdFile",
+        "tags": [
+          "30-quality"
+        ],
+        "summary": "Download the completed CAHPS export file (decrypted from its tenant-DEK envelope)",
+        "parameters": [
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "binary",
+                  "description": "the vendor export file's raw bytes",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/quality/cahps/results": {
       "get": {
         "operationId": "getApiV1QualityCahpsResults",
@@ -178855,6 +179040,12 @@
                   "effectiveFrom": {
                     "format": "date",
                     "type": "string"
+                  },
+                  "configuration": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
                   }
                 }
               }

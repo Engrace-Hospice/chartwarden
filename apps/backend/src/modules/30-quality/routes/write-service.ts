@@ -98,7 +98,10 @@ export interface WriteOutboxPort {
  *     append-only `quality_measure_value` rows visible at R-02/R-03 once complete.
  *   - `m30.risk_register_refresh` — R-96 forced `risk_register_view` materialized-view refresh.
  */
-export type M30WriteQueueName = "m30.measure_recompute" | "m30.risk_register_refresh";
+export type M30WriteQueueName =
+  | "m30.measure_recompute"
+  | "m30.risk_register_refresh"
+  | "m30.cahps_export";
 
 /**
  * The thin worker-trigger port the R-04 / R-96 routes enqueue to (typed-TODO producer; bound in P2c). In
@@ -155,6 +158,8 @@ export interface EnqueueRecomputeArgs {
 export interface BindCahpsVendorArgs {
   readonly vendorAdapterId: string;
   readonly effectiveFrom: string;
+  /** GAP-087 — vendor connection configuration (validated by the adapter, sealed under the tenant DEK). */
+  readonly configuration?: Readonly<Record<string, unknown>>;
 }
 export interface ExcludeCahpsDecedentArgs {
   readonly exclusionReason: string;

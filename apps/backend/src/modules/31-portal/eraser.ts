@@ -30,6 +30,10 @@ export interface PortalEraseCounts {
   readonly recordingsShredded: number;
   readonly grantsRevoked: number;
   readonly accountsRevoked: number;
+  /** GAP-092 — staged (not yet submitted) upload bytes shredded; present only when the store models them. */
+  readonly stagedUploadsShredded?: number;
+  /** GAP-092 — outstanding invitations killed; present only when the store models them. */
+  readonly invitationsRevoked?: number;
 }
 
 /** The narrow data port the portal eraseFn composes over (Drizzle writes under `withOrgContext` in prod). */
@@ -46,6 +50,10 @@ export interface PortalEraseStore {
     organizationId: string,
     patientId: PatientId,
   ): Promise<number>;
+  /** GAP-092 — shred the patient's staged portal-upload bytes (`portal_document_upload.content_cipher`). */
+  shredStagedUploads?(organizationId: string, patientId: PatientId): Promise<number>;
+  /** GAP-092 — kill the patient's outstanding portal invitations (their tokens must not outlive the record). */
+  revokeOutstandingInvitations?(organizationId: string, patientId: PatientId): Promise<number>;
   /** §3.7 step 5 — emit the shred outbox events with the destruction hash manifest. */
   emitShredEvents(input: {
     organizationId: string;
@@ -78,15 +86,20 @@ export async function erasePortalRecord(
     patientId,
   );
 
+  const stagedUploadsShredded = await store.shredStagedUploads?.(organizationId, patientId);
+  const invitationsRevoked = await store.revokeOutstandingInvitations?.(organizationId, patientId);
+
   const counts: PortalEraseCounts = {
     telehealthVisitsAborted,
     recordingsShredded,
     grantsRevoked,
     accountsRevoked,
+    ...(stagedUploadsShredded === undefined ? {} : { stagedUploadsShredded }),
+    ...(invitationsRevoked === undefined ? {} : { invitationsRevoked }),
   };
   await store.emitShredEvents({ organizationId, patientId, certificateId, counts });
 
-  const erased = Object.values(counts).reduce((a, b) => a + b, 0);
+  const erased = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
   return { erased, counts };
 }
 
@@ -142,6 +155,8 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
   const ACCOUNT = schema.portalAccounts;
   const GRANT = schema.portalAccessGrants;
   const VISIT = schema.telehealthVisits;
+  const UPLOAD = schema.portalDocumentUploads;
+  const INVITE = schema.portalInvitations;
 
   const scoped = <T>(organizationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId, userId: "" }, fn);
@@ -241,6 +256,44 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
           flipped += res.length;
         }
         return flipped;
+      });
+    },
+
+    async shredStagedUploads(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        // GAP-092 — a staged upload is the caregiver's bytes under the tenant DEK. The row survives as provenance
+        // (the app role cannot DELETE); the ciphertext goes and the upload is closed. The CHECK ties the staged
+        // status to a present cipher, so both change together.
+        const rows = await tx
+          .update(UPLOAD)
+          .set({
+            status: "rejected",
+            rejectionCode: "destruction",
+            contentCipher: null,
+            contentKeyVersion: null,
+          })
+          .where(
+            and(eq(UPLOAD.patientId, patientId), sql`${UPLOAD.status} in ('initiated','staged')`),
+          )
+          .returning({ id: UPLOAD.id });
+        return rows.length;
+      });
+    },
+
+    async revokeOutstandingInvitations(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .update(INVITE)
+          .set({ revokedAt: sql`now()` })
+          .where(
+            and(
+              eq(INVITE.patientId, patientId),
+              isNull(INVITE.acceptedAt),
+              isNull(INVITE.revokedAt),
+            ),
+          )
+          .returning({ id: INVITE.id });
+        return rows.length;
       });
     },
 

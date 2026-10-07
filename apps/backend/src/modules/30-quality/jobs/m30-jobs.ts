@@ -41,6 +41,7 @@ import type { DbClient } from "@wardenx/db";
 import {
   type ActiveOrgListPort,
   type CahpsAdapterResolvePort,
+  type CahpsExportJob,
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
@@ -117,6 +118,7 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { getSeam } from "../../../bootstrap/index";
 import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
+import { type CahpsPipelineDeps, buildCahpsPipelinePorts } from "../cahps/pipeline";
 import { buildM30BillingConsumer, buildM30CostReportConsumer } from "../consumed-seam-adapters";
 import {
   M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE,
@@ -155,6 +157,11 @@ export interface M30WorkerDeps {
   /** The per-org CAHPS adapter resolver (a `CahpsAdapterRegistry` seeded from @wardenx/cahps-vendors); a job
    *  for an org with no live binding 503s (degraded, not 404). Fail-closed thunk when absent. */
   readonly cahpsAdapters?: CahpsAdapterResolvePort;
+  /**
+   * GAP-087 — the REAL CAHPS pipeline (sample selection + sealed insert + vendor export build/storage). When
+   * bound it supplies every CAHPS port below that is not overridden explicitly; absent ⇒ the fail-closed thunks.
+   */
+  readonly cahpsPipeline?: CahpsPipelineDeps;
   /** The §4.8 `processing_log` consumer-idempotency guard (bindable over the M1-owned table; fail-closed
    *  until that accessor lands — bindable, not platform-deferred). Used ONLY by `cahpsExport` (the one
    *  work-queue processor this file does not per-job-rebuild); the other three take `processingLogFactory`. */
@@ -1866,15 +1873,17 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
   // BOUND: the per-org adapter resolver + the `cahps_decedent_sample` store (list pending / mark exported /
   // mark failed). UNBOUND (lazy): the PHI envelope-DEK decrypt + the vendor-config decrypt (RULE 3b — fail
   // closed; every run reaches the §4.8 terminal export_failed on its final attempt) and the §4.10 emits.
+  const cahpsPipeline = deps.cahpsPipeline ? buildCahpsPipelinePorts(deps.cahpsPipeline) : null;
   const cahpsExport: CahpsExportPorts = {
     processingLog,
-    adapters: deps.cahpsAdapters ?? {
-      resolve: () =>
-        unboundWorkerPort(
-          "cahpsExport.adapters.resolve",
-          "bind to the per-org `CahpsAdapterRegistry` seeded from @wardenx/cahps-vendors (org boot / R-11 rotation)",
-        ),
-    },
+    adapters: deps.cahpsAdapters ??
+      cahpsPipeline?.adapters ?? {
+        resolve: () =>
+          unboundWorkerPort(
+            "cahpsExport.adapters.resolve",
+            "bind `deps.cahpsPipeline` (the per-org adapter resolver over the active binding + sealed config) or `deps.cahpsAdapters`",
+          ),
+      },
     samples: {
       listPendingForCycle: (orgId, samplingCycleMonth) =>
         cahpsRepo.listSamplesForCycle(orgId, samplingCycleMonth, "pending_export"),
@@ -1891,34 +1900,35 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         });
       },
     },
-    decrypt: {
-      // ★ FAIL-CLOSED: until the M1 envelope-DEK helper is bound, a sample row's caregiver contact is never
+    decrypt: cahpsPipeline?.decrypt ?? {
+      // ★ FAIL-CLOSED: until the pipeline (tenant-DEK cipher) is bound, a sample row's caregiver contact is never
       //   decrypted — the export denies rather than forwarding un-decrypted PHI (§8 / the M33 precedent).
       toVendorRow: () =>
         unboundWorkerPort(
           "cahpsExport.decrypt.toVendorRow",
-          "bind to the M1 per-tenant envelope-DEK decrypt for `primary_caregiver_contact_cipher` — export denies until bound",
+          "bind `deps.cahpsPipeline` (the tenant-DEK decrypt for `primary_caregiver_contact_cipher`) — export denies until bound",
         ),
     },
-    bindingConfig: {
+    bindingConfig: cahpsPipeline?.bindingConfig ?? {
       load: () =>
         unboundWorkerPort(
           "cahpsExport.bindingConfig.load",
-          "bind to the M1 envelope-DEK decrypt for `cahps_vendor_binding.configuration_cipher` (pushExport config)",
+          "bind `deps.cahpsPipeline` (the tenant-DEK decrypt for `cahps_vendor_binding.configuration_cipher`)",
         ),
     },
-    outbox: {
+    outbox: cahpsPipeline?.exportOutbox ?? {
       emitExportCompleted: () =>
         unboundWorkerPort(
           "cahpsExport.outbox.emitExportCompleted",
-          "bind to the live transactional-outbox dispatcher (m30.cahps.export_completed)",
+          "bind `deps.cahpsPipeline` (m30.cahps.export_completed through the tx outbox publisher)",
         ),
       emitExportFailed: () =>
         unboundWorkerPort(
           "cahpsExport.outbox.emitExportFailed",
-          "bind to the live transactional-outbox dispatcher (m30.cahps.export_failed → M36)",
+          "bind `deps.cahpsPipeline` (m30.cahps.export_failed through the tx outbox publisher)",
         ),
     },
+    ...(cahpsPipeline ? { exports: cahpsPipeline.exports } : {}),
     now,
   };
 
@@ -2140,35 +2150,40 @@ export function buildM30CronPorts(deps: M30WorkerDeps): M30CronPortBundles {
   };
 
   // ── m30.cahps_monthly_sample (02:00 day-2 of month) — §7.2 / WF-04 ─────────────────────────────────────
+  const cahpsPipelineForCron = deps.cahpsPipeline
+    ? buildCahpsPipelinePorts(deps.cahpsPipeline)
+    : null;
   const cahpsMonthlySample: CahpsMonthlySampleCronPorts = {
     orgs,
-    candidates: {
+    candidates: cahpsPipelineForCron?.candidates ?? {
       listPriorMonthDecedents: () =>
         unboundWorkerPort(
           "cahpsMonthlySample.candidates.listPriorMonthDecedents",
-          "bind to the M5/M6 prior-month death-feed reader (the decedent candidates the CMS sampler classifies)",
+          "bind `deps.cahpsPipeline` (the M6 death census + M5 caregiver contact ports)",
         ),
     },
-    samples: {
+    // The binding probe runs under `withOrgContext` when the pipeline is bound: the bare `cahpsRepo` reads on the
+    // un-scoped client, where FORCE RLS returns no row, so every org would have read "no active vendor".
+    samples: cahpsPipelineForCron?.samples ?? {
       async activeVendorBinding(orgId) {
         const binding = await cahpsRepo.findActiveBinding(orgId);
         return binding === null
           ? null
           : { vendorBindingId: binding.id, vendor: binding.vendorAdapterId };
       },
-      // ★ FAIL-CLOSED: the sampled-row INSERT envelope-encrypts the caregiver contact (PHI) → needs the M1
-      //   DEK helper; until bound the write denies rather than persisting plaintext (the M33 precedent).
+      // ★ FAIL-CLOSED: the sampled-row INSERT envelope-encrypts the caregiver contact (PHI) → needs the tenant-DEK
+      //   cipher; until bound the write denies rather than persisting plaintext (the M33 precedent).
       insertSampled: () =>
         unboundWorkerPort(
           "cahpsMonthlySample.samples.insertSampled",
-          "bind to the `cahps_decedent_sample` insert WITH the M1 envelope-DEK encrypt of `primary_caregiver_contact_cipher`",
+          "bind `deps.cahpsPipeline` (the `cahps_decedent_sample` insert WITH the tenant-DEK encrypt of `primary_caregiver_contact_cipher`)",
         ),
     },
-    outbox: {
+    outbox: cahpsPipelineForCron?.sampleOutbox ?? {
       emitSampleReady: () =>
         unboundWorkerPort(
           "cahpsMonthlySample.outbox.emitSampleReady",
-          "bind to the live transactional-outbox dispatcher (m30.cahps.sample_ready → M36 info)",
+          "bind `deps.cahpsPipeline` (m30.cahps.sample_ready through the tx outbox publisher)",
         ),
     },
     now,
@@ -2262,14 +2277,7 @@ export type M30CronQueueName = (typeof M30_CRON_QUEUES)[keyof typeof M30_CRON_QU
 const M30_WORKER_SYSTEM_USER_ID = "";
 
 export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
-  const ports = buildM30WorkerPorts(deps);
   const { connection } = deps;
-  const mk = <D, R>(
-    queue: string,
-    processor: (data: D) => Promise<R>,
-    concurrency: number,
-  ): Worker =>
-    new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
 
   // #107 item 4a — measure_recompute WRITES quality_measure_value (RLS `WITH CHECK app.org_id`) and its
   // resolveInput reads the M10 HOPE rollups, so the job MUST run inside a per-job `withOrgContext` envelope:
@@ -2369,15 +2377,45 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
     { connection, concurrency: M30_QUEUE_PARAMS.riskRegisterRefresh.concurrency },
   );
 
+  // GAP-087 — cahps_export performs vendor I/O (render/push) that must not sit inside an open tx, so the job body
+  // stays untransacted; only the §4.8 `processing_log` guard opens its own SHORT `withOrgContext` per call (the
+  // table is org-RLS'd, so a bare-client read would see nothing). The processor + ports are rebuilt per job so the
+  // guard closes over the job's org.
+  const cahpsExportWorker = new Worker(
+    M30_QUEUES.cahpsExport,
+    async (job) => {
+      const data = job.data as CahpsExportJob;
+      const guarded = (fn: (log: ProcessingLogPort) => Promise<unknown>): Promise<unknown> =>
+        withOrgContext(
+          deps.db,
+          { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
+          (tx) =>
+            fn(
+              deps.processingLogFactory?.(
+                tx as unknown as DbClient,
+                data.organizationId,
+                M30_QUEUES.cahpsExport,
+              ) ?? (deps.processingLog as ProcessingLogPort),
+            ),
+        );
+      const processingLog: ProcessingLogPort = {
+        isProcessed: (jobId) => guarded((l) => l.isProcessed(jobId)) as Promise<boolean>,
+        markProcessed: (jobId, summary) =>
+          guarded((l) => l.markProcessed(jobId, summary)) as Promise<void>,
+      };
+      return cahpsExportProcessor(buildM30WorkerPorts({ ...deps, processingLog }).cahpsExport)({
+        ...data,
+        attempt: job.attemptsMade,
+      });
+    },
+    { connection, concurrency: M30_QUEUE_PARAMS.cahpsExport.concurrency },
+  );
+
   return [
     measureRecomputeWorker,
     outbreakDetectionWorker,
     riskRegisterRefreshWorker,
-    mk(
-      M30_QUEUES.cahpsExport,
-      cahpsExportProcessor(ports.cahpsExport),
-      M30_QUEUE_PARAMS.cahpsExport.concurrency,
-    ),
+    cahpsExportWorker,
   ];
 }
 
@@ -2455,6 +2493,8 @@ export function buildM30WorkerDeps(deps: {
   hopeProvider: QualityHopeConsumer;
   primaryDb?: DbClient;
   cahpsAdapters?: CahpsAdapterResolvePort;
+  /** GAP-087 — the real CAHPS sample + export pipeline (see {@link M30WorkerDeps.cahpsPipeline}). */
+  cahpsPipeline?: CahpsPipelineDeps;
   processingLog?: ProcessingLogPort;
   processingLogFactory?: (
     db: DbClient,
@@ -2492,6 +2532,7 @@ export function buildM30WorkerDeps(deps: {
     primaryDb: deps.primaryDb,
     hope: deps.hopeProvider,
     cahpsAdapters: deps.cahpsAdapters,
+    cahpsPipeline: deps.cahpsPipeline,
     processingLog: deps.processingLog,
     // Defaults to `buildProcessingLogPort` (bootstrap/processing-log.ts) — its signature already matches
     // this factory's exactly, so the integrator need not wire it explicitly at the composition root.

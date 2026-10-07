@@ -12,6 +12,7 @@
 import { DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { toPreferencesView } from "../provisioning/preferences";
 import {
   resolveAdministrationList,
   resolveBereavementScope,
@@ -367,26 +368,22 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     },
   );
 
-  // notification preferences (read) — M31 owns no preference table; reconciled against M36 availability.
+  // notification preferences (read) — the caregiver's stored per-channel flags, a channel with no row reading as its
+  // default (`portal_notification_preference`, migration 0422). No patient data.
   app.get(
     "/api/v1/portal/notification-preferences",
     {
       preHandler: [P("portal.preferences.read_own"), ABAC_ACCOUNT("portal.preferences.read_own")],
       config: {
         auditRead: {
-          none: "static default notification-preference stub; M31 owns no preference table, no patient data",
+          none: "the caregiver's own channel flags and quiet hours; no patient data",
         },
       },
     },
     async (request) => {
-      actorOf(request);
-      return {
-        channels: [
-          { channel: "email", enabled: true },
-          { channel: "sms", enabled: false },
-          { channel: "push", enabled: false },
-        ],
-      };
+      const actor = actorOf(request);
+      if (!deps.provisioning) return toPreferencesView([]);
+      return deps.provisioning.preferences.list(actor.organizationId, portalAccountIdOf(actor));
     },
   );
 

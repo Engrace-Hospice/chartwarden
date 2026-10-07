@@ -15028,8 +15028,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stage an M22 intake upload; returns a signed URL */
+        /** Record an upload intent (validated size / MIME); returns the content route to PUT the bytes to */
         post: operations["postApiV1PortalDocumentsUploadinit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents/uploads/{uploadId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload the file bytes for an initiated upload (raw body; magic-byte checked; kept only as a tenant-DEK envelope) */
+        put: operations["putApiV1PortalDocumentsUploadsByUploadIdContent"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15047,6 +15064,23 @@ export interface paths {
         get: operations["getApiV1PortalHopeTimepoints"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a portal invitation by its single-use token (public; activates the account and creates the grant) */
+        post: operations["postApiV1PortalInvitationsAccept"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15572,6 +15606,23 @@ export interface paths {
         };
         /** A CAHPS export job + its signed download URL once complete */
         get: operations["getApiV1QualityCahpsExportByExportId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality/cahps/export/{exportId}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the completed CAHPS export file (decrypted from its tenant-DEK envelope) */
+        get: operations["getApiV1QualityCahpsExportByExportIdFile"];
         put?: never;
         post?: never;
         delete?: never;
@@ -24739,6 +24790,7 @@ export interface operations {
                         status: string;
                         /** Format: date-time */
                         expiresAt: string;
+                        inviteUrl?: string;
                     };
                 };
             };
@@ -64696,10 +64748,42 @@ export interface operations {
                     "application/json": {
                         /** Format: uuid */
                         uploadId: string;
-                        /** Format: uri */
                         signedUploadUrl: string;
                         /** Format: date-time */
                         signedUploadUrlExpiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PortalDocumentsUploadsByUploadIdContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uploadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": string;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        uploadId: string;
+                        status: string;
+                        byteSize: number;
                     };
                 };
             };
@@ -64727,6 +64811,42 @@ export interface operations {
                         items: {
                             [key: string]: unknown;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalInvitationsAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        portalAccountId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        grantKind: string;
+                        status: string;
+                        replayed: boolean;
                     };
                 };
             };
@@ -64835,6 +64955,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         channels: {
+                            /** Format: uuid */
+                            id?: string;
                             channel: string;
                             enabled: boolean;
                         }[];
@@ -65702,6 +65824,30 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1QualityCahpsExportByExportIdFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1QualityCahpsResults: {
         parameters: {
             query?: {
@@ -65822,6 +65968,9 @@ export interface operations {
                     vendorAdapterId: string;
                     /** Format: date */
                     effectiveFrom: string;
+                    configuration?: {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

@@ -17,8 +17,13 @@
 //
 // MIGRATIONS: enums + the three tables + indexes/CHECKs land in 0138; RLS, grants and the M4 write-audit
 // triggers (D11 §3.6 denylists) in 0139. The spec's wider §2.1 entities (invitations, sessions, uploads,
-// recordings, webhook events, …) are NOT manifest-owned and never materialize as M31 tables.
+// recordings, webhook events, …) were NOT manifest-owned in that reduced scope. GAP-092 (migrations 0422–0424) adds the
+// three the portal's write surfaces cannot do without — invitations (account + grant creation), encrypted upload
+// staging, and notification preferences — each registered in the manifest `ownedTables` (the manifest is authoritative).
 
 export * from "./portal-accounts"; // portal_account
 export * from "./portal-access-grants"; // portal_access_grant
 export * from "./telehealth-visits"; // telehealth_visit
+export * from "./portal-invitations"; // portal_invitation (0424)
+export * from "./portal-document-uploads"; // portal_document_upload (0423)
+export * from "./portal-notification-preferences"; // portal_notification_preference (0422)

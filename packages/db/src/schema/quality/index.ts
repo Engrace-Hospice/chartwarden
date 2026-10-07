@@ -15,6 +15,7 @@ export * from "./quality-measure-value";
 export * from "./measure-recompute-queue";
 export * from "./cahps-vendor-binding";
 export * from "./cahps-decedent-sample";
+export * from "./cahps-export-job";
 export * from "./cahps-result-summary";
 
 // compliance-program subdomain (9)

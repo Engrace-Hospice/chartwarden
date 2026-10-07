@@ -104,6 +104,7 @@ import {
   mountM31Routes,
 } from "../src/modules/31-portal/index";
 import type { M17VisitForRoom } from "../src/modules/31-portal/telehealth/room-mint";
+import { planDocumentUpload } from "../src/modules/31-portal/write-paths/document-upload";
 
 // ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
 // session attributes M31's `actor.ts` reads (`bereavement-inject.test.ts`'s `x-test-portal-account`
@@ -483,6 +484,8 @@ function makeServer(
     readonly amendmentIntakeUnbound?: boolean;
     /** GAP-092 — leave M13's caregiver-attestation write UNBOUND (the attest route must then refuse 503). */
     readonly caregiverAttestationUnbound?: boolean;
+    /** GAP-092 — leave the provisioning services / M16 opt-out / M4 audit ports UNBOUND (503 on every write). */
+    readonly provisioningUnbound?: boolean;
     /** GAP-095 — override pieces of the fake vendor adapter (spies / failures). */
     readonly telehealthAdapter?: Partial<TelehealthAdapterPort>;
     /** M31 staff-telehealth scope — what the M5 `CaseloadProvider` answers (`userId → patient ids`), or
@@ -547,6 +550,112 @@ function makeServer(
         administrationId: "99999999-9999-4999-8999-999999999999",
         status: "pending_caregiver_review",
       };
+    },
+  };
+
+  // GAP-092 — thin stand-ins for the provisioning services (each is proven against its own fake DB in
+  // `gap-092-m31-provisioning.test.ts`); the route layer's own logic runs for real around them.
+  const provisioningCalls: Array<{ op: string; input: unknown }> = [];
+  const provisioning = {
+    preferences: {
+      async list() {
+        return { channels: [{ channel: "email", enabled: true }] };
+      },
+      async update(input: unknown) {
+        provisioningCalls.push({ op: "preferences.update", input });
+        return { channels: [] };
+      },
+    },
+    uploads: {
+      async begin(input: {
+        mimeType: string;
+        expectedByteSize: number;
+        patientDischargedReadOnly: boolean;
+        organizationId: string;
+        patientId: string;
+        portalAccountId: string;
+      }) {
+        // the real §7.8 gate, so the route's 415 / 413 / 403 behaviour is still exercised end to end
+        planDocumentUpload({
+          orgId: input.organizationId,
+          patientId: input.patientId as never,
+          portalAccountId: input.portalAccountId,
+          byteSize: input.expectedByteSize,
+          declaredMime: input.mimeType,
+          magicBytes: [],
+          patientDischargedReadOnly: input.patientDischargedReadOnly,
+        });
+        provisioningCalls.push({ op: "uploads.begin", input });
+        return {
+          uploadId: UPLOAD_ID,
+          contentPath: `/api/v1/portal/documents/uploads/${UPLOAD_ID}/content`,
+          expiresAt: NOW,
+        };
+      },
+      async stage(input: { bytes: Buffer }) {
+        provisioningCalls.push({ op: "uploads.stage", input });
+        return { uploadId: UPLOAD_ID, status: "staged" as const, byteSize: input.bytes.byteLength };
+      },
+      async complete(input: unknown) {
+        provisioningCalls.push({ op: "uploads.complete", input });
+        return {
+          uploadId: UPLOAD_ID,
+          status: "received" as const,
+          documentId: "d0d0d0d0-d0d0-4d0d-8d0d-d0d0d0d0d0d0",
+          intakeBatchId: "b0b0b0b0-b0b0-4b0b-8b0b-b0b0b0b0b0b0",
+        };
+      },
+    },
+    invitations: {
+      async issue(input: { patientId: string; relationship: string }) {
+        provisioningCalls.push({ op: "invitations.issue", input });
+        return {
+          invitationId: "11111111-aaaa-4aaa-8aaa-111111111111",
+          portalAccountId: ACCOUNT,
+          status: "invited" as const,
+          expiresAt: NOW,
+          inviteUrl: null,
+        };
+      },
+      async list() {
+        return [
+          {
+            invitationId: "11111111-aaaa-4aaa-8aaa-111111111111",
+            relationship: "family_caregiver",
+            status: "outstanding" as const,
+            issuedAt: NOW,
+            expiresAt: NOW,
+          },
+        ];
+      },
+      async revoke(organizationId: string, actingUserId: string, invitationId: string) {
+        provisioningCalls.push({
+          op: "invitations.revoke",
+          input: { organizationId, actingUserId, invitationId },
+        });
+      },
+      async accept(token: string) {
+        provisioningCalls.push({ op: "invitations.accept", input: token });
+        return {
+          portalAccountId: ACCOUNT,
+          patientId: PATIENT,
+          grantKind: "family_caregiver" as const,
+          status: "active" as const,
+          replayed: false,
+        };
+      },
+    },
+  };
+  const bereavementOptOut = {
+    async optOut(input: unknown) {
+      provisioningCalls.push({ op: "bereavement.optOut", input });
+      return { contactsOptedOut: 1, alreadyOptedOut: 0 };
+    },
+  };
+  const accountAudit = {
+    async viewsForUser(input: unknown) {
+      provisioningCalls.push({ op: "audit.views", input });
+      return { items: [], nextCursor: null };
     },
   };
 
@@ -794,6 +903,9 @@ function makeServer(
     now: () => new Date(NOW),
     ...(opts.amendmentIntakeUnbound ? {} : { amendmentIntake }),
     ...(opts.caregiverAttestationUnbound ? {} : { caregiverAttestation }),
+    ...(opts.provisioningUnbound
+      ? {}
+      : { provisioning: provisioning as never, bereavementOptOut, accountAudit }),
     roomCipher: {
       async encrypt(_org: string, column: string, plaintext: string) {
         return `sealed:${column}:${plaintext}`;
@@ -825,7 +937,15 @@ function makeServer(
         }),
   };
   mountM31Routes(app, deps);
-  return { app, backend, messagingCalls, amendments, mintedRooms, caregiverWrites };
+  return {
+    app,
+    backend,
+    messagingCalls,
+    amendments,
+    mintedRooms,
+    caregiverWrites,
+    provisioningCalls,
+  };
 }
 
 const CAREGIVER = {
@@ -1143,7 +1263,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: "/api/v1/portal/documents/upload-init",
     headers: { ...CAREGIVER, ...IDEMP("k25") },
     payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 1024 },
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "26 POST /portal/documents/upload-complete/:uploadId",
@@ -1151,7 +1271,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/portal/documents/upload-complete/${UPLOAD_ID}`,
     headers: { ...CAREGIVER, ...IDEMP("k26") },
     payload: {},
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "27 POST /portal/amendments/submit",
@@ -1185,7 +1305,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/portal/notification-preferences/${PREFERENCE_ID}`,
     headers: CAREGIVER,
     payload: { enabled: true },
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "31 POST /portal/bereavement/opt-out",
@@ -1193,7 +1313,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: "/api/v1/portal/bereavement/opt-out",
     headers: { ...CAREGIVER, ...IDEMP("k31") },
     payload: {},
-    expectStatus: 501,
+    expectStatus: 200,
   },
 
   // 32–40 — telehealth (portal-side join/leave, staff-side join/leave/record/end, the two vendor webhooks).
@@ -1283,14 +1403,14 @@ const ROUTE_CASES: readonly RouteCase[] = [
       inviteeEmail: "jane.roe@example.com",
       proposedScopeSet: ["care_plan", "medications"],
     },
-    expectStatus: 501,
+    expectStatus: 202,
   },
   {
     label: "42 GET /admin/portal-invitations",
     method: "GET",
     url: "/api/v1/admin/portal-invitations",
     headers: STAFF,
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "43 POST /admin/portal-invitations/:id/revoke",
@@ -1298,7 +1418,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/admin/portal-invitations/${INVITATION_ID}/revoke`,
     headers: { ...STAFF, ...IDEMP("k43") },
     payload: {},
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "44 POST /admin/portal-accounts/:id/invite-bereaved",
@@ -1310,7 +1430,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
       inviteeDisplayName: "John Doe",
       inviteeEmail: "john.doe@example.com",
     },
-    expectStatus: 501,
+    expectStatus: 202,
   },
   {
     label: "45 POST /admin/portal-accounts/:id/suspend",
@@ -1349,7 +1469,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "GET",
     url: `/api/v1/admin/portal-accounts/${ACCOUNT}/audit-views`,
     headers: STAFF,
-    expectStatus: 501,
+    expectStatus: 200,
   },
   {
     label: "50 GET /admin/telehealth/visits",
@@ -1445,16 +1565,126 @@ describe("M31 route smoke — fixed findings", () => {
     await app.close();
   });
 
-  it("fix #3 / GAP-092: a valid PDF declaration passes validation (not 415) but refuses 501, with no fake signed URL", async () => {
-    const { app } = makeServer();
+  it("fix #3 / GAP-092: a valid PDF declaration passes validation (not 415) and returns the content route, not a placeholder URL", async () => {
+    const { app, provisioningCalls } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/portal/documents/upload-init",
       headers: { ...CAREGIVER, ...IDEMP("k-finding-3") },
       payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 2048 },
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().uploadId).toBeUndefined();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().signedUploadUrl).toBe(
+      `/api/v1/portal/documents/uploads/${res.json().uploadId}/content`,
+    );
+    expect(res.json().signedUploadUrl).not.toContain("invalid");
+    expect(provisioningCalls[0]).toMatchObject({
+      op: "uploads.begin",
+      input: { portalAccountId: ACCOUNT, patientId: PATIENT, expectedByteSize: 2048 },
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the content PUT reaches the staging service with the raw bytes; complete hands off to intake", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const bytes = Buffer.from("%PDF-1.7 test");
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/v1/portal/documents/uploads/${UPLOAD_ID}/content`,
+      headers: { ...CAREGIVER, "content-type": "application/pdf" },
+      payload: bytes,
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json()).toMatchObject({ status: "staged", byteSize: bytes.byteLength });
+    const staged = provisioningCalls.find((c) => c.op === "uploads.stage");
+    expect((staged?.input as { bytes: Buffer }).bytes.equals(bytes)).toBe(true);
+
+    const done = await app.inject({
+      method: "POST",
+      url: `/api/v1/portal/documents/upload-complete/${UPLOAD_ID}`,
+      headers: { ...CAREGIVER, ...IDEMP("k-092-complete") },
+      payload: {},
+    });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toEqual({ uploadId: UPLOAD_ID, status: "received" });
+    await app.close();
+  });
+
+  it("GAP-092: every provisioning write refuses 503 when the services are unbound (no fake success)", async () => {
+    const { app } = makeServer({ provisioningUnbound: true });
+    const calls: Array<[string, string, Record<string, unknown>, Record<string, string>]> = [
+      [
+        "POST",
+        "/api/v1/portal/documents/upload-init",
+        { purpose: "other", mimeType: "application/pdf", expectedByteSize: 10 },
+        CAREGIVER,
+      ],
+      ["PATCH", "/api/v1/portal/notification-preferences/sms", { enabled: true }, CAREGIVER],
+      ["POST", "/api/v1/portal/bereavement/opt-out", {}, CAREGIVER],
+      [
+        "POST",
+        "/api/v1/admin/portal-invitations/11111111-aaaa-4aaa-8aaa-111111111111/revoke",
+        {},
+        STAFF,
+      ],
+    ];
+    for (const [i, [method, url, payload, headers]] of calls.entries()) {
+      const res = await app.inject({
+        method: method as "POST" | "PATCH",
+        url,
+        headers: { ...headers, ...IDEMP(`k-092-503-${i}`) },
+        payload,
+      });
+      expect(res.statusCode, `${method} ${url}`).toBe(503);
+    }
+    await app.close();
+  });
+
+  it("GAP-092: notification-preference PATCH passes the id-or-channel and the update through", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/portal/notification-preferences/sms",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-pref") },
+      payload: { enabled: true, quietHoursStartHour: 22, quietHoursEndHour: 7 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(provisioningCalls.find((c) => c.op === "preferences.update")?.input).toMatchObject({
+      portalAccountId: ACCOUNT,
+      idOrChannel: "sms",
+      update: { enabled: true, quietHoursStartHour: 22, quietHoursEndHour: 7 },
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the opt-out is the M16 port's call for the SESSION's account, never a bare ok", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/bereavement/opt-out",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-optout") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, contactsOptedOut: 1 });
+    expect(provisioningCalls.find((c) => c.op === "bereavement.optOut")?.input).toMatchObject({
+      portalAccountId: ACCOUNT,
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the public accept route needs no session and hands the token to provisioning", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const token = `${ORG}.${"A".repeat(43)}`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/invitations/accept",
+      headers: {},
+      payload: { token },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "active", grantKind: "family_caregiver" });
+    expect(provisioningCalls.find((c) => c.op === "invitations.accept")?.input).toBe(token);
     await app.close();
   });
 
@@ -2257,15 +2487,15 @@ describe("M31 GAP-093 — staff invitation routes (caseload_or_scope over a reso
     await app.close();
   });
 
-  it("reaches the handler (501, not 404) for a patient ON the caller's caseload", async () => {
+  it("202s an invitation for a patient ON the caller's caseload", async () => {
     const { app } = makeServer();
-    expect((await issue(app, PATIENT, "k093-i2")).statusCode).toBe(501);
+    expect((await issue(app, PATIENT, "k093-i2")).statusCode).toBe(202);
     await app.close();
   });
 
-  it("reaches the handler (501) for an org-wide role on any patient, with no caseload lookup", async () => {
+  it("202s an org-wide role for any patient, with no caseload lookup", async () => {
     const { app } = makeServer({ staffCaseload: "throws" });
-    expect((await issue(app, OTHER_PATIENT, "k093-i3", STAFF_ORG_WIDE)).statusCode).toBe(501);
+    expect((await issue(app, OTHER_PATIENT, "k093-i3", STAFF_ORG_WIDE)).statusCode).toBe(202);
     await app.close();
   });
 
@@ -2289,7 +2519,7 @@ describe("M31 GAP-093 — staff invitation routes (caseload_or_scope over a reso
 
   it("invite-bereaved: resolves the patient from the ACCOUNT'S grants, never the body", async () => {
     const onCaseload = makeServer();
-    expect((await inviteBereaved(onCaseload.app, ACCOUNT, "k093-b1")).statusCode).toBe(501);
+    expect((await inviteBereaved(onCaseload.app, ACCOUNT, "k093-b1")).statusCode).toBe(202);
     await onCaseload.app.close();
 
     const offCaseload = makeServer({ staffCaseload: { staff_user: [OTHER_PATIENT] } });

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1402,
-    "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "routes": 1405,
+    "coveredRoutes": 1405,
+    "directRoutesReferenced": 1352
   },
   "modules": [
     {
@@ -380,7 +380,7 @@
     },
     {
       "module": "30-quality",
-      "routes": 60,
+      "routes": 61,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-091-m30-phi-scope.test.ts",
@@ -388,18 +388,18 @@
         "apps/backend/__tests__/m30-mortality-patient-display.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
-      "directRoutesReferenced": 60
+      "directRoutesReferenced": 61
     },
     {
       "module": "31-portal",
-      "routes": 53,
+      "routes": 55,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 53
+      "directRoutesReferenced": 55
     },
     {
       "module": "32-ai-platform",

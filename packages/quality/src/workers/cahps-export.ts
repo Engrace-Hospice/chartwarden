@@ -34,11 +34,39 @@ export interface CahpsExportJob {
   readonly vendorBindingId: string;
   /** The 0-based BullMQ attempt index of THIS run (drives the §4.8 terminal export_failed gate). */
   readonly attempt?: number;
+  /** The `cahps_export_job` row (R-14) this run drives; absent for a cron-triggered export with no job row. */
+  readonly exportId?: string;
 }
 
-/** Resolves the org's live CAHPS adapter (bound to `CahpsAdapterRegistry.resolve`; 503 when unconfigured). */
+/**
+ * Resolves the org's live CAHPS adapter (bound to `CahpsAdapterRegistry.resolve`; 503 when unconfigured). May be
+ * async: a worker has no boot-time registry, so the production resolver loads the org's active binding, opens its
+ * sealed configuration and instantiates the adapter per job.
+ */
 export interface CahpsAdapterResolvePort {
-  resolve(orgId: string): CahpsVendorAdapter;
+  resolve(orgId: string): CahpsVendorAdapter | Promise<CahpsVendorAdapter>;
+}
+
+/**
+ * GAP-087 — the durable export-job row (`cahps_export_job`) the R-14 route created and R-15 reads back. Optional: a
+ * run with no `exportId` (or no port bound) behaves exactly as before. The rendered file is persisted (sealed by
+ * the implementation) BEFORE it is pushed, so a vendor outage after the push never loses the artifact and a retry
+ * never has to re-render PHI it already produced.
+ */
+export interface CahpsExportJobPort {
+  markRunning(job: CahpsExportJob): Promise<void>;
+  storeFile(
+    job: CahpsExportJob,
+    file: { readonly filename: string; readonly mimeType: string; readonly bytes: Buffer },
+    decedentCount: number,
+  ): Promise<void>;
+  complete(
+    job: CahpsExportJob,
+    push:
+      | { readonly status: "pushed"; readonly vendorJobId: string }
+      | { readonly status: "no_push" },
+  ): Promise<void>;
+  fail(job: CahpsExportJob, reason: string): Promise<void>;
 }
 
 /** The decedent-sample store port: load the cycle's pending rows + stamp export/failure status. */
@@ -70,7 +98,7 @@ export interface CahpsCaregiverDecryptPort {
 
 /** Loads the decrypted vendor-binding config `pushExport` needs (envelope-decrypt; FAIL-CLOSED until bound). */
 export interface CahpsBindingConfigPort {
-  load(vendorBindingId: string): Promise<Record<string, unknown>>;
+  load(orgId: string, vendorBindingId: string): Promise<Record<string, unknown>>;
 }
 
 /** The §4.10 outbox emits the export worker makes (completion; terminal failure). */
@@ -98,6 +126,8 @@ export interface CahpsExportPorts {
   readonly decrypt: CahpsCaregiverDecryptPort;
   readonly bindingConfig: CahpsBindingConfigPort;
   readonly outbox: CahpsExportOutboxPort;
+  /** GAP-087 — the durable job row; omitted ⇒ no job bookkeeping. */
+  readonly exports?: CahpsExportJobPort;
   /** Override the §4.8 retry budget (default `M30_QUEUE_PARAMS.cahpsExport.attempts`). */
   readonly maxAttempts?: number;
   now(): Date;
@@ -150,6 +180,7 @@ export async function handleCahpsExport(
   ports: CahpsExportPorts,
 ): Promise<CahpsExportResult> {
   if (await ports.processingLog.isProcessed(job.jobId)) return ALREADY_PROCESSED;
+  if (job.exportId) await ports.exports?.markRunning(job);
 
   const samplePeriod = { start: job.samplePeriodStart, end: job.samplePeriodEnd };
   const pending = await ports.samples.listPendingForCycle(
@@ -159,16 +190,34 @@ export async function handleCahpsExport(
 
   // Resolve outside the try so an unconfigured adapter (503) is a clean non-retried config error, not a
   // terminal export_failed (an org with no binding should not poison its sample as permanently failed).
-  const adapter = ports.adapters.resolve(job.organizationId);
+  let adapter: CahpsVendorAdapter;
+  try {
+    adapter = await ports.adapters.resolve(job.organizationId);
+  } catch (cause) {
+    if (job.exportId) {
+      await ports.exports?.fail(job, cause instanceof Error ? cause.message : String(cause));
+    }
+    throw cause;
+  }
 
   try {
-    const config = await ports.bindingConfig.load(job.vendorBindingId);
+    const config = await ports.bindingConfig.load(job.organizationId, job.vendorBindingId);
     const decedents: CahpsDecedentSampleRow[] = [];
     for (const row of pending) decedents.push(await ports.decrypt.toVendorRow(row));
 
     const file = await adapter.renderExport(job.organizationId, samplePeriod, decedents);
+    // Persist the artifact BEFORE the vendor push (see CahpsExportJobPort).
+    if (job.exportId) await ports.exports?.storeFile(job, file, decedents.length);
     const push = await adapter.pushExport(job.organizationId, file, config);
     const vendorAckRef = push.status === "pushed" ? push.vendorJobId : null;
+    if (job.exportId) {
+      await ports.exports?.complete(
+        job,
+        push.status === "pushed"
+          ? { status: "pushed", vendorJobId: push.vendorJobId }
+          : { status: "no_push" },
+      );
+    }
 
     const exportedAt = ports.now();
     for (const row of pending) {
@@ -180,7 +229,7 @@ export async function handleCahpsExport(
 
     await ports.outbox.emitExportCompleted({
       orgId: job.organizationId,
-      exportId: job.vendorBindingId,
+      exportId: job.exportId ?? job.vendorBindingId,
       samplePeriod,
       vendor: vendorLabel(adapter.vendor),
       status: push.status,
@@ -202,6 +251,7 @@ export async function handleCahpsExport(
       // the QAPI Coordinator manually re-triggers via R-14. Then rethrow so BullMQ moves it to the DLQ.
       for (const row of pending)
         await ports.samples.markExportFailed(row.id, job.samplingCycleMonth);
+      if (job.exportId) await ports.exports?.fail(job, reason);
       await ports.outbox.emitExportFailed({
         orgId: job.organizationId,
         samplePeriod,

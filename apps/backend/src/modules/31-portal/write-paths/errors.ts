@@ -46,6 +46,8 @@ export const M31_WRITE_ERROR_STATUS = {
   /** §7.8 — the server-side magic-byte re-check does not match the declared MIME (a `.pdf` whose bytes are
    *  an executable). Fails CLOSED: a content-type spoof never reaches M22 intake. */
   UPLOAD_MAGIC_BYTE_MISMATCH: 415,
+  /** GAP-092 — the bytes that arrived are not the size declared at upload-init (a truncated or swapped body). */
+  UPLOAD_SIZE_MISMATCH: 422,
 
   // ── §7.9 amendment request (HIPAA §164.526) ──────────────────────────────────────────────────────────
   /** §7.9 — the amendment names no target (the M5 field / M8 encounter narrative to correct) or carries no

@@ -181,6 +181,7 @@ import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
   createDrizzleIdentityEraserStore,
+  createPortalInviteeUserPort,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -253,6 +254,7 @@ import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
 // ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
 import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
+import { primaryCaregiverContactForOrg } from "./modules/05-patient/seams/primary-caregiver-contact-for-org";
 import {
   M6_OUTBOX_EVENTS,
   M6_PLATFORM_JOB_ID,
@@ -295,11 +297,13 @@ import {
   transferInNoticeContextForOrg,
   wireM6Tenancy,
 } from "./modules/06-admission/index";
-import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 // F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
 // restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { cahpsDeathCandidatesForOrg } from "./modules/06-admission/seams/cahps-death-candidates-for-org";
+import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
 import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
+import { patientSiteForOrg } from "./modules/06-admission/seams/patient-site-for-org";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -692,6 +696,7 @@ import {
   buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
+  buildPortalUploadIntakePort,
   createCandidateValueCipher,
   createCodingTerminology,
   createDocLensIntakeEnqueue,
@@ -967,6 +972,7 @@ import {
   scheduleNppesSyncJob,
   wireM29Tenancy,
 } from "./modules/29-external-interfaces/index";
+import { buildM30CahpsWiring } from "./modules/30-quality/cahps/wiring";
 import {
   M30_OUTBOX_EVENTS,
   M30_PLATFORM_JOB_ID,
@@ -996,6 +1002,10 @@ import {
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
+  createPortalConsentPort,
+  createPortalInvitationDelivery,
+  createPortalPhiCipher,
+  createPortalProvisioning,
   createPortalReasonCipher,
   createPortalRoomCipher,
   denyStubPortalAbacResolver,
@@ -3925,7 +3935,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // provider-entity resolver stays unbound (a 503 on a provider-scoped insert until it binds —
           // fail-closed, never a silent no-op).
           const m30Recompute = buildM30RecomputeEnqueue(queueConnection);
+          // GAP-087 — the CAHPS pipeline's cipher + vendor-adapter map (R-11 config sealing, R-15 file download).
+          const m30Cahps = buildM30CahpsWiring({
+            db: dbHandle.db,
+            keys: {
+              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+              dekForOrgVersion: (orgId, version) =>
+                getTenantKeyProvider().dekForOrgVersion(orgId, version),
+            },
+            outboxPublisher: m30OutboxPublisher,
+            deathsForOrg: (organizationId, period) =>
+              cahpsDeathCandidatesForOrg(dbHandle.db, organizationId, period),
+            caregiverContactForOrg: (organizationId, patientId) =>
+              primaryCaregiverContactForOrg(dbHandle.db, organizationId, patientId),
+          });
           mountM30Routes(app, {
+            cahpsExportFile: m30Cahps.exportFile,
             // D19 — M5's minimum-necessary display read ("First L." + MRN last-4), injected as a port; M30 reads no
             // M5 table. Only surfaced to callers holding `mortality.read_with_patient`.
             patientDisplay: {
@@ -3940,6 +3965,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // compliance inserts (incident / infection / QAPI program / CAHPS ingest), inside the
               // mutation's own org-context tx. Removes the prior fail-closed 503.
               providerEntity: buildPrimaryProviderEntityResolver(),
+              ...m30Cahps.writePorts,
             }),
           });
           // M27 (Cost Report) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Each
@@ -4229,11 +4255,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // The write service takes the READ service so every plan-shaped mutation answers with the SAME
           // projection route 2 serves (one DTO, one disclosure gate, no drift).
           const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
+            outbox: m16OutboxPublisher,
+          });
           mountM16Routes(app, {
             readService: m16ReadService,
-            writeService: buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
-              outbox: m16OutboxPublisher,
-            }),
+            writeService: m16WriteService,
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -4369,7 +4396,101 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // SAME M34 key ring M39's consent notes use, which is a slice deny-stub until the Phase-2D
           // KMS-backed provider lands — so those two routes refuse with 503 until then rather than
           // recording an account status change with no reason. Every other admin route is unaffected.
+          // GAP-092 — the portal's provisioning services: account + grant creation (invitations), encrypted upload
+          // staging handed to M22 intake, and notification preferences. Each cross-module fact arrives through a
+          // locally-declared port bound HERE (M2 identity, M6 site, M39 consent, M22 intake); the sign-in credential
+          // for an invitee stays M2's concern (magic link / password reset over the verified email).
+          const portalTenantKeys = {
+            dekForOrg: (orgId: string) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId: string, version: string) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          };
+          const portalProvisioning = createPortalProvisioning({
+            db: dbHandle.db,
+            cipher: createPortalPhiCipher(portalTenantKeys),
+            users: createPortalInviteeUserPort(dbHandle.db),
+            consent: createPortalConsentPort(),
+            site: {
+              siteForPatient: (organizationId, patientId) =>
+                patientSiteForOrg(dbHandle.db, organizationId, patientId),
+            },
+            delivery: createPortalInvitationDelivery({
+              transport: emailTransport,
+              baseUrl: process.env.PORTAL_APP_URL ?? webAppBaseUrl,
+            }),
+            uploadIntake: buildPortalUploadIntakePort(dbHandle.db),
+          });
+          // GAP-092 — a bereaved family member's own opt-out is M16's D9 transition (it cancels the contact's future
+          // outreach); the scope read names which contact(s) the portal account is.
+          const portalAuditQuery = createDbAuditQuery(dbHandle.db);
           mountM31Routes(app, {
+            provisioning: portalProvisioning,
+            bereavementOptOut: {
+              async optOut({ organizationId, userId, portalAccountId }) {
+                const scopes = await getSeam("BereavedPortalScopeProvider").scopeForPortalAccount(
+                  organizationId,
+                  portalAccountId as never,
+                );
+                let contactsOptedOut = 0;
+                let alreadyOptedOut = 0;
+                for (const scope of scopes) {
+                  if (scope.status === "opted_out") {
+                    alreadyOptedOut += 1;
+                    continue;
+                  }
+                  if (!scope.mayOptOut) continue;
+                  await m16WriteService.optOutContact(
+                    {
+                      organizationId,
+                      userId,
+                      membershipId: null,
+                      roles: [],
+                      sessionClass: "bereaved_portal",
+                      locationIds: [],
+                      portalAccountId,
+                      stepUpRecent: false,
+                    },
+                    scope.contactId,
+                    {
+                      optOutKind: "full",
+                      sourceKind: "portal_self_service",
+                      reason: "opted out by the bereaved family member in the portal",
+                    },
+                  );
+                  contactsOptedOut += 1;
+                }
+                if (contactsOptedOut === 0 && alreadyOptedOut === 0) {
+                  throw new WardenXError(
+                    "BEREAVEMENT_OPT_OUT_NOT_AVAILABLE",
+                    "there is no bereavement contact on this account that can opt out right now",
+                    409,
+                  );
+                }
+                return { contactsOptedOut, alreadyOptedOut };
+              },
+            },
+            // GAP-092 — the admin audit-views list: the account user's own read / disclosure trail from M4's
+            // sanctioned `audit_event` reader (a page of the user's events, kept to the view / disclosure kinds).
+            accountAudit: {
+              async viewsForUser({ organizationId, userId, cursor, limit }) {
+                const page = await portalAuditQuery.searchEvents(organizationId, {
+                  actorUserId: userId,
+                  ...(cursor ? { cursor } : {}),
+                  ...(limit ? { limit } : {}),
+                });
+                return {
+                  items: page.items
+                    .filter((e) => /\.(viewed|list_viewed|disclosed)$/.test(e.eventType))
+                    .map((e) => ({
+                      eventId: e.id,
+                      viewedAt: e.createdAt,
+                      resourceKind: e.resourceKind,
+                      eventType: e.eventType,
+                    })),
+                  nextCursor: page.nextCursor,
+                };
+              },
+            },
             store: buildDrizzlePortalStore(dbHandle.db),
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
             // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
@@ -5118,9 +5239,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // this is a second independent connection, not a duplicate queue; its `.queues` close on shutdown below
     // alongside the worker set.
     const m30CronRecompute = buildM30RecomputeEnqueue(queueConnection);
+    // GAP-087 — the real CAHPS sample cron + export worker ports (sealed caregiver contact, vendor adapters, job row).
+    const m30CahpsWorker = buildM30CahpsWiring({
+      db: dbHandle.db,
+      keys: {
+        dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+        dekForOrgVersion: (orgId, version) =>
+          getTenantKeyProvider().dekForOrgVersion(orgId, version),
+      },
+      outboxPublisher: m30OutboxPublisher,
+      deathsForOrg: (organizationId, period) =>
+        cahpsDeathCandidatesForOrg(dbHandle.db, organizationId, period),
+      caregiverContactForOrg: (organizationId, patientId) =>
+        primaryCaregiverContactForOrg(dbHandle.db, organizationId, patientId),
+    });
     const m30WorkerDeps = buildM30WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
+      cahpsPipeline: m30CahpsWorker.pipeline,
       hopeProvider: m30HopeConsumer,
       activeOrgs: m30ActiveOrgs,
       deathDischargeReader: m30DeathDischargeReader,

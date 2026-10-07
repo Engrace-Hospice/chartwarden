@@ -10,7 +10,7 @@
 // magic-link is accepted and the tenant DEK cipher (M1) encrypts the contact PHI, so this route does not
 // write plaintext into the `*_cipher` columns. The §164.528 audit view is M4's disclosure trail (read via
 // M4, empty here until the M4 read seam is bound).
-import { ForbiddenError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import {
@@ -33,7 +33,7 @@ import {
   PortalInvitationIssueRequest,
   parse,
 } from "./portal-typebox";
-import { portalWriteNotBacked } from "./write.routes";
+import { provisioningOf } from "./write.routes";
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
@@ -78,11 +78,26 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request, reply) => {
       await issueScope(request, reply);
-      actorOf(request);
-      parse(PortalInvitationIssueRequest, request.body);
-      // GAP-092 — M2's collaborator-invite primitive and the portal_account / portal_access_grant creation
-      // path are not built, so no invitation exists to return. The old reply fabricated ids and persisted nothing.
-      return portalWriteNotBacked("Portal invitations");
+      const actor = actorOf(request);
+      const body = parse(PortalInvitationIssueRequest, request.body);
+      const issued = await provisioningOf(deps).invitations.issue({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
+        patientId: body.patientId,
+        relationship: body.relationship,
+        ...(body.caregiverId ? { caregiverId: body.caregiverId } : {}),
+        inviteeDisplayName: body.inviteeDisplayName,
+        inviteeEmail: body.inviteeEmail,
+        ...(body.inviteePhone ? { inviteePhone: body.inviteePhone } : {}),
+        proposedScopeSet: body.proposedScopeSet,
+      });
+      return reply.code(202).send({
+        invitationId: issued.invitationId,
+        portalAccountId: issued.portalAccountId,
+        status: issued.status,
+        expiresAt: issued.expiresAt,
+        ...(issued.inviteUrl ? { inviteUrl: issued.inviteUrl } : {}),
+      });
     },
   );
   app.get(
@@ -92,9 +107,8 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
       config: { auditRead: { resourceKind: "portal_invitation", list: true } },
     },
     async (request) => {
-      actorOf(request);
-      // GAP-092 — no invitation store exists; an empty list would read as "none outstanding".
-      return portalWriteNotBacked("Portal invitations");
+      const actor = actorOf(request);
+      return { items: await provisioningOf(deps).invitations.list(actor.organizationId) };
     },
   );
   app.post(
@@ -107,8 +121,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
       ],
     },
     async (request) => {
-      actorOf(request);
-      return portalWriteNotBacked("Revoking a portal invitation");
+      const actor = actorOf(request);
+      const { id } = request.params as { id: string };
+      await provisioningOf(deps).invitations.revoke(actor.organizationId, actor.userId, id);
+      return { ok: true };
     },
   );
   app.post(
@@ -118,9 +134,39 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request, reply) => {
       await inviteBereavedScope(request, reply);
-      actorOf(request);
-      parse(InviteBereavedRequest, request.body);
-      return portalWriteNotBacked("Inviting a bereaved family member");
+      const actor = actorOf(request);
+      const { id } = request.params as { id: string };
+      const body = parse(InviteBereavedRequest, request.body);
+      // The decedent is the patient behind the inviting account's grants; with several, the request is ambiguous.
+      const patientIds = [
+        ...new Set(
+          (await store.grantsForAccount(actor.organizationId, id)).map((g) => g.patientId),
+        ),
+      ];
+      if (patientIds.length !== 1 || !patientIds[0]) {
+        throw new WardenXError(
+          "VALIDATION_FAILED",
+          "the inviting account must have access to exactly one patient",
+          422,
+        );
+      }
+      const issued = await provisioningOf(deps).invitations.issue({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
+        patientId: patientIds[0],
+        relationship: "bereaved_family_member",
+        bereavedContactId: body.bereavedContactId,
+        inviteeDisplayName: body.inviteeDisplayName,
+        inviteeEmail: body.inviteeEmail,
+        proposedScopeSet: [],
+      });
+      return reply.code(202).send({
+        ok: true,
+        invitationId: issued.invitationId,
+        portalAccountId: issued.portalAccountId,
+        expiresAt: issued.expiresAt,
+        ...(issued.inviteUrl ? { inviteUrl: issued.inviteUrl } : {}),
+      });
     },
   );
 
@@ -232,9 +278,25 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
       config: { auditRead: { resourceKind: "portal_audit_view", list: true } },
     },
     async (request) => {
-      actorOf(request);
-      // GAP-092 — M4's disclosure-trail read seam is not bound here; an empty list would read as "never viewed".
-      return portalWriteNotBacked("The portal audit-view trail");
+      const actor = actorOf(request);
+      const { id } = request.params as { id: string };
+      const query = request.query as { cursor?: string; limit?: string };
+      if (!deps.accountAudit) {
+        throw new WardenXError(
+          "PORTAL_AUDIT_UNAVAILABLE",
+          "the portal audit trail is not available right now",
+          503,
+        );
+      }
+      const account = await store.accountById(actor.organizationId, id);
+      if (!account) throw new NotFoundError("portal account");
+      const limit = query.limit === undefined ? undefined : Number(query.limit);
+      return deps.accountAudit.viewsForUser({
+        organizationId: actor.organizationId,
+        userId: account.userId,
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+        ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
+      });
     },
   );
 

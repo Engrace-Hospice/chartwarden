@@ -1,6 +1,11 @@
 // apps/backend/src/modules/31-portal/routes/write.routes.ts — M31 (§4.1) the portal WRITE surfaces (the
 // three clinical-record writes minus M36 messaging, which M36 owns end-to-end, plus preferences + bereaved
-// opt-out).
+// opt-out) and, as of GAP-092, the PUBLIC token-authenticated invitation accept.
+//
+// GAP-092 — document upload is init (validate + record an intent) → content PUT (magic-byte check, sealed under the
+// tenant DEK on `portal_document_upload`) → complete (hand the decrypted bytes to M22 intake); preferences persist in
+// `portal_notification_preference`; the bereavement opt-out is M16's own D9 transition; the accept route creates the
+// account's grant. Each depends on a provisioning port: unbound ⇒ a 503, never a fake success.
 //
 // Each route validates its typed lay DTO at the boundary, resolves the minimal upstream facts through the
 // seam registry (fail-closed for a blocking fact), then runs the PURE plan core from `../write-paths` — the
@@ -19,9 +24,10 @@ import type { MedicationOrderProvider } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { toPreferencesView } from "../provisioning/preferences";
 import { planAmendmentRequest } from "../write-paths/amendment-request";
 import { planCaregiverAttestation } from "../write-paths/caregiver-attestation";
-import { PORTAL_UPLOAD_MIME_ALLOWLIST, planDocumentUpload } from "../write-paths/document-upload";
+import { PORTAL_UPLOAD_MAX_BYTES } from "../write-paths/document-upload";
 import { requirePortalWrite } from "../write-paths/errors";
 import { actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -40,6 +46,7 @@ import {
   MessageSendRequest,
   NotificationPreferenceUpdateRequest,
   PortalDocumentUploadInitRequest,
+  PortalInvitationAcceptRequest,
   parse,
 } from "./portal-typebox";
 
@@ -68,16 +75,16 @@ function caregiverAttestationOf(deps: PortalRouteDeps) {
   return deps.caregiverAttestation;
 }
 
-/**
- * GAP-092 — a portal write whose backing module has no production path yet. The route answers 501 rather than
- * a 2xx that persisted nothing (a patient or caregiver told "ok" for a write that never happened).
- */
-export function portalWriteNotBacked(feature: string): never {
-  throw new WardenXError(
-    "PORTAL_WRITE_NOT_BACKED",
-    `${feature} is not available yet. Please contact your care team.`,
-    501,
-  );
+/** GAP-092 — the provisioning services, or a 503: never a success the caller is told about while nothing is stored. */
+export function provisioningOf(deps: PortalRouteDeps) {
+  if (!deps.provisioning) {
+    throw new WardenXError(
+      "PORTAL_PROVISIONING_UNAVAILABLE",
+      "This is not available right now. Please contact your care team.",
+      503,
+    );
+  }
+  return deps.provisioning;
 }
 
 /** The slice of M8's `SignedEncountersReader` the amendment target check reads. */
@@ -251,20 +258,64 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       const patientId = portalPatientIdOf(actor);
       const portalAccountId = portalAccountIdOf(actor);
       const body = parse(PortalDocumentUploadInitRequest, request.body);
-      planDocumentUpload({
-        orgId: actor.organizationId,
-        patientId,
+      // Validates (discharged-read-only, size, MIME) and records the intent; the bytes go to the content route.
+      const begun = await provisioningOf(deps).uploads.begin({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
         portalAccountId,
-        byteSize: body.expectedByteSize,
-        declaredMime: body.mimeType,
-        // magic-byte verification runs on the real bytes at upload-complete; init validates the declared
-        // MIME against the allowlist so a rejected type never mints a signed URL.
-        magicBytes: [],
+        patientId,
+        purpose: body.purpose,
+        mimeType: body.mimeType,
+        expectedByteSize: body.expectedByteSize,
         patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
       });
-      // GAP-092 — no M22 intake staging / object-store presigner is bound for portal uploads, so there is
-      // no real signed URL to mint (the old `uploads.invalid` placeholder let a caregiver "upload" into the void).
-      return portalWriteNotBacked("Document upload");
+      return {
+        uploadId: begun.uploadId,
+        signedUploadUrl: begun.contentPath,
+        signedUploadUrlExpiresAt: begun.expiresAt,
+      };
+    },
+  );
+
+  // document upload — the bytes. Same-origin PUT under the caregiver's session: the body is size-checked,
+  // magic-byte-checked against the declared MIME and kept ONLY as a tenant-DEK envelope (encrypted staging).
+  app.addContentTypeParser(
+    [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/heic",
+      "image/tiff",
+      "application/octet-stream",
+    ],
+    { parseAs: "buffer", bodyLimit: PORTAL_UPLOAD_MAX_BYTES + 1024 * 1024 },
+    (_request, body, done) => done(null, body),
+  );
+  app.put(
+    "/api/v1/portal/documents/uploads/:uploadId/content",
+    {
+      bodyLimit: PORTAL_UPLOAD_MAX_BYTES + 1024 * 1024,
+      preHandler: [P("portal.documents.upload"), ABAC_GRANT("portal.documents.upload")],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const patientId = portalPatientIdOf(actor);
+      const portalAccountId = portalAccountIdOf(actor);
+      const { uploadId } = request.params as { uploadId: string };
+      const bytes = request.body;
+      requirePortalWrite(
+        Buffer.isBuffer(bytes) && bytes.byteLength > 0,
+        "UPLOAD_SIZE_MISMATCH",
+        "No file content was received.",
+      );
+      return provisioningOf(deps).uploads.stage({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
+        portalAccountId,
+        patientId,
+        uploadId,
+        bytes,
+      });
     },
   );
 
@@ -276,9 +327,17 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       const actor = actorOf(request);
-      portalPatientIdOf(actor);
-      // GAP-092 — nothing was staged at upload-init and nothing is emitted here; refuse rather than "received".
-      return portalWriteNotBacked("Document upload");
+      const patientId = portalPatientIdOf(actor);
+      const { uploadId } = request.params as { uploadId: string };
+      // Hands the staged (decrypted) bytes to M22's intake; a 503 keeps the staged upload for a retry.
+      const done = await provisioningOf(deps).uploads.complete({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
+        portalAccountId: portalAccountIdOf(actor),
+        patientId,
+        uploadId,
+      });
+      return { uploadId: done.uploadId, status: done.status };
     },
   );
 
@@ -379,10 +438,17 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       preHandler: [P("portal.preferences.write_own"), ABAC_ACCOUNT("portal.preferences.write_own")],
     },
     async (request) => {
-      actorOf(request);
-      parse(NotificationPreferenceUpdateRequest, request.body);
-      // GAP-092 — no preference table / M36 reconcile is bound; refuse rather than answer ok.
-      return portalWriteNotBacked("Changing notification preferences");
+      const actor = actorOf(request);
+      const { id } = request.params as { id: string };
+      const body = parse(NotificationPreferenceUpdateRequest, request.body);
+      await provisioningOf(deps).preferences.update({
+        organizationId: actor.organizationId,
+        actingUserId: actor.userId,
+        portalAccountId: portalAccountIdOf(actor),
+        idOrChannel: id,
+        update: body,
+      });
+      return { ok: true };
     },
   );
 
@@ -398,10 +464,29 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       const actor = actorOf(request);
-      portalAccountIdOf(actor);
-      // GAP-092 — no M16 opt-out port is bound; a bereaved family member who opts out must not be told
-      // "ok" while outreach continues.
-      return portalWriteNotBacked("Opting out of bereavement outreach");
+      const portalAccountId = portalAccountIdOf(actor);
+      // A bereaved family member who opts out must never be told "ok" while outreach continues: the opt-out is
+      // M16's own D9 transition (it cancels the contact's future outreach), or the call refuses.
+      if (!deps.bereavementOptOut) {
+        throw new WardenXError(
+          "BEREAVEMENT_OPT_OUT_UNAVAILABLE",
+          "Opting out is not available right now. Please contact your care team.",
+          503,
+        );
+      }
+      const result = await deps.bereavementOptOut.optOut({
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        portalAccountId,
+      });
+      return { ok: true, ...result };
     },
   );
+
+  // invitation acceptance — PUBLIC, authenticated by the single-use token alone (the invitee has no session yet).
+  // Creates the account's grant and activates the account; see `provisioning/invitations.ts`.
+  app.post("/api/v1/portal/invitations/accept", async (request) => {
+    const body = parse(PortalInvitationAcceptRequest, request.body);
+    return provisioningOf(deps).invitations.accept(body.token);
+  });
 }

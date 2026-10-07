@@ -110,3 +110,76 @@ export function createPortalRoomCipher(keys: PortalTenantKeyProvider): PortalRoo
     },
   };
 }
+
+// ── GAP-092: the account contact columns + the staged-upload bytes ───────────────────────────────────────────────
+// `portal_account.{display_name,email,phone}_cipher` (written at invitation issue) and
+// `portal_document_upload.content_cipher` (the encrypted STAGING of a caregiver's upload) seal under the SAME
+// per-tenant DEK provider. Unlike the reason / room ciphers this one OPENS what it seals, because the staged bytes
+// must be handed to M22 on `upload-complete`. The AAD binds the blob to (module, table.column, tenant), so a blob
+// lifted into another column or another org fails to open.
+
+/** The sealed columns this cipher serves. */
+export type PortalPhiColumn =
+  | "portal_account.display_name_cipher"
+  | "portal_account.email_cipher"
+  | "portal_account.phone_cipher"
+  | "portal_document_upload.content_cipher";
+
+export interface PortalPhiCipher {
+  /** Seal `plaintext`; `keyVersion` is the integer a `*_key_version` column records. */
+  encrypt(
+    organizationId: string,
+    column: PortalPhiColumn,
+    plaintext: Buffer | string,
+  ): Promise<{ readonly envelope: string; readonly keyVersion: number }>;
+  decrypt(organizationId: string, column: PortalPhiColumn, envelope: string): Promise<Buffer>;
+}
+
+const phiAad = (organizationId: string, column: PortalPhiColumn): Buffer =>
+  Buffer.from(`m31:${column}:${organizationId}`, "utf8");
+
+/** `v3` / `2026.v12` becomes the trailing run of numerals; anything without one becomes 1 (the integer column's default). */
+function dekVersionInt(version: string): number {
+  const runs = version.match(/\d+/g);
+  const last = runs?.[runs.length - 1];
+  const n = last === undefined ? 1 : Number.parseInt(last, 10);
+  return Number.isSafeInteger(n) && n > 0 ? n : 1;
+}
+
+export function createPortalPhiCipher(keys: PortalTenantKeyProvider): PortalPhiCipher {
+  return {
+    async encrypt(organizationId, column, plaintext) {
+      const { version, key } = await keys.dekForOrg(organizationId);
+      if (key.byteLength !== 32) throw new Error("tenant DEK must be 32 bytes");
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv("aes-256-gcm", key, nonce);
+      cipher.setAAD(phiAad(organizationId, column));
+      const ciphertext = Buffer.concat([
+        cipher.update(typeof plaintext === "string" ? Buffer.from(plaintext, "utf8") : plaintext),
+        cipher.final(),
+      ]);
+      const envelope = [
+        "v1",
+        Buffer.from(version, "utf8").toString("base64url"),
+        nonce.toString("base64url"),
+        cipher.getAuthTag().toString("base64url"),
+        ciphertext.toString("base64url"),
+      ].join(".");
+      return { envelope, keyVersion: dekVersionInt(version) };
+    },
+    async decrypt(organizationId, column, envelope) {
+      const [v, versionB64, nonce, tag, ct] = envelope.split(".");
+      if (v !== "v1" || !versionB64 || !nonce || !tag || ct === undefined) {
+        throw new Error("unrecognised portal PHI envelope");
+      }
+      if (!keys.dekForOrgVersion)
+        throw new Error("tenant key provider cannot open a versioned DEK");
+      const version = Buffer.from(versionB64, "base64url").toString("utf8");
+      const { key } = await keys.dekForOrgVersion(organizationId, version);
+      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+      d.setAAD(phiAad(organizationId, column));
+      d.setAuthTag(Buffer.from(tag, "base64url"));
+      return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
+    },
+  };
+}
