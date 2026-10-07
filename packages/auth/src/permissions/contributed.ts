@@ -4013,6 +4013,15 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (emits
+  // `m21.supply_request.invoice_reconciled` to M27). A finance-adjacent write, RBAC only like the other
+  // request writes; the service refuses a request that was never accrued or was already reconciled.
+  "supplies.request.invoice_reconcile": {
+    resource: "supply_request",
+    action: "invoice_reconcile",
+    category: "clinical",
+    abac: "none",
+  },
   "supplies.request.confirm_received": {
     resource: "supply_request",
     action: "confirm_received",

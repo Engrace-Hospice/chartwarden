@@ -62,6 +62,8 @@ import {
   authorTenantTemplate,
   caregiverSignatureEvidenceJsonbOf,
   decideCoverageDetermination,
+  decideInvoiceAccrual,
+  decideInvoiceReconciliation,
   prepareDispatch,
   reconcileReturn,
   requireCaregiverSignatureEvidence,
@@ -97,6 +99,7 @@ import type {
   ObserveParStockInput,
   ReconcileReturnInput,
   ReconcileReturnResult,
+  RecordVendorInvoiceInput,
   RetireSupplyItemInput,
   ReturnRequestInput,
   SetCoverageDeterminationInput,
@@ -725,15 +728,92 @@ export function buildDrizzleM21WriteService(
         actor,
         supplyRequestId,
         input.expectedUpdatedAt,
-        async (_row, at) => ({
-          event: {
-            type: "placeOrderWithVendor" as const,
-            vendorOrderReference: input.vendorOrderReference,
-            at: iso(at) as IsoInstant,
-          },
-          payloads: {},
-        }),
+        async (row, at, tx) => {
+          // GAP-063 / D16 — the vendor accepted the order: when the coordinator recorded the vendor's quote,
+          // it IS the cost accrual. Written on the open transaction (an illegal §2.2 edge below rolls it back)
+          // together with the `invoice_accrued` outbox row M27 consumes. No quote ⇒ no accrual.
+          const accrual = decideInvoiceAccrual({ quotedTotalCents: input.vendorQuotedTotalCents });
+          if (accrual !== null) {
+            await tx
+              .update(REQUEST)
+              .set({
+                invoiceTotalCents: accrual.invoiceTotalCents,
+                invoiceCurrency: accrual.invoiceCurrency,
+                invoiceAccruedAt: at,
+                updatedAt: at,
+              })
+              .where(eq(REQUEST.id, row.id));
+            await outbox.publish(tx, {
+              eventName: "m21.supply_request.invoice_accrued",
+              payload: {
+                ...anchorOf(row),
+                supplyRequestId: row.id,
+                vendorId: row.assignedVendorId ?? null,
+                invoiceTotalCents: accrual.invoiceTotalCents,
+                invoiceCurrency: accrual.invoiceCurrency,
+                accruedAt: iso(at),
+              },
+              organizationId: row.organizationId,
+              aggregateKind: "supply_request",
+              aggregateId: row.id,
+            });
+          }
+          return {
+            event: {
+              type: "placeOrderWithVendor" as const,
+              vendorOrderReference: input.vendorOrderReference,
+              at: iso(at) as IsoInstant,
+            },
+            payloads: {},
+          };
+        },
       );
+    },
+
+    // GAP-063 / D16 — the reconciliation intake. NOT a §2.2 transition (status never moves; the vendor invoice
+    // can arrive after delivery). Freshness first, then the pure accrued / not-yet-reconciled rules, row-locked
+    // so the variance and its `invoice_reconciled` event commit together and a double submit cannot emit twice.
+    async recordVendorInvoice(actor, supplyRequestId, input: RecordVendorInvoiceInput) {
+      const at = now();
+      await scoped(actor, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(REQUEST)
+          .where(eq(REQUEST.id, supplyRequestId))
+          .limit(1)
+          .for("update");
+        if (!row) throw new NotFoundError("supply_request");
+        assertFresh(row, input.expectedUpdatedAt);
+        const reconciliation = decideInvoiceReconciliation({
+          accruedTotalCents: row.invoiceTotalCents ?? null,
+          accruedAt: row.invoiceAccruedAt ? iso(row.invoiceAccruedAt) : null,
+          reconciledAt: row.invoiceReconciledAt ? iso(row.invoiceReconciledAt) : null,
+          invoiceTotalCents: input.invoiceTotalCents,
+        });
+        await tx
+          .update(REQUEST)
+          .set({
+            invoiceTotalCents: reconciliation.invoiceTotalCents,
+            invoiceReconciledAt: at,
+            invoiceVarianceCents: reconciliation.varianceCents,
+            updatedAt: at,
+          })
+          .where(eq(REQUEST.id, row.id));
+        await outbox.publish(tx, {
+          eventName: "m21.supply_request.invoice_reconciled",
+          payload: {
+            ...anchorOf(row),
+            supplyRequestId: row.id,
+            invoiceTotalCents: reconciliation.invoiceTotalCents,
+            varianceCents: reconciliation.varianceCents,
+            reconciledAt: iso(at),
+          },
+          organizationId: row.organizationId,
+          aggregateKind: "supply_request",
+          aggregateId: row.id,
+        });
+      });
+      return readService.getSupplyRequest(actor, supplyRequestId);
     },
 
     async markInTransit(actor, supplyRequestId, input: MarkInTransitInput) {

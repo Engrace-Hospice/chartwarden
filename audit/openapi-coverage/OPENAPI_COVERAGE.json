@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1413,
-    "enriched": 1408,
+    "routes": 1414,
+    "enriched": 1409,
     "deficit": 5,
-    "mutating": 800,
+    "mutating": 801,
     "mutatingNoBody": 1,
     "gets": 580,
     "getsNoResponse": 10
@@ -201,10 +201,10 @@
     },
     {
       "module": "21-supplies",
-      "routes": 39,
-      "enriched": 39,
+      "routes": 40,
+      "enriched": 40,
       "deficit": 0,
-      "mutating": 26,
+      "mutating": 27,
       "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0

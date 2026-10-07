@@ -19116,7 +19116,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Vendor accepted (PO reference; If-Match) */
+        /** Vendor accepted (PO reference; optional vendorQuotedTotalCents accrues the quote and emits invoice_accrued, GAP-063; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkordered"];
         delete?: never;
         options?: never;
@@ -19135,6 +19135,23 @@ export interface paths {
         put?: never;
         /** Initiate an equipment return (the DME pickup path; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/vendor-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (signed variance; emits invoice_reconciled once; 409 when never accrued or already reconciled; If-Match) */
+        post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdVendorinvoice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -77087,6 +77104,7 @@ export interface operations {
             content: {
                 "application/json": {
                     vendorOrderReference: string;
+                    vendorQuotedTotalCents?: number;
                 };
             };
         };
@@ -77185,6 +77203,104 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        hospiceCoverage: "covered_related" | "not_covered_unrelated" | "not_covered_other";
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
+                        coverageReason: string | null;
+                        coverageDeterminedAt: string | null;
+                        coverageDeterminedBy: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SuppliesSupplyrequestsBySupplyRequestIdVendorinvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplyRequestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    invoiceTotalCents: number;
                 };
             };
         };
