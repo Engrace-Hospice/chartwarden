@@ -9,7 +9,7 @@
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gt, isNull, or } from "drizzle-orm";
 import type { M3OutboxPublisher, MembershipRoleStore, MembershipRoleView } from "./authz-ports";
 
 const GRANT_COLUMNS = {
@@ -100,6 +100,24 @@ export function createDbMembershipRoleStore(
           });
         },
       );
+    },
+
+    async countActiveHolders(roleId: string): Promise<number> {
+      return withOrgContextFromRequest(db, async (tx) => {
+        const rows = (await tx
+          .select({ n: count() })
+          .from(schema.membershipRoles)
+          .where(
+            and(
+              eq(schema.membershipRoles.roleId, roleId),
+              or(
+                isNull(schema.membershipRoles.expiresAt),
+                gt(schema.membershipRoles.expiresAt, new Date()),
+              ),
+            ),
+          )) as Array<{ n: number | string }>;
+        return Number(rows[0]?.n ?? 0);
+      });
     },
 
     async revoke(membershipId: string, roleId: string): Promise<boolean> {

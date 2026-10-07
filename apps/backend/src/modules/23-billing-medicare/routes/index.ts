@@ -1,5 +1,6 @@
 import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
+import type { PlatformAdminRouteService } from "./platform-admin-service";
 // apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
 //
 // The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
@@ -79,12 +80,18 @@ export interface M23RouteServices {
   readonly rateTableService?: RateTableRouteService;
   /** F-211 — the tenant-entered wage-index service (absent ⇒ the /billing/wage-indexes routes are not mounted). */
   readonly wageIndexService?: WageIndexRouteService;
+  /** GAP-144 — the platform-admin commands (#41 platform-rules, #42 wage-index load); absent => not mounted. */
+  readonly platformAdminService?: PlatformAdminRouteService;
   /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
   readonly sequestrationService?: SequestrationPolicyRouteService;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
 }
 
+export {
+  type PlatformAdminRouteService,
+  buildDrizzlePlatformAdminService,
+} from "./platform-admin-service";
 export {
   type WageIndexRouteService,
   buildDrizzleWageIndexService,

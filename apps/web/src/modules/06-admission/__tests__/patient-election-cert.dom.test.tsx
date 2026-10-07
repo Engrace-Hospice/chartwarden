@@ -25,7 +25,11 @@ function ok(data: unknown) {
 }
 
 function clientFor(
-  options: { failCtiOnce?: boolean; f2fState?: "scheduled" | "completed" | "attested" } = {},
+  options: {
+    failCtiOnce?: boolean;
+    f2fState?: "scheduled" | "completed" | "attested";
+    outsideWindow?: boolean;
+  } = {},
 ): ApiClient {
   const f2fState = options.f2fState ?? "attested";
   let ctiFailuresRemaining = options.failCtiOnce ? 1 : 0;
@@ -120,7 +124,7 @@ function clientFor(
                 encounterDate: f2fState === "scheduled" ? null : "2027-03-20",
                 encounterLocation: f2fState === "scheduled" ? null : "telehealth",
                 attestationNoteEncounterId: null,
-                withinWindow: f2fState === "scheduled" ? null : true,
+                withinWindow: f2fState === "scheduled" ? null : !options.outsideWindow,
                 windowOverride: false,
                 attested: f2fState === "attested",
               },
@@ -319,6 +323,58 @@ describe("Patient Election & Certification workspace", () => {
             hospiceUnderEnhancedOversight: false,
             performerMedicareEnrolledOrOptedOut: true,
           },
+          ifVersion: 2,
+        },
+      }),
+    );
+  });
+
+  it("schedules a missing face-to-face for a period that requires one (GAP-023)", async () => {
+    const client = clientFor();
+    renderWorkspace(client);
+    fireEvent.click(await screen.findByRole("button", { name: "Schedule Period 4 Face-to-Face" }));
+    const rail = await screen.findByRole("complementary", { name: "Schedule Face-to-Face" });
+    const submit = within(rail).getByRole("button", { name: "Schedule face-to-face" });
+    fireEvent.change(within(rail).getByLabelText(/Scheduled date/), {
+      target: { value: "2027-05-20" },
+    });
+    fireEvent.change(within(rail).getByLabelText(/Performer role/), {
+      target: { value: "hospice_md" },
+    });
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith("/api/v1/admissions/{id}/face-to-face", {
+        params: { path: { id: "admission-1" } },
+        body: {
+          electionPeriodId: "period-4",
+          scheduledDate: "2027-05-20",
+          windowStart: "2027-04-29",
+          windowEnd: "2027-05-29",
+          clinicianRole: "hospice_md",
+          scheduledClinicianId: session.userId,
+        },
+      }),
+    );
+  });
+
+  it("overrides an out-of-window face-to-face with a reason (GAP-023)", async () => {
+    const client = clientFor({ f2fState: "completed", outsideWindow: true });
+    renderWorkspace(client);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View Period 3 Face-to-Face details" }),
+    );
+    const rail = await screen.findByRole("complementary", { name: "Face-to-Face details" });
+    const submit = await within(rail).findByRole("button", { name: "Override window" });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(rail).getByLabelText(/Override reason/), {
+      target: { value: "Patient hospitalised during the window; documented by the MD." },
+    });
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith("/api/v1/face-to-face/{id}/override-window", {
+        params: { path: { id: "f2f-3" } },
+        body: {
+          reason: "Patient hospitalised during the window; documented by the MD.",
           ifVersion: 2,
         },
       }),

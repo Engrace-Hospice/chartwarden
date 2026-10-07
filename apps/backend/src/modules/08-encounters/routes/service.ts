@@ -111,6 +111,9 @@ export interface CreateEncounterArgs {
 
 export interface EncounterListFilters {
   readonly patientId?: string;
+  /** GAP-182 — caseload narrowing: when present, ONLY these patients' encounters may be returned (an empty
+   *  list returns none). Absent = org-wide (the caller holds an org-wide scope role). */
+  readonly patientIds?: readonly string[];
   readonly admissionId?: string;
   readonly status?: EncounterStatus;
   readonly authorId?: string;
@@ -1484,6 +1487,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         encounters: [...byId.values()]
           .filter((r) => r.organizationId === organizationId)
           .filter((r) => (filters.patientId ? r.patientId === filters.patientId : true))
+          .filter((r) => (filters.patientIds ? filters.patientIds.includes(r.patientId) : true))
           .filter((r) => (filters.admissionId ? r.admissionId === filters.admissionId : true))
           .filter((r) => (filters.status ? r.status === filters.status : true))
           .filter((r) => (filters.authorId ? r.authoredByUserId === filters.authorId : true))

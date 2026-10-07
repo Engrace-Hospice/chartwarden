@@ -492,6 +492,8 @@ export const ActionItemViewSchema = Type.Object({
   /** F-104 — on the wire because a caller cannot otherwise tell a linked item from an unlinkable one:
    *  the kind alone was returned, and a kind with no id never auto-closes. */
   linkedArtifactId: Nullable(Type.String({ format: "uuid" })),
+  /** The row version a PATCH/DELETE echoes back as `If-Match`. */
+  version: Type.Integer({ minimum: 0 }),
 });
 export const ActionItemListResponseSchema = Type.Array(ActionItemViewSchema);
 
@@ -555,6 +557,8 @@ export const RecurringPolicyViewSchema = Type.Object({
   locationId: Type.String({ format: "uuid" }),
   cadenceDays: Type.Integer(),
   active: Type.Boolean(),
+  /** The row version a PATCH echoes back as `If-Match`. */
+  version: Type.Integer({ minimum: 0 }),
 });
 
 /** A single attendance row view (POST /idg/meetings/:id/attendance, PATCH /idg/attendance/:id). */
@@ -569,6 +573,8 @@ export const AttendanceViewSchema = Type.Object({
   disciplineAttested: Type.Boolean(),
   /** Who wrote the row; null for a legacy (pre-0286) row. */
   recordedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  /** The row version a PATCH/DELETE echoes back as `If-Match`. */
+  version: Type.Integer({ minimum: 0 }),
 });
 
 /** GET /idg/meetings/:id/attendance-eligibility query: a coordinator may ask about another member. */
@@ -598,6 +604,8 @@ export const AgendaItemViewSchema = Type.Object({
   kind: AGENDA_KIND,
   patientId: Nullable(Type.String({ format: "uuid" })),
   patient: PatientDisplayField,
+  /** The row version a PATCH/DELETE echoes back as `If-Match`. */
+  version: Type.Integer({ minimum: 0 }),
 });
 
 /**

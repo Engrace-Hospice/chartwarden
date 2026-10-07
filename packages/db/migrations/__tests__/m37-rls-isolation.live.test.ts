@@ -4,11 +4,11 @@
  * The pure unit/domain suites never touch a database, so they cannot catch a wrong RLS predicate, a
  * missing WITH CHECK, or a base-table grant that leaks across tenants. This test applies the actual
  * migrations to a real Postgres and exercises the policies as the unprivileged `wardenx_app` role (no
- * BYPASSRLS), proving cross-tenant denial for real on ALL 26 owned M37 tables under the canonical
+ * BYPASSRLS), proving cross-tenant denial for real on ALL 27 owned M37 tables under the canonical
  * `organization_id = current_setting('app.org_id')` predicate — including the four monthly-partitioned
  * tables (`ipu_admission_state_history`, `ipu_bed_cleaning_event`, `ipu_visitor`, `ipu_meal_service`):
- * the policy on the parent propagates to every partition incl. DEFAULT (PG11+). All 26 M37 tables are
- * tenant-scoped PHI/compliance data (0153's §1 comment) — unlike M26, there is no platform-shared table
+ * the policy on the parent propagates to every partition incl. DEFAULT (PG11+). All 27 M37 tables are
+ * tenant-scoped PHI/compliance data (0153's §1 comment; `ipu_rn_break_glass` joined in 0230) — unlike M26, there is no platform-shared table
  * to carve out here.
  *
  * Also ports the §3.6 (D11) audit-scrub assertion from the superseded partial suite
@@ -46,6 +46,7 @@ type SeedIds = {
   shift: string;
   staffAssignment: string;
   rnCoverageWindow: string;
+  rnBreakGlass: string;
   ivSafetyOverlay: string;
   restraintEvent: string;
   restraintReassessment: string;
@@ -75,6 +76,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "ipu_shift", key: "shift" },
   { table: "ipu_staff_assignment", key: "staffAssignment" },
   { table: "ipu_rn_coverage_window", key: "rnCoverageWindow" },
+  // GAP-170 — added by 0230 (after the 0153 sweep); a staffing override is a compliance trail.
+  { table: "ipu_rn_break_glass", key: "rnBreakGlass" },
   { table: "ipu_iv_safety_overlay", key: "ivSafetyOverlay" },
   { table: "ipu_restraint_event", key: "restraintEvent" },
   { table: "ipu_restraint_reassessment", key: "restraintReassessment" },
@@ -266,6 +269,14 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
+      const rnBreakGlass = (
+        await db.query(
+          `INSERT INTO ipu_rn_break_glass (organization_id,unit_id,invoked_by_membership_id,expires_at,reason)
+         VALUES ($1,$2,gen_random_uuid(),now() + interval '2 hours',$3) RETURNING id`,
+          [org, unit, "Night shift RN call-outs left the unit below the 24-hour RN floor."],
+        )
+      ).rows[0].id as string;
+
       const ivSafetyOverlay = (
         await db.query(
           `INSERT INTO ipu_iv_safety_overlay (organization_id,ipu_admission_id,order_id,medication_rx_norm_code,rate_unit,bedside_check_interval_minutes)
@@ -387,6 +398,7 @@ describe.skipIf(!DB_URL)(
         shift,
         staffAssignment,
         rnCoverageWindow,
+        rnBreakGlass,
         ivSafetyOverlay,
         restraintEvent,
         restraintReassessment,
@@ -435,13 +447,25 @@ describe.skipIf(!DB_URL)(
     it("every M37 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0153_ipu_m37_rls_audit_triggers.sql"), "utf8");
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
-      expect(policyBlocks.length).toBe(26); // all 26 owned tables are tenant-scoped — no platform-shared table
+      expect(policyBlocks.length).toBe(26); // 0153 policies; the 27th table (0230) is covered by its own test below
       for (const block of policyBlocks) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
+    });
+
+    it("COVERED lists every manifest-owned M37 table (no table escapes the cross-tenant proof)", () => {
+      expect(COVERED.length).toBe(27);
+      expect(new Set(COVERED.map((c) => c.table)).size).toBe(27);
+    });
+
+    it("ipu_rn_break_glass keeps its own tenant policy on app.org_id (0230)", () => {
+      const bg = readFileSync(join(MIGRATIONS_DIR, "0230_m37_rn_break_glass.sql"), "utf8");
+      const block =
+        bg.match(/CREATE POLICY "ipu_rn_break_glass_org"[\s\S]*?WITH CHECK \([^;]*\)/)?.[0] ?? "";
+      expect(block).toMatch(/current_setting\(\s*'app\.org_id'/);
     });
 
     it.each(COVERED)(

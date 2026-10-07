@@ -125,6 +125,11 @@ export interface MembershipRoleStore {
   }): Promise<MembershipRoleView> | MembershipRoleView;
   /** Revoke a grant; returns false if the (membership, role) grant did not exist. */
   revoke(membershipId: string, roleId: string): Promise<boolean> | boolean;
+  /**
+   * How many memberships in the caller's org currently hold `roleId` (unexpired grants only). The
+   * last-required-role guard (GAP-117) reads this before a revoke of a CoP-required role.
+   */
+  countActiveHolders(roleId: string): Promise<number> | number;
 }
 
 // --- Break-glass -------------------------------------------------------------------------
@@ -171,6 +176,18 @@ export class BreakGlassCosignError extends Error {
   ) {
     super(message);
     this.name = "BreakGlassCosignError";
+  }
+}
+
+/**
+ * GAP-117 — a break-glass revoke refused because the event is already settled (revoked, expired, denied).
+ * Revoke used to match on id alone, so it rewrote an `expired` row to `revoked` (and re-published
+ * `m3.breakglass.ended`), falsifying the record of how the grant ended.
+ */
+export class BreakGlassRevokeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BreakGlassRevokeError";
   }
 }
 
@@ -482,6 +499,11 @@ export function createInMemoryMembershipRoleStore(): {
       byComposite.delete(compositeKey(membershipId, roleId));
       return true;
     },
+    countActiveHolders: (roleId) =>
+      [...grants.values()].filter(
+        (g) =>
+          g.roleId === roleId && (g.expiresAt === null || Date.parse(g.expiresAt) > Date.now()),
+      ).length,
   };
   return {
     store,
@@ -539,6 +561,10 @@ export function createInMemoryBreakGlassStore(): {
     revoke(eventId) {
       const event = events.get(eventId);
       if (!event) throw new Error(`unknown break-glass event ${eventId}`);
+      if (event.status !== "active" && event.status !== "cosign_pending")
+        throw new BreakGlassRevokeError(
+          `break-glass event ${eventId} is ${event.status}, not revocable`,
+        );
       const next = { ...event, status: "revoked" as BreakGlassStatus };
       events.set(eventId, next);
       return next;

@@ -38,6 +38,8 @@ export const fhirInboundResource = pgTable(
     decisionRationale: text("decision_rationale"),
     acceptedAggregateId: uuid("accepted_aggregate_id"),
     validationErrors: jsonb("validation_errors"),
+    /** GAP-198 (0490): the WardenX patient the proposal is about, stamped at staging; NULL = no chart. */
+    subjectPatientId: uuid("subject_patient_id"),
     payloadEraseScheduledAt: timestamp("payload_erase_scheduled_at", { withTimezone: true }),
   },
   (t) => ({

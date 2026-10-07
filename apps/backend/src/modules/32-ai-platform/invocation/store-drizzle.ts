@@ -32,10 +32,13 @@ import type {
   AiZdrStatus,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import type { M32EventName } from "../event-names";
+import { type M32EventEmitter, capabilityIdentity } from "../events";
 
 import type { AiInvocationCapabilityStore } from "./service";
 import type {
   AiBackendRegistryStore,
+  AiInvocationInsert,
   AiInvocationLedgerStore,
   AiRoutingOverrideStore,
 } from "./store";
@@ -141,6 +144,8 @@ export function createDrizzleAiRoutingOverrideStore(deps: {
   readonly db: DbClient;
   /** `app.user_id` for the session; the M4 write-audit trigger reads it. */
   readonly userId: string;
+  /** GAP-161 - same-tx `m32.routing_override.set` emit. */
+  readonly events?: M32EventEmitter;
 }): AiRoutingOverrideStore {
   const db = deps.db;
   const ctx = (organizationId: string) => ({ organizationId, userId: deps.userId });
@@ -219,10 +224,100 @@ export function createDrizzleAiRoutingOverrideStore(deps: {
         if (row === undefined) {
           throw new Error("ai_routing_override insert returned no row");
         }
+        if (deps.events) {
+          await deps.events.emitInTx(tx, {
+            name: "m32.routing_override.set",
+            organizationId: insert.organizationId,
+            aggregate: { kind: "ai_routing_override", id: row.id },
+            payload: {
+              ...(await capabilityIdentity(tx, { id: insert.capabilityId })),
+              overrideId: row.id,
+              backendKeyPreference: insert.backendKeyPreference,
+              overrideReason: insert.overrideReason,
+              setByMembershipId: insert.setByMembershipId,
+              active: true,
+            },
+          });
+        }
         return toOverrideRow(row);
       });
     },
   };
+}
+
+const HITL_EVENT: Partial<Record<AiInvocationHitlOutcome, M32EventName>> = {
+  accepted: "m32.output.accepted",
+  edited: "m32.output.edited",
+  rejected: "m32.output.rejected",
+};
+
+/**
+ * GAP-161 - the invocation's events, same tx as the ledger row. `invoked` always; a CLOUD call also emits
+ * `phi.disclosed` (the section 164.528 feeder - a refusal that never reached a vendor does not), a LOCAL one
+ * `local_inference.recorded`. The backend kind is read from the registry row, never inferred from the accrual.
+ */
+async function emitInvocationEvents(
+  events: M32EventEmitter,
+  tx: DbClient,
+  invocation: AiInvocationInsert,
+  invocationId: string,
+): Promise<void> {
+  const aggregate = { kind: "ai_invocation", id: invocationId } as const;
+  const capability = {
+    capabilityId: invocation.capabilityId,
+    capabilityKey: invocation.capabilityKey,
+  };
+  await events.emitInTx(tx, {
+    name: "m32.capability.invoked",
+    organizationId: invocation.organizationId,
+    aggregate,
+    payload: {
+      ...capability,
+      invocationId,
+      modelBackendId: invocation.backendId,
+      backendKey: invocation.backendKey,
+      inputTokens: invocation.inputTokenCount,
+      outputTokens: invocation.outputTokenCount,
+      latencyMs: invocation.durationMs,
+      status: invocation.status,
+      routingDecision: invocation.routingDecision,
+    },
+  });
+  if (invocation.status === "capability_unavailable") return;
+  const [backend] = await tx
+    .select({ kind: schema.aiModelBackend.kind })
+    .from(schema.aiModelBackend)
+    .where(eq(schema.aiModelBackend.id, invocation.backendId))
+    .limit(1);
+  if (backend?.kind === "cloud") {
+    await events.emitInTx(tx, {
+      name: "m32.phi.disclosed",
+      organizationId: invocation.organizationId,
+      aggregate,
+      payload: {
+        ...capability,
+        invocationId,
+        patientId: invocation.patientId,
+        recipient: invocation.backendKey,
+        purpose: invocation.capabilityKey,
+        modelBackendId: invocation.backendId,
+        zdrConfirmed: invocation.zdrConfirmed,
+        disclosedAt: invocation.invokedAt,
+      },
+    });
+  } else if (backend?.kind === "local") {
+    await events.emitInTx(tx, {
+      name: "m32.local_inference.recorded",
+      organizationId: invocation.organizationId,
+      aggregate,
+      payload: {
+        ...capability,
+        invocationId,
+        modelBackendId: invocation.backendId,
+        latencyMs: invocation.durationMs,
+      },
+    });
+  }
 }
 
 /** `ai_invocation` + `ai_token_ledger`, tenant-scoped and partitioned. */
@@ -230,6 +325,8 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
   readonly db: DbClient;
   /** `app.user_id` for the session; the M4 write-audit trigger reads it. */
   readonly userId: string;
+  /** GAP-161 - same-tx `m32.capability.invoked` / `phi.disclosed` / `local_inference.recorded` / `output.*` emits. */
+  readonly events?: M32EventEmitter;
 }): AiInvocationLedgerStore {
   const db = deps.db;
   const ctx = (organizationId: string) => ({ organizationId, userId: deps.userId });
@@ -293,6 +390,8 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
           });
         }
 
+        if (deps.events) await emitInvocationEvents(deps.events, tx, invocation, row.id);
+
         return { invocationId: row.id, invokedAt: iso(row.invokedAt) };
       });
     },
@@ -328,7 +427,7 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
       outcome: AiInvocationHitlOutcome,
     ) {
       await withOrgContext(db, ctx(organizationId), async (tx) => {
-        await tx
+        const updated = await tx
           .update(schema.aiInvocation)
           .set({ hitlOutcome: outcome })
           .where(
@@ -339,7 +438,30 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
               // it this UPDATE scans every monthly partition.
               eq(schema.aiInvocation.invokedAt, new Date(invokedAt)),
             ),
-          );
+          )
+          .returning({
+            actorMembershipId: schema.aiInvocation.actorMembershipId,
+            capabilityId: schema.aiInvocation.capabilityId,
+            capabilityKey: schema.aiInvocation.capabilityKey,
+          });
+        // An UPDATE that matched nothing is a lost HITL outcome, not a success (the invoked_at partition key
+        // must match the stored value exactly).
+        const row = updated[0];
+        if (!row) throw new Error(`ai_invocation ${invocationId} not found for the HITL outcome`);
+        const name = HITL_EVENT[outcome];
+        if (deps.events && name) {
+          await deps.events.emitInTx(tx, {
+            name,
+            organizationId,
+            aggregate: { kind: "ai_invocation", id: invocationId },
+            payload: {
+              invocationId,
+              capabilityId: row.capabilityId,
+              capabilityKey: row.capabilityKey,
+              recordedByMembershipId: row.actorMembershipId,
+            },
+          });
+        }
       });
     },
   };

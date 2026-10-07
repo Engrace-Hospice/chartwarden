@@ -21,6 +21,9 @@ export const caregivers = pgTable(
     email: text("email"),
     phone: text("phone"),
     preferredLanguageCode: text("preferred_language_code"), // ISO-639 via M38
+    /** GAP-158 (migration 0462) - the M2 user who claimed this caregiver's portal login; logical FK, NULL until
+     *  a portal invitation issued for this caregiver is accepted (`linkCaregiverToUserInTx`). */
+    userId: uuid("user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

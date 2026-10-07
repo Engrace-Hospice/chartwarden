@@ -40,6 +40,23 @@ export const CONTRIBUTED_PERMISSIONS = {
   "member.manage": { resource: "member", action: "manage", category: "admin", abac: "none" },
   // Full offboard — disable credentials everywhere (org_admin own-org / platform_ops any).
   "user.deactivate": { resource: "user", action: "deactivate", category: "admin", abac: "none" },
+  // GAP-115 — `POST/GET /orgs/:id/step-up-overrides` (+ DELETE): per-operation tenant step-up TIGHTENING
+  // (M2 spec §3.7 / §4.3.2, org_admin or compliance_officer). The tighten-only rule is enforced twice: the route
+  // refuses a loosening with 422, and `trg_tenant_step_up_tighten_only` (migration 0211) refuses it at rest.
+  "step_up_override.manage": {
+    resource: "step_up_override",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // GAP-115 — `POST /funeral/invite`: a per-deceased funeral-home magic link (72h), minted by staff on the
+  // patient's caseload. Same default predicate as the collaborator link.
+  "funeral.invite": {
+    resource: "funeral",
+    action: "invite",
+    category: "clinical",
+    abac: "caseload_membership",
+  },
   // Per-patient collaborator magic-link — clinician on the patient's caseload (ABAC), or
   // org_admin. The default ABAC predicate is `caseload_membership` (M5/M17 provider seam).
   "collaborator.invite": {
@@ -541,6 +558,19 @@ export const M40_CONTRIBUTED_PERMISSIONS = {
     resource: "canonical",
     action: "write",
     category: "platform",
+    abac: "none",
+  },
+  // --- grief-resource catalog (GAP-158; tenant-curated external_grief_resource) ---
+  "mdm.grief_resource.read": {
+    resource: "grief_resource",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "mdm.grief_resource.manage": {
+    resource: "grief_resource",
+    action: "manage",
+    category: "admin",
     abac: "none",
   },
   "mdm.merge.read": { resource: "merge", action: "read", category: "platform", abac: "none" },
@@ -4010,6 +4040,15 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   "supplies.request.coverage_determine": {
     resource: "supply_request",
     action: "coverage_determine",
+    category: "clinical",
+    abac: "none",
+  },
+  // GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (emits
+  // `m21.supply_request.invoice_reconciled` to M27). A finance-adjacent write, RBAC only like the other
+  // request writes; the service refuses a request that was never accrued or was already reconciled.
+  "supplies.request.invoice_reconcile": {
+    resource: "supply_request",
+    action: "invoice_reconcile",
     category: "clinical",
     abac: "none",
   },

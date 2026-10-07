@@ -4,6 +4,7 @@
 // activation demands a DISTINCT compliance co-approver (D18) AND the M40 BAA gate (D16, the
 // `external_feed_baa_satisfied` predicate); revocation is dual-approval (D20). A minted channel credential's
 // plaintext never lands in the clear or comes back on the wire.
+import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -72,7 +73,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
       const actor = actorOf(request);
       const { feedId } = request.params as { feedId: string };
       const feed = await store.getFeed(actor.organizationId, feedId);
-      if (!feed) return reply.code(404).send({ code: "NOT_FOUND", message: "feed not found" });
+      if (!feed) throw new NotFoundError("feed");
       return { feed };
     },
   );
@@ -193,9 +194,9 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
       const body = parse(RevokeFeedBody, request.body);
       const feed = await store.revokeFeed(actor.organizationId, actor.membershipId, feedId, {
         reason: body.reason,
-        primaryApproverId: body.primaryApproverId,
       });
-      return { feed };
+      // GAP-153 — the first approval only records the request; the revoke completes on a distinct second approval.
+      return { feed, revokePending: feed.status !== "revoked" };
     },
   );
 

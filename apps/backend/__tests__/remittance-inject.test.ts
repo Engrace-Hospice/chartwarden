@@ -434,6 +434,13 @@ function createM25Backend(): {
       appeals.set(id, updated);
       return { id, version: updated.version };
     },
+    async submitAppealLateGoodCause(_actor, id, _input, _ifMatch) {
+      const row = appeals.get(id);
+      if (!row) throw new NotFoundError("appeal case not found");
+      const updated = { ...row, state: "submitted", submittedAt: NOW, version: row.version + 1 };
+      appeals.set(id, updated);
+      return { id, version: updated.version };
+    },
     async ackAppeal(_actor, id, _ifMatch) {
       const row = appeals.get(id);
       if (!row) throw new NotFoundError("appeal case not found");
@@ -819,6 +826,34 @@ const ROUTE_CASES: readonly RouteCase[] = [
       attachedDocumentIds: [DOCUMENT],
     },
     expectStatus: 200,
+  },
+  {
+    label: "22b POST /appeals/:id/submit-late-good-cause (GAP-147)",
+    method: "POST",
+    url: `/api/v1/appeals/${APPEAL}/submit-late-good-cause`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k22b"), ...IFM },
+    payload: {
+      appealNarrative:
+        "This late appeal narrative documents in full detail why the payer's denial determination should be reversed on redetermination, citing the clinical documentation and coverage criteria the original claim submission satisfied.",
+      attachedDocumentIds: [DOCUMENT],
+      goodCauseJustification:
+        "The MAC's determination letter was misdelivered and the agency received it 41 days after the date it was mailed.",
+    },
+    expectStatus: 200,
+  },
+  {
+    label:
+      "22c POST /appeals/:id/submit-late-good-cause rejects a justification under 40 characters (422)",
+    method: "POST",
+    url: `/api/v1/appeals/${APPEAL}/submit-late-good-cause`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k22c"), ...IFM },
+    payload: {
+      appealNarrative:
+        "This late appeal narrative documents in full detail why the payer's denial determination should be reversed on redetermination, citing the clinical documentation and coverage criteria the original claim submission satisfied.",
+      attachedDocumentIds: [DOCUMENT],
+      goodCauseJustification: "too short",
+    },
+    expectStatus: 422,
   },
   {
     label: "23 PATCH /appeals/:id/ack",

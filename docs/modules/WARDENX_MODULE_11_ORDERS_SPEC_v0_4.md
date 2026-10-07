@@ -1579,6 +1579,8 @@ Per Module 3 D5 (typed predicates registered via the seam registry):
 | `orders.hope_trigger` | `hope-trigger-projection` | Subscribes to `hope.j2051_trigger_fired`; updates Valkey suggestion state | Outbox subscriber |
 | `orders.eraser` | `erase-patient-orders` | Module 4 destruction-certificate callback (`eraseFn`); drops monthly `order_record` partitions and deletes M11 child rows for a patient under approved certificate | M4 destruction workflow |
 
+> **As-built (GAP-032):** the three workers above are built in `apps/backend/src/modules/11-orders/order-sweeps.ts` (decisions + writes) with BullMQ fan-outs in `jobs/order-sweeps-worker.ts`, constructed in `apps/backend/src/index.ts` (`registerM11OrderSweepWorkers`, DLQ-alerted). `orders.verbal_pre_expiry` (every 15 min) emits `m11.order.verbal_expiring_soon` once per `(verbal_order, tier)` for the 12h (`medium`) and 2h (`high`) tiers, idempotent through `verbal_order.pre_expiry_tiers_alerted` (migration 0405) rather than a ±15 min window. `lab-results-overdue-sweep` (daily 04:00 UTC) flips lab orders past the D18 expected-by (stat 1 h, asap 4 h, routine 24 h after signature; there is no `timed` priority in the as-built enum) to `results_overdue` and emits `m11.order.results_overdue`. Both also publish a durable `m11.order.recovery_alert_requested` intent (same transaction) which the `m11.recovery-alert` consumer hands to M36 (care-team alert rules `m11.order.verbal_expiring_soon` / `m11.order.results_overdue`). `orders.completion_watcher` (daily) completes `active` `supply` / `comfort_kit` orders once M21 delivered, `recertification` orders once M6 produced the benefit period (`election_period.source_order_id`), and `level_of_care_change` orders once the LOC period exists (`level_of_care_period.source_order_id`); labs are never auto-completed (D17) and `dme` completes on the rental close-out.
+
 ### 4.9 M36 Typed Alert Payloads
 
 When M11 emits an alert event, M36 receives a typed alert per M36 §5.4:
@@ -1703,7 +1705,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { orderRecord } from '@wardenx/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface Lm29TransmittedPayload {
   readonly outboundMessageId: string
@@ -1857,7 +1859,7 @@ export class LabTransmissionApplier {
     fromStatuses: readonly string[],
     updates: Record<string, unknown>,
   ): Promise<{ transmissionStatus: string } | null> {
-    return await withTenantContext(db, { organizationId }, async (tx) => {
+    return await withOrgContext(db, { organizationId }, async (tx) => {
       const result = await tx
         .update(orderRecord)
         .set(updates)
@@ -1883,7 +1885,7 @@ export class LabTransmissionApplier {
   }
 
   private async loadOrderingPhysicianMdmId(orderRecordId: string, organizationId: string): Promise<string | null> {
-    const row = await withTenantContext(db, { organizationId }, async (tx) => {
+    const row = await withOrgContext(db, { organizationId }, async (tx) => {
       const [r] = await tx
         .select({ orderingPhysicianMdmId: orderRecord.orderingPhysicianMdmId })
         .from(orderRecord)
@@ -1906,7 +1908,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { orderRecord } from '@wardenx/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface Lm29ObservationAttachedPayload {
   readonly observationId: string
@@ -1942,7 +1944,7 @@ export class LabResultsApplier {
 
     const newStatus = payload.attachmentKind === 'partial' ? 'partial_results_received' : 'results_received'
 
-    const prior = await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) => {
+    const prior = await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) => {
       const result = await tx
         .update(orderRecord)
         .set({

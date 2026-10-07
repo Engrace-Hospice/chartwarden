@@ -1,0 +1,214 @@
+/* @wardenx/ui — shared list chrome (GAP-207).
+ *
+ * The `wx-*` rules every LIST screen shares: KPI strip, the shared DataTable card, the WorkQueueLayout
+ * `kpis` / `filters` / table slots, and the redesigned list toolbar / state / table card. They used to live
+ * only in apps/web/src/index.css, so apps/admin and apps/portal rendered the same shared components
+ * (`@wardenx/ui` layouts, DataTable) unstyled. This file is a MECHANICAL lift: the rule text is unchanged
+ * and its order relative to itself is preserved; each app imports it right after `@import "tailwindcss"`,
+ * so it sits at the head of the `components` layer (no earlier rule in any app mentions these classes).
+ *
+ * Tokens (`--color-card-border`, `--space-*`, `--radius-lg`, `--color-surface-*`, …) are supplied by each
+ * app's own token layer; this file defines none, so `arch:design-tokens` still reads them from the apps.
+ */
+@layer components {
+  /* KPI strips are summary chrome, never a flex region that a long queue may compress. Their
+     cards retain their intrinsic width and overflow horizontally on small viewports instead. */
+  .wx-kpi-strip > * {
+    flex: 0 0 auto;
+  }
+
+  /* The shared DataTable sits on a card, like the redesigned list tables (.wx-list-table-wrap). */
+  .wx-data-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-data-table th {
+    padding: 0.7rem 1rem;
+  }
+  .wx-data-table td {
+    padding: 0.75rem 1rem;
+  }
+  .wx-data-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .wx-data-table {
+    display: table;
+    width: 100%;
+    min-width: 58rem;
+    table-layout: fixed;
+  }
+  .wx-data-table th,
+  .wx-data-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .wx-data-table thead tr {
+    background: var(--color-surface-low);
+  }
+  .wx-data-row-interactive:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-data-row[aria-selected="true"] td {
+    background: var(--color-primary-tint);
+  }
+  tbody tr:hover {
+    background: color-mix(in srgb, var(--color-surface-low) 70%, transparent);
+  }
+  tbody tr[role="button"]:hover {
+    background: var(--color-surface-low);
+  }
+  tbody tr[role="button"]:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* WorkQueueLayout's `kpis` / `filters` slots. The usual occupants pad themselves — `KpiStrip`
+     (.wx-kpi-strip, 30 screens) and `FilterBar` (.wx-filter-bar, 23) — so padding the slot outright
+     would double-inset them. But 8 slots across 7 screens (most of M24's queues, M02
+     staff-management) pass a bare <div>/<label>/<form>, which then runs flush to the viewport.
+     So: pad every direct child EXCEPT the regions that already handle it, and except the split row,
+     whose table and context rail own their own insets. Same shape as the context-rail rule above. */
+  .wx-work-queue
+    > :not(.wx-page-header):not(.wx-kpi-strip):not(.wx-filter-bar):not(.wx-work-split):not(
+      .wx-work-filters
+    ) {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+  /* WorkQueueLayout's filter slot is the shared filter panel (same look as .wx-filter-panel). A screen's
+     own row brought its own gutter (inline padding); inside the panel that gutter is dropped. A slot that
+     already is a panel (FilterBar, .wx-filter-panel) is left as it is. */
+  .wx-work-filters {
+    margin: 0 var(--space-5) var(--space-4);
+  }
+  .wx-work-filters:not(:has(> .wx-filter-bar, > .wx-filter-panel, > * > .wx-filter-panel)) {
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-work-filters:not(:has(> .wx-filter-bar, > .wx-filter-panel, > * > .wx-filter-panel)) > * {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .wx-work-filters > .wx-filter-bar {
+    margin: 0 !important;
+  }
+  /* A screen that drops a bare <table> into the queue's table slot (directly, or as the only child of a
+     plain wrapper) gets the list-table card:
+     full width inside the page gutter, hairline edge, header band. (DataTable / .wx-list-table bring
+     their own card.) The slot itself scrolls, so the table can be a real table again. */
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table),
+  .wx-work-table > div:only-child > table:not(.wx-data-table):not(.wx-list-table) {
+    display: table;
+    width: calc(100% - 2 * var(--space-5)) !important;
+    margin: 0 var(--space-5) var(--space-5);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--color-surface-lowest);
+    overflow: hidden;
+  }
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table) thead th,
+  .wx-work-table > div:only-child > table:not(.wx-data-table):not(.wx-list-table) thead th {
+    background: var(--color-surface-low);
+  }
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table) tbody tr:last-child td,
+  .wx-work-table
+    > div:only-child
+    > table:not(.wx-data-table):not(.wx-list-table)
+    tbody
+    tr:last-child
+    td {
+    border-bottom: none;
+  }
+
+  /* Tables inside panels read as the mockups' clean lists: no forced min-width block scroll. */
+  .wx-panel table {
+    display: table;
+    font-size: 0.8125rem;
+  }
+  .wx-panel th,
+  .wx-panel td {
+    padding: 0.55rem 1.125rem;
+  }
+  .wx-panel tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .wx-list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .wx-list-toolbar-end {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex: 1 1 20rem;
+    justify-content: flex-end;
+  }
+  .wx-list-state {
+    display: grid;
+    justify-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-list-table-wrap {
+    /* Positioned so absolutely positioned children (e.g. a wx-sr-only header label) stay inside the
+       scroll box instead of widening the page on narrow screens. */
+    position: relative;
+    overflow-x: auto;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-list-table {
+    display: table;
+    width: 100%;
+    min-width: 48rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .wx-list-table th {
+    padding: 0.7rem 1rem;
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .wx-list-table td {
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--color-card-border);
+    color: var(--color-on-surface);
+    vertical-align: middle;
+  }
+  .wx-list-table td:first-child {
+    position: relative;
+    padding-left: 1.25rem;
+  }
+  .wx-list-table tbody tr {
+    cursor: pointer;
+  }
+  .wx-list-table tbody tr:hover,
+  .wx-list-table tbody tr.is-selected {
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-lowest));
+  }
+  .wx-list-table-static tbody tr {
+    cursor: default;
+  }
+  .wx-list-table-static tbody tr:hover {
+    background: none;
+  }
+}

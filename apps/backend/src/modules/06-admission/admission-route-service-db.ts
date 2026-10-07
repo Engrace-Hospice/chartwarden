@@ -116,6 +116,7 @@ import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
+  DeclineDischargeInput,
   DischargeInput,
   DischargeResult,
   F2fScheduleInput,
@@ -2086,11 +2087,19 @@ export function createDbAdmissionRouteService(
 
   return {
     // ── Referral reads ───────────────────────────────────────────────────────────────────────────
-    async listReferrals(organizationId, query, actorUserId) {
+    async listReferrals(organizationId, query, actorUserId, scope) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const limit = clampLimit(query.limit);
         const offset = parseOffset(query.cursor);
         const filters: SQL[] = [];
+        // GAP-182 — mirror `referral.scope`: no location (org-level) OR one of the caller's locations.
+        if (scope) {
+          filters.push(
+            scope.locationIds.length > 0
+              ? (or(isNull(REF.locationId), inArray(REF.locationId, [...scope.locationIds])) as SQL)
+              : isNull(REF.locationId),
+          );
+        }
         const status = query.status ?? query.state;
         if (status) filters.push(eq(REF.status, status as never));
         else if (!query.includeConverted) filters.push(ne(REF.status, "converted"));
@@ -2668,7 +2677,7 @@ export function createDbAdmissionRouteService(
       });
     },
 
-    // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
+    // ── Writes — the M6L-T02+ Drizzle lifecycle (live). ─────────────────────────────────────────────
     // ── M6L-T02: referral intake ───────────────────────────────────────────────────────────────
     async createReferral(organizationId, input, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -2835,6 +2844,14 @@ export function createDbAdmissionRouteService(
           aggregateKind: "referral",
           aggregateId: id,
         });
+        // GAP-177 — the triage OUTCOME itself is catalogued (`m6.referral.triaged`) and had no emit site.
+        await outbox.publish(tx, {
+          eventName: "m6.referral.triaged",
+          payload: { referralId: id, outcome },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -2845,7 +2862,9 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult & { admissionId: string }> {
-      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
+      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId, {
+        emitAccepted: true,
+      });
     },
     async startReferralReview(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -3106,6 +3125,7 @@ export function createDbAdmissionRouteService(
       input,
       ifVersion,
       actorUserId,
+      opts,
     ): Promise<MutationResult & { admissionId: string }> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
@@ -3235,6 +3255,17 @@ export function createDbAdmissionRouteService(
           aggregateKind: "referral",
           aggregateId: id,
         });
+        // GAP-177 — route 6 (accept) is the same transition seen from the intake desk; it is catalogued
+        // as its own event (record-only, M36 seam) and had no emit site.
+        if (opts?.emitAccepted) {
+          await outbox.publish(tx, {
+            eventName: "m6.referral.accepted",
+            payload: { referralId: id, patientId, admissionId: adm.id },
+            organizationId,
+            aggregateKind: "referral",
+            aggregateId: id,
+          });
+        }
         return {
           id: r.id,
           state: r.status,
@@ -3471,6 +3502,13 @@ export function createDbAdmissionRouteService(
           authorId: actorUserId || null,
           content: `Pending information requested: ${reason}`,
         });
+        await outbox.publish(tx, {
+          eventName: "m6.referral.pending_information",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -3510,6 +3548,13 @@ export function createDbAdmissionRouteService(
             reason: reason ?? null,
           },
         );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.duplicate",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -4960,10 +5005,9 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.f2f.scheduled",
-          // `electionPeriodId`/`scheduledDate` are required — previously omitted, 500ing on every
-          // call. `scheduledDate` comes straight off `input` since the `face_to_face_encounter` table
-          // has no column for it today (a separate, pre-existing gap — the schedule route accepts and
-          // validates the date but never persists it; out of scope for this fix).
+          // `electionPeriodId`/`scheduledDate` are required by the event catalog. `scheduledDate` is
+          // persisted on the `face_to_face_encounter.scheduled_date` column by the insert above and
+          // echoed here from `input`.
           payload: {
             f2fId: f2f.id,
             electionPeriodId: input.electionPeriodId,
@@ -5882,6 +5926,8 @@ export function createDbAdmissionRouteService(
                 effectiveAt: input.dischargeDate,
                 narrative: input.narrative,
                 forCauseReason: input.forCauseReason ?? null,
+                // GAP-121 — the filer; the cosign refuses the same user (two-person control).
+                filedByUserId: actorUserId,
               })
               .returning({
                 id: DE.id,
@@ -6014,12 +6060,21 @@ export function createDbAdmissionRouteService(
             source: DE.source,
             sourceProposalId: DE.sourceProposalId,
             cosignedAt: DE.cosignedAt,
+            filedByUserId: DE.filedByUserId,
           })
           .from(DE)
           .where(eq(DE.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
+        // GAP-121 — two-person control: the filer of a for-cause discharge cannot cosign it. (An external
+        // death has no filer — `filed_by_user_id` is only ever set on the for-cause filing.)
+        if (cur.filedByUserId !== null && cur.filedByUserId === actorUserId)
+          throw new WardenXError(
+            "DISCHARGE_COSIGNER_IS_FILER",
+            "The person who filed a for-cause discharge cannot cosign it; another medical director must.",
+            409,
+          );
         // F-227 (#248) — W-M6-31: an EXTERNAL-source death is already `completed` (admission discharged at
         // intake); the director's cosign is the after-the-fact attestation, not the completion.
         if (cur.source === "hl7_external") {
@@ -6138,6 +6193,46 @@ export function createDbAdmissionRouteService(
           aggregateKind: "discharge_event",
           aggregateId: id,
         });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    // GAP-121 — the director's other option on a for-cause filing: decline it. The discharge is voided (the
+    // admission was held `active` the whole time, so nothing else moves). Version- and status-guarded.
+    async declineDischarge(
+      organizationId,
+      id,
+      input: DeclineDischargeInput,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: DE.status, version: DE.version, source: DE.source })
+          .from(DE)
+          .where(eq(DE.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.source === "hl7_external" || cur.status !== "pending_cosign")
+          throw conflict(
+            `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
+          );
+        const outcome = resolveForCauseDischarge("reject");
+        const r = firstOrThrow(
+          await tx
+            .update(DE)
+            .set({
+              status: outcome.dischargeState,
+              medicalDirectorMembershipId: actorUserId,
+              // The reason lives on the audited row (free text, scrubbed by the M4 write-audit trigger).
+              narrative: sql`coalesce(${DE.narrative}, '') || E'\n[declined] ' || ${input.declineReason}`,
+              version: sql`${DE.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(DE.id, id), eq(DE.version, ifVersion), eq(DE.status, "pending_cosign")))
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge not found",
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

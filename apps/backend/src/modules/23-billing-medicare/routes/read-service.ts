@@ -304,6 +304,24 @@ export interface ValidationOverrideView {
   readonly appliedAt: string;
 }
 
+/** GAP-144 (spec #17) — one row of the org-wide override audit view: the override plus the claim and rule it hit. */
+export interface ValidationOverrideAuditView extends ValidationOverrideView {
+  readonly claimId: string;
+  readonly ruleKey: string;
+  /** The M4 audit-event row captured in the same transaction as the override (the audit trail pointer). */
+  readonly m4AuditEventId: string;
+}
+
+/** Filters of the override audit view; `providerEntityId` is the §4.7 `provider_entity_billing_scope` target. */
+export interface ValidationOverrideAuditFilter {
+  readonly providerEntityId: string;
+  readonly ruleKey?: string;
+  readonly overrideMembershipId?: string;
+  /** Inclusive ISO instants bounding `applied_at`. */
+  readonly appliedFrom?: string;
+  readonly appliedTo?: string;
+}
+
 // ── NOE / NOTR view DTOs ──────────────────────────────────────────────────────────────────────────────
 
 /** The MAC's answer on a NOE / NOTR (migration 0377). Reason codes are PHI-free X12 codes. */
@@ -630,6 +648,14 @@ export interface M23ReadRouteService {
     actor: M23ReadActor,
     providerEntityId: string,
   ): Promise<MacCredentialView | null>;
+
+  /** GAP-144 (spec #17) — org-wide validation-override audit view, newest first (keyset-paginated). */
+  listValidationOverrides(
+    actor: M23ReadActor,
+    filter: ValidationOverrideAuditFilter,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<ValidationOverrideAuditView>>;
 
   // ── AR / metrics ──
   getClaimMetrics(actor: M23ReadActor, filter: MetricsFilter): Promise<readonly MetricsBucket[]>;

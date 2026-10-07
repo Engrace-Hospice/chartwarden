@@ -69,7 +69,6 @@ export {
   createInMemoryCapConsumerStore,
   dispatchM26UpstreamEvent,
   M26_UPSTREAM_SUBSCRIPTIONS,
-  registerM26Consumers,
 } from "./consumers/index";
 
 // §4.8 — the six BullMQ cron queues + the worker/schedule construction (the M25 cron-runner shape; the M2

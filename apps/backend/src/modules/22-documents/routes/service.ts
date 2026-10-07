@@ -222,6 +222,21 @@ export interface DocumentWriteActor {
 }
 
 /** The §4.1 route service the handlers compose over. Every method is org-scoped (RLS in prod). */
+/** GAP-140 — a reviewer's page-range corrections to the classifier output (`ConfirmClassificationRequest`). */
+export interface ConfirmClassificationArgs {
+  readonly pageRanges?: readonly {
+    readonly fromPage: number;
+    readonly toPage: number;
+    readonly docType: string;
+  }[];
+}
+
+/** GAP-140 — the overlay body a publish persists (`PublishOverlayRequest`); it was parsed and dropped. */
+export interface PublishOverlayContent {
+  readonly branding: Record<string, unknown>;
+  readonly stateAddendum?: { readonly stateCode: string; readonly addendumText: string };
+}
+
 export interface DocumentRouteService {
   uploadDocument(
     organizationId: OrgId,
@@ -333,6 +348,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     batchId: string,
+    args?: ConfirmClassificationArgs,
   ): Promise<{ batchId: string; status: IntakeBatchStatus }>;
   listJobs(
     organizationId: OrgId,
@@ -426,6 +442,7 @@ export interface DocumentRouteService {
     actor: DocumentWriteActor,
     templateKey: string,
     ifVersion: number,
+    content: PublishOverlayContent,
   ): Promise<{ overlayId: string; version: number }>;
   getFormFill(organizationId: OrgId, fillId: string): Promise<{ id: string; status: string }>;
   retryRender(
@@ -968,7 +985,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       return { overlays: [] };
     },
-    async publishOverlay(organizationId, _actor, templateKey, ifVersion) {
+    async publishOverlay(organizationId, _actor, templateKey, ifVersion, _content) {
       void organizationId;
       // §2.5 optimistic concurrency — the caller's If-Match version must match the current.
       if (ifVersion !== overlayVersion) {

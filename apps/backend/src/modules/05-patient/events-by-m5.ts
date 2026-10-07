@@ -66,7 +66,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // seam PULL (`coordsForAddress`), never this push event.
     // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
     // `m12.patient-sync-address-changed` (D4).
-    declaredConsumers: ["m24", "m12"],
+    // GAP-118 — m5 ADDED: the re-geocode is now a real consumer (`outbox-consumers/m5-geocode-address.ts`).
+    declaredConsumers: ["m24", "m12", "m5"],
     isOutboxOnly: true,
   },
   {
@@ -155,7 +156,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // `rb_day` rows after the date of death ("final R&B day finalization").
     // GAP-104 — m36 MOVED from seamConsumers to declaredConsumers: `m36.channel-membership-sync` archives the
     // decedent's care_team channel (M36 spec §2.3 "auto-archived on discharge").
-    declaredConsumers: ["m23", "m24", "m26", "m29", "m35", "m36", "m39"],
+    // GAP-135 — m20 ADDED: M20's own §4.4 `m5-patient-deceased.consumer` closes the decedent's open safety
+    // obligations (`20-field-safety/consumers/m5-patient-deceased.ts`, bound in `consumers/bindings.ts`).
+    declaredConsumers: ["m20", "m23", "m24", "m26", "m29", "m35", "m36", "m39"],
     isOutboxOnly: false,
   },
   {
@@ -224,6 +227,33 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
       decision: Type.String(),
     }),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m5.patient.amendment_sla_due_soon",
+    moduleOwner: "m5",
+    description:
+      "A pending §164.526 amendment request is within 10 days of its 60-day deadline (daily SLA scan, once per request).",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      amendmentId: Type.String(),
+      slaDueAt: Type.String({ minLength: 1 }),
+    }),
+    // M36 pages the privacy / compliance audience (`36-messaging/outbox-consumers/amendment-sla-alerts.ts`).
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m5.patient.amendment_sla_overdue",
+    moduleOwner: "m5",
+    description:
+      "A pending §164.526 amendment request passed its 60-day deadline undecided (daily SLA scan, once per request).",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      amendmentId: Type.String(),
+      slaDueAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

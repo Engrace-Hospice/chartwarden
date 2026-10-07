@@ -44,6 +44,7 @@ import {
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import { AdmissionHoldAction } from "./admission-hold-action";
 import {
   AdmissionRecommendationDrawer,
   AdmissionRecommendationSection,
@@ -1312,6 +1313,14 @@ export function AdmissionDetail(): JSX.Element {
                   Activate
                 </button>
               ) : null}
+              {hasPermission("admission.hold") ? (
+                <AdmissionHoldAction
+                  admissionId={admission.id}
+                  state={admission.state}
+                  version={admission.version}
+                  onChanged={() => void load()}
+                />
+              ) : null}
               {canEndService ? (
                 <Link to={`/admissions/${admission.id}/discharge`} className="wx-btn-secondary">
                   Discharge / transfer…
@@ -1321,6 +1330,15 @@ export function AdmissionDetail(): JSX.Element {
               hasPermission("admission.create") ? (
                 <Link to={`/admissions/${admission.id}/readmit`} className="wx-btn-secondary">
                   Readmit patient
+                </Link>
+              ) : null}
+              {(admission.state === "active" || admission.state === "on_hold") &&
+              hasPermission("loc.change") ? (
+                <Link
+                  to={`/admissions/${admission.id}/level-of-care/new`}
+                  className="wx-btn-secondary"
+                >
+                  Change level of care
                 </Link>
               ) : null}
               {(admission.state === "active" || admission.state === "on_hold") &&

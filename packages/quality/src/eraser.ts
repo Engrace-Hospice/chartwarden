@@ -49,6 +49,11 @@ export interface QualityEraseStore {
   deleteRecomputeQueue(organizationId: string): Promise<number>;
   /** quality_measure_value — the reproducible computed-measure aggregate ledger (operational). */
   deleteMeasureValues(organizationId: string): Promise<number>;
+  /**
+   * cahps_export_job — the rendered vendor export artifacts (sealed caregiver PHI; GAP-087, migration 0421).
+   * OPTIONAL so a store predating the table keeps working; when present it is deleted before the samples.
+   */
+  deleteCahpsExportJobs?(organizationId: string): Promise<number>;
   /** cahps_decedent_sample — the CAHPS sampling working rows (child of binding; deleted before it). */
   deleteCahpsDecedentSamples(organizationId: string): Promise<number>;
   /** cahps_vendor_binding — the per-org CAHPS vendor adapter config. */
@@ -110,6 +115,9 @@ export async function eraseTenantQuality(
   const tableCounts: QualityEraseTableCounts = {
     measure_recompute_queue: await store.deleteRecomputeQueue(organizationId),
     quality_measure_value: await store.deleteMeasureValues(organizationId),
+    ...(store.deleteCahpsExportJobs
+      ? { cahps_export_job: await store.deleteCahpsExportJobs(organizationId) }
+      : {}),
     cahps_decedent_sample: await store.deleteCahpsDecedentSamples(organizationId),
     cahps_vendor_binding: await store.deleteCahpsVendorBindings(organizationId),
   };

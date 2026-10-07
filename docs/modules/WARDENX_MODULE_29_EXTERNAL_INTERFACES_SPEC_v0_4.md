@@ -610,37 +610,29 @@ packages/nppes-client/
 
 apps/backend/src/modules/29-external-interfaces/
 ├── routes.ts
-├── routes/
-│   ├── feeds/
-│   │   ├── create.ts                         # POST /api/v1/external-feeds
-│   │   ├── list.ts                           # GET  /api/v1/external-feeds
-│   │   ├── read.ts                           # GET  /api/v1/external-feeds/:id
-│   │   ├── approve.ts                        # POST /api/v1/external-feeds/:id/approve
-│   │   ├── suspend.ts                        # POST /api/v1/external-feeds/:id/suspend
-│   │   ├── activate.ts                       # POST /api/v1/external-feeds/:id/activate
-│   │   ├── revoke.ts                         # POST /api/v1/external-feeds/:id/revoke
-│   │   └── credential-rotate.ts              # POST /api/v1/external-feeds/:id/credentials/rotate
-│   ├── inbound-proposals/
-│   │   ├── list.ts                           # GET  /api/v1/hl7/inbound-proposals
-│   │   ├── read.ts                           # GET  /api/v1/hl7/inbound-proposals/:id
-│   │   ├── accept.ts                         # POST /api/v1/hl7/inbound-proposals/:id/accept
-│   │   ├── reject.ts                         # POST /api/v1/hl7/inbound-proposals/:id/reject
-│   │   └── match-candidates.ts               # GET  /api/v1/hl7/inbound-proposals/:id/match-candidates
-│   ├── lab-observations/
-│   │   ├── list.ts                           # GET  /api/v1/lab-observations?patientId=...
-│   │   ├── read.ts                           # GET  /api/v1/lab-observations/:id
-│   │   └── unmatched.ts                      # GET  /api/v1/lab-observations/unmatched
-│   ├── messages/
-│   │   ├── inbound-list.ts                   # GET  /api/v1/hl7/messages/inbound (admin)
-│   │   ├── outbound-list.ts                  # GET  /api/v1/hl7/messages/outbound (admin)
-│   │   └── replay.ts                         # POST /api/v1/hl7/messages/:id/replay (platform-admin)
-│   ├── nppes/
-│   │   ├── lookup.ts                         # GET  /api/v1/nppes/:npi
-│   │   ├── search.ts                         # GET  /api/v1/nppes (parameterized search)
-│   │   ├── sync-trigger.ts                   # POST /api/v1/nppes/sync (platform-admin)
-│   │   └── sync-history.ts                   # GET  /api/v1/nppes/sync-runs (platform-admin)
-│   └── health/
-│       └── feeds.ts                          # GET  /api/v1/external-feeds/:id/health
+├── routes/                                   # AS-BUILT (GAP-184): one file per resource under the §4.1/§4.2 prefixes
+│   │                                         #   operator surface  = /api/admin/external-interfaces
+│   │                                         #   clinician surface = /api/clinical/labs
+│   ├── feed.routes.ts                        # GET/POST /feeds · GET/PATCH /feeds/:feedId · POST /feeds/:feedId/{activate,suspend,revoke}
+│   │                                         #   · GET/POST /feeds/:feedId/credentials (POST = mint/rotate) · GET /feeds/:feedId/health
+│   ├── proposal.routes.ts                    # GET /inbound-proposals · GET /inbound-proposals/:proposalId
+│   │                                         #   · POST /inbound-proposals/:proposalId/{accept,reject,defer}
+│   ├── labs.routes.ts                        # GET /observations · GET /observations/{unmatched,:observationId}
+│   │                                         #   · POST /observations/:observationId/{attach-patient,discard,acknowledge-abnormal}
+│   ├── message.routes.ts                     # GET /messages/{inbound,outbound}[/:messageId]
+│   │                                         #   · POST /messages/inbound/:messageId/{decrypt,replay} · POST /messages/outbound/:messageId/retry
+│   ├── nppes.routes.ts                       # GET /nppes/providers/:npi · GET/POST /nppes/sync-runs (platform-admin)
+│   ├── ops.routes.ts                         # GET /health/aggregate · GET /metrics/listener-status
+│   ├── actor.ts / guards.ts / mount.ts       # request actor, permission + ABAC guard bindings, route mount
+│   ├── store.ts / store-drizzle.ts           # the route-facing store port and its Drizzle implementation
+│   ├── lab-list-scope.ts                     # caseload narrowing for the lab list
+│   ├── feed-input.ts / m29-typebox.ts        # wire schemas
+│   │
+│   │   DEFERRED rows of the original layout (no route registered; not defects, roadmap):
+│   │     · feeds/approve        — activation itself carries the D18 distinct co-approver, there is no separate approve verb
+│   │     · match-candidates     — the L4 candidate list is not exposed; the proposal detail carries the diff only
+│   │     · nppes/search         — parameterized NPPES search is unbuilt; lookup is by NPI only
+│   │     · health/feeds         — folded into `GET /feeds/:feedId/health` (feed.routes.ts)
 ├── services/
 │   ├── feed-onboarding.ts                    # dual-approval workflow (D18)
 │   ├── feed-revocation.ts                    # listener teardown on revoke
@@ -2831,7 +2823,7 @@ describe('M29 RLS isolation', () => {
     await seed.feed({ organizationId: 'org_a', id: 'feed_a' });
     await seed.feed({ organizationId: 'org_b', id: 'feed_b' });
 
-    await withTenantContext({ organizationId: 'org_a' }, async (db) => {
+    await withOrgContext({ organizationId: 'org_a' }, async (db) => {
       const rows = await db.query.externalFeed.findMany();
       expect(rows.map(r => r.id)).toEqual(['feed_a']);
     });
@@ -2839,7 +2831,7 @@ describe('M29 RLS isolation', () => {
 
   it('tenant A cannot UPDATE tenant B credential even with explicit id', async () => {
     await seed.feedCredential({ organizationId: 'org_b', id: 'cred_b' });
-    await withTenantContext({ organizationId: 'org_a' }, async (db) => {
+    await withOrgContext({ organizationId: 'org_a' }, async (db) => {
       const result = await db.update(externalFeedCredential)
         .set({ revokedAt: new Date() })
         .where(eq(externalFeedCredential.id, 'cred_b'));
@@ -2850,7 +2842,7 @@ describe('M29 RLS isolation', () => {
   it('platform-role context can read NPPES providers; tenant cannot write', async () => {
     await seed.nppesProvider({ npi: '1234567890' });
 
-    await withTenantContext({ organizationId: 'org_a' }, async (db) => {
+    await withOrgContext({ organizationId: 'org_a' }, async (db) => {
       const rows = await db.query.nppesProvider.findMany();
       expect(rows.length).toBe(1); // platform-shared READ via PLATFORM_RO scope
 

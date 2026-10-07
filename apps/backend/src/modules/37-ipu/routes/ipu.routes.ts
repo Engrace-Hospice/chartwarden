@@ -14,7 +14,7 @@
 // `IPU_RN_COVERAGE_UNAVAILABLE` (412) — `arranged` (remote-IPU) admissions bypass per §2.3, matching the
 // pure `packages/inpatient` machine's own exemption. `assign-bed` never needed the check (the state machine
 // gates coverage one step earlier, at request-bed).
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import {
@@ -238,8 +238,7 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     async (request, reply) => {
       const { id } = parse(IdParamsSchema, request.params);
       const view = await service.getAdmission(actorOf(request), id);
-      if (!view)
-        return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_admission not found" });
+      if (!view) throw new NotFoundError("ipu_admission");
       return view;
     },
   );
@@ -725,8 +724,7 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     async (request, reply) => {
       const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
       const view = await service.getBodyRelease(actorOf(request), admissionId);
-      if (!view)
-        return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_body_release not found" });
+      if (!view) throw new NotFoundError("ipu_body_release");
       return view;
     },
   );

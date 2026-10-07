@@ -10,6 +10,7 @@
 // the bind materializes the `lab_observation` parent that ingest deferred, under the observation id the
 // link row reserved; the discard soft-tombstones the link with a ≥10-char reason (§5.2.4). The guard +
 // step-up + actor chain each already walked is unchanged.
+import { ConflictError, NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { getSeam } from "../../../bootstrap/index";
@@ -87,7 +88,7 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       const { observationId } = request.params as { observationId: string };
       const observation = await store.getObservation(actor.organizationId, observationId);
       if (!observation) {
-        return reply.code(404).send({ code: "NOT_FOUND", message: "observation not found" });
+        throw new NotFoundError("observation");
       }
       return { observation };
     },
@@ -156,20 +157,29 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       const { observationId } = request.params as { observationId: string };
       const observation = await store.getObservation(actor.organizationId, observationId);
       if (!observation) {
-        return reply.code(404).send({ code: "NOT_FOUND", message: "observation not found" });
+        throw new NotFoundError("observation");
       }
       if (
         observation.abnormalSummary === "all_normal" ||
         observation.abnormalSummary === "no_flags"
       ) {
-        return reply.code(409).send({
-          code: "CONFLICT",
-          message: "observation carries no abnormal flag to acknowledge",
-        });
+        throw new ConflictError("observation carries no abnormal flag to acknowledge");
       }
-      // The M36 badge clear is M36's concern (M29 owns no out-of-band delivery); the acknowledgment itself
-      // is a read-audited clinical action against the observation.
-      return { acknowledged: true, observationId, acknowledgedBy: actor.membershipId };
+      // GAP-152 — persisted on the observation (stamped once) and published for M36's badge clear.
+      const ack = await store.acknowledgeAbnormalObservation(
+        actor.organizationId,
+        actor.membershipId,
+        observationId,
+      );
+      if (!ack) {
+        throw new NotFoundError("observation");
+      }
+      return {
+        acknowledged: true,
+        observationId,
+        acknowledgedBy: ack.acknowledgedByMembershipId,
+        acknowledgedAt: ack.acknowledgedAt,
+      };
     },
   );
 }

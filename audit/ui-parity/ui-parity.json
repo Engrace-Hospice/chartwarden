@@ -170,6 +170,14 @@
     },
     {
       "app": "web",
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.privacy-requests",
+      "path": "/compliance/privacy-requests",
+      "permission": "audit.disclosure_report"
+    },
+    {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "patient.census",
@@ -335,6 +343,14 @@
       "id": "admission.discharge-details",
       "path": "/admissions/:id/discharge-details",
       "permission": "admission.read"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.level-of-care-change",
+      "path": "/admissions/:id/level-of-care/new",
+      "permission": "loc.change"
     },
     {
       "app": "web",
@@ -2174,7 +2190,7 @@
       "moduleId": 38,
       "id": "terminology.admin",
       "path": "/terminology",
-      "permission": "(none)"
+      "permission": "terminology.read"
     },
     {
       "app": "web",
@@ -2222,7 +2238,7 @@
       "moduleId": 40,
       "id": "mdm.console",
       "path": "/mdm",
-      "permission": "(none)"
+      "permission": "mdm.physician.read"
     },
     {
       "app": "admin",
@@ -2502,6 +2518,14 @@
       "moduleId": 31,
       "id": "portal.sign-in",
       "path": "/",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.accept-invitation",
+      "path": "/accept-invitation",
       "permission": "(none)"
     },
     {

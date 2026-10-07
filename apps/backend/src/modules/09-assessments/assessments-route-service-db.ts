@@ -222,7 +222,7 @@ const toView = (
 });
 
 /**
- * The production, RLS-backed AssessmentRouteService. Reads are real; writes fail-closed 501.
+ * The production, RLS-backed AssessmentRouteService. Reads and writes are real (Drizzle + RLS).
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbAssessmentRouteService(
@@ -1008,7 +1008,7 @@ export function createDbAssessmentRouteService(
     },
 
     // ── Acknowledge a significant-change event (§2.2.2) ───────────────────────────────────────────────
-    async acknowledgeChange(organizationId, eventId) {
+    async acknowledgeChange(organizationId, eventId, ack) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [ev] = await t
@@ -1018,7 +1018,22 @@ export function createDbAssessmentRouteService(
           .limit(1);
         if (!ev) throw new NotFoundError("significant_change_event");
         const status = transitionSignificantChange(ev.status, { type: "acknowledge" });
-        await t.update(SCE).set({ status, acknowledgedAt: new Date() }).where(eq(SCE.id, eventId));
+        const ackAt = new Date();
+        await t.update(SCE).set({ status, acknowledgedAt: ackAt }).where(eq(SCE.id, eventId));
+        // GAP-177 — the catalogued event (M36 closes the alert; M33 reconciles) had no emit site.
+        await emit(
+          tx,
+          organizationId,
+          "m9.assessment.significant_change_acknowledged",
+          "significant_change_event",
+          eventId,
+          {
+            eventId,
+            ackBy: ack?.ackBy || "unknown",
+            ackAt: ackAt.toISOString(),
+            ...(ack?.note ? { note: ack.note } : {}),
+          },
+        );
         return { status };
       });
     },
@@ -1094,14 +1109,31 @@ export function createDbAssessmentRouteService(
     async updatePolicy(organizationId, scaleType, enabled) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        const [prior] = await t
+          .select({ enabled: POL.enabled })
+          .from(POL)
+          .where(and(eq(POL.organizationId, organizationId), eq(POL.scaleType, scaleType)))
+          .limit(1);
         // One policy row per (org, scale) — upsert on the `scale_policy_per_org_scale_uq` unique.
-        await t
-          .insert(POL)
-          .values({ organizationId, scaleType, enabled })
-          .onConflictDoUpdate({
-            target: [POL.organizationId, POL.scaleType],
-            set: { enabled, updatedAt: new Date() },
+        const policyRow = firstOrThrow(
+          await t
+            .insert(POL)
+            .values({ organizationId, scaleType, enabled })
+            .onConflictDoUpdate({
+              target: [POL.organizationId, POL.scaleType],
+              set: { enabled, updatedAt: new Date() },
+            })
+            .returning({ id: POL.id }),
+          "scale_policy upsert returned no row",
+        );
+        // GAP-177 — `m9.scale.policy_changed` (M33 reconciles) had no emit site. A no-op PATCH (same value,
+        // existing row) changes nothing and emits nothing.
+        if (prior === undefined || prior.enabled !== enabled) {
+          await emit(tx, organizationId, "m9.scale.policy_changed", "scale_policy", policyRow.id, {
+            scaleType,
+            changedFields: ["enabled"],
           });
+        }
         return { scaleType, enabled };
       });
     },

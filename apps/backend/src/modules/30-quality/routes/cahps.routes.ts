@@ -14,9 +14,9 @@
 // R-16 — carry `Idempotency-Key`; the GET reads are exempt. Org/actor binding is ALWAYS server-side
 // (request.context, never the body). Mirrors the M33 routes/exports.routes.ts shape.
 import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
+import { type M30ReadActor, type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
   BindCahpsVendorBodySchema,
@@ -32,9 +32,17 @@ import {
 import type { M30ReadRouteService } from "./read-service";
 import type { M30WriteRouteService } from "./write-service";
 
+/** GAP-087 — the decrypted artifact of a completed export, or null while it is not completed / unknown. */
+export type CahpsExportFileReader = (
+  actor: M30ReadActor,
+  exportId: string,
+) => Promise<{ filename: string; mimeType: string; bytes: Buffer } | null>;
+
 export interface CahpsRouteDeps {
   readonly readService: M30ReadRouteService;
   readonly writeService: M30WriteRouteService;
+  /** The sealed-file reader behind R-15's `downloadUrl`; unbound ⇒ the file route refuses 503. */
+  readonly exportFile?: CahpsExportFileReader;
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -58,7 +66,7 @@ const PATIENT_SCOPE = requirePatientScope();
 
 /** Register the §4.1 CAHPS routes (R-10..R-17). */
 export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps): void {
-  const { readService, writeService } = deps;
+  const { readService, writeService, exportFile } = deps;
 
   // R-10 — the org's active vendor binding (immutable-history current row; null when none). §4.1.
   app.get(
@@ -146,6 +154,35 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
       const actor = actorOf(request);
       const { exportId } = parse(ExportIdParamsSchema, request.params);
       return readService.getCahpsExport(actor, exportId);
+    },
+  );
+
+  // R-15b — the completed export's file (the URL R-15 returns). The artifact is stored sealed under the tenant DEK
+  // and decrypted only here, for an authorised admin (it carries caregiver names / phones / emails: PHI).
+  app.get(
+    "/api/v1/quality/cahps/export/:exportId/file",
+    {
+      preHandler: [CAHPS_ADMIN, PATIENT_SCOPE],
+      config: { auditRead: { resourceKind: "cahps_export_file", resourceIdParam: "exportId" } },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const { exportId } = parse(ExportIdParamsSchema, request.params);
+      if (!exportFile) {
+        throw new WardenXError(
+          "CAHPS_EXPORT_FILE_UNAVAILABLE",
+          "CAHPS export downloads are not available: no tenant key cipher is bound",
+          503,
+        );
+      }
+      const file = await exportFile(actor, exportId);
+      if (!file) throw new NotFoundError("cahps export file");
+      const safeName = file.filename.replace(/[^A-Za-z0-9._-]/g, "_");
+      return reply
+        .header("content-type", file.mimeType)
+        .header("content-disposition", `attachment; filename="${safeName}"`)
+        .header("cache-control", "no-store")
+        .send(file.bytes);
     },
   );
 

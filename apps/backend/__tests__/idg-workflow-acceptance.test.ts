@@ -388,8 +388,8 @@ describe("M14-T08 §7 workflow acceptance", () => {
       linkedArtifactKind: "care_plan_version",
     });
     expect(item.status).toBe("open");
-    await svc.updateActionItem(ORG, COORD, item.id, "in_progress");
-    const done = await svc.updateActionItem(ORG, COORD, item.id, "completed");
+    await svc.updateActionItem(ORG, COORD, item.id, "in_progress", true);
+    const done = await svc.updateActionItem(ORG, COORD, item.id, "completed", true);
     expect(done.status).toBe("completed");
     expect(eventNames(svc.drainEvents())).toContain("m14.action_item.status_changed");
   });

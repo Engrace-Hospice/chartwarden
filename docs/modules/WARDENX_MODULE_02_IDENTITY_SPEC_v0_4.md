@@ -540,14 +540,14 @@ export const tenantStepUpPolicyOverride = pgTable('tenant_step_up_policy_overrid
 
 ### 3.8 RLS Policies
 
-Authentication tables are **user-owned, cross-organization** by design (a user's passkey works at every org they belong to). They are therefore **not** under `organization_id` RLS; they are protected by user-ownership predicates and never exposed cross-user. The org-scoped tables are `organization_invitation` and `tenant_step_up_policy_override`.
+Authentication tables are **user-owned, cross-organization** by design (a user's passkey works at every org they belong to). They are therefore **not** under `organization_id` RLS; they carry **no RLS policy** (ADR-0010 D2 makes `app.org_id` the only session variable a policy may key on; migration `0006` and M1's `0001` treat user-owned, cross-org auth tables this way) and are instead scoped to the authenticated user in application-layer queries, never exposed cross-user. The org-scoped tables are `organization_invitation` and `tenant_step_up_policy_override`.
 
 | Table | RLS basis | Policy |
 |---|---|---|
-| `two_factor`, `passkey` | user-ownership | `user_id = current_setting('app.user_id')::uuid`; no org predicate (auth, not authz) |
+| `two_factor`, `passkey` | user-ownership (application layer) | **No RLS policy** (ADR-0010 D2: `app.org_id` is the only RLS session variable; see migration 0006). Every query is scoped to the authenticated session's `user_id` in code; no org predicate (auth, not authz) |
 | `organization_invitation` | org-scoped | standard `organization_id = current_setting('app.org_id')::uuid` via Module 1 RLS generator |
 | `tenant_step_up_policy_override` | org-scoped | `organization_id = current_setting('app.org_id')::uuid`; only `compliance_officer`/`org_admin` may write |
-| `session`, `account` | user-ownership + system | session lookups run in a system context during auth (pre-org-binding); post-auth reads scoped to `user_id` |
+| `session`, `account` | user-ownership (application layer) + system | session lookups run in a system context during auth (pre-org-binding); post-auth reads scoped to `user_id` |
 | `membership` (M1) | hybrid | a user may read their *own* memberships across orgs (to choose org at login); org admins read memberships within `app.org_id` only |
 
 > The "read own memberships across orgs at login" path is the one legitimate cross-org read. It runs in a **purpose-scoped system query** (`listMembershipsForUser`) that returns only `(organizationId, organizationName, membershipStatus)` — never PHI — so it cannot be used to exfiltrate tenant data. Documented as an explicit exception to "cross-tenant queries forbidden" (architecture §8(8)).
@@ -733,16 +733,18 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | DELETE | `/api/auth/passkey/:id` | session | — | yes | remove own passkey |
 | GET | `/api/v1/auth/memberships` | session(pre-org) | self | yes | list own memberships to choose org at login |
 | POST | `/api/v1/auth/select-organization` | session(pre-org) | self | n/a | binds `active_organization_id`; **only at login** |
-| GET | `/api/v1/auth/sessions` | session | self | yes | list own active sessions |
-| DELETE | `/api/v1/auth/sessions/:id` | session | self | yes | revoke one of own sessions |
-| POST | `/api/v1/auth/screen-unlock` | session | self | n/a | re-auth to clear `screen_locked_at` |
-| GET | `/api/v1/me/session` | session | self | yes | current session metadata incl. `lastStepUpAt`, `lastStepUpFactor`, `stepUpStatus` |
+| GET | `/api/v1/auth/sessions` | session | self | yes | list own active sessions **DEFERRED (unbuilt):** own-session list is not exposed; sessions are managed by Better Auth. |
+| DELETE | `/api/v1/auth/sessions/:id` | session | self | yes | revoke one of own sessions **DEFERRED (unbuilt):** own-session revoke is not exposed. |
+| POST | `/api/v1/auth/screen-unlock` | session | self | n/a | re-auth to clear `screen_locked_at` **DEFERRED (unbuilt):** no route; screen lock is client-side + step-up. |
+| GET | `/api/v1/me/session` | session | self | yes | current session metadata incl. `lastStepUpAt`, `lastStepUpFactor`, `stepUpStatus` **DEFERRED (unbuilt):** no route; step-up state is read server-side via the `SessionContextResolver` seam and surfaced by `GET /api/v1/auth/context`. |
 | POST | `/api/v1/sessions/step-up/initiate` | session | self | n/a | begin an MFA step-up challenge (WebAuthn/TOTP); SMS refused |
 | POST | `/api/v1/sessions/step-up` | session | self | n/a | verify step-up challenge; writes `last_step_up_at`/`last_step_up_factor` |
 | POST | `/api/v1/collaborators/invite` | staff | per role | yes | mint external-collaborator magic-link (per-patient) |
 | POST | `/api/v1/collaborators/consume` | none | — | yes | consume magic-link → scoped session |
 | ~~POST~~ | ~~`/api/v1/auditors/invite`~~ | — | — | — | **Served by Module 3, not M2** — moved to M3 with the `auditor_engagement` entity (D4 / §4.7). M2 only exposes the boot-validated `AuditorSessionMinter` that M3 calls. |
-| POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) |
+| POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) **DEFERRED (unbuilt):** no route; funeral-home magic links are not built. |
+
+> **As-built `/api/v1/*` routes not in the table (GAP-184):** `GET /api/v1/auth/context`; `POST /api/v1/sessions/step-up` + `/initiate` (and the portal twins under `/api/v1/portal/sessions/*`); `GET/POST /api/v1/devices/attestation` (+ `/challenge`, `/:id/revoke`); `GET /api/v1/invitations/:token`; `GET /api/v1/orgs/:id/invitations` + `POST …/:invId/resend`; `GET/POST /api/v1/orgs/:id/members/:mId/elevated-approvals` + `DELETE …/:kind`; `POST /api/v1/platform/organizations/:organizationId/status`. The `/api/auth/*` rows above are mounted by Better Auth, not registered as Fastify routes.
 | POST | `/api/v1/orgs/:id/invitations` | admin | `org_admin` | yes (by email) | invite user to org |
 | POST | `/api/v1/invitations/accept` | none | — | yes | consume invite token → membership |
 | DELETE | `/api/v1/orgs/:id/invitations/:invId` | admin | `org_admin` | yes | rescind pending invite |
@@ -755,6 +757,25 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | GET/POST/PATCH | `/api/v1/provider-entities[...]` | admin | `org_admin` | yes | CCN/NPI/MAC management |
 | GET/POST/PATCH | `/api/v1/locations[...]` | admin | `org_admin` | yes | Location management |
 | GET/POST | `/api/v1/orgs/:id/step-up-overrides[...]` | admin | `org_admin`/`compliance_officer` | yes | configure per-operation tenant step-up tightening |
+
+> **Implementation status (GAP-115).** Built: `GET /api/v1/me/session` (session metadata + `stepUpStatus`
+> measured against the platform floor); `GET/POST /api/v1/orgs/:id/step-up-overrides` + `DELETE .../:operationKey`
+> (`step_up_override.manage`; tighten-only validated in the route AND by `trg_tenant_step_up_tighten_only`; the
+> writes need a fresh step-up; audited + `m2.session.step_up_policy_override.configured`); `GET/POST /api/v1/orgs`,
+> `GET/PATCH /api/v1/orgs/:id` (own org for a tenant admin, any org for a platform operator; POST and the legal
+> name are platform-only); `GET/POST/PATCH /api/v1/provider-entities[/:id]` and `/api/v1/locations[/:id]`
+> (org-bound; the CMS identity — CCN, NPI, tax id, fiscal year end — is immutable through PATCH; a location can
+> only be activated under an active provider entity); `POST /api/v1/funeral/invite` (72h one-time link, caseload
+> ABAC, 409 unless the patient is deceased). Lifecycle activate/suspend/close of an org stays the platform route
+> (§11 D19) and tenant provisioning stays M34's.
+> **Blocked, exactly:** (1) `POST /provider-entities` answers `503 TAX_ID_CIPHER_UNBOUND` until the KMS-backed
+> envelope cipher for `provider_entity.tax_id_encrypted` is bound at the composition root (an EIN is never stored
+> in the clear; every other route works); (2) the collaborator/funeral magic-link store is still process-local
+> (no M2 token table) and `POST /collaborators/consume` does not yet mint a `session` row, so a funeral link —
+> like the collaborator link before it — is issued, audited and one-time but not yet redeemable end to end;
+> (3) the spec's HearthNote opt-in flag has no settings key and no reader in any module, so it is not built.
+> Session list/revoke and screen-unlock remain path drift (Better Auth's default endpoints plus a client-side
+> re-sign-in), not `/me/session[...]` routes.
 
 ### 4.2 Representative Per-Route Specs
 

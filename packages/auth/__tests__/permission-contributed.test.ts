@@ -61,6 +61,9 @@ describe("M3-T10 contributed permission keys (M1/M2 back-fill)", () => {
         "member.manage",
         "user.deactivate",
         "collaborator.invite",
+        // GAP-115
+        "step_up_override.manage",
+        "funeral.invite",
       ].sort(),
     );
   });

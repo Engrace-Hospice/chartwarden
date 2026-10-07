@@ -7,7 +7,11 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerDoseSpotAbacPredicates as _registerM12Abac } from "./abac-predicates";
-import { type DoseSpotWriteOutboxPort, createDbDoseSpotBackend } from "./dosespot-route-service-db";
+import {
+  type DoseSpotSafetyGateDeps,
+  type DoseSpotWriteOutboxPort,
+  createDbDoseSpotBackend,
+} from "./dosespot-route-service-db";
 import { registerDoseSpotRoutes as _registerM12Routes } from "./routes/dosespot-routes";
 
 /**
@@ -21,8 +25,9 @@ export function mountDoseSpotRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: DoseSpotWriteOutboxPort,
+  gates: DoseSpotSafetyGateDeps = {},
 ): void {
-  const backend = createDbDoseSpotBackend(db, outbox);
+  const backend = createDbDoseSpotBackend(db, outbox, gates);
   _registerM12Abac({ resolver: backend });
   _registerM12Routes(app, { service: backend });
 }
@@ -187,11 +192,21 @@ export {
   type PatientSyncSnapshotResolver,
   DosespotSyncQueueRepository,
   M12DosespotPatientIdUnbound,
+  type BreakerEdge,
+  type M12CronWorkerDeps,
+  M12_CRON_QUEUES,
+  M12_DEFERRED_QUEUES,
   M12_DOSESPOT_SYNC_QUEUE,
   M12_DOSESPOT_SYNC_SCHEDULE,
   M12_PLATFORM_JOB_ID,
+  M12_QUEUE_CATALOG,
+  createBreakerEdgeRecorder,
   createDrizzlePatientSyncSnapshotResolver,
   createUnboundDosespotPatientIdResolver,
+  describeM12AdapterPosture,
+  describeM12DeferredQueues,
+  registerM12CronWorkers,
+  scheduleM12Jobs,
   registerDoseSpotSyncQueueWorker,
   runDoseSpotSyncQueueDrain,
   scheduleDoseSpotSyncQueueDrain,
@@ -212,20 +227,8 @@ export {
   eraseMedicationOrderRecord,
   registerDoseSpotErasers,
 } from "./erasers/dosespot-eraser";
-// M12-T09 — the M22 medication-order-PDF (Wave F) + M28 FHIR `MedicationRequest` (Wave H) forward seams
-// (DENY-STUBS). No M1 seam-registry entry, no `dependsOn` edge — M12 only shapes the payloads the consumers
-// will pull when they lock; the deny-stubs fail closed until then.
-export {
-  type MedicationOrderPdfRenderer,
-  type MedicationOrderPdfRenderPayload,
-  type MedicationOrderPdfResult,
-  denyStubMedicationOrderPdfRenderer,
-} from "./seams/m22-medication-order-pdf";
-export {
-  type FhirMedicationRequestPublisher,
-  type FhirMedicationRequestPublishResult,
-  denyStubFhirMedicationRequestPublisher,
-} from "./seams/m28-fhir-medication-request";
+// M12-T09 — M22 renders medication-order PDFs off the outbox and M28 pulls MedicationRequest via the
+// `MedicationOrderProvider` read seam; the former PDF/FHIR deny-stubs were never consumed and were removed (GAP-192).
 export {
   M12_DOCUMENT_BACKREF_CONSUMER,
   buildM12DocumentBackrefConsumer,
@@ -263,3 +266,4 @@ export {
   ingestDoseSpotWebhook,
 } from "./webhooks/ingest";
 export { DOSESPOT_WEBHOOK_PATH, registerDoseSpotWebhookRoute } from "./webhooks/webhook-route";
+export { enqueueTransmissionIfBound } from "./transmission-enqueue";

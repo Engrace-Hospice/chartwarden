@@ -85,6 +85,8 @@ export interface M32RouteServices {
   readonly routing: AiRoutingOverrideStore;
   /** `null` ⇒ R18 refuses with 503 rather than writing cleartext into a `_cipher` column. */
   readonly cipher: AiReportCipherPort | null;
+  /** GAP-161 - the §4.8 `ai:hallucination-triage-followup` producer (absent => plans are returned, not executed). */
+  readonly followUpQueue?: import("../jobs/triage-followup-worker").TriageFollowUpEnqueuePort;
   /** The live §4.5 registry R29 reads through; `null` ⇒ R29 404s. */
   readonly promptRegistry: AIPromptRegistry | null;
   /** Injectable clock — the §10 tests pin the forecast window and the drift cut-off. */

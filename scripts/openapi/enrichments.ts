@@ -30,6 +30,12 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  HealthResponseSchema as M1HealthResponseSchema,
+  ReadyResponseSchema as M1ReadyResponseSchema,
+  VersionResponseSchema as M1VersionResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/health";
+import {
+  FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
@@ -69,6 +75,25 @@ import {
   UserDeactivateRequestSchema as M2UserDeactivateRequestSchema,
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
+import {
+  FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
+  FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
+  LocationCreateRequestSchema as M2LocationCreateRequestSchema,
+  LocationDetailSchema as M2LocationDetailSchema,
+  LocationPatchRequestSchema as M2LocationPatchRequestSchema,
+  MeSessionResponseSchema as M2MeSessionResponseSchema,
+  OrganizationCreateRequestSchema as M2OrganizationCreateRequestSchema,
+  OrganizationListResponseSchema as M2OrganizationListResponseSchema,
+  OrganizationPatchRequestSchema as M2OrganizationPatchRequestSchema,
+  OrganizationViewSchema as M2OrganizationViewSchema,
+  ProviderEntityCreateRequestSchema as M2ProviderEntityCreateRequestSchema,
+  ProviderEntityDetailSchema as M2ProviderEntityDetailSchema,
+  ProviderEntityPatchRequestSchema as M2ProviderEntityPatchRequestSchema,
+  StepUpOverrideListResponseSchema as M2StepUpOverrideListResponseSchema,
+  StepUpOverrideRemovedResponseSchema as M2StepUpOverrideRemovedResponseSchema,
+  StepUpOverrideRequestSchema as M2StepUpOverrideRequestSchema,
+  StepUpOverrideSchema as M2StepUpOverrideSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/org-admin-typebox";
 // M6 Admission — the §4.2 request bodies/queries the handlers `parse(...)` + the §4.2 response DTOs
 // (pinned to the service read views by compile-time `Conforms` aliases in admission-typebox.ts).
 import {
@@ -87,6 +112,7 @@ import {
   CtiVoidSchema,
   DischargeCosignSchema,
   DischargeCreateSchema,
+  DischargeDeclineSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
   ElectionPeriodPatchSchema,
@@ -332,6 +358,7 @@ import {
   MarkOrderedBody as M21MarkOrderedBody,
   ObserveParStockBody as M21ObserveParStockBody,
   ReconcileReturnBody as M21ReconcileReturnBody,
+  RecordVendorInvoiceBody as M21RecordVendorInvoiceBody,
   RetireSupplyItemBody as M21RetireSupplyItemBody,
   ReturnRequestBody as M21ReturnRequestBody,
   SupersedeTemplateBody as M21SupersedeTemplateBody,
@@ -377,7 +404,13 @@ import {
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
+  ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+import {
+  LoadWageIndexesBodySchema,
+  LoadWageIndexesResultSchema,
+  RegisterPlatformRuleBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/platform-admin-typebox";
 import {
   CreateRateTableBodySchema,
   RateTableEffectiveQuerySchema,
@@ -615,6 +648,11 @@ import {
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+import {
+  GriefResourceBodySchema as M40GriefResourceBody,
+  GriefResourceListQuery as M40GriefResourceListQuery,
+  GriefResourcePatchSchema as M40GriefResourcePatch,
+} from "../../apps/backend/src/modules/40-mdm/grief-resources";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
@@ -684,6 +722,17 @@ import {
   PatientAssignmentListResponseSchema as M5EPatientAssignmentListResponseSchema,
   PatientAssignmentViewSchema as M5EPatientAssignmentViewSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/assignment-typebox";
+import {
+  CaregiverBodySchema as M5EWCaregiverBodySchema,
+  DeceasedBodySchema as M5EWDeceasedBodySchema,
+  IdentifierBodySchema as M5EWIdentifierBodySchema,
+  MatchMergeBodySchema as M5EWMatchMergeBodySchema,
+  NotAMatchBodySchema as M5EWNotAMatchBodySchema,
+  PatchPatientBodySchema as M5EWPatchPatientBodySchema,
+  StatementBodySchema as M5EWStatementBodySchema,
+  StatusBodySchema as M5EWStatusBodySchema,
+  UnmergeBodySchema as M5EWUnmergeBodySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/lifecycle-typebox";
 // M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
 // M5 patient schemas are ALREADY imported un-aliased in scripts/openapi/enrichments.ts; the M5E prefix
 // avoids a redeclaration collision when this block is merged in via a later Object.assign.
@@ -734,6 +783,7 @@ import {
   DisciplinePlanSummaryResponseSchema as M15DisciplinePlanSummaryResponseSchema,
   DisciplinePlanVersionDetailResponseSchema as M15DisciplinePlanVersionDetailResponseSchema,
   DisciplinePlanVersionListPageResponseSchema as M15DisciplinePlanVersionListPageResponseSchema,
+  MswRiskFactorPageResponseSchema as M15MswRiskFactorPageResponseSchema,
   RelevantElementsPageResponseSchema as M15RelevantElementsPageResponseSchema,
   SupervisoryCadencePageResponseSchema as M15SupervisoryCadencePageResponseSchema,
   VolunteerAssignmentViewResponseSchema as M15VolunteerAssignmentViewResponseSchema,
@@ -741,6 +791,7 @@ import {
   VolunteerComplianceGateViewResponseSchema as M15VolunteerComplianceGateViewResponseSchema,
   VolunteerEffectiveStatusViewResponseSchema as M15VolunteerEffectiveStatusViewResponseSchema,
   VolunteerHourEntryViewResponseSchema as M15VolunteerHourEntryViewResponseSchema,
+  VolunteerHourRatioViewResponseSchema as M15VolunteerHourRatioViewResponseSchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
 
 // M16 Bereavement — enrichment imports. Request schemas (already imported in enrichments.ts under these
@@ -851,6 +902,7 @@ import {
   AppealDecideRequestSchema as M25AppealDecideRequestSchema,
   // detail responses
   AppealDetailSchema as M25AppealDetailSchema,
+  AppealSubmitLateGoodCauseRequestSchema as M25AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema as M25AppealSubmitRequestSchema,
   // list/page responses
   AppealSummaryPageSchema as M25AppealSummaryPageSchema,
@@ -1130,6 +1182,10 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+import {
+  AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
+  AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1719,6 +1775,8 @@ import {
   PortalDocumentUploadInitRequest as M31PortalDocumentUploadInitRequest,
   PortalDocumentUploadInitResponse as M31PortalDocumentUploadInitResponse,
   PortalEngagementResponse as M31PortalEngagementResponse,
+  PortalInvitationAcceptRequest as M31PortalInvitationAcceptRequest,
+  PortalInvitationAcceptResponse as M31PortalInvitationAcceptResponse,
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
@@ -1731,6 +1789,8 @@ import {
   TelehealthVisitDetailResponse as M31TelehealthVisitDetailResponse,
   TelehealthVisitListResponse as M31TelehealthVisitListResponse,
   UploadCompleteResponse as M31UploadCompleteResponse,
+  UploadContentBody as M31UploadContentBody,
+  UploadStageResponse as M31UploadStageResponse,
   WebhookAckResponse as M31WebhookAckResponse,
   WithinQuery as M31WithinQuery,
 } from "../../apps/backend/src/modules/31-portal/routes/portal-typebox";
@@ -2510,6 +2570,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/cahps/vendor": {
     summary: "The org's active CAHPS vendor binding (null before the first binding)",
     response: CahpsVendorResponseSchema,
+  },
+  "GET /api/v1/quality/cahps/export/:exportId/file": {
+    summary: "Download the completed CAHPS export file (decrypted from its tenant-DEK envelope)",
+    response: Type.String({ format: "binary", description: "the vendor export file's raw bytes" }),
   },
   "GET /api/v1/quality/cahps/export/:exportId": {
     summary: "A CAHPS export job + its signed download URL once complete",
@@ -3390,8 +3454,21 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Mint a 60-min watermarked download URL (M22)",
     response: M31DocumentDownloadUrlResponse,
   },
+  "PUT /api/v1/portal/documents/uploads/:uploadId/content": {
+    summary:
+      "Upload the file bytes for an initiated upload (raw body; magic-byte checked; kept only as a tenant-DEK envelope)",
+    body: M31UploadContentBody,
+    response: M31UploadStageResponse,
+  },
+  "POST /api/v1/portal/invitations/accept": {
+    summary:
+      "Accept a portal invitation by its single-use token (public; activates the account and creates the grant)",
+    body: M31PortalInvitationAcceptRequest,
+    response: M31PortalInvitationAcceptResponse,
+  },
   "POST /api/v1/portal/documents/upload-init": {
-    summary: "Stage an M22 intake upload; returns a signed URL",
+    summary:
+      "Record an upload intent (validated size / MIME); returns the content route to PUT the bytes to",
     body: M31PortalDocumentUploadInitRequest,
     response: M31PortalDocumentUploadInitResponse,
   },
@@ -3925,6 +4002,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
+  },
+  "POST /api/v1/discharges/:id/decline-for-cause": {
+    summary:
+      "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
+    body: DischargeDeclineSchema,
   },
   "GET /api/v1/admissions/:id/discharge-order": {
     summary:
@@ -5058,6 +5140,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update a recurring IDG meeting policy",
     body: M14RecurringPolicyRequest,
     response: M14RecurringPolicyViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/meetings": {
     summary: "Schedule a single (ad-hoc) IDG meeting",
@@ -5106,10 +5189,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Coordinator amends an attendance row",
     body: M14UpdateAttendanceRequest,
     response: M14AttendanceViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/attendance/:id": {
     summary: "Remove an erroneous attendance row (pre-start only)",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/meetings/:id/packets": {
     summary: "List a meeting's per-patient packets",
@@ -5148,10 +5233,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an agenda item",
     body: M14UpdateAgendaItemRequest,
     response: M14AgendaItemViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/agenda/:id": {
     summary: "Remove an agenda item",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/meetings/:id/decisions": {
     summary: "Record a decision (quorate_decision ABAC)",
@@ -5162,6 +5249,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an open decision (open status only)",
     body: M14UpdateDecisionRequest,
     response: M14DecisionViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/decisions/:id/supersede": {
     summary: "Supersede a prior decision (§2.8)",
@@ -5177,10 +5265,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an action item (assignee self-service or coordinator)",
     body: M14UpdateActionItemRequest,
     response: M14ActionItemViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/action-items/:id": {
     summary: "Remove an action item (pre-adjourn only)",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/action-items": {
     summary: "List action items (assignee self-scoped)",
@@ -5948,6 +6038,81 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M2CollaboratorInviteRequestSchema,
     response: M2CollaboratorInviteResponseSchema,
   },
+  // GAP-115 (M2 §4.1) — the org-admin surface.
+  "GET /api/v1/me/session": {
+    summary:
+      "The caller's session metadata incl. last step-up and its freshness against the platform floor (D8)",
+    response: M2MeSessionResponseSchema,
+  },
+  "GET /api/v1/orgs": {
+    summary:
+      "Organizations: the caller's own org (org admin) or every org, searchable (platform operator)",
+    response: M2OrganizationListResponseSchema,
+  },
+  "POST /api/v1/orgs": {
+    summary: "Create an organization spine row (platform operator only)",
+    body: M2OrganizationCreateRequestSchema,
+    response: M2OrganizationViewSchema,
+  },
+  "GET /api/v1/orgs/:id": {
+    summary: "One organization (own org, or any for a platform operator)",
+    response: M2OrganizationViewSchema,
+  },
+  "PATCH /api/v1/orgs/:id": {
+    summary: "Edit an organization's display name (own org) / legal name (platform operator)",
+    body: M2OrganizationPatchRequestSchema,
+    response: M2OrganizationViewSchema,
+  },
+  "GET /api/v1/provider-entities/:id": {
+    summary: "One provider entity of the caller's org (the tax id is never returned)",
+    response: M2ProviderEntityDetailSchema,
+  },
+  "POST /api/v1/provider-entities": {
+    summary:
+      "Create a provider entity (CCN, NPI check digit, EIN enveloped by the cipher; 503 TAX_ID_CIPHER_UNBOUND until the KMS cipher is bound)",
+    body: M2ProviderEntityCreateRequestSchema,
+    response: M2ProviderEntityDetailSchema,
+  },
+  "PATCH /api/v1/provider-entities/:id": {
+    summary:
+      "Edit names / iQIES id / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here",
+    body: M2ProviderEntityPatchRequestSchema,
+    response: M2ProviderEntityDetailSchema,
+  },
+  "GET /api/v1/locations/:id": {
+    summary: "One service location of the caller's org",
+    response: M2LocationDetailSchema,
+  },
+  "POST /api/v1/locations": {
+    summary: "Create a service location under one of the caller's provider entities",
+    body: M2LocationCreateRequestSchema,
+    response: M2LocationDetailSchema,
+  },
+  "PATCH /api/v1/locations/:id": {
+    summary: "Edit a location's address / contact / timezone / lifecycle status",
+    body: M2LocationPatchRequestSchema,
+    response: M2LocationDetailSchema,
+  },
+  "GET /api/v1/orgs/:id/step-up-overrides": {
+    summary: "The tenant's per-operation step-up overrides (tighten-only)",
+    response: M2StepUpOverrideListResponseSchema,
+  },
+  "POST /api/v1/orgs/:id/step-up-overrides": {
+    summary:
+      "Set / replace one operation's step-up override — may only TIGHTEN the platform floor; needs a fresh step-up (W-M2-10)",
+    body: M2StepUpOverrideRequestSchema,
+    response: M2StepUpOverrideSchema,
+  },
+  "DELETE /api/v1/orgs/:id/step-up-overrides/:operationKey": {
+    summary: "Remove an override (the platform floor applies again); needs a fresh step-up",
+    response: M2StepUpOverrideRemovedResponseSchema,
+  },
+  "POST /api/v1/funeral/invite": {
+    summary:
+      "Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased)",
+    body: M2FuneralInviteRequestSchema,
+    response: M2FuneralInviteResponseSchema,
+  },
   "POST /api/v1/collaborators/consume": {
     summary: "Consume the link → scoped external-collaborator session (§7.6)",
     body: M2CollaboratorConsumeRequestSchema,
@@ -6204,6 +6369,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M5EEndAssignmentBodySchema,
     response: M5EPatientAssignmentViewSchema,
   },
+  "PATCH /api/v1/patients/:id": {
+    summary:
+      "Patch patient demographics — MRN/status/SSN are not patchable; emits m5.patient.updated (§4.3; patient.edit + caseload_or_scope)",
+    body: M5EWPatchPatientBodySchema,
+  },
+  "POST /api/v1/patients/:id/status": {
+    summary:
+      "Transition patient status along the §2.4.1 machine (active/on_hold/discharged) — 409 INVALID_STATUS_TRANSITION; emits m5.patient.status_changed (patient.transition_status)",
+    body: M5EWStatusBodySchema,
+  },
+  "POST /api/v1/patients/:id/deceased": {
+    summary:
+      "Record a death (§7.8 cascade) — step-up required; emits m5.patient.status_changed + m5.patient.deceased (patient.record_death)",
+    body: M5EWDeceasedBodySchema,
+  },
+  "POST /api/v1/patients/:id/identifiers": {
+    summary:
+      "Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers)",
+    body: M5EWIdentifierBodySchema,
+  },
+  "GET /api/v1/patients/:id/caregivers": {
+    summary: "Patient caregivers incl. legal-representative flags (§4.3; patient.read)",
+  },
+  "POST /api/v1/patients/:id/caregivers": {
+    summary:
+      "Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit)",
+    body: M5EWCaregiverBodySchema,
+  },
+  "GET /api/v1/patient-matches": {
+    summary: "Soft-duplicate review queue, open by default (§7.3; patient.match_review)",
+  },
+  "POST /api/v1/patient-matches/:id/merge": {
+    summary:
+      "Confirm a soft duplicate: fold the new chart into the existing one, in one transaction with the review close — step-up (patient.merge)",
+    body: M5EWMatchMergeBodySchema,
+  },
+  "POST /api/v1/patient-matches/:id/not-a-match": {
+    summary: "Close a soft-duplicate review as not-a-match (patient.match_review)",
+    body: M5EWNotAMatchBodySchema,
+  },
+  "POST /api/v1/patient-merges/:id/unmerge": {
+    summary:
+      "Reverse a merge within 30 days (409 UNMERGE_WINDOW_EXPIRED after); restores the source status; emits m5.patient.unmerged — step-up (patient.merge)",
+    body: M5EWUnmergeBodySchema,
+  },
+  "GET /api/v1/patients/:id/amendments": {
+    summary: "A patient's §164.526 amendment requests (§4.3; patient.read + caseload_or_scope)",
+  },
+  "GET /api/v1/amendments": {
+    summary:
+      "Staff amendment inbox — pending by default, oldest SLA first (§164.526; patient.amend_review)",
+  },
+  "POST /api/v1/amendments/:id/statement": {
+    summary:
+      "Attach a statement of disagreement to a denied amendment (§164.526(d); patient.amend_request_submit)",
+    body: M5EWStatementBodySchema,
+  },
   "GET /api/v1/patients/:id/care-team": {
     summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
     response: M5EPatientCareTeamResponseSchema,
@@ -6405,8 +6627,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
     query: M15HourRatioQuerySchema,
-    // summary-only: the service returns `unknown` — the ratio is a discriminated `available | unavailable`
-    // envelope whose unbound-M27-denominator branch (M15-F04) has no frozen view to mirror.
+    response: M15VolunteerHourRatioViewResponseSchema,
   },
   "POST /api/v1/volunteer-hour-entries": {
     summary:
@@ -6424,8 +6645,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
     query: M15RiskFactorQuerySchema,
-    // summary-only: the service returns `CursorPage<unknown>` — the MSW risk-factor row shape is not yet a
-    // frozen view (it materializes from M16's ingestion), so there is nothing to mirror without fabrication.
+    response: M15MswRiskFactorPageResponseSchema,
   },
   "GET /internal/discipline-plans/volunteer-effective-status": {
     summary:
@@ -7080,8 +7300,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-ordered": {
-    summary: "Vendor accepted (PO reference; If-Match)",
+    summary:
+      "Vendor accepted (PO reference; optional vendorQuotedTotalCents accrues the quote and emits invoice_accrued, GAP-063; If-Match)",
     body: M21MarkOrderedBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/vendor-invoice": {
+    summary:
+      "GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (signed variance; emits invoice_reconciled once; 409 when never accrued or already reconciled; If-Match)",
+    body: M21RecordVendorInvoiceBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-in-transit": {
@@ -7364,6 +7591,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/appeals/:id/submit": {
     summary: "Submit an appeal to the payer (within-deadline + step-up, §4.1)",
     body: M25AppealSubmitRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/submit-late-good-cause": {
+    summary:
+      "Submit an appeal past its deadline as a late good-cause filing (redetermination/reconsideration only, step-up, §4.1 / M25-F03)",
+    body: M25AppealSubmitLateGoodCauseRequestSchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/appeals/:id/decide": {
@@ -8402,6 +8635,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/alerts/:id/read": {
     summary: "Mark one alert read for the current actor (204)",
+  },
+  // Platform-ops cross-tenant delivery drill (§4.1, GAP-165) — metadata only, audited per read.
+  "GET /api/v1/admin/messaging/alert-deliveries": {
+    summary:
+      "Platform-ops: notification delivery failures across tenants (metadata only; platform_ops-only, audited per read, keyset-paginated)",
+    query: M36AlertDeliveriesQuerySchema,
+    response: M36AlertDeliveriesResponseSchema,
   },
 
   // vendor delivery webhooks (§4.9) — signature-authed, raw urlencoded vendor body, 204 → summary-only
@@ -9907,6 +10147,32 @@ const M23MacCredentialListResponse = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
   hasMore: Type.Boolean(),
 });
+const M23MacCredentialTestResponse = Type.Object({
+  providerEntityId: Type.String(),
+  macJurisdiction: Type.String(),
+  ok: Type.Boolean(),
+  method: Type.Literal("portal_health_probe"),
+  detail: Type.String(),
+  checkedAt: Type.String(),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+});
+const M23ValidationOverrideAuditPage = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      overrideId: Type.String(),
+      resultId: Type.String(),
+      overrideMembershipId: Type.String(),
+      overrideRoleApplied: Type.String(),
+      reason: Type.String(),
+      appliedAt: Type.String(),
+      claimId: Type.String(),
+      ruleKey: Type.String(),
+      m4AuditEventId: Type.String(),
+    }),
+  ),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
 
 const M23ArAgingDto = Type.Object({
@@ -9970,6 +10236,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
     query: BillingPatientQuerySchema,
     response: M23EligibilityLatestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
+    summary:
+      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+    response: M23MacCredentialTestResponse,
+  },
+  "GET /api/v1/billing/validation-overrides": {
+    summary:
+      "Org-wide validation-override audit view for a ProviderEntity, newest first, cursor-paginated (§4.1 #17)",
+    query: ValidationOverrideListQuerySchema,
+    response: M23ValidationOverrideAuditPage,
+  },
+  "POST /api/v1/admin/billing/platform-rules": {
+    summary:
+      "Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41)",
+    body: RegisterPlatformRuleBodySchema,
+  },
+  "POST /api/v1/admin/billing/wage-indexes/load": {
+    summary:
+      "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",
+    body: LoadWageIndexesBodySchema,
+    response: LoadWageIndexesResultSchema,
+  },
+  "POST /api/v1/webhooks/minio/access-log": {
+    summary:
+      "MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+    body: Type.Union([
+      Type.Record(Type.String(), Type.Unknown()),
+      Type.Array(Type.Record(Type.String(), Type.Unknown())),
+    ]),
+    response: Type.Object({
+      received: Type.Integer(),
+      recorded: Type.Integer(),
+      unattributed: Type.Integer(),
+      duplicates: Type.Integer(),
+    }),
   },
   "GET /api/v1/billing/mac-credentials": {
     summary:
@@ -11364,6 +11666,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // typed that body as `never` — the generated client could not express the call. The schemas live beside
 // the route's own runtime validator so the two cannot drift.
 Object.assign(ROUTE_ENRICHMENTS, {
+  // GAP-114 — the unauthenticated probes and the feature-flag read carried no published contract.
+  "GET /health": {
+    summary: "Liveness probe (unauthenticated)",
+    response: M1HealthResponseSchema,
+  },
+  "GET /ready": {
+    summary:
+      "Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down",
+    response: M1ReadyResponseSchema,
+  },
+  // Prometheus text exposition (not JSON), so no JSON response schema — the entry documents the route.
+  "GET /metrics": {
+    summary:
+      "Prometheus text-format metrics for internal scraping (unauthenticated, not a public route)",
+  },
+  "GET /version": {
+    summary: "Build identity: version, git SHA and build time (unauthenticated)",
+    response: M1VersionResponseSchema,
+  },
+  "GET /api/v1/system/feature-flags": {
+    summary: "This org's resolved feature flags",
+    response: M1FeatureFlagsResponseSchema,
+  },
   "GET /api/v1/system/status": {
     summary: "Read this org's system-status components",
     response: M1SystemStatusResponseSchema,
@@ -11372,5 +11697,140 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Upsert one system-status component (platform_ops only)",
     body: M1SystemStatusComponentBodySchema,
     response: M1SystemStatusResponseSchema,
+  },
+});
+
+// ── GAP-164 - the six M34 routes added after the first build ──────────────────────────────────────────────
+import { PlatformDsarListQuerySchema as M34PlatformDsarListQuerySchema } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes";
+import {
+  SkipOnboardingTaskRequest as M34SkipOnboardingTaskRequest,
+  TenantFlagWriteRequest as M34TenantFlagWriteRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
+
+const _M34Nullable = (t: TSchema) => Type.Union([t, Type.Null()]);
+const _M34Str = Type.String();
+const _M34PlatformDsarJobView = Type.Object({
+  id: _M34Str,
+  organizationId: _M34Str,
+  orgSlug: _M34Str,
+  status: _M34Str,
+  requestSource: _M34Str,
+  requestedAt: _M34Str,
+  slaDueAt: _M34Str,
+  extendedUntil: _M34Nullable(_M34Str),
+  fulfilledAt: _M34Nullable(_M34Str),
+  slaBreached: Type.Boolean(),
+});
+const _M34PlatformOnboardingTaskView = Type.Object({
+  id: _M34Str,
+  templateKey: _M34Str,
+  status: _M34Str,
+  isCanonical: Type.Boolean(),
+  canonicalOrder: _M34Nullable(Type.Integer()),
+  dueAt: _M34Nullable(_M34Str),
+  startedAt: _M34Nullable(_M34Str),
+  completedAt: _M34Nullable(_M34Str),
+  blockerReason: _M34Nullable(_M34Str),
+  skipRationale: _M34Nullable(_M34Str),
+});
+const _M34TenantFlagView = Type.Object({
+  flagKey: _M34Str,
+  flagKind: _M34Str,
+  valueType: _M34Str,
+  value: Type.Unknown(),
+  rolloutPercent: _M34Nullable(Type.Number()),
+  killSwitchActive: Type.Boolean(),
+  scope: Type.Union([Type.Literal("tenant"), Type.Literal("platform")]),
+  tenantToggleable: Type.Boolean(),
+  updatedAt: _M34Str,
+});
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/dsar-export-jobs": {
+    summary: "Cross-tenant DSAR export jobs with SLA filtering (PHI-minimal; platform ops)",
+    query: M34PlatformDsarListQuerySchema,
+    response: Type.Object({
+      items: Type.Array(_M34PlatformDsarJobView),
+      nextCursor: _M34Nullable(_M34Str),
+      hasMore: Type.Boolean(),
+    }),
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/onboarding": {
+    summary: "A tenant's full onboarding task list and the machine's current step (platform ops)",
+    response: Type.Object({
+      tenantAccountId: _M34Str,
+      orgSlug: _M34Str,
+      tenantStatus: _M34Str,
+      currentStep: _M34Nullable(_M34Str),
+      tasks: Type.Array(_M34PlatformOnboardingTaskView),
+    }),
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip": {
+    summary: "Skip an onboarding task with a recorded rationale (platform ops; step-up)",
+    body: M34SkipOnboardingTaskRequest,
+    response: _M34PlatformOnboardingTaskView,
+  },
+  "GET /api/v1/tenant/account": {
+    summary: "The tenant's own account record",
+    response: Type.Object({
+      tenantAccountId: _M34Str,
+      organizationId: _M34Str,
+      status: _M34Str,
+      planLabel: _M34Str,
+      legalBusinessName: _M34Str,
+      dbaName: _M34Nullable(_M34Str),
+      billingContactEmail: _M34Str,
+      breachNotificationEmail: _M34Str,
+      provisionedAt: _M34Nullable(_M34Str),
+      activatedAt: _M34Nullable(_M34Str),
+      createdAt: _M34Str,
+    }),
+  },
+  "GET /api/v1/tenant/feature-flags": {
+    summary: "Feature flags effective for this tenant (own row overrides the platform row)",
+    response: Type.Object({ items: Type.Array(_M34TenantFlagView) }),
+  },
+  "POST /api/v1/tenant/feature-flags/:flagKey": {
+    summary: "Toggle a tenant-toggleable feature flag (org admin; step-up)",
+    body: M34TenantFlagWriteRequest,
+    response: _M34TenantFlagView,
+  },
+});
+
+// GAP-158 - M40 external grief-resource catalog (tenant-curated; `mdm.grief_resource.{read,manage}`).
+const _M40GriefResourceView = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  url: Type.Union([Type.String(), Type.Null()]),
+  description: Type.Union([Type.String(), Type.Null()]),
+  resourceKind: Type.String(),
+  phone: Type.Union([Type.String(), Type.Null()]),
+  audience: Type.Union([Type.String(), Type.Null()]),
+  isActive: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/mdm/grief-resources": {
+    summary: "The tenant's grief-resource catalog (active by default)",
+    query: M40GriefResourceListQuery,
+    response: Type.Object({ items: Type.Array(_M40GriefResourceView) }),
+  },
+  "POST /api/v1/mdm/grief-resources": {
+    summary: "Add a grief-resource to the tenant catalog",
+    body: M40GriefResourceBody,
+    response: _M40GriefResourceView,
+  },
+  "PATCH /api/v1/mdm/grief-resources/:id": {
+    summary: "Edit a grief resource",
+    body: M40GriefResourcePatch,
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/deactivate": {
+    summary: "Retire a grief resource (never deleted; M16 referral history points at it)",
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/reactivate": {
+    summary: "Reactivate a retired grief resource",
+    response: _M40GriefResourceView,
   },
 });

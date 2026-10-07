@@ -1210,3 +1210,74 @@ describe("M22 GAP-066 — step-up on PHI export, overlay publish and render retr
     expect(res.statusCode).toBe(200);
   });
 });
+
+// GAP-140 — writes that used to return success while discarding their payload.
+describe("GAP-140 — M22 writes persist (or honestly refuse) what the request carried", () => {
+  it("forwards the overlay branding + state addendum to the service instead of dropping them", async () => {
+    const calls: unknown[] = [];
+    const service: DocumentRouteService = {
+      ...sharedBackend.service,
+      publishOverlay: async (_org, _actor, _key, _ifVersion, content) => {
+        calls.push(content);
+        return { overlayId: "ov", version: 1 };
+      },
+    };
+    const { app } = makeServer(service);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/tenant-overlays/election_statement",
+      headers: { ...ORG_ADMIN, "if-match": "0", "idempotency-key": "g140-ov-1" },
+      payload: {
+        branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+        stateAddendum: { stateCode: "OR", addendumText: "Oregon addendum" },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([
+      {
+        branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+        stateAddendum: { stateCode: "OR", addendumText: "Oregon addendum" },
+      },
+    ]);
+  });
+
+  it("forwards the classification pageRanges to the service instead of dropping them", async () => {
+    const calls: unknown[] = [];
+    const service: DocumentRouteService = {
+      ...sharedBackend.service,
+      confirmClassification: async (_org, _actor, batchId, args) => {
+        calls.push(args);
+        return { batchId, status: "classifier_complete" };
+      },
+    };
+    const { app } = makeServer(service);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/classification/confirm`,
+      headers: { ...RN, "idempotency-key": "g140-cc-1" },
+      payload: { pageRanges: [{ fromPage: 1, toPage: 2, docType: "lab" }] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([{ pageRanges: [{ fromPage: 1, toPage: 2, docType: "lab" }] }]);
+  });
+
+  it("the production service refuses a template-version publish with 501 rather than a fabricated version", async () => {
+    const untouchedDb = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("a refused publish must not touch the database");
+        },
+      },
+    ) as DbClient;
+    const { app } = makeServer(createDbDocumentRouteService(untouchedDb));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/form-templates/election_statement/versions",
+      headers: { ...PLATFORM, "idempotency-key": "g140-pt-1" },
+      payload: { versionLabel: "v2" },
+    });
+    expect(res.statusCode).toBe(501);
+    expect(res.json()).toMatchObject({ error: { code: "NOT_IMPLEMENTED" } });
+  });
+});

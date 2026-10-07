@@ -18,6 +18,7 @@ import {
   ForwardSeamNotLandedError,
   M23_DENY_STUB_SUBSCRIPTION_TOPICS,
   M23_LIVE_SUBSCRIPTION_TOPICS,
+  M23_UPSTREAM_SUBSCRIPTIONS,
   RE_VALIDATION_TRIGGER,
   dispatchM23UpstreamEvent,
   handleDischargeCreated,
@@ -28,7 +29,6 @@ import {
   handleRevalidateTrigger,
   handleRevocationCreated,
   handleTransferCreated,
-  registerM23Consumers,
   resolveDocumentBackRefTarget,
 } from "../consumers";
 import type { M23ConsumerPorts } from "../consumers";
@@ -283,17 +283,13 @@ describe("M26 forward-seam consumer is INERT (deny-stub, fail-closed)", () => {
     ).rejects.toMatchObject({ code: "FORWARD_SEAM_UNBOUND" });
   });
 
-  it("registerM23Consumers binds ONLY the LIVE topics — never a deny-stub topic", () => {
-    const bound: string[] = [];
-    registerM23Consumers({
-      ports: makePorts(),
-      bind: (eventName) => {
-        bound.push(eventName);
-      },
-    });
-    for (const live of M23_LIVE_SUBSCRIPTION_TOPICS) expect(bound).toContain(live);
-    for (const denyStub of M23_DENY_STUB_SUBSCRIPTION_TOPICS) expect(bound).not.toContain(denyStub);
-    expect(M23_DENY_STUB_SUBSCRIPTION_TOPICS.length).toBeGreaterThan(0); // there ARE deny-stub topics to exclude
+  it("the subscription map splits exactly into LIVE and deny-stub topics (GAP-205: the dead registrar is gone; live topics bind via ../outbox-consumers)", () => {
+    const all = M23_UPSTREAM_SUBSCRIPTIONS.map((s) => s.eventName).sort();
+    const live = [...M23_LIVE_SUBSCRIPTION_TOPICS];
+    const denyStub = [...M23_DENY_STUB_SUBSCRIPTION_TOPICS];
+    expect(live.filter((t) => denyStub.includes(t))).toEqual([]);
+    expect([...live, ...denyStub].sort()).toEqual(all);
+    expect(denyStub.length).toBeGreaterThan(0); // there ARE deny-stub topics to exclude
   });
 });
 

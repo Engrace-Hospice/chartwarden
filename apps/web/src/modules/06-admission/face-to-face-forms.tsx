@@ -179,6 +179,65 @@ export function F2fCompletionForm({
 
 type AttestMethod = "note" | "narrative";
 
+export const F2F_OVERRIDE_REASON_MIN_CHARS = 20;
+
+/** Override an out-of-window face-to-face with a documented reason (f2f.window_override). */
+export function F2fOverrideWindowForm({
+  api,
+  faceToFaceId,
+  version,
+  onDone,
+  onError,
+}: {
+  api: ElectionCertificationApi;
+  faceToFaceId: string;
+  version: number;
+  onDone: () => void;
+  onError: (message: string) => void;
+}): JSX.Element {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const ready = reason.trim().length >= F2F_OVERRIDE_REASON_MIN_CHARS;
+
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!ready) return;
+    setSaving(true);
+    try {
+      await api.overrideFaceToFaceWindow(faceToFaceId, {
+        reason: reason.trim(),
+        ifVersion: version,
+      });
+      onDone();
+    } catch (err) {
+      onError(f2fErrorMessage(err, "Could not override the face-to-face window."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="wx-action-body is-flush" onSubmit={(e) => void submit(e)}>
+      <TextAreaField
+        label="Override reason"
+        value={reason}
+        rows={3}
+        maxLength={1000}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <p className="wx-action-hint">
+        {reason.trim().length}/{F2F_OVERRIDE_REASON_MIN_CHARS} characters minimum. The override and
+        its reason are audited.
+      </p>
+      <div className="wx-action-row is-end">
+        <Button type="submit" disabled={!ready} loading={saving}>
+          Override window
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 const METHOD_OPTIONS = [
   { value: "note", label: "Link signed visit note" },
   { value: "narrative", label: "Write attestation" },

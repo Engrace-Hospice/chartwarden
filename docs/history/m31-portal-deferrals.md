@@ -139,3 +139,41 @@ trigger) but NOTHING renders them to a patient. Other document disclosure paths 
 service (`signed-url-service.ts` mint — `planAccessLog` is a pure descriptor nothing persists), content download, disclosure
 export. The portal watermark rasterization layer (M22 §7.10) is not built: the URL serves the stored PDF unwatermarked.
 
+
+## Batch 17 / GAP-159 — M31 events published, two of the six §4.8 queues built, four closed as spec drift
+
+**Events.** `events-by-m31.ts` catalogs all 22 §4.10 events (record-only; PHI-free lean payloads) and
+`m31OutboxPublisher = bindCallerModule(txOutboxPublisher, "m31")` validates every publish. `events.ts` is the shared
+emitter: `emitInTx` for SAME-transaction emits wherever M31 itself writes the row, `emit` (own short org tx, failure
+logged not swallowed) for decision points whose row lives in another module's transaction. The earlier "M31 emits ZERO
+events (F-160)" statements above are superseded.
+
+Emitted (same tx): `portal_account.suspended` (store), `portal_access_grant.granted` / `.revoked` (m39 consent
+cascade, m16 plan_opened / contact_active / plan_closed, the post-discharge-grace sweep, the eraser),
+`portal_account.bereaved_mode_entered` (m16 flips), `portal_account.bereaved_window_closed` (m16 plan_closed),
+`portal_account.revoked` + `.shredded` and `telehealth.recordings_shredded` (the eraser), `telehealth.room_created`,
+`.visit_started`, `.visit_ended`, `.recording_started` (the store's lifecycle writes; also the m17-cancel consumer, the
+eraser abort and the late-join watchdog for `visit_ended`).
+Emitted (decision point): `portal_session.opened` / `.closed` (select-patient / logout), `portal_message.sent_via_m36`,
+`portal_amendment_request.submitted`, `portal_document.upload_started` / `.uploaded` / `.upload_rejected`.
+
+**Catalogued but with NO emit site (and why).** `portal_account.invited` and `.activated`: the invitation and the
+`portal_account` row are materialised by M2's magic-link / collaborator-invite layer, which is not built (the admin
+issue route returns a synthesised id; ADR-0005 keeps invitations and sessions out of M31's three tables), so M31 has
+no real mutation to describe. `telehealth.recording_completed`: the vendor webhook route verifies the signature and
+drops the body; mapping the Daily.co / Twilio payload and pulling the bytes is the same unbuilt step as the
+recording-finalize queue. `portal_account.revoked` is emitted only by the eraser, the one real terminal-revocation
+path.
+
+**Queues (spec §4.8).** Built: `m31.telehealth-late-join-watchdog.cron` (`m31-telehealth-late-join-watchdog`, every 5
+min). The room is minted lazily on first clinician join and `telehealth_visit` has no scheduled-start column, so the
+15-minute window is measured from `room_minted_at`; the abort is one idempotent UPDATE per org plus a same-tx
+`visit_ended`. The vendor room is not ended (the adapter is unbound in production).
+Already covered elsewhere: `m31.bereavement-window-close.cron` — the M16 `plan_closed_completed` consumer revokes
+bereaved grants at plan close, which is the same fact pulled from the producer (the post-discharge-grace pull-vs-push
+precedent), so a second 13-month calendar would only double-revoke.
+Closed as spec drift (architecture wins, ADR-0005 — the entities the queues operate on never materialise): 
+`m31.invite-expiry.cron` (no `portal_invitation` table; M2 owns invitations), `m31.upload-intake-handoff` (no
+`portal_document_upload` table; the upload routes are stubs until the M22 intake handoff exists),
+`m31.telehealth-recording-finalize` (no recording table; needs the vendor webhook mapping and byte pull),
+`m31.disclosure-accounting-rotate` (no `portal_audit_view` table to partition).

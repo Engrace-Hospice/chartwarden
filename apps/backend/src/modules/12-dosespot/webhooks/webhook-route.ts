@@ -65,12 +65,12 @@ export function registerDoseSpotWebhookRoute(
       );
       switch (verdict.kind) {
         case "invalid_signature":
-          return reply.code(401).send({ code: "INVALID_SIGNATURE" });
+          throw new WardenXError("INVALID_SIGNATURE", "invalid webhook signature", 401);
         case "stale":
-          return reply.code(400).send({ code: "STALE_REQUEST" });
+          throw new WardenXError("STALE_REQUEST", "stale webhook request", 400);
         case "malformed_timestamp":
         case "malformed":
-          return reply.code(400).send({ code: "MALFORMED_REQUEST" });
+          throw new WardenXError("MALFORMED_REQUEST", "malformed webhook request", 400);
         default:
           // `duplicate` and `accepted` are both 200 (§7.4.4: a redelivery returns 200, no reprocessing).
           return reply.code(200).send({ received: true });

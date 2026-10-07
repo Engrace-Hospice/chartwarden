@@ -46,12 +46,13 @@ export {
 
 /** Mount every M32 §4.1 route plugin over the composed service surface. */
 export function mountM32Routes(app: FastifyInstance, services: M32RouteServices): void {
-  const { governance, safety, prompts, read, routing, cipher, promptRegistry, now } = services;
+  const { governance, safety, prompts, read, routing, cipher, promptRegistry, now, followUpQueue } =
+    services;
   registerCapabilityRoutes(app, { governance });
   registerKillSwitchRoutes(app, { safety });
   registerConsentRoutes(app, { governance });
   registerInvocationRoutes(app, { read });
-  registerHallucinationRoutes(app, { safety, cipher });
+  registerHallucinationRoutes(app, { safety, cipher, followUpQueue });
   registerTenantOpsRoutes(app, { read, routing, now });
   registerSafetyOpsRoutes(app, { safety, prompts, read, promptRegistry, now });
 }

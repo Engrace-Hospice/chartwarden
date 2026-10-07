@@ -66,6 +66,12 @@ export interface M27ValidationContextDeps {
   readonly capResolver: CapSeamResolver;
   /** Resolves M40's provider-entity directory (production: `() => getSeam("MdmEntityProvider")`). */
   readonly providerEntity: () => ProviderEntityResolver;
+  /** GAP-149 — the provider entity's CCN (cap is per Medicare provider number); `null` when unresolved, in
+   *  which case the cap seam answers only for a single-CCN org. Production: `buildProviderEntityCcnResolver`. */
+  readonly providerCcn?: (
+    organizationId: string,
+    providerEntityId: string,
+  ) => Promise<string | null>;
   /** Resolves M23's `PatientDaysProvider` (production: `() => getSeam("PatientDaysProvider")`). */
   readonly patientDays: () => PatientDaysSeam;
   /** Resolves M25's `ClaimSettlementProvider` (production: `() => getSeam("ClaimSettlementProvider")`). */
@@ -102,7 +108,18 @@ export function buildM27ValidationContext(
       ]);
 
       // M26 cap (live): the cost-report cap year is the federal FY of the FYE year (the cap calc's window).
-      const cap = await resolveCapContext(deps.capResolver, organizationId, `FY${fiscalYearInt}`);
+      let reportCcn: string | null = null;
+      try {
+        reportCcn = (await deps.providerCcn?.(organizationId, report.providerEntityId)) ?? null;
+      } catch {
+        reportCcn = null; // unresolved CCN → the cap seam answers null for a multi-CCN org (rules skip)
+      }
+      const cap = await resolveCapContext(
+        deps.capResolver,
+        organizationId,
+        `FY${fiscalYearInt}`,
+        reportCcn,
+      );
 
       // M23/M25/M12 cost-report binds (§4.4). Each resolves the live aggregate via getSeam; a deny-stub throw
       // (producer unbound) degrades that bind to null/false so the dependent rule SKIPS — never fabricated.

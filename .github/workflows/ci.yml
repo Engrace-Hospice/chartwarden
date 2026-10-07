@@ -113,6 +113,7 @@ jobs:
           - { name: "M8 Encounters", script: "test:rls:live:m8" }
           - { name: "M9 Assessments", script: "test:rls:live:m9" }
           - { name: "M10 HOPE", script: "test:rls:live:m10" }
+          - { name: "FK index coverage", script: "test:fk-indexes:live" }
           - { name: "M11 Orders", script: "test:rls:live:m11" }
           - { name: "M12 DoseSpot", script: "test:rls:live:m12" }
           - { name: "M13 eMAR", script: "test:rls:live:m13" }
@@ -232,6 +233,8 @@ jobs:
           # 2026-09-17 force-push with no runner; the restored live-suite gate caught them.
           - { name: "M10 HOPE spec registry", scripts: "test:m10:spec:live" }
           - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
+          # GAP-181 — the monthly `hope-retention-scan` (flags only; destruction stays on M4) + the M9 cadence ledger.
+          - { name: "M10 HOPE retention scan", scripts: "test:m10:retention:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
@@ -266,6 +269,12 @@ jobs:
           # F-230 (#248) — OUR side of the DoseSpot vendor boundary (MedHx ingest + `POST /webhooks/dosespot`
           # dispense path + the M14 slot's seam), against a clearly-labelled vendor TEST DOUBLE.
           - { name: "M12 vendor boundary", scripts: "test:m12:vendor-boundary:live" }
+          # GAP-037 — the seven §4.8 M12 crons (transmit_newrx, recovery drain, status sweep + the refill-SLA / IAL2 /
+          # EPCS-expiry / RxBenefit-prewarm passes) and the ack / nack / refill / prescriber webhook handlers.
+          - {
+              name: "M12 DoseSpot crons",
+              scripts: "test:m12:crons-transmit:live test:m12:crons-housekeeping:live",
+            }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
@@ -389,6 +398,7 @@ jobs:
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
           - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }
           # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
           - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
@@ -403,7 +413,7 @@ jobs:
               scripts:
                 "test:m27:elevated-approval:live test:m27:allocation-input:live
                 test:m27:validation-context:live test:m27:workflow-slice:live
-                test:m27:ecr-backref:live",
+                test:m27:ecr-backref:live test:m27:statistics:live",
             }
           # GAP-060: M40's §7.6 merge approve/reject + provisional promotion against the REAL
           # DB-backed service — the audit's finding was that no test ever exercised it.
@@ -659,6 +669,16 @@ jobs:
           # GAP-104 — care_team channel membership lifecycle (unassign revokes access, discharge archives).
           - { name: "M36 Channel membership", scripts: "test:m36:channel-membership:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
+          # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
+          # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
+          - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }
+          - { name: "GAP-158 portal invitation link", scripts: "test:gap-158-invitation:live" }
+          - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
+          - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
+          - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }
+          - { name: "M30 CAP overdue scan", scripts: "test:gap-155:live" }
+          - { name: "GAP-161 M32 events", scripts: "test:gap-161:live" }
+          - { name: "GAP-164 M34 ops routes", scripts: "test:gap-164:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.

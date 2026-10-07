@@ -1,8 +1,6 @@
 // apps/backend/src/modules/25-remittance/consumers — the M25 §4.4 upstream-consumer register surface (the
 // M27/M23 consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts) and
-// exposes `registerM25Consumers` for the boot dispatcher. NO live inbound relay loop exists yet (RULE 3(d));
-// until it lands the composition root calls this with NO registrar — it then merely returns the
-// forward-declared subscriptions (nothing boots), the identical posture every other module is in.
+// exposes `dispatchM25UpstreamEvent`. GAP-205: the former `registerM25Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
 import {
   DENY_DENIAL_TERMINOLOGY,
   type DenialOpenedEmission,
@@ -80,26 +78,4 @@ export async function dispatchM25UpstreamEvent(
     default:
       return { handled: false };
   }
-}
-
-/**
- * Register the M25 §4.4 upstream consumers (the M27 register-surface mirror). The boot dispatcher calls this
- * with its `bind(eventName, handler)` registrar + the live {@link M25ConsumerPorts}; each subscription is
- * bound to a closure over {@link dispatchM25UpstreamEvent}. Until the live inbound dispatcher lands the
- * composition root calls this with NO registrar — it then merely returns the forward-declared subscriptions.
- */
-export function registerM25Consumers(options?: {
-  readonly ports?: M25ConsumerPorts;
-  readonly bind?: (
-    topic: string,
-    handler: (payload: Record<string, unknown>) => Promise<M25ConsumeReport>,
-  ) => void;
-}): readonly string[] {
-  const { ports, bind } = options ?? {};
-  if (bind && ports) {
-    for (const topic of M25_UPSTREAM_SUBSCRIPTIONS) {
-      bind(topic, (payload) => dispatchM25UpstreamEvent({ topic, payload }, ports));
-    }
-  }
-  return M25_UPSTREAM_SUBSCRIPTIONS;
 }

@@ -63,6 +63,7 @@ export * from "./membership-roles";
 // window for external auditors (§7.5).
 export * from "./break-glass";
 export * from "./auditor-engagements";
+export * from "./auditor-magic-links";
 // M4-T04 — Audit lifecycle / integrity / catalog tables (M4 spec §3.5). legal_hold,
 // destruction_certificate, audit_export are org-scoped (standard app.org_id RLS lands in
 // M4-T05); audit_seal is the Phase-2 tamper-evidence chain (nullable org). state_retention_override,
@@ -152,6 +153,8 @@ export * from "./mdm/nppes-sync-log";
 export * from "./mdm/nppes-sync-coordination";
 export * from "./mdm/mdm-provisional";
 export * from "./mdm/mdm-baa-records";
+export * from "./mdm/mdm-license-records";
+export * from "./mdm/external-grief-resources";
 export * from "./mdm/mdm-baa-required";
 
 // ── Module 5 (Patient & Demographics) — the patient spine + demographics (§3.3–3.5) ──────────
@@ -286,6 +289,7 @@ export * from "./assessment/assessment-cosignatures";
 export * from "./assessment/significant-change-events";
 export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
+export * from "./assessment/assessment-reassessment-due"; // GAP-181 — the cadence-scan ledger (0481)
 
 // ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
 // M10 owns 11 tables: the existing HOPE workflow infrastructure (timepoint schedule, partitioned
@@ -305,6 +309,7 @@ export * from "./hope/hope-validation-findings";
 export * from "./hope/hope-submissions";
 export * from "./hope/hope-submission-items";
 export * from "./hope/hope-submission-result-events";
+export * from "./hope/hope-retention-reviews"; // GAP-181 — the retention-scan ledger (0482)
 
 // ---------------------------------------------------------------------------
 // Module 11 — Orders (M11-T02)

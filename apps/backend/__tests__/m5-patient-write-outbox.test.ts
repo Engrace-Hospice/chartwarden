@@ -194,8 +194,8 @@ describe("GAP-016 — M5 DB route service publishes m5.patient.* through the out
 
   it("decideAmendment publishes m5.patient.amendment_decided with the decision", async () => {
     const h = harness([
-      [{ patientId: PATIENT, slaDueAt: new Date("2026-12-01T00:00:00Z") }],
-      undefined,
+      [{ patientId: PATIENT, status: "pending", slaDueAt: new Date("2026-12-01T00:00:00Z") }],
+      [{ id: "amd-1" }],
     ]);
     await h.service.decideAmendment(ORG, "amd-1", { accept: false, denialReason: "no" }, USER);
     expect(h.published[0]?.emission).toMatchObject({
@@ -208,5 +208,42 @@ describe("GAP-016 — M5 DB route service publishes m5.patient.* through the out
         decision: "denied",
       },
     });
+  });
+
+  // GAP-118 — typed errors and the status guard (no plain `Error` -> 500, no re-deciding a decided request).
+  it("decideAmendment on an unknown id is a typed 404, not a 500", async () => {
+    const h = harness([[]]);
+    await expect(
+      h.service.decideAmendment(ORG, "nope", { accept: true }, USER),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(h.published).toHaveLength(0);
+  });
+
+  it("decideAmendment on an already-decided request is a 409 and publishes nothing", async () => {
+    const h = harness([
+      [{ patientId: PATIENT, status: "accepted", slaDueAt: new Date("2026-12-01T00:00:00Z") }],
+    ]);
+    await expect(
+      h.service.decideAmendment(ORG, "amd-1", { accept: false, denialReason: "late" }, USER),
+    ).rejects.toMatchObject({ statusCode: 409, code: "AMENDMENT_NOT_PENDING" });
+    expect(h.published).toHaveLength(0);
+  });
+
+  it("decideAmendment that loses the race (guarded UPDATE matches no row) is a 409", async () => {
+    const h = harness([
+      [{ patientId: PATIENT, status: "pending", slaDueAt: new Date("2026-12-01T00:00:00Z") }],
+      [],
+    ]);
+    await expect(
+      h.service.decideAmendment(ORG, "amd-1", { accept: true }, USER),
+    ).rejects.toMatchObject({ statusCode: 409, code: "AMENDMENT_NOT_PENDING" });
+    expect(h.published).toHaveLength(0);
+  });
+
+  it("a denial without a reason is a typed 422", async () => {
+    const h = harness([]);
+    await expect(
+      h.service.decideAmendment(ORG, "amd-1", { accept: false }, USER),
+    ).rejects.toMatchObject({ statusCode: 422 });
   });
 });

@@ -35,6 +35,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
+import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 import {
   M31_GRACE_SWEEP_MAX_REVOCATIONS_PER_ORG_PER_RUN,
   M31_GRACE_SWEEP_MAX_SCAN_PER_ORG_PER_RUN,
@@ -63,6 +64,8 @@ export interface M31DischargeGracePort {
 }
 
 export interface PostDischargeGraceSweepDeps {
+  /** GAP-159 - same-tx `m31.portal_access_grant.revoked` emits (absent in slice/tests). */
+  readonly events?: M31EventEmitter;
   readonly db: DbClient;
   readonly activeOrgs: M31ActiveOrgListPort;
   readonly m6: M31DischargeGracePort;
@@ -185,7 +188,12 @@ async function sweepOrg(
                 isNull(PAG.revokedAt),
               ),
             )
-            .returning({ id: PAG.id, patientId: PAG.patientId });
+            .returning({
+              id: PAG.id,
+              portalAccountId: PAG.portalAccountId,
+              patientId: PAG.patientId,
+            });
+          await emitGrantsRevoked(deps.events, tx, organizationId, rows, "admission_discharged");
           return rows;
         },
       );

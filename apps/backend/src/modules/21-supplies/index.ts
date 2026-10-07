@@ -128,3 +128,11 @@ export {
   type M21PharmacyDispenseDeps,
   buildM21PharmacyDispenseConsumer,
 } from "./outbox-consumers/m12-pharmacy-dispense";
+
+// GAP-137 — M21 D15 AI-prohibited-zone boot validator (db-present onReady hook in the composition root).
+export {
+  SUPPLY_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
+  type SupplyAiPromptRegistryPort,
+  SupplyAIBlockViolation,
+  validateSupplyAIBlock,
+} from "./ai-block";

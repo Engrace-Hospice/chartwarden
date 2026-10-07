@@ -19,6 +19,7 @@ import {
   fhirClientTransition,
   fhirDualApprovalSatisfied,
   fhirInboundOwnerModuleFor,
+  fhirInboundSubjectPatientId,
   inboundPayloadSha256,
 } from "@wardenx/fhir";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -799,6 +800,7 @@ export function createDrizzleFhirGatewayStore(
             sourceFhirId: args.sourceFhirId,
             payload: args.payload,
             payloadSha256: inboundPayloadSha256(args.payload),
+            subjectPatientId: fhirInboundSubjectPatientId(args.resourceType, args.payload),
             ownerModule,
             proposalStatus: "pending",
           })

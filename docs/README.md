@@ -88,14 +88,15 @@ The design language, 113 screen specs, layout glossary, and Pencil prompts live 
 | [`design/pencil-prompts/`](./design/pencil-prompts/) | Phase-batched Pencil generation prompts + MCP workflow ([`pencil-prompts/README.md`](./design/pencil-prompts/README.md)). |
 | [`design/FRAME_FIDELITY_PLAYBOOK.md`](./design/FRAME_FIDELITY_PLAYBOOK.md) | Built-screen ↔ Pencil-frame fidelity process (`frame:fidelity` tracker). |
 | [`design/DEFERRED_SCREENS.md`](./design/DEFERRED_SCREENS.md) | Frontend implementation tracking (Track B / ADR-0030). |
+| [`design/SCREEN_SPEC_STATUS.md`](./design/SCREEN_SPEC_STATUS.md) | Per-spec implementation status (built / partial / deferred) joined to the registered screen sets; enforced by `docs:ui`. |
 | [`design/UI_README.md`](./design/UI_README.md) · [`design/DESIGN_REVIEW.md`](./design/DESIGN_REVIEW.md) · [`design/FRONTEND_RECONCILIATION_SCOPE.md`](./design/FRONTEND_RECONCILIATION_SCOPE.md) | Supporting design-corpus notes. |
 
 ---
 
 ## Architecture Decision Records (ADRs)
 
-35 ADRs (ADR-0001…ADR-0035) in [`adr/`](./adr/) — full titles, resolved findings, and status
-in **[`adr/README.md`](./adr/README.md)**.
+Every ADR lives in [`adr/`](./adr/); the full list (titles, resolved findings, status) is the index in
+**[`adr/README.md`](./adr/README.md)** — the count is not restated here, it is guarded by `arch:adr-docs`.
 
 ---
 
@@ -193,7 +194,13 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`REMEDIATION_SUMMARY.md`](./REMEDIATION_SUMMARY.md) | Architecture remediation summary (phases 0–6). |
 | [`history/`](./history/README.md) | Audit findings (F-0xx), #248 outbox-binding rounds, and per-gate incident history, split by topic (moved out of `CLAUDE.md`). |
 | [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
-| [`../audit/`](../audit/) | Point-in-time audit & fitness-enforcement reports (outside `docs/`). |
+| [`../audit/`](../audit/) | Generated audit & fitness-enforcement reports (outside `docs/`) — the source for counts (routes, tables, ADRs, modules); read them instead of trusting a number in prose. |
+| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders. |
+| [`cartography/`](./cartography/) | Workflow cartographies (admission/intake, patient care, encounters/visits, HOPE) used as audit inputs. |
+| [`research/`](./research/) | Regulatory research notes (e.g. `FY2027_HOSPICE_COP_RESEARCH.md`). |
+| [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |
+| [`agents/`](./agents/) | Agent-skill config: issue tracker, triage labels, domain docs. |
+| [`UI-UX/`](./UI-UX/) | UI redesign plan, component catalog, migration matrix and phase-0 UI inventory. |
 
 ---
 

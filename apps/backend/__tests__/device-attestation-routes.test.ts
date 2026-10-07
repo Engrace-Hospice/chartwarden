@@ -241,7 +241,7 @@ describe("device attestation — the ceremony", () => {
       payload: body,
     });
     expect(replay.statusCode).toBe(400);
-    expect(replay.json().error).toBe("challenge_expired_or_invalid");
+    expect(replay.json().error.code).toBe("CHALLENGE_EXPIRED_OR_INVALID");
     expect(harness.rows).toHaveLength(1);
     await app.close();
   });
@@ -258,7 +258,7 @@ describe("device attestation — the ceremony", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toBe("challenge_session_mismatch");
+    expect(res.json().error.code).toBe("CHALLENGE_SESSION_MISMATCH");
     expect(harness.rows).toHaveLength(0);
     await app.close();
   });
@@ -277,7 +277,7 @@ describe("device attestation — the ceremony", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(401);
-    expect(res.json().reason).toBe("device_compromised");
+    expect(res.json().error.details[0].message).toBe("device_compromised");
     expect(harness.rows).toHaveLength(1);
     expect(harness.rows[0]?.verdict).toBe("failed");
     // And it never bound the session — a failed check does not put a device behind a request.
@@ -295,7 +295,7 @@ describe("device attestation — the ceremony", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(401);
-    expect(res.json().reason).toBe("assertion_signature_invalid");
+    expect(res.json().error.details[0].message).toBe("assertion_signature_invalid");
     await app.close();
   });
 

@@ -100,7 +100,6 @@ const strict = <T extends Parameters<typeof Type.Object>[0]>(props: T) =>
 
 export const OpenCapPeriodRequest = strict(contracts.OpenCapPeriodRequest.properties);
 export const CloseCapPeriodRequest = strict(contracts.CloseCapPeriodRequest.properties);
-export const ReopenCapPeriodRequest = strict(contracts.ReopenCapPeriodRequest.properties);
 export const AcknowledgeEventRequest = strict(contracts.AcknowledgeEventRequest.properties);
 export const PsrImportRequest = strict(contracts.PsrImportRequest.properties);
 export const ResolveVarianceRequest = strict(contracts.ResolveVarianceRequest.properties);
@@ -108,7 +107,8 @@ export const PublishConstantRequest = strict(contracts.PublishConstantRequest.pr
 export const AmendConstantRequest = strict(contracts.AmendConstantRequest.properties);
 
 /**
- * `stepUpAssertionId` is OMITTED from the two contracts that declare it.
+ * `stepUpAssertionId` is OMITTED from the three contracts that declare it (lock-methodology, finalize and, as of
+ * GAP-079, reopen — whose body used to demand a caller-supplied uuid nothing read, so no UI could ever call it).
  *
  * It is a step-up assertion supplied BY THE CALLER, and neither write-service input consumes it
  * (`LockMethodologyInput` is `{ methodology, reason }`; `FinalizeInput` is `{ attestation }`). Step-up
@@ -121,6 +121,9 @@ export const AmendConstantRequest = strict(contracts.AmendConstantRequest.proper
  */
 export const LockMethodologyRequest = strict(
   Type.Omit(contracts.LockMethodologyRequest, ["stepUpAssertionId"]).properties,
+);
+export const ReopenCapPeriodRequest = strict(
+  Type.Omit(contracts.ReopenCapPeriodRequest, ["stepUpAssertionId"]).properties,
 );
 export const FinalizeSettlementRequest = strict(
   Type.Omit(contracts.FinalizeSettlementRequest, ["stepUpAssertionId"]).properties,

@@ -14,6 +14,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
   IsoInstant,
+  M31EventName,
   PortalAccessGrantDigest,
   PortalAccountDigest,
   PortalDataCategory,
@@ -27,6 +28,7 @@ import type {
   TelehealthVisitDigest,
 } from "@wardenx/types";
 import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import type { M31EventEmitter } from "../events";
 import type { M31SeamStores } from "../seams/stores";
 
 const { portalAccounts, portalAccessGrants, telehealthVisits } = schema;
@@ -75,6 +77,69 @@ function toVisitDigest(r: VisitRow): TelehealthVisitDigest {
     endReason: (r.endReason as TelehealthEndReason | null) ?? null,
     linkedEncounterId: r.linkedEncounterId ?? null,
   };
+}
+
+/** GAP-095 — the telehealth room facts the vendor-facing routes read (ciphers stay sealed here). */
+export interface TelehealthRoomFacts {
+  readonly vendorRoomIdCipher: string;
+  readonly vendorRoomUrlCipher: string;
+  readonly vendorRecordingId: string | null;
+  readonly patientLeftAt: string | null;
+  readonly clinicianLeftAt: string | null;
+}
+
+/**
+ * GAP-159 - the telehealth events a lifecycle patch implies (pure): `in_progress` is "both parties present" ->
+ * visit_started; an `ended_*` state -> visit_ended; recording switched on -> recording_started. `recording_completed`
+ * is NOT derivable here: it needs the vendor `recording_completed` webhook payload, which the webhook route does not
+ * yet map (see docs/history/m31-portal-deferrals.md).
+ */
+export function lifecycleEventsFor(
+  patch: {
+    lifecycleState?: TelehealthLifecycleState;
+    recordingEnabled?: boolean;
+  },
+  row: {
+    id: string;
+    m17VisitId: string;
+    visitStartedAt: Date | null;
+    endReason: string | null;
+    totalDurationSec: number | null;
+    audioOnlyFallbackActive: boolean;
+    lifecycleState: string;
+  },
+): readonly { name: M31EventName; payload: Record<string, unknown> }[] {
+  const out: { name: M31EventName; payload: Record<string, unknown> }[] = [];
+  if (patch.lifecycleState === "in_progress") {
+    out.push({
+      name: "m31.telehealth.visit_started",
+      payload: {
+        telehealthVisitId: row.id,
+        m17VisitId: row.m17VisitId,
+        startedAt: (row.visitStartedAt ?? new Date()).toISOString(),
+      },
+    });
+  }
+  if (patch.lifecycleState === "ended_clean" || patch.lifecycleState === "ended_aborted") {
+    out.push({
+      name: "m31.telehealth.visit_ended",
+      payload: {
+        telehealthVisitId: row.id,
+        m17VisitId: row.m17VisitId,
+        lifecycleState: row.lifecycleState,
+        endReason: row.endReason ?? "unspecified",
+        ...(row.totalDurationSec !== null ? { totalDurationSec: row.totalDurationSec } : {}),
+        audioOnlyFallback: row.audioOnlyFallbackActive,
+      },
+    });
+  }
+  if (patch.recordingEnabled === true) {
+    out.push({
+      name: "m31.telehealth.recording_started",
+      payload: { telehealthVisitId: row.id },
+    });
+  }
+  return out;
 }
 
 /** The extra owned-table operations the §4.1 routes need beyond the seven seam ports. */
@@ -142,6 +207,11 @@ export interface PortalOwnedTableOps {
     orgId: string,
     id: string,
   ): Promise<{ enabled: boolean; startedByUserId: string | null } | null>;
+  /**
+   * GAP-095 — the room facts the join/leave/recording/end routes drive the VENDOR with: the sealed room id/url
+   * (decrypted only by the room cipher), the vendor's recording id and who has left. `null` ⇒ no such visit.
+   */
+  telehealthRoomFacts(orgId: string, id: string): Promise<TelehealthRoomFacts | null>;
   /** Apply a telehealth lifecycle transition + optional side-effect columns, returning the new digest. */
   updateTelehealthLifecycle(
     orgId: string,
@@ -159,6 +229,11 @@ export interface PortalOwnedTableOps {
       endReason?: TelehealthEndReason;
       totalDurationSec?: number;
       firstParticipantJoinedAt?: Date;
+      /** GAP-095 — set on leave, cleared (null) on re-join. */
+      patientLeftAt?: Date | null;
+      clinicianLeftAt?: Date | null;
+      /** GAP-095 — the vendor's opaque recording id (null once stopped). */
+      vendorRecordingId?: string | null;
     },
   ): Promise<TelehealthVisitDigest | null>;
 }
@@ -167,7 +242,7 @@ export interface PortalOwnedTableOps {
 export type PortalStore = M31SeamStores & PortalOwnedTableOps;
 
 /** Build the Drizzle-backed {@link PortalStore} (the seven seams + the §4.1 route ops). */
-export function buildDrizzlePortalStore(db: DbClient): PortalStore {
+export function buildDrizzlePortalStore(db: DbClient, events?: M31EventEmitter): PortalStore {
   const activeGrantsFor = async (
     orgId: string,
     portalAccountId: string,
@@ -467,6 +542,16 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           })
           .where(eq(portalAccounts.id, id))
           .returning();
+        if (row) {
+          // GAP-159 - same-tx: the sealed reason never leaves the row; the event carries a fixed token.
+          await events?.emitInTx(
+            tx,
+            orgId,
+            "m31.portal_account.suspended",
+            { kind: "portal_account", id },
+            { portalAccountId: id, reason: "admin_suspend" },
+          );
+        }
         return row ? toAccountDigest(row) : null;
       });
     },
@@ -517,6 +602,20 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           .values({ ...row, organizationId: orgId })
           .onConflictDoNothing({ target: telehealthVisits.m17VisitId })
           .returning();
+        if (inserted) {
+          await events?.emitInTx(
+            tx,
+            orgId,
+            "m31.telehealth.room_created",
+            { kind: "telehealth_visit", id: inserted.id },
+            {
+              telehealthVisitId: inserted.id,
+              m17VisitId: inserted.m17VisitId,
+              patientId: inserted.patientId,
+              vendor: inserted.vendor,
+            },
+          );
+        }
         return inserted ? toVisitDigest(inserted) : null;
       });
     },
@@ -544,6 +643,30 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
         return row ? { enabled: row.enabled, startedByUserId: row.startedBy } : null;
       });
     },
+    async telehealthRoomFacts(orgId, id) {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const [row] = await tx
+          .select({
+            vendorRoomIdCipher: telehealthVisits.vendorRoomIdCipher,
+            vendorRoomUrlCipher: telehealthVisits.vendorRoomUrlCipher,
+            vendorRecordingId: telehealthVisits.vendorRecordingId,
+            patientLeftAt: telehealthVisits.patientLeftAt,
+            clinicianLeftAt: telehealthVisits.clinicianLeftAt,
+          })
+          .from(telehealthVisits)
+          .where(eq(telehealthVisits.id, id))
+          .limit(1);
+        return row
+          ? {
+              vendorRoomIdCipher: row.vendorRoomIdCipher,
+              vendorRoomUrlCipher: row.vendorRoomUrlCipher,
+              vendorRecordingId: row.vendorRecordingId ?? null,
+              patientLeftAt: iso(row.patientLeftAt),
+              clinicianLeftAt: iso(row.clinicianLeftAt),
+            }
+          : null;
+      });
+    },
     async updateTelehealthLifecycle(orgId, userId, id, patch) {
       return withOrgContext(db, ctx(orgId, userId), async (tx) => {
         const [row] = await tx
@@ -551,6 +674,17 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           .set({ ...patch, updatedAt: new Date() })
           .where(eq(telehealthVisits.id, id))
           .returning();
+        if (row && events) {
+          for (const e of lifecycleEventsFor(patch, row)) {
+            await events.emitInTx(
+              tx,
+              orgId,
+              e.name,
+              { kind: "telehealth_visit", id: row.id },
+              e.payload,
+            );
+          }
+        }
         return row ? toVisitDigest(row) : null;
       });
     },

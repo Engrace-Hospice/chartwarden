@@ -27,7 +27,12 @@ import {
   formatBoolean,
   formatDetailDate,
 } from "./election-certification-detail-ui";
-import { F2F_LOCATION_LABEL, F2fAttestationForm, F2fCompletionForm } from "./face-to-face-forms";
+import {
+  F2F_LOCATION_LABEL,
+  F2fAttestationForm,
+  F2fCompletionForm,
+  F2fOverrideWindowForm,
+} from "./face-to-face-forms";
 
 export interface FaceToFaceSnapshot {
   sequenceNumber: number;
@@ -184,6 +189,21 @@ export function FaceToFaceRail({
                     onError={setError}
                   />
                 )}
+              </section>
+            ) : null}
+            {canManage && snapshot.withinWindow === false && !snapshot.windowOverride ? (
+              <section className="wx-drawer-card">
+                <h3>Window override</h3>
+                {error && state !== "scheduled" && state !== "completed" ? (
+                  <InlineAlert>{error}</InlineAlert>
+                ) : null}
+                <F2fOverrideWindowForm
+                  api={api}
+                  faceToFaceId={faceToFaceId}
+                  version={detail.version}
+                  onDone={done}
+                  onError={setError}
+                />
               </section>
             ) : null}
           </>

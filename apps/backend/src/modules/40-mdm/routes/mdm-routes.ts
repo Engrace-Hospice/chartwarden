@@ -1,4 +1,4 @@
-import { requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@wardenx/auth";
 import { requireStepUp } from "@wardenx/auth";
 // apps/backend/src/modules/40-mdm/routes/mdm-routes.ts — M40-T07 the MDM route inventory
 // (M40 spec §4.1–4.2; the §4.4 permission handshake; §7.6 merge approval & re-pointing).
@@ -67,9 +67,12 @@ function perKind(action: "read" | "propose" | "overlay"): PreHandler {
 const BAA_READ = requirePermission("mdm.baa.read") as PreHandler;
 const BAA_MANAGE = requirePermission("mdm.baa.manage") as PreHandler;
 const LICENSE_MANAGE = requirePermission("mdm.license.manage") as PreHandler;
-const MERGE_READ = requirePermission("mdm.merge.read") as PreHandler;
-const MERGE_APPROVE = requirePermission("mdm.merge.approve") as PreHandler;
-const CANONICAL_WRITE = requirePermission("mdm.canonical.write") as PreHandler;
+// The `/admin/mdm/*` surface is platform-only (GAP-172): RBAC key AND the `mdm_admin_platform_ops`
+// ABAC conjunct (see ../abac-predicates.ts) — a tenant role that acquired the key is still refused.
+const PLATFORM_PREDICATE = "mdm_admin_platform_ops";
+const MERGE_READ = requireAbac("mdm.merge.read", PLATFORM_PREDICATE) as PreHandler;
+const MERGE_APPROVE = requireAbac("mdm.merge.approve", PLATFORM_PREDICATE) as PreHandler;
+const CANONICAL_WRITE = requireAbac("mdm.canonical.write", PLATFORM_PREDICATE) as PreHandler;
 const STEP_UP = requireStepUp("mdm.merge.approve") as PreHandler;
 
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);

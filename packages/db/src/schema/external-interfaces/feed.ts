@@ -97,6 +97,11 @@ export const externalFeed = pgTable(
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     /** Set on §3.7 eraser tombstone (`status='revoked'`); the row survives as disclosure evidence. */
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** GAP-153 (migration 0460) — the FIRST approver of a feed revoke (D20). The revoke completes only when a
+     *  DIFFERENT membership approves; held server-side, never read off the request body. */
+    revokeRequestedByMembershipId: uuid("revoke_requested_by_membership_id"),
+    revokeRequestedAt: timestamp("revoke_requested_at", { withTimezone: true }),
+    revokeReason: text("revoke_reason"),
     rateLimitMsgPerSec: integer("rate_limit_msg_per_sec").notNull().default(50),
     retryPolicy: jsonb("retry_policy")
       .notNull()

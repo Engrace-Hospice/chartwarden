@@ -651,7 +651,7 @@ describe("M34-saas-tenant-platform-inject — feature-flag admin (§4.7/D13)", (
       method: "POST",
       url: "/api/v1/platform/feature-flags",
       headers: PLATFORM_OPS_STEPUP,
-      payload: { flagKey: TEST_FLAG_KEY, flagKind: "product", valueType: "boolean", value: true },
+      payload: { flagKey: TEST_FLAG_KEY, flagKind: "product", valueType: "bool", value: true },
     });
     expect(upsert.statusCode).toBe(201);
     expect(upsert.json().organizationId).toBeNull();
@@ -684,7 +684,7 @@ describe("M34-saas-tenant-platform-inject — feature-flag scope + first-time cr
       method: "POST",
       url: "/api/v1/platform/feature-flags",
       headers: PLATFORM_OPS_STEPUP,
-      payload: { flagKey: NEW_FLAG_KEY, flagKind: "product", valueType: "boolean", value: false },
+      payload: { flagKey: NEW_FLAG_KEY, flagKind: "product", valueType: "bool", value: false },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().organizationId).toBeNull();
@@ -702,7 +702,7 @@ describe("M34-saas-tenant-platform-inject — feature-flag scope + first-time cr
           flagKey: NEW_FLAG_KEY,
           organizationId,
           flagKind: "kill_switch",
-          valueType: "boolean",
+          valueType: "bool",
           value: true,
         },
       });

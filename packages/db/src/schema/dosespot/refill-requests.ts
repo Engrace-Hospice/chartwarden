@@ -53,6 +53,10 @@ export const refillRequests = pgTable(
     resultingMedicationOrderId: uuid("resulting_medication_order_id"), // minted order (app-validated; no FK)
     responseChannel: refillResponseChannel("response_channel"),
 
+    // Migration 0412 — the once-per-stage markers the `dosespot.refill_sla` cron guards its emits with.
+    slaWarnEmittedAt: timestamp("sla_warn_emitted_at", { withTimezone: true }),
+    slaCriticalEmittedAt: timestamp("sla_critical_emitted_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

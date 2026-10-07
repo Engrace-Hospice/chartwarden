@@ -25,6 +25,12 @@ export interface PortalScreenMeta {
 export const PORTAL_SCREEN_MANIFEST: readonly PortalScreenMeta[] = [
   { id: "portal.sign-in", path: "/", title: "Sign in", chrome: false },
   {
+    id: "portal.accept-invitation",
+    path: "/accept-invitation",
+    title: "Accept invitation",
+    chrome: false,
+  },
+  {
     id: "portal.patient-picker",
     path: "/patient-picker",
     title: "Choose patient",

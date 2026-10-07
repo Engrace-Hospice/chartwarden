@@ -25,6 +25,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import type { AiModelBackendKind, AiRoutingPreference } from "@wardenx/types";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { type M32EventEmitter, capabilityIdentity } from "../events";
 
 import type {
   AiCalibrationRow,
@@ -146,6 +147,8 @@ export interface AiCapabilityRegistryStoreDeps {
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
   /** The allowlisted job id (`M32_PLATFORM_JOB_ID`; `wireM32Tenancy()` registered it). */
   readonly jobId: string;
+  /** GAP-161 - same-tx `m32.capability.*` emits (absent in slice/tests). */
+  readonly events?: M32EventEmitter;
 }
 
 /** The §3.3 PLATFORM-SHARED half: reads on the tenant handle, writes under an audited bypass. */
@@ -226,6 +229,18 @@ export function createDrizzleAiCapabilityRegistryStore(
           stageArtifacts: event.stageArtifacts,
           transitionedAt: new Date(event.transitionedAt),
         });
+        await deps.events?.emitInTx(tx, {
+          name: "m32.capability.created",
+          organizationId: null,
+          aggregate: { kind: "ai_capability", id: row.id },
+          payload: {
+            capabilityId: row.id,
+            capabilityKey: row.capabilityKey,
+            riskTier: row.riskTier,
+            lifecycleState: row.lifecycleState,
+            createdByMembershipId: event.actorMembershipId,
+          },
+        });
         return toCapabilityRow(row);
       }),
 
@@ -263,6 +278,21 @@ export function createDrizzleAiCapabilityRegistryStore(
             stageArtifacts: event.stageArtifacts,
             transitionedAt: new Date(event.transitionedAt),
           });
+          await deps.events?.emitInTx(tx, {
+            name: "m32.capability.transitioned",
+            organizationId: null,
+            aggregate: { kind: "ai_capability", id: row.id },
+            payload: {
+              capabilityId: row.id,
+              capabilityKey: row.capabilityKey,
+              previousState: event.fromState,
+              newState: event.toState,
+              approvalKind: event.approvalKind,
+              transitionedByMembershipId: event.actorMembershipId,
+              rationale: event.rationaleText,
+              linkedEvaluationRunId: event.linkedEvaluationRunId ?? null,
+            },
+          });
           return toCapabilityRow(row);
         },
       ),
@@ -291,7 +321,7 @@ export function createDrizzleAiCapabilityRegistryStore(
       return row ? toCalibrationRow(row) : null;
     },
 
-    publishCalibration: (capabilityId, plan) =>
+    publishCalibration: (capabilityId, plan, calibratedByMembershipId) =>
       asAdmin(
         `publish calibration for AI capability ${capabilityId}/${plan.insert.backendKey} (M32 §3.2.3 R5)`,
         async (tx) => {
@@ -323,6 +353,20 @@ export function createDrizzleAiCapabilityRegistryStore(
                 supersededById: inserted.id,
               })
               .where(eq(schema.aiCapabilityCalibration.id, plan.supersede.calibrationId));
+          }
+          if (deps.events) {
+            await deps.events.emitInTx(tx, {
+              name: "m32.capability.calibrated",
+              organizationId: null,
+              aggregate: { kind: "ai_capability", id: capabilityId },
+              payload: {
+                ...(await capabilityIdentity(tx, { id: capabilityId })),
+                calibrationId: inserted.id,
+                supersededCalibrationId: plan.supersede?.calibrationId ?? null,
+                backendKey: plan.insert.backendKey,
+                calibratedByMembershipId: calibratedByMembershipId ?? "unattributed",
+              },
+            });
           }
           return toCalibrationRow(inserted);
         },
@@ -371,6 +415,8 @@ export function createDrizzleAiTenantConsentStore(deps: {
   readonly db: DbClient;
   /** `app.user_id` for the session; the M4 write-audit trigger reads it. */
   readonly userId: string;
+  /** GAP-161 - same-tx `m32.tenant_opt_in.*` / `m32.clinician_opt_out.recorded` emits. */
+  readonly events?: M32EventEmitter;
 }): AiTenantConsentStore {
   const ctx = (organizationId: string) => ({ organizationId, userId: deps.userId });
 
@@ -460,6 +506,34 @@ export function createDrizzleAiTenantConsentStore(deps: {
           })
           .returning();
         if (!row) throw new Error("ai_tenant_opt_in_record upsert returned no row");
+        if (deps.events) {
+          const identity = await capabilityIdentity(tx, { id: capabilityId });
+          const ack = (row.disclosureAcknowledgments ?? {}) as Record<string, unknown>;
+          await deps.events.emitInTx(tx, {
+            name:
+              row.status === "active" ? "m32.tenant_opt_in.recorded" : "m32.tenant_opt_in.revoked",
+            organizationId,
+            aggregate: { kind: "ai_tenant_opt_in_record", id: row.id },
+            payload:
+              row.status === "active"
+                ? {
+                    ...identity,
+                    tenantOptInId: row.id,
+                    acknowledgedByMembershipId: write.orgAdminMembershipId,
+                    routingMode: row.routingPreferenceSnapshot,
+                    baaReference: typeof ack.baaReference === "string" ? ack.baaReference : null,
+                    zdrAcknowledged: typeof ack.zdrContractReference === "string",
+                    pilotEnrollment: row.pilotEnrollment,
+                  }
+                : {
+                    ...identity,
+                    tenantOptInId: row.id,
+                    revokedByMembershipId: write.orgAdminMembershipId,
+                    mode: row.status === "paused" ? "paused" : "withdrawn",
+                    reason: row.status === "paused" ? row.pausedReason : row.optedOutReason,
+                  },
+          });
+        }
         return toOptInRow(row);
       }),
 
@@ -510,6 +584,16 @@ export function createDrizzleAiTenantConsentStore(deps: {
           })
           .returning();
         if (!inserted) throw new Error("ai_clinician_opt_out insert returned no row");
+        await deps.events?.emitInTx(tx, {
+          name: "m32.clinician_opt_out.recorded",
+          organizationId: row.organizationId,
+          aggregate: { kind: "ai_clinician_opt_out", id: inserted.id },
+          payload: {
+            ...(await capabilityIdentity(tx, { id: row.capabilityId })),
+            optOutId: inserted.id,
+            membershipId: row.membershipId,
+          },
+        });
         return toOptOutRow(inserted);
       }),
 

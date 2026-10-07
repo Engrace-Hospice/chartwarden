@@ -20,6 +20,7 @@ import type {
   FhirBulkExportJobAbacFacts,
   FhirClientActiveFacts,
   FhirGatewayAbacResolver,
+  FhirInboundSubjectFacts,
 } from "./abac-predicates";
 
 /** The M3 effective-permission store `holdsPermission` derives from — structurally typed (no M3 import). */
@@ -116,6 +117,28 @@ export function buildDrizzleFhirGatewayAbacResolver(
               .limit(1);
             if (!row) return null;
             return row.ownerModule as FhirInboundOwnerModule;
+          },
+        );
+      } catch {
+        return null;
+      }
+    },
+
+    async inboundSubjectPatient(orgId, proposalId) {
+      try {
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<FhirInboundSubjectFacts | null> => {
+            const [row] = await tx
+              .select({
+                resourceType: INBOUND.resourceType,
+                subjectPatientId: INBOUND.subjectPatientId,
+              })
+              .from(INBOUND)
+              .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)))
+              .limit(1);
+            return row ?? null;
           },
         );
       } catch {

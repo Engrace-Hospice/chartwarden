@@ -63,6 +63,40 @@ images, runs strict schema-only migrations and runtime-role provisioning, recrea
 `web`, then runs `smoke.sh`. If any step fails it restores the previous image references and recreates
 those services. Database migrations are forward-only and are not rolled back.
 
+## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
+
+`compose.yml` runs two more services alongside `api`/`worker`/`web`:
+
+- **`docling-worker`** — DocLens OCR + layout, CPU-only, models baked into the image, reachable only on the compose
+  network with the `DOCLING_WORKER_TOKEN` bearer. The release builds, scans (fixable HIGH/CRITICAL fail the release; unfixed ones are ignored), signs and
+  attests `ghcr.io/<owner>/wardenx-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
+  argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `WARDENX_DOCLING_IMAGE`.
+  `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
+- **`minio-provision`** — a one-shot that creates the `wardenx-app` policy and the service account the api/worker use
+  (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*` and
+  `wardenx-*` buckets only; the MinIO root account is no longer an application credential.
+
+`minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
+the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
+`document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are
+dropped).
+
+`deploy.sh` generates `DOCLING_WORKER_TOKEN`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY` and `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` into `.env.production`
+the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
+To rotate the MinIO application secret, edit `MINIO_APP_SECRET_KEY` and deploy: `minio-provision` re-sets it.
+
+## OWNER DECISION: production now enables the Oregon Medicaid gateway (GAP-146)
+
+`M24_LAUNCH_GATEWAY_ENABLED` used to be opt-in, so a production deploy that never set it silently built no Medicaid
+submit/poll workers. It is now **opt-out in production: an unset value means ENABLED** (dev/test/CI are unchanged:
+unset = off). Consequences, so the owner can veto:
+
+- With the gate on and `M24_CREDENTIAL_ENCRYPTION_KEY` set (already required in production), the M24 Medicaid
+  submission and acknowledgement-poll workers are built and scheduled. They contact an Oregon endpoint only for a
+  provider entity that has its own state trading-partner credential configured; with no credential nothing calls out.
+- To veto and keep the previous behaviour, set `M24_LAUNCH_GATEWAY_ENABLED=false` in `.env.production` (any value other
+  than `true`/`false` refuses to boot). `.env.example` documents the switch.
+
 ## Post-deploy verification (`smoke.sh`)
 
 Until #98 the deploy verified exactly one thing: that `http://127.0.0.1:3000/ready` eventually returned

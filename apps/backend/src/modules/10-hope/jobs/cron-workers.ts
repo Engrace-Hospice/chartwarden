@@ -54,6 +54,13 @@ import {
   planHopeWindowWatchdog,
   planSfvWatchdog,
 } from "./index";
+import { evaluateHopeRetention } from "./retention";
+import {
+  hopeRetentionFactsForOrg,
+  insertRetentionReview,
+  retentionReviewsForOrg,
+  updateRetentionReview,
+} from "./retention-store";
 import {
   type SubmissionItemValidation,
   buildSubmissionEnvelope,
@@ -96,6 +103,7 @@ const M10_WORKER_SYSTEM_USER_ID = "";
 /** The two `hope-*-watchdog` job names this file wires (a narrower key set than `M10_JOB_PARAMS`/
  * `M10_JOB_SCHEDULES`, which also carry the five NOT-yet-wired §4.8 jobs). */
 type M10WatchdogJobName =
+  | "hope-retention-scan"
   | "hope-window-watchdog"
   | "sfv-watchdog"
   | "assemble-hope-submission"
@@ -122,6 +130,26 @@ export interface HopeOutboxPublishPort {
 /** The M2 active-org enumerator the cron fan-out reads (runs under withPlatformContext when bound). */
 export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
+}
+
+/**
+ * The M4 legal-hold read the retention scan is gated on (`activeLegalHoldScopeForOrg`, bound at the composition
+ * root — M10 never reads M4's `legal_hold` table). FAIL-CLOSED: unbound, the scan refuses to run rather than
+ * guess that nothing is held.
+ */
+export interface HopeRetentionHoldPort {
+  activeLegalHoldScopeForOrg(
+    organizationId: string,
+  ): Promise<{ readonly orgWide: boolean; readonly patientIds: ReadonlySet<string> }>;
+}
+
+/**
+ * A tenant/state retention override (years), or null. It can only LENGTHEN the architecture horizons (7y
+ * standard / 10y submitted) — see `effectiveYears`. Optional: unbound means "no override", which is safe
+ * because the base horizons already meet every regulatory floor.
+ */
+export interface HopeRetentionOverridePort {
+  overrideYearsForOrg(organizationId: string): Promise<number | null>;
 }
 
 export interface HopeAlertEmitPort {
@@ -151,6 +179,10 @@ export interface M10WorkerDeps {
   readonly outbox: HopeOutboxPublishPort;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly alerts?: HopeAlertEmitPort;
+  /** GAP-181 — the M4 legal-hold read the retention scan is gated on (fail-closed when unbound). */
+  readonly retentionHolds?: HopeRetentionHoldPort;
+  /** GAP-181 — optional tenant/state retention override (lengthen-only). */
+  readonly retentionOverride?: HopeRetentionOverridePort;
   /**
    * F-072 - the D6 iQIES adapter. Optional and fail-closed by default, exactly like `activeOrgs`: an
    * unbound deployment's submit worker raises here, the job DLQs and the M36 DLQ alert fires. That
@@ -213,6 +245,8 @@ export function buildM10WorkerDeps(deps: {
   alerts?: HopeAlertEmitPort;
   iqies?: IqiesAdapterPort;
   providerEntityCcn?: ProviderEntityCcnPort;
+  retentionHolds?: HopeRetentionHoldPort;
+  retentionOverride?: HopeRetentionOverridePort;
 }): M10WorkerDeps {
   return {
     connection: deps.connection,
@@ -222,6 +256,8 @@ export function buildM10WorkerDeps(deps: {
     alerts: deps.alerts,
     iqies: deps.iqies,
     providerEntityCcn: deps.providerEntityCcn,
+    retentionHolds: deps.retentionHolds,
+    retentionOverride: deps.retentionOverride,
     now: () => new Date(),
   };
 }
@@ -415,6 +451,12 @@ export function registerM10CronWorkers(deps: M10WorkerDeps): Worker[] {
       connection,
       concurrency: M10_JOB_PARAMS["sfv-watchdog"].concurrency,
     }),
+    // GAP-181 — the `hope.retention` queue now has its worker. The monthly scan only FLAGS records past their
+    // retention horizon; destruction stays on the M4 destruction-certificate pathway.
+    new Worker(M10_QUEUES.retention, async () => runHopeRetentionCron(deps), {
+      connection,
+      concurrency: M10_JOB_PARAMS["hope-retention-scan"].concurrency,
+    }),
     // The three §4.10 submission stages (`runSubmissionJob`) are deliberately NOT given a Worker: the
     // manual iQIES package flow is the transport (see the RECOVERY NOTE in the file header).
   ];
@@ -448,6 +490,7 @@ export async function scheduleM10Jobs(connection: ConnectionOptions): Promise<Qu
   const jobs: readonly [M10QueueName, M10WatchdogJobName][] = [
     [M10_QUEUES.windows, "hope-window-watchdog"],
     [M10_QUEUES.sfv, "sfv-watchdog"],
+    [M10_QUEUES.retention, "hope-retention-scan"],
     // NOT scheduled: `assemble-hope-submission` / `iqies-submit-worker` / `iqies-reconcile-worker` — see
     // the RECOVERY NOTE in the file header (they conflict with the manual iQIES package flow).
   ];
@@ -990,4 +1033,94 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
     );
   }
   return { reconciled, failed };
+}
+
+// ── GAP-181 — `hope-retention-scan` (monthly) ─────────────────────────────────────────────────────────────
+//
+// `hope.retention` was a declared queue with no worker, so HOPE retention was documented but never evaluated.
+// Per org, in ONE tx: fold each patient's HOPE assessments + iQIES outcomes into facts, layer the M4 legal-hold
+// scope on, evaluate the retention horizon (`./retention`: 10y from the last transmission for a submitted record,
+// else 7y from the last effective date, lengthen-only override) and record the verdict in the M10-owned
+// `hope_retention_review` ledger. A patient newly `eligible` publishes `m10.hope.retention_eligible` ONCE; a
+// `blocked` patient (legal hold / open iQIES error / pending correction) is recorded with its blockers and never
+// flagged. THE SCAN NEVER DELETES a clinical row: destruction is a human-approved M4 destruction certificate
+// invoking the registered `hope_record` eraser, which re-checks the CMS 10-year rule itself.
+export async function runHopeRetentionCron(deps: M10WorkerDeps): Promise<void> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  const holds = deps.retentionHolds;
+  if (!holds) {
+    return unbound(
+      "retentionHolds.activeLegalHoldScopeForOrg",
+      "bind M4's activeLegalHoldScopeForOrg at the composition root — the retention scan must know about legal holds before it can flag anything",
+    );
+  }
+  for (const { organizationId } of orgs) {
+    const holdScope = await holds.activeLegalHoldScopeForOrg(organizationId);
+    const overrideYears =
+      (await deps.retentionOverride?.overrideYearsForOrg(organizationId)) ?? null;
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+        const facts = await hopeRetentionFactsForOrg(t, organizationId);
+        const reviews = new Map(
+          (await retentionReviewsForOrg(t, organizationId)).map((r) => [r.patientId, r]),
+        );
+        for (const f of facts) {
+          const decision = evaluateHopeRetention(
+            { ...f, legalHold: holdScope.orgWide || holdScope.patientIds.has(f.patientId) },
+            now,
+            overrideYears,
+          );
+          const prior = reviews.get(f.patientId);
+          // Not due and never flagged: no row (the ledger holds only patients that have reached their horizon).
+          if (!prior && decision.status === "cleared") continue;
+          const becameEligible = decision.status === "eligible" && prior?.status !== "eligible";
+          const write = {
+            basis: decision.basis,
+            anchorAt: decision.anchorAt,
+            retentionYears: decision.retentionYears,
+            eligibleAt: decision.eligibleAt,
+            status: decision.status,
+            blockers: decision.blockers,
+            flaggedAt: becameEligible ? now : null,
+            evaluatedAt: now,
+          } as const;
+          let rowId: string;
+          if (prior) {
+            rowId = prior.id;
+            await updateRetentionReview(t, prior.id, {
+              ...write,
+              // An already-flagged patient keeps its original flag instant.
+              flaggedAt: decision.status === "eligible" ? (becameEligible ? now : null) : null,
+            });
+          } else {
+            rowId = await insertRetentionReview(t, {
+              ...write,
+              organizationId,
+              providerEntityId: f.providerEntityId,
+              locationId: f.locationId,
+              patientId: f.patientId,
+            });
+          }
+          if (becameEligible) {
+            await deps.outbox.publish(t, {
+              eventName: "m10.hope.retention_eligible",
+              payload: {
+                patientId: f.patientId,
+                basis: decision.basis,
+                retentionYears: decision.retentionYears,
+                eligibleAt: decision.eligibleAt.toISOString(),
+              },
+              organizationId,
+              aggregateKind: "hope_retention_review",
+              aggregateId: rowId,
+            });
+          }
+        }
+      },
+    );
+  }
 }

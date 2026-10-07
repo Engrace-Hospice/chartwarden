@@ -735,8 +735,8 @@ apps/backend/src/modules/22-documents/         # Routes + services + consumers
 │   ├── extraction-pass.worker.ts               # BullMQ: classifier_complete -> extraction_complete
 │   ├── vision-verification.worker.ts           # BullMQ: high-risk fields
 │   ├── discrepancy-detection.worker.ts         # BullMQ: cross-source + chart-existing
-│   ├── retention-rotation.worker.ts            # cron: intake_artifact disposition+30d sweep
-│   └── ai-block-validator.cron.ts              # boot-time + nightly check vs M32 prompt registry
+│   ├── retention-rotation.worker.ts            # cron: intake_artifact disposition+30d sweep  [built, GAP-141]
+│   └── ai-block-validator.cron.ts              # boot-time + nightly check vs M32 prompt registry  [built as ai-block.ts + workers/ai-block-validator-worker.ts, GAP-141]
 ├── consumers/                                  # outbox subscribers
 │   ├── m5-amendment-denied.ts                  # render Statement of Disagreement
 │   ├── m5-patient-merged.ts                    # document patient_id redirect
@@ -755,7 +755,7 @@ apps/backend/src/modules/22-documents/         # Routes + services + consumers
 │   ├── m39-consent-document-render-requested.ts # forward seam; deny-stub until M39 lands real path
 │   ├── m4-legal-hold-applied.ts
 │   ├── m4-legal-hold-released.ts
-│   └── minio-access-log.ts                     # MinIO access-log webhook for download confirmation
+│   └── minio-access-log.ts                     # MinIO access-log webhook for download confirmation  [built, GAP-141]
 ├── db/
 │   ├── schema/
 │   │   ├── documents.ts
@@ -1913,7 +1913,7 @@ The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` pre
 
 | Queue | Trigger | Work | Concurrency | Attempts | Backoff | DLQ |
 |---|---|---|---|---|---|---|
-| `form-render` | `form_fill` row inserted (`status='queued'`) | render via react-pdf or Puppeteer adapter; store version; emit `m22.document.rendered` | 4 | 3 | exponential 30 s / 2 min / 10 min | `form-render-dlq`; on DLQ entry set `form_fill.status='failed'` + emit `m22.document.render_failed`; M36 critical alert to org_admin + ops-on-call |
+| `form-render` **(BUILT — `workers/form-render-worker.ts`, every minute, per-org fan-out, `FOR UPDATE SKIP LOCKED`, 3 attempts; terminal failure raises `m22.document.render_failed`)** | `form_fill` row inserted (`status='queued'`) | render via react-pdf or Puppeteer adapter; store version; emit `m22.document.rendered` | 4 | 3 | exponential 30 s / 2 min / 10 min | `form-render-dlq`; on DLQ entry set `form_fill.status='failed'` + emit `m22.document.render_failed`; M36 critical alert to org_admin + ops-on-call |
 | `forms-render-critical` | `m11.order.results_received_critical` consumed (D22) | render critical lab-results PDF at priority 1; 30 s timeout; emit `m22.document.rendered` + `m22.document.rendered_critical_results` | 5 | 2 | exponential 10 s / 60 s | `form-render-critical-dlq`; M36 critical alert immediately; ops paged |
 | `docling-pass` | `intake_upload_batch.status='uploaded'` | call docling-worker; persist layout markdown + page coordinates | 2 | 3 | exponential 60 s / 5 min / 20 min | `docling-pass-dlq`; set batch status `parse_failed`; M36 warn alert to intake supervisor |
 | `classifier-pass` | `docling_complete` | call `DocLensClassifier` per page; create `classified_page` rows | 4 | 3 | exponential 30 s / 2 min / 10 min | `classifier-pass-dlq`; mark pages as `classifier_failed`; M36 warn |
@@ -1921,9 +1921,9 @@ The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` pre
 | `vision-verification` | candidate with `risk_level='high'` | call `DocLensVisionVerifier`; set `vision_verified`, `vision_disagreement` | 2 | 3 | exponential 30 s / 2 min / 10 min | `vision-verification-dlq`; mark candidates `vision_failed`; reviewer sees warning badge; M36 warn |
 | `discrepancy-detection` | extraction_job exits `verifying` | detect cross-source + chart-existing disagreements; create `extraction_discrepancy` rows; emit M36 alerts | 4 | 3 | exponential 30 s / 2 min / 10 min | `discrepancy-detection-dlq`; batch halted at discrepancy stage; M36 warn |
 | `chart-writeback-dispatch` | `extraction_review.complete` | emit one `m22.extraction.commit_requested` per approved candidate; insert `extraction_provenance` rows | 1 (sequential per review) | 5 | exponential 10 s / 60 s / 5 min / 20 min / 60 min | `chart-writeback-dlq`; emit `m22.extraction.commit_failed`; M36 critical alert; provenance row marked `dispatch_failed` |
-| `retention-rotation` | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) | 2 | exponential 5 min / 30 min | `retention-rotation-dlq`; M36 warn to compliance_officer; document skipped that run |
-| `ai-block-validator` | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 | 1 | — | no DLQ; boot failure is the signal; ops paged |
-| `minio-access-log-ingestor` | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 | 3 | exponential 10 s / 60 s / 5 min | `minio-access-log-dlq`; log entry dropped after DLQ; M36 warn — best-effort ingest; audit gap is acceptable for access-log only (not for write events) |
+| `retention-rotation` **(BUILT — `22-documents/workers/retention-rotation-worker.ts`, daily 03:00 UTC, per-org fan-out. PROMOTES a written-back batch's source document to `clinical_record`; REPORTS no-writeback batches past retention as `document.retention_destruction_pending` and deletes nothing: destruction stays behind an M4 destruction certificate — there is no seam for M22 to request or auto-approve one and no batch-scoped entry point on the patient-scoped `documents` eraser. Legal-held documents are never reported as due.)** | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) | 2 | exponential 5 min / 30 min | `retention-rotation-dlq`; M36 warn to compliance_officer; document skipped that run |
+| `ai-block-validator` **(BUILT — boot gate `ai-block.ts` + nightly 02:00 re-run `workers/ai-block-validator-worker.ts`; a violation raises an ops log/alert and fails the job)** | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 | 1 | — | no DLQ; boot failure is the signal; ops paged |
+| `minio-access-log-ingestor` **(BUILT — MinIO AUDIT webhook (cluster-wide, so no per-bucket notification for the dynamic `tenant-*` buckets) -> `POST /api/v1/webhooks/minio/access-log` (bearer `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`, 503 until set) -> `signed_url_consumed` attributed to the principal the signed URL was issued to; unattributable fetches are dropped (accepted audit gap); synchronous, MinIO retries a non-2xx)** | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 | 3 | exponential 10 s / 60 s / 5 min | `minio-access-log-dlq`; log entry dropped after DLQ; M36 warn — best-effort ingest; audit gap is acceptable for access-log only (not for write events) |
 
 ### 4.9 M36 Typed Alert Payloads
 
@@ -2071,7 +2071,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { document, documentVersion } from '@wardenx/db/schema/documents'
 import { renderFormTemplate } from '@wardenx/forms'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface M11ResultsReceivedPayload {
   readonly orderId: string
@@ -2104,7 +2104,7 @@ async function renderLabResultsPdf(
   payload: M11ResultsReceivedPayload,
   opts: { logger: Logger; critical: boolean },
 ): Promise<void> {
-  await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) => {
     // 1. Load the observation via M29's LabObservationReader seam (NOT direct schema import)
     const observation = await SeamRegistry.get('LabObservationReader').loadById(
       payload.organizationId, payload.observationId,
@@ -2832,11 +2832,11 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 
 All tables in §3.3 ship with RLS enabled. Policy patterns:
 
-- **`document`, `document_version`, `document_tag`, `document_access_log`, `document_legal_hold`**: SELECT/INSERT/UPDATE/DELETE policies all check `tenant_id = current_setting('app.tenant_id')::uuid`. Additionally, SELECT on `document` and `document_version` checks `EXISTS (assigned_to_patient_or_role_bypass)` via a SECURITY INVOKER function `m22.user_can_read_document(document_id)` that wraps M5 care-team checks.
-- **`form_template`, `form_template_version`**: tenant_id is nullable for platform-floor rows; SELECT policy: `tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id')::uuid`. INSERT/UPDATE/DELETE on platform-floor rows requires the special `platform_owner_session` setting (set only by platform-level migration/admin processes, never by tenant sessions).
-- **`tenant_template_overlay`**: standard tenant_id RLS.
-- **`form_fill`**: standard tenant_id RLS; additionally, an `executor_id` check restricts non-admin to their own fills.
-- **`intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_discrepancy`, `extraction_review`, `extraction_decision`, `extraction_provenance`**: standard tenant_id RLS plus, for non-admin roles, an additional check that the user is in the patient's care team OR is the assigned reviewer.
+- **`document`, `document_version`, `document_tag`, `document_access_log`, `document_legal_hold`**: SELECT/INSERT/UPDATE/DELETE policies all check `organization_id = current_setting('app.org_id', true)::uuid`. Additionally, SELECT on `document` and `document_version` checks `EXISTS (assigned_to_patient_or_role_bypass)` via a SECURITY INVOKER function `m22.user_can_read_document(document_id)` that wraps M5 care-team checks.
+- **`form_template`, `form_template_version`**: `organization_id` is nullable for platform-floor rows; SELECT policy: `organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid`. INSERT/UPDATE/DELETE on platform-floor rows requires the special `platform_owner_session` setting (set only by platform-level migration/admin processes, never by tenant sessions).
+- **`tenant_template_overlay`**: standard `organization_id` RLS.
+- **`form_fill`**: standard `organization_id` RLS; additionally, an `executor_id` check restricts non-admin to their own fills.
+- **`intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_discrepancy`, `extraction_review`, `extraction_decision`, `extraction_provenance`**: standard `organization_id` RLS plus, for non-admin roles, an additional check that the user is in the patient's care team OR is the assigned reviewer.
 
 ### 8.3 Field-Level Encryption
 

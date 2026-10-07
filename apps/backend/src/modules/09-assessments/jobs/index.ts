@@ -239,12 +239,31 @@ export function planChangeEscalation(
  * flag overdue per (patient, scale) from the last capture; overdue is a SOFT state (never blocks). */
 export const REASSESSMENT_CADENCE_DAYS = 15;
 
+/**
+ * The effective reassessment cadence for one scale: the CoP floor, TIGHTENED (never loosened) by the tenant's
+ * `scale_policy.reassessment_cadence_overrides[scaleType]` (spec D2 floor rule). A missing, non-numeric,
+ * non-integer or < 1 override is ignored — a malformed policy must never disable the cadence — and an override
+ * above the floor is clamped to the floor.
+ */
+export function effectiveCadenceDays(
+  scaleType: ScaleType,
+  overrides: Readonly<Record<string, unknown>> | undefined,
+  floorDays: number = REASSESSMENT_CADENCE_DAYS,
+): number {
+  const raw = overrides?.[scaleType];
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) return floorDays;
+  return Math.min(floorDays, raw);
+}
+
 /** The minimal latest-capture projection the cadence scan operates over (one row per patient+scale). */
 export interface ReassessmentSnapshot {
   readonly patientId: string;
   readonly scaleType: ScaleType;
   /** The last capture for this (patient, scale), as an ISO-8601 instant. */
   readonly lastCapturedAt: string;
+  /** Siting denormalized from the last capture (the three-column rule); carried into the due ledger. */
+  readonly providerEntityId?: string;
+  readonly locationId?: string;
 }
 
 /** One (patient, scale) cadence evaluation: whether it is past due and when it became/becomes due. */
@@ -252,6 +271,8 @@ export interface ReassessmentDueFlag {
   readonly patientId: string;
   readonly scaleType: ScaleType;
   readonly dueAt: string;
+  /** The effective cadence (days) the due date was derived from. */
+  readonly cadenceDays: number;
   readonly overdue: boolean;
 }
 
@@ -263,14 +284,15 @@ export interface ReassessmentDueFlag {
 export function planReassessmentDueScan(
   latest: readonly ReassessmentSnapshot[],
   now: Date,
-  cadenceDays: number = REASSESSMENT_CADENCE_DAYS,
+  cadenceDays: number | ((scaleType: ScaleType) => number) = REASSESSMENT_CADENCE_DAYS,
 ): readonly ReassessmentDueFlag[] {
-  const cadenceMs = cadenceDays * 24 * 60 * 60 * 1000;
   return latest.map((r) => {
-    const dueMs = new Date(r.lastCapturedAt).getTime() + cadenceMs;
+    const days = typeof cadenceDays === "function" ? cadenceDays(r.scaleType) : cadenceDays;
+    const dueMs = new Date(r.lastCapturedAt).getTime() + days * 24 * 60 * 60 * 1000;
     return {
       patientId: r.patientId,
       scaleType: r.scaleType,
+      cadenceDays: days,
       dueAt: new Date(dueMs).toISOString(),
       overdue: now.getTime() > dueMs,
     };

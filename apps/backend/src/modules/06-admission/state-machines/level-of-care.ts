@@ -42,6 +42,38 @@ export function needsIpuBed(level: LevelOfCare): boolean {
 }
 
 /** Apply an LCP event (§2.3.5). */
+/** D12 — the three attestations a clinician must affirm to request general inpatient care (GIP). */
+export const GIP_ATTESTATION_KEYS = [
+  "symptomsNotManageableElsewhere",
+  "intensityWarrantsGip",
+  "inpatientSettingIdentified",
+] as const;
+
+export type GipAttestations = Partial<Record<(typeof GIP_ATTESTATION_KEYS)[number], boolean>>;
+
+/**
+ * D12 — a GIP request must carry all three attestations as `true`; any missing/false one is a 412
+ * `GIP_DOCUMENTATION_INCOMPLETE` naming the offending keys. R-LCP-01's free-text `reason` floor is a separate,
+ * complementary guard inside {@link transitionLevelOfCare}. Non-GIP levels are exempt.
+ */
+export function assertGipAttestations(
+  level: string,
+  attestations: GipAttestations | undefined,
+): void {
+  if (level !== "general_inpatient_care") return;
+  const missing = GIP_ATTESTATION_KEYS.filter((k) => attestations?.[k] !== true);
+  if (missing.length === 0) return;
+  throw new AdmissionStateError(
+    "GIP_DOCUMENTATION_INCOMPLETE",
+    `GIP requires all three attestations; missing: ${missing.join(", ")}`,
+    missing.map((field) => ({
+      field: `gipAttestations.${field}`,
+      code: "required",
+      message: "must be attested true",
+    })),
+  );
+}
+
 export function transitionLevelOfCare(
   from: LevelOfCareState,
   event: LevelOfCareEvent,

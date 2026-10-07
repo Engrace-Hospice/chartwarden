@@ -27,7 +27,6 @@ import {
   consentTerminatesOnDeath,
   createConsentEvaluator,
   removeRecipient as decideRemoveRecipient,
-  nextCascadeStatus,
   nextConsentStatus,
   recipientActive,
   validateCaptureEvidence,
@@ -67,6 +66,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { type CascadeStatus, type M39AlertPort, attemptsOf, evaluateCascade } from "./cascade-ack";
 
 const CR = schema.consentRecord;
 const CRR = schema.consentRecordRecipient;
@@ -230,6 +230,8 @@ export interface ConsentPatientReader {
 
 export interface DbConsentRouteServiceDeps {
   readonly outbox?: ConsentWriteOutboxPort;
+  /** GAP-171 — the M36 AlertEmitter: the manual cascade retry raises the CRITICAL cascade-failed alert too. */
+  readonly alerts?: M39AlertPort;
   readonly cipher?: ConsentInternalNotesCipher;
   readonly patientReader?: ConsentPatientReader;
   readonly isPatientDeceased?: (organizationId: string, patientId: string) => Promise<boolean>;
@@ -1379,11 +1381,30 @@ export function createDbConsentRouteService(
             .for("update")
         )[0];
         if (!rev) throw new ConsentRouteError("not_found", "no revocation cascade on this consent");
-        const consumers = rev.cascadeConsumerStatusJsonb as Record<string, boolean>;
-        const meta = consumers as Record<string, boolean | number>;
-        const attempts = (typeof meta.__attempts === "number" ? meta.__attempts : 0) + 1;
-        const next = nextCascadeStatus({ status: rev.cascadeStatus, consumers, attempts });
-        const status = next.ok ? next.value : "partial_failed";
+        const consumers = rev.cascadeConsumerStatusJsonb as Record<string, boolean | number>;
+        const attempts = attemptsOf(consumers) + 1;
+        // GAP-171 — judged over the consumers that CAN ACK (live bindings only), by the same arbiter the
+        // retry cron and the ACK writer use, so the three can never disagree about "completed".
+        const evaluation = evaluateCascade(
+          { status: rev.cascadeStatus as CascadeStatus, consumerJson: consumers },
+          attempts,
+        );
+        const status = evaluation.status;
+        if (status === "partial_failed" && rev.cascadeStatus !== "partial_failed" && deps.alerts) {
+          await deps.alerts.emit(organizationId, {
+            eventType: "m39.consent.revoked_cascade_failed",
+            payload: {
+              organizationId,
+              patientId: row.patientId,
+              consentRecordId: row.id,
+              typeKey: row.typeKey,
+              revocationId: rev.id,
+              failedConsumers: evaluation.pendingConsumers,
+            },
+            severity: "critical",
+            correlationId: `m39-cascade-failed:${rev.id}`,
+          });
+        }
         await tx
           .update(REV)
           .set({
@@ -1409,9 +1430,7 @@ export function createDbConsentRouteService(
           revocationId: rev.id,
           status,
           attempts,
-          pendingConsumers: Object.entries(consumers)
-            .filter(([key, ack]) => key !== "__attempts" && !ack)
-            .map(([key]) => key),
+          pendingConsumers: [...evaluation.pendingConsumers],
         };
       });
     },

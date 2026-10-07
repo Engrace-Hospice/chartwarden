@@ -793,8 +793,13 @@ export class EvvRouteService implements EvvAbacResolver {
       capturedAt: e.capturedAt,
     }));
   }
-  portalArrival(orgId: string, visitId: string): ArrivalView {
-    const evts = this.events.filter((e) => e.organizationId === orgId && e.visitId === visitId);
+  portalArrival(orgId: string, visitId: string, patientId?: string): ArrivalView {
+    const evts = this.events.filter(
+      (e) =>
+        e.organizationId === orgId &&
+        e.visitId === visitId &&
+        (patientId === undefined || e.patientId === patientId),
+    );
     return {
       visitId,
       arrivedAt: evts.find((e) => e.kind === "check_in")?.capturedAt ?? null,

@@ -100,7 +100,8 @@ export interface SafetyScheduleRowFacts {
 export type SafetyScheduleRetireReason =
   | "visit_no_show"
   | "visit_completed_early"
-  | "reassigned_away";
+  | "reassigned_away"
+  | "patient_deceased";
 
 /** One targeted write on a `safety_check_in_schedule` row (or one new row). */
 export type SafetyScheduleMutation =

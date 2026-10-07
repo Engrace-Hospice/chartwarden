@@ -27,6 +27,8 @@ proposals. **If a module or screen spec conflicts with architecture, architectur
 
 [`docs/README.md`](./docs/README.md) is the master index of every document under `docs/`.
 
+Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet.
+
 - **Module specs** → [`docs/modules/`](./docs/modules/) (index: `docs/modules/README.md`). Resolve specs
   there, not the repo root. Module 29 sub-tasks: `docs/modules/module-29-tasks/`.
 - **UI screen specs** → [`docs/design/screens/`](./docs/design/screens/), indexed by
@@ -64,13 +66,17 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 - `check-outbox-bindings` (`arch:outbox-bindings`) — live consumer bindings ↔ event catalog agree; unbound (module, event) pairs must be in `scripts/outbox-deferred-consumers.ts` with a reason; per-module `*_SUBSCRIBED_EVENT_NAMES`-style lists must match the catalog (rule 6, exceptions in `scripts/outbox-subscription-exceptions.ts`). `bun run outbox:deferrals:update` regenerates lists, never reasons.
 - `check-architecture-docs`, `check-module-docs`, `check-adr-docs` — architecture/module-spec/ADR corpus consistency (cited paths, versions, index parity, links).
 - `check-openapi-provenance` (`arch:openapi-provenance`) — no duplicate/shadowed enrichment keys or imports, schemas from own directory. `report-openapi-coverage` (`arch:openapi-coverage`) — unenriched-route ratchet against `audit/openapi-coverage/baseline.json`; `client:check` keeps the typed client in sync.
-- Advisory/parity reports (each has a `--check` mode inside `arch:fitness`): `status:matrix`, `ui:parity`, `frame:fidelity` (playbook: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`), `audit-fitness`, `arch:e2e-coverage`.
+- `check-error-envelope` (`arch:error-envelope`) — route handlers throw typed `WardenXError`/`NotFoundError`/`ConflictError`; no flat `{ error: ... }` replies, so every error carries the standard envelope.
+- Live suites that guard a rule rather than a route (need a real catalog/DB, so not `arch:*` gates): `test:fk-indexes:live` asserts foreign keys are index-covered (the deliberately unindexed soft-deleted-parent FKs are an explicit, reasoned list); `test:m10:retention:live` proves the HOPE retention scan flags but never deletes and honours legal holds.
+- Advisory/parity reports (each has a `--check` mode inside `arch:fitness`): `status:matrix`, `ui:parity`, `frame:fidelity` (playbook: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`), `arch:e2e-coverage`.
 
 ## Standing verification habits (learned the hard way — see [`docs/history/`](./docs/history/README.md))
 
 - **Bound is not computing; green gates are proxies.** After adding an outbox consumer, grep
   `apps/backend/src/index.ts` for its factory — `arch:outbox-bindings` and `check:boot:platform` do not prove it is wired.
 - **Prove RLS live, not on a superuser connection.** Live suites must connect as the real NOBYPASSRLS `wardenx_app` role (`_live-app-role.ts`); a cross-tenant assertion on a superuser proves nothing.
+- **Never run live suites against the shared Docker cluster.** They `DROP ROLE wardenx_app`. Use a private `pgvector/pgvector:pg18` container on its own port with a fresh database per suite, one database at a time (roles are cluster-global, so drop the previous suite's database first).
+- **DoseSpot is unbound until configured.** `DOSESPOT_TENANT_CONFIGS` must hold a complete entry for a tenant before the M12 adapter sends anything; vendor field names are unverified until tested against a DoseSpot sandbox (`docs/history/m12-dosespot-adapter.md`).
 - **Use the real catalog-validating publisher in tests**, not `NOOP_OUTBOX`; every payload/emit-site change needs the real-publisher live suite.
 - **Relay ticks and workers are not requests**: use org-explicit `...ForOrg` seam functions or `runWithRequestContext`; wrap tenant reads in `withOrgContext`.
 - **Seam pull vs. outbox push**: check the consuming module's own spec before declaring a consumer; the consumer's decisive text beats the producer's guess.

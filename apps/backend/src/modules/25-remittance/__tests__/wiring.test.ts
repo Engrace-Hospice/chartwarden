@@ -1,6 +1,6 @@
 import type { DataClass, DataEraser } from "@wardenx/types";
-// M25 — boot-wiring unit tests: the consumer dispatch routing + subscription map, the consumer
-// register-surface (module-only when no registrar), and the eraser registration over the injected hook.
+// M25 — boot-wiring unit tests: the consumer dispatch routing + subscription map, the subscription
+// map, and the eraser registration over the injected hook.
 import { describe, expect, it, vi } from "vitest";
 import type { DenialSeedStore } from "../consumers/handlers";
 import {
@@ -8,7 +8,6 @@ import {
   M25_SUBSCRIPTION_MAP,
   M25_UPSTREAM_SUBSCRIPTIONS,
   dispatchM25UpstreamEvent,
-  registerM25Consumers,
 } from "../consumers/index";
 import { REMITTANCE_DATA_CLASS, registerRemittanceErasers } from "../erasers/remittance-eraser";
 
@@ -91,18 +90,10 @@ describe("consumer dispatch (§4.4)", () => {
   });
 });
 
-describe("registerM25Consumers", () => {
-  it("binds one handler per topic when a registrar + ports are supplied", () => {
-    const { ports } = fakePorts();
-    const bound: string[] = [];
-    const subs = registerM25Consumers({ ports, bind: (topic) => bound.push(topic) });
-    expect(bound).toEqual([...M25_UPSTREAM_SUBSCRIPTIONS]);
-    expect(subs).toEqual(M25_UPSTREAM_SUBSCRIPTIONS);
-  });
-
-  it("is module-only (binds nothing) when no registrar is supplied", () => {
-    const subs = registerM25Consumers();
-    expect(subs).toEqual(M25_UPSTREAM_SUBSCRIPTIONS);
+describe("M25 subscription map (GAP-205: the dead registrar is gone; live bindings are ../outbox-consumers)", () => {
+  it("lists every upstream topic once, each with a map entry", () => {
+    expect(new Set(M25_UPSTREAM_SUBSCRIPTIONS).size).toBe(M25_UPSTREAM_SUBSCRIPTIONS.length);
+    for (const topic of M25_UPSTREAM_SUBSCRIPTIONS) expect(M25_SUBSCRIPTION_MAP[topic]).toBeDefined();
   });
 });
 

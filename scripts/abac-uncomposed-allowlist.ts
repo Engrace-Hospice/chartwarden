@@ -44,7 +44,7 @@ export const ABAC_UNCOMPOSED_ALLOWLIST: Readonly<Record<string, string>> = {
   "m37.equipment.inspection_current":
     "Evaluated as the pure inspection-currency domain reading inside M37 services (412 EQUIPMENT_INSPECTION_OVERDUE); no route composes the predicate.",
   "m37.ipu.staff_member":
-    "Registered for unit-scoped reads; M37 unit reads are RBAC + RLS only today. Open gap.",
+    "Enforced in the M37 service (GAP-169): restraint apply/reassess/release and the bed grid resolve the roster fact async under RLS (37-ipu/routes/staff-membership.ts) — a synchronous requireAbac getTarget cannot.",
 
   // ── M32 — route-unbound by design (header of 32-ai-platform/abac-predicates.ts) ───────────────────
   ai_capability_clinician_opted_out:

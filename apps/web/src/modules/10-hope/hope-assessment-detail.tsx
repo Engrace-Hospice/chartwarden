@@ -374,17 +374,26 @@ function scrollWithinWorkspace(element: HTMLElement, block: "start" | "center"):
   pane.scrollTo({ top: pane.scrollTop + offset, behavior: "smooth" });
 }
 
-function readStorage(key: string): string | null {
+// GAP-191: the nav-mode preference is a harmless UI setting (localStorage). Anything keyed by a
+// record id (the visited groups per assessment) lives in sessionStorage so it dies with the tab
+// instead of outliving sign-out on a shared workstation.
+type StorageKind = "local" | "session";
+
+function storageFor(kind: StorageKind): Storage {
+  return kind === "session" ? window.sessionStorage : window.localStorage;
+}
+
+function readStorage(key: string, kind: StorageKind = "local"): string | null {
   try {
-    return window.localStorage.getItem(key);
+    return storageFor(kind).getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeStorage(key: string, value: string): void {
+function writeStorage(key: string, value: string, kind: StorageKind = "local"): void {
   try {
-    window.localStorage.setItem(key, value);
+    storageFor(kind).setItem(key, value);
   } catch {
     // Storage unavailable (private mode): the preference just doesn't persist.
   }
@@ -397,7 +406,7 @@ function readNavMode(): NavMode {
 function readVisited(assessmentId: string | undefined): Set<string> {
   if (!assessmentId) return new Set();
   try {
-    const parsed: unknown = JSON.parse(readStorage(`${VISITED_KEY}.${assessmentId}`) ?? "[]");
+    const parsed: unknown = JSON.parse(readStorage(`${VISITED_KEY}.${assessmentId}`, "session") ?? "[]");
     return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []);
   } catch {
     return new Set();
@@ -528,7 +537,7 @@ export function HopeAssessmentDetail(): JSX.Element {
       setVisited((prev) => {
         if (keys.every((key) => prev.has(key))) return prev;
         const next = new Set([...prev, ...keys]);
-        writeStorage(`${VISITED_KEY}.${id}`, JSON.stringify([...next]));
+        writeStorage(`${VISITED_KEY}.${id}`, JSON.stringify([...next]), "session");
         return next;
       });
     },

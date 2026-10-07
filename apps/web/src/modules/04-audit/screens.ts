@@ -10,6 +10,9 @@ const LegalHolds = lazy(() => import("./legal-holds").then((m) => ({ default: m.
 const AuditIntegrityReport = lazy(() =>
   import("./audit-integrity-report").then((m) => ({ default: m.AuditIntegrityReport })),
 );
+const PrivacyWorkQueue = lazy(() =>
+  import("./privacy-work-queue").then((m) => ({ default: m.PrivacyWorkQueue })),
+);
 const AuditExports = lazy(() =>
   import("./audit-exports").then((m) => ({ default: m.AuditExports })),
 );
@@ -49,6 +52,15 @@ export const auditScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "audit.export",
       screen: AuditExports,
+    },
+    // GAP-012 — staff HIPAA §164.526 / §164.528 work queue (amendment inbox, accounting, access report).
+    {
+      id: "audit.privacy-requests",
+      path: "/compliance/privacy-requests",
+      title: "Privacy Requests",
+      navGroup: "Admin",
+      requiredPermission: "audit.disclosure_report",
+      screen: PrivacyWorkQueue,
     },
   ],
 };

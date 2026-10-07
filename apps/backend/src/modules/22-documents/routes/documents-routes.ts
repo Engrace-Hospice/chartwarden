@@ -543,8 +543,8 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id } = parse(BatchParamsSchema, request.params);
-      parse(ConfirmClassificationRequest, request.body);
-      return service.confirmClassification(organizationId, actor, id);
+      const body = parse(ConfirmClassificationRequest, request.body);
+      return service.confirmClassification(organizationId, actor, id, body);
     },
   );
 
@@ -769,8 +769,14 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { templateKey } = parse(OverlayParamsSchema, request.params);
-      parse(PublishOverlayRequest, request.body);
-      return service.publishOverlay(organizationId, actor, templateKey, ifMatchVersionOf(request));
+      const body = parse(PublishOverlayRequest, request.body);
+      return service.publishOverlay(
+        organizationId,
+        actor,
+        templateKey,
+        ifMatchVersionOf(request),
+        body,
+      );
     },
   );
 

@@ -11,6 +11,7 @@ import { P, STEP_UP, WITHIN_DEADLINE } from "./guards";
 import {
   AppealAttachRequestSchema,
   AppealDecideRequestSchema,
+  AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema,
   AppealWithdrawRequestSchema,
   parse,
@@ -99,6 +100,30 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
           actor,
           idOf(request),
           { appealNarrative: body.appealNarrative, attachedDocumentIds: body.attachedDocumentIds },
+          ifMatchVersion(request),
+        ),
+      );
+    },
+  );
+
+  // M25-F03 (GAP-147) — the explicit late good-cause filing past T-0. RBAC + step-up, deliberately NOT
+  // `appeal_within_deadline` (that hard-blocks the normal route past T-0); the service enforces the tier
+  // (redetermination / reconsideration) and that the deadline really has elapsed.
+  app.post(
+    "/api/v1/appeals/:id/submit-late-good-cause",
+    { preHandler: [SUBMIT, SUBMIT_STEPUP, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const body = parse(AppealSubmitLateGoodCauseRequestSchema, request.body);
+      return reply.send(
+        await writeService.submitAppealLateGoodCause(
+          actor,
+          idOf(request),
+          {
+            appealNarrative: body.appealNarrative,
+            attachedDocumentIds: body.attachedDocumentIds,
+            goodCauseJustification: body.goodCauseJustification,
+          },
           ifMatchVersion(request),
         ),
       );

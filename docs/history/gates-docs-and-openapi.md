@@ -103,3 +103,37 @@
   runs `--check` mode (`arch:frame-fidelity`) to keep `audit/frame-fidelity/` fresh and to hard-fail
   on an unknown frame node, a duplicate mapping, or a dangling screen id. Writes
   `audit/frame-fidelity/FRAME_FIDELITY.md` (+ `.json`).
+
+- **`check-module-docs` rule 6, BANNED (GAP-180).** ADR-0010 D2 bans `app.tenant_id` / `withTenantContext`
+  (canonical: `app.org_id` / `withOrgContext`), yet the M22/M25/M05/M11/M29 specs and the module-29 task
+  docs still prescribed them in ~90 code samples — an implementer following one writes an RLS policy on a
+  GUC nothing sets. They are normalised (including `tenant_id` columns in the M22/M25 policy prose), and
+  the gate now fails any module doc that prescribes either spelling; a line that says the token is
+  banned/removed/renamed (the M02/M31 changelog rows) is exempt (`scripts/lib/banned-rls-tokens.ts`).
+- **`check-ui-screens` check 6, STATUS PARITY (GAP-186).** `ui:parity` only counts specs against screens.
+  `docs/design/SCREEN_SPEC_STATUS.md` is the per-spec join — one row per indexed spec, `built` / `partial` /
+  `deferred`, the registered screen set(s) (`<app>/<module-dir>`, validated against `ui-parity.json`) and,
+  for every spec with no screen (wound care, prior auth, grievances, accreditation, OIG, the six external
+  portals, …), the reason. `docs:ui` fails on a missing/duplicate/orphan row, an unknown screen set, or a
+  deferred row without a reason.
+- **GAP-179 / GAP-187 / GAP-188 (stale prose).** The frame-fidelity notes for the eMAR, Encounter and
+  Patient-chart frames described unbuilt write paths / unbound reads that exist (the eMAR `AdministerModal`,
+  the bound HearthNote selections, the care-plan and admission chart cards); `DEFERRED_SCREENS.md` no longer
+  calls read-only M26 "done" or restates a screen count; the `main.tsx` composition-root headers no longer say
+  nothing is registered; the M23 boot comment, the M22 eraser and the dead `M39_CONSENT_CONSUMER_DEFERRED`
+  constant no longer describe live wiring as unbound.
+- **GAP-184 / GAP-179 follow-up.** The route inventories of the M02, M05, M23, M29, M31, M33, M34 and M36 specs
+  now carry the as-built paths (Google-style `:verb` suffixes became `/verb`, `/api/reporting` became
+  `/api/v1/reporting`, the M31 `/p/:patientId/*` sketch became the session-pinned `/api/v1/portal/*`
+  routes, the M36 webhooks lost their `/api/v1` prefix) and every row with no registered route is marked
+  **DEFERRED (unbuilt)** with the reason. `frame:fidelity` no longer leaves ~100 frames unexplained: each
+  unmapped frame is joined through SCREENS.md and SCREEN_SPEC_STATUS.md to a disposition — deferred (spec has
+  no screen), design-library (the D1–D7 shared libraries) or unmatched (a screen serves the spec, composition
+  not yet compared; explicitly not a fidelity claim) — and a frame that cannot be joined hard-fails.
+- **GAP-181 (M9 cadence output, M10 retention).** `reassessment-due-scan` persists an M9-owned due ledger
+  (`assessment_reassessment_due`, 0481) for ACTIVELY ADMITTED patients and announces each overdue episode once
+  (`m9.assessment.reassessment_due`, seam consumer M36); the 15-day CoP floor can only be tightened per tenant.
+  `hope.retention` got its worker: the monthly `hope-retention-scan` flags records past 10y-from-transmission
+  (submitted) / 7y-from-last-effective (otherwise) in `hope_retention_review` (0482), blocked by legal hold, open
+  iQIES error or pending correction, never deleting — destruction stays an M4 certificate invoking the `hope_record`
+  eraser. The user's default (6 years) gave way to the architecture's longer horizons (OPEN-021, M10 retention class).

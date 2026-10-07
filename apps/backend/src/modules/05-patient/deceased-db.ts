@@ -74,11 +74,20 @@ export class InvalidDeceasedTransitionError extends Error {
 export async function recordDeathFromDischarge(
   db: DbClient,
   outbox: M5OutboxPort,
-  input: { organizationId: string; patientId: string; deceasedDate: string; today: string },
+  input: {
+    organizationId: string;
+    patientId: string;
+    deceasedDate: string;
+    today: string;
+    actorUserId?: string;
+  },
 ): Promise<DeathCascadeOutcome> {
   return withOrgContext<DbClient, DeathCascadeOutcome>(
     db,
-    { organizationId: input.organizationId, userId: DEATH_CASCADE_SYSTEM_USER_ID },
+    {
+      organizationId: input.organizationId,
+      userId: input.actorUserId ?? DEATH_CASCADE_SYSTEM_USER_ID,
+    },
     async (tx) => {
       const [row] = await tx
         .select({ status: P.status })

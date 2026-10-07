@@ -223,9 +223,13 @@ export async function updateAttendance(
   client: ApiClient,
   id: string,
   status: AttendanceStatus,
+  version: number,
 ): Promise<WriteResult<AttendanceView>> {
   const { data, error, response } = await client.PATCH("/api/v1/idg/attendance/{id}", {
-    params: { path: { id } },
+    params: {
+      path: { id },
+      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
+    },
     body: { status },
   });
   if (error || !data) return failure(response?.status, error);
@@ -240,9 +244,13 @@ export async function updateAttendance(
 export async function excuseAttendance(
   client: ApiClient,
   id: string,
+  version: number,
 ): Promise<WriteResult<{ id: string }>> {
   const { data, error, response } = await client.DELETE("/api/v1/idg/attendance/{id}", {
-    params: { path: { id } },
+    params: {
+      path: { id },
+      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
+    },
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as { id: string });
@@ -321,9 +329,13 @@ export async function updateActionItem(
   client: ApiClient,
   id: string,
   status: ActionItemPatchStatus,
+  version: number,
 ): Promise<WriteResult<ActionItemView>> {
   const { data, error, response } = await client.PATCH("/api/v1/idg/action-items/{id}", {
-    params: { path: { id } },
+    params: {
+      path: { id },
+      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
+    },
     body: { status },
   });
   if (error || !data) return failure(response?.status, error);

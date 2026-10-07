@@ -152,6 +152,12 @@ function buildM29TestAbacResolver(
       // `holdsPermission` above — so the narrow caseload arm never needs to resolve `true` in this file.
       return false;
     },
+    async feedRevokeRequester(org, feedId) {
+      // The store re-checks the stored first approver in its own tx; this stand-in only proves the predicate
+      // resolves for an existing feed (the 403-on-self arm is asserted through the store above).
+      const feed = await store.getFeed(org, feedId);
+      return feed ? { requestedBy: null } : null;
+    },
     async feedBaaSatisfied(org, feedId) {
       // Test-local stand-in for the real M40 BAA gate (`feed/baa-gate.ts` decides this for real, off
       // `baaContractRef`/`baaExpiresOn`/the M40 seam) — this file only needs to prove the ABAC predicate
@@ -436,16 +442,36 @@ describe("M29-external-interfaces-inject — §4.1.1 feed + credential lifecycle
     expect(suspended.statusCode).toBe(200);
     expect(suspended.json().feed.status).toBe("suspended");
 
-    // route 7 — POST /feeds/:feedId/revoke (terminal; step-up). No `primaryApproverId` on file yet for THIS
-    // route's co-approver ABAC check, so distinctness is trivially satisfied (guards.ts's own comment).
+    // route 7 — POST /feeds/:feedId/revoke (terminal; step-up; GAP-153 dual approval held server-side).
+    const revokeUrl = `/api/admin/external-interfaces/feeds/${feedId}/revoke`;
+    const first = await app.inject({
+      method: "POST",
+      url: revokeUrl,
+      headers: SUPER,
+      payload: { reason: "partner offboarded" },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().revokePending).toBe(true);
+    expect(first.json().feed.status).toBe("suspended");
+
+    // The same actor cannot also be the second approver.
+    const self = await app.inject({
+      method: "POST",
+      url: revokeUrl,
+      headers: SUPER,
+      payload: { reason: "partner offboarded" },
+    });
+    expect(self.statusCode).toBe(403);
+
     const revoked = await app.inject({
       method: "POST",
-      url: `/api/admin/external-interfaces/feeds/${feedId}/revoke`,
-      headers: SUPER,
+      url: revokeUrl,
+      headers: SUPER2,
       payload: { reason: "partner offboarded" },
     });
     expect(revoked.statusCode).toBe(200);
     expect(revoked.json().feed.status).toBe("revoked");
+    expect(revoked.json().revokePending).toBe(false);
 
     await app.close();
   });
@@ -856,11 +882,20 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
       headers: SUPER,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
+    expect(res.json()).toMatchObject({
       acknowledged: true,
       observationId: OBS_ABNORMAL,
       acknowledgedBy: MEMBER_SUPER,
     });
+    // GAP-152 — the acknowledgement is PERSISTED: a later read carries it, and a repeat keeps the first stamp.
+    const stamped = res.json().acknowledgedAt as string;
+    expect(stamped).toBeTruthy();
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/clinical/labs/observations/${OBS_ABNORMAL}/acknowledge-abnormal`,
+      headers: SUPER,
+    });
+    expect(again.json().acknowledgedAt).toBe(stamped);
     await app.close();
   });
 });

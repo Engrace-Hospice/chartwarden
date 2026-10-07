@@ -8,7 +8,7 @@
 // and `../assessments-route-service-db.ts` are all request-context-bound (single patient / single scale).
 import { type DbClient, schema } from "@wardenx/db";
 import type { ScaleLicenseStatus } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type {
   ReassessmentSnapshot,
   ScaleLicenseSnapshot,
@@ -18,6 +18,8 @@ import type {
 const LIC = schema.scaleLicenses;
 const SCE = schema.significantChangeEvents;
 const CA = schema.clinicalAssessments;
+const POL = schema.scalePolicies;
+const DUE = schema.assessmentReassessmentDue;
 
 /** Coerce a Drizzle `timestamptz` to an ISO instant (date columns already come back as `YYYY-MM-DD`
  * strings — see `assessments-route-service-db.ts`'s `scoredForWrite`, which passes `LIC.effectiveDate`/
@@ -96,11 +98,9 @@ export async function escalateSignificantChange(
  * `clinical_assessment_patient_scale_captured_idx` (org, patient, scale, captured_at desc) so the scan
  * stays sargable against the partitioned table.
  *
- * SCOPE NOTE: this scans every patient with ANY active row in `clinical_assessment` for the org, not only
- * patients with an active M6 admission — M9's `dependsOn` (architecture/module-manifest.ts) is `[1, 38]`
- * only (no M6), and no published seam answers "every actively-admitted patient in an org" today. A
- * discharged patient's last capture may therefore be flagged overdue; a documented, bounded scope cut
- * rather than a new cross-module seam.
+ * SCOPE NOTE (GAP-181): this read is org-wide over every patient with an active capture; the CALLER
+ * (`runReassessmentDueCron`) narrows it to patients on an ACTIVE admission through the injected M6 port, so a
+ * discharged patient is no longer flagged overdue.
  */
 export async function latestAssessmentsPerPatientScaleForOrg(
   tx: DbClient,
@@ -111,6 +111,8 @@ export async function latestAssessmentsPerPatientScaleForOrg(
       patientId: CA.patientId,
       scaleType: CA.scaleType,
       capturedAt: CA.capturedAt,
+      providerEntityId: CA.providerEntityId,
+      locationId: CA.locationId,
     })
     .from(CA)
     .where(and(eq(CA.organizationId, organizationId), eq(CA.status, "active")))
@@ -119,5 +121,139 @@ export async function latestAssessmentsPerPatientScaleForOrg(
     patientId: r.patientId,
     scaleType: r.scaleType,
     lastCapturedAt: iso(r.capturedAt),
+    // `clinical_assessment` siting is nullable; an unsited capture cannot seed the (NOT NULL-sited) ledger row.
+    providerEntityId: r.providerEntityId ?? undefined,
+    locationId: r.locationId ?? undefined,
   }));
+}
+
+/** A tenant's per-scale cadence policy: whether the scale is on, and its (tighten-only) cadence overrides. */
+export interface ScaleCadencePolicy {
+  readonly enabled: boolean;
+  readonly cadenceOverrides: Readonly<Record<string, unknown>>;
+}
+
+/** `scale_policy` rows for the org, keyed by scale type (a scale with no row is enabled with no override). */
+export async function scaleCadencePoliciesForOrg(
+  tx: DbClient,
+  organizationId: string,
+): Promise<ReadonlyMap<string, ScaleCadencePolicy>> {
+  const rows = await tx
+    .select({
+      scaleType: POL.scaleType,
+      enabled: POL.enabled,
+      overrides: POL.reassessmentCadenceOverrides,
+    })
+    .from(POL)
+    .where(eq(POL.organizationId, organizationId));
+  return new Map(
+    rows.map((r) => [
+      r.scaleType,
+      {
+        enabled: r.enabled,
+        cadenceOverrides:
+          r.overrides && typeof r.overrides === "object" && !Array.isArray(r.overrides)
+            ? (r.overrides as Record<string, unknown>)
+            : {},
+      },
+    ]),
+  );
+}
+
+/** One cadence-ledger row as the cron reads it back. */
+export interface ReassessmentDueRow {
+  readonly id: string;
+  readonly patientId: string;
+  readonly scaleType: string;
+  readonly status: string;
+}
+
+/** Every ledger row for the org (one per patient+scale; small relative to `clinical_assessment`). */
+export async function reassessmentDueRowsForOrg(
+  tx: DbClient,
+  organizationId: string,
+): Promise<ReassessmentDueRow[]> {
+  return tx
+    .select({
+      id: DUE.id,
+      patientId: DUE.patientId,
+      scaleType: DUE.scaleType,
+      status: DUE.status,
+    })
+    .from(DUE)
+    .where(eq(DUE.organizationId, organizationId));
+}
+
+export interface ReassessmentDueUpsert {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly locationId: string;
+  readonly patientId: string;
+  readonly scaleType: string;
+  readonly lastCapturedAt: Date;
+  readonly cadenceDays: number;
+  readonly dueAt: Date;
+  readonly status: "open" | "overdue";
+  readonly overdueSince: Date | null;
+  readonly alertedAt: Date | null;
+}
+
+/** Insert a new ledger row; returns its id. */
+export async function insertReassessmentDue(
+  tx: DbClient,
+  row: ReassessmentDueUpsert,
+): Promise<string> {
+  const [r] = await tx
+    .insert(DUE)
+    .values({ ...row, scaleType: row.scaleType as never })
+    .returning({ id: DUE.id });
+  if (!r) throw new Error("assessment_reassessment_due insert returned no row");
+  return r.id;
+}
+
+/** Refresh an existing ledger row (re-opens a closed one; a new capture clears overdue/alert state). */
+export async function updateReassessmentDue(
+  tx: DbClient,
+  id: string,
+  patch: Omit<
+    ReassessmentDueUpsert,
+    "organizationId" | "providerEntityId" | "locationId" | "patientId" | "scaleType"
+  >,
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(DUE)
+    .set({ ...patch, closedAt: null, updatedAt: now })
+    .where(eq(DUE.id, id));
+}
+
+/** Refresh only the date/cadence columns of a row that is STILL overdue (its episode markers stay). */
+export async function updateReassessmentDueDatesOnly(
+  tx: DbClient,
+  id: string,
+  patch: {
+    readonly lastCapturedAt: Date;
+    readonly cadenceDays: number;
+    readonly dueAt: Date;
+    readonly status: "open" | "overdue";
+  },
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(DUE)
+    .set({ ...patch, updatedAt: now })
+    .where(eq(DUE.id, id));
+}
+
+/** Close ledger rows whose patient is no longer on an active admission (or whose scale is off / has no capture). */
+export async function closeReassessmentDue(
+  tx: DbClient,
+  ids: readonly string[],
+  now: Date,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await tx
+    .update(DUE)
+    .set({ status: "closed", closedAt: now, updatedAt: now })
+    .where(inArray(DUE.id, [...ids]));
 }

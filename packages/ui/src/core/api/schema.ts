@@ -1017,6 +1017,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/billing/platform-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41) */
+        post: operations["postApiV1AdminBillingPlatformrules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/wage-indexes/load": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42) */
+        post: operations["postApiV1AdminBillingWageindexesLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/controlled-substance-policy": {
         parameters: {
             query?: never;
@@ -1233,6 +1267,23 @@ export interface paths {
         put?: never;
         /** Promote a provisional to canonical (§4.2) */
         post: operations["postApiV1AdminMdmProvisionalByIdPromote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/messaging/alert-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform-ops: notification delivery failures across tenants (metadata only; platform_ops-only, audited per read, keyset-paginated) */
+        get: operations["getApiV1AdminMessagingAlertdeliveries"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2957,6 +3008,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/amendments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Staff amendment inbox — pending by default, oldest SLA first (§164.526; patient.amend_review) */
+        get: operations["getApiV1Amendments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/amendments/{id}/accept": {
         parameters: {
             query?: never;
@@ -2985,6 +3053,23 @@ export interface paths {
         put?: never;
         /** Deny an amendment request (denial reason required, §7.7) */
         post: operations["postApiV1AmendmentsByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/amendments/{id}/statement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a statement of disagreement to a denied amendment (§164.526(d); patient.amend_request_submit) */
+        post: operations["postApiV1AmendmentsByIdStatement"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3104,6 +3189,23 @@ export interface paths {
         put?: never;
         /** Submit an appeal to the payer (within-deadline + step-up, §4.1) */
         post: operations["postApiV1AppealsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submit-late-good-cause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit an appeal past its deadline as a late good-cause filing (redetermination/reconsideration only, step-up, §4.1 / M25-F03) */
+        post: operations["postApiV1AppealsByIdSubmitlategoodcause"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4252,6 +4354,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/mac-credentials/{providerEntityId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36) */
+        post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/metrics": {
         parameters: {
             query?: never;
@@ -4641,6 +4760,23 @@ export interface paths {
         put?: never;
         /** Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4) */
         post: operations["postApiV1BillingTransfernoticesByIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/validation-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org-wide validation-override audit view for a ProviderEntity, newest first, cursor-paginated (§4.1 #17) */
+        get: operations["getApiV1BillingValidationoverrides"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7077,6 +7213,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discharges/{id}/decline-for-cause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides) */
+        post: operations["postApiV1DischargesByIdDeclineforcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discharges/{id}/place-of-death": {
         parameters: {
             query?: never;
@@ -9108,6 +9261,23 @@ export interface paths {
         get: operations["getApiV1FormtemplatesByKeyVersionsByVersionId"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/funeral/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased) */
+        post: operations["postApiV1FuneralInvite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11475,11 +11645,30 @@ export interface paths {
         /** Search service locations for selector controls (provider-scoped, cursor-paginated, non-PHI) */
         get: operations["getApiV1Locations"];
         put?: never;
-        post?: never;
+        /** Create a service location under one of the caller's provider entities */
+        post: operations["postApiV1Locations"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One service location of the caller's org */
+        get: operations["getApiV1LocationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a location's address / contact / timezone / lifecycle status */
+        patch: operations["patchApiV1LocationsById"];
         trace?: never;
     };
     "/api/v1/map-view": {
@@ -11602,6 +11791,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mdm/grief-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's grief-resource catalog (active by default) */
+        get: operations["getApiV1MdmGriefresources"];
+        put?: never;
+        /** Add a grief-resource to the tenant catalog */
+        post: operations["postApiV1MdmGriefresources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a grief resource */
+        patch: operations["patchApiV1MdmGriefresourcesById"];
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a grief resource (never deleted; M16 referral history points at it) */
+        post: operations["postApiV1MdmGriefresourcesByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a retired grief resource */
+        post: operations["postApiV1MdmGriefresourcesByIdReactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mdm/license/manual": {
         parameters: {
             query?: never;
@@ -11628,6 +11886,23 @@ export interface paths {
         };
         /** The caller's effective permission keys (drives UI gating, §4.3) */
         get: operations["getApiV1MePermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's session metadata incl. last step-up and its freshness against the platform floor (D8) */
+        get: operations["getApiV1MeSession"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13353,6 +13628,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organizations: the caller's own org (org admin) or every org, searchable (platform operator) */
+        get: operations["getApiV1Orgs"];
+        put?: never;
+        /** Create an organization spine row (platform operator only) */
+        post: operations["postApiV1Orgs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One organization (own org, or any for a platform operator) */
+        get: operations["getApiV1OrgsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit an organization's display name (own org) / legal name (platform operator) */
+        patch: operations["patchApiV1OrgsById"];
+        trace?: never;
+    };
     "/api/v1/orgs/{id}/invitations": {
         parameters: {
             query?: never;
@@ -13475,6 +13786,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{id}/step-up-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's per-operation step-up overrides (tighten-only) */
+        get: operations["getApiV1OrgsByIdStepupoverrides"];
+        put?: never;
+        /** Set / replace one operation's step-up override — may only TIGHTEN the platform floor; needs a fresh step-up (W-M2-10) */
+        post: operations["postApiV1OrgsByIdStepupoverrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}/step-up-overrides/{operationKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an override (the platform floor applies again); needs a fresh step-up */
+        delete: operations["deleteApiV1OrgsByIdStepupoverridesByOperationKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Soft-duplicate review queue, open by default (§7.3; patient.match_review) */
+        get: operations["getApiV1Patientmatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-matches/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a soft duplicate: fold the new chart into the existing one, in one transaction with the review close — step-up (patient.merge) */
+        post: operations["postApiV1PatientmatchesByIdMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-matches/{id}/not-a-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a soft-duplicate review as not-a-match (patient.match_review) */
+        post: operations["postApiV1PatientmatchesByIdNotamatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-merges/{id}/unmerge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse a merge within 30 days (409 UNMERGE_WINDOW_EXPIRED after); restores the source status; emits m5.patient.unmerged — step-up (patient.merge) */
+        post: operations["postApiV1PatientmergesByIdUnmerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients": {
         parameters: {
             query?: never;
@@ -13507,7 +13921,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch patient demographics — MRN/status/SSN are not patchable; emits m5.patient.updated (§4.3; patient.edit + caseload_or_scope) */
+        patch: operations["patchApiV1PatientsById"];
         trace?: never;
     };
     "/api/v1/patients/{id}/addresses": {
@@ -13586,7 +14001,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** A patient's §164.526 amendment requests (§4.3; patient.read + caseload_or_scope) */
+        get: operations["getApiV1PatientsByIdAmendments"];
         put?: never;
         /** Open a record-amendment request (§7.7, 60-day SLA) */
         post: operations["postApiV1PatientsByIdAmendments"];
@@ -13648,6 +14064,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/caregivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient caregivers incl. legal-representative flags (§4.3; patient.read) */
+        get: operations["getApiV1PatientsByIdCaregivers"];
+        put?: never;
+        /** Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit) */
+        post: operations["postApiV1PatientsByIdCaregivers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/deceased": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a death (§7.8 cascade) — step-up required; emits m5.patient.status_changed + m5.patient.deceased (patient.record_death) */
+        post: operations["postApiV1PatientsByIdDeceased"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/demographics": {
         parameters: {
             query?: never;
@@ -13675,7 +14126,8 @@ export interface paths {
         /** Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2) */
         get: operations["getApiV1PatientsByIdIdentifiers"];
         put?: never;
-        post?: never;
+        /** Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers) */
+        post: operations["postApiV1PatientsByIdIdentifiers"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13762,6 +14214,23 @@ export interface paths {
         put?: never;
         /** Resync the privacy-flag snapshot from M39 consent state (M5 §4.2; privacy.admin) — WardenLens detections are re-applied, never lifted */
         post: operations["postApiV1PatientsByIdPrivacyflagsResync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition patient status along the §2.4.1 machine (active/on_hold/discharged) — 409 INVALID_STATUS_TRANSITION; emits m5.patient.status_changed (patient.transition_status) */
+        post: operations["postApiV1PatientsByIdStatus"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14385,6 +14854,23 @@ export interface paths {
         patch: operations["patchApiV1PlatformCapConstantsByCapYear"];
         trace?: never;
     };
+    "/api/v1/platform/dsar-export-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant DSAR export jobs with SLA filtering (PHI-minimal; platform ops) */
+        get: operations["getApiV1PlatformDsarexportjobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/feature-flags": {
         parameters: {
             query?: never;
@@ -14730,6 +15216,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's full onboarding task list and the machine's current step (platform ops) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip an onboarding task with a recorded rationale (platform ops; step-up) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/shred": {
         parameters: {
             query?: never;
@@ -15028,8 +15548,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stage an M22 intake upload; returns a signed URL */
+        /** Record an upload intent (validated size / MIME); returns the content route to PUT the bytes to */
         post: operations["postApiV1PortalDocumentsUploadinit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents/uploads/{uploadId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload the file bytes for an initiated upload (raw body; magic-byte checked; kept only as a tenant-DEK envelope) */
+        put: operations["putApiV1PortalDocumentsUploadsByUploadIdContent"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15047,6 +15584,23 @@ export interface paths {
         get: operations["getApiV1PortalHopeTimepoints"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a portal invitation by its single-use token (public; activates the account and creates the grant) */
+        post: operations["postApiV1PortalInvitationsAccept"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15454,11 +16008,30 @@ export interface paths {
         /** Search provider entities for selector controls (cursor-paginated, non-PHI) */
         get: operations["getApiV1Providerentities"];
         put?: never;
-        post?: never;
+        /** Create a provider entity (CCN, NPI check digit, EIN enveloped by the cipher; 503 TAX_ID_CIPHER_UNBOUND until the KMS cipher is bound) */
+        post: operations["postApiV1Providerentities"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider-entities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One provider entity of the caller's org (the tax id is never returned) */
+        get: operations["getApiV1ProviderentitiesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit names / iQIES id / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here */
+        patch: operations["patchApiV1ProviderentitiesById"];
         trace?: never;
     };
     "/api/v1/public/signup-intents": {
@@ -15572,6 +16145,23 @@ export interface paths {
         };
         /** A CAHPS export job + its signed download URL once complete */
         get: operations["getApiV1QualityCahpsExportByExportId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality/cahps/export/{exportId}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the completed CAHPS export file (decrypted from its tenant-DEK envelope) */
+        get: operations["getApiV1QualityCahpsExportByExportIdFile"];
         put?: never;
         post?: never;
         delete?: never;
@@ -19116,7 +19706,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Vendor accepted (PO reference; If-Match) */
+        /** Vendor accepted (PO reference; optional vendorQuotedTotalCents accrues the quote and emits invoice_accrued, GAP-063; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkordered"];
         delete?: never;
         options?: never;
@@ -19135,6 +19725,23 @@ export interface paths {
         put?: never;
         /** Initiate an equipment return (the DME pickup path; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/vendor-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (signed variance; emits invoice_reconciled once; 409 when never accrued or already reconciled; If-Match) */
+        post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdVendorinvoice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19218,6 +19825,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** This org's resolved feature flags */
         get: operations["getApiV1SystemFeatureflags"];
         put?: never;
         post?: never;
@@ -19431,6 +20039,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's own account record */
+        get: operations["getApiV1TenantAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/baa": {
         parameters: {
             query?: never;
@@ -19545,6 +20170,40 @@ export interface paths {
         put?: never;
         /** Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up) */
         post: operations["postApiV1TenantDsarexportjobsByIdFulfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/feature-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Feature flags effective for this tenant (own row overrides the platform row) */
+        get: operations["getApiV1TenantFeatureflags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/feature-flags/{flagKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toggle a tenant-toggleable feature flag (org admin; step-up) */
+        post: operations["postApiV1TenantFeatureflagsByFlagKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20665,6 +21324,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/minio/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
+        post: operations["postApiV1WebhooksMinioAccesslog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/stripe": {
         parameters: {
             query?: never;
@@ -20980,6 +21656,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Liveness probe (unauthenticated) */
         get: operations["getHealth"];
         put?: never;
         post?: never;
@@ -21064,6 +21741,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Prometheus text-format metrics for internal scraping (unauthenticated, not a public route) */
         get: operations["getMetrics"];
         put?: never;
         post?: never;
@@ -21080,6 +21758,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down */
         get: operations["getReady"];
         put?: never;
         post?: never;
@@ -21096,6 +21775,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Build identity: version, git SHA and build time (unauthenticated) */
         get: operations["getVersion"];
         put?: never;
         post?: never;
@@ -21648,8 +22328,6 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
-                    /** Format: uuid */
-                    primaryApproverId?: string;
                 };
             };
         };
@@ -23921,6 +24599,77 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdminBillingPlatformrules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleKey: string;
+                    title: string;
+                    description: string;
+                    severity: "error" | "warn" | "info";
+                    regulatoryRequired: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingWageindexesLoad: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026. */
+                    fiscalYearStarting: number;
+                    /** @description The CMS wage-index file URI / Federal Register notice the rows were taken from. */
+                    sourceReference: string;
+                    rows: {
+                        ccn: string;
+                        cbsaCode?: string;
+                        factorDecimal: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        fiscalYearStarting: number;
+                        sourceReference: string;
+                        inserted: number;
+                        updated: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdminControlledsubstancepolicy: {
         parameters: {
             query?: never;
@@ -24311,6 +25060,47 @@ export interface operations {
                 content: {
                     "application/json": {
                         canonicalId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminMessagingAlertdeliveries: {
+        parameters: {
+            query?: {
+                status?: "failed" | "pending" | "sent" | "delivered" | "skipped_quiet_hours" | "forwarded" | "all";
+                limit?: number;
+                before?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            deliveryId: string;
+                            organizationId: string;
+                            alertId: string;
+                            alertCategory: string;
+                            alertSeverity: string;
+                            channel: string;
+                            status: string;
+                            failReason: string | null;
+                            queuedAt: string;
+                            sentAt: string | null;
+                            settledAt: string | null;
+                        }[];
+                        nextBefore: string | null;
                     };
                 };
             };
@@ -24739,6 +25529,7 @@ export interface operations {
                         status: string;
                         /** Format: date-time */
                         expiresAt: string;
+                        inviteUrl?: string;
                     };
                 };
             };
@@ -27825,6 +28616,11 @@ export interface operations {
                     reason: string;
                     /** Format: uuid */
                     facilityId?: string;
+                    gipAttestations?: {
+                        symptomsNotManageableElsewhere?: boolean;
+                        intensityWarrantsGip?: boolean;
+                        inpatientSettingIdentified?: boolean;
+                    };
                 };
             };
         };
@@ -29697,6 +30493,26 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Amendments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AmendmentsByIdAccept: {
         parameters: {
             query?: never;
@@ -29756,6 +30572,34 @@ export interface operations {
                         slaDueAt: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AmendmentsByIdStatement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    statement: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29994,6 +30838,42 @@ export interface operations {
                 "application/json": {
                     appealNarrative: string;
                     attachedDocumentIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmitlategoodcause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    appealNarrative: string;
+                    attachedDocumentIds: string[];
+                    goodCauseJustification: string;
                 };
             };
         };
@@ -33688,6 +34568,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1BillingMaccredentialsByProviderEntityIdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        ok: boolean;
+                        /** @constant */
+                        method: "portal_health_probe";
+                        detail: string;
+                        checkedAt: string;
+                        lastSandboxTestAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingMetrics: {
         parameters: {
             query?: {
@@ -35253,6 +36166,50 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingValidationoverrides: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                ruleKey?: string;
+                overrideMembershipId?: string;
+                appliedFrom?: string;
+                appliedTo?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            overrideId: string;
+                            resultId: string;
+                            overrideMembershipId: string;
+                            overrideRoleApplied: string;
+                            reason: string;
+                            appliedAt: string;
+                            claimId: string;
+                            ruleKey: string;
+                            m4AuditEventId: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingWageindexes: {
         parameters: {
             query?: {
@@ -36048,8 +37005,6 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
-                    /** Format: uuid */
-                    stepUpAssertionId: string;
                 };
             };
         };
@@ -37578,8 +38533,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
-                        sessionClass: "external_collaborator";
+                        sessionClass: "external_collaborator" | "funeral_home";
                         scope: {
                             patientId: string;
                         };
@@ -41738,6 +42692,35 @@ export interface operations {
                     capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
                     orderText?: string;
                     orderReference?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DischargesByIdDeclineforcause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    declineReason: string;
                     ifVersion: number;
                 };
             };
@@ -47175,6 +48158,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1FuneralInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        linkId: string;
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1HopeAdminRegenerateschedules: {
         parameters: {
             query?: never;
@@ -48462,6 +49476,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     }[];
                 };
             };
@@ -48472,7 +49487,12 @@ export interface operations {
     deleteApiV1IdgActionitemsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48501,7 +49521,12 @@ export interface operations {
     patchApiV1IdgActionitemsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48539,6 +49564,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -48549,7 +49575,12 @@ export interface operations {
     deleteApiV1IdgAgendaById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48578,7 +49609,12 @@ export interface operations {
     patchApiV1IdgAgendaById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48609,6 +49645,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     };
                 };
             };
@@ -48619,7 +49656,12 @@ export interface operations {
     deleteApiV1IdgAttendanceById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48648,7 +49690,12 @@ export interface operations {
     patchApiV1IdgAttendanceById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48681,6 +49728,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -48691,7 +49739,12 @@ export interface operations {
     patchApiV1IdgDecisionsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -49158,6 +50211,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -49219,6 +50273,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     }[];
                 };
             };
@@ -49263,6 +50318,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     };
                 };
             };
@@ -49300,6 +50356,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     }[];
                 };
             };
@@ -49349,6 +50406,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -50263,6 +51321,7 @@ export interface operations {
                         locationId: string;
                         cadenceDays: number;
                         active: boolean;
+                        version: number;
                     };
                 };
             };
@@ -50273,7 +51332,12 @@ export interface operations {
     patchApiV1IdgRecurringpoliciesById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -50303,6 +51367,7 @@ export interface operations {
                         locationId: string;
                         cadenceDays: number;
                         active: boolean;
+                        version: number;
                     };
                 };
             };
@@ -54318,6 +55383,159 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1Locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    name: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    city: string;
+                    state: string;
+                    postalCode: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1LocationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1LocationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    addressLine1?: string;
+                    addressLine2?: string;
+                    city?: string;
+                    state?: string;
+                    postalCode?: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Mapview: {
         parameters: {
             query: {
@@ -54712,6 +55930,198 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MdmGriefresources: {
+        parameters: {
+            query?: {
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            name: string;
+                            url: string | null;
+                            description: string | null;
+                            resourceKind: string;
+                            phone: string | null;
+                            audience: string | null;
+                            isActive: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    resourceKind: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MdmGriefresourcesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    resourceKind?: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdReactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MdmLicenseManual: {
         parameters: {
             query?: never;
@@ -54765,6 +56175,37 @@ export interface operations {
                 content: {
                     "application/json": {
                         permissions: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        userId: string;
+                        organizationId: string;
+                        lastStepUpAt: string | null;
+                        lastStepUpFactor: ("webauthn" | "totp" | "sms") | null;
+                        stepUpStatus: "none" | "fresh" | "expired";
+                        stepUpExpiresAt: string | null;
+                        stepUpSecondsRemaining: number;
                     };
                 };
             };
@@ -60113,6 +61554,158 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Orgs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            slug: string;
+                            legalName: string;
+                            displayName: string;
+                            status: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Orgs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName: string;
+                    displayName?: string;
+                    /** @description 3-40 lower-case letters, digits or hyphens; derived from legalName when absent. */
+                    slug?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrgsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OrgsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    /** @description Platform operators only. */
+                    legalName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        slug: string;
+                        legalName: string;
+                        displayName: string;
+                        status: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OrgsByIdInvitations: {
         parameters: {
             query?: never;
@@ -60475,6 +62068,220 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1OrgsByIdStepupoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        overrides: {
+                            operationKey: string;
+                            qualifyingFactors: ("webauthn" | "totp")[];
+                            maxAgeSec: number;
+                            rationale: string;
+                            configuredByMembershipId: string;
+                            /** Format: date-time */
+                            configuredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByIdStepupoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operationKey: string;
+                    /** @description A non-empty subset of the platform floor [webauthn, totp]. SMS is refused (a loosening). */
+                    qualifyingFactors: ("webauthn" | "totp")[];
+                    /** @description At most the platform floor's 300s: a tenant may only shorten the freshness window. */
+                    maxAgeSec: number;
+                    rationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        operationKey: string;
+                        qualifyingFactors: ("webauthn" | "totp")[];
+                        maxAgeSec: number;
+                        rationale: string;
+                        configuredByMembershipId: string;
+                        /** Format: date-time */
+                        configuredAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1OrgsByIdStepupoverridesByOperationKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                operationKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        removed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Patientmatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmatchesByIdMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    fieldResolutions?: {
+                        [key: string]: {
+                            keep: "source" | "target" | "custom";
+                            customValue?: unknown;
+                        };
+                    };
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmatchesByIdNotamatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmergesByIdUnmerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Patients: {
         parameters: {
             query?: {
@@ -60591,6 +62398,46 @@ export interface operations {
                         status: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PatientsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalFirstName?: string;
+                    legalMiddleName?: string | null;
+                    legalLastName?: string;
+                    legalNameSuffix?: string | null;
+                    /** Format: date */
+                    dob?: string;
+                    sexAssignedAtBirth?: string;
+                    genderIdentityCode?: string | null;
+                    sexualOrientationCode?: string | null;
+                    pronounsCode?: string | null;
+                    maritalStatusCode?: string | null;
+                    raceCodes?: string[] | null;
+                    ethnicityCodes?: string[] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -60815,6 +62662,28 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdAmendments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PatientsByIdAmendments: {
         parameters: {
             query?: never;
@@ -60829,6 +62698,10 @@ export interface operations {
                 "application/json": {
                     scope: "demographic" | "clinical" | "narrative";
                     rationale: string;
+                    requestedChange?: {
+                        fieldPath: string;
+                        requestedValue: string | null;
+                    };
                 };
             };
         };
@@ -61028,6 +62901,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdCaregivers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdCaregivers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    firstName: string;
+                    lastName: string;
+                    email?: string | null;
+                    phone?: string | null;
+                    relationship: "spouse" | "child" | "parent" | "sibling" | "other_family" | "friend" | "guardian" | "paid_caregiver";
+                    isPrimary?: boolean;
+                    isLegalRepresentative?: boolean;
+                    lrAuthority?: "dpoa_healthcare" | "guardian" | "next_of_kin" | "none";
+                    lrProofDocRef?: string | null;
+                    portalInvitationConsented?: boolean;
+                    /** Format: date */
+                    involvementFrom?: string;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdDeceased: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    deceasedDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdDemographics: {
         parameters: {
             query?: never;
@@ -61106,6 +63070,38 @@ export interface operations {
                         }[];
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdIdentifiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "mbi" | "prior_mrn" | "hospice_external" | "partner_mrn" | "ssn" | "state_id" | "mrn";
+                    value: string;
+                    issuer?: string | null;
+                    /** Format: date */
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -61368,6 +63364,35 @@ export interface operations {
                         capturedAt: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    toStatus: "active" | "on_hold" | "discharged";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -62730,6 +64755,16 @@ export interface operations {
                         byStatus: {
                             [key: string]: number;
                         };
+                        admissions?: {
+                            admissionsToday: number;
+                            dischargesToday: number;
+                            /** @description Patients in an active general-inpatient-care period. */
+                            gipActive: number;
+                            /** @description Active benefit periods ending within 14 days (the next period needs a recert). */
+                            recertsDue: number;
+                            /** Format: date */
+                            asOfDate: string;
+                        } | null;
                     };
                 };
             };
@@ -63190,6 +65225,49 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformDsarexportjobs: {
+        parameters: {
+            query?: {
+                status?: "requested" | "generating" | "review_pending" | "extended" | "fulfilled" | "denied";
+                organizationId?: string;
+                slaBreached?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            orgSlug: string;
+                            status: string;
+                            requestSource: string;
+                            requestedAt: string;
+                            slaDueAt: string;
+                            extendedUntil: string | null;
+                            fulfilledAt: string | null;
+                            slaBreached: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformFeatureflags: {
         parameters: {
             query?: {
@@ -63216,7 +65294,7 @@ export interface operations {
                             flagKey: string;
                             organizationId: string | null;
                             flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                            valueType: "boolean" | "string" | "number" | "json";
+                            valueType: "bool" | "string" | "number" | "json";
                             value: unknown;
                             rolloutPercent: number | null;
                             killSwitchActive: boolean;
@@ -63245,7 +65323,7 @@ export interface operations {
                     flagKey: string;
                     organizationId?: string | null;
                     flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                    valueType: "boolean" | "string" | "number" | "json";
+                    valueType: "bool" | "string" | "number" | "json";
                     value: unknown;
                     rolloutPercent?: number;
                     rationale?: string;
@@ -63264,7 +65342,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;
@@ -63306,7 +65384,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;
@@ -64152,6 +66230,89 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStep: string | null;
+                        tasks: {
+                            id: string;
+                            templateKey: string;
+                            status: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    skipRationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        templateKey: string;
+                        status: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugShred: {
         parameters: {
             query?: never;
@@ -64698,10 +66859,42 @@ export interface operations {
                     "application/json": {
                         /** Format: uuid */
                         uploadId: string;
-                        /** Format: uri */
                         signedUploadUrl: string;
                         /** Format: date-time */
                         signedUploadUrlExpiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PortalDocumentsUploadsByUploadIdContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uploadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": string;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        uploadId: string;
+                        status: string;
+                        byteSize: number;
                     };
                 };
             };
@@ -64729,6 +66922,42 @@ export interface operations {
                         items: {
                             [key: string]: unknown;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalInvitationsAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        portalAccountId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        grantKind: string;
+                        status: string;
+                        replayed: boolean;
                     };
                 };
             };
@@ -64837,6 +67066,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         channels: {
+                            /** Format: uuid */
+                            id?: string;
                             channel: string;
                             enabled: boolean;
                         }[];
@@ -65474,6 +67705,151 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1Providerentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description CMS Certification Number. */
+                    ccn: string;
+                    /** @description 10 digits with a correct NPI check digit. */
+                    npi: string;
+                    legalName: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    /** @description 9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound. */
+                    taxId: string;
+                    /** @description MMDD */
+                    fiscalYearEnd: string;
+                    iqiesFacilityId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1ProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName?: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    iqiesFacilityId?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PublicSignupintents: {
         parameters: {
             query?: never;
@@ -65704,6 +68080,30 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1QualityCahpsExportByExportIdFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1QualityCahpsResults: {
         parameters: {
             query?: {
@@ -65824,6 +68224,9 @@ export interface operations {
                     vendorAdapterId: string;
                     /** Format: date */
                     effectiveFrom: string;
+                    configuration?: {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -77087,6 +79490,7 @@ export interface operations {
             content: {
                 "application/json": {
                     vendorOrderReference: string;
+                    vendorQuotedTotalCents?: number;
                 };
             };
         };
@@ -77185,6 +79589,104 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        hospiceCoverage: "covered_related" | "not_covered_unrelated" | "not_covered_other";
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
+                        coverageReason: string | null;
+                        coverageDeterminedAt: string | null;
+                        coverageDeterminedBy: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SuppliesSupplyrequestsBySupplyRequestIdVendorinvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplyRequestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    invoiceTotalCents: number;
                 };
             };
         };
@@ -77572,7 +80074,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        flags: {
+                            [key: string]: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -77947,6 +80455,40 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1TenantAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        organizationId: string;
+                        status: string;
+                        planLabel: string;
+                        legalBusinessName: string;
+                        dbaName: string | null;
+                        billingContactEmail: string;
+                        breachNotificationEmail: string;
+                        provisionedAt: string | null;
+                        activatedAt: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantBaa: {
         parameters: {
             query?: {
@@ -78272,6 +80814,80 @@ export interface operations {
                         deniedReason: string | null;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantFeatureflags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            flagKey: string;
+                            flagKind: string;
+                            valueType: string;
+                            value: unknown;
+                            rolloutPercent: number | null;
+                            killSwitchActive: boolean;
+                            scope: "tenant" | "platform";
+                            tenantToggleable: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantFeatureflagsByFlagKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flagKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flagKey: string;
+                        flagKind: string;
+                        valueType: string;
+                        value: unknown;
+                        rolloutPercent: number | null;
+                        killSwitchActive: boolean;
+                        scope: "tenant" | "platform";
+                        tenantToggleable: boolean;
+                        updatedAt: string;
                     };
                 };
             };
@@ -82648,7 +85264,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        fiscalYear: number;
+                        volunteerHourMinutes: number;
+                        staffPatientCareMinutes: number | null;
+                        ratio: number | null;
+                        status: "unavailable" | "green" | "yellow" | "red";
+                        reason?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksMinioAccesslog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                        recorded: number;
+                        unattributed: number;
+                        duplicates: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83337,7 +85998,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83361,7 +86027,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            admissionId: string;
+                            assessmentId: string;
+                            factor: string;
+                            severity: "high" | "moderate" | "low";
+                            icd10: string | null;
+                            capturedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83547,7 +86228,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "ready" | "not_ready";
+                        checks: {
+                            db: "ok" | "fail";
+                            valkey: "ok" | "fail";
+                            minio: "ok" | "fail";
+                            outbox: "ok" | "fail";
+                            capabilities?: {
+                                [key: string]: "ready" | "disabled";
+                            };
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83567,7 +86261,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        version: string;
+                        gitSha: string;
+                        buildTime: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -158,18 +158,19 @@ export function createInMemoryDocumentEraseStore(
 export interface DrizzleDocumentEraseDeps {
   /**
    * The version-aware MinIO destruction port (D12 / DR-019). ABSENT ⇒ a REFUSING port that throws
-   * `DegradedError("document-storage", …)` on first use — M22's object-storage adapter is not wired at
-   * the composition root, and faking object deletion would report a destruction that never happened.
+   * `DegradedError("document-storage", …)` on first use. The composition root binds the real S3/MinIO
+   * adapter (`createS3ObjectStore`) whenever the object-store env config is present (`s3ObjectStoreConfigFromEnv`);
+   * ABSENT means that config is missing, and faking object deletion would report a destruction that never happened.
    */
   readonly objects?: ObjectStorePort;
 }
 
-/** The refusing {@link ObjectStorePort} bound when no MinIO adapter is wired (fail-closed, never a no-op). */
+/** The refusing {@link ObjectStorePort} bound when no object-store config is present (fail-closed, never a no-op). */
 function createRefusingObjectStore(): ObjectStorePort {
   const refuse = (): never => {
     throw new DegradedError(
       "document-storage",
-      "no object-storage adapter is bound (M22 MinIO adapter not wired) — cannot version-aware destroy document objects; row destruction is withheld so the object keys are not lost",
+      "no object-storage adapter is bound (the object-store env config is absent) — cannot version-aware destroy document objects; row destruction is withheld so the object keys are not lost",
     );
   };
   return {
@@ -210,7 +211,7 @@ function createRefusingObjectStore(): ObjectStorePort {
  * attachment, and leaving it would leak the uploaded chart.
  *
  * OBJECTS BEFORE ROWS. `eraseDocumentSubtree` destroys the MinIO object versions FIRST and only then
- * row-deletes: if the object port refuses (today's `DegradedError` stub) the erase fails LOUDLY with the
+ * row-deletes: if the object port refuses (the `DegradedError` stub, when no object store is configured) the erase fails LOUDLY with the
  * rows — and therefore the object keys — intact and retryable; deleting rows first would orphan the
  * objects unfindably. `document_access_log` is never touched (§164.528 disclosure-accounting floor,
  * ADR-0013). An ACTIVE legal hold (doc `status='legal_hold'` or a `document_legal_hold` row with

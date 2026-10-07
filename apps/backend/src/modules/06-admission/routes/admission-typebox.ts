@@ -468,6 +468,15 @@ export const LocChangeSchema = Type.Object({
   effectiveStart: Type.String({ format: "date" }),
   reason: Reason(10, 1000),
   facilityId: Type.Optional(Uuid()),
+  // D12 — REQUIRED (all three true) when newLevel is general_inpatient_care; ignored otherwise. Enforced
+  // server-side by `assertGipAttestations` (412 GIP_DOCUMENTATION_INCOMPLETE), not by this shape.
+  gipAttestations: Type.Optional(
+    Type.Object({
+      symptomsNotManageableElsewhere: Type.Optional(Type.Boolean()),
+      intensityWarrantsGip: Type.Optional(Type.Boolean()),
+      inpatientSettingIdentified: Type.Optional(Type.Boolean()),
+    }),
+  ),
 });
 
 export const LocPatchSchema = Type.Object({ reason: Reason(10, 1000), ifVersion: Version() });
@@ -600,6 +609,12 @@ export const DischargeCosignSchema = Type.Object({
   capacity: Type.Optional(PhysicianSignerCapacitySchema),
   orderText: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
   orderReference: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  ifVersion: Version(),
+});
+
+/** GAP-121 — a medical director declines a for-cause discharge awaiting cosign: the discharge is voided, the admission stays active. */
+export const DischargeDeclineSchema = Type.Object({
+  declineReason: Type.String({ minLength: 10, maxLength: 2000 }),
   ifVersion: Version(),
 });
 

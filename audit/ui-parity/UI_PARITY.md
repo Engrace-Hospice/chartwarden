@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 318 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 321 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
-- **portal**: 13 screen(s)
-- **web**: 271 screen(s)
+- **portal**: 14 screen(s)
+- **web**: 273 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -43,6 +43,7 @@
 | web | 04-audit | `audit.legal-holds` | `/compliance/legal-holds` | `legalhold.read` | ✅ |
 | web | 04-audit | `audit.integrity-report` | `/compliance/audit/integrity` | `audit.integrity` | ✅ |
 | web | 04-audit | `audit.exports` | `/compliance/audit/exports` | `audit.export` | ✅ |
+| web | 04-audit | `audit.privacy-requests` | `/compliance/privacy-requests` | `audit.disclosure_report` | ✅ |
 | web | 05-patient | `patient.census` | `/patients` | `patient.read` | ✅ |
 | web | 05-patient | `search.global` | `/search` | `patient.read` | ✅ |
 | web | 05-patient | `patient.chart` | `/patients/:id` | `patient.read` | ✅ |
@@ -64,6 +65,7 @@
 | web | 06-admission | `admission.readmit` | `/admissions/:id/readmit` | `admission.create` | ✅ |
 | web | 06-admission | `admission.discharge-cosign` | `/discharges/:id/cosign` | `discharge.cosign_for_cause` | ✅ |
 | web | 06-admission | `admission.discharge-details` | `/admissions/:id/discharge-details` | `admission.read` | ✅ |
+| web | 06-admission | `admission.level-of-care-change` | `/admissions/:id/level-of-care/new` | `loc.change` | ✅ |
 | web | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | `care_plan.read` | ✅ |
@@ -293,13 +295,13 @@
 | web | 37-ipu | `ipu.bedside` | `/ipu/admissions/:id` | `m37.ipu_admission.read` | ✅ |
 | web | 37-ipu | `ipu.census` | `/ipu/census` | `m37.census.read` | ✅ |
 | web | 37-ipu | `ipu.equipment` | `/ipu/equipment` | `m37.equipment.read` | ✅ |
-| web | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |
+| web | 38-terminology | `terminology.admin` | `/terminology` | `terminology.read` | ✅ |
 | web | 39-consent | `consent.record-manager` | `/patients/:patientId/consents` | `consent.read` | ✅ |
 | web | 39-consent | `consent.capture` | `/patients/:patientId/consents/new` | `consent.author` | ✅ |
 | web | 39-consent | `consent.detail` | `/patients/:patientId/consents/:consentId` | `consent.read` | ✅ |
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
-| web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
+| web | 40-mdm | `mdm.console` | `/mdm` | `mdm.physician.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |
@@ -335,6 +337,7 @@
 | admin | 35-subscription-billing | `admin.usage` | `/admin/usage/:organizationId` | `usage.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.webhooks` | `/admin/webhooks/stripe` | `stripe.admin.read` | ✅ |
 | portal | 31-portal | `portal.sign-in` | `/` | `(none)` | ✅ |
+| portal | 31-portal | `portal.accept-invitation` | `/accept-invitation` | `(none)` | ✅ |
 | portal | 31-portal | `portal.patient-picker` | `/patient-picker` | `portal.session.read_own` | ✅ |
 | portal | 31-portal | `portal.dashboard` | `/p/:patientId` | `portal.care_summary.read` | ✅ |
 | portal | 31-portal | `portal.care-plan` | `/p/:patientId/care-plan` | `portal.care_plan.read_summary` | ✅ |

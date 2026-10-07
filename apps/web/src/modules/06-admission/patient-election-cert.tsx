@@ -31,6 +31,7 @@ import { ElectionAddendumPanel } from "./election-addendum-panel";
 import type { F2fEncounterLocation } from "./election-certification-api";
 import { ElectionStatementDetailModal } from "./election-statement-detail-modal";
 import { FaceToFaceRail } from "./face-to-face-rail";
+import { F2fScheduleRail } from "./face-to-face-schedule-rail";
 
 interface Bundle {
   id: string;
@@ -136,6 +137,7 @@ export function PatientElectionCert(): JSX.Element {
   const [electionDetailOpen, setElectionDetailOpen] = useState(false);
   const [ctiDetailPeriod, setCtiDetailPeriod] = useState<Period | null>(null);
   const [f2fDetailPeriod, setF2fDetailPeriod] = useState<Period | null>(null);
+  const [f2fSchedulePeriod, setF2fSchedulePeriod] = useState<Period | null>(null);
 
   const roles = session?.roles ?? [];
 
@@ -544,9 +546,24 @@ export function PatientElectionCert(): JSX.Element {
                                     type="button"
                                     aria-label={`View Period ${p.sequenceNumber} Face-to-Face details`}
                                     style={secondaryAction}
-                                    onClick={() => setF2fDetailPeriod(p)}
+                                    onClick={() => {
+                                      setF2fSchedulePeriod(null);
+                                      setF2fDetailPeriod(p);
+                                    }}
                                   >
                                     View details
+                                  </button>
+                                ) : isF2fRequired && canManageF2f && data?.admission ? (
+                                  <button
+                                    type="button"
+                                    aria-label={`Schedule Period ${p.sequenceNumber} Face-to-Face`}
+                                    style={secondaryAction}
+                                    onClick={() => {
+                                      setF2fDetailPeriod(null);
+                                      setF2fSchedulePeriod(p);
+                                    }}
+                                  >
+                                    Schedule
                                   </button>
                                 ) : null
                               }
@@ -576,7 +593,23 @@ export function PatientElectionCert(): JSX.Element {
             ) : null}
           </main>
 
-          {f2fSelected?.faceToFace ? (
+          {f2fSchedulePeriod && data?.admission && session?.userId ? (
+            <div className="wx-f2f-rail-slot">
+              <F2fScheduleRail
+                key={f2fSchedulePeriod.id}
+                admissionId={data.admission.id}
+                electionPeriodId={f2fSchedulePeriod.id}
+                sequenceNumber={f2fSchedulePeriod.sequenceNumber}
+                periodEffectiveAt={f2fSchedulePeriod.effectiveAt}
+                clinicianUserId={session.userId}
+                onClose={() => setF2fSchedulePeriod(null)}
+                onScheduled={() => {
+                  setF2fSchedulePeriod(null);
+                  void load();
+                }}
+              />
+            </div>
+          ) : f2fSelected?.faceToFace ? (
             <div className="wx-f2f-rail-slot">
               <FaceToFaceRail
                 key={f2fSelected.faceToFace.id}

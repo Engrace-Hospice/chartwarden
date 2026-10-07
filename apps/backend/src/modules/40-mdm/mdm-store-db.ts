@@ -42,6 +42,15 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
+/** Rows the platform-ops NPPES console shows (the DB function clamps it again at 200). */
+const NPPES_SYNC_LOG_LIMIT = 50;
+
+interface NppesSyncLogRow {
+  readonly id: string;
+  readonly mode: string;
+  readonly outcome: string;
+}
+
 const PH = schema.externalPhysicians;
 const FAC = schema.facilities;
 const PAY = schema.payers;
@@ -51,7 +60,6 @@ const REL = schema.entityRelationships;
 const BAA = schema.mdmBaaRecords;
 const BAA_REQ = schema.mdmBaaRequired;
 const MERGE = schema.mergeRequests;
-const SYNC = schema.nppesSyncLog;
 
 const SEARCH_DEFAULT_LIMIT = 25;
 const SEARCH_MAX_LIMIT = 100;
@@ -434,9 +442,28 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
       return { id: inserted[0]!.id };
     },
 
-    async recordLicense() {
-      // Phase 1 ships no canonical license table (manifest owns 11 tables) — record is a documented
-      // no-op until the license surface lands. The route still 201s so the screen flow is intact.
+    async recordLicense(orgId, input, actorUserId) {
+      // GAP-173 — a real write now: the Phase-1 manual license entry (D6) lands in `mdm_license_record`
+      // (migration 0473), one row per (org, entity, state) so re-entering a renewed expiry updates in place.
+      // It used to be a documented no-op that still answered 201 — a fake success with nothing for the
+      // `mdm.license_expiration_scan` to read.
+      const LIC = schema.mdmLicenseRecords;
+      await withOrgContext(db, { organizationId: orgId, userId: actorUserId }, (tx) =>
+        tx
+          .insert(LIC)
+          .values({
+            organizationId: orgId,
+            entityKind: input.kind,
+            canonicalId: input.canonicalId,
+            licenseState: input.licenseState.toUpperCase(),
+            expiresOn: input.expiresOn,
+            enteredBy: actorUserId,
+          })
+          .onConflictDoUpdate({
+            target: [LIC.organizationId, LIC.entityKind, LIC.canonicalId, LIC.licenseState],
+            set: { expiresOn: input.expiresOn, enteredBy: actorUserId, updatedAt: new Date() },
+          }),
+      );
       return { recorded: true };
     },
 
@@ -517,14 +544,19 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     },
 
     async nppesSyncLog(): Promise<readonly NppesSyncRun[]> {
-      const rows = await db
-        .select({ id: SYNC.id, mode: SYNC.mode, outcome: SYNC.outcome })
-        .from(SYNC)
-        .orderBy(desc(SYNC.runAt))
-        .limit(50);
+      // GAP-174 — through the migration-0470 SECURITY DEFINER reader. This USED to be a direct
+      // `db.select().from(SYNC)`, a hard `permission denied` (500) on the app pool: migration 0019 §6 gave
+      // `nppes_sync_log` GRANT ALL to `wardenx_admin` and NO `wardenx_app` grant. Same defect GAP-060 fixed
+      // for `merge_request`, same remedy.
+      const result = await db.execute(
+        sql`SELECT * FROM mdm_canonical_writer_list_nppes_sync_log(${NPPES_SYNC_LOG_LIMIT})`,
+      );
+      const rows =
+        (result as unknown as { rows?: readonly NppesSyncLogRow[] }).rows ??
+        ([] as NppesSyncLogRow[]);
       return rows.map((r) => ({
         id: r.id,
-        mode: r.mode,
+        mode: r.mode as NppesSyncRun["mode"],
         outcome: r.outcome as NppesSyncRun["outcome"],
       }));
     },

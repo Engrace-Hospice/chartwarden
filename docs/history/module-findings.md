@@ -303,3 +303,79 @@ current write path. (d) M23 `f2f_attested_for_recert` and `claimAssemblyRangeCon
 chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dates:live`, CI row added; real
 `wardenx_app` role + real publisher; migration repair; cross-tenant). Existing raw-INSERT fixtures that set
 `within_window = true` on rows with no real start now carry a realistic `expected_start` and encounter date.
+
+## GAP-037 / GAP-060 / GAP-063 (batch 12) — M12 queue deferral, M20 DEK cipher, M21 vendor-invoice accrual
+
+**GAP-037 (M12) — superseded by the close-out round: all ten §4.8 queues are now BUILT.** The first pass could only record the seven vendor-gated queues as deferred; the close-out built the live HTTP adapter (fail-closed, per-tenant config, written from the public v2 swagger), the seven crons, the sign-time enqueue and the ack/nack/refill/prescriber webhook handlers. What cannot be known without a DoseSpot sandbox (token form, patient/prescription body field names, no endpoint for RxBenefit / refill-respond / revoke / EPCS) is isolated and listed in [`m12-dosespot-adapter.md`](./m12-dosespot-adapter.md).
+
+**GAP-060 (M20).** `mountM20Routes` now receives a real `cipher`, `decipher` and `recipientCountFor` (previously unbound, so the SOS coordinate was always dropped and `POST /safety/incidents` always 503). `20-field-safety/safety-crypto.ts` is an AES-256-GCM envelope over `getTenantKeyProvider()` (resolved lazily; the M8 `hearthnote-crypto.ts` shape: DEK version in the envelope, AAD binds module + tenant, decrypt throws on the M20-F16 no-coordinate sentinel). The same decipher backs the §8.6 `SafetyIncidentReader` coordinate decipher. `sos-recipient-count.ts` counts distinct supervisor delivery targets (vacation forwarding applied) and answers `null`, never `0`, when none is confirmed, so the client keeps the D15 `tel:` fallback; the D14 on-call parallel set is NOT added (the count is a floor).
+
+**GAP-063 (M21).** `invoice_accrued` / `invoice_reconciled` had no emit site and the invoice columns were never written. `mark-ordered` now accepts an optional `vendorQuotedTotalCents` (integer cents); when present it writes `invoice_total_cents` + `invoice_accrued_at` and emits `m21.supply_request.invoice_accrued` in the same transaction (no quote means no accrual, never a fabricated zero). New `POST /supplies/supply-requests/:id/vendor-invoice` (permission `supplies.request.invoice_reconcile`, migration 0410 mirror row + grant to holders of `mark_ordered`) matches the vendor invoice against the accrual, stores the signed variance and emits `invoice_reconciled` once (409 `M21_INVOICE_NOT_ACCRUED` / `M21_INVOICE_ALREADY_RECONCILED`). Rules live in `21-supplies/lifecycle/invoice.ts`. Phase-1 intake is manual; the EDI 810 path stays Phase 2.
+
+**Already fixed on main before batch 12 (verified against code, not re-done):** GAP-038/039/040 (M13 `extend-schedule`, `missed-dose-sweep`, `prn-reassessment-overdue` and the other three crons, wired via `registerM13CronWorkers`), GAP-044 (M15 five crons), GAP-048 (M16 four §4.9 crons), GAP-061 (M20 overdue detector + coverage-gap watchdog), GAP-062 (M21 par / unreturned-kit / supply-request monitors) — all landed in batch 9 (#324).
+
+## Batch 17 — GAP-151..164 (M28–M34, all P2) from `docs/audits/GAP_ANALYSIS_20261004.md`
+
+**Closed.**
+- GAP-151 (M28): already fixed on `main` — export poll and cancel both 404 unless `job.clientId === ctx.clientId`.
+- GAP-152 (M29, migration 0461): acknowledge-abnormal is persisted on `lab_observation`
+  (`acknowledged_at` / `acknowledged_by_membership_id`, stamped once, repeat is a no-op) and publishes
+  `m29.lab_observation.abnormal_acknowledged` for M36's badge clear.
+- GAP-153 (M29, migration 0460): feed-revoke dual approval is held server-side. The first approver is stored on
+  `external_feed`; only a DIFFERENT membership completes the revoke (self-approval is 403), which cascades the
+  feed's active credentials to `retired`. The body `primaryApproverId` is gone; the ABAC predicate
+  `external_feed_compliance_co_approver_distinct` now reads the stored approver through the resolver.
+- GAP-154 (M30): incident and infection-event writes derive `provider_entity_id` from the subject's active
+  admission (M6 siting seam injected at the composition root); the primary entity stays the fallback for
+  subject-less writes and unsited patients. CAHPS result ingest and QAPI program creation stay on the primary
+  entity (no patient subject).
+- GAP-155 (M30): `m30.sra_reminders` has a bound open-cycle scan and an M36 `AlertEmitter` dispatch; the five
+  platform-default `alert_rule` rows (`m30.alerts.sra_due_90/60/30`, `sra_overdue`, `m30.incident.cap_overdue`) are
+  seeded in `PLATFORM_DEFAULT_ALERT_RULES`; and `m30.cap_overdue_scan` (daily 08:00 UTC) is the producer of
+  `m30.incident.cap_overdue` over `incident_report.kind_data._m30.capPlan`, publishing the event and raising the alert
+  (every-2-days dedupe bucket).
+- GAP-156 (M30): SRA finding/remediation mutations enforce `ownsSraCycle` (owner or an `sra.admin` role) in the
+  write service.
+- GAP-157 / GAP-160: recorded as explicit deferrals in `docs/design/DEFERRED_SCREENS.md` (footnote ³¹).
+- GAP-159 (M31): `AdmissionStatusReader.isDischargedReadOnly` is implemented (the post-discharge read-only gate is
+  no longer dead code). Follow-up round: all 22 events are catalogued and 19 have emit sites, the late-join watchdog
+  queue is built, and the other five queues are closed as drift or covered (see `m31-portal-deferrals.md`, batch 17).
+  **Open:** `invited` / `activated` / `recording_completed` have no M31 write site (M2 invitation layer and the vendor
+  webhook mapping are unbuilt).
+- GAP-163 (M34): `tenant.bundle_expiry_sweep`, `tenant.baa_expiry_sweep` (daily), `tenant.support_session_close_sweep`
+  (every 5 min) and `tenant.onboarding_advance` (per-tenant job + daily 06:00 fan-out) have workers and schedules;
+  the bundle reaper logs a boot warning when MINIO_* is absent. **Open (blocker):** the onboarding worker does not
+  auto-activate a tenant: the lifecycle `activate` effect-runner and a system actor for its audit do not exist, so on
+  completion it publishes `m34.tenant.onboarding_completed` + the alert and logs that activation is left to platform
+  ops. `macFeedConfigured` / `dosespotKickoffRecorded` / `xeroConnected` / `gustoConnected` default to false until
+  M29 / M12 / M27 readers are injected (a step stays honestly blocked).
+
+**Close-out round (GAP-158 / 161 / 162 / 164).**
+- GAP-158 (M31/M5/M16/M40, migrations 0462 + 0463): `caregiver.user_id` (M5 `linkCaregiverToUserInTx`: first writer
+  wins, idempotent, a different user conflicts) is stamped in the SAME transaction that consumes a portal invitation
+  issued for a roster caregiver (a conflict or missing caregiver refuses the accept and rolls the token back). The
+  `PatientCaregiverReader` seam resolves the PRIMARY current caregiver's user. M40 owns `external_grief_resource`
+  (tenant-curated, RLS-forced, `mdm.grief_resource.{read,manage}`, routes under `/api/v1/mdm/grief-resources`) behind
+  the `ExternalGriefResourceReader` seam. Live proof: `gap-158-*`, `gap-173-*` suites.
+- GAP-161 (M32): all 21 events are published from real same-tx emit sites (`emitInTx`; null-org events through
+  `report_writer_insert_platform_outbox_event`). Workers built: `m32.triage_followup` and the token-ledger rollup
+  (+ schedule). `recordHitlOutcome` used to be a silent no-op on a missing row; it now asserts the row count.
+  **Blockers named exactly:** `m32.drift.detected` has no producer (needs the MLflow / ml-worker drift job);
+  the `m32.embeddings` / ml-worker queues need that same external service; the M32 governance stores run on the
+  TENANT pool because they need a privileged platform credential for `ai_capability` writes (`wardenx_app` has no
+  INSERT there), so platform-scoped writes are exercised live with a privileged handle.
+- GAP-162 (M33): `platform_admin_scope` / `compliance_officer_scope` predicates are registered AND composed on the
+  admin routes (arch:abac-composed green) with allow/deny tests.
+- GAP-164 (M34): the six routes exist with ABAC, step-up/idempotency, OpenAPI enrichments and the typed client; the
+  spec's `:orgId` is corrected to `:orgSlug`; `feature_flag.value_type` is `bool|string|number|json` in the typebox
+  (the DB enum is `bool`, not `boolean` - found by the live suite). `wardenx_platform` gained the missing
+  `feature_flag` / `support_session_event` / `onboarding_task` / `support_session` grants.
+- Pre-existing bugs the live suites found: M31 `uploads.stage` threw INSIDE the transaction, so the `expired` /
+  `rejected` status writes were rolled back (fixed: refusal is returned and thrown after commit); M32 prompt-template
+  activation emitted a numeric `version` against a string payload schema (fixed).
+- Live coverage added (own throwaway cluster, fresh DB per suite): gap-155 (CAP-overdue SQL), gap-031 (M31 prefs +
+  uploads), gap-087 (CAHPS export job + auditor magic link), gap-158 x2, gap-161, gap-164, gap-173. The
+  implementation-status matrix now reads 100% live-table coverage for M31, M40 and M30 (M31's Screens tick now
+  recognises `apps/portal`).
+- Still not proven live: M29 feed revoke / acknowledge-abnormal SQL, the M31 cron jobs (late-join watchdog,
+  post-discharge sweep), the M34 sweep workers, and the M32 BullMQ workers (unit-tested; no Redis in the live run).

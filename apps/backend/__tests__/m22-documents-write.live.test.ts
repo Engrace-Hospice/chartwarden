@@ -21,6 +21,8 @@ import { createServerUploadService } from "../src/modules/22-documents/routes/se
 import { createVerifiedUploadService } from "../src/modules/22-documents/routes/verified-upload";
 import { createInMemoryObjectStore } from "../src/modules/22-documents/seams/store";
 import type { ObjectStorePort } from "../src/modules/22-documents/seams/store";
+import { renderQueuedFormFillsForOrg } from "../src/modules/22-documents/workers/form-render-worker";
+import { rotateIntakeRetentionForOrg } from "../src/modules/22-documents/workers/retention-rotation-worker";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -83,6 +85,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       )
     ).rows[0].id as string;
   }
+  const OVERLAY = {
+    branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+    stateAddendum: { stateCode: "OR", addendumText: "Oregon addendum" },
+  } as const;
+
   async function seedBatch(org: string): Promise<string> {
     return (
       await admin.query(
@@ -567,6 +574,54 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).toBe("writeback_complete");
   });
 
+  it("GAP-140: classification confirm applies pageRanges and both transitions are state-guarded", async () => {
+    const batch = await seedBatch(ORG_A);
+    const doc = (
+      await admin.query("SELECT initial_document_id AS d FROM intake_upload_batch WHERE id=$1", [
+        batch,
+      ])
+    ).rows[0].d as string;
+    await admin.query(
+      `INSERT INTO classified_page (organization_id, intake_upload_batch_id, source_document_id,
+         page_range_start, page_range_end, document_type, confidence, classifier_model_version_ref)
+       VALUES ($1,$2,$3,1,2,'unknown',0.5,'t'), ($1,$2,$3,3,3,'unknown',0.5,'t')`,
+      [ORG_A, batch, doc],
+    );
+    // A range that covers no classified page is refused, not silently ignored.
+    await expect(
+      svc.confirmClassification(ORG_A, ACTOR, batch, {
+        pageRanges: [{ fromPage: 10, toPage: 12, docType: "lab" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    await expect(
+      svc.confirmClassification(ORG_A, ACTOR, batch, {
+        pageRanges: [{ fromPage: 1, toPage: 2, docType: "not_a_type" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    const ok = await svc.confirmClassification(ORG_A, ACTOR, batch, {
+      pageRanges: [{ fromPage: 1, toPage: 2, docType: "lab" }],
+    });
+    expect(ok.status).toBe("classifier_complete");
+    const pages = (
+      await admin.query(
+        "SELECT page_range_start AS s, document_type AS t, human_confirmed AS h FROM classified_page WHERE intake_upload_batch_id=$1 ORDER BY page_range_start",
+        [batch],
+      )
+    ).rows;
+    expect(pages).toEqual([
+      { s: 1, t: "lab", h: true },
+      { s: 3, t: "unknown", h: false },
+    ]);
+    // Once a review is open, a classification confirm is a 409; a discarded batch cannot open a review.
+    await svc.openReview(ORG_A, ACTOR, batch);
+    await expect(svc.confirmClassification(ORG_A, ACTOR, batch)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    const gone = await seedBatch(ORG_A);
+    await svc.discardBatch(ORG_A, ACTOR, gone);
+    await expect(svc.openReview(ORG_A, ACTOR, gone)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it("resolveDiscrepancy closes an open discrepancy; abandonReview + discardBatch terminate", async () => {
     const batch = await seedBatch(ORG_A);
     const review = await svc.openReview(ORG_A, ACTOR, batch);
@@ -593,14 +648,25 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("publishOverlay enforces §2.5 optimistic concurrency; retryRender re-queues a form fill", async () => {
     // First publish requires If-Match version 0 → becomes version 1.
-    const first = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0);
+    const first = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0, OVERLAY);
     expect(first.version).toBe(1);
+    // GAP-140 — the body is PERSISTED (it used to be saved as `{}` / null).
+    const saved = (
+      await admin.query(
+        "SELECT branding, state_addendum FROM tenant_template_overlay WHERE id=$1",
+        [first.overlayId],
+      )
+    ).rows[0];
+    expect(saved.branding).toEqual(OVERLAY.branding);
+    expect(saved.state_addendum).toEqual(OVERLAY.stateAddendum);
     // A stale If-Match (0 again) now conflicts (412).
-    await expect(svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0)).rejects.toMatchObject({
+    await expect(
+      svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0, OVERLAY),
+    ).rejects.toMatchObject({
       statusCode: 412,
     });
     // The next publish at the correct version succeeds.
-    const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1);
+    const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1, OVERLAY);
     expect(second.version).toBe(2);
 
     // retryRender flips a failed form_fill back to queued.
@@ -617,6 +683,133 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     expect(
       (await admin.query("SELECT status FROM form_fill WHERE id=$1", [fill])).rows[0].status,
     ).toBe("queued");
+    // GAP-140 — a fill that is not failed is not retryable (409), and the status is untouched.
+    await expect(svc.retryRender(ORG_A, ACTOR, fill)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("GAP-140: the form-render worker renders queued fills, retries transient failures and settles permanent ones", async () => {
+    const insertFill = async (): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO form_fill (organization_id, template_version_id, aggregate_type, aggregate_id,
+             render_payload, status, correlation_id)
+           VALUES ($1,$2,'election_statement',gen_random_uuid(),'{}'::jsonb,'queued',gen_random_uuid()::text)
+           RETURNING id`,
+          [ORG_A, tmpl.election.versionId],
+        )
+      ).rows[0].id as string;
+    const statusOf = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT status, render_attempts, result_document_id FROM form_fill WHERE id=$1",
+          [id],
+        )
+      ).rows[0];
+    // Earlier tests in this file leave queued fills for the same org; the worker renders those too, so count them.
+    const alreadyQueued = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM form_fill WHERE organization_id=$1 AND status='queued'",
+        [ORG_A],
+      )
+    ).rows[0].n as number;
+    const okFill = await insertFill();
+    const docId = await seedDocument(ORG_A);
+    const flakyFill = await insertFill();
+    let calls = 0;
+    const renderer = {
+      async render(_scope: unknown, _key: string, payload: unknown) {
+        const aggregateId = (payload as { aggregateId: string }).aggregateId;
+        const row = (
+          await admin.query("SELECT id FROM form_fill WHERE aggregate_id=$1", [aggregateId])
+        ).rows[0];
+        if (row.id === flakyFill) {
+          calls += 1;
+          throw new Error("transient object-store outage");
+        }
+        return { documentId: docId };
+      },
+    };
+    const deps = { db: handle.db, renderer };
+    const first = await renderQueuedFormFillsForOrg(deps, ORG_A);
+    expect(first).toMatchObject({ rendered: 1 + alreadyQueued, retried: 1, failed: 0 });
+    expect((await statusOf(okFill)).status).toBe("rendered");
+    expect((await statusOf(okFill)).result_document_id).toBe(docId);
+    expect((await statusOf(flakyFill)).status).toBe("queued"); // retried, not settled
+    // Two more ticks exhaust MAX_RENDER_ATTEMPTS (3) and the flaky fill settles failed with a PHI-free reason.
+    await renderQueuedFormFillsForOrg(deps, ORG_A);
+    const last = await renderQueuedFormFillsForOrg(deps, ORG_A);
+    expect(last.failed).toBe(1);
+    expect(calls).toBe(3);
+    expect((await statusOf(flakyFill)).status).toBe("failed");
+    // Another tenant's fills are invisible to this org's tick (RLS), and a failed fill is never re-picked.
+    expect((await renderQueuedFormFillsForOrg(deps, ORG_B)).rendered).toBe(0);
+    expect(await renderQueuedFormFillsForOrg(deps, ORG_A)).toEqual({
+      rendered: 0,
+      failed: 0,
+      retried: 0,
+    });
+  });
+
+  it("GAP-141: retention rotation promotes written-back intake documents and reports (never deletes) the rest", async () => {
+    const mkBatch = async (status: string, disposedDaysAgo: number) => {
+      const doc = (
+        await admin.query(
+          `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type,
+             title, created_by_membership_id)
+           VALUES ($1,$2,'intake_artifact','user_upload','other','Intake',$3) RETURNING id`,
+          [ORG_A, PATIENT, MEMBER],
+        )
+      ).rows[0].id as string;
+      const batch = (
+        await admin.query(
+          `INSERT INTO intake_upload_batch (organization_id, patient_id, initial_document_id, source_channel,
+             uploaded_by_membership_id, correlation_id, status, disposition_at)
+           VALUES ($1,$2,$3,'fax',$4,gen_random_uuid(),$5, now() - ($6 || ' days')::interval) RETURNING id`,
+          [ORG_A, PATIENT, doc, MEMBER, status, String(disposedDaysAgo)],
+        )
+      ).rows[0].id as string;
+      return { doc, batch };
+    };
+    const written = await mkBatch("writeback_complete", 40);
+    const discarded = await mkBatch("discarded", 40);
+    const recent = await mkBatch("discarded", 3);
+    const held = await mkBatch("discarded", 40);
+    await admin.query(
+      `INSERT INTO extraction_review (organization_id, intake_upload_batch_id, reviewer_membership_id, status, correlation_id)
+       VALUES ($1,$2,$3,'complete',gen_random_uuid())`,
+      [ORG_A, written.batch, MEMBER],
+    );
+    const reviewId = (
+      await admin.query("SELECT id FROM extraction_review WHERE intake_upload_batch_id=$1", [
+        written.batch,
+      ])
+    ).rows[0].id as string;
+    const cand = (await seedCandidates(ORG_A, written.batch, 1))[0] as string;
+    await admin.query(
+      `INSERT INTO extraction_decision (organization_id, extraction_candidate_id, extraction_review_id, decision, source_view_confirmed)
+       VALUES ($1,$2,$3,'approve',true)`,
+      [ORG_A, cand, reviewId],
+    );
+    await admin.query(
+      `INSERT INTO document_legal_hold (organization_id, document_id, legal_hold_event_id) VALUES ($1,$2,gen_random_uuid())`,
+      [ORG_A, held.doc],
+    );
+    const alerts: number[] = [];
+    const outcome = await rotateIntakeRetentionForOrg(
+      { db: handle.db, onDestructionPending: (a) => void alerts.push(a.destructionPending) },
+      ORG_A,
+    );
+    const classOf = async (id: string) =>
+      (await admin.query("SELECT retention_class FROM document WHERE id=$1", [id])).rows[0]
+        .retention_class;
+    expect(await classOf(written.doc)).toBe("clinical_record"); // promoted
+    expect(await classOf(discarded.doc)).toBe("intake_artifact"); // NOT deleted or reclassified
+    expect(await classOf(recent.doc)).toBe("intake_artifact"); // inside the window
+    expect(outcome.promoted).toBe(1);
+    expect(outcome.destructionPending).toBe(1); // `discarded` only: `held` has a legal hold, `recent` is in-window
+    expect(alerts).toEqual([1]);
+    // Idempotent: a second pass promotes nothing and reports the same pending set.
+    expect((await rotateIntakeRetentionForOrg({ db: handle.db }, ORG_A)).promoted).toBe(0);
   });
 
   it("GAP-039: every write is attributed — audit actor + membership, not NULL and not a sentinel", async () => {
@@ -659,7 +852,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         )
       ).rows[0].n,
     );
-    await svc.publishOverlay(ORG_A, ACTOR, "election_statement", overlayVersion);
+    await svc.publishOverlay(ORG_A, ACTOR, "election_statement", overlayVersion, OVERLAY);
     // The DELETE trigger must be attributed too; a second tag survives for the column assertion below.
     await svc.removeTag(ORG_A, ACTOR, docId, tag.id);
     await svc.addTag(ORG_A, ACTOR, docId, {

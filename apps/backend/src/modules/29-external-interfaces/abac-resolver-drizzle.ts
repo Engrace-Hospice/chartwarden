@@ -180,6 +180,21 @@ export function buildDrizzleM29AbacResolver(deps: M29AbacDrizzleDeps): M29AbacRe
       }
     },
 
+    async feedRevokeRequester(orgId, feedId) {
+      try {
+        return await withOrgContext(db, ctx(orgId), async (tx) => {
+          const [row] = await tx
+            .select({ requestedBy: FEED.revokeRequestedByMembershipId })
+            .from(FEED)
+            .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))
+            .limit(1);
+          return row ? { requestedBy: row.requestedBy } : null;
+        });
+      } catch {
+        return null;
+      }
+    },
+
     async feedBaaSatisfied(orgId, feedId) {
       // Route-level BAA-on-file check: an inbound/outbound HL7 feed needs an unexpired BAA contract ref on
       // file before activation (D16). The full M40 as-of gate is consulted at listener bind / dispatch (T03/

@@ -307,9 +307,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "CoP 418.52 / HIPAA compliance officer; default break-glass approver.",
     floor: SYSTEM_LOCKED_FLOORS.compliance_officer,
     // M5 §4.7 grants `privacy.admin` to "Privacy Officer, Compliance Officer" (§6: both may resync privacy
-    // flags). A DEFAULT grant, not floor: the CoP 418.52 floor is the un-strippable minimum, and a tenant
+    // flags). `step_up_override.manage` (GAP-115, M2 §4.1: "org_admin/compliance_officer") likewise. A DEFAULT grant, not floor: the CoP 418.52 floor is the un-strippable minimum, and a tenant
     // whose privacy official alone should hold resync may remove it from the compliance officer.
-    grants: [...SYSTEM_LOCKED_FLOORS.compliance_officer, "privacy.admin"],
+    grants: [
+      ...SYSTEM_LOCKED_FLOORS.compliance_officer,
+      "privacy.admin",
+      "step_up_override.manage",
+    ],
   },
   {
     key: "hipaa_privacy_officer",

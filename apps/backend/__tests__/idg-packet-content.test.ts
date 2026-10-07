@@ -423,6 +423,10 @@ describe("sudDisclosureAllowedForPacket — the M7/M15 per-actor ordering", () =
 });
 
 // ── through the route stack ────────────────────────────────────────────────────────────────────────────────
+// GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> =>
+  ({ includes: () => true }) as unknown as readonly string[];
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -491,7 +495,7 @@ function makeServer(sudDisclosure?: PacketDisclosurePort) {
   }
   registerAbacRegistry(registry);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerIdgRoutes(app, { service: backend, sudDisclosure });
+  registerIdgRoutes(app, { service: backend, sudDisclosure, caseload: COVERS_EVERY_PATIENT });
   return app;
 }
 

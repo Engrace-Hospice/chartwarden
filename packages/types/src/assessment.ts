@@ -140,6 +140,7 @@ export type M9TableName =
   | "clinical_assessment"
   | "assessment_cosignature"
   | "significant_change_event"
+  | "assessment_reassessment_due"
   | "scale_license"
   | "scale_policy";
 
@@ -150,6 +151,7 @@ export const M9_AUDIT_DENYLIST: { readonly [K in M9TableName]: readonly string[]
   clinical_assessment: ["data", "correction_reason"],
   assessment_cosignature: ["attestation_text"],
   significant_change_event: ["acknowledgment_note"],
+  assessment_reassessment_due: [],
   scale_license: [],
   scale_policy: [],
 } as const;
@@ -167,6 +169,7 @@ export const M9_EVENT_NAMES = [
   "m9.assessment.significant_change_acknowledged",
   "m9.assessment.significant_change_escalated",
   "m9.assessment.summary_requested",
+  "m9.assessment.reassessment_due",
   "m9.scale.license_pending_renewal",
   "m9.scale.license_lapsed",
   "m9.scale.policy_changed",
