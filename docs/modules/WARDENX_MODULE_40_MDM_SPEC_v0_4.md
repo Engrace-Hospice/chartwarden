@@ -1051,6 +1051,8 @@ Module 40 contributes the following keys to Module 3's permission catalog (`pack
 | `mdm.payer.read` | payer.read | billing_*, org_admin, Compliance | `none` |
 | `mdm.payer.propose` | payer.propose | billing_lead, org_admin | `none` |
 | `mdm.payer.overlay` | payer.overlay | billing_lead, org_admin | `none` |
+| `mdm.grief_resource.read` | grief_resource.read | bereavement_*, msw, org_admin, Compliance | `none` |
+| `mdm.grief_resource.manage` | grief_resource.manage | org_admin, Compliance | `none` |
 | `mdm.dme_vendor.read` | dme_vendor.read | clinical_*, supplies_*, org_admin | `none` |
 | `mdm.dme_vendor.propose` | dme_vendor.propose | supplies_lead, org_admin | `none` |
 | `mdm.dme_vendor.overlay` | dme_vendor.overlay | supplies_lead, org_admin | `none` |

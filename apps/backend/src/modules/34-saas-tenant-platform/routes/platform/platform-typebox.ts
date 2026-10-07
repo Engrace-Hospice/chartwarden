@@ -68,7 +68,8 @@ const SIGNUP_INTENT_SOURCE = [
 ] as const;
 const BAA_STATUS = ["executed", "pending", "terminated", "missing"] as const;
 const FLAG_KIND = ["product", "rollout", "kill_switch", "migration"] as const;
-const FLAG_VALUE_TYPE = ["boolean", "string", "number", "json"] as const;
+// GAP-164: the DB enum `feature_flag_value_type` is `bool` (not `boolean`) - the route schema drifted from it, so a boolean flag could never be written by the platform route in a real database.
+const FLAG_VALUE_TYPE = ["bool", "string", "number", "json"] as const;
 const ISO_DATE = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 
 // ── path params ──────────────────────────────────────────────────────────────────────────────────────

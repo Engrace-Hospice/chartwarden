@@ -72,7 +72,7 @@ export function isTenantToggleable(
 ): boolean {
   return (
     row.organizationId === organizationId &&
-    row.valueType === "boolean" &&
+    (row.valueType === "bool" || row.valueType === "boolean") &&
     (TENANT_TOGGLEABLE_KINDS as readonly string[]).includes(row.flagKind) &&
     !row.killSwitchActive
   );

@@ -77,6 +77,8 @@ const PLATFORM_READ_TABLES = [
   "organization",
   "membership",
   "patient",
+  // M1 feature flags - the M34 platform + tenant flag admin reads every tenant's flag rows (GAP-164).
+  "feature_flag",
   // M4 destruction ceremony facts (certificate approval + active legal holds).
   "destruction_certificate",
   "legal_hold",
@@ -198,6 +200,11 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // M28 — the validator persists the signed CapabilityStatement once per release (INSERT only: a snapshot
   // is evidence and is never updated or deleted by the platform role).
   "fhir_capability_snapshot",
+  // GAP-163: the support-session close sweep appends the `session.close` ledger row.
+  "support_session_event",
+  // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
+  // connection by design); without these two grants every platform / tenant flag write was a 42501.
+  "feature_flag",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [
@@ -206,6 +213,10 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "destruction_certificate",
   "tenant_signup_intent",
   "tenant_invitation",
+  // GAP-164: the platform-ops onboarding skip. GAP-163: the support-session close sweep closes the session.
+  "onboarding_task",
+  "support_session",
+  "feature_flag",
 ] as const;
 
 /** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */

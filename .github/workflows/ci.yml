@@ -662,6 +662,11 @@ jobs:
           # GAP-104 — care_team channel membership lifecycle (unassign revokes access, discharge archives).
           - { name: "M36 Channel membership", scripts: "test:m36:channel-membership:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
+          # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
+          # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
+          - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }
+          - { name: "GAP-161 M32 events", scripts: "test:gap-161:live" }
+          - { name: "GAP-164 M34 ops routes", scripts: "test:gap-164:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.

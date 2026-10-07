@@ -1,3 +1,4 @@
+import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/40-mdm/seams.ts — M40-T05 seam registration (spec §4.5).
 //
 // M40 publishes the `MdmEntityProvider` seam — the master-data read surface every clinical/
@@ -28,9 +29,13 @@ import {
   createMdmEntityProvider,
 } from "@wardenx/mdm";
 import { getSeam, registerSeam } from "../../bootstrap/index";
+import { buildGriefResourceReader } from "./grief-resources";
 
 /** Injected production adapters for M40's published seams (slice defaults to in-memory). */
 export interface MdmSeamDeps {
+  /** GAP-158 - with a DB, the `ExternalGriefResourceReader` seam binds the real tenant-curated catalog (M31's
+   *  bereaved-portal resources list); without one the deny-stub stands and the portal answers 501. */
+  db?: DbClient;
   /** The data port the omnibus `MdmEntityProvider` composes over (Drizzle-backed in production, T07). */
   store?: MdmStore;
   /** The data port the focused `BaaStatusProvider` composes over (Drizzle/Valkey-backed, T07). */
@@ -49,6 +54,8 @@ export function registerMdmSeams(deps: MdmSeamDeps = {}): void {
 
   const baaStore = deps.baaStore ?? createInMemoryBaaStore().store;
   registerSeam("BaaStatusProvider", createBaaStatusProvider(baaStore));
+
+  if (deps.db) registerSeam("ExternalGriefResourceReader", buildGriefResourceReader(deps.db));
 }
 
 /**

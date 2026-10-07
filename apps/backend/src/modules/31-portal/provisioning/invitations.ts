@@ -18,6 +18,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, type PortalDataCategory, WardenXError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { type M31EventEmitter, emitGrantGranted } from "../events";
 import { requirePortal } from "../lifecycle/errors";
 import {
   type PortalInvitation,
@@ -118,6 +119,20 @@ export interface PortalInvitationsDeps {
   readonly consent: PortalConsentPort;
   readonly site: PortalPatientSitePort;
   readonly delivery?: PortalInvitationDeliveryPort;
+  /**
+   * GAP-158 - the caregiver -> M2 user link. When an invitation issued FOR a roster caregiver (`caregiverId`) is
+   * accepted, the accept transaction stamps that caregiver's `user_id` through M5's `linkCaregiverToUserInTx`
+   * (injected: M31 never writes M5's table). A `conflict` (the caregiver is already linked to a DIFFERENT login) or
+   * a missing caregiver refuses the accept and rolls the whole transaction back - the token stays unconsumed.
+   */
+  readonly caregiverLink?: {
+    linkInTx(
+      tx: unknown,
+      input: { organizationId: string; caregiverId: string; userId: string },
+    ): Promise<"linked" | "already_linked" | "caregiver_not_found" | "conflict">;
+  };
+  /** GAP-159 - same-tx `m31.portal_account.invited` / `.activated` / `portal_access_grant.granted` emits. */
+  readonly events?: M31EventEmitter;
   readonly now?: () => Date;
 }
 
@@ -275,6 +290,18 @@ export function createPortalInvitations(deps: PortalInvitationsDeps): PortalInvi
           })
           .returning();
         if (!invitation) throw new Error("portal_invitation insert returned no row");
+        await deps.events?.emitInTx(
+          tx,
+          input.organizationId,
+          "m31.portal_account.invited",
+          { kind: "portal_account", id: accountId },
+          {
+            portalAccountId: accountId,
+            patientId: input.patientId,
+            relationship: input.relationship,
+            issuedByMembershipId: input.actingUserId === "" ? "system" : input.actingUserId,
+          },
+        );
         return invitation;
       });
 
@@ -437,20 +464,59 @@ export function createPortalInvitations(deps: PortalInvitationsDeps): PortalInvi
               updatedAt: nowDate,
             })
             .where(eq(ACC.id, account.id));
+          await deps.events?.emitInTx(
+            tx,
+            organizationId,
+            "m31.portal_account.activated",
+            { kind: "portal_account", id: account.id },
+            {
+              portalAccountId: account.id,
+              patientId: row.patientId,
+              relationship: row.relationship,
+              activatedAt: nowDate.toISOString(),
+            },
+          );
         }
-        await tx.insert(GRANT).values({
-          organizationId,
-          providerEntityId: row.providerEntityId,
-          locationId: row.locationId,
+        const [grant] = await tx
+          .insert(GRANT)
+          .values({
+            organizationId,
+            providerEntityId: row.providerEntityId,
+            locationId: row.locationId,
+            portalAccountId: row.portalAccountId,
+            patientId: row.patientId,
+            grantKind: decision.grantKind,
+            scopeSetJsonb: decision.resolvedScope,
+            sourceConsentRecordId: (consent as NonNullable<typeof consent>).consentRecordId,
+            sourceConsentVersion: (consent as NonNullable<typeof consent>).consentVersion,
+            grantedAt: nowDate,
+            grantedByMembershipId: null,
+          })
+          .returning({ id: GRANT.id });
+        if (!grant) throw new Error("portal_access_grant insert returned no row");
+        await emitGrantGranted(deps.events, tx, organizationId, {
+          id: grant.id,
           portalAccountId: row.portalAccountId,
           patientId: row.patientId,
           grantKind: decision.grantKind,
-          scopeSetJsonb: decision.resolvedScope,
-          sourceConsentRecordId: (consent as NonNullable<typeof consent>).consentRecordId,
-          sourceConsentVersion: (consent as NonNullable<typeof consent>).consentVersion,
-          grantedAt: nowDate,
-          grantedByMembershipId: null,
         });
+        // GAP-158 - claim the roster caregiver this invitation was issued for (same tx as the consumed token).
+        if (row.caregiverId && deps.caregiverLink) {
+          const linked = await deps.caregiverLink.linkInTx(tx, {
+            organizationId,
+            caregiverId: row.caregiverId,
+            userId: account.userId,
+          });
+          if (linked === "conflict" || linked === "caregiver_not_found") {
+            throw new WardenXError(
+              linked === "conflict" ? "CAREGIVER_ALREADY_LINKED" : "CAREGIVER_NOT_FOUND",
+              linked === "conflict"
+                ? "this caregiver record is already linked to a different portal login"
+                : "the caregiver this invitation was issued for no longer exists",
+              409,
+            );
+          }
+        }
         return result(false, account.userId);
       });
 

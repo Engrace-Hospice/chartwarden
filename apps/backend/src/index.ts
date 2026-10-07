@@ -250,6 +250,7 @@ import {
 } from "./modules/04-audit/jobs/audit-ops-workers";
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
+import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
@@ -1453,6 +1454,7 @@ export function wireModuleSeams(
       ? {
           store: createDbMdmStore(deps.db),
           baaStore: createDbBaaStore(deps.db),
+          db: deps.db,
         }
       : {},
   );
@@ -4688,6 +4690,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               baseUrl: process.env.PORTAL_APP_URL ?? webAppBaseUrl,
             }),
             uploadIntake: buildPortalUploadIntakePort(dbHandle.db),
+            // GAP-158 - accepting an invitation issued for a roster caregiver claims that caregiver for the login.
+            caregiverLink: { linkInTx: linkCaregiverToUserInTx },
+            // GAP-159 - invited / activated / granted ride the issue + accept transactions.
+            events: m31Events,
           });
           // GAP-092 — a bereaved family member's own opt-out is M16's D9 transition (it cancels the contact's future
           // outreach); the scope read names which contact(s) the portal account is.

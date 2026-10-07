@@ -284,6 +284,7 @@ exports.MODULES = [
       "mdm_provisional",
       "merge_request",
       "nppes_sync_coordination",
+      "external_grief_resource",
       "nppes_sync_log",
       "payer",
     ],

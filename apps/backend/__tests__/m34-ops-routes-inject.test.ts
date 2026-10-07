@@ -45,7 +45,7 @@ const flagRow = (over: Record<string, unknown>) => ({
   flagKey: "k",
   organizationId: null as string | null,
   flagKind: "product",
-  valueType: "boolean",
+  valueType: "bool",
   value: false,
   rolloutPercent: null,
   killSwitchActive: false,

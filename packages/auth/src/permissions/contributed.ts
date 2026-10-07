@@ -560,6 +560,19 @@ export const M40_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "none",
   },
+  // --- grief-resource catalog (GAP-158; tenant-curated external_grief_resource) ---
+  "mdm.grief_resource.read": {
+    resource: "grief_resource",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "mdm.grief_resource.manage": {
+    resource: "grief_resource",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   "mdm.merge.read": { resource: "merge", action: "read", category: "platform", abac: "none" },
   "mdm.merge.approve": { resource: "merge", action: "approve", category: "platform", abac: "none" },
 } as const satisfies Record<string, PermissionDef>;

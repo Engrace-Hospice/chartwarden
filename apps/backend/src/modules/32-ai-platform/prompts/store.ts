@@ -260,7 +260,7 @@ export function createDrizzleAiPromptTemplateStore(
             payload: {
               ...(await capabilityIdentity(tx, { key: plan.insert.capabilityKey })),
               promptTemplateId: row.id,
-              version: plan.insert.version,
+              version: String(plan.insert.version),
               supersededTemplateId: plan.deprecate?.id ?? null,
               activatedByMembershipId: plan.insert.approvedByMembershipId,
               contentHash: row.templateContentHash,
