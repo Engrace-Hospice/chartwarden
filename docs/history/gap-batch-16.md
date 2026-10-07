@@ -23,3 +23,17 @@ Source: `docs/audits/GAP_ANALYSIS_20261004.md` §3. All P2. No migration was nee
 - A scope-level Fastify hook (`app.register` + `addHook`) is the way to cover every future route of a module; a per-route guard is silently missed by the next route added.
 - Compose files are validated with `docker compose --env-file <fake> config`; every `${VAR:?}` in a service a rollback restarts must also exist in the restored env file (hence the secrets are generated before the backup).
 - Live suites touched but NOT run (no shared stack): `m22-documents-write.live.test.ts`, `m26-cap-consumer-store.live.test.ts`.
+
+
+## Follow-up round (the "fix all" pass)
+
+| GAP | Outcome |
+|---|---|
+| 141 / 140 | Built: `form-render` worker (every minute; consumes `queued` form fills, 3 attempts, `m22.document.render_failed` on terminal failure), `retention-rotation` (daily; promotes written-back intake documents to `clinical_record`, REPORTS no-writeback ones past retention as `document.retention_destruction_pending`), the nightly `ai-block-validator` re-run, and the MinIO access-log ingestor (MinIO audit webhook -> `POST /api/v1/webhooks/minio/access-log` -> `signed_url_consumed`). All wired in `index.ts` with platform job ids; the webhook is fail-closed (503 until `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`). **Not done, and exactly why:** the retention sweep does not DELETE — destroying PHI needs an M4 destruction certificate (approval workflow, privileged role) and M22 has no seam to request/auto-approve one; the `documents` eraser is patient-scoped with no batch entry point for patient-less intake. |
+| 142 / 144 | Built: `GET /billing/validation-overrides`, `POST /billing/mac-credentials/:providerEntityId/test`, `POST /admin/billing/wage-indexes/load` (migration 0450, SECURITY DEFINER bridge to the platform table) and `POST /admin/billing/platform-rules`. Limits: the MAC test is a portal health probe (no synthetic 837I / test-interchange flag exists); `platform-rules` answers 409/501 because platform rules are code and no stored-rule engine exists (not even tenant custom DSL rules are evaluated). |
+| 138 | The docling image scan now FAILS the release on fixable HIGH/CRITICAL (`ignore-unfixed: true`). The baseline could not be triaged into `.trivyignore.yaml`: that needs the built image and `trivy`, neither available offline — the first release may need a pin bump or entries. |
+| 139 | MinIO policy re-audited against every S3 call the adapter makes (HEAD/PUT bucket, HEAD/PUT/GET object, `?versions` + versioned DELETE, presign, the readiness HEAD); it uses no multipart, lifecycle, retention, legal-hold or versioning-configuration call, so the policy was tightened to exactly those actions. |
+| 149 | `openPeriod` writes the org's real CCN (via an injected M40 provider-entity read) when exactly one provider entity carries one. Still the `000000` sentinel for a multi-provider-entity org: the accrual consumers resolve a period by (org, year) alone, so per-CCN periods also need per-patient provider-entity -> CCN routing in `consumers/drizzle-store.ts` first. |
+| 146 | Opt-out production default kept; the deploy README now has an explicit OWNER DECISION section stating that production enables the Oregon gateway and how to veto it. |
+
+Migration used: **0450** (`billing_platform_load_wage_index`).

@@ -686,7 +686,11 @@ import {
   type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
+  M22_FORM_RENDER_PLATFORM_JOB_ID,
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
+  M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+  registerAiBlockValidatorWorker,
+  registerRetentionRotationWorker,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -718,9 +722,13 @@ import {
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
+  registerFormRenderWorker,
   registerRecordsRequestExpiryWorker,
   s3ObjectStoreConfigFromEnv,
+  scheduleAiBlockValidator,
+  scheduleFormRender,
   scheduleRecordsRequestExpiry,
+  scheduleRetentionRotation,
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
@@ -746,6 +754,7 @@ import {
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
+  buildDrizzlePlatformAdminService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
@@ -1893,6 +1902,8 @@ export function wireModuleSeams(
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
+  registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
+  registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
@@ -4053,6 +4064,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+            platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
@@ -4106,6 +4118,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
+              // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+              ...(m23LaunchGateway
+                ? {
+                    macSandbox: {
+                      probe: async ({ macJurisdiction }) => {
+                        const up = await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
+                        return {
+                          ok: up,
+                          detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                        };
+                      },
+                    },
+                  }
+                : {}),
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -4184,10 +4210,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM26Routes(app, {
             readService: buildDrizzleM26ReadService(dbHandle.db),
-            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher, {
-              ...(m26PsrFiles ? { files: m26PsrFiles } : {}),
-              ...(m26PsrEnqueuer ? { enqueue: m26PsrEnqueuer.port } : {}),
-            }),
+            writeService: buildDrizzleM26WriteService(
+              dbHandle.db,
+              m26OutboxPublisher,
+              {
+                ...(m26PsrFiles ? { files: m26PsrFiles } : {}),
+                ...(m26PsrEnqueuer ? { enqueue: m26PsrEnqueuer.port } : {}),
+              },
+              async (tx, organizationId) => {
+                // GAP-149 — the M40 CCN binding: the org's CCN when exactly one provider entity carries one.
+                const rows = await (tx as DbClient)
+                  .select({ ccn: schema.providerEntities.ccn })
+                  .from(schema.providerEntities)
+                  .where(eq(schema.providerEntities.organizationId, organizationId))
+                  .limit(2);
+                const ccn = rows.length === 1 ? rows[0]?.ccn : null;
+                return typeof ccn === "string" && /^\d{6}$/.test(ccn) ? ccn : null;
+              },
+            ),
           });
           if (m26PsrEnqueuer)
             app.addHook("onClose", async () => void (await m26PsrEnqueuer.queue.close()));
@@ -6637,6 +6677,103 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       });
     } catch (err) {
       app.log.error(err, "M22 records-request expiry schedule registration failed");
+    }
+    // GAP-140/141 — the M22 §4.8 workers. Best-effort M36 alerts ride the AlertEmitter seam (a throw never fails a
+    // tick; the durable record is the form_fill row / the next daily report / the failed job).
+    const m22AlertEmitter = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
+    };
+    // `form-render`: consumes `form_fill` rows in `queued` (the admin retry used to flip a row nothing consumed).
+    const m22FormRenderWorker = registerFormRenderWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      renderer: getDocumentRenderer(),
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_FORM_RENDER_PLATFORM_JOB_ID,
+        reason: "M22 form-render worker fan-out (active-org enumeration)",
+      }),
+      onTerminalFailure: async (alert) => {
+        await m22AlertEmitter.emit(alert.organizationId, {
+          eventType: "m22.document.render_failed",
+          payload: {
+            aggregateType: alert.aggregateType,
+            aggregateId: alert.aggregateId,
+            formFillId: alert.formFillId,
+            failureReason: alert.failureReason,
+            retryCount: alert.retryCount,
+          },
+          severity: "critical",
+          correlationId: `m22-form-render:${alert.formFillId}`,
+        });
+      },
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    // `retention-rotation`: the intake_artifact disposition+30d sweep (promote; report destruction-pending).
+    const m22RetentionRotationWorker = registerRetentionRotationWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+        reason: "M22 retention-rotation daily sweep fan-out (active-org enumeration)",
+      }),
+      onDestructionPending: async (alert) => {
+        await m22AlertEmitter.emit(alert.organizationId, {
+          eventType: "document.retention_destruction_pending",
+          payload: {
+            retentionClass: alert.retentionClass,
+            destructionPending: alert.destructionPending,
+            scheduledFor: alert.oldestDispositionAt,
+          },
+          severity: "info",
+          correlationId: `m22-retention:${alert.organizationId}:${alert.oldestDispositionAt.slice(0, 10)}`,
+        });
+      },
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    // `ai-block-validator`: the nightly re-run of the D7 boot check against the live registry.
+    const m22AiBlockValidatorWorker = registerAiBlockValidatorWorker({
+      connection: queueConnection,
+      registry: () => getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort,
+      onViolation: (message) => {
+        app.log.error({ event: "m22.ai_block.violation" }, message);
+      },
+    });
+    attachDlqAlertsToAll(
+      [m22FormRenderWorker, m22RetentionRotationWorker, m22AiBlockValidatorWorker],
+      "m22",
+    );
+    app.addHook("onClose", async () => {
+      await Promise.all([
+        m22FormRenderWorker.close(),
+        m22RetentionRotationWorker.close(),
+        m22AiBlockValidatorWorker.close(),
+      ]);
+    });
+    for (const [label, schedule] of [
+      ["form-render", scheduleFormRender],
+      ["retention-rotation", scheduleRetentionRotation],
+      ["ai-block-validator", scheduleAiBlockValidator],
+    ] as const) {
+      try {
+        const queue = await schedule(queueConnection);
+        app.addHook("onClose", async () => {
+          await queue.close();
+        });
+      } catch (err) {
+        app.log.error(err, `M22 ${label} schedule registration failed`);
+      }
     }
     // M5 §4.5 `patient.snapshot_rebuild` — the quarterly full privacy-snapshot rebuild (D3 "quarterly full
     // rebuild job reconciles drift"). Same per-org fan-out as the sweeps above; per org it pages the patients

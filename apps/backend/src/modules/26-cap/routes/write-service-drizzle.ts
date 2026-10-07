@@ -67,10 +67,20 @@ export interface PsrImportDeps {
   readonly enqueue?: PsrReconcileEnqueuePort;
 }
 
+/**
+ * GAP-149 — the M40 CCN binding for `openPeriod`, injected (M26 has no compile-time edge to M40). Returns the
+ * org's CCN when it is UNAMBIGUOUS — exactly one provider entity with a CCN — else `null`. A multi-provider-entity
+ * org stays on the `000000` sentinel: `openPeriod` takes no provider entity and the accrual consumers
+ * (`consumers/drizzle-store.ts`) resolve a period by (org, cap year) alone, so per-CCN periods would have to be
+ * opened and routed per patient first — that per-patient provider-entity -> CCN routing is what is still missing.
+ */
+export type OrgCcnResolver = (tx: unknown, organizationId: string) => Promise<string | null>;
+
 export function buildDrizzleM26WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
   psr: PsrImportDeps = {},
+  resolveOrgCcn?: OrgCcnResolver,
 ): M26WriteService {
   const P = schema.capPeriod;
   const ML = schema.capPeriodMethodologyLock;
@@ -123,8 +133,8 @@ export function buildDrizzleM26WriteService(
             `the ${input.capYear} per-beneficiary cap amount is not yet published`,
           );
         const window = capYearWindow(input.capYear);
-        // CCN is resolved from M40 canonicalCcnForOrg when bound; default sentinel until then (§4.4 fallback).
-        const ccn = "000000";
+        // GAP-149 — the org's real CCN from the M40 binding when unambiguous; the sentinel otherwise (§4.4 fallback).
+        const ccn = (await resolveOrgCcn?.(tx, actor.organizationId)) ?? "000000";
         const inserted = await tx
           .insert(P)
           .values({

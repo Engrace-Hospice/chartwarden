@@ -10,7 +10,7 @@
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
 // publish (§2.5 optimistic concurrency, 412; persists branding + state addendum), and render retry (a
-// `failed` fill only — there is no render worker consuming `queued` form fills yet). Binary upload/version creation (GAP-068) runs
+// `failed` fill only — the `form-render` worker, workers/form-render-worker.ts, consumes the `queued` fills). Binary upload/version creation (GAP-068) runs
 // through ./routes/server-upload.ts over the bound object store (verified size/SHA-256, one transaction); it
 // returns a typed 503 only when no object store is configured. One route write emits a producer outbox
 // event: review completion publishes `m22.extraction.commit_requested` (F-235, ./extraction/

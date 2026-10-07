@@ -45,6 +45,14 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
+      # GAP-141 — download CONFIRMATION for signed URLs. MinIO's audit webhook posts one record per S3 API call to
+      # the api over the compose network (cluster-wide: no per-bucket notification to configure for the dynamic
+      # `tenant-*` buckets); the api keeps only successful GetObject calls on tenant buckets and records them as
+      # `signed_url_consumed` in document_access_log. Delivery is best-effort (an audit gap is accepted for this
+      # stream); the endpoint answers 503 until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set (deploy.sh generates it).
+      MINIO_AUDIT_WEBHOOK_ENABLE_wardenx: "on"
+      MINIO_AUDIT_WEBHOOK_ENDPOINT_wardenx: http://api:3000/api/v1/webhooks/minio/access-log
+      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_wardenx: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
     volumes:
       - minio-data:/data
     # Port 9000 is reachable only by host Nginx. Do not publish 9001: the admin console is not
@@ -60,7 +68,11 @@ services:
   # GAP-139 — the api and worker used to authenticate to the object store AS THE MINIO ROOT ACCOUNT, so a
   # compromised app process held full administrative control of every tenant bucket, the policy store and
   # the IAM store. This one-shot creates a scoped service account instead: object + bucket operations on
-  # the per-tenant `tenant-*` buckets and the readiness-probe bucket, and NOTHING administrative. It is
+  # the per-tenant `tenant-*` buckets and the `wardenx-*` platform/readiness buckets, and NOTHING administrative.
+  # The action list is the audited set of S3 calls the object-store adapter makes (HEAD/PUT bucket, HEAD/PUT/GET
+  # object, presigned GET, `?versions` list + versioned DELETE for the D12 shred, the readiness HEAD). The adapter
+  # uses no multipart upload, lifecycle, retention, legal-hold or versioning-configuration call, so none is granted;
+  # a new call needs its action added here deliberately. It is
   # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
   # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
   minio-provision:
@@ -82,12 +94,12 @@ services:
           "Statement": [
             {
               "Effect": "Allow",
-              "Action": ["s3:CreateBucket", "s3:ListBucket", "s3:GetBucketLocation", "s3:GetBucketVersioning", "s3:PutBucketVersioning", "s3:GetBucketObjectLockConfiguration", "s3:PutBucketObjectLockConfiguration", "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration", "s3:ListBucketVersions", "s3:DeleteBucket"],
+              "Action": ["s3:CreateBucket", "s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketVersions"],
               "Resource": ["arn:aws:s3:::tenant-*", "arn:aws:s3:::wardenx-*"]
             },
             {
               "Effect": "Allow",
-              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion", "s3:DeleteObjectVersion", "s3:GetObjectRetention", "s3:PutObjectRetention", "s3:GetObjectLegalHold", "s3:PutObjectLegalHold", "s3:BypassGovernanceRetention"],
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion", "s3:DeleteObjectVersion"],
               "Resource": ["arn:aws:s3:::tenant-*/*", "arn:aws:s3:::wardenx-*/*"]
             }
           ]
@@ -161,6 +173,8 @@ services:
       DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
+      MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       REDIS_URL: redis://valkey:6379
       MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.

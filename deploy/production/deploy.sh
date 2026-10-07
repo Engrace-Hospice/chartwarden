@@ -58,6 +58,8 @@ ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
 # `minio-provision` one-shot creates it with a bucket-scoped policy; see compose.yml).
 ensure_secret MINIO_APP_ACCESS_KEY "wardenx-app"
 ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
+# The bearer MinIO's audit webhook presents to the api's access-log receiver (GAP-141).
+ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
 
 backup_file=$(mktemp .env.production.before-deploy.XXXXXX)
 next_file=$(mktemp .env.production.next.XXXXXX)

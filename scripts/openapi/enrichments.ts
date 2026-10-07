@@ -377,7 +377,13 @@ import {
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
+  ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+import {
+  LoadWageIndexesBodySchema,
+  LoadWageIndexesResultSchema,
+  RegisterPlatformRuleBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/platform-admin-typebox";
 import {
   CreateRateTableBodySchema,
   RateTableEffectiveQuerySchema,
@@ -9914,6 +9920,32 @@ const M23MacCredentialListResponse = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
   hasMore: Type.Boolean(),
 });
+const M23MacCredentialTestResponse = Type.Object({
+  providerEntityId: Type.String(),
+  macJurisdiction: Type.String(),
+  ok: Type.Boolean(),
+  method: Type.Literal("portal_health_probe"),
+  detail: Type.String(),
+  checkedAt: Type.String(),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+});
+const M23ValidationOverrideAuditPage = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      overrideId: Type.String(),
+      resultId: Type.String(),
+      overrideMembershipId: Type.String(),
+      overrideRoleApplied: Type.String(),
+      reason: Type.String(),
+      appliedAt: Type.String(),
+      claimId: Type.String(),
+      ruleKey: Type.String(),
+      m4AuditEventId: Type.String(),
+    }),
+  ),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
 
 const M23ArAgingDto = Type.Object({
@@ -9977,6 +10009,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
     query: BillingPatientQuerySchema,
     response: M23EligibilityLatestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
+    summary:
+      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+    response: M23MacCredentialTestResponse,
+  },
+  "GET /api/v1/billing/validation-overrides": {
+    summary:
+      "Org-wide validation-override audit view for a ProviderEntity, newest first, cursor-paginated (§4.1 #17)",
+    query: ValidationOverrideListQuerySchema,
+    response: M23ValidationOverrideAuditPage,
+  },
+  "POST /api/v1/admin/billing/platform-rules": {
+    summary:
+      "Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41)",
+    body: RegisterPlatformRuleBodySchema,
+  },
+  "POST /api/v1/admin/billing/wage-indexes/load": {
+    summary:
+      "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",
+    body: LoadWageIndexesBodySchema,
+    response: LoadWageIndexesResultSchema,
+  },
+  "POST /api/v1/webhooks/minio/access-log": {
+    summary:
+      "MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+    body: Type.Union([
+      Type.Record(Type.String(), Type.Unknown()),
+      Type.Array(Type.Record(Type.String(), Type.Unknown())),
+    ]),
+    response: Type.Object({
+      received: Type.Integer(),
+      recorded: Type.Integer(),
+      unattributed: Type.Integer(),
+      duplicates: Type.Integer(),
+    }),
   },
   "GET /api/v1/billing/mac-credentials": {
     summary:

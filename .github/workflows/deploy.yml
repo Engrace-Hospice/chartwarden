@@ -220,19 +220,22 @@ jobs:
           ignore-unfixed: false
           trivyignores: .trivyignore.yaml
 
-      # The docling-worker image carries a Python/torch/OCR stack whose HIGH/CRITICAL baseline is unknown;
-      # gating every release (including a production fix) on it before that baseline is triaged would be a
-      # new way to block deploys. It is scanned and the findings are in the log, but not yet fail-closed.
-      # Follow-up: triage into .trivyignore.yaml, then set exit-code "1" like the two images above.
-      - name: Scan docling-worker image (report only until triaged)
+      # The docling-worker image (Python/torch/OCR stack) is now FAIL-CLOSED like the two images above, with one
+      # deliberate difference: `ignore-unfixed: true`. Its base-layer findings that no vendor has fixed cannot be
+      # acted on from here, and gating production releases on them would make an unfixable CVE block a real fix;
+      # every FIXABLE HIGH/CRITICAL fails the release, and `.trivyignore.yaml` (expiry + statement per entry,
+      # enforced by `arch:vuln-allowlist`) is the only way past one. The first run against a real image may list
+      # fixable findings that need a pin bump in services/docling-worker/pyproject.toml/Dockerfile or an entry
+      # there — the baseline could not be taken offline (no built image / trivy in the authoring environment).
+      - name: Scan docling-worker image (fixable HIGH/CRITICAL fail the release)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
 
         with:
           image-ref: ghcr.io/engrace-hospice/wardenx-docling-worker@${{ steps.build_docling.outputs.digest }}
           format: table
-          exit-code: "0"
+          exit-code: "1"
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
           trivyignores: .trivyignore.yaml
 
       - name: Install cosign

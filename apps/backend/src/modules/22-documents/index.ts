@@ -23,6 +23,7 @@ import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { siteDisplayForOrg } from "../../bootstrap/site-display-for-org";
+import { registerMinioAccessLogRoute } from "./access-log/minio-access-log-routes";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import { createIdentityTargetPorts } from "./extraction/batch-identity";
@@ -117,6 +118,12 @@ export function mountDocumentRoutes(
       },
     },
     recordsRequests,
+  });
+  // GAP-141 — the MinIO audit-webhook receiver (download confirmation -> `signed_url_consumed`); fail-closed 503
+  // until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set.
+  registerMinioAccessLogRoute(app, {
+    db,
+    token: process.env.MINIO_ACCESS_LOG_WEBHOOK_TOKEN,
   });
   registerRecordsRequestRoutes(app, {
     service: recordsRequests,
@@ -344,3 +351,20 @@ export {
   DocumentsAIBlockViolation,
   validateDocumentsAIBlock,
 } from "./ai-block";
+
+// GAP-140/141 — the M22 §4.8 workers: form-render (consumes queued form fills), retention-rotation (promote /
+// report intake_artifact disposition+30d), the nightly ai-block-validator re-run.
+export {
+  M22_FORM_RENDER_PLATFORM_JOB_ID,
+  registerFormRenderWorker,
+  scheduleFormRender,
+} from "./workers/form-render-worker";
+export {
+  M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+  registerRetentionRotationWorker,
+  scheduleRetentionRotation,
+} from "./workers/retention-rotation-worker";
+export {
+  registerAiBlockValidatorWorker,
+  scheduleAiBlockValidator,
+} from "./workers/ai-block-validator-worker";

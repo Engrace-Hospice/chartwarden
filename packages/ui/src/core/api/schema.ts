@@ -1017,6 +1017,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/billing/platform-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41) */
+        post: operations["postApiV1AdminBillingPlatformrules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/wage-indexes/load": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42) */
+        post: operations["postApiV1AdminBillingWageindexesLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/controlled-substance-policy": {
         parameters: {
             query?: never;
@@ -4269,6 +4303,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/mac-credentials/{providerEntityId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36) */
+        post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/metrics": {
         parameters: {
             query?: never;
@@ -4658,6 +4709,23 @@ export interface paths {
         put?: never;
         /** Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4) */
         post: operations["postApiV1BillingTransfernoticesByIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/validation-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org-wide validation-override audit view for a ProviderEntity, newest first, cursor-paginated (§4.1 #17) */
+        get: operations["getApiV1BillingValidationoverrides"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -20682,6 +20750,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/minio/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
+        post: operations["postApiV1WebhooksMinioAccesslog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/stripe": {
         parameters: {
             query?: never;
@@ -23931,6 +24016,77 @@ export interface operations {
                         graceWindowMinutes: number;
                         prnMinimumIntervalMinutes: number;
                         emarPdfOnCommit: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingPlatformrules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleKey: string;
+                    title: string;
+                    description: string;
+                    severity: "error" | "warn" | "info";
+                    regulatoryRequired: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingWageindexesLoad: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026. */
+                    fiscalYearStarting: number;
+                    /** @description The CMS wage-index file URI / Federal Register notice the rows were taken from. */
+                    sourceReference: string;
+                    rows: {
+                        ccn: string;
+                        cbsaCode?: string;
+                        factorDecimal: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        fiscalYearStarting: number;
+                        sourceReference: string;
+                        inserted: number;
+                        updated: number;
                     };
                 };
             };
@@ -33741,6 +33897,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1BillingMaccredentialsByProviderEntityIdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        ok: boolean;
+                        /** @constant */
+                        method: "portal_health_probe";
+                        detail: string;
+                        checkedAt: string;
+                        lastSandboxTestAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingMetrics: {
         parameters: {
             query?: {
@@ -35299,6 +35488,50 @@ export interface operations {
                         version: number;
                         createdAt: string;
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingValidationoverrides: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                ruleKey?: string;
+                overrideMembershipId?: string;
+                appliedFrom?: string;
+                appliedTo?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            overrideId: string;
+                            resultId: string;
+                            overrideMembershipId: string;
+                            overrideRoleApplied: string;
+                            reason: string;
+                            appliedAt: string;
+                            claimId: string;
+                            ruleKey: string;
+                            m4AuditEventId: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
                     };
                 };
             };
@@ -82702,6 +82935,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksMinioAccesslog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                        recorded: number;
+                        unattributed: number;
+                        duplicates: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -1567,14 +1567,14 @@ validation surface hangs off `/claims/:id`:
 | `POST` | `/billing/transfer-notices/:id/submit\|cancel\|void\|redraft\|correct-date\|confirm-prior-billing` | Transfer-notice lifecycle |
 | `POST` | `/noe-records/:id/correct`, `/notr-records/:id/correct` | NOE / NOTR correction (re-draft with a corrected date) |
 
-**Spec routes deliberately NOT built (deferred, GAP-144).**
+**Spec routes built after the first reconciliation (GAP-144), with their shipped paths and exact limits.**
 
-| # | Route | Reason / trigger |
-|---|---|---|
-| 17 | `GET /billing/validation-overrides` | Org-wide override audit view. The per-claim override history is available through `GET /claims/:id/validation-runs/:runId`; the org-wide compliance read lands with the M33 reporting consumer that needs it. |
-| 36 | `POST /billing/mac-credentials/:id:test` | Sends a synthetic claim to the MAC sandbox. Needs the real launch gateway sandbox endpoint (M23 launch gateway is deny-stubbed until the MAC onboarding); credentials are tested at first real submission today. |
-| 41 | `POST /admin/billing/platform-rules` | Not built: the platform rule catalog is code-defined and shipped with a release; there is no platform-admin console that needs an HTTP registration path yet. Deferred until that console exists. |
-| 42 | `POST /admin/billing/wage-index:load` | Not built: no CMS-file loader exists. Wage-index rows are authored through `POST /billing/wage-indexes` and `/supersede` (see above); the bulk loader is deferred until the annual-load workflow is staffed. |
+| # | Spec route | Shipped route | Notes |
+|---|---|---|---|
+| 17 | `GET /billing/validation-overrides` | same, `?providerEntityId=` required (the §4.7 `provider_entity_billing_scope` target) | Org-wide override audit view, newest first, keyset-paginated; filters `ruleKey`, `overrideMembershipId`, `appliedFrom/To`. Each row carries the claim id, rule key and the `m4_audit_event_id`. |
+| 36 | `POST /billing/mac-credentials/:id:test` | `POST /billing/mac-credentials/:providerEntityId/test` | `billing.mac_credential.admin` + provider scope + step-up + Idempotency-Key. **Limit:** the probe is the launch gateway's MAC **portal health probe**, not a synthetic 837I — the gateway contract has no test-interchange (ISA15=T) flag or MAC sandbox credential flow, so the secret is first exercised by the first real submission. Stamps `last_sandbox_test_at` only on success; 503 when no MAC gateway is configured. |
+| 41 | `POST /admin/billing/platform-rules` | same | `billing.rule_config.platform_admin` + step-up + Idempotency-Key. **Limit:** platform rules are code (`DEFAULT_BILLING_RULES`, each a `check` function shipped with a release); there is no dynamic platform-rule store and no engine that evaluates a stored rule DSL (not even tenant custom rules are evaluated today). The route validates the body, answers 409 `PLATFORM_RULE_EXISTS` for an existing key and an honest 501 `PLATFORM_RULES_ARE_CODE_DEFINED` for a new one — never a 2xx that registered nothing. Needs: a platform-rule table plus a DSL evaluation engine in `packages/billing`. |
+| 42 | `POST /admin/billing/wage-index:load` | `POST /admin/billing/wage-indexes/load` | Same gates. Body is the parsed CMS rows (`fiscalYearStarting`, `sourceReference`, `rows[{ccn, cbsaCode?, factorDecimal}]`, <= 7000); the server does **not** fetch `sourceReference` (no outbound fetch of a caller-supplied URI: SSRF/egress). All-or-nothing: every row is validated first (422 names up to 20 problems), then upserted in one transaction through the SECURITY DEFINER bridge `billing_platform_load_wage_index` (migration 0450), because the platform table is not writable by the app role. |
 
 ### 4.2 Representative TypeBox Schemas
 

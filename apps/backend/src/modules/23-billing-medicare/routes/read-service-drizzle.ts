@@ -25,7 +25,7 @@ import {
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   type ClaimAttentionView,
   type ClaimStayEndFactsPort,
@@ -54,6 +54,7 @@ import type {
   NotrView,
   RuleConfigListFilter,
   RuleConfigView,
+  ValidationOverrideAuditView,
   ValidationOverrideView,
   ValidationResultView,
   ValidationRunDetailView,
@@ -140,6 +141,28 @@ function mapValidationRun(row: schema.ValidationRun): ValidationRunView {
     durationMs: row.durationMs,
     initiatedByMembershipId: row.initiatedByMembershipId ?? null,
   };
+}
+
+const OVERRIDE_AUDIT_PAGE_DEFAULT = 50;
+const OVERRIDE_AUDIT_PAGE_MAX = 200;
+
+/** Opaque keyset cursor over `(applied_at, id)` — base64url JSON; a malformed one reads as "no cursor". */
+function encodeOverrideCursor(appliedAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ t: appliedAt.toISOString(), id })).toString("base64url");
+}
+function decodeOverrideCursor(cursor: string | undefined): { t: string; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const v = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      t?: unknown;
+      id?: unknown;
+    };
+    return typeof v.t === "string" && typeof v.id === "string" && !Number.isNaN(Date.parse(v.t))
+      ? { t: v.t, id: v.id }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function mapOverride(row: schema.ValidationOverride): ValidationOverrideView {
@@ -647,6 +670,64 @@ export function buildDrizzleM23ReadService(
         ).findByProviderEntity(providerEntityId);
         if (!row || row.organizationId !== actor.organizationId) return null;
         return mapMacCredential(row);
+      });
+    },
+
+    async listValidationOverrides(actor, filter, cursor, limit) {
+      const pageSize = Math.min(
+        Math.max(limit ?? OVERRIDE_AUDIT_PAGE_DEFAULT, 1),
+        OVERRIDE_AUDIT_PAGE_MAX,
+      );
+      const after = decodeOverrideCursor(cursor);
+      return read(actor, async (tx) => {
+        const O = schema.validationOverride;
+        const R = schema.validationResult;
+        const V = schema.validationRun;
+        const C = schema.claim;
+        const rows = await tx
+          .select({
+            override: O,
+            claimId: V.claimId,
+            ruleKey: R.ruleKey,
+            m4AuditEventId: O.m4AuditEventId,
+          })
+          .from(O)
+          .innerJoin(R, eq(R.id, O.resultId))
+          .innerJoin(V, eq(V.id, R.validationRunId))
+          .innerJoin(C, eq(C.id, V.claimId))
+          .where(
+            and(
+              eq(O.organizationId, actor.organizationId),
+              eq(C.providerEntityId, filter.providerEntityId),
+              filter.ruleKey ? eq(R.ruleKey, filter.ruleKey) : undefined,
+              filter.overrideMembershipId
+                ? eq(O.overrideMembershipId, filter.overrideMembershipId)
+                : undefined,
+              filter.appliedFrom ? gte(O.appliedAt, new Date(filter.appliedFrom)) : undefined,
+              filter.appliedTo ? lte(O.appliedAt, new Date(filter.appliedTo)) : undefined,
+              after
+                ? sql`(${O.appliedAt}, ${O.id}) < (${new Date(after.t)}, ${after.id})`
+                : undefined,
+            ),
+          )
+          .orderBy(desc(O.appliedAt), desc(O.id))
+          .limit(pageSize + 1);
+        const hasMore = rows.length > pageSize;
+        const kept = hasMore ? rows.slice(0, pageSize) : rows;
+        const last = kept[kept.length - 1];
+        return {
+          items: kept.map((r) => ({
+            ...mapOverride(r.override),
+            claimId: r.claimId,
+            ruleKey: r.ruleKey,
+            m4AuditEventId: r.m4AuditEventId,
+          })),
+          nextCursor:
+            hasMore && last
+              ? encodeOverrideCursor(last.override.appliedAt, last.override.id)
+              : null,
+          hasMore,
+        } satisfies CursorPage<ValidationOverrideAuditView>;
       });
     },
 

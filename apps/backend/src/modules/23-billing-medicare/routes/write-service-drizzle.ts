@@ -38,7 +38,7 @@ import {
 } from "@wardenx/billing";
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
@@ -72,6 +72,7 @@ import type {
   JobEnqueuePort,
   M23WriteRouteService,
   M23WriteServicePorts,
+  MacCredentialTestView,
   NoticeSubmissionAcceptedView,
   OverrideValidationResultArgs,
   ProviderCcnPort,
@@ -1106,6 +1107,64 @@ export function buildDrizzleM23WriteService(
         });
         return mapMacCredential(row);
       });
+    },
+
+    async testMacCredential(actor, providerEntityId): Promise<MacCredentialTestView> {
+      requireStepUp(actor);
+      const probe = ports.macSandbox;
+      if (!probe) {
+        throw new DegradedError(
+          "mac-sandbox",
+          "no MAC gateway is configured, so a credential cannot be tested from this deployment",
+        );
+      }
+      const credential = await inOrgCtx(actor, async (tx) => {
+        const existing = await new repositories.MacSubmitterCredentialRepository(
+          tx,
+        ).findByProviderEntity(providerEntityId);
+        if (!existing || existing.organizationId !== actor.organizationId) {
+          throw new NotFoundError("mac credential");
+        }
+        return existing;
+      });
+      // The probe is network I/O: it runs OUTSIDE the DB transaction, then the stamp is its own short one.
+      const outcome = await probe.probe({
+        organizationId: actor.organizationId,
+        providerEntityId,
+        macJurisdiction: credential.macJurisdiction,
+      });
+      const checkedAt = now();
+      if (!outcome.ok) {
+        return {
+          providerEntityId,
+          macJurisdiction: credential.macJurisdiction,
+          ok: false,
+          method: "portal_health_probe",
+          detail: outcome.detail,
+          checkedAt: checkedAt.toISOString(),
+          lastSandboxTestAt: null,
+        };
+      }
+      await inOrgCtx(actor, async (tx) => {
+        const repo = new repositories.MacSubmitterCredentialRepository(tx);
+        const current = await repo.findByProviderEntity(providerEntityId);
+        if (!current || current.organizationId !== actor.organizationId) {
+          throw new NotFoundError("mac credential");
+        }
+        const res = await repo.updateWithVersion(current.id, current.version, {
+          lastSandboxTestAt: checkedAt,
+        });
+        if (!res.ok) throw conflict412(res.currentVersion);
+      });
+      return {
+        providerEntityId,
+        macJurisdiction: credential.macJurisdiction,
+        ok: true,
+        method: "portal_health_probe",
+        detail: outcome.detail,
+        checkedAt: checkedAt.toISOString(),
+        lastSandboxTestAt: checkedAt.toISOString(),
+      };
     },
   };
 }

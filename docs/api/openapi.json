@@ -9722,6 +9722,182 @@
         }
       }
     },
+    "/api/v1/admin/billing/platform-rules": {
+      "post": {
+        "operationId": "postApiV1AdminBillingPlatformrules",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ruleKey",
+                  "title",
+                  "description",
+                  "severity",
+                  "regulatoryRequired"
+                ],
+                "properties": {
+                  "ruleKey": {
+                    "pattern": "^[a-z][a-z0-9_]{2,63}$",
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "info",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "regulatoryRequired": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/billing/wage-indexes/load": {
+      "post": {
+        "operationId": "postApiV1AdminBillingWageindexesLoad",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fiscalYearStarting",
+                    "sourceReference",
+                    "inserted",
+                    "updated"
+                  ],
+                  "properties": {
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "inserted": {
+                      "type": "integer"
+                    },
+                    "updated": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fiscalYearStarting",
+                  "sourceReference",
+                  "rows"
+                ],
+                "properties": {
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026.",
+                    "type": "integer"
+                  },
+                  "sourceReference": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "The CMS wage-index file URI / Federal Register notice the rows were taken from.",
+                    "type": "string"
+                  },
+                  "rows": {
+                    "minItems": 1,
+                    "maxItems": 7000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "ccn",
+                        "factorDecimal"
+                      ],
+                      "properties": {
+                        "ccn": {
+                          "pattern": "^[0-9A-Za-z]{6}$",
+                          "type": "string"
+                        },
+                        "cbsaCode": {
+                          "pattern": "^[0-9]{5}$",
+                          "type": "string"
+                        },
+                        "factorDecimal": {
+                          "pattern": "^\\d(\\.\\d{1,4})?$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/controlled-substance-policy": {
       "get": {
         "operationId": "getApiV1AdminControlledsubstancepolicy",
@@ -55097,6 +55273,83 @@
         }
       }
     },
+    "/api/v1/billing/mac-credentials/{providerEntityId}/test": {
+      "post": {
+        "operationId": "postApiV1BillingMaccredentialsByProviderEntityIdTest",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "providerEntityId",
+                    "macJurisdiction",
+                    "ok",
+                    "method",
+                    "detail",
+                    "checkedAt",
+                    "lastSandboxTestAt"
+                  ],
+                  "properties": {
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macJurisdiction": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "method": {
+                      "const": "portal_health_probe",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "lastSandboxTestAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/metrics": {
       "get": {
         "operationId": "getApiV1BillingMetrics",
@@ -61796,6 +62049,167 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/validation-overrides": {
+      "get": {
+        "operationId": "getApiV1BillingValidationoverrides",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Org-wide validation-override audit view for a ProviderEntity, newest first, cursor-paginated (§4.1 #17)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "ruleKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "overrideMembershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "appliedFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "appliedTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "overrideId",
+                          "resultId",
+                          "overrideMembershipId",
+                          "overrideRoleApplied",
+                          "reason",
+                          "appliedAt",
+                          "claimId",
+                          "ruleKey",
+                          "m4AuditEventId"
+                        ],
+                        "properties": {
+                          "overrideId": {
+                            "type": "string"
+                          },
+                          "resultId": {
+                            "type": "string"
+                          },
+                          "overrideMembershipId": {
+                            "type": "string"
+                          },
+                          "overrideRoleApplied": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "appliedAt": {
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "type": "string"
+                          },
+                          "ruleKey": {
+                            "type": "string"
+                          },
+                          "m4AuditEventId": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -260027,6 +260441,80 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/minio/access-log": {
+      "post": {
+        "operationId": "postApiV1WebhooksMinioAccesslog",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received",
+                    "recorded",
+                    "unattributed",
+                    "duplicates"
+                  ],
+                  "properties": {
+                    "received": {
+                      "type": "integer"
+                    },
+                    "recorded": {
+                      "type": "integer"
+                    },
+                    "unattributed": {
+                      "type": "integer"
+                    },
+                    "duplicates": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {}
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       }
