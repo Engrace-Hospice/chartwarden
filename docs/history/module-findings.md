@@ -313,3 +313,46 @@ chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dat
 **GAP-063 (M21).** `invoice_accrued` / `invoice_reconciled` had no emit site and the invoice columns were never written. `mark-ordered` now accepts an optional `vendorQuotedTotalCents` (integer cents); when present it writes `invoice_total_cents` + `invoice_accrued_at` and emits `m21.supply_request.invoice_accrued` in the same transaction (no quote means no accrual, never a fabricated zero). New `POST /supplies/supply-requests/:id/vendor-invoice` (permission `supplies.request.invoice_reconcile`, migration 0410 mirror row + grant to holders of `mark_ordered`) matches the vendor invoice against the accrual, stores the signed variance and emits `invoice_reconciled` once (409 `M21_INVOICE_NOT_ACCRUED` / `M21_INVOICE_ALREADY_RECONCILED`). Rules live in `21-supplies/lifecycle/invoice.ts`. Phase-1 intake is manual; the EDI 810 path stays Phase 2.
 
 **Already fixed on main before batch 12 (verified against code, not re-done):** GAP-038/039/040 (M13 `extend-schedule`, `missed-dose-sweep`, `prn-reassessment-overdue` and the other three crons, wired via `registerM13CronWorkers`), GAP-044 (M15 five crons), GAP-048 (M16 four §4.9 crons), GAP-061 (M20 overdue detector + coverage-gap watchdog), GAP-062 (M21 par / unreturned-kit / supply-request monitors) — all landed in batch 9 (#324).
+
+## Batch 17 — GAP-151..164 (M28–M34, all P2) from `docs/audits/GAP_ANALYSIS_20261004.md`
+
+**Closed.**
+- GAP-151 (M28): already fixed on `main` — export poll and cancel both 404 unless `job.clientId === ctx.clientId`.
+- GAP-152 (M29, migration 0461): acknowledge-abnormal is persisted on `lab_observation`
+  (`acknowledged_at` / `acknowledged_by_membership_id`, stamped once, repeat is a no-op) and publishes
+  `m29.lab_observation.abnormal_acknowledged` for M36's badge clear.
+- GAP-153 (M29, migration 0460): feed-revoke dual approval is held server-side. The first approver is stored on
+  `external_feed`; only a DIFFERENT membership completes the revoke (self-approval is 403), which cascades the
+  feed's active credentials to `retired`. The body `primaryApproverId` is gone; the ABAC predicate
+  `external_feed_compliance_co_approver_distinct` now reads the stored approver through the resolver.
+- GAP-154 (M30): incident and infection-event writes derive `provider_entity_id` from the subject's active
+  admission (M6 siting seam injected at the composition root); the primary entity stays the fallback for
+  subject-less writes and unsited patients. CAHPS result ingest and QAPI program creation stay on the primary
+  entity (no patient subject).
+- GAP-155 (M30): `m30.sra_reminders` has a bound open-cycle scan and an M36 `AlertEmitter` dispatch; the five
+  platform-default `alert_rule` rows (`m30.alerts.sra_due_90/60/30`, `sra_overdue`, `m30.incident.cap_overdue`) are
+  seeded in `PLATFORM_DEFAULT_ALERT_RULES`; and `m30.cap_overdue_scan` (daily 08:00 UTC) is the producer of
+  `m30.incident.cap_overdue` over `incident_report.kind_data._m30.capPlan`, publishing the event and raising the alert
+  (every-2-days dedupe bucket).
+- GAP-156 (M30): SRA finding/remediation mutations enforce `ownsSraCycle` (owner or an `sra.admin` role) in the
+  write service.
+- GAP-157 / GAP-160: recorded as explicit deferrals in `docs/design/DEFERRED_SCREENS.md` (footnote ³¹).
+- GAP-159 (M31): `AdmissionStatusReader.isDischargedReadOnly` is implemented (the post-discharge read-only gate is
+  no longer dead code). Follow-up round: all 22 events are catalogued and 19 have emit sites, the late-join watchdog
+  queue is built, and the other five queues are closed as drift or covered (see `m31-portal-deferrals.md`, batch 17).
+  **Open:** `invited` / `activated` / `recording_completed` have no M31 write site (M2 invitation layer and the vendor
+  webhook mapping are unbuilt).
+- GAP-163 (M34): `tenant.bundle_expiry_sweep`, `tenant.baa_expiry_sweep` (daily), `tenant.support_session_close_sweep`
+  (every 5 min) and `tenant.onboarding_advance` (per-tenant job + daily 06:00 fan-out) have workers and schedules;
+  the bundle reaper logs a boot warning when MINIO_* is absent. **Open (blocker):** the onboarding worker does not
+  auto-activate a tenant: the lifecycle `activate` effect-runner and a system actor for its audit do not exist, so on
+  completion it publishes `m34.tenant.onboarding_completed` + the alert and logs that activation is left to platform
+  ops. `macFeedConfigured` / `dosespotKickoffRecorded` / `xeroConnected` / `gustoConnected` default to false until
+  M29 / M12 / M27 readers are injected (a step stays honestly blocked).
+
+**Not closed (follow-ups).** GAP-158 (needs a caregiver-to-user link + the M40 grief catalog), GAP-161 (M32
+publishes none of its 21 events, no workers), GAP-162 (M33 platform/compliance scope predicates, a documented
+P2C deferral), GAP-164 (six M34 §4.1 routes absent: `GET /platform/dsar-export-jobs`,
+`GET /platform/tenants/:orgSlug/onboarding`, `POST /platform/tenants/:orgSlug/onboarding/:taskId/skip`,
+`GET /tenant/account`, `GET /tenant/feature-flags`, `POST /tenant/feature-flags/:flagKey`; also the spec's
+`:orgId` is `:orgSlug` in code).

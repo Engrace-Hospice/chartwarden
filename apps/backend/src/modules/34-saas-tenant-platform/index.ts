@@ -141,6 +141,18 @@ export {
   registerM34TenantExportWorker,
   scheduleM34Jobs,
 } from "./jobs/saas-jobs";
+// GAP-163 — the nightly bundle-expiry reaper (worker + its own schedule).
+export {
+  registerM34BundleExpiryWorker,
+  scheduleM34BundleExpiryJob,
+} from "./jobs/bundle-expiry-worker";
+// GAP-163 - the BAA radar, the support-session close sweep and the onboarding advance worker.
+export {
+  registerM34BaaExpiryWorker,
+  registerM34OnboardingAdvanceWorker,
+  registerM34SupportSessionCloseWorker,
+  scheduleM34PlatformSweepJobs,
+} from "./jobs/platform-sweeps-worker";
 
 export {
   buildM34ProvisionQueue,

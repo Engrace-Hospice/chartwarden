@@ -398,6 +398,12 @@ export interface AdmissionStatusReader {
     organizationId: string,
     admissionId: AdmissionId,
   ): Promise<AdmissionPatientCare | null>;
+  /**
+   * GAP-159 - is the patient in the post-discharge READ-ONLY window (M31 spec 7.6)? True when the patient's
+   * latest completed discharge is non-death and they have no open admission. ORG-EXPLICIT (own
+   * `withOrgContext`). Optional: a reader without a DB leaves it unbound and the portal gate stays fail-open.
+   */
+  isDischargedReadOnly?(organizationId: string, patientId: string): Promise<boolean>;
 }
 
 /** §4.7 AdmissionStatusReader.getAdmissionPatientCare — see that method. */

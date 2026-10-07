@@ -52,3 +52,12 @@ export {
 } from "./provisioning";
 export { createPortalConsentPort, createPortalInvitationDelivery } from "./provisioning/adapters";
 export { createPortalPhiCipher, type PortalPhiCipher } from "./portal-crypto";
+
+// GAP-159 - the 22-event outbox catalog + the emitter every emit site shares.
+export { M31_OUTBOX_EVENTS } from "./events-by-m31";
+export {
+  type M31EventEmitter,
+  type M31OutboxPublisher,
+  bindM31EventEmitter,
+  createM31EventEmitter,
+} from "./events";

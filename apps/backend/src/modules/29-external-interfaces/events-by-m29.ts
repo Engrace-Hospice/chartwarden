@@ -105,6 +105,26 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
 
+  // ── §4.2 acknowledge-abnormal (GAP-152, D7) ──────────────────────────────────────────────────────
+  // Record-only, like the two review decisions above: the acknowledgement is stamped on the observation row
+  // and this event is the durable signal M36's abnormal-flag badge clear keys on (M36 pulls — it declares no
+  // outbox binding here, so nothing is left permanently `pending`).
+  {
+    eventName: "m29.lab_observation.abnormal_acknowledged",
+    moduleOwner: "m29",
+    description:
+      "An RN acknowledged an abnormal lab result (§4.2, D7) — stamped once on the lab_observation; M36 clears the abnormal-flag alert badge.",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      acknowledgedByMembershipId: Type.String({ minLength: 1 }),
+      acknowledgedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+
   // ── §4.7 / §4.10 NPPES platform sync (GAP-045) ────────────────────────────────────────────────────
   // These five are PLATFORM-WIDE: every row publishes with `organization_id IS NULL` (one public CMS
   // directory, no tenant it belongs to). `provider_synced` / `provider_deactivated` declare `m40` because

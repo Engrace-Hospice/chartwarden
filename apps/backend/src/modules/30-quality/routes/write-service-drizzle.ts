@@ -71,6 +71,7 @@ import {
   resolveCloseCosigners,
 } from "./close-cosign";
 import { incidentOwnedBy } from "./incident-ownership";
+import { resolveProviderEntityForSubject } from "./provider-entity-for-subject";
 import type {
   CahpsDecedentView,
   CahpsExportJobView,
@@ -93,6 +94,7 @@ import type {
   SraRemediationView,
 } from "./read-service";
 import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
+import { assertSraCycleAccess } from "./sra-ownership";
 import { assertWritePatientInScope } from "./write-scope";
 import type {
   AddInvestigationNoteArgs,
@@ -146,6 +148,8 @@ export type WriteTx = QualityDb;
  */
 export interface ProviderEntityPort {
   primaryProviderEntityId(tx: WriteTx, organizationId: string): Promise<string>;
+  /** GAP-154 - the subject's (patient's active admission) provider entity; null when none. Optional. */
+  providerEntityIdForPatient?(organizationId: string, patientId: string): Promise<string | null>;
 }
 
 /** Deps the production M30 write service binds at boot (P2c) — every cross-boundary edge is a port. */
@@ -213,6 +217,17 @@ const CAHPS_VENDOR_NAMES: Readonly<Record<string, string>> = {
 };
 
 /** The 5×5 residual score → posture band (1–25; the SRA finding risk-band projection). */
+/** GAP-156 — `ownsSraCycle` for finding/remediation mutations: load the parent cycle, then owner-or-admin. */
+async function assertOwnsFindingCycle(
+  repo: SraRepository,
+  actor: M30WriteActor,
+  cycleId: string,
+): Promise<void> {
+  const cycle = await repo.findCycleById(cycleId);
+  if (!cycle || cycle.organizationId !== actor.organizationId) throw new NotFoundError("sra cycle");
+  assertSraCycleAccess(actor, cycle);
+}
+
 function riskBandOf(score: number): SraFindingView["riskBand"] {
   if (score >= 15) return "critical";
   if (score >= 10) return "high";
@@ -1259,6 +1274,7 @@ export function buildDrizzleM30WriteService(
         const cycle = await repo.findCycleById(cycleId);
         if (!cycle || cycle.organizationId !== actor.organizationId)
           throw new NotFoundError("sra cycle");
+        assertSraCycleAccess(actor, cycle);
         // Server-authoritative sequential number (the per-cycle uq_sra_finding_in_cycle surface).
         const findingNumber = (await repo.highestFindingNumber(cycleId)) + 1;
         const score = args.likelihood * args.impact;
@@ -1301,6 +1317,7 @@ export function buildDrizzleM30WriteService(
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra finding");
         }
+        await assertOwnsFindingCycle(repo, actor, existing.sraCycleId);
         const likelihood = args.likelihood;
         const impact = args.impact;
         const residual =
@@ -1328,6 +1345,7 @@ export function buildDrizzleM30WriteService(
         if (!finding || finding.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra finding");
         }
+        await assertOwnsFindingCycle(repo, actor, finding.sraCycleId);
         const remediationNumber = (await repo.highestRemediationNumber(findingId)) + 1;
         const targetDate = (
           args.dueAt ? new Date(args.dueAt) : new Date(now().getTime() + 90 * 24 * 60 * 60 * 1000)
@@ -1357,6 +1375,9 @@ export function buildDrizzleM30WriteService(
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra remediation");
         }
+        const parent = await repo.findFindingById(existing.sraFindingId);
+        if (!parent) throw new NotFoundError("sra finding");
+        await assertOwnsFindingCycle(repo, actor, parent.sraCycleId);
         const status = args.status ? remediationStatusToSchema(args.status) : existing.status;
         const row = await repo.updateRemediation(remediationId, {
           status,
@@ -1450,9 +1471,11 @@ export function buildDrizzleM30WriteService(
             422,
           );
         }
-        const providerEntityId = await providerEntity.primaryProviderEntityId(
+        const providerEntityId = await resolveProviderEntityForSubject(
+          providerEntity,
           tx,
           actor.organizationId,
+          args.patientId,
         );
         const row = await new IncidentRepository(tx).create({
           organizationId: actor.organizationId,
@@ -1852,9 +1875,11 @@ export function buildDrizzleM30WriteService(
       await assertWritePatientInScope(actor, args.patientId, patientScope);
       return inOrgCtx(actor, async (tx) => {
         const repo = new InfectionRepository(tx);
-        const providerEntityId = await providerEntity.primaryProviderEntityId(
+        const providerEntityId = await resolveProviderEntityForSubject(
+          providerEntity,
           tx,
           actor.organizationId,
+          args.patientId,
         );
         const pathogen = normalizePathogen(args.pathogen);
         const bodySite = normalizeBodySite(args.bodySite);

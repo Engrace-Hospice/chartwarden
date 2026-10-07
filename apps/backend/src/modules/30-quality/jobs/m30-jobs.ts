@@ -125,6 +125,12 @@ import {
   M30_ASSIGN_UNASSIGNED_MORTALITY_SCHEDULE,
   assignUnassignedMortalityReviews,
 } from "./assign-unassigned-mortality-reviews";
+import {
+  type SraAlertEmitterLike,
+  buildSraReminderAlertPort,
+  buildSraReminderCyclePort,
+  listOpenSraCyclesForOrg,
+} from "./sra-reminder-ports";
 import { isSsviMeasureCode, resolveSsviMeasureInput } from "./ssvi-resolvers";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
@@ -179,6 +185,8 @@ export interface M30WorkerDeps {
     organizationId: string,
     queueName: string,
   ) => ProcessingLogPort;
+  /** GAP-155 — the M36 AlertEmitter (`getSeam("AlertEmitter")`) the SRA-reminder cron dispatches §4.9 alerts through. */
+  readonly alertEmitter?: SraAlertEmitterLike;
   /** The platform active-org enumerator the crons fan out across (M2 org reader under `withPlatformContext`). */
   readonly activeOrgs?: ActiveOrgListPort;
   /**
@@ -2215,21 +2223,33 @@ export function buildM30CronPorts(deps: M30WorkerDeps): M30CronPortBundles {
 
   // ── m30.sra_reminders (09:00 daily) — §4.9 / W-M30-30 ──────────────────────────────────────────────────
   const sraReminders: SraRemindersCronPorts = {
-    cycles: {
-      listOpenCyclesWithDue: () =>
-        unboundWorkerPort(
-          "sraReminders.cycles.listOpenCyclesWithDue",
-          "bind to the platform-scoped open-SRA-cycle scan (`sra_cycle` un-closed rows + `due_at`, under `withPlatformContext`)",
-        ),
-    },
-    alerts: {
-      // RULE 3e — alerts ship as defs + fire through the outbox; the live M36 router is the consumer.
-      dispatch: () =>
-        unboundWorkerPort(
-          "sraReminders.alerts.dispatch",
-          "bind to the live M36 alert router / transactional-outbox (the §4.9 sra_due_*/sra_overdue payloads)",
-        ),
-    },
+    // GAP-155 — the open-cycle scan fans out over the active orgs (one RLS-scoped read per org); the §4.9
+    // dispatch emits through the M36 AlertEmitter. Both stay FAIL-CLOSED (the cron rejects the tick, never a
+    // silent no-op) until the composition root supplies `activeOrgs` / `alertEmitter`.
+    cycles:
+      deps.alertEmitter === undefined
+        ? {
+            listOpenCyclesWithDue: () =>
+              unboundWorkerPort(
+                "sraReminders.cycles.listOpenCyclesWithDue",
+                "bind `deps.activeOrgs` (the platform active-org enumerator)",
+              ),
+          }
+        : buildSraReminderCyclePort({
+            listActiveOrgs: () => orgs.listActiveOrgs(),
+            listOpenCyclesForOrg: (organizationId) =>
+              listOpenSraCyclesForOrg(deps.db, organizationId),
+          }),
+    alerts:
+      deps.alertEmitter === undefined
+        ? {
+            dispatch: () =>
+              unboundWorkerPort(
+                "sraReminders.alerts.dispatch",
+                "bind `deps.alertEmitter` (the M36 AlertEmitter seam) — the §4.9 sra_due_*/sra_overdue alerts",
+              ),
+          }
+        : buildSraReminderAlertPort(deps.alertEmitter, now),
     now,
   };
 
@@ -2506,6 +2526,7 @@ export function buildM30WorkerDeps(deps: {
   resolveMedicalDirectorForOrg?: M30WorkerDeps["resolveMedicalDirectorForOrg"];
   recomputeEnqueue?: M30WorkerDeps["recomputeEnqueue"];
   outboxPublisher?: M30WorkerDeps["outboxPublisher"];
+  alertEmitter?: M30WorkerDeps["alertEmitter"];
   registrations?: ReadonlyMap<string, MeasureRegistration>;
   /** The M6 HVLDL death-census reader + the M8 signed-encounter reader (resolved via `getSeam`). */
   deathDischargeReader?: DeathDischargeReader;
@@ -2542,6 +2563,7 @@ export function buildM30WorkerDeps(deps: {
     resolveMedicalDirectorForOrg: deps.resolveMedicalDirectorForOrg,
     recomputeEnqueue: deps.recomputeEnqueue,
     outboxPublisher: deps.outboxPublisher,
+    alertEmitter: deps.alertEmitter,
     deathDischargeReader: deps.deathDischargeReader,
     signedEncounters: deps.signedEncounters,
     levelOfCarePeriodReader: deps.levelOfCarePeriodReader,

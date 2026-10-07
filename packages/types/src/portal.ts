@@ -155,7 +155,7 @@ export interface PortalScopeSet {
  *  room; M8 attaches the encounter on `visit_ended`; M22 associates the recording + intake; M30/M33 read
  *  the engagement + telehealth metrics; M4 audits everything. Publication wiring lands with the lifecycle
  *  services (M31-T03/T05) and the routes/outbox (M31-T06); only the three-table-backed events emit as real
- *  in the reduced scope. */
+ *  in the reduced scope; GAP-159 (batch 17) catalogued all 22 and emits 19 (see docs/history/m31-portal-deferrals.md). */
 export const M31_EVENT_NAMES = [
   "m31.portal_account.invited",
   "m31.portal_account.activated",

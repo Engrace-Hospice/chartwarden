@@ -167,9 +167,21 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
           message: "observation carries no abnormal flag to acknowledge",
         });
       }
-      // The M36 badge clear is M36's concern (M29 owns no out-of-band delivery); the acknowledgment itself
-      // is a read-audited clinical action against the observation.
-      return { acknowledged: true, observationId, acknowledgedBy: actor.membershipId };
+      // GAP-152 — persisted on the observation (stamped once) and published for M36's badge clear.
+      const ack = await store.acknowledgeAbnormalObservation(
+        actor.organizationId,
+        actor.membershipId,
+        observationId,
+      );
+      if (!ack) {
+        return reply.code(404).send({ code: "NOT_FOUND", message: "observation not found" });
+      }
+      return {
+        acknowledged: true,
+        observationId,
+        acknowledgedBy: ack.acknowledgedByMembershipId,
+        acknowledgedAt: ack.acknowledgedAt,
+      };
     },
   );
 }

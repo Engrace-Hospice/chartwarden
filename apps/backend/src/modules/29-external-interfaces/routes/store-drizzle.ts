@@ -17,13 +17,18 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
   DegradedError,
+  ForbiddenError,
   type Hl7InboundProposalKind,
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
 import { and, desc, eq, exists, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
-import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
+import {
+  canExternalFeedTransition,
+  decideFeedRevokeStep,
+  externalFeedCoApprovalSatisfied,
+} from "../feed/lifecycle";
 import {
   type UnmatchedLabQueueItem,
   planUnmatchedBind,
@@ -254,6 +259,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     abnormalSummary: row.abnormalSummary,
     attachedDocumentId: row.attachedDocumentId,
     receivedAt: row.receivedAt.toISOString(),
+    acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
+    acknowledgedByMembershipId: row.acknowledgedByMembershipId,
   });
 
   const nppesView = (row: typeof NPPES.$inferSelect): NppesProviderView => ({
@@ -457,17 +464,44 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
         return feedDetail(row!);
       });
     },
-    async revokeFeed(orgId, membershipId, feedId, _args) {
+    async revokeFeed(orgId, membershipId, feedId, args) {
       return withOrgContext(db, ctx(orgId, membershipId), async (tx): Promise<FeedDetail> => {
         const feed = await loadFeed(tx, orgId, feedId);
         if (!canExternalFeedTransition(feed.status, "revoked")) {
           throw new ConflictError(`feed ${feedId} cannot revoke from ${feed.status}`);
         }
+        // GAP-153 / D20 — dual approval held SERVER-SIDE: the first call stores the requester; only a
+        // DIFFERENT membership completes the revoke (never a body-supplied "primary approver").
+        const step = decideFeedRevokeStep(feed.revokeRequestedByMembershipId, membershipId);
+        if (step === "self_approval") {
+          throw new ForbiddenError("a feed revoke needs a second, distinct approver");
+        }
+        const where = and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId));
+        if (step === "request") {
+          const [pending] = await tx
+            .update(FEED)
+            .set({
+              revokeRequestedByMembershipId: membershipId,
+              revokeRequestedAt: new Date(),
+              revokeReason: args.reason,
+              updatedAt: new Date(),
+            })
+            .where(where)
+            .returning();
+          return feedDetail(pending!);
+        }
         const [row] = await tx
           .update(FEED)
           .set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))
+          .where(where)
           .returning();
+        // Credential cascade: a revoked feed's channel secrets must stop working, not just its status.
+        await tx
+          .update(CRED)
+          .set({ status: "retired" })
+          .where(
+            and(eq(CRED.feedId, feedId), eq(CRED.organizationId, orgId), eq(CRED.status, "active")),
+          );
         return feedDetail(row!);
       });
     },
@@ -936,6 +970,45 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
             referenceRange: v.referenceRange,
             abnormalFlag: v.abnormalFlag,
           })),
+        };
+      });
+    },
+    async acknowledgeAbnormalObservation(orgId, membershipId, observationId) {
+      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(OBS)
+          .where(and(eq(OBS.id, observationId), eq(OBS.organizationId, orgId)))
+          .limit(1);
+        if (!row) return null;
+        // Stamped ONCE: a repeat acknowledgement returns the stored one and emits nothing.
+        if (row.acknowledgedAt !== null && row.acknowledgedByMembershipId !== null) {
+          return {
+            acknowledgedAt: row.acknowledgedAt.toISOString(),
+            acknowledgedByMembershipId: row.acknowledgedByMembershipId,
+          };
+        }
+        const acknowledgedAt = new Date();
+        await tx
+          .update(OBS)
+          .set({ acknowledgedAt, acknowledgedByMembershipId: membershipId })
+          .where(and(eq(OBS.id, observationId), eq(OBS.organizationId, orgId)));
+        await storeDeps.outbox?.publish(tx as unknown as DbClient, {
+          eventName: "m29.lab_observation.abnormal_acknowledged",
+          payload: {
+            observationId,
+            organizationId: orgId,
+            patientId: row.patientId,
+            acknowledgedByMembershipId: membershipId,
+            acknowledgedAt: acknowledgedAt.toISOString(),
+          },
+          organizationId: orgId,
+          aggregateKind: "lab_observation",
+          aggregateId: observationId,
+        });
+        return {
+          acknowledgedAt: acknowledgedAt.toISOString(),
+          acknowledgedByMembershipId: membershipId,
         };
       });
     },

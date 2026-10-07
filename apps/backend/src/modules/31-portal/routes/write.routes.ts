@@ -259,16 +259,37 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       const portalAccountId = portalAccountIdOf(actor);
       const body = parse(PortalDocumentUploadInitRequest, request.body);
       // Validates (discharged-read-only, size, MIME) and records the intent; the bytes go to the content route.
-      const begun = await provisioningOf(deps).uploads.begin({
-        organizationId: actor.organizationId,
-        actingUserId: actor.userId,
-        portalAccountId,
-        patientId,
-        purpose: body.purpose,
-        mimeType: body.mimeType,
-        expectedByteSize: body.expectedByteSize,
-        patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
-      });
+      let begun: Awaited<ReturnType<ReturnType<typeof provisioningOf>["uploads"]["begin"]>>;
+      try {
+        begun = await provisioningOf(deps).uploads.begin({
+          organizationId: actor.organizationId,
+          actingUserId: actor.userId,
+          portalAccountId,
+          patientId,
+          purpose: body.purpose,
+          mimeType: body.mimeType,
+          expectedByteSize: body.expectedByteSize,
+          patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
+        });
+      } catch (error) {
+        // GAP-159 - a validation refusal (4xx) is an upload_rejected event; the sanitized reason is the stable
+        // error CODE, never pipeline detail (spec 7.8 step 7). A 5xx (unbound port) is not a rejection.
+        if (error instanceof WardenXError && error.statusCode < 500) {
+          await deps.events?.emit(
+            actor.organizationId,
+            "m31.portal_document.upload_rejected",
+            { kind: "portal_account", id: portalAccountId },
+            { portalAccountId, patientId, rejectionReason: error.code },
+          );
+        }
+        throw error;
+      }
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_document.upload_started",
+        { kind: "portal_account", id: portalAccountId },
+        { uploadId: begun.uploadId, portalAccountId, patientId, purpose: body.purpose },
+      );
       return {
         uploadId: begun.uploadId,
         signedUploadUrl: begun.contentPath,
@@ -337,6 +358,12 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         patientId,
         uploadId,
       });
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_document.uploaded",
+        { kind: "portal_account", id: portalAccountIdOf(actor) },
+        { uploadId: done.uploadId, portalAccountId: portalAccountIdOf(actor), patientId, purpose: "portal_upload" },
+      );
       return { uploadId: done.uploadId, status: done.status };
     },
   );
@@ -377,6 +404,17 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         targetRef,
         requestedChange: payload.requestedChange,
       });
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_amendment_request.submitted",
+        { kind: "portal_account", id: portalAccountId },
+        {
+          amendmentRequestRefId: created.id,
+          m5AmendmentRequestId: created.id,
+          portalAccountId,
+          patientId,
+        },
+      );
       return reply.code(202).send({ amendmentRequestRefId: created.id, status: created.status });
     },
   );
@@ -427,6 +465,13 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         authorUserId: actor.userId,
         body: body.body,
       });
+      const portalAccountId = portalAccountIdOf(actor);
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_message.sent_via_m36",
+        { kind: "portal_account", id: portalAccountId },
+        { portalAccountId, patientId, channelId: channel.channelId },
+      );
       return { messageId: sent.messageId };
     },
   );

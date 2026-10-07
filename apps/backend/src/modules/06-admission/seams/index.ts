@@ -31,6 +31,7 @@ import { createDischargeReader } from "./discharge-reader";
 import { createReferralReader } from "./drizzle-store";
 import { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 import { createPatientSitingReader } from "./patient-siting-reader";
+import { portalDischargedPastGraceForOrg } from "./portal-discharge-grace-for-org";
 import {
   createAdmissionCensusReader,
   createAdmissionStatusReader,
@@ -158,6 +159,17 @@ export interface AdmissionSeamDeps {
   complianceWindowCountsProvider?: ComplianceWindowCountsProvider;
 }
 
+/** GAP-159 - a date no discharge can be on/after, so the grace read answers "discharged and not re-admitted". */
+const FAR_FUTURE_CUTOFF = "9999-12-31";
+
+/** The post-discharge read-only probe over M6's own tables (reuses the M31 grace read with an open cutoff). */
+function buildDischargedReadOnlyProbe(db: DbClient) {
+  return async (organizationId: string, patientId: string): Promise<boolean> =>
+    (await portalDischargedPastGraceForOrg(db, organizationId, [patientId], FAR_FUTURE_CUTOFF)).has(
+      patientId,
+    );
+}
+
 /**
  * Register every M6 §4.7 reader seam into the M1 registry over its boot deny-stub (M6-T05; before
  * validateSeams()). All six share one {@link AdmissionReaderStore} so a single Drizzle adapter backs
@@ -172,7 +184,13 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
   registerSeam("CertificationReader", createCertificationReader(store));
   registerSeam("FaceToFaceReader", createFaceToFaceReader(store));
   registerSeam("LevelOfCareReader", createLevelOfCareReader(store));
-  registerSeam("AdmissionStatusReader", createAdmissionStatusReader(store));
+  registerSeam(
+    "AdmissionStatusReader",
+    createAdmissionStatusReader(
+      store,
+      deps.db ? { isDischargedReadOnly: buildDischargedReadOnlyProbe(deps.db) } : {},
+    ),
+  );
   registerSeam("AdmissionCensusReader", createAdmissionCensusReader(store));
 
   // PatientSitingReader — over the pooled db only; without one the fail-closed deny-stub stands.

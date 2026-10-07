@@ -193,9 +193,9 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
       const body = parse(RevokeFeedBody, request.body);
       const feed = await store.revokeFeed(actor.organizationId, actor.membershipId, feedId, {
         reason: body.reason,
-        primaryApproverId: body.primaryApproverId,
       });
-      return { feed };
+      // GAP-153 — the first approval only records the request; the revoke completes on a distinct second approval.
+      return { feed, revokePending: feed.status !== "revoked" };
     },
   );
 

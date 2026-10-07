@@ -21,6 +21,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser, PatientId } from "@wardenx/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { registerEraser } from "../../bootstrap/index";
+import { type M31EventEmitter, boundM31EventEmitter, emitGrantsRevoked } from "./events";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -151,7 +152,10 @@ const SHRED = "";
  * load-bearing precisely because of that (a grant must be revoked-and-committed before an account can be judged
  * to have no remaining active grant). The M6/M21 eraser precedent.
  */
-export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
+export function buildDrizzlePortalEraseStore(
+  db: DbClient,
+  getEvents: () => M31EventEmitter | undefined = () => undefined,
+): PortalEraseStore {
   const ACCOUNT = schema.portalAccounts;
   const GRANT = schema.portalAccessGrants;
   const VISIT = schema.telehealthVisits;
@@ -180,7 +184,21 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
               sql`${VISIT.lifecycleState} not in ('ended_clean','ended_aborted','reconciled')`,
             ),
           )
-          .returning({ id: VISIT.id });
+          .returning({ id: VISIT.id, m17VisitId: VISIT.m17VisitId });
+        for (const v of rows) {
+          await getEvents()?.emitInTx(
+            tx,
+            organizationId,
+            "m31.telehealth.visit_ended",
+            { kind: "telehealth_visit", id: v.id },
+            {
+              telehealthVisitId: v.id,
+              m17VisitId: v.m17VisitId,
+              lifecycleState: "ended_aborted",
+              endReason: "destruction",
+            },
+          );
+        }
         return rows.length;
       });
     },
@@ -201,6 +219,15 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
           })
           .where(eq(VISIT.patientId, patientId))
           .returning({ id: VISIT.id });
+        if (rows.length > 0) {
+          await getEvents()?.emitInTx(
+            tx,
+            organizationId,
+            "m31.telehealth.recordings_shredded",
+            { kind: "telehealth_visit", id: rows[0]?.id ?? patientId },
+            { recordingIds: rows.map((r) => r.id) },
+          );
+        }
         return rows.length;
       });
     },
@@ -219,7 +246,12 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
             updatedAt: sql`now()`,
           })
           .where(and(eq(GRANT.patientId, patientId), isNull(GRANT.revokedAt)))
-          .returning({ id: GRANT.id });
+          .returning({
+            id: GRANT.id,
+            portalAccountId: GRANT.portalAccountId,
+            patientId: GRANT.patientId,
+          });
+        await emitGrantsRevoked(getEvents(), tx, organizationId, rows, "destruction");
         return rows.length;
       });
     },
@@ -254,6 +286,29 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
             .where(and(eq(ACCOUNT.id, accountId), isNull(ACCOUNT.revokedAt)))
             .returning({ id: ACCOUNT.id });
           flipped += res.length;
+          for (const a of res) {
+            const aggregate = { kind: "portal_account", id: a.id } as const;
+            await getEvents()?.emitInTx(
+              tx,
+              organizationId,
+              "m31.portal_account.revoked",
+              aggregate,
+              {
+                portalAccountId: a.id,
+                reason: "destruction",
+                affectedPatientIds: [patientId],
+              },
+            );
+            await getEvents()?.emitInTx(
+              tx,
+              organizationId,
+              "m31.portal_account.shredded",
+              aggregate,
+              {
+                portalAccountId: a.id,
+              },
+            );
+          }
         }
         return flipped;
       });
@@ -316,7 +371,8 @@ export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
  * revoked + accounts revoked).
  */
 export function registerPortalErasers(db: DbClient): void {
-  const store = buildDrizzlePortalEraseStore(db);
+  // The emitter is bound at boot AFTER the publisher exists (this registration runs earlier), so it is read lazily.
+  const store = buildDrizzlePortalEraseStore(db, boundM31EventEmitter);
   const eraser: DataEraser = {
     async erase(scope, subjectId) {
       const { erased } = await erasePortalRecord(scope.orgId, subjectId as PatientId, "", store);

@@ -3,6 +3,7 @@
 // `scheduleM29OutboundRetrySweepJob` template: the processor is `runPostDischargeGraceSweepOnce`, driven
 // directly by tests without BullMQ.
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type LateJoinWatchdogDeps, runLateJoinWatchdogOnce } from "./late-join-watchdog";
 import {
   type PostDischargeGraceSweepDeps,
   runPostDischargeGraceSweepOnce,
@@ -40,6 +41,29 @@ export async function scheduleM31PostDischargeGraceJob(
     "tick",
     {},
     { repeat: { pattern: M31_JOB_SCHEDULES.postDischargeGrace, tz: "UTC" } },
+  );
+  return queue;
+}
+
+/** GAP-159 - the 5-minute telehealth late-join watchdog Worker. */
+export function registerM31LateJoinWatchdogWorker(
+  deps: LateJoinWatchdogDeps & { readonly connection: ConnectionOptions },
+): Worker {
+  return new Worker(M31_CRON_QUEUES.lateJoinWatchdog, async () => runLateJoinWatchdogOnce(deps), {
+    connection: deps.connection,
+    concurrency: M31_QUEUE_PARAMS.lateJoinWatchdog.concurrency,
+  });
+}
+
+/** GAP-159 - register the watchdog's repeatable schedule; returns the Queue for the root to `close()`. */
+export async function scheduleM31LateJoinWatchdogJob(
+  connection: ConnectionOptions,
+): Promise<Queue> {
+  const queue = new Queue(M31_CRON_QUEUES.lateJoinWatchdog, { connection });
+  await queue.add(
+    "tick",
+    {},
+    { repeat: { pattern: M31_JOB_SCHEDULES.lateJoinWatchdog, tz: "UTC" } },
   );
   return queue;
 }
