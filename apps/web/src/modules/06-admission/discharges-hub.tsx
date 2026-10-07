@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, LoadingSpinner, Panel, StatusPill, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, Panel, StatusPill } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — "Discharge / transfer" hub (`/admissions/discharges`, nav: Admissions, right
 // below New admission). The one place to start or finish an end-of-episode workflow, drawn in the 2026-09-25 redesign
 // idiom (page head, flat panels with list tables, a right context rail):
@@ -11,187 +11,27 @@ import { EmptyState, Glyph, LoadingSpinner, Panel, StatusPill, useApiClient } fr
 //                              (admission.create) — the readmission workflow.
 // Rows come from GET /api/v1/discharges/worklist (one bucket per call, caseload-narrowed server-side); names/MRNs
 // from the patient read, only for the rows loaded. The server enforces every key on the workflows linked here.
-import { type JSX, useEffect, useMemo, useState } from "react";
+import { type JSX, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtDate } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, stateLabel } from "./admission-status";
 import { REASONS } from "./discharge-workflow-model";
 import {
-  HUB_PAGE_SIZE,
-  type HubPatient,
+  ListState,
+  PatientCell,
+  RecentlyDischargedTable,
+  mrnOf,
+  usePatients,
+  useWorklist,
+} from "./discharge-worklist-ui";
+import {
   MISSING_LABEL,
-  type WorklistBucket,
-  type WorklistItem,
-  daysSince,
   endLabel,
   hubAbilities,
   matchesPatient,
   patientName,
-  unresolvedPatientIds,
 } from "./discharges-hub-model";
-
-interface WorklistState {
-  items: WorklistItem[];
-  nextCursor: string | null;
-  loading: boolean;
-  error: string | null;
-  loadMore: () => void;
-  retry: () => void;
-}
-
-function useWorklist(bucket: WorklistBucket, enabled: boolean): WorklistState {
-  const client = useApiClient();
-  const [items, setItems] = useState<WorklistItem[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey re-runs the load on "Try again".
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    setLoading(true);
-    setError(null);
-    void (async () => {
-      const query: { bucket: WorklistBucket; limit: number; cursor?: string } = {
-        bucket,
-        limit: HUB_PAGE_SIZE,
-      };
-      if (cursor) query.cursor = cursor;
-      const { data, error: err } = await client.GET("/api/v1/discharges/worklist", {
-        params: { query },
-      });
-      if (!active) return;
-      if (err || !data) {
-        setError("This list could not be loaded.");
-        setLoading(false);
-        return;
-      }
-      const rows = data.items as WorklistItem[];
-      setItems((prev) => (cursor ? [...prev, ...rows] : rows));
-      setNextCursor(data.nextCursor ?? null);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client, bucket, cursor, enabled, retryKey]);
-
-  return {
-    items,
-    nextCursor,
-    loading,
-    error,
-    loadMore: () => {
-      if (nextCursor) setCursor(nextCursor);
-    },
-    retry: () => {
-      setCursor(undefined);
-      setRetryKey((k) => k + 1);
-    },
-  };
-}
-
-/** Names/MRNs for the rows on screen — one patient read per not-yet-known patient. */
-function usePatients(rows: readonly WorklistItem[]): Record<string, HubPatient | null> {
-  const client = useApiClient();
-  const [patients, setPatients] = useState<Record<string, HubPatient | null>>({});
-  const missing = unresolvedPatientIds(rows, patients).join(",");
-  useEffect(() => {
-    if (!missing) return;
-    let active = true;
-    const ids = missing.split(",");
-    void Promise.all(
-      ids.map((id) =>
-        client
-          .GET("/api/v1/patients/{id}", { params: { path: { id } } })
-          .then((r) => [id, (r.data as HubPatient | undefined) ?? null] as const)
-          .catch(() => [id, null] as const),
-      ),
-    ).then((pairs) => {
-      if (!active) return;
-      setPatients((prev) => {
-        const next = { ...prev };
-        for (const [id, p] of pairs) next[id] = p;
-        return next;
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [client, missing]);
-  return patients;
-}
-
-function ListState({
-  list,
-  emptyTitle,
-  emptyText,
-  children,
-}: {
-  list: WorklistState;
-  emptyTitle: string;
-  emptyText: string;
-  children: JSX.Element;
-}): JSX.Element {
-  if (list.error)
-    return (
-      <div className="wx-list-state" role="alert">
-        <EmptyState title="Unavailable" description={list.error} />
-        <button type="button" className="wx-btn-secondary" onClick={list.retry}>
-          Try again
-        </button>
-      </div>
-    );
-  if (list.loading && list.items.length === 0) return <LoadingSpinner />;
-  if (list.items.length === 0)
-    return (
-      <div className="wx-list-state">
-        <EmptyState title={emptyTitle} description={emptyText} />
-      </div>
-    );
-  return (
-    <>
-      {children}
-      {list.nextCursor ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "0 1rem 1rem" }}>
-          <button
-            type="button"
-            className="wx-btn-secondary"
-            onClick={list.loadMore}
-            disabled={list.loading}
-          >
-            Load more
-          </button>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function PatientCell({
-  row,
-  patients,
-}: {
-  row: WorklistItem;
-  patients: Record<string, HubPatient | null>;
-}): JSX.Element {
-  const patient = patients[row.patientId] ?? undefined;
-  const known = row.patientId in patients;
-  return (
-    <td>
-      <Link to={`/patients/${row.patientId}`} className="wx-row-title">
-        {known ? patientName(patient, "Unresolved patient") : "…"}
-      </Link>
-    </td>
-  );
-}
-
-const mrnOf = (patients: Record<string, HubPatient | null>, id: string): string =>
-  patients[id]?.mrn ?? (id in patients ? "—" : "…");
 
 export function DischargesHub(): JSX.Element {
   const session = useSession();
@@ -381,49 +221,13 @@ export function DischargesHub(): JSX.Element {
             emptyTitle="No recent live discharges"
             emptyText="Patients discharged alive in the last 90 days appear here."
           >
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table">
-                <caption className="wx-sr-only">Recently discharged patients</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Patient</th>
-                    <th scope="col">MRN</th>
-                    <th scope="col">Ended</th>
-                    <th scope="col">Date</th>
-                    <th scope="col">Days since</th>
-                    <th scope="col">
-                      <span className="wx-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.items.map((r) => {
-                    const name = patientName(patients[r.patientId] ?? undefined, "this patient");
-                    const since = daysSince(r.effectiveDate ?? r.dischargedAt, today);
-                    return (
-                      <tr key={r.admissionId}>
-                        <PatientCell row={r} patients={patients} />
-                        <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
-                        <td>{endLabel(r.dischargeType)}</td>
-                        <td className="wx-nums">{fmtDate(r.effectiveDate ?? r.dischargedAt)}</td>
-                        <td className="wx-nums">{since === null ? "—" : since}</td>
-                        <td style={{ textAlign: "right" }}>
-                          {can.readmit ? (
-                            <Link
-                              to={`/admissions/${r.admissionId}/readmit`}
-                              className="wx-action-link"
-                              aria-label={`Readmit ${name}`}
-                            >
-                              Readmit…
-                            </Link>
-                          ) : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <RecentlyDischargedTable
+              rows={recent.items}
+              patients={patients}
+              canReadmit={can.readmit}
+              today={today}
+              caption="Recently discharged patients"
+            />
           </ListState>
         </Panel>
 
