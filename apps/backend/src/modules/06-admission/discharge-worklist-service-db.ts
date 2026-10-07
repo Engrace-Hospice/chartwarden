@@ -15,7 +15,8 @@
 // The page's discharge/transfer facts are read with ONE extra query per table, bounded by the page size.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type SQL, and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import { type DischargeDetailKind, missingDischargeDetail } from "./discharge";
 import type { DischargeWorklistService } from "./routes/discharge-worklist-service";
 import {
@@ -42,6 +43,29 @@ const parseOffset = (cursor?: string): number => {
 };
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+
+/**
+ * The row scope: org-wide, nothing, or `patient in caseload OR admission at the caller's site`. The site arm is the
+ * SQL twin of M6's `admission_clinical_site_scope` site test — the location decides when both the row and the caller
+ * know one, otherwise the provider entity.
+ */
+function scopeFilterOf(scope: AdmissionReadScope): SQL | "org" | "none" {
+  if (scope.patientIds === null) return "org";
+  const arms: SQL[] = [];
+  if (scope.patientIds.length > 0) arms.push(inArray(ADM.patientId, [...scope.patientIds]));
+  const pes = [...(scope.sites?.providerEntityIds ?? [])];
+  const locs = [...(scope.sites?.locationIds ?? [])];
+  if (locs.length > 0)
+    arms.push(and(isNotNull(ADM.locationId), inArray(ADM.locationId, locs)) as SQL);
+  if (pes.length > 0)
+    arms.push(
+      (locs.length > 0
+        ? and(isNull(ADM.locationId), inArray(ADM.providerEntityId, pes))
+        : inArray(ADM.providerEntityId, pes)) as SQL,
+    );
+  if (arms.length === 0) return "none";
+  return (arms.length === 1 ? arms[0] : or(...arms)) as SQL;
+}
 
 interface AdmissionRow {
   readonly id: string;
@@ -81,7 +105,50 @@ function page<T>(rows: readonly T[], limit: number, offset: number) {
   };
 }
 
-export function createDbDischargeWorklistService(db: DbClient): DischargeWorklistService {
+/** The name + MRN a Readmit row carries (`recently_discharged` only). */
+export type WorklistPatientIdentity = NonNullable<DischargeWorklistItem["patient"]>;
+
+export interface DischargeWorklistServiceDeps {
+  /** Resolves a patient's name + MRN (defaults to M5's org-scoped PatientIntakeResolver seam; null = unresolved). */
+  readonly patientIdentity?: (
+    organizationId: string,
+    patientId: string,
+  ) => Promise<WorklistPatientIdentity | null>;
+}
+
+const seamPatientIdentity = async (
+  organizationId: string,
+  patientId: string,
+): Promise<WorklistPatientIdentity | null> => {
+  const p = await getSeam("PatientIntakeResolver").confirmPatient({ organizationId, patientId });
+  return p ? { firstName: p.firstName, lastName: p.lastName, mrn: p.mrn } : null;
+};
+
+export function createDbDischargeWorklistService(
+  db: DbClient,
+  deps: DischargeWorklistServiceDeps = {},
+): DischargeWorklistService {
+  const patientIdentity = deps.patientIdentity ?? seamPatientIdentity;
+
+  /** Attach name + MRN to a Readmit page (one M5 read per distinct patient, bounded by the page size). */
+  async function withPatients(
+    organizationId: string,
+    page: DischargeWorklistPage,
+  ): Promise<DischargeWorklistPage> {
+    const ids = [...new Set(page.items.map((i) => i.patientId))];
+    const resolved = new Map(
+      await Promise.all(
+        ids.map(
+          async (id) => [id, await patientIdentity(organizationId, id).catch(() => null)] as const,
+        ),
+      ),
+    );
+    return {
+      ...page,
+      items: page.items.map((i) => ({ ...i, patient: resolved.get(i.patientId) ?? null })),
+    };
+  }
+
   async function ready(
     tx: DbClient,
     filters: SQL[],
@@ -293,18 +360,20 @@ export function createDbDischargeWorklistService(db: DbClient): DischargeWorklis
     ): Promise<DischargeWorklistPage> {
       const limit = clampLimit(query.limit);
       const offset = parseOffset(query.cursor);
-      const scopedIds = scope.patientIds;
-      if (scopedIds !== null && scopedIds.length === 0) return { items: [], nextCursor: null };
-      return withOrgContext(db, { organizationId, userId: "" }, async (txRaw) => {
+      const scopeFilter = scopeFilterOf(scope);
+      if (scopeFilter === "none") return { items: [], nextCursor: null };
+      const page = await withOrgContext(db, { organizationId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const filters: SQL[] = [eq(ADM.organizationId, organizationId)];
-        if (scopedIds !== null) filters.push(inArray(ADM.patientId, [...scopedIds]));
+        if (scopeFilter !== "org") filters.push(scopeFilter);
         if (query.bucket === "ready") return ready(tx, filters, limit, offset);
         if (query.bucket === "needs_details") return needsDetails(tx, filters, limit, offset);
         if (query.bucket === "recently_discharged")
           return recentlyDischarged(tx, filters, limit, offset);
         return awaitingCosign(tx, filters, limit, offset);
       });
+      // The seam opens its own org context, so the names are read after the worklist transaction.
+      return query.bucket === "recently_discharged" ? withPatients(organizationId, page) : page;
     },
   };
 }

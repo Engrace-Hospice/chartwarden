@@ -154,6 +154,12 @@ export interface PatientIdentity {
    * agency assignment, and a consumer that needs it must fail closed rather than invent one.
    */
   readonly providerEntityId?: string | null;
+  /**
+   * The patient's service location (`patient.location_id`, ARCH-011) — stamped with the provider entity when an
+   * admission activates. M6's `admission_clinical_site_scope` matches it against the caller's location scope.
+   * Optional and possibly `null`, same caveats as {@link providerEntityId}.
+   */
+  readonly locationId?: string | null;
 }
 
 /**

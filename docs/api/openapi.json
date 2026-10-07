@@ -79842,6 +79842,33 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "patient": {
+                            "description": "recently_discharged only: the patient's name and MRN (M5's org-scoped read); null when M5 cannot resolve it.",
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "firstName",
+                                  "lastName",
+                                  "mrn"
+                                ],
+                                "properties": {
+                                  "firstName": {
+                                    "type": "string"
+                                  },
+                                  "lastName": {
+                                    "type": "string"
+                                  },
+                                  "mrn": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }

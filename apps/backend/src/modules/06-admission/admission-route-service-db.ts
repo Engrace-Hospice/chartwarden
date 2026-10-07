@@ -6071,7 +6071,18 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             ),
           )
           .limit(1);
-        return { hasActiveOrOnHoldAdmission: open !== undefined };
+        const [any] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+          .limit(1);
+        // The chart's site comes from M5's own org-scoped read (M6 never selects M5's table).
+        return {
+          hasActiveOrOnHoldAdmission: open !== undefined,
+          hasAnyAdmission: any !== undefined,
+          providerEntityId: patient.providerEntityId ?? null,
+          locationId: patient.locationId ?? null,
+        };
       });
     },
     async loadReferral(organizationId, id) {
@@ -6098,6 +6109,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
           })
           .from(ADM)
           .where(eq(ADM.id, id))
@@ -6106,6 +6118,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });

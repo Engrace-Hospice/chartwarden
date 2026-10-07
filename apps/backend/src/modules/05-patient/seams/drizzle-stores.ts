@@ -46,6 +46,7 @@ type PatientRow = {
   sexAssignedAtBirth: string;
   mergedIntoId: string | null;
   providerEntityId: string | null;
+  locationId: string | null;
 };
 
 const PATIENT_COLUMNS = {
@@ -58,6 +59,7 @@ const PATIENT_COLUMNS = {
   sexAssignedAtBirth: P.sexAssignedAtBirth,
   mergedIntoId: P.mergedIntoId,
   providerEntityId: P.providerEntityId,
+  locationId: P.locationId,
 } as const;
 
 type SeamTx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -112,6 +114,8 @@ async function identitiesFor(tx: SeamTx, rows: readonly PatientRow[]): Promise<P
     ...(r.mergedIntoId !== null ? { mergedIntoId: r.mergedIntoId } : {}),
     // GAP-044 — the agency M29's manual lab bind stamps on the materialized observation (ARCH-011).
     providerEntityId: r.providerEntityId,
+    // M6 `admission_clinical_site_scope` — the chart's service location (ARCH-011).
+    locationId: r.locationId,
   }));
 }
 

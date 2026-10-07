@@ -27,8 +27,13 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   request.context.organizationId = String(request.headers["x-test-org"] ?? "");
-  const roles = request.headers["x-test-roles"];
-  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const list = (h: string) => {
+    const v = request.headers[h];
+    return typeof v === "string" && v.length > 0 ? v.split(",") : [];
+  };
+  request.context.roles = list("x-test-roles");
+  request.context.providerEntityIds = list("x-test-pe");
+  request.context.locationIds = list("x-test-loc");
 }
 
 const ITEM = {
@@ -54,6 +59,7 @@ function makeServer(opts: { bound?: boolean; caseload?: readonly string[] } = {}
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       grants("reader_1", ["admission.read"]),
+      grants("creator_1", ["admission.read", "admission.create"]),
       grants("md_1", ["admission.read", "discharge.cosign_for_cause"]),
       grants("nobody_1", []),
     ]).store,
@@ -171,5 +177,77 @@ describe("GET /api/v1/discharges/worklist", () => {
       headers: as("reader_1"),
     });
     expect(res.statusCode).toBe(503);
+  });
+});
+
+// The Readmit list (`bucket=recently_discharged`): a readmission candidate's caseload assignment has usually ENDED, so
+// caseload narrowing alone would show a nurse nothing. An `admission.create` holder additionally sees the bucket's
+// rows at their own site (an admitting clinician — the `admission_clinical_site_scope` rule) or org-wide (an intake
+// role — the `admission_intake_scope` rule; every row of the bucket is a patient with no ongoing stay). Every other
+// bucket, and every caller without `admission.create`, keeps the caseload narrowing.
+describe("GET /api/v1/discharges/worklist?bucket=recently_discharged — the readmission scope", () => {
+  const RECENT = "/api/v1/discharges/worklist?bucket=recently_discharged";
+  const hdr = (user: string, roles: string, pe = "", loc = "") => ({
+    ...as(user, roles),
+    "x-test-pe": pe,
+    "x-test-loc": loc,
+  });
+
+  it("an admitting clinician with admission.create: caseload OR their own site", async () => {
+    const { app, list } = makeServer({ caseload: ["pat_1"] });
+    const res = await app.inject({
+      method: "GET",
+      url: RECENT,
+      headers: hdr("creator_1", "rn", "pe_a", "loc_a1"),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(list).toHaveBeenCalledWith(
+      ORG,
+      { bucket: "recently_discharged" },
+      { patientIds: ["pat_1"], sites: { providerEntityIds: ["pe_a"], locationIds: ["loc_a1"] } },
+    );
+  });
+
+  it("an intake role with admission.create: org-wide", async () => {
+    const { app, list } = makeServer({ caseload: [] });
+    await app.inject({
+      method: "GET",
+      url: RECENT,
+      headers: hdr("creator_1", "intake_supervisor"),
+    });
+    expect(list).toHaveBeenCalledWith(ORG, { bucket: "recently_discharged" }, { patientIds: null });
+  });
+
+  it("without admission.create the clinician keeps the caseload narrowing", async () => {
+    const { app, list } = makeServer({ caseload: ["pat_1"] });
+    await app.inject({ method: "GET", url: RECENT, headers: hdr("reader_1", "rn", "pe_a") });
+    expect(list).toHaveBeenCalledWith(
+      ORG,
+      { bucket: "recently_discharged" },
+      { patientIds: ["pat_1"] },
+    );
+  });
+
+  it("an external / non-admitting role keeps the caseload narrowing even with admission.create", async () => {
+    const { app, list } = makeServer({ caseload: [] });
+    for (const roles of ["physician_office", "msw", "billing_specialist"]) {
+      list.mockClear();
+      await app.inject({ method: "GET", url: RECENT, headers: hdr("creator_1", roles, "pe_a") });
+      expect(list, roles).toHaveBeenCalledWith(
+        ORG,
+        { bucket: "recently_discharged" },
+        { patientIds: [] },
+      );
+    }
+  });
+
+  it("the other buckets never widen to the site", async () => {
+    const { app, list } = makeServer({ caseload: ["pat_1"] });
+    await app.inject({
+      method: "GET",
+      url: "/api/v1/discharges/worklist?bucket=ready",
+      headers: hdr("creator_1", "rn", "pe_a"),
+    });
+    expect(list).toHaveBeenCalledWith(ORG, { bucket: "ready" }, { patientIds: ["pat_1"] });
   });
 });

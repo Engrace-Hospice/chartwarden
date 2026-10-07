@@ -203,6 +203,8 @@ export interface ReferralFacts {
 export interface AdmissionFacts {
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  /** The stay's service location (`admission_clinical_site_scope`'s fallback site); optional for child-keyed loaders. */
+  readonly locationId?: string | null;
 }
 export interface CtiFacts {
   readonly hospiceMedicalDirectorId: string;
@@ -220,6 +222,11 @@ export interface ComplianceWindowFacts {
 export interface PatientIntakeFacts {
   /** The patient has an admission in `active` or `on_hold` — an ongoing stay, not intake's business. */
   readonly hasActiveOrOnHoldAdmission: boolean;
+  /** The patient has ANY admission in this org (`admission_clinical_site_scope`: a never-admitted patient has no site). */
+  readonly hasAnyAdmission: boolean;
+  /** The chart's site (M5 stamps it from the activated admission); null until a stay of theirs is activated. */
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
 }
 
 /**
@@ -672,6 +679,16 @@ export interface ElectionSignInput {
  */
 export interface AdmissionReadScope {
   readonly patientIds: readonly string[] | null;
+  /**
+   * The Readmit list only (discharge worklist `recently_discharged`): rows whose ADMISSION is at one of these sites are
+   * ALSO in scope (OR'd with `patientIds`; ignored when `patientIds` is null). Same site test as M6's
+   * `admission_clinical_site_scope`: the location decides when both the row and the caller know one, else the
+   * provider entity.
+   */
+  readonly sites?: {
+    readonly providerEntityIds: readonly string[];
+    readonly locationIds: readonly string[];
+  };
 }
 
 export interface AdmissionRouteService {
@@ -2660,6 +2677,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         ? {
             patientId: rec.patientId,
             providerEntityId: rec.providerEntityId ?? null,
+            locationId: rec.locationId ?? null,
           }
         : null;
     },
@@ -2718,13 +2736,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         (r) => (r.kind === "patient" && r.id === patientId) || r.patientId === patientId,
       );
       if (!known) return null;
+      const stays = ofOrg.filter((r) => r.kind === "admission" && r.patientId === patientId);
+      const chart = ofOrg.find((r) => r.kind === "patient" && r.id === patientId);
       return {
-        hasActiveOrOnHoldAdmission: ofOrg.some(
-          (r) =>
-            r.kind === "admission" &&
-            r.patientId === patientId &&
-            (r.state === "active" || r.state === "on_hold"),
+        hasActiveOrOnHoldAdmission: stays.some(
+          (r) => r.state === "active" || r.state === "on_hold",
         ),
+        hasAnyAdmission: stays.length > 0,
+        providerEntityId: chart?.providerEntityId ?? null,
+        locationId: chart?.locationId ?? null,
       };
     },
   };

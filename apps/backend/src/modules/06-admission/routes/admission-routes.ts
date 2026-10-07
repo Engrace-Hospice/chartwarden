@@ -10,7 +10,15 @@
 // bypass the per-reason policy by changing the path. §4.6: the four role-gated signer/override
 // predicates M6 owns are wired via `requireAbac` (routes 31/32/40/46); the scope + signer-identity
 // predicates resolve through M6's registered resolvers (see abac-predicates.ts).
-import { hasOrgWideScope, requireAbac, requireAnyAbac, requirePermission } from "@wardenx/auth";
+import {
+  INTAKE_ROLE_KEYS,
+  hasAdmittingClinicianRole,
+  hasOrgWideScope,
+  requireAbac,
+  requireAnyAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -151,6 +159,33 @@ async function readScopeOf(
   }
 }
 
+/**
+ * The Readmit list's scope (discharge worklist `bucket=recently_discharged` ONLY). A readmission candidate's caseload
+ * assignment has usually ended, so the census narrowing alone shows a nurse nothing to readmit. An `admission.create`
+ * holder therefore also sees the bucket's rows that the readmission routes would let them open:
+ *   • an intake role → org-wide (`admission_intake_scope`: every row of the bucket is a patient with no ongoing stay);
+ *   • an admitting clinician (rn / lpn / md / np / pa …) → their own site (`admission_clinical_site_scope`).
+ * Anyone else — and anyone without `admission.create` — keeps {@link readScopeOf}.
+ */
+async function readmissionScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: CaseloadLookup,
+): Promise<AdmissionReadScope> {
+  const base = await readScopeOf(request, caseloadPatientIds);
+  if (base.patientIds === null) return base;
+  const ctx = request.context;
+  const intake = INTAKE_ROLE_KEYS.some((role) => ctx.roles.includes(role));
+  const clinician = hasAdmittingClinicianRole(ctx.roles);
+  if (!intake && !clinician) return base;
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("admission.create")) return base;
+  if (intake) return { patientIds: null };
+  return {
+    ...base,
+    sites: { providerEntityIds: [...ctx.providerEntityIds], locationIds: [...ctx.locationIds] },
+  };
+}
+
 function actorOf(request: FastifyRequest): {
   organizationId: string;
   userId: string;
@@ -281,35 +316,56 @@ const patientIdOf = (raw: unknown): unknown =>
   (raw as { patientId?: unknown } | null | undefined)?.patientId;
 
 /**
- * The new-admission / readmission routes ONLY: `caseload_or_scope` OR `admission_intake_scope`. An intake user
- * (intake_coordinator / intake_supervisor) works on patients who are not on anyone's caseload yet, so the
- * caseload predicate alone 404'd the readmission plan and the create for them. `admission_intake_scope`
- * (abac-predicates.ts) opens the route only for an intake role, a patient of the caller's org, and a patient
- * with no active / on-hold admission. Same `notFoundOnDeny` non-leak as `patientScope`. Every other
- * patient-keyed route keeps `patientScope` alone.
+ * The new-admission / readmission routes ONLY: `caseload_or_scope` OR `admission_intake_scope` OR
+ * `admission_clinical_site_scope`. An intake user (intake_coordinator / intake_supervisor) works on patients who are
+ * not on anyone's caseload yet, so the caseload predicate alone 404'd the readmission plan and the create for them.
+ * `admission_intake_scope` (abac-predicates.ts) opens the route only for an intake role, a patient of the caller's
+ * org, and a patient with no active / on-hold admission. `admission_clinical_site_scope` opens it for a nurse /
+ * physician / NP / PA at the patient's own site (a former patient's caseload assignment has ended by the time they
+ * are readmitted). Same `notFoundOnDeny` non-leak as `patientScope`. Every other patient-keyed route keeps
+ * `patientScope` alone.
  */
+/** The earlier stay a POST /admissions body names as its readmission source (`readmittedFromAdmissionId`). */
+const priorAdmissionIdOf = (raw: unknown): unknown =>
+  (raw as { readmittedFromAdmissionId?: unknown } | null | undefined)?.readmittedFromAdmissionId;
+
 const patientOrIntakeScope = (action: string, source: "params" | "body"): PreHandler =>
-  requireAnyAbac(action, ["caseload_or_scope", "admission_intake_scope"], {
-    notFoundOnDeny: true,
-    getTarget: (request) => ({
-      patientId: patientIdOf(source === "params" ? request.params : request.body),
-    }),
-  }) as PreHandler;
+  requireAnyAbac(
+    action,
+    ["caseload_or_scope", "admission_intake_scope", "admission_clinical_site_scope"],
+    {
+      notFoundOnDeny: true,
+      getTarget: (request) => {
+        if (source === "params") return { patientId: patientIdOf(request.params) };
+        // The body's readmission source travels as `priorAdmissionId` — only the clinical site predicate reads it
+        // (and requires it to be the SAME patient's stay); the other two keep keying off `patientId` alone.
+        const prior = priorAdmissionIdOf(request.body);
+        return {
+          patientId: patientIdOf(request.body),
+          ...(prior !== undefined ? { priorAdmissionId: prior } : {}),
+        };
+      },
+    },
+  ) as PreHandler;
 
 /**
- * `GET /admissions/:id/readmission-context` ONLY: `admission.scope` OR `admission_intake_scope` over the earlier
- * stay `:id` (the intake predicate resolves it to its patient).
+ * `GET /admissions/:id/readmission-context` ONLY: `admission.scope` OR `admission_intake_scope` OR
+ * `admission_clinical_site_scope` over the earlier stay `:id` (the last two resolve it to its patient).
  */
 const admissionOrIntakeScope = (action: string): PreHandler =>
-  requireAnyAbac(action, ["admission.scope", "admission_intake_scope"], {
-    notFoundOnDeny: true,
-    getTarget: (request) => {
-      const params = (
-        typeof request.params === "object" && request.params ? request.params : {}
-      ) as Record<string, unknown>;
-      return { ...params, admissionId: params.id };
+  requireAnyAbac(
+    action,
+    ["admission.scope", "admission_intake_scope", "admission_clinical_site_scope"],
+    {
+      notFoundOnDeny: true,
+      getTarget: (request) => {
+        const params = (
+          typeof request.params === "object" && request.params ? request.params : {}
+        ) as Record<string, unknown>;
+        return { ...params, admissionId: params.id };
+      },
     },
-  }) as PreHandler;
+  ) as PreHandler;
 
 // The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
 // shape — no `resourceKind` involved).
@@ -351,6 +407,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   registerDischargeWorklistRoutes(app, {
     service: deps.dischargeWorklist,
     readScope: (request) => readScopeOf(request, caseloadPatientIds),
+    readmissionScope: (request) => readmissionScopeOf(request, caseloadPatientIds),
   });
   // The benefit-period plan behind the readmission screen and the New admission benefit-period field.
   registerReadmissionRoutes(app, {
