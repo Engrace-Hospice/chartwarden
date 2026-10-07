@@ -15,10 +15,19 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { levelOfCare, levelOfCarePeriodStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
 import { admissions } from "./admissions";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const LCP_ADM_OPEN_IDX = businessRule(
+  "lcp_adm_open_idx",
+  "This admission already has an open level-of-care period. End it before starting another.",
+);
 
 export const levelOfCarePeriods = pgTable(
   "level_of_care_period",
@@ -55,7 +64,7 @@ export const levelOfCarePeriods = pgTable(
   },
   (t) => ({
     admEffIdx: index("lcp_adm_effective_idx").on(t.admissionId, t.effectiveAt),
-    admOpenUnique: uniqueIndex("lcp_adm_open_idx").on(t.admissionId).where(sql`ended_at IS NULL`),
+    admOpenUnique: uniqueIndex(LCP_ADM_OPEN_IDX).on(t.admissionId).where(sql`ended_at IS NULL`),
     sourceOrderUnique: unique("level_of_care_period_source_order_id_uq").on(
       t.organizationId,
       t.sourceOrderId,

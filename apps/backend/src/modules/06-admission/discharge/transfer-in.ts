@@ -122,3 +122,24 @@ export function planTransferIn(input: TransferInInput): TransferInPlan {
     next: { sequence: inheritedSequence + 1, state: "pending", ctiRequired: true },
   };
 }
+
+/**
+ * A transfer-in's periods must come AFTER every period already on the admission: the inherited period
+ * keeps the carried sequence and the next one is carried + 1 (42 CFR 418.28 — the counter never
+ * restarts), and `election_period_admission_seq_idx` allows one row per (admission, sequence). A carried
+ * sequence at or below an existing period (e.g. carried 1 on an admission whose referral acceptance
+ * already seeded period 1) would collide — a conflict the caller must resolve, refused before any write.
+ * PURE. Returns null when the carried sequence follows the existing periods.
+ */
+export function transferInPeriodConflict(
+  existingSequences: readonly number[],
+  priorBenefitPeriodSequence: number,
+): { readonly code: "TRANSFER_IN_PERIOD_CONFLICT"; readonly message: string } | null {
+  if (existingSequences.length === 0) return null;
+  const highest = Math.max(...existingSequences);
+  if (priorBenefitPeriodSequence > highest) return null;
+  return {
+    code: "TRANSFER_IN_PERIOD_CONFLICT",
+    message: `Benefit period ${highest} is already recorded on this admission, so a transfer-in cannot carry benefit period ${priorBenefitPeriodSequence}. The carried period must come after the admission's existing periods.`,
+  };
+}

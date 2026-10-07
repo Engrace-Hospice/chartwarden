@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { admissionStatus, physicianSignerCapacity } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -22,6 +23,19 @@ import { patientAddresses } from "../patient/patient-addresses";
 import { providerEntities } from "../provider-entities";
 import { users } from "../users";
 import { referrals } from "./referrals";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const ADMISSION_PATIENT_OPEN_IDX = businessRule(
+  "admission_patient_open_idx",
+  "This patient already has an open admission. Discharge or close it before opening another (no double election, 42 CFR 418.24).",
+);
+
+const ADMISSION_ORG_REFERRAL_ONCE_UIDX = businessRule(
+  "admission_org_referral_once_uidx",
+  "This referral has already been converted to an admission. Open the existing admission instead.",
+);
 
 export const admissions = pgTable(
   "admission",
@@ -86,7 +100,7 @@ export const admissions = pgTable(
   },
   (t) => ({
     // The "one open admission per patient" rule — partial unique.
-    patientOpenIdx: uniqueIndex("admission_patient_open_idx")
+    patientOpenIdx: uniqueIndex(ADMISSION_PATIENT_OPEN_IDX)
       .on(t.organizationId, t.patientId)
       .where(sql`status NOT IN ('discharged','bereavement','closed')`),
     orgStatusAdmIdx: index("admission_org_status_idx").on(
@@ -100,7 +114,7 @@ export const admissions = pgTable(
     ),
     hospicePhysicianIdx: index("admission_hospice_physician_idx").on(t.hospicePhysicianId),
     attendingIdx: index("admission_attending_idx").on(t.attendingPhysicianId),
-    referralOnceIdx: uniqueIndex("admission_org_referral_once_uidx")
+    referralOnceIdx: uniqueIndex(ADMISSION_ORG_REFERRAL_ONCE_UIDX)
       .on(t.organizationId, t.referralId)
       .where(sql`referral_id IS NOT NULL`),
   }),

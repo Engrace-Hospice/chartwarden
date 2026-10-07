@@ -56,6 +56,8 @@ const TRANSFER_MESSAGES: Record<string, string> = {
   BENEFIT_PERIOD_SEQUENCE_GAP:
     "The prior benefit period number does not follow the patient's history.",
   ELECTION_PERIOD_OVERLAP: "The inherited period overlaps an existing benefit period.",
+  TRANSFER_IN_PERIOD_CONFLICT:
+    "This admission already has a benefit period at or after the carried one. Check the prior benefit period number.",
 };
 
 const TRANSFER_CASCADE: readonly WhatHappensItem[] = [

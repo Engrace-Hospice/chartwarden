@@ -26,6 +26,7 @@ import {
   planTransferIn,
   resolveForCauseDischarge,
   resolvePlaceOfDeath,
+  transferInPeriodConflict,
 } from "../discharge";
 import {
   type ActivationGap,
@@ -39,6 +40,12 @@ import {
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
 import { addCalendarDays } from "../certification/window-math";
+import {
+  CTI_STATUS_RANK,
+  ELECTION_STATEMENT_STATUS_RANK,
+  F2F_STATUS_RANK,
+  pickOnePerPeriod,
+} from "../election-cert-picks";
 import {
   type BenefitPeriodEntry,
   assertBenefitPeriodEntry,
@@ -62,7 +69,7 @@ import {
   electionPeriodKindForSequence,
   electionPeriodScheduledEnd,
 } from "../state-machines/election-period";
-import { AdmissionStateError } from "../state-machines/errors";
+import { AdmissionStateError, ELECTION_STATEMENT_CONFLICT_MESSAGE } from "../state-machines/errors";
 import type {
   F2fEncounterLocation,
   TelehealthEligibilityAttestation,
@@ -2164,17 +2171,28 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (!adm) return { admission: null, periods: [], complianceWindows: [] };
       const childrenOf = (kind: string): Rec[] =>
         listOfKind(organizationId, kind).filter((r) => r.admissionId === adm.id);
-      // Election statement / CTI / F2F link to a period via `electionPeriodId`.
-      const byPeriod = (kind: string): Map<string, Rec> => {
-        const m = new Map<string, Rec>();
-        for (const r of listOfKind(organizationId, kind)) {
-          if (r.electionPeriodId) m.set(r.electionPeriodId, r);
-        }
-        return m;
-      };
-      const esBy = byPeriod("election_statement");
-      const ctiBy = byPeriod("cti");
-      const f2fBy = byPeriod("face_to_face");
+      // Election statement / CTI / F2F link to a period via `electionPeriodId`. A period can hold a
+      // voided CTI beside the live one, so the pick ranks by status (election-cert-picks.ts) instead of
+      // letting the last-inserted row win; insertion order is the remaining tiebreak.
+      const byPeriod = (
+        kind: string,
+        rank: Readonly<Record<string, number>>,
+      ): ReadonlyMap<string, Rec> =>
+        new Map(
+          [
+            ...pickOnePerPeriod(
+              listOfKind(organizationId, kind).flatMap((r) =>
+                r.electionPeriodId
+                  ? [{ rec: r, electionPeriodId: r.electionPeriodId, status: r.state }]
+                  : [],
+              ),
+              rank,
+            ),
+          ].map(([periodId, c]) => [periodId, c.rec]),
+        );
+      const esBy = byPeriod("election_statement", ELECTION_STATEMENT_STATUS_RANK);
+      const ctiBy = byPeriod("cti", CTI_STATUS_RANK);
+      const f2fBy = byPeriod("face_to_face", F2F_STATUS_RANK);
       const periods = childrenOf("election_period")
         .slice()
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
@@ -2420,6 +2438,17 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // GAP-024 — the period must belong to THE admission in the path (404, like absent).
       const ownPeriod = get(organizationId, electionPeriodId, "election_period");
       if (!ownPeriod || ownPeriod.admissionId !== adm.id) notFound(electionPeriodId);
+      // One election statement per period (mirrors `election_statement_period_idx` in the Drizzle path).
+      if (
+        listOfKind(organizationId, "election_statement").some(
+          (r) => r.electionPeriodId === electionPeriodId,
+        )
+      ) {
+        throw new AdmissionStateError(
+          "ELECTION_STATEMENT_CONFLICT",
+          ELECTION_STATEMENT_CONFLICT_MESSAGE,
+        );
+      }
       const rec = insert("election_statement", organizationId, "drafted", {
         admissionId: adm.id,
         patientId: adm.patientId,
@@ -2726,6 +2755,14 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       // W-DC-03 / D9: the receiving hospice inherits the carried sequence as the ACTIVE period (no CTI
       // required from us) and opens the next PENDING period (our CTI required). No counter restart.
+      const periodConflict = transferInPeriodConflict(
+        listOfKind(organizationId, "election_period")
+          .filter((r) => r.admissionId === adm.id)
+          .map((r) => r.sequence ?? 1),
+        input.priorBenefitPeriodSequence,
+      );
+      if (periodConflict)
+        throw new AdmissionStateError(periodConflict.code, periodConflict.message);
       const plan = planTransferIn(input);
       insert("election_period", organizationId, plan.inherited.state, {
         admissionId: adm.id,

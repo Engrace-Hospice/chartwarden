@@ -41,6 +41,7 @@ export {
   type TransferInSourceRefusal,
   isNpiCheckDigitValid,
   planTransferIn,
+  transferInPeriodConflict,
   transferInSourceRefusal,
 } from "./transfer-in";
 export * from "./discharge-details";

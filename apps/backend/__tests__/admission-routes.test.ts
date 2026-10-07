@@ -116,6 +116,8 @@ const PERMISSION_SEED = [
   { userId: "sched_1", permissions: ["f2f.schedule", "admission.read"] },
   // GAP-024 — an election drafter.
   { userId: "ed_1", permissions: ["election.draft", "admission.read"] },
+  // Bug 4 — an intake user who may record a transfer-in.
+  { userId: "xfer_1", permissions: ["transfer.in", "admission.read"] },
   // #50 — an intake user who may activate, for the service-location siting tests below.
   { userId: "act_1", permissions: ["admission.read", "admission.activate"] },
 ];
@@ -1443,6 +1445,68 @@ describe("M6 — #50 the activation route sites the admission", () => {
     const res = await activate(app, { ifVersion: 1, locationId: LOC_OTHER });
     expect(res.statusCode).toBe(422);
     expect(codeOf(res)).toBe("M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY");
+    await app.close();
+  });
+});
+
+// Bug 4 — two conflicts that used to surface as a raw unique_violation (500): a second election statement
+// for one period (`election_statement_period_idx`) and a transfer-in whose carried sequence collides with
+// a period already on the admission (`election_period_admission_seq_idx`). Both are 409 with an M6 code.
+describe("M6 — conflicting election-statement draft / transfer-in answer 409, not 500", () => {
+  const DRAFTER = {
+    "x-test-user": "ed_1",
+    "x-test-org": ORG,
+    "x-test-roles": "intake_coordinator",
+  };
+  const XFER = { "x-test-user": "xfer_1", "x-test-org": ORG, "x-test-roles": "intake_coordinator" };
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+
+  it("a second election statement for the same period is 409 ELECTION_STATEMENT_CONFLICT", async () => {
+    const { app, backend } = makeServer();
+    const draft = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/election-statements`,
+        headers: DRAFTER,
+        payload: {
+          electionPeriodId: EP_OF_ADMISSION,
+          effectiveDate: "2026-06-01",
+          primaryDiagnosisIcd10: "C34.90",
+          electedProviderEntityId: PROVIDER_ENTITY,
+          waiverAcknowledged: true,
+        },
+      });
+    expect((await draft()).statusCode).toBe(201);
+    const before = backend.events.length;
+    const second = await draft();
+    expect(second.statusCode).toBe(409);
+    expect(codeOf(second)).toBe("ELECTION_STATEMENT_CONFLICT");
+    expect(backend.events.length).toBe(before);
+    await app.close();
+  });
+
+  it("a transfer-in whose carried period already exists on the admission is 409 TRANSFER_IN_PERIOD_CONFLICT", async () => {
+    // ADMISSION already carries benefit period 1 (EP_OF_ADMISSION, as a referral acceptance seeds it).
+    const { app, backend } = makeServer();
+    const before = (await backend.service.listElectionPeriods(ORG, ADMISSION))?.length;
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/transfer-in`,
+      headers: XFER,
+      payload: {
+        direction: "in",
+        effectiveDate: "2026-06-01",
+        otherHospiceName: "Sending Hospice",
+        priorBenefitPeriodSequence: 1,
+        priorElectionStartDate: "2026-05-01",
+        hospiceMedicalDirectorId: "cccccccc-0000-4000-8000-000000000009",
+        narrative: "patient transferred in from another hospice",
+      },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("TRANSFER_IN_PERIOD_CONFLICT");
+    expect((await backend.service.listElectionPeriods(ORG, ADMISSION))?.length).toBe(before);
     await app.close();
   });
 });
