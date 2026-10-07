@@ -447,3 +447,42 @@ export {
   scheduleM29OutboundRetrySweepJob,
 } from "./outbound/dispatch-worker";
 export { M29_PLATFORM_JOB_ID, wireM29Tenancy } from "./wiring";
+
+// GAP-086 — the real MLLP listener process + inbound parse worker.
+export {
+  type InboundCipher,
+  type InboundTenantKeyProvider,
+  createInboundCipher,
+  isSealedEnvelope,
+} from "./inbound/inbound-crypto";
+export {
+  CredentialLoadError,
+  createCredentialLoader,
+  parseCredentialBundle,
+} from "./listener/credential-loader";
+export {
+  type M29InboundSeamPorts,
+  SUD_TEST_LOINC_VALUE_SET,
+  buildM29InboundSeamPorts,
+} from "./inbound/inbound-seam-ports";
+export { createDrizzleFeedLoader } from "./listener/feed-loader";
+export { createDrizzleIngestSinkFactory, summarizeInboundSegments } from "./listener/ingest-sink";
+export {
+  type ListenerAlertPort,
+  type ListenerProcessDeps,
+  type ListenerProcessHandle,
+  type ReconcileSummary,
+  LISTENER_RECONCILE_INTERVAL_MS,
+  startListenerProcess,
+} from "./listener/process";
+export {
+  type ParseSweepDeps,
+  type ParseWorkerDeps,
+  type SweepResult,
+  PARSE_MAX_ATTEMPTS,
+  PROPOSAL_REVIEW_SLA_MS,
+  ParseRejected,
+  runParseSweep,
+  runParseSweepForOrg,
+  startParseWorker,
+} from "./inbound/parse-worker";

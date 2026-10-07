@@ -770,6 +770,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-086 — the MLLP listener supervisor could not bind an ACTIVE inbound feed for a reason other than a BAA gate
+  // refusal (cleartext protocol refused in production, no/undecryptable mTLS credential, port unavailable). No inbound HL7
+  // is being accepted on that feed, so the audience is the one that can fix the feed: compliance + org admins.
+  {
+    eventType: "external_feed.listener_blocked",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a

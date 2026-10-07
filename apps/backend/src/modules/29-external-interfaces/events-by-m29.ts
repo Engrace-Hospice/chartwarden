@@ -298,4 +298,115 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // ── §4.10 inbound parse-worker outputs (GAP-086) ──────────────────────────────────────────────────
+  // Published by `inbound/parse-worker.ts` in the same tx as the rows they describe. Record-only (no consumer binding):
+  // the proposal / observation row IS the durable record, and the M5/M6/M11/M33 consumers spec §4.10 lists are forward
+  // work — declaring one nobody binds would leave each row permanently `pending`.
+  {
+    eventName: "m29.hl7_inbound_proposal.created",
+    moduleOwner: "m29",
+    description:
+      "The inbound parse worker resolved an ADT message to a pending review proposal (propose-then-review, D5; 72h SLA).",
+    payloadSchema: Type.Object({
+      proposalId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      sourceMessageId: Type.String({ minLength: 1 }),
+      resourceKind: Type.String({ minLength: 1 }),
+      ownerModule: Type.String({ minLength: 1 }),
+      matchOutcome: Type.String({ minLength: 1 }),
+      matchedPatientId: Type.Union([Type.String(), Type.Null()]),
+      matchLevel: Type.String({ minLength: 1 }),
+      matchConfidence: Type.Union([Type.Number(), Type.Null()]),
+      matchCandidateIds: Type.Array(Type.String()),
+      expiresAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.hl7_message.routing_dropped",
+    moduleOwner: "m29",
+    description:
+      "An A03/A11 ADT for a patient the cascade could not match was dropped with audit — a discharge or cancel cannot act on an unknown patient (§4.6).",
+    payloadSchema: Type.Object({
+      messageId: Type.String({ minLength: 1 }),
+      feedId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      messageControlId: Type.String({ minLength: 1 }),
+      messageType: Type.String({ minLength: 1 }),
+      reason: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_observation.received",
+    moduleOwner: "m29",
+    description:
+      "An inbound ORU result was auto-attached to a patient and materialized as a lab_observation (D7).",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      sourceMessageId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      orderRecordId: Type.Union([Type.String(), Type.Null()]),
+      matchMethod: Type.String({ minLength: 1 }),
+      terminologyValidation: Type.String({ minLength: 1 }),
+      sudRedacted: Type.Boolean(),
+      abnormalSummary: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_observation.attached",
+    moduleOwner: "m29",
+    description:
+      "A lab_observation was attached to its patient (and order, when the OBR-2 placer resolved one).",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      orderRecordId: Type.Union([Type.String(), Type.Null()]),
+      loincCode: Type.String(),
+      abnormalFlag: Type.Union([Type.String(), Type.Null()]),
+      observationDatetime: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_observation.abnormal_flag",
+    moduleOwner: "m29",
+    description:
+      "An attached lab carried a critical (HH/LL) flag (D7). The panel LOINC only — the abnormal value stays off the event (PHI denylist).",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      loincCode: Type.String(),
+      criticalCount: Type.Integer({ minimum: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_observation.unmatched",
+    moduleOwner: "m29",
+    description:
+      "An inbound ORU result could not be bound to a patient and entered the §4.2 unmatched-lab review queue (GAP-044).",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      sourceMessageId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      loincCode: Type.String(),
+      reason: Type.String({ minLength: 1 }),
+      receivedAt: Type.String({ minLength: 1 }),
+      candidatePatientId: Type.Union([Type.String(), Type.Null()]),
+      candidateMatchLevel: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

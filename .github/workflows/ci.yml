@@ -392,6 +392,7 @@ jobs:
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
           - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }
           # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
           - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }

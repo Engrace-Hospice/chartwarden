@@ -1209,9 +1209,6 @@ export function buildM27WorkerDeps(deps: {
 //     larger project. `triggerTrialBalancePull`/`triggerWageDataPull` now enqueue for real (WX-PR-013) and
 //     the worker fails closed with a typed `M27WorkerPortUnbound` + `status='failed'` + `*.pull_failed` when
 //     it runs — never silently fabricating a pull (see `m27-cost-report-workflow-slice.live.test.ts`).
-//   • the M6/M8 statistics seams (`deps.statisticsSeams`) — per research, `LevelOfCarePeriodReader`/
-//     `EncounterStatisticsProvider` do not exist as M1-registered seams at all (M6/M8 have no org-wide
-//     monthly-aggregate projection today); this is new seam surface, not just an unbind. The A→B→C
-//     allocation chain does NOT hard-depend on this (`buildM27AllocationInputs` tolerates a null
-//     `statistic_data` row), so the proven slice supplies statistics via direct `StatisticDataRepository`
-//     writes (the same shape `statistics-refresh` would persist) rather than waiting on this larger seam.
+//   • the S-3 statistics seams (`deps.statisticsSeams`) — BOUND (GAP-080): `buildM27StatisticsSeams` over M6's org-explicit
+//     service census, M5's payer program, M8's completed-visit counts, M16's bereavement census and M27's own wage import
+//     (FTE), all injected at the composition root. An unbound `statisticsSeams` still fails closed with the typed error above.
