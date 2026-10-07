@@ -40,6 +40,23 @@ export const CONTRIBUTED_PERMISSIONS = {
   "member.manage": { resource: "member", action: "manage", category: "admin", abac: "none" },
   // Full offboard — disable credentials everywhere (org_admin own-org / platform_ops any).
   "user.deactivate": { resource: "user", action: "deactivate", category: "admin", abac: "none" },
+  // GAP-115 — `POST/GET /orgs/:id/step-up-overrides` (+ DELETE): per-operation tenant step-up TIGHTENING
+  // (M2 spec §3.7 / §4.3.2, org_admin or compliance_officer). The tighten-only rule is enforced twice: the route
+  // refuses a loosening with 422, and `trg_tenant_step_up_tighten_only` (migration 0211) refuses it at rest.
+  "step_up_override.manage": {
+    resource: "step_up_override",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // GAP-115 — `POST /funeral/invite`: a per-deceased funeral-home magic link (72h), minted by staff on the
+  // patient's caseload. Same default predicate as the collaborator link.
+  "funeral.invite": {
+    resource: "funeral",
+    action: "invite",
+    category: "clinical",
+    abac: "caseload_membership",
+  },
   // Per-patient collaborator magic-link — clinician on the patient's caseload (ABAC), or
   // org_admin. The default ABAC predicate is `caseload_membership` (M5/M17 provider seam).
   "collaborator.invite": {

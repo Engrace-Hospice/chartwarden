@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1403,
-    "coveredRoutes": 1403,
-    "directRoutesReferenced": 1351
+    "routes": 1418,
+    "coveredRoutes": 1418,
+    "directRoutesReferenced": 1366
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 26,
+      "routes": 41,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -19,13 +19,17 @@
         "apps/backend/__tests__/authz-routes.test.ts",
         "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/device-attestation-routes.test.ts",
+        "apps/backend/__tests__/gap-115-m2-funeral-invite.test.ts",
+        "apps/backend/__tests__/gap-115-m2-me-session.test.ts",
+        "apps/backend/__tests__/gap-115-m2-org-admin.test.ts",
+        "apps/backend/__tests__/gap-115-m2-step-up-overrides.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 25
+      "directRoutesReferenced": 40
     },
     {
       "module": "03-authorization",

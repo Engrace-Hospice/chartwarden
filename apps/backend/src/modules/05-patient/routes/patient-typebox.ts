@@ -104,6 +104,14 @@ export const AmendmentBodySchema = Type.Object({
     Type.Literal("narrative"),
   ]),
   rationale: Type.String({ minLength: 1, maxLength: 2000 }),
+  // GAP-118 — REQUIRED for a demographic amendment (enforced by the service: 422 when absent or off the
+  // allowlist), optional for clinical/narrative. An accepted demographic request applies `requestedValue`.
+  requestedChange: Type.Optional(
+    Type.Object({
+      fieldPath: Type.String({ minLength: 1, maxLength: 64 }),
+      requestedValue: Type.Union([Type.String({ maxLength: 500 }), Type.Null()]),
+    }),
+  ),
 });
 
 // POST /api/v1/patients/:id/merge (§2.4/§4.3, F-171/#248 — direct admin-initiated merge)
@@ -154,11 +162,30 @@ export const PatientListResponseSchema = Type.Object({
 // GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.
 // `total` is the count of all patients in the org; `byStatus` is the count per lifecycle status
 // (prospective / active / on_hold / discharged / deceased). Cross-module KPIs the census frame also
-// shows (admissions/discharges today, GIP, recerts due) are NOT here — they belong to M6/billing and
-// are surfaced as honest placeholders client-side until those reads land.
+// shows (admissions/discharges today, GIP, recerts due) belong to M6 and arrive as `admissions` through the
+// injected M6 summary port.
 export const CensusMetricsResponseSchema = Type.Object({
   total: Type.Integer(),
   byStatus: Type.Record(Type.String(), Type.Integer()),
+  // GAP-119 — the admission-owned KPIs, from M6's published org-explicit summary (counts only). `null` when
+  // that read is unavailable; the census strip then shows "—" for them.
+  admissions: Type.Optional(
+    Type.Union([
+      Type.Object({
+        admissionsToday: Type.Integer(),
+        dischargesToday: Type.Integer(),
+        gipActive: Type.Integer({
+          description: "Patients in an active general-inpatient-care period.",
+        }),
+        recertsDue: Type.Integer({
+          description:
+            "Active benefit periods ending within 14 days (the next period needs a recert).",
+        }),
+        asOfDate: Type.String({ format: "date" }),
+      }),
+      Type.Null(),
+    ]),
+  ),
 });
 
 // GET /api/v1/patients/:id/demographics (§3.3) — name parts + USCDI SOGI/race/ethnicity codes +

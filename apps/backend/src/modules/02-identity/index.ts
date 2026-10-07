@@ -101,6 +101,8 @@ export function mountSessionStepUpRoutes(
 ): void {
   _registerSessionStepUpRoutes(app, {
     sessions: _contextSessionResolver(),
+    // GAP-115 — `GET /me/session` reports the PERSISTED step-up fields (the context resolver above carries nulls).
+    meSessions: _dbStepUpSessionResolver(db),
     writer: _dbSessionStepUpWriter(db),
     enrollment: _dbMfaEnrollmentReader(db),
     verifier: _dbMfaVerifier(db),
@@ -298,7 +300,14 @@ import {
   type OrganizationLifecycleOutboxPort,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
+import { createDrizzleOrgAdminStore as _drizzleOrgAdminStore } from "./org-admin-store";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
+import {
+  type TaxIdCipherPort,
+  registerOrgAdminRoutes as _registerOrgAdminRoutes,
+} from "./routes/org-admin-routes";
+import { registerStepUpOverrideRoutes as _registerStepUpOverrideRoutes } from "./routes/step-up-override-routes";
+import { createDrizzleStepUpOverrideAdminStore as _drizzleStepUpOverrideAdminStore } from "./step-up-override-admin";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { registerOrganizationLifecycleRoutes as _registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
 import { registerPlatformUserRoutes as _registerPlatformUserRoutes } from "./routes/platform-user-routes";
@@ -309,6 +318,7 @@ import {
   createDbMfaEnrollmentReader as _dbMfaEnrollmentReader,
   createDbMfaVerifier as _dbMfaVerifier,
   createDbSessionStepUpWriter as _dbSessionStepUpWriter,
+  createDbStepUpSessionResolver as _dbStepUpSessionResolver,
 } from "./step-up-adapters-db";
 import { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
 import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
@@ -379,6 +389,11 @@ export function mountIdentityRoutes(
     dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
     /** The `m2.*` outbox publisher (#205). Omitted → record-only, no-op. */
     outbox?: M2RawOutboxPublisher;
+    /**
+     * GAP-115 — M5's deceased-status fact, injected as a port (M2 may not read M5's table). Omitted ->
+     * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE`.
+     */
+    deceasedPatients?: IdentityRouteDeps["deceasedPatients"];
   },
 ): void {
   const deps: IdentityRouteDeps = {
@@ -402,6 +417,7 @@ export function mountIdentityRoutes(
     // GAP-009 — always bound on a db mount: accept refuses without it (fail closed).
     userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
+    ...(invite?.deceasedPatients ? { deceasedPatients: invite.deceasedPatients } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.
@@ -413,6 +429,37 @@ export function mountIdentityRoutes(
   // depends on `mountOrganizationLifecycleRoutes` having run first.
   _registerM2AbacPredicates();
   _registerPlatformUserRoutes(app, deps);
+}
+
+/**
+ * GAP-115 — mount the M2 org-admin surface: organization / provider-entity / location management and the
+ * tenant step-up override registry (M2 spec §4.1). Everything is DB-backed (Drizzle under `withOrgContext`);
+ * the audit executor and outbox are the same org-scoped ones the other M2 mounts use.
+ *
+ * `taxIdCipher` is the KMS-backed envelope cipher for `provider_entity.tax_id_encrypted`. It is deliberately
+ * optional: unbound, `POST /provider-entities` refuses 503 `TAX_ID_CIPHER_UNBOUND` and every other route still
+ * works (an EIN must never be stored in the clear, so there is no fallback).
+ */
+export function mountOrgAdminRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  opts: { outbox?: M2RawOutboxPublisher; taxIdCipher?: TaxIdCipherPort } = {},
+): void {
+  _registerM2AbacPredicates(); // `organization_lifecycle_platform_ops` gates POST /orgs
+  const audit = _orgScopedAuditExecutor(db);
+  const outbox = opts.outbox ? _orgScopedIdentityOutbox(db, opts.outbox) : undefined;
+  _registerOrgAdminRoutes(app, {
+    actors: _ctxActor(),
+    audit,
+    store: _drizzleOrgAdminStore(db),
+    ...(opts.taxIdCipher ? { taxIdCipher: opts.taxIdCipher } : {}),
+  });
+  _registerStepUpOverrideRoutes(app, {
+    actors: _ctxActor(),
+    audit,
+    ...(outbox ? { outbox } : {}),
+    overrides: _drizzleStepUpOverrideAdminStore(db),
+  });
 }
 
 /**
@@ -452,3 +499,7 @@ export {
   createProductionStepUpVerifier,
   type StepUpVerifierOptions,
 } from "./step-up-verifier";
+
+// GAP-115 — the org-admin surface's published types (the cipher port the composition root binds).
+export type { TaxIdCipherPort } from "./routes/org-admin-routes";
+export { validateOverrideInput } from "./step-up-override-admin";

@@ -158,6 +158,34 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
 
+  // ── GAP-115 org-admin surface ───────────────────────────────────────────────────────────────────
+  {
+    eventName: "m2.session.step_up_policy_override.configured",
+    moduleOwner: "m2",
+    description:
+      "A tenant tightened (never loosened) the step-up policy for one operation (M2 §4.3.2, D9).",
+    payloadSchema: Type.Object({
+      organizationId: orgId,
+      operationKey: nonEmptyString,
+      qualifyingFactors: Type.Array(stepUpFactor),
+      maxAgeSec: Type.Integer({ minimum: 1 }),
+      configuredByMembershipId: nonEmptyString,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m2.funeral.invited",
+    moduleOwner: "m2",
+    description: "A per-deceased funeral-home magic-link was minted (72h, one-time).",
+    payloadSchema: Type.Object({
+      linkId: nonEmptyString,
+      organizationId: orgId,
+      patientId: nonEmptyString,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
   // ── §7.6 external collaborator ──────────────────────────────────────────────────────────────────
   {
     eventName: "m2.collaborator.invited",

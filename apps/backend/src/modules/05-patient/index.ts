@@ -116,6 +116,8 @@ export {
 } from "./seams/patient-display-for-org";
 // GAP-084 — the org-explicit keyset patient-id enumeration M28's bulk-export worker needs (injected as a port).
 export { PATIENT_IDS_PAGE_MAX, patientIdsPageForOrg } from "./seams/patient-ids-page-for-org";
+// GAP-115 — the deceased-status fact M2's funeral-home link needs, injected into M2 as a port.
+export { patientIsDeceasedForOrg } from "./seams/patient-deceased-for-org";
 
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {
@@ -164,6 +166,17 @@ export {
   type SnapshotRebuildSummary,
   rebuildPrivacySnapshotsForOrg,
 } from "./jobs/snapshot-rebuild";
+// GAP-118 — the daily amendment SLA scan (due-soon / overdue events for pending §164.526 requests).
+export {
+  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
+  M5_AMENDMENT_SLA_QUEUE,
+  M5_AMENDMENT_SLA_SCHEDULE,
+  SLA_WARN_DAYS,
+  registerAmendmentSlaWorker,
+  runAmendmentSlaScan,
+  scheduleAmendmentSla,
+  wireAmendmentSlaTenancy,
+} from "./jobs/amendment-sla-scan";
 export {
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   M5_SNAPSHOT_REBUILD_QUEUE,
@@ -342,6 +355,7 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import type { AdmissionCensusSummaryPort } from "./routes/service";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import type { M5OutboxPort } from "./deceased-db";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
@@ -370,9 +384,10 @@ export function mountPatientRoutes(
   db: DbClient,
   outbox: M5OutboxPort,
   privacy: PrivacyOfficerPorts,
+  census: { readonly admissionSummary?: AdmissionCensusSummaryPort } = {},
 ): void {
   _registerPatientRoutes(app, {
-    service: _dbPatientService(db, outbox),
+    service: _dbPatientService(db, outbox, census),
     mergePatients: (input) => _mergePatients(db, outbox, input),
   });
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
@@ -391,3 +406,13 @@ export function mountPatientRoutes(
       }),
   });
 }
+
+// GAP-118 — the geocode consumer + the vendor port (fail-closed until a vendor is bound; see geocoder.ts).
+export { buildM5GeocodeAddressConsumer } from "./outbox-consumers/m5-geocode-address";
+export {
+  GEOCODER_VENDORS,
+  GeocoderUnconfiguredError,
+  createDeniedGeocoder,
+  resolveGeocoder,
+  type GeocoderPort,
+} from "./geocoder";

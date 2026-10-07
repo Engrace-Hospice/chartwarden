@@ -50,6 +50,9 @@ const DischargeCosign = lazy(() =>
 const TransferIn = lazy(() => import("./transfer-in").then((m) => ({ default: m.TransferIn })));
 const Readmission = lazy(() => import("./readmission").then((m) => ({ default: m.Readmission })));
 const ReadmitList = lazy(() => import("./readmit-list").then((m) => ({ default: m.ReadmitList })));
+const LevelOfCareChange = lazy(() =>
+  import("./level-of-care-change").then((m) => ({ default: m.LevelOfCareChange })),
+);
 const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -204,6 +207,15 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Discharge details for billing",
       requiredPermission: "admission.read",
       screen: DischargeDetails,
+    },
+    {
+      // M6 screen 13 / D12 — step up or down between levels of care; selecting GIP shows the three required
+      // attestations. The server re-enforces everything (loc.change + admission.scope + 412 on a missing attestation).
+      id: "admission.level-of-care-change",
+      path: "/admissions/:id/level-of-care/new",
+      title: "Change level of care",
+      requiredPermission: "loc.change",
+      screen: LevelOfCareChange,
     },
   ],
 };

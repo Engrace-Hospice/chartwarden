@@ -338,6 +338,14 @@
     },
     {
       "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.level-of-care-change",
+      "path": "/admissions/:id/level-of-care/new",
+      "permission": "loc.change"
+    },
+    {
+      "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.view",

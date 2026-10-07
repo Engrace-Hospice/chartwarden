@@ -12,10 +12,12 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
-// Read-only by design (the role/permission WRITES are a recorded deferral, GAP-116): this screen refines presentation and local discovery only. M3 remains
-// authoritative for the existing GET /roles and GET /permissions data sources.
+// GAP-116 — the review surface plus the role-catalog writes (`./role-writes`): create a tenant role (optionally
+// a copy of a template), edit its permission set, enable/disable, delete. The controls show only to a caller
+// holding `role.manage`; M3 stays the authority (anti-escalation, the system-locked floor, reserved roles).
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { NewRoleModal, RoleActions, deleteRole, patchRole } from "./role-writes";
 
 interface RoleView {
   roleId: string;
@@ -49,6 +51,21 @@ export function RolesPermissions(): JSX.Element {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<"all" | "platform" | "organization">("all");
   const [status, setStatus] = useState<"all" | "enabled" | "disabled">("all");
+  const [canManage, setCanManage] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void client.GET("/api/v1/me/permissions").then((res) => {
+      if (active) setCanManage((res.data?.permissions ?? []).includes("role.manage"));
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
+
+  const replaceRole = (updated: RoleView): void =>
+    setRoles((current) => (current ?? []).map((r) => (r.roleId === updated.roleId ? updated : r)));
 
   useEffect(() => {
     let active = true;
@@ -154,6 +171,7 @@ export function RolesPermissions(): JSX.Element {
             setStatus("all");
           }}
           onSelect={setSelectedId}
+          onNew={canManage ? () => setCreating(true) : undefined}
         />
       }
       detail={selected ? <RoleDetail role={selected} /> : undefined}
@@ -161,13 +179,33 @@ export function RolesPermissions(): JSX.Element {
       fullPageScroll
     >
       {selected ? (
-        <PermissionMatrix role={selected} catalog={catalog} />
+        <PermissionMatrix
+          role={selected}
+          catalog={catalog}
+          canManage={canManage}
+          onChanged={replaceRole}
+          onDeleted={(id) => {
+            setRoles((current) => (current ?? []).filter((r) => r.roleId !== id));
+            setSelectedId(null);
+          }}
+          onCustomize={() => setCreating(true)}
+        />
       ) : (
         <EmptyState
           title="Select a role"
           description="Pick a role to review its permission coverage."
         />
       )}
+      <NewRoleModal
+        open={creating}
+        base={selected}
+        categories={[...new Set(roles.map((r) => r.category))].sort()}
+        onClose={() => setCreating(false)}
+        onCreated={(role) => {
+          setRoles((current) => [...(current ?? []), role]);
+          setSelectedId(role.roleId);
+        }}
+      />
     </AdminSplitLayout>
   );
 }
@@ -202,7 +240,9 @@ function RoleList({
   onStatus,
   onClear,
   onSelect,
+  onNew,
 }: {
+  onNew?: (() => void) | undefined;
   roles: RoleView[];
   selectedId: string | null;
   query: string;
@@ -235,11 +275,18 @@ function RoleList({
               {roles.length} matching access profile{roles.length === 1 ? "" : "s"}
             </p>
           </div>
-          {filtersApplied ? (
-            <Button tone="tertiary" size="sm" onClick={onClear}>
-              Reset
-            </Button>
-          ) : null}
+          <span style={{ display: "flex", gap: "0.25rem" }}>
+            {filtersApplied ? (
+              <Button tone="tertiary" size="sm" onClick={onClear}>
+                Reset
+              </Button>
+            ) : null}
+            {onNew ? (
+              <Button size="sm" onClick={onNew}>
+                New role
+              </Button>
+            ) : null}
+          </span>
         </div>
         <label style={{ position: "relative", display: "block" }}>
           <span className="wx-sr-only">Search roles</span>
@@ -337,12 +384,68 @@ function RoleList({
 function PermissionMatrix({
   role,
   catalog,
-}: { role: RoleView; catalog: PermissionRow[] }): JSX.Element {
+  canManage,
+  onChanged,
+  onDeleted,
+  onCustomize,
+}: {
+  role: RoleView;
+  catalog: PermissionRow[];
+  canManage: boolean;
+  onChanged: (role: RoleView) => void;
+  onDeleted: (roleId: string) => void;
+  onCustomize: () => void;
+}): JSX.Element {
+  const client = useApiClient();
   const matrixRef = useRef<HTMLElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [writeError, setWriteError] = useState<string | null>(null);
+  // A role switch abandons an unsaved edit rather than carrying it onto another role.
+  useEffect(() => {
+    setEditing(false);
+    setWriteError(null);
+    if (role.roleId) setDraft(new Set(role.permissionKeys));
+  }, [role.roleId, role.permissionKeys]);
+  const dirty =
+    draft.size !== role.permissionKeys.length || role.permissionKeys.some((k) => !draft.has(k));
+
+  async function save(): Promise<void> {
+    setBusy(true);
+    setWriteError(null);
+    const res = await patchRole(client, role.roleId, { permissionKeys: [...draft] });
+    setBusy(false);
+    if (!res.ok) {
+      setWriteError(res.message);
+      return;
+    }
+    onChanged(res.role);
+    setEditing(false);
+  }
+  async function toggleEnabled(): Promise<void> {
+    setBusy(true);
+    setWriteError(null);
+    const res = await patchRole(client, role.roleId, { enabled: !role.enabled });
+    setBusy(false);
+    if (!res.ok) setWriteError(res.message);
+    else onChanged(res.role);
+  }
+  async function remove(): Promise<void> {
+    setBusy(true);
+    setWriteError(null);
+    const res = await deleteRole(client, role.roleId);
+    setBusy(false);
+    if (!res.ok) setWriteError(res.message);
+    else onDeleted(role.roleId);
+  }
   const [permissionQuery, setPermissionQuery] = useState("");
   const [grantFilter, setGrantFilter] = useState<"all" | "granted" | "not-granted">("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const granted = useMemo(() => new Set(role.permissionKeys), [role]);
+  const granted = useMemo(
+    () => (editing ? draft : new Set(role.permissionKeys)),
+    [role, editing, draft],
+  );
   const groups = useMemo(() => {
     const result = new Map<string, PermissionRow[]>();
     for (const permission of catalog)
@@ -396,7 +499,9 @@ function PermissionMatrix({
             {role.name}
           </h2>
           <p style={matrixDescription}>
-            Review the permissions granted by this role. Editing is not available in this view.
+            {canManage
+              ? "Review and manage the permissions granted by this role."
+              : "Review the permissions granted by this role. Changing a role needs the role.manage permission."}
           </p>
         </div>
         <div style={coverage}>
@@ -411,6 +516,28 @@ function PermissionMatrix({
             </span>
           ) : null}
         </div>
+        {canManage ? (
+          <RoleActions
+            role={role}
+            editing={editing}
+            draftCount={draft.size}
+            dirty={dirty}
+            busy={busy}
+            error={writeError}
+            onStartEdit={() => {
+              setDraft(new Set(role.permissionKeys));
+              setEditing(true);
+            }}
+            onCancelEdit={() => {
+              setEditing(false);
+              setWriteError(null);
+            }}
+            onSave={() => void save()}
+            onToggleEnabled={() => void toggleEnabled()}
+            onDelete={() => void remove()}
+            onCustomize={onCustomize}
+          />
+        ) : null}
         <div style={permissionToolbar}>
           <label style={{ position: "relative", flex: "1 1 14rem" }}>
             <span className="wx-sr-only">Search permissions</span>
@@ -485,7 +612,23 @@ function PermissionMatrix({
                     </span>
                   </span>
                 </button>
-                {expanded ? <PermissionList permissions={permissions} granted={granted} /> : null}
+                {expanded ? (
+                  <PermissionList
+                    permissions={permissions}
+                    granted={granted}
+                    {...(editing
+                      ? {
+                          onToggle: (key: string) =>
+                            setDraft((current) => {
+                              const next = new Set(current);
+                              if (next.has(key)) next.delete(key);
+                              else next.add(key);
+                              return next;
+                            }),
+                        }
+                      : {})}
+                  />
+                ) : null}
               </section>
             );
           })}
@@ -498,9 +641,12 @@ function PermissionMatrix({
 function PermissionList({
   permissions,
   granted,
+  onToggle,
 }: {
   permissions: Array<Pick<PermissionRow, "key" | "resource" | "action">>;
   granted: Set<string>;
+  /** Present only while editing: renders each row as a checkbox instead of a status glyph. */
+  onToggle?: (key: string) => void;
 }): JSX.Element {
   return (
     <ul style={permissionGrid}>
@@ -516,13 +662,22 @@ function PermissionList({
                 : "transparent",
             }}
           >
-            <span style={{ color: isGranted ? "var(--color-success)" : "var(--color-muted)" }}>
-              <Glyph
-                name={isGranted ? "check" : "dot"}
-                size={15}
-                label={isGranted ? "Granted" : "Not granted"}
+            {onToggle ? (
+              <input
+                type="checkbox"
+                aria-label={permission.key}
+                checked={isGranted}
+                onChange={() => onToggle(permission.key)}
               />
-            </span>
+            ) : (
+              <span style={{ color: isGranted ? "var(--color-success)" : "var(--color-muted)" }}>
+                <Glyph
+                  name={isGranted ? "check" : "dot"}
+                  size={15}
+                  label={isGranted ? "Granted" : "Not granted"}
+                />
+              </span>
+            )}
             <span>
               <code
                 className="wx-data-md"

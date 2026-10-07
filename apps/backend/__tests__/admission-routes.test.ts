@@ -1356,24 +1356,27 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         inpatientSettingIdentified: true,
       },
     ],
-  ])("GIP without all three D12 attestations (%s) -> 412 GIP_DOCUMENTATION_INCOMPLETE", async (_label, attestations) => {
-    const { app } = makeServer();
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
-      headers: RN,
-      payload: {
-        newLevel: "general_inpatient_care",
-        effectiveStart: "2026-06-20",
-        reason: "uncontrolled symptoms requiring inpatient management now",
-        facilityId: "99999999-9999-4999-8999-999999999999",
-        ...(attestations ? { gipAttestations: attestations } : {}),
-      },
-    });
-    expect(res.statusCode).toBe(412);
-    expect(res.json().error.code).toBe("GIP_DOCUMENTATION_INCOMPLETE");
-    await app.close();
-  });
+  ])(
+    "GIP without all three D12 attestations (%s) -> 412 GIP_DOCUMENTATION_INCOMPLETE",
+    async (_label, attestations) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+        headers: RN,
+        payload: {
+          newLevel: "general_inpatient_care",
+          effectiveStart: "2026-06-20",
+          reason: "uncontrolled symptoms requiring inpatient management now",
+          facilityId: "99999999-9999-4999-8999-999999999999",
+          ...(attestations ? { gipAttestations: attestations } : {}),
+        },
+      });
+      expect(res.statusCode).toBe(412);
+      expect(res.json().error.code).toBe("GIP_DOCUMENTATION_INCOMPLETE");
+      await app.close();
+    },
+  );
 
   it("a non-GIP level change needs no attestations", async () => {
     const { app } = makeServer();
