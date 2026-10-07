@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1384,
-    "coveredRoutes": 1384,
-    "directRoutesReferenced": 1331
+    "routes": 1397,
+    "coveredRoutes": 1397,
+    "directRoutesReferenced": 1344
   },
   "modules": [
     {
@@ -74,7 +74,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 74,
+      "routes": 84,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -85,10 +85,11 @@
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
+        "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 74
+      "directRoutesReferenced": 84
     },
     {
       "module": "07-care-plan",
@@ -170,16 +171,17 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 33,
+      "routes": 34,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 27
     },
     {
       "module": "13-emar",
@@ -273,13 +275,14 @@
     },
     {
       "module": "21-supplies",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 38
+      "directRoutesReferenced": 39
     },
     {
       "module": "22-documents",
@@ -302,7 +305,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 67,
+      "routes": 68,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
@@ -313,7 +316,7 @@
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 58
+      "directRoutesReferenced": 59
     },
     {
       "module": "24-billing-medicaid",

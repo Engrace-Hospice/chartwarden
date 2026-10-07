@@ -142,16 +142,6 @@ import {
   UploadedNoticeOfRightsSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
 import {
-  ElectionAddendumDraftSchema as M6ElectionAddendumDraftSchema,
-  ElectionAddendumFurnishSchema as M6ElectionAddendumFurnishSchema,
-  ElectionAddendumOverviewSchema as M6ElectionAddendumOverviewSchema,
-  ElectionAddendumPatchSchema as M6ElectionAddendumPatchSchema,
-  ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
-  ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
-  ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
-  ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
-} from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
-import {
   DischargeDetailRecordResultSchema,
   DischargeDetailsViewSchema,
   PlaceOfDeathRecordSchema,
@@ -161,6 +151,16 @@ import {
   DischargeWorklistQuerySchema,
   DischargeWorklistResponseSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox";
+import {
+  ElectionAddendumDraftSchema as M6ElectionAddendumDraftSchema,
+  ElectionAddendumFurnishSchema as M6ElectionAddendumFurnishSchema,
+  ElectionAddendumOverviewSchema as M6ElectionAddendumOverviewSchema,
+  ElectionAddendumPatchSchema as M6ElectionAddendumPatchSchema,
+  ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
+  ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
+  ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
+  ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import {
   BenefitPeriodPlanQuerySchema,
   BenefitPeriodPlanSchema,

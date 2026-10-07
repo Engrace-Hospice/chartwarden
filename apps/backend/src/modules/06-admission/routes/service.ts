@@ -38,6 +38,11 @@ import {
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
 import {
+  type BenefitPeriodEntry,
+  assertBenefitPeriodEntry,
+  assertF2fExceptionReason,
+} from "../intake/benefit-period";
+import {
   type PhysicianAuthorityPort,
   type PhysicianSignerCandidate,
   type PhysicianSignerCapacity,
@@ -51,11 +56,6 @@ import {
   validateAdmissionRecommendation,
   validateDischargeOrder,
 } from "../physician-signer-checks";
-import {
-  type BenefitPeriodEntry,
-  assertBenefitPeriodEntry,
-  assertF2fExceptionReason,
-} from "../intake/benefit-period";
 import { AdmissionStateError } from "../state-machines/errors";
 import type {
   F2fEncounterLocation,

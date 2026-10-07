@@ -104,6 +104,7 @@ import {
   computeActivationGate,
   evaluateAdmissionReadiness,
 } from "./intake";
+import { F2F_EXCEPTION_DAYS_AFTER_ADMISSION } from "./intake/benefit-period";
 import { type PhysicianAuthorityPort, dischargeOrderRequired } from "./physician-authority";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import {
@@ -111,7 +112,6 @@ import {
   validateAdmissionRecommendation,
   validateDischargeOrder,
 } from "./physician-signer-checks";
-import { F2F_EXCEPTION_DAYS_AFTER_ADMISSION } from "./intake/benefit-period";
 import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,

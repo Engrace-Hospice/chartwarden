@@ -56,8 +56,8 @@ import {
   WINDOW_TONE,
   stateLabel,
 } from "./admission-status";
-import { DischargeOrderSection } from "./discharge-order-ui";
 import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
+import { DischargeOrderSection } from "./discharge-order-ui";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
