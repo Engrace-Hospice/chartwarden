@@ -5,7 +5,9 @@
 //
 // AUTHORIZATION: `admission.read` for every bucket (the rows are admission facts), plus
 // `discharge.cosign_for_cause` for the awaiting-cosign bucket (only a medical director acts on it). The rows are
-// narrowed to the caller's caseload exactly like the admission census (GAP-020, `readScope`).
+// narrowed to the caller's caseload exactly like the admission census (GAP-020, `readScope`) — except
+// `recently_discharged` (the Readmit list), which an `admission.create` holder also sees at their own site / org-wide
+// (`readmissionScope`, admission-routes.ts), mirroring the readmission routes' ABAC.
 import { requirePermission } from "@wardenx/auth";
 import { DegradedError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -20,6 +22,8 @@ export interface DischargeWorklistRouteDeps {
   readonly service: DischargeWorklistService | undefined;
   /** The census read scope (caseload narrowing) — shared with GET /admissions. */
   readonly readScope: (request: FastifyRequest) => Promise<AdmissionReadScope>;
+  /** `bucket=recently_discharged` (the Readmit list): the census scope widened to what the readmission routes allow. */
+  readonly readmissionScope?: (request: FastifyRequest) => Promise<AdmissionReadScope>;
 }
 
 const ADMISSION_READ = requirePermission("admission.read") as PreHandler;
@@ -48,7 +52,11 @@ export function registerDischargeWorklistRoutes(
       if (!deps.service) {
         throw new DegradedError("m6.discharge-worklist", "the discharge worklist is not bound");
       }
-      return deps.service.list(organizationId, query, await deps.readScope(request));
+      const scope =
+        query.bucket === "recently_discharged" && deps.readmissionScope
+          ? await deps.readmissionScope(request)
+          : await deps.readScope(request);
+      return deps.service.list(organizationId, query, scope);
     },
   );
 }

@@ -203,6 +203,10 @@ export interface ReferralFacts {
 export interface AdmissionFacts {
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  /** The stay's service location (`admission_clinical_site_scope`'s fallback site); optional for child-keyed loaders. */
+  readonly locationId?: string | null;
+  /** Who opened it through POST /admissions (`admission.scope`'s creator arm for an unsited admission, §6.8). */
+  readonly createdByUserId?: string | null;
 }
 export interface CtiFacts {
   readonly hospiceMedicalDirectorId: string;
@@ -215,11 +219,23 @@ export interface ComplianceWindowFacts {
   readonly admissionId: string;
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  readonly createdByUserId?: string | null;
 }
 /** `admission_intake_scope` — the facts about a patient of the caller's org that decide intake reach. */
 export interface PatientIntakeFacts {
   /** The patient has an admission in `active` or `on_hold` — an ongoing stay, not intake's business. */
   readonly hasActiveOrOnHoldAdmission: boolean;
+  /** The patient has ANY admission in this org (`admission_clinical_site_scope`: a never-admitted patient has no site). */
+  readonly hasAnyAdmission: boolean;
+  /** The chart's site (M5 stamps it from the activated admission); null until a stay of theirs is activated. */
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  /**
+   * The site of the patient's latest referral that names one — how a never-admitted (never-sited) patient is placed at
+   * a site (`admission_clinical_site_scope`, §6.8). Null when no referral names a site.
+   */
+  readonly referralProviderEntityId: string | null;
+  readonly referralLocationId: string | null;
 }
 
 /**
@@ -672,6 +688,16 @@ export interface ElectionSignInput {
  */
 export interface AdmissionReadScope {
   readonly patientIds: readonly string[] | null;
+  /**
+   * The Readmit list only (discharge worklist `recently_discharged`): rows whose ADMISSION is at one of these sites are
+   * ALSO in scope (OR'd with `patientIds`; ignored when `patientIds` is null). Same site test as M6's
+   * `admission_clinical_site_scope`: the location decides when both the row and the caller know one, else the
+   * provider entity.
+   */
+  readonly sites?: {
+    readonly providerEntityIds: readonly string[];
+    readonly locationIds: readonly string[];
+  };
 }
 
 export interface AdmissionRouteService {
@@ -1084,6 +1110,7 @@ interface Rec {
   patientId?: string;
   providerEntityId?: string | null;
   locationId?: string | null;
+  createdByUserId?: string | null;
   patientResidenceAddressId?: string | null;
   admissionId?: string;
   admissionAt?: string | null;
@@ -1174,6 +1201,8 @@ export interface AdmissionSeedRecord {
   readonly patientId?: string;
   readonly providerEntityId?: string | null;
   readonly locationId?: string | null;
+  /** The admission's creator (POST /admissions actor) — `admission.scope`'s §6.8 creator arm. */
+  readonly createdByUserId?: string | null;
   readonly admissionId?: string;
   readonly hospiceMedicalDirectorId?: string;
   readonly attendingPhysicianId?: string | null;
@@ -1228,6 +1257,24 @@ function firstSequence(input: FirstBenefitPeriodInput): number {
   return input.benefitPeriod.sequence;
 }
 
+/** The in-memory twin of the Drizzle resolver's latest site-naming referral of a patient (last seeded wins). */
+function referralSiteOf(
+  ofOrg: readonly Rec[],
+  patientId: string,
+): { referralProviderEntityId: string | null; referralLocationId: string | null } {
+  const sited = ofOrg.filter(
+    (r) =>
+      r.kind === "referral" &&
+      r.patientId === patientId &&
+      (r.providerEntityId != null || r.locationId != null),
+  );
+  const last = sited[sited.length - 1];
+  return {
+    referralProviderEntityId: last?.providerEntityId ?? null,
+    referralLocationId: last?.locationId ?? null,
+  };
+}
+
 export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}): {
   service: AdmissionRouteService;
   resolver: AdmissionAbacResolver;
@@ -1245,6 +1292,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       patientId: r.patientId,
       providerEntityId: r.providerEntityId ?? null,
       locationId: r.locationId ?? null,
+      createdByUserId: r.createdByUserId ?? null,
       admissionId: r.admissionId,
       hospiceMedicalDirectorId: r.hospiceMedicalDirectorId,
       attendingPhysicianId: r.attendingPhysicianId ?? null,
@@ -1828,11 +1876,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
 
     async createAdmission(organizationId, input, actorUserId) {
-      void actorUserId;
       if (input.referralId) throw new ReferralAdmissionPathError();
       const rec = insert("admission", organizationId, "pending", {
         patientId: input.patientId,
         providerEntityId: null,
+        createdByUserId: actorUserId || null,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         primaryDiagnosisIcd10: "C00",
@@ -2640,6 +2688,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       ? {
           patientId: adm.patientId,
           providerEntityId: adm.providerEntityId ?? null,
+          createdByUserId: adm.createdByUserId ?? null,
         }
       : null;
   };
@@ -2660,6 +2709,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         ? {
             patientId: rec.patientId,
             providerEntityId: rec.providerEntityId ?? null,
+            locationId: rec.locationId ?? null,
+            createdByUserId: rec.createdByUserId ?? null,
           }
         : null;
     },
@@ -2718,13 +2769,16 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         (r) => (r.kind === "patient" && r.id === patientId) || r.patientId === patientId,
       );
       if (!known) return null;
+      const stays = ofOrg.filter((r) => r.kind === "admission" && r.patientId === patientId);
+      const chart = ofOrg.find((r) => r.kind === "patient" && r.id === patientId);
       return {
-        hasActiveOrOnHoldAdmission: ofOrg.some(
-          (r) =>
-            r.kind === "admission" &&
-            r.patientId === patientId &&
-            (r.state === "active" || r.state === "on_hold"),
+        hasActiveOrOnHoldAdmission: stays.some(
+          (r) => r.state === "active" || r.state === "on_hold",
         ),
+        hasAnyAdmission: stays.length > 0,
+        providerEntityId: chart?.providerEntityId ?? null,
+        locationId: chart?.locationId ?? null,
+        ...referralSiteOf(ofOrg, patientId),
       };
     },
   };

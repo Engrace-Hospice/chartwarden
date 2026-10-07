@@ -127,8 +127,9 @@ export const RULE_PROTECTED = (
 
 /** §4.7 base `caseload_or_scope` (M5-owned) — reused for the patient-context eligibility reads/checks. */
 /**
- * `caseload_or_scope` OR M6's `admission_intake_scope` (bound BY NAME through the M3 registry — no import edge into
- * M6): an intake user reaches a patient of the org who has no active / on-hold admission, i.e. the readmission /
+ * `caseload_or_scope` OR M6's `admission_intake_scope` OR M6's `admission_clinical_site_scope` (bound BY NAME through
+ * the M3 registry — no import edge into M6): an intake user reaches a patient of the org who has no active / on-hold
+ * admission, and a nurse / physician / NP / PA reaches such a patient of their own site — i.e. the readmission /
  * new-admission work. Composed on `GET /billing/eligibility/hospice-periods` ONLY (the readmission screen's HETS
  * history); every other eligibility route keeps {@link CASELOAD_OR_SCOPE}.
  */
@@ -136,10 +137,14 @@ export const CASELOAD_OR_INTAKE_SCOPE = (
   key: string,
   getTarget: (request: TargetRequest) => TargetMap = targetPatient,
 ): PreHandler =>
-  requireAnyAbac(key, ["caseload_or_scope", "admission_intake_scope"], {
-    getTarget,
-    notFoundOnDeny: true,
-  }) as PreHandler;
+  requireAnyAbac(
+    key,
+    ["caseload_or_scope", "admission_intake_scope", "admission_clinical_site_scope"],
+    {
+      getTarget,
+      notFoundOnDeny: true,
+    },
+  ) as PreHandler;
 
 export const CASELOAD_OR_SCOPE = (
   key: string,

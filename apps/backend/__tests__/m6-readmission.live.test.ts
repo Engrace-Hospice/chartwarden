@@ -9,20 +9,33 @@
  *
  * Plus: a period-3 readmission needs a face-to-face before activation unless exceptional circumstances are documented
  * (MBPM ch. 9 §20.1(5)(d)); a transfer-out keeps the period; the "recently discharged" worklist; a readmission must
- * name an earlier stay of the SAME patient.
+ * name an earlier stay of the SAME patient; the admitting clinicians (migration 0379 + `admission_clinical_site_scope`)
+ * open new admissions and readmissions at their OWN site through the real routes — another site and another org are
+ * refused.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:readmission:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type AbacContext, INTAKE_DEFAULT_GRANTS } from "@wardenx/auth";
+import {
+  ADMITTING_CLINICIAN_DEFAULT_GRANTS,
+  type AbacContext,
+  INTAKE_DEFAULT_GRANTS,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerDbEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
 import { medicareReceiptDay } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
+import { buildServer } from "../src/bootstrap/index";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
@@ -44,9 +57,12 @@ import {
   electionPeriodContextForOrg,
   latestLiveEndedEpisode,
   priorEpisodesForOrg,
+  registerAdmissionRoutes,
   registerAdmissionSeams,
 } from "../src/modules/06-admission/index";
+import { orgToday } from "../src/modules/06-admission/readmission-service-db";
 import { loadPriorEpisodes } from "../src/modules/06-admission/seams/prior-episodes";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -108,6 +124,9 @@ const WRITE_ACTOR = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
+// The ORG's calendar day — what the service validates a HETS `confirmedOn` against (`orgToday`). The UTC `today()` runs
+// a day ahead every evening in the org's time zone, which failed the HETS-confirmed readmissions after 17:00 PDT.
+const orgDay = () => orgToday();
 const never = (): never => {
   throw new Error("expected a claim-range admission");
 };
@@ -451,7 +470,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
 
     // ── readmit into period 2, HETS-confirmed ──
     const second = await admit(patientId, {
-      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: today() },
+      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: orgDay() },
     });
     const [p2] = await periodsOf(second);
     expect(p2).toMatchObject({
@@ -460,7 +479,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       benefit_period_source: "hets_confirmed",
       benefit_period_suggested: 2,
       benefit_period_confirmed_by: USER,
-      confirmed_on: today(),
+      confirmed_on: orgDay(),
     });
     await completeAndActivate(second);
     const after = await periodsOf(second);
@@ -548,7 +567,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     await deliver(m5Discharged, "m6.admission.discharged", first);
     await dispatcher.tick(); // the first NOE and the discharge NOTR
     const second = await admit(patientId, {
-      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: today() },
+      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: orgDay() },
     });
     await completeAndActivate(second);
     await dispatcher.tick(); // the readmission's NOE
@@ -1018,6 +1037,332 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     const mismatched = await admin.query(
       `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
         WHERE r.key IN ('intake_coordinator','intake_supervisor') AND rp.organization_id <> r.organization_id`,
+    );
+    expect(mismatched.rows[0].n).toBe(0);
+  });
+  // ── admitting clinicians: migration 0379 + `admission_clinical_site_scope`, through the REAL routes ──────────────
+  // RBAC from the DB (`role` / `role_permission` / `membership_role`, granted by re-running 0379 once the roles exist),
+  // ABAC over the Drizzle resolver, the DB-backed write + worklist services — all on the NOBYPASSRLS `wardenx_app`
+  // connection. The request context (org, user, roles, site scope) is what the authenticate hook assembles in
+  // production; here a header shim stands in for it.
+
+  /** Insert a tenant role (or return the existing one). */
+  async function roleIn(org: string, key: string): Promise<string> {
+    const inserted = await admin.query<{ id: string }>(
+      `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_staff')
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [org, key],
+    );
+    return (
+      inserted.rows[0]?.id ??
+      (
+        await one<{ id: string }>("SELECT id FROM role WHERE organization_id=$1 AND key=$2", [
+          org,
+          key,
+        ])
+      ).id
+    );
+  }
+  /** A user with an active membership in `org`, bound to `roleKeys`. */
+  async function staff(org: string, roleKeys: string[]): Promise<string> {
+    const userId = randomUUID();
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [userId, `${userId}@x.test`]);
+    const m = await one<{ id: string }>(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+      [userId, org],
+    );
+    for (const key of roleKeys)
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [org, m.id, await roleIn(org, key)],
+      );
+    return userId;
+  }
+  const MIGRATION_0379 = "0379_m6_clinician_admission_default_grants.sql";
+
+  it("ADMITTING CLINICIANS as wardenx_app: an RN opens a new admission and a readmission at their own site; another site, another org and a missing grant are refused", async () => {
+    // Arrange — site A is `providerId` (+ its one location, where activation sites the chart); site B is a second
+    // provider entity of ORG.
+    const siteB = (
+      await one<{ id: string }>(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,'H22222','Hospice A-2','NPI-2222','\\x00','12-31') RETURNING id`,
+        [ORG],
+      )
+    ).id;
+    const nurseA = await staff(ORG, ["rn"]);
+    const nurseB = await staff(ORG, ["rn"]);
+    const nurseOrgB = await staff(ORG_B, ["rn"]);
+    const noGrant = await staff(ORG, []);
+    // 0379 runs after the roles exist (as it does in a tenant that created them before the migration).
+    await admin.query(readFileSync(join(MIGRATIONS_DIR, MIGRATION_0379), "utf8"));
+
+    // A live-discharged stay at site A whose chart M5 sited there on activation.
+    const patientA = randomUUID();
+    const stayA = await admit(patientA, {}, `${daysAgo(10)}T00:00:00.000Z`);
+    await completeAndActivate(stayA);
+    await deliver(m5Siting, "m6.admission.activated", stayA);
+    await dischargeLive(stayA);
+    const siteOfA = await one<{ provider_entity_id: string; location_id: string | null }>(
+      "SELECT provider_entity_id, location_id FROM patient WHERE id=$1",
+      [patientA],
+    );
+    expect(siteOfA.provider_entity_id).toBe(providerId);
+    // A brand-new patient (no admission, never sited); a chart sited at site B; another org's patient.
+    const patientNew = randomUUID();
+    await seedM5Patient(admin, ORG, patientNew);
+    const patientSiteB = randomUUID();
+    await seedM5Patient(admin, ORG, patientSiteB);
+    await admin.query("UPDATE patient SET provider_entity_id=$2 WHERE id=$1", [
+      patientSiteB,
+      siteB,
+    ]);
+    const patientOrgB = randomUUID();
+    await seedM5Patient(admin, ORG_B, patientOrgB);
+
+    // `admission.update` for the rn role, so the PATCH cases below are decided by ABAC (404), not RBAC (403). Granted
+    // before any request (the RBAC cache) and revoked in `finally` (the 0379 test below pins the rn role's keys).
+    await admin.query(
+      `INSERT INTO permission (key, resource, action, category, default_abac, description)
+       VALUES ('admission.update','admission','update','clinical','admission.scope','') ON CONFLICT DO NOTHING`,
+    );
+    await admin.query(
+      `INSERT INTO role_permission (organization_id, role_id, permission_key)
+       SELECT organization_id, id, 'admission.update' FROM role WHERE key='rn' ON CONFLICT DO NOTHING`,
+    );
+    resetAuthorizationContract();
+    resetRbacEngine();
+    registerDbEffectivePermissionResolver(handle.db);
+    const registry = createPredicateRegistry();
+    for (const [name, fn] of Object.entries(
+      buildAdmissionAbacPredicates({
+        resolver: createDbAdmissionAbacResolver(handle.db),
+        isInCaseload: async () => false, // nobody's caseload: only the site rule can answer
+      }),
+    ))
+      registry.register(name, fn);
+    registry.register(
+      "caseload_or_scope",
+      buildCarePlanAbacPredicates({
+        resolver: {
+          loadPlan: async () => null,
+          loadProblem: async () => null,
+          loadVersion: async () => null,
+        },
+        isInCaseload: async () => false,
+      }).caseload_or_scope,
+    );
+    registerAbacRegistry(registry);
+    const list = (request: FastifyRequest, h: string) => {
+      const v = request.headers[h];
+      return typeof v === "string" && v.length > 0 ? v.split(",") : [];
+    };
+    const app = buildServer({
+      authenticate: (request: FastifyRequest) => {
+        const user = request.headers["x-test-user"];
+        if (typeof user !== "string") return;
+        request.context.userId = user;
+        request.context.organizationId = String(request.headers["x-test-org"]);
+        request.context.roles = list(request, "x-test-roles");
+        request.context.providerEntityIds = list(request, "x-test-pe");
+        request.context.locationIds = list(request, "x-test-loc");
+      },
+      security: { rateLimitEnabled: false },
+    });
+    registerAdmissionRoutes(app, {
+      service: svc,
+      caseloadPatientIds: async () => [],
+      dischargeWorklist: createDbDischargeWorklistService(handle.db),
+      readmission,
+    });
+    const as = (userId: string, pe: string, org = ORG) => ({
+      "x-test-user": userId,
+      "x-test-org": org,
+      "x-test-roles": "rn",
+      "x-test-pe": pe,
+    });
+    const get = (url: string, headers: Record<string, string>) =>
+      app.inject({ method: "GET", url, headers });
+    const post = (payload: Record<string, unknown>, headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: "/api/v1/admissions", headers, payload });
+    const body = (patientId: string, readmittedFromAdmissionId?: string) => ({
+      patientId,
+      intakeMethod: "in_person",
+      hospiceMedicalDirectorId: MD,
+      admissionDate: today(),
+      ...(readmittedFromAdmissionId ? { readmittedFromAdmissionId } : {}),
+    });
+    const admissionsOf = async (patientId: string) =>
+      (await admin.query("SELECT id FROM admission WHERE patient_id=$1", [patientId])).rowCount;
+
+    try {
+      // ── refused: another site, another org, no grant (nothing is written) ──
+      const NURSE_B = as(nurseB, siteB);
+      expect(
+        (await get(`/api/v1/admissions/${stayA}/readmission-context`, NURSE_B)).statusCode,
+      ).toBe(404);
+      expect(
+        (await get(`/api/v1/patients/${patientA}/benefit-period-plan`, NURSE_B)).statusCode,
+      ).toBe(404);
+      expect((await post(body(patientA, stayA), NURSE_B)).statusCode).toBe(404);
+      const NURSE_A = as(nurseA, providerId);
+      expect((await post(body(patientSiteB), NURSE_A)).statusCode).toBe(404);
+      // a site-A stay cannot lend its site to another chart
+      expect((await post(body(patientSiteB, stayA), NURSE_A)).statusCode).toBe(404);
+      // cross-tenant, even claiming site A's provider entity id
+      const NURSE_ORG_B = as(nurseOrgB, providerId, ORG_B);
+      expect(
+        (await get(`/api/v1/admissions/${stayA}/readmission-context`, NURSE_ORG_B)).statusCode,
+      ).toBe(404);
+      expect((await post(body(patientA, stayA), NURSE_ORG_B)).statusCode).toBe(404);
+      expect((await post(body(patientOrgB), NURSE_A)).statusCode).toBe(404);
+      // RBAC from the DB: an RN-shaped context with no granted role holds no `admission.create`
+      expect((await post(body(patientNew), as(noGrant, providerId))).statusCode).toBe(403);
+      expect(await admissionsOf(patientA)).toBe(1);
+      expect(await admissionsOf(patientNew)).toBe(0);
+      expect(await admissionsOf(patientSiteB)).toBe(0);
+
+      // ── the Readmit list: site A's candidate (named), not site B's nurse ──
+      const worklist = "/api/v1/discharges/worklist?bucket=recently_discharged";
+      const mine = (await get(worklist, NURSE_A)).json() as {
+        items: { admissionId: string; patient?: { mrn: string } | null }[];
+      };
+      const listedA = mine.items.find((i) => i.admissionId === stayA);
+      expect(listedA?.patient?.mrn).toBe(`MRN-${patientA}`);
+      const theirs = (await get(worklist, NURSE_B)).json() as { items: { admissionId: string }[] };
+      expect(theirs.items.map((i) => i.admissionId)).not.toContain(stayA);
+
+      // ── allowed at their own site: read the context, readmit, and open a brand-new admission ──
+      expect(
+        (await get(`/api/v1/admissions/${stayA}/readmission-context`, NURSE_A)).statusCode,
+      ).toBe(200);
+      expect(
+        (await get(`/api/v1/patients/${patientA}/benefit-period-plan`, NURSE_A)).statusCode,
+      ).toBe(200);
+      const readmit = await post(body(patientA, stayA), NURSE_A);
+      expect(readmit.statusCode).toBe(201);
+      const readmitted = await one<{
+        readmitted_from_admission_id: string;
+        organization_id: string;
+      }>("SELECT readmitted_from_admission_id, organization_id FROM admission WHERE id=$1", [
+        (readmit.json() as { id: string }).id,
+      ]);
+      expect(readmitted).toEqual({ readmitted_from_admission_id: stayA, organization_id: ORG });
+      const fresh = await post(body(patientNew), NURSE_A);
+      expect(fresh.statusCode).toBe(201);
+      expect(await admissionsOf(patientNew)).toBe(1);
+
+      // …and can open both new (still unsited) admissions to carry on; site B's nurse and another org cannot.
+      const readmissionId = (readmit.json() as { id: string }).id;
+      const freshId = (fresh.json() as { id: string }).id;
+      for (const id of [readmissionId, freshId])
+        expect((await get(`/api/v1/admissions/${id}`, NURSE_A)).statusCode, id).toBe(200);
+      expect((await get(`/api/v1/admissions/${readmissionId}`, NURSE_B)).statusCode).toBe(404);
+      expect((await get(`/api/v1/admissions/${freshId}`, NURSE_ORG_B)).statusCode).toBe(404);
+      const creator = await one<{ created_by_user_id: string | null }>(
+        "SELECT created_by_user_id FROM admission WHERE id=$1",
+        [freshId],
+      );
+      expect(creator.created_by_user_id).toBe(nurseA);
+
+      // A brand-new patient's PENDING admission is its creator's (and its site's, once sited) — never "any clinician
+      // with a site scope": nurse B opens one for a never-sited patient; nurse A can neither read nor update it.
+      const patientNewB = randomUUID();
+      await seedM5Patient(admin, ORG, patientNewB);
+      const openedByB = await post(body(patientNewB), NURSE_B);
+      expect(openedByB.statusCode).toBe(201);
+      const pendingB = openedByB.json() as { id: string; version: number };
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_B)).statusCode).toBe(200);
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_A)).statusCode).toBe(404);
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_ORG_B)).statusCode).toBe(404);
+      const patchByA = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admissions/${pendingB.id}`,
+        headers: NURSE_A,
+        payload: { hospicePhysicianId: MD, ifVersion: pendingB.version },
+      });
+      expect(patchByA.statusCode).toBe(404);
+      const patchByB = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admissions/${pendingB.id}`,
+        headers: NURSE_B,
+        payload: { hospicePhysicianId: MD, ifVersion: pendingB.version },
+      });
+      expect(patchByB.statusCode).toBe(200);
+      // nurse A's own pending admission stays hers: still 200 after B's work
+      expect((await get(`/api/v1/admissions/${freshId}`, NURSE_A)).statusCode).toBe(200);
+      expect((await get(`/api/v1/admissions/${freshId}`, NURSE_B)).statusCode).toBe(404);
+    } finally {
+      await admin.query(
+        "DELETE FROM role_permission WHERE permission_key='admission.update' AND role_id IN (SELECT id FROM role WHERE key='rn')",
+      );
+      await app.close();
+      resetAuthorizationContract();
+      resetRbacEngine();
+    }
+  }, 120_000);
+
+  it("MIGRATION 0379: grants the admitting clinician roles admission.create / .read / billing.eligibility.read ONLY where the role exists, idempotently — pinned to ADMITTING_CLINICIAN_DEFAULT_GRANTS; never an external role", async () => {
+    const sqlText = readFileSync(join(MIGRATIONS_DIR, MIGRATION_0379), "utf8");
+    const fromSql: Record<string, string[]> = {};
+    for (const m of sqlText.matchAll(/\('([a-z_]+)',\s*'([a-z_.]+)'\)/g)) {
+      const role = m[1] as string;
+      fromSql[role] ??= [];
+      fromSql[role].push(m[2] as string);
+    }
+    const sorted = (o: Record<string, readonly string[]>) =>
+      Object.fromEntries(Object.entries(o).map(([r, k]) => [r, [...k].sort()]));
+    expect(sorted(fromSql)).toEqual(sorted(ADMITTING_CLINICIAN_DEFAULT_GRANTS));
+    expect(Object.keys(fromSql)).not.toContain("physician_office");
+    expect(Object.values(fromSql).flat()).not.toContain("billing.eligibility.check");
+
+    // The clinical role keys the dev seed creates (seed-staff-personas.ts) + director_of_nursing (templates.ts),
+    // and three that must get nothing.
+    const SEEDED = [
+      "rn",
+      "rn_case_manager",
+      "lpn",
+      "md",
+      "hospice_physician",
+      "medical_director",
+      "np",
+    ];
+    const ids: Record<string, string> = {};
+    for (const key of [
+      ...SEEDED,
+      "director_of_nursing",
+      "pa",
+      "physician_office",
+      "msw",
+      "rn_intake_x",
+    ])
+      ids[key] = await roleIn(ORG, key);
+    const rnOrgB = await roleIn(ORG_B, "rn");
+    // ORG_B never created `pa` — it must get nothing for it.
+
+    await admin.query(sqlText);
+    await admin.query(sqlText); // idempotent
+
+    const keysOf = async (roleId: string) =>
+      (
+        await admin.query(
+          "SELECT permission_key FROM role_permission WHERE role_id=$1 ORDER BY permission_key",
+          [roleId],
+        )
+      ).rows.map((r) => r.permission_key as string);
+    const expected = ["admission.create", "admission.read", "billing.eligibility.read"];
+    for (const key of [...SEEDED, "director_of_nursing", "pa"])
+      expect(await keysOf(ids[key] as string), key).toEqual(expected);
+    expect(await keysOf(rnOrgB)).toEqual(expected);
+    for (const key of ["physician_office", "msw", "rn_intake_x"])
+      expect(await keysOf(ids[key] as string), key).toEqual([]);
+    expect(
+      (await admin.query("SELECT 1 FROM role WHERE organization_id=$1 AND key='pa'", [ORG_B]))
+        .rowCount,
+    ).toBe(0);
+    const mismatched = await admin.query(
+      `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+        WHERE rp.organization_id <> r.organization_id`,
     );
     expect(mismatched.rows[0].n).toBe(0);
   });

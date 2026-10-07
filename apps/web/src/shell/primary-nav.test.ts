@@ -80,6 +80,7 @@ describe("buildPrimaryNav", () => {
       screen("/ipu/units"),
       screen("/compliance/admissions"),
       screen("/admissions/new"),
+      screen("/admissions/readmit"),
       screen("/intake"),
     ]);
     const admissions = nav.flatMap((s) => s.entries).find((e) => e.key === "admissions");
@@ -87,6 +88,8 @@ describe("buildPrimaryNav", () => {
       "/admissions/new",
       // The Discharge / transfer hub sits right below New admission, whatever the registration order.
       "/admissions/discharges",
+      // Readmit — the readmission candidates list — right after Discharge / transfer.
+      "/admissions/readmit",
       "/compliance/admissions",
       "/referrals",
       "/referrals/new",

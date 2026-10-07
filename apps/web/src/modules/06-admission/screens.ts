@@ -49,6 +49,7 @@ const DischargeCosign = lazy(() =>
 );
 const TransferIn = lazy(() => import("./transfer-in").then((m) => ({ default: m.TransferIn })));
 const Readmission = lazy(() => import("./readmission").then((m) => ({ default: m.Readmission })));
+const ReadmitList = lazy(() => import("./readmit-list").then((m) => ({ default: m.ReadmitList })));
 const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -138,6 +139,19 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: DischargesHub,
     },
     {
+      // Readmit — the patients who can come back (the worklist's `recently_discharged` bucket), each with "Readmit…" →
+      // `/admissions/:id/readmit`. Nav entry right after "Discharge / transfer" (primary-nav.ts childOrder). Gated on
+      // `admission.create`, which intake supervisors and — since migration 0379 — the nursing / physician / NP / PA
+      // roles hold; the server scopes the rows (intake org-wide, clinicians their own site). Static path: react-router
+      // ranks it above `/admissions/:id`.
+      id: "admission.readmit-list",
+      path: "/admissions/readmit",
+      title: "Readmit",
+      navGroup: "Admissions",
+      requiredPermission: "admission.create",
+      screen: ReadmitList,
+    },
+    {
       // Patient-scoped Election & Certification — reached from the patient chart tab (param path, no nav).
       id: "admission.patient-election-cert",
       path: "/patients/:patientId/election-certification",
@@ -164,8 +178,8 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
     {
       // Readmit a live-discharged patient: previous episode, benefit period (HETS-confirmed or a warning), the
       // period's requirements, intake, review → POST /api/v1/admissions (readmittedFromAdmissionId + benefitPeriod).
-      // Reached from the admission detail of a discharged stay, the discharge hub's "Recently discharged" list and
-      // the patient chart. No nav entry (it acts on one admission).
+      // Reached from the Readmit list, the admission detail of a discharged stay, the discharge hub's "Recently
+      // discharged" list and the patient chart. No nav entry of its own (it acts on one admission).
       id: "admission.readmit",
       path: "/admissions/:id/readmit",
       title: "Readmit patient",

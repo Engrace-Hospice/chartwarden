@@ -3496,6 +3496,8 @@ export function createDbAdmissionRouteService(
               referralId: input.referralId ?? null,
               hospicePhysicianId: input.hospiceMedicalDirectorId,
               attendingPhysicianId: input.attendingPhysicianId ?? null,
+              // §6.8 — who opened it: `admission.scope`'s creator arm while it is still unsited.
+              createdByUserId: actorUserId || null,
               status: t.to,
               ...(first?.admissionAt ? { admissionAt: first.admissionAt } : {}),
               // Only once `resolveFirstBenefitPeriod` verified it is an earlier, live-ended stay of THIS patient in
@@ -6071,7 +6073,33 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             ),
           )
           .limit(1);
-        return { hasActiveOrOnHoldAdmission: open !== undefined };
+        const [any] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+          .limit(1);
+        // The latest referral of this patient that names a site — how a never-admitted patient is placed (§6.8).
+        const [ref] = await tx
+          .select({ providerEntityId: REF.providerEntityId, locationId: REF.locationId })
+          .from(REF)
+          .where(
+            and(
+              eq(REF.organizationId, organizationId),
+              eq(REF.patientId, patientId),
+              or(isNotNull(REF.providerEntityId), isNotNull(REF.locationId)),
+            ),
+          )
+          .orderBy(desc(REF.createdAt))
+          .limit(1);
+        // The chart's site comes from M5's own org-scoped read (M6 never selects M5's table).
+        return {
+          hasActiveOrOnHoldAdmission: open !== undefined,
+          hasAnyAdmission: any !== undefined,
+          providerEntityId: patient.providerEntityId ?? null,
+          locationId: patient.locationId ?? null,
+          referralProviderEntityId: ref?.providerEntityId ?? null,
+          referralLocationId: ref?.locationId ?? null,
+        };
       });
     },
     async loadReferral(organizationId, id) {
@@ -6098,14 +6126,19 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(ADM)
-          .where(eq(ADM.id, id))
+          // Explicit org predicate as well as RLS (defense in depth: the §6.8 predicates read through this).
+          .where(and(eq(ADM.id, id), eq(ADM.organizationId, organizationId)))
           .limit(1);
         return r
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -6148,6 +6181,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             admissionId: CW.admissionId,
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(CW)
           .innerJoin(ADM, eq(CW.admissionId, ADM.id))
@@ -6158,6 +6192,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               admissionId: r.admissionId,
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -6175,6 +6210,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(EP)
           .innerJoin(ADM, eq(EP.admissionId, ADM.id))
@@ -6184,6 +6220,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -6194,6 +6231,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(ES)
           .innerJoin(EP, eq(ES.electionPeriodId, EP.id))
@@ -6204,6 +6242,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -6214,6 +6253,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(CTI)
           .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
@@ -6224,6 +6264,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -6234,6 +6275,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(F2F)
           .innerJoin(EP, eq(F2F.electionPeriodId, EP.id))
@@ -6244,6 +6286,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -6254,6 +6297,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(LOC)
           .innerJoin(ADM, eq(LOC.admissionId, ADM.id))
@@ -6263,6 +6307,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });

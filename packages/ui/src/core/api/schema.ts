@@ -40474,6 +40474,12 @@ export interface operations {
                             transferEventId: string | null;
                             dischargeType: string | null;
                             effectiveDate: string | null;
+                            /** @description recently_discharged only: the patient's name and MRN (M5's org-scoped read); null when M5 cannot resolve it. */
+                            patient?: {
+                                firstName: string;
+                                lastName: string;
+                                mrn: string;
+                            } | null;
                         }[];
                         nextCursor: string | null;
                     };

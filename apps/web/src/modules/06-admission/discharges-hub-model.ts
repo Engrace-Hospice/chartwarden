@@ -16,6 +16,11 @@ export interface WorklistItem {
   transferEventId: string | null;
   dischargeType: string | null;
   effectiveDate: string | null;
+  /**
+   * `recently_discharged` rows only: the name + MRN the server read through M5 (a readmission candidate is usually
+   * off the caller's caseload, so the patient read would 404). `null` = M5 could not resolve it; absent = read it.
+   */
+  patient?: { firstName: string; lastName: string; mrn: string } | null;
 }
 
 export interface HubPatient {
@@ -24,6 +29,9 @@ export interface HubPatient {
   firstName?: string | null;
   lastName?: string | null;
 }
+
+/** The `recently_discharged` look-back, in days (the server's RECENTLY_DISCHARGED_DAYS). */
+export const RECENTLY_DISCHARGED_DAYS = 90;
 
 /** Rows fetched per bucket page — the patient reads stay bounded by what is on screen. */
 export const HUB_PAGE_SIZE = 25;
@@ -87,12 +95,24 @@ export function endLabel(dischargeType: string | null): string {
   return END_LABEL[dischargeType] ?? dischargeType.replace(/_/g, " ");
 }
 
-/** The patient ids of `rows` not yet in `known` — the reads still owed for what is on screen. */
+/** The patients the server already named on the rows (`patient` present, even `null`) — never read again. */
+export function embeddedPatients(rows: readonly WorklistItem[]): Record<string, HubPatient | null> {
+  const out: Record<string, HubPatient | null> = {};
+  for (const r of rows) {
+    if (r.patient === undefined) continue;
+    out[r.patientId] = r.patient ? { id: r.patientId, ...r.patient } : null;
+  }
+  return out;
+}
+
+/** The patient ids of `rows` not yet in `known` (nor named on the row) — the reads still owed for what is on screen. */
 export function unresolvedPatientIds(
   rows: readonly WorklistItem[],
   known: Readonly<Record<string, unknown>>,
 ): string[] {
-  return [...new Set(rows.map((r) => r.patientId))].filter((id) => !(id in known));
+  return [...new Set(rows.filter((r) => r.patient === undefined).map((r) => r.patientId))].filter(
+    (id) => !(id in known),
+  );
 }
 
 /** Whole days from `isoDate` (yyyy-mm-dd or an instant) to `today` (yyyy-mm-dd); `null` when unknown. */

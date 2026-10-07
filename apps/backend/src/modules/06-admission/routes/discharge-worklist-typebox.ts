@@ -1,7 +1,9 @@
 // apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox.ts — the wire schemas of the end-of-episode
 // worklist (`GET /api/v1/discharges/worklist`), the read behind the web "Discharge / transfer" hub. One bucket per
 // call, cursor-paginated like the admission census. Patient demographics are NOT carried (M5 owns them; the hub
-// resolves names for the rows it shows).
+// resolves names for the rows it shows) — EXCEPT the `recently_discharged` rows, which carry the name and MRN read
+// through M5's org-scoped PatientIntakeResolver seam: a readmission candidate's caseload assignment has ended, so the
+// caller usually cannot open the chart, yet must know WHOM they are readmitting.
 import { type Static, Type } from "@sinclair/typebox";
 
 export const DISCHARGE_WORKLIST_BUCKETS = [
@@ -53,6 +55,22 @@ export const DischargeWorklistItemSchema = Type.Object({
       format: "date",
       description: "The discharge / transfer effective date (needs_details, awaiting_cosign).",
     }),
+  ),
+  patient: Type.Optional(
+    Type.Union(
+      [
+        Type.Object({
+          firstName: Type.String(),
+          lastName: Type.String(),
+          mrn: Type.String(),
+        }),
+        Type.Null(),
+      ],
+      {
+        description:
+          "recently_discharged only: the patient's name and MRN (M5's org-scoped read); null when M5 cannot resolve it.",
+      },
+    ),
   ),
 });
 export type DischargeWorklistItem = Static<typeof DischargeWorklistItemSchema>;

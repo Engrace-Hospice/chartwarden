@@ -178,3 +178,15 @@ export function hetsAnswerChanged(
     v ? `${v.checkId ?? ""}|${v.lastAttempt?.checkId ?? ""}` : "|";
   return key(before) !== key(after);
 }
+
+/**
+ * Whether this user can run a HETS check from the Benefit period step: HETS must be configured and the
+ * caller must hold `billing.eligibility.check`. Otherwise the period is looked up manually.
+ */
+export function canRunHetsCheck(load: HetsLoad, canCheck: boolean): boolean {
+  if (!canCheck) return false;
+  if (load.kind === "unavailable") return false;
+  if (load.kind === "loaded")
+    return load.view.hetsConfigured && load.view.status !== "hets_not_configured";
+  return true;
+}

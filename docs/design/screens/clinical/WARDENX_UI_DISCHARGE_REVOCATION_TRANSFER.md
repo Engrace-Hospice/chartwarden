@@ -114,9 +114,11 @@ Create versions for:
 ## Readmission (`/admissions/:id/readmit`)
 
 A patient discharged **alive** (live discharge, revocation, transfer out — never a death) comes back. Entry points:
-the admission detail of a discharged stay ("Readmit patient"), the discharge hub's **Recently discharged** list
-(live endings of the last 90 days whose patient has no later admission), and the patient chart's Election &
-Certification tab. Gated on `admission.create`. Same workspace frame as the end-of-episode workflows (chart banner,
+the **Readmit** list (below), the admission detail of a discharged stay ("Readmit patient"), the discharge hub's
+**Recently discharged** list (live endings of the last 90 days whose patient has no later admission), and the patient
+chart's Election & Certification tab. Gated on `admission.create` — intake supervisors and (migration 0379) the
+nursing, physician, NP and PA roles; the server scopes WHICH patients (intake org-wide, a clinician their own provider
+entity / location — the `admission_clinical_site_scope` predicate). Same workspace frame as the end-of-episode workflows (chart banner,
 step navigator, flat sections, right rail: the previous admission + what happens on create).
 
 Steps:
@@ -142,3 +144,13 @@ warning) and links to the readmission workflow when the patient has a live-ended
 HETS: the benefit-period field has one integration slot (`useHetsHospicePeriods`) for the HETS 270/271 hospice-period
 read; until it is wired the confirmation is the manual checkbox + date.
 
+## Readmit list (`/admissions/readmit`)
+
+Sidebar: **Admissions → Readmit**, right after Discharge / transfer; shown to `admission.create` holders. The patients
+who can be readmitted — the discharge worklist's `recently_discharged` bucket (live discharges, revocations, transfers
+out of the last 90 days, never deaths, patient with no later admission), scoped server-side as above. Same idiom as the
+hub: page head, one flat panel with a name / MRN search and the hub's recently-discharged table (patient, MRN, how it
+ended, date, days since, **Readmit…** → `/admissions/:id/readmit`), empty state ("No one to readmit"), and a right rail
+("Before you readmit": new election, HETS check, F2F from period 3, not-listed guidance). Rows carry the patient's name
+and MRN from the server (a former patient's chart is usually off the caller's caseload), so the name is not a chart
+link here.

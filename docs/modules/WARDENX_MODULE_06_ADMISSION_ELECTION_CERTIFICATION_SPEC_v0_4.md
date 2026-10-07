@@ -3102,10 +3102,10 @@ Target: `patientId`, or `admissionId` (resolved to its patient under RLS). It is
 
 | Route | Composition |
 |---|---|
-| `GET /api/v1/admissions/:id/readmission-context` | `admission.scope` OR `admission_intake_scope` |
-| `GET /api/v1/patients/:patientId/benefit-period-plan` | `caseload_or_scope` OR `admission_intake_scope` |
-| `POST /api/v1/admissions` | `caseload_or_scope` OR `admission_intake_scope` |
-| `GET /api/v1/billing/eligibility/hospice-periods` (M23, by name through the M3 registry) | `caseload_or_scope` OR `admission_intake_scope` |
+| `GET /api/v1/admissions/:id/readmission-context` | `admission.scope` OR `admission_intake_scope` OR `admission_clinical_site_scope` (§6.8) |
+| `GET /api/v1/patients/:patientId/benefit-period-plan` | `caseload_or_scope` OR `admission_intake_scope` OR `admission_clinical_site_scope` |
+| `POST /api/v1/admissions` | `caseload_or_scope` OR `admission_intake_scope` OR `admission_clinical_site_scope` |
+| `GET /api/v1/billing/eligibility/hospice-periods` (M23, by name through the M3 registry) | `caseload_or_scope` OR `admission_intake_scope` OR `admission_clinical_site_scope` |
 
 Every other patient-keyed route keeps its single scope predicate.
 
@@ -3116,7 +3116,19 @@ Every other patient-keyed route keeps its single scope predicate.
 | `intake_coordinator` | `admission.read`, `billing.eligibility.read` |
 | `intake_supervisor` | `admission.create`, `admission.read`, `billing.eligibility.read` |
 
-`billing.eligibility.check` (a live HETS round-trip) is not granted. `admission.create` stays supervisor-only per §6.2.
+`billing.eligibility.check` (a live HETS round-trip) is not granted. Among the intake roles `admission.create` stays supervisor-only per §6.2; §6.8 extends it to the clinical admitting roles.
+
+### 6.8 Clinician Admissions — `admission_clinical_site_scope` and the clinician default grants
+
+Nurses, physicians, NPs and PAs open admissions themselves — a brand-new admission or a readmission — for the patients of **their own site**. Their former patients are usually off their caseload by the time they come back (the assignment ended with the discharge), so `caseload_or_scope` alone refused them. M6 registers **`admission_clinical_site_scope`**, which allows when ALL of:
+
+1. the caller holds an admitting clinician role (`ADMITTING_CLINICIAN_ROLE_KEYS`, `packages/auth/src/roles/admitting-clinician-grants.ts`) from the server-assembled `context.roles`, and has a site scope (`context.providerEntityIds` / `.locationIds`, from the membership);
+2. the patient is a patient of the caller's organization (M5's org-scoped read) with **no `active` / `on_hold` admission**; and
+3. the patient's site is the caller's: the **location** decides when both the chart and the caller know one, otherwise the **provider entity**. M5 stamps the chart's site when an admission activates. An unsited chart falls back to the named earlier stay's site; a **brand-new** patient (no admission in the org at all, so never sited) is placed at the site of their latest referral that names one; only a patient with no site anywhere (no referral site either) is reachable at create time by any admitting clinician who has a site scope.
+
+Target: `patientId`, `admissionId` (readmission context, keyed by the earlier stay) or `priorAdmissionId` (`POST /admissions`' `readmittedFromAdmissionId`); when a patient AND a stay are named, the stay must be that patient's. OR-composed on exactly the §6.7 routes. **`admission.scope` and an unsited admission.** A new admission stays unsited until its election is drafted. An admitting clinician reaches an UNSITED admission only when they opened it (`admission.created_by_user_id`, recorded by `POST /admissions`, migration `0379`) or the patient's chart is sited at their site — never merely because the chart has no site yet. A sited admission keeps the provider-entity arm alone. `admission.create` is still required for `POST /admissions` (RBAC first; an external role such as `physician_office` holding the key still fails the predicate). The discharge worklist's `recently_discharged` bucket (the web **Readmit** list, `/admissions/readmit`) mirrors the two predicates for an `admission.create` holder: intake roles see it org-wide, admitting clinicians at their own site (admission site, same location-then-PE test); every other bucket keeps the caseload narrowing. Its rows carry the patient's name and MRN (M5's org-scoped read), since the chart itself is usually off the caller's caseload.
+
+**Default grants** (`ADMITTING_CLINICIAN_DEFAULT_GRANTS`; backfilled by migration `0379` wherever a tenant has created the role, `ON CONFLICT DO NOTHING`; the dev seed reads the same constant): `admission.create`, `admission.read`, `billing.eligibility.read` to `rn`, `lpn`, `rn_case_manager`, `director_of_nursing`, `md`, `physician`, `hospice_physician`, `medical_director`, `attending_clinician`, `np`, `nurse_practitioner`, `pa`. Never to `physician_office` or any portal / collaborator role; `billing.eligibility.check` is not granted.
 -----
 
 ## 7. Workflow Acceptance Criteria
