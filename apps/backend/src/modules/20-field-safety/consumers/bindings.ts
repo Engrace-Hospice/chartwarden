@@ -48,13 +48,15 @@ import type {
   IsoInstant,
   MembershipId,
   OrgId,
+  PatientId,
   SafetyPolicyEffectiveDto,
   VisitId,
 } from "@wardenx/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { type EffectPatch, runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
-import { getVisitReader } from "../seams/consumed";
+import { getUpcomingVisitReader, getVisitReader } from "../seams/consumed";
+import { decidePatientDeceased } from "./m5-patient-deceased";
 import { decideVisitNoShow } from "./m17-no-show";
 import { decideVisitCompleted, decideVisitReassigned, planVisitCadence } from "./m17-visit-cadence";
 import { decideEvvCheckIn, decideEvvCheckOut } from "./m18-evv-brackets";
@@ -70,6 +72,9 @@ import { visitAnchorsFrom } from "./seam-context";
 
 /** §3.3 — a consumer-driven write names no acting membership. */
 const CONSUMER_USER_ID = "";
+
+/** How far ahead (one year) a decedent's upcoming visits are resolved — wider than any scheduling horizon. */
+const UPCOMING_HORIZON_HOURS = 24 * 365;
 
 /** What the live M20 visit consumers need. */
 export interface FieldSafetyConsumerDeps {
@@ -367,6 +372,45 @@ export function buildFieldSafetyConsumers(
           stringOf("m20.gps-spoof-badge", payload, "postingMembershipId") as MembershipId,
           instantOf("m20.gps-spoof-badge", payload, "capturedAt"),
         );
+      },
+    },
+
+    // §4.4 `m5-patient-deceased.consumer` (GAP-135) — a death closes the open obligations on the decedent's
+    // upcoming visits. Not a `visitConsumer`: the payload names a PATIENT, so the visits are resolved through
+    // M17's published reader (a seam failure propagates and the delivery retries — an obligation left open on a
+    // dead patient's visit is the failure this consumer exists to prevent), then every visit's rows are
+    // retired in ONE transaction. No visit => nothing to do, and a redelivery finds nothing open (idempotent).
+    {
+      consumerName: "m20.patient-deceased",
+      consumerModule: "m20",
+      eventTypes: ["m5.patient.deceased"],
+      async handle(event) {
+        const consumer = "m20.patient-deceased";
+        const payload = recordOf(consumer, event.payload);
+        const organizationId = event.organizationId as OrgId;
+        const patientId = stringOf(consumer, payload, "patientId") as PatientId;
+        const at = clock();
+
+        await runWithRequestContext({ organizationId, userId: CONSUMER_USER_ID }, async () => {
+          const upcoming = await getUpcomingVisitReader().upcomingForPatient(
+            organizationId,
+            patientId,
+            UPCOMING_HORIZON_HOURS,
+          );
+          if (upcoming.length === 0) return;
+          await withOrgContext(
+            deps.db,
+            { organizationId, userId: CONSUMER_USER_ID },
+            async (handle) => {
+              const tx = handle as DbClient;
+              const rowsByVisit = await Promise.all(
+                upcoming.map((visit) => scheduleRowsForVisit(tx, organizationId, visit.visitId)),
+              );
+              const decision = decidePatientDeceased({ rowsByVisit });
+              await applyScheduleMutations(tx, organizationId, decision.mutations, at);
+            },
+          );
+        });
       },
     },
 

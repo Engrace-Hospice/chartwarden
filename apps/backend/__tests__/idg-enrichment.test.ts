@@ -27,6 +27,10 @@ import {
   registerIdgRoutes,
 } from "../src/modules/14-idg/index";
 
+// GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> =>
+  ({ includes: () => true }) as unknown as readonly string[];
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -110,7 +114,7 @@ function makeServer(opts: {
   }
   registerAbacRegistry(registry);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerIdgRoutes(app, { service: backend, enrichment: opts });
+  registerIdgRoutes(app, { service: backend, enrichment: opts, caseload: COVERS_EVERY_PATIENT });
   return { app };
 }
 

@@ -42,6 +42,9 @@ import {
   registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
+/** GAP-132 — flips the stubbed grant+consent predicate; reset after every use. */
+const portalConsentLive = { value: true };
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -54,6 +57,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const pinnedPatient = request.headers["x-test-session-patient"];
+  if (typeof pinnedPatient === "string" && pinnedPatient.length > 0)
+    request.context.attributes.sessionPatientId = pinnedPatient;
 }
 
 const ORG = "org_a";
@@ -139,6 +145,14 @@ function makeServer() {
   )) {
     reg.register(name, predicate);
   }
+
+  // GAP-132 — the M31-owned `portal_grant_active_for_patient` (active grant + live M39 consent), stubbed over a
+  // switch the test flips; the real predicate's rules are covered in the M31 suites.
+  reg.register("portal_grant_active_for_patient", async (_context, target) => {
+    return (
+      portalConsentLive.value && typeof target.patientId === "string" && target.patientId.length > 0
+    );
+  });
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -654,10 +668,38 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
     const portal = await app.inject({
       method: "GET",
       url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
-      headers: SCHED,
+      headers: { ...SCHED, "x-test-session-patient": PATIENT },
     });
     expect(portal.statusCode).toBe(200);
     expect((portal.json() as Array<{ visitId: string }>).map((v) => v.visitId)).toContain(id);
+
+    // GAP-132 — a portal session pinned to patient B asking for patient A (or an unpinned session) is a 404.
+    const OTHER_PATIENT = "99999999-9999-4999-8999-999999999999";
+    const crossPatient = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: { ...SCHED, "x-test-session-patient": OTHER_PATIENT },
+    });
+    expect(crossPatient.statusCode).toBe(404);
+    const unpinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: SCHED,
+    });
+    expect(unpinned.statusCode).toBe(403); // no pinned patient: the grant predicate refuses first
+
+    // GAP-132 — a withdrawn M39 consent (or lapsed grant) refuses the read before the handler runs.
+    portalConsentLive.value = false;
+    try {
+      const withdrawn = await app.inject({
+        method: "GET",
+        url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+        headers: { ...SCHED, "x-test-session-patient": PATIENT },
+      });
+      expect(withdrawn.statusCode).toBe(403);
+    } finally {
+      portalConsentLive.value = true;
+    }
     await app.close();
   });
 });
@@ -681,7 +723,7 @@ describe("M17-T07 — route 26: on-demand route optimisation", () => {
 });
 
 describe("M17-T07 — routes 28-29: dashboard metrics", () => {
-  it("reads org-wide visit metrics and per-clinician route-efficiency metrics", async () => {
+  it("reads org-wide visit metrics; route-efficiency is 501 (no fabricated data)", async () => {
     const { app } = makeServer();
     const window = "from=2026-06-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z";
     const visits = await app.inject({
@@ -697,8 +739,7 @@ describe("M17-T07 — routes 28-29: dashboard metrics", () => {
       url: `/api/v1/metrics/route-efficiency?membership=${RN_MEMBERSHIP}&${window}`,
       headers: SCHED,
     });
-    expect(routeEff.statusCode).toBe(200);
-    expect(routeEff.json().membershipId).toBe(RN_MEMBERSHIP);
+    expect(routeEff.statusCode).toBe(501); // GAP-131 — no fabricated zeros while route optimisation is off
     await app.close();
   });
 });

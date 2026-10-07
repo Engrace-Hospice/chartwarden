@@ -47,6 +47,7 @@ export {
   getEncounterCreator,
   getHospitalizationRiskProvider,
   getMedicationOrderProvider,
+  getOrderProvider,
   getOrderSignatureProvider,
   getProtocolSuggestionProvider,
   getRefillInboxProvider,

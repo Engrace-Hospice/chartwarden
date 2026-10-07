@@ -16,7 +16,7 @@ import {
   requireAbac,
   requirePermission,
 } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { clinicianCapture } from "../capture-guards";
@@ -106,6 +106,22 @@ const AGG_CANCEL = P("evv.aggregator.cancel");
 const READ_METRICS = P("evv.read_metrics");
 const LOCATION_READ = P("evv.location.read_team");
 const PORTAL_ARRIVAL = P("portal.evv.read_arrival");
+// GAP-132 — the portal session is paired with its pinned patient by an ACTIVE M31 grant AND a live M39 consent
+// (`portal_grant_active_for_patient`, resolved by name from the shared ABAC registry — no M31 import). Account and
+// patient come from the SESSION, never the request; a withdrawn consent refuses the read before any byte crosses.
+const sessionAttrOf = (request: FastifyRequest, key: string): string => {
+  const value = request.context?.attributes?.[key];
+  return typeof value === "string" ? value : "";
+};
+const ABAC_PORTAL_GRANT = (action: string): PreHandler =>
+  requireAbac(action, "portal_grant_active_for_patient", {
+    getTarget: ((r: FastifyRequest) => ({
+      portalAccountId: sessionAttrOf(r, "portalAccountId"),
+      patientId: sessionAttrOf(r, "sessionPatientId"),
+    })) as never,
+    notFoundOnDeny: false,
+  }) as PreHandler;
+const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.evv.read_arrival");
 
 // §4.7 — the capture routes' gate target: visitId + capturedAt from the body, membershipId from the session.
 const captureGateTarget = (request: {
@@ -595,13 +611,17 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   app.get(
     "/api/v1/portal/visits/:visitId/arrival",
     {
-      preHandler: [PORTAL_ARRIVAL],
+      preHandler: [PORTAL_ARRIVAL, PORTAL_GRANT],
       config: { auditRead: { resourceKind: "evv_visit_arrival", resourceIdParam: "visitId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);
-      return service.portalArrival(organizationId, visitId);
+      // GAP-132 — only the patient the portal session is pinned to may read a visit's arrival; the service
+      // scopes the events to that patient, so another patient's visit reads as "not yet arrived".
+      const pinned = request.context?.attributes.sessionPatientId;
+      if (typeof pinned !== "string" || pinned.length === 0) throw new NotFoundError("visit");
+      return service.portalArrival(organizationId, visitId, pinned);
     },
   );
 }

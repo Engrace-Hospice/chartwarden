@@ -20,19 +20,19 @@
 //      volunteer joins a plan that is already `initiating` or `active` without moving it — so this method
 //      is a guarded column write plus the §4.4 event, and NOT a `transitionBereavementPlan` call that
 //      would raise ILLEGAL_TRANSITION for every plan in the system.
-//   2. The M5 CAREGIVER ROSTER is unavailable. §4.2's `seedFromCaregivers` wants M5's caregiver rows, but
-//      the only bound M5 seam (`PatientReader`) returns identity, not a roster. Rather than silently
-//      opening a plan with an empty roster, the request is honored as far as it can be (the counselor's
-//      `additionalContacts`) and the §2.2 `ROSTER_EMPTY` guard refuses an activation that would otherwise
+//   2. The M5 CAREGIVER ROSTER is read through the `PatientCaregiverRosterReader` seam (GAP-129) when
+//      `seedFromCaregivers` is not false: each current caregiver not already on the plan becomes a `proposed`
+//      contact (never twice), alongside the counselor's `additionalContacts`. A deny-stub boot (no M5 db)
+//      degrades to the additions only, and the §2.2 `ROSTER_EMPTY` guard refuses an activation that would
 //      have produced a bereavement program serving nobody.
 //   3. An ad-hoc contact log CREATES its outreach row. `bereavement_contact_log.outreach_id` is NOT NULL
 //      (§3.3.5), so routes 26 / 32 materialize a `completed` outreach row for the touchpoint that just
 //      happened and hang the log off it. Inventing a nullable column instead would have made the CoP
 //      denominator unable to see counselor-initiated contacts at all.
-//   4. Every `*_cipher` column is written NULL by this layer. The DEK envelope encryption is M34's key
-//      ring; until the M16 cipher port binds, an unencrypted email/phone/note must not be written into a
-//      column whose contract says ciphertext — a plaintext row in a `_cipher` column is worse than an
-//      absent one, because every downstream reader would treat it as decrypted PHI.
+//   4. Every `*_cipher` column is written through the per-tenant DEK envelope (`../bereavement-crypto`,
+//      GAP-129). With no cipher bound a request that carries an email / phone / address / note is REFUSED 503 —
+//      a plaintext row in a `_cipher` column is worse than an absent one, and silently discarding it told the
+//      counselor it was saved. Sealing runs before the transaction opens (the key provider has its own pool).
 import {
   bereavementWindowEnd,
   isClosedPlanStatus,
@@ -40,7 +40,12 @@ import {
 } from "@wardenx/bereavement";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import {
+  ForbiddenError,
+  NotFoundError,
+  type PatientCaregiverRosterReader,
+  WardenXError,
+} from "@wardenx/types";
 import type {
   BereavedContactRelationship,
   BereavementAnniversaryMark,
@@ -56,6 +61,8 @@ import type {
   MembershipId,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { NotImplementedError, getSeam } from "../../../bootstrap/index";
+import type { BereavementCipher, BereavementCipherColumn } from "../bereavement-crypto";
 import {
   BereavementStateError,
   anniversaryMarksForTier,
@@ -72,6 +79,7 @@ import {
   verifySourceEncounter,
 } from "../lifecycle/index";
 import { scoreBereavementRisk } from "../risk/index";
+import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
 import { type EffectPatch, runEffects } from "./effects-runner";
@@ -155,6 +163,36 @@ export interface M16WriteDeps {
   }) => Promise<boolean>;
   /** GAP-049 — resolves M8's BereavementEncounterReader per call (default: the M1 seam registry). */
   readonly encounterReader?: () => BereavementEncounterReader;
+  /**
+   * GAP-129 — the per-tenant DEK envelope for the four `*_cipher` columns (the composition root binds M34's
+   * `getTenantKeyProvider()`). UNBOUND ⇒ FAIL-CLOSED: a request that carries an email / phone / mailing address /
+   * note is refused 503 rather than silently discarded or written as plaintext into a ciphertext column.
+   */
+  readonly cipher?: BereavementCipher;
+  /** GAP-129 — M5's caregiver roster (default: the M1 seam registry). A deny-stub / unbound reader degrades to
+   *  the counselor's additions only; the §2.2 `ROSTER_EMPTY` guard still refuses an empty program. */
+  readonly caregiverRoster?: () => PatientCaregiverRosterReader;
+}
+
+/**
+ * GAP-129 — email / phone / mailing address / counselor notes are sealed into the `*_cipher` columns with the tenant DEK.
+ * Without a bound cipher a request that CARRIES one of them is refused (503): accepting it and silently discarding it told
+ * the counselor it was saved. A request without any is unaffected.
+ */
+export const CHANNEL_STORAGE_UNAVAILABLE = "CHANNEL_STORAGE_UNAVAILABLE";
+const channelStorageUnavailable = (): WardenXError =>
+  new WardenXError(
+    CHANNEL_STORAGE_UNAVAILABLE,
+    "contact details and counselor notes cannot be stored until the encrypted store is available; submit without them",
+    503,
+  );
+export function assertSensitiveStorable(
+  values: ReadonlyArray<string | undefined | null>,
+  cipherBound: boolean,
+): void {
+  if (cipherBound) return;
+  if (!values.some((v) => typeof v === "string" && v.trim().length > 0)) return;
+  throw channelStorageUnavailable();
 }
 
 export function buildDrizzleM16WriteService(
@@ -180,6 +218,67 @@ export function buildDrizzleM16WriteService(
   const relationshipOk = deps.relationshipInValueSet ?? (async () => true);
   const sudAllowed = deps.sudDisclosureAllowed ?? (async () => false);
   const encounterReader = deps.encounterReader ?? getBereavementEncounterReader;
+  const cipher = deps.cipher;
+  const rosterReader = deps.caregiverRoster ?? (() => getSeam("PatientCaregiverRosterReader"));
+  /**
+   * The decedent's current caregivers. A DENY-STUB (`NotImplementedError` — a boot without M5's db) degrades to an
+   * empty roster so the counselor's additions still land and the §2.2 `ROSTER_EMPTY` guard decides; ANY other failure
+   * propagates, because a roster that could not be read must not become a silently smaller program.
+   */
+  async function readCaregiverRoster(organizationId: string, patientId: string) {
+    try {
+      return await rosterReader().caregiversForPatient(organizationId, patientId);
+    } catch (error) {
+      if (error instanceof NotImplementedError) return [];
+      throw error;
+    }
+  }
+
+  /**
+   * Seal one value for a `*_cipher` column. `undefined` = untouched, `null` / blank = cleared. Runs BEFORE the
+   * transaction opens: the M34 key provider takes its own pooled connection, and holding ours while it does is the
+   * M21-T05 / M36 self-deadlock.
+   */
+  async function seal(
+    organizationId: string,
+    column: BereavementCipherColumn,
+    value: string | null | undefined,
+  ): Promise<string | null | undefined> {
+    if (value === undefined) return undefined;
+    if (value === null || value.trim().length === 0) return null;
+    if (!cipher) throw channelStorageUnavailable();
+    return cipher.encrypt(organizationId, column, value);
+  }
+  const sealNotes = (organizationId: string, notes: string | undefined | null) =>
+    seal(organizationId, "bereavement_contact_log.contact_notes", notes).then((v) => v ?? null);
+  async function sealChannels(
+    organizationId: string,
+    channels: {
+      readonly email?: string | null;
+      readonly phone?: string | null;
+      readonly mailingAddress?: string | null;
+    },
+  ) {
+    assertSensitiveStorable(
+      [channels.email, channels.phone, channels.mailingAddress],
+      cipher !== undefined,
+    );
+    return {
+      email: await seal(organizationId, "bereaved_contact.email", channels.email),
+      phone: await seal(organizationId, "bereaved_contact.phone", channels.phone),
+      mailingAddress: await seal(
+        organizationId,
+        "bereaved_contact.mailing_address",
+        channels.mailingAddress,
+      ),
+    };
+  }
+  /** The `*_cipher` column set for an INSERT (a missing channel is NULL). */
+  const channelColumnsForInsert = (sealed: Awaited<ReturnType<typeof sealChannels>>) => ({
+    emailCipher: sealed.email ?? null,
+    phoneCipher: sealed.phone ?? null,
+    mailingAddressCipher: sealed.mailingAddress ?? null,
+  });
 
   const scope = (actor: M16MutatingActor) => ({
     organizationId: actor.organizationId,
@@ -774,15 +873,64 @@ export function buildDrizzleM16WriteService(
 
     // ── 5 — seed the roster + the D4 schedule (`initiating → active`) ───────────────────────────────
     async seedRosterAndSchedule(actor, planId, input: SeedRosterAndScheduleInput) {
+      // GAP-129 — everything that needs a cross-module seam or the M34 key provider runs BEFORE the transaction
+      // (a seam / key-provider call inside our own tx self-deadlocks the pool — M21-T05). The plan's patient is a
+      // short pre-read; the roster is read once; every channel is sealed.
+      const drafts = input.additionalContacts ?? [];
+      const sealedDrafts = await Promise.all(
+        drafts.map((draft) => sealChannels(actor.organizationId, draft)),
+      );
+      const roster =
+        input.seedFromCaregivers === false
+          ? []
+          : await readCaregiverRoster(
+              actor.organizationId,
+              (await withOrgContext(db, scope(actor), async (tx) => planOr404(tx, planId)))
+                .patientId,
+            );
+      const sealedRoster = await Promise.all(
+        roster.map((entry) =>
+          sealChannels(actor.organizationId, { email: entry.email, phone: entry.phone }),
+        ),
+      );
       const result = await withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         checkVersion(input.expectedVersion, plan.version);
         const at = now();
 
-        // Decision 2 — the M5 caregiver roster is unavailable, so only the counselor's additions land.
-        const drafts = input.additionalContacts ?? [];
+        // M5 caregivers still to seed (never twice: a link already on the plan is skipped), as `proposed` contacts.
+        const alreadySeeded = new Set(
+          (
+            await tx
+              .select({ link: CONTACT.patientCaregiverIdFromM5 })
+              .from(CONTACT)
+              .where(eq(CONTACT.planId, plan.id))
+          )
+            .map((r) => r.link)
+            .filter((id): id is string => id !== null),
+        );
         const seeded: ContactRow[] = [];
-        for (const draft of drafts) {
+        const seedPlan = planCaregiverSeeds(roster, alreadySeeded);
+        for (const caregiver of seedPlan) {
+          const channels =
+            sealedRoster[roster.findIndex((r) => r.caregiverId === caregiver.caregiverId)];
+          const [row] = await tx
+            .insert(CONTACT)
+            .values({
+              ...inherit(plan),
+              planId: plan.id,
+              status: "proposed",
+              displayName: caregiver.displayName,
+              relationshipCode: caregiver.relationshipCode as BereavedContactRelationship,
+              caregiverIdFromM5: caregiver.caregiverId,
+              patientCaregiverIdFromM5: caregiver.patientCaregiverId,
+              ...(channels ? channelColumnsForInsert(channels) : {}),
+              preferredLanguageIso639: caregiver.preferredLanguageIso639,
+            })
+            .returning();
+          if (row) seeded.push(row);
+        }
+        for (const [draftIndex, draft] of drafts.entries()) {
           if (!(await relationshipOk(draft.relationshipCode))) {
             throw new BereavementStateError(
               "RELATIONSHIP_NOT_IN_VALUE_SET",
@@ -797,6 +945,9 @@ export function buildDrizzleM16WriteService(
               status: "proposed",
               displayName: draft.displayName,
               relationshipCode: draft.relationshipCode as BereavedContactRelationship,
+              ...(sealedDrafts[draftIndex]
+                ? channelColumnsForInsert(sealedDrafts[draftIndex])
+                : {}),
               preferredLanguageIso639: draft.preferredLanguageIso639 ?? "en",
               consentRecordId: draft.consentRecordId ?? null,
               ...(draft.outreachPreferences
@@ -1048,6 +1199,7 @@ export function buildDrizzleM16WriteService(
 
     // ── 11 — add a bereaved contact ─────────────────────────────────────────────────────────────────
     async createContact(actor, planId, input: CreateContactInput) {
+      const sealed = await sealChannels(actor.organizationId, input);
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         if (isClosedPlanStatus(plan.status)) {
@@ -1067,6 +1219,7 @@ export function buildDrizzleM16WriteService(
             status: "proposed",
             displayName: input.displayName,
             relationshipCode: input.relationshipCode as BereavedContactRelationship,
+            ...channelColumnsForInsert(sealed),
             preferredLanguageIso639: input.preferredLanguageIso639 ?? "en",
             consentRecordId: input.consentRecordId ?? null,
             ...(input.outreachPreferences
@@ -1085,17 +1238,22 @@ export function buildDrizzleM16WriteService(
 
     // ── 12 — preferences / channels ─────────────────────────────────────────────────────────────────
     async updateContact(actor, contactId, input: UpdateContactInput) {
+      const sealed = await sealChannels(actor.organizationId, input);
       return withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         checkVersion(input.expectedVersion, contact.version);
         const at = now();
-        // Decision 4 — the three `*_cipher` columns stay untouched until the M34 DEK port binds. The
-        // submitted channel values are validated and accepted at the boundary but not persisted in
-        // plaintext, and the response reflects what was actually stored.
+        // GAP-129 — a submitted channel is sealed with the tenant DEK (above, before the tx); `undefined` leaves the
+        // column untouched and `null` clears it.
         const [row] = await tx
           .update(CONTACT)
           .set({
             ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
+            ...(sealed.email === undefined ? {} : { emailCipher: sealed.email }),
+            ...(sealed.phone === undefined ? {} : { phoneCipher: sealed.phone }),
+            ...(sealed.mailingAddress === undefined
+              ? {}
+              : { mailingAddressCipher: sealed.mailingAddress }),
             ...(input.preferredLanguageIso639 === undefined
               ? {}
               : { preferredLanguageIso639: input.preferredLanguageIso639 }),
@@ -1490,6 +1648,8 @@ export function buildDrizzleM16WriteService(
 
     // ── 21 — in_progress → completed (writes the contact-log row in the SAME tx) ────────────────────
     async completeOutreach(actor, outreachId, input: CompleteOutreachInput) {
+      assertSensitiveStorable([input.notes], cipher !== undefined);
+      const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1520,7 +1680,7 @@ export function buildDrizzleM16WriteService(
             sourceEncounterId: requiresSourceEncounter(input.kind as BereavementOutreachKind)
               ? (input.sourceEncounterId ?? null)
               : null,
-            contactNotesCipher: null,
+            contactNotesCipher: notesCipher,
             artifactDocumentId: input.artifactDocumentId ?? null,
             loggedByUserId: actor.membershipId,
             contactRespondedDirectly: input.contactResponded,
@@ -1563,6 +1723,8 @@ export function buildDrizzleM16WriteService(
 
     // ── 22 — the survivor declined THIS touchpoint ──────────────────────────────────────────────────
     async declineOutreach(actor, outreachId, input: OutreachOutcomeInput) {
+      assertSensitiveStorable([input.notes], cipher !== undefined);
+      const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1579,7 +1741,7 @@ export function buildDrizzleM16WriteService(
           contactAt: new Date(at),
           kind: outreach.kind,
           outcome: "declined",
-          contactNotesCipher: null,
+          contactNotesCipher: notesCipher,
           loggedByUserId: actor.membershipId,
           contactRespondedDirectly: true,
         });
@@ -1608,6 +1770,8 @@ export function buildDrizzleM16WriteService(
 
     // ── 23 — no response after retries ──────────────────────────────────────────────────────────────
     async noResponseOutreach(actor, outreachId, input: OutreachOutcomeInput) {
+      assertSensitiveStorable([input.notes], cipher !== undefined);
+      const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
@@ -1620,7 +1784,7 @@ export function buildDrizzleM16WriteService(
           contactAt: new Date(at),
           kind: outreach.kind,
           outcome: "no_response",
-          contactNotesCipher: null,
+          contactNotesCipher: notesCipher,
           loggedByUserId: actor.membershipId,
           contactRespondedDirectly: false,
         });
@@ -1705,6 +1869,8 @@ export function buildDrizzleM16WriteService(
 
     // ── 26 — an ad-hoc contact-log row ──────────────────────────────────────────────────────────────
     async logDirectContact(actor, contactId, input: LogDirectContactInput) {
+      assertSensitiveStorable([input.notes], cipher !== undefined);
+      const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         const plan = await planOr404(tx, contact.planId);
@@ -1735,7 +1901,7 @@ export function buildDrizzleM16WriteService(
             contactAt: new Date(input.contactAt),
             kind: input.kind as BereavementOutreachKind,
             outcome: input.outcome as BereavementContactLogOutcome,
-            contactNotesCipher: null,
+            contactNotesCipher: notesCipher,
             artifactDocumentId: input.artifactDocumentId ?? null,
             loggedByUserId: actor.membershipId,
             contactRespondedDirectly: input.contactResponded,
@@ -1828,6 +1994,8 @@ export function buildDrizzleM16WriteService(
 
     // ── 32 — log an external referral WITHOUT ending the program ────────────────────────────────────
     async referExternal(actor, contactId, input: ReferExternalInput) {
+      assertSensitiveStorable([input.notes], cipher !== undefined);
+      const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         const plan = await planOr404(tx, contact.planId);
@@ -1846,7 +2014,7 @@ export function buildDrizzleM16WriteService(
             contactAt: new Date(at),
             kind: "external_referral",
             outcome: "requested_followup",
-            contactNotesCipher: null,
+            contactNotesCipher: notesCipher,
             loggedByUserId: actor.membershipId,
             contactRespondedDirectly: false,
             externalResourceIdFromM40: input.externalResourceId,

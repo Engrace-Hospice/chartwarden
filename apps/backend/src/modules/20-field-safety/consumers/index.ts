@@ -28,14 +28,15 @@
 //   • `m36.notification.delivery_failed` was M20-T06's, out of scope for the M17/M18/M19 binding F-043
 //     landed — it now has its own binding, `./m36-delivery-failed`'s `buildSosDeliveryFailureConsumer`,
 //     appended directly in `./bindings` rather than re-exported through this barrel (#205 M36 follow-up).
-//   • `m5.patient.deceased` remains unbound: a patient death should close that patient's open safety
-//     obligations, and no consumer for it has been written yet (`outbox-subscription-exceptions.ts`).
+//   • `m5.patient.deceased` is bound by `./m5-patient-deceased` (GAP-135): a death retires the open
+//     obligations on the decedent's upcoming visits (wired in `./bindings`).
 export * from "./bindings";
 export * from "./m17-no-show";
 export * from "./m17-visit-cadence";
 export * from "./m18-evv-brackets";
 export * from "./m18-gps-spoof";
 export * from "./m19-after-hours";
+export * from "./m5-patient-deceased";
 export * from "./schedule-plan";
 export * from "./schedule-store";
 export * from "./seam-context";

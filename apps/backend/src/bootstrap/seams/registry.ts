@@ -128,6 +128,7 @@ import {
   patientAdmissionClearanceReaderDenyStub,
   patientAllergyReaderDenyStub,
   patientCaregiverReaderDenyStub,
+  patientCaregiverRosterReaderDenyStub,
   patientCounterProviderDenyStub,
   patientCoverageReaderDenyStub,
   patientDaysProviderDenyStub,
@@ -251,6 +252,14 @@ export const REQUIRED_SEAMS = [
   // M5 — TASK-015/ARCH-018: the M31 `state_two_party_recording_consent_present` ABAC read (D9/§3.8).
   // PHI: a residence state is PHI-adjacent (M5 owns patient_address); M5 registers a real impl over
   // `patient_address` at boot.
+  // M5 — GAP-129: the caregiver roster M16 seeds a bereavement plan from. PHI (names + contact channels); M5
+  // registers a real impl over `patient_caregiver` + `caregiver` at a db boot.
+  {
+    key: "PatientCaregiverRosterReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCaregiverRosterReaderDenyStub,
+  },
   {
     key: "PatientAddressReader",
     ownerModule: 5,

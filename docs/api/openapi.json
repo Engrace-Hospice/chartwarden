@@ -112493,7 +112493,8 @@
                       "status",
                       "dueDate",
                       "linkedArtifactKind",
-                      "linkedArtifactId"
+                      "linkedArtifactId",
+                      "version"
                     ],
                     "properties": {
                       "id": {
@@ -112624,6 +112625,10 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -112652,6 +112657,24 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
             "schema": {
               "type": "string"
             }
@@ -112704,6 +112727,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -112722,7 +112763,8 @@
                     "status",
                     "dueDate",
                     "linkedArtifactKind",
-                    "linkedArtifactId"
+                    "linkedArtifactId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -112853,6 +112895,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -112914,6 +112960,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -112963,6 +113027,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -112976,7 +113058,8 @@
                     "id",
                     "meetingId",
                     "kind",
-                    "patientId"
+                    "patientId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -113050,6 +113133,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -113093,6 +113180,24 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
             "schema": {
               "type": "string"
             }
@@ -113145,6 +113250,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -113162,7 +113285,8 @@
                     "status",
                     "checkedInAt",
                     "disciplineAttested",
-                    "recordedByMembershipId"
+                    "recordedByMembershipId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -113221,6 +113345,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -113287,6 +113415,24 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
             "schema": {
               "type": "string"
             }
@@ -115250,7 +115396,8 @@
                     "status",
                     "dueDate",
                     "linkedArtifactKind",
-                    "linkedArtifactId"
+                    "linkedArtifactId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -115381,6 +115528,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -115535,7 +115686,8 @@
                       "id",
                       "meetingId",
                       "kind",
-                      "patientId"
+                      "patientId",
+                      "version"
                     ],
                     "properties": {
                       "id": {
@@ -115609,6 +115761,10 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -115651,7 +115807,8 @@
                     "id",
                     "meetingId",
                     "kind",
-                    "patientId"
+                    "patientId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -115725,6 +115882,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -115821,7 +115982,8 @@
                       "status",
                       "checkedInAt",
                       "disciplineAttested",
-                      "recordedByMembershipId"
+                      "recordedByMembershipId",
+                      "version"
                     ],
                     "properties": {
                       "id": {
@@ -115880,6 +116042,10 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -115926,7 +116092,8 @@
                     "status",
                     "checkedInAt",
                     "disciplineAttested",
-                    "recordedByMembershipId"
+                    "recordedByMembershipId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -115985,6 +116152,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -119853,7 +120024,8 @@
                     "id",
                     "locationId",
                     "cadenceDays",
-                    "active"
+                    "active",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -119869,6 +120041,10 @@
                     },
                     "active": {
                       "type": "boolean"
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -119927,6 +120103,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -119940,7 +120134,8 @@
                     "id",
                     "locationId",
                     "cadenceDays",
-                    "active"
+                    "active",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -119956,6 +120151,10 @@
                     },
                     "active": {
                       "type": "boolean"
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }

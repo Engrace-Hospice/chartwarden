@@ -29,6 +29,7 @@ export {
   VERBAL_ATTESTATION_MAX_CHARS,
   VERBAL_ATTESTATION_MIN_CHARS,
   appendLinkedVerbalOrderId,
+  assertVerbalOrderBelongsToCall,
   assertVerbalOrderScope,
   assertVerbalOrderStepUp,
   buildVerbalOrderInput,

@@ -16,6 +16,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientAdmissionClearanceReader } from "../admission-clearance-reader";
 import { buildPatientAllergyReader } from "../allergy-reader";
+import { buildPatientCaregiverRosterReader } from "../caregiver-roster-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
 import { buildPatientHopeAdmissionPrefillReader } from "../hope-admission-prefill-reader";
 import { buildMbiUnlockReader } from "../mbi-unlock-reader";
@@ -120,6 +121,9 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // without one and the deny-stub's loud failure is honest (the ABAC predicate already fails closed
   // on an unreadable residence — see the interface doc).
   if (deps.db) registerSeam("PatientAddressReader", buildPatientAddressReader(deps.db));
+  // GAP-129 — the caregiver roster M16 seeds a bereavement plan's contacts from (db boots only; the deny-stub throws otherwise).
+  if (deps.db)
+    registerSeam("PatientCaregiverRosterReader", buildPatientCaregiverRosterReader(deps.db));
   // GAP-061 — the §3.5 sex-class + privacy-flag read M37's shared-room occupancy gate consults. Same
   // posture again: registered only with a db present. The deny-stub's throw is the honest answer for a
   // db-less boot, and M37 refuses the bed assignment on it rather than reading "no roommates".

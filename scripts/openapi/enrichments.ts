@@ -5122,6 +5122,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update a recurring IDG meeting policy",
     body: M14RecurringPolicyRequest,
     response: M14RecurringPolicyViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/meetings": {
     summary: "Schedule a single (ad-hoc) IDG meeting",
@@ -5170,10 +5171,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Coordinator amends an attendance row",
     body: M14UpdateAttendanceRequest,
     response: M14AttendanceViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/attendance/:id": {
     summary: "Remove an erroneous attendance row (pre-start only)",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/meetings/:id/packets": {
     summary: "List a meeting's per-patient packets",
@@ -5212,10 +5215,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an agenda item",
     body: M14UpdateAgendaItemRequest,
     response: M14AgendaItemViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/agenda/:id": {
     summary: "Remove an agenda item",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/meetings/:id/decisions": {
     summary: "Record a decision (quorate_decision ABAC)",
@@ -5226,6 +5231,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an open decision (open status only)",
     body: M14UpdateDecisionRequest,
     response: M14DecisionViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/decisions/:id/supersede": {
     summary: "Supersede a prior decision (§2.8)",
@@ -5241,10 +5247,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Update an action item (assignee self-service or coordinator)",
     body: M14UpdateActionItemRequest,
     response: M14ActionItemViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/action-items/:id": {
     summary: "Remove an action item (pre-adjourn only)",
     response: M14RemovedResponseSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/action-items": {
     summary: "List action items (assignee self-scoped)",

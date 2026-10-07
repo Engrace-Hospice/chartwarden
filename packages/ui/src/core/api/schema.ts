@@ -48734,6 +48734,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     }[];
                 };
             };
@@ -48744,7 +48745,12 @@ export interface operations {
     deleteApiV1IdgActionitemsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48773,7 +48779,12 @@ export interface operations {
     patchApiV1IdgActionitemsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48811,6 +48822,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -48821,7 +48833,12 @@ export interface operations {
     deleteApiV1IdgAgendaById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48850,7 +48867,12 @@ export interface operations {
     patchApiV1IdgAgendaById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48881,6 +48903,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     };
                 };
             };
@@ -48891,7 +48914,12 @@ export interface operations {
     deleteApiV1IdgAttendanceById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48920,7 +48948,12 @@ export interface operations {
     patchApiV1IdgAttendanceById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -48953,6 +48986,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -48963,7 +48997,12 @@ export interface operations {
     patchApiV1IdgDecisionsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -49430,6 +49469,7 @@ export interface operations {
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
                         linkedArtifactId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -49491,6 +49531,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     }[];
                 };
             };
@@ -49535,6 +49576,7 @@ export interface operations {
                             displayName: string;
                             mrnSuffix: string | null;
                         } | null;
+                        version: number;
                     };
                 };
             };
@@ -49572,6 +49614,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     }[];
                 };
             };
@@ -49621,6 +49664,7 @@ export interface operations {
                         checkedInAt: string;
                         disciplineAttested: boolean;
                         recordedByMembershipId: string | null;
+                        version: number;
                     };
                 };
             };
@@ -50535,6 +50579,7 @@ export interface operations {
                         locationId: string;
                         cadenceDays: number;
                         active: boolean;
+                        version: number;
                     };
                 };
             };
@@ -50545,7 +50590,12 @@ export interface operations {
     patchApiV1IdgRecurringpoliciesById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -50575,6 +50625,7 @@ export interface operations {
                         locationId: string;
                         cadenceDays: number;
                         active: boolean;
+                        version: number;
                     };
                 };
             };

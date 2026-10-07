@@ -34,6 +34,9 @@ import {
   registerEvvRoutes,
 } from "../src/modules/18-evv/index";
 
+/** GAP-132 — flips the stubbed grant+consent predicate; reset after every use. */
+const portalConsentLive = { value: true };
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -44,6 +47,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const pinnedPatient = request.headers["x-test-session-patient"];
+  if (typeof pinnedPatient === "string" && pinnedPatient.length > 0)
+    request.context.attributes.sessionPatientId = pinnedPatient;
   // F-028 — the §2.3 correction and the D6 supervisor override used to take their step-up from
   // `request.headers["x-step-up"]`, a string the gated caller supplies. They resolve the REAL session
   // through M2's `SessionContextResolver` seam now, so the shim stamps a session id the way the
@@ -330,6 +336,14 @@ function makeServer(service?: EvvRoutePort, deviceAttestationEnforced = true) {
   for (const [name, predicate] of Object.entries(buildEvvAbacPredicates({ resolver: backend }))) {
     reg.register(name, predicate);
   }
+
+  // GAP-132 — the M31-owned `portal_grant_active_for_patient` (active grant + live M39 consent), stubbed over a
+  // switch the test flips; the real predicate's rules are covered in the M31 suites.
+  reg.register("portal_grant_active_for_patient", async (_context, target) => {
+    return (
+      portalConsentLive.value && typeof target.patientId === "string" && target.patientId.length > 0
+    );
+  });
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -784,11 +798,39 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
-      headers: PORTAL,
+      headers: { ...PORTAL, "x-test-session-patient": PATIENT },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     expect(res.json().arrivedAt).not.toBeNull();
+
+    // GAP-132 — another patient's portal session must not learn this visit's arrival; an unpinned one is a 404.
+    const other = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+      headers: { ...PORTAL, "x-test-session-patient": "99999999-9999-4999-8999-999999999999" },
+    });
+    expect(other.statusCode).toBe(200);
+    expect(other.json().arrivedAt).toBeNull();
+    const unpinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+      headers: PORTAL,
+    });
+    expect(unpinned.statusCode).toBe(403); // no pinned patient: the grant predicate refuses first
+
+    // GAP-132 — a withdrawn M39 consent (or lapsed grant) refuses the read before the handler runs.
+    portalConsentLive.value = false;
+    try {
+      const withdrawn = await app.inject({
+        method: "GET",
+        url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+        headers: { ...PORTAL, "x-test-session-patient": PATIENT },
+      });
+      expect(withdrawn.statusCode).toBe(403);
+    } finally {
+      portalConsentLive.value = true;
+    }
     await app.close();
   });
 });

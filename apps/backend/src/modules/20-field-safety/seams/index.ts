@@ -57,6 +57,7 @@ export {
   getOnCallProvider,
   getPatientReader,
   getVisitAssignmentReader,
+  getUpcomingVisitReader,
   getVisitReader,
 } from "./consumed";
 export {

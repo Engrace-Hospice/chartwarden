@@ -133,13 +133,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m5.patient.deceased", "m11.order.verbal_expired_unsigned"],
   },
   {
-    module: "m20",
-    kind: "no-handler",
-    reason:
-      "`consumers/index.ts` names this one explicitly as M20-T06's, out of scope for the M17/M18 binding #204 landed: a patient death closes that patient's visits, and the safety obligations attached to them, through a consumer that is not written. Declaring it now would defer an event M16, M23 and M28 are already waiting on.",
-    events: ["m5.patient.deceased"],
-  },
-  {
     module: "m31",
     kind: "record-only-target",
     reason:

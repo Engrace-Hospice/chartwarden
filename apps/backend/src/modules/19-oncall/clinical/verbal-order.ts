@@ -209,6 +209,22 @@ export function verbalOrderLinkEffect(
 }
 
 /**
+ * GAP-134 (D9) — a `verbal_order_recorded` disposition may only name an order that EXISTS in M11 and belongs to the
+ * call's own patient (the `OrderProvider.getOrder` read-back). A fabricated id, or an order of another patient, is a
+ * 422 and is never stored on the call. Pure: the caller does the seam read, outside its own transaction.
+ */
+export function assertVerbalOrderBelongsToCall(
+  order: { readonly patientId: string } | null,
+  callPatientId: string | null,
+): void {
+  require_(
+    order !== null && callPatientId !== null && order.patientId === callPatientId,
+    "DISPOSITION_PAYLOAD_INVALID",
+    "orderRecordId does not name an M11 order for this call's patient",
+  );
+}
+
+/**
  * §3.3 — append an order id to `triage_call.linked_verbal_order_ids` (a jsonb ARRAY: a single call can take
  * more than one verbal order, §7.7's "ondansetron + IV morphine" being the obvious case).
  *
