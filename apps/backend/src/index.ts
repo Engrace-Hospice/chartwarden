@@ -3364,7 +3364,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // produced on the platform Valkey. Either missing (no MINIO_* / no Valkey) leaves the port unbound, so
   // `importPsr` fails closed with a typed 503 rather than queueing an import that can never reconcile.
   const m26PsrS3Config = s3ObjectStoreConfigFromEnv(process.env);
-  const m26PsrObjects = m26PsrS3Config ? createS3ObjectStore(m26PsrS3Config) : null;
+  const m26PsrObjects = m26PsrS3Config
+    ? createS3ObjectStore({ ...m26PsrS3Config, publicEndpoint: m26PsrS3Config.endpoint })
+    : null;
   const m26PsrFiles = m26PsrObjects
     ? createPsrFileStore({
         keys: {
@@ -6883,8 +6885,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // LOINC) sit behind the fail-closed credential deny-stub — no licensed fetch is wired.
     if (m38Producer) {
       const m38Store = createDbLoaderStore(dbHandle.db);
-      const m38Objects = m38S3
-        ? createPlatformObjectPort(m38S3, m38PlatformBucket)
+      const m38Objects = m38S3Config
+        ? createPlatformObjectPort(
+            createS3ObjectStore({ ...m38S3Config, publicEndpoint: m38S3Config.endpoint }),
+            m38PlatformBucket,
+          )
         : {
             async read(): Promise<Uint8Array> {
               throw new Error("platform object storage is not configured (MINIO_* unset)");
@@ -8070,7 +8075,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // job retry rather than pretend the document had no text.
   if (role !== "api" && dbHandle && queueConnection) {
     const intakeS3Config = s3ObjectStoreConfigFromEnv(process.env);
-    const intakeObjects = intakeS3Config ? createS3ObjectStore(intakeS3Config) : null;
+    const intakeObjects = intakeS3Config
+      ? createS3ObjectStore({ ...intakeS3Config, publicEndpoint: intakeS3Config.endpoint })
+      : null;
     const doclingConfig = doclingConfigFromEnv(process.env);
     const intakeWorker = registerDocLensIntakeWorker(
       queueConnection,

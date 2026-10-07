@@ -41,8 +41,10 @@ import type { ObjectStorePort } from "./store";
 
 /** Typed config for {@link createS3ObjectStore}. `endpoint` is an absolute http(s) origin. */
 export interface S3ObjectStoreConfig {
-  /** MinIO/S3 endpoint origin, e.g. `http://minio.internal:9000` (any URL path is ignored). */
+  /** Internal MinIO/S3 endpoint used for server-side IO, e.g. `http://minio:9000`. */
   readonly endpoint: string;
+  /** Public origin used only in presigned URLs. Defaults to `endpoint`. */
+  readonly publicEndpoint?: string;
   /** SigV4 region; defaults to `"us-east-1"` (the MinIO default). */
   readonly region?: string;
   readonly accessKeyId: string;
@@ -76,12 +78,14 @@ export function s3ObjectStoreConfigFromEnv(
   env: Record<string, string | undefined>,
 ): S3ObjectStoreConfig | null {
   const endpoint = env.MINIO_ENDPOINT?.trim();
+  const publicEndpoint = env.MINIO_PUBLIC_ENDPOINT?.trim();
   const accessKeyId = env.MINIO_ACCESS_KEY?.trim();
   const secretAccessKey = env.MINIO_SECRET_KEY?.trim();
   if (!endpoint || !accessKeyId || !secretAccessKey) return null;
   const region = env.MINIO_REGION?.trim();
   return {
     endpoint,
+    ...(publicEndpoint ? { publicEndpoint } : {}),
     accessKeyId,
     secretAccessKey,
     ...(region ? { region } : {}),
@@ -403,8 +407,12 @@ export function createS3ObjectStore(
   const now = deps.now ?? ((): Date => new Date());
   const signedFetch = createS3SignedFetch(config, deps, "createS3ObjectStore");
 
+  const presignEndpointUrl = parseS3Endpoint(
+    config.publicEndpoint ?? config.endpoint,
+    "createS3ObjectStore",
+  );
   const target = (bucket: string, objectKey: string | null): ResolvedTarget => {
-    const endpointUrl = parseS3Endpoint(config.endpoint, "createS3ObjectStore");
+    const endpointUrl = presignEndpointUrl;
     const pathStyle = config.forcePathStyle !== false;
     const host = pathStyle ? endpointUrl.host : `${bucket}.${endpointUrl.host}`;
     const keyPath = objectKey === null ? "" : `/${sigV4UriEncode(objectKey, false)}`;

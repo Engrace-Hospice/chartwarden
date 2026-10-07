@@ -77,6 +77,9 @@ export function mountDocumentRoutes(
   const recordsRequests = createDbRecordsRequestService(db);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
+  const doclingObjects = objectStoreConfig
+    ? createS3ObjectStore({ ...objectStoreConfig, publicEndpoint: objectStoreConfig.endpoint })
+    : null;
   // GAP-068 — `POST /documents` + `/documents/:id/versions` store bytes through the SAME bound object store
   // as the presigned flow. No MINIO_* -> upload answers 503 (nothing stored). No malware scanner
   // implementation exists in this repo, so `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` makes a missing scanner
@@ -218,11 +221,11 @@ export function mountDocumentRoutes(
       ...(writeback.cipher ? { cipher: writeback.cipher } : {}),
       ...(writeback.outbox ? { outbox: writeback.outbox } : {}),
       ...(doclingConfig ? { docling: createHttpDoclingClient(doclingConfig) } : {}),
-      ...(objects
+      ...(doclingObjects
         ? {
             presignSource: async ({ organizationId, bucket, objectKey }) =>
               (
-                await objects.presign({
+                await doclingObjects.presign({
                   organizationId,
                   descriptor: {
                     bucket,

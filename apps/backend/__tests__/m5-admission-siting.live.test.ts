@@ -25,8 +25,6 @@ import {
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 // Imported by exact file path, not the module barrel: the coordinator wires the barrel export
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
 import {
   type AdmissionDischargedDeps,
@@ -551,7 +549,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("revocation, transfer out, no longer terminal, for cause and other all discharge; on_hold too", async () => {
-      const cases: [string, string][] = [
+      const cases: [string, "active" | "on_hold"][] = [
         ["revocation", "active"],
         ["transfer", "active"],
         ["no_longer_terminal", "on_hold"],

@@ -38,8 +38,9 @@ sudo FRONTEND_DOMAIN=app.example.com BACKEND_DOMAIN=api.example.com STORAGE_DOMA
 The bootstrap keeps an existing `.env.production`, installs the storage Nginx vhost when Nginx is
 present, starts MinIO, and verifies `http://127.0.0.1:9000/minio/health/ready`. After DNS points
 `STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal reverse-proxy
-TLS automation. The application reads the public S3 origin from `STORAGE_PUBLIC_ORIGIN`; if it is
-missing or unreachable, `/ready` will fail and document uploads will show storage unavailable.
+TLS automation. The application reaches MinIO over the Compose network (`http://minio:9000`) and
+uses `STORAGE_PUBLIC_ORIGIN` only for browser-facing presigned URLs. The public origin must resolve
+for clients, but `/ready` does not depend on a host-network hairpin through Nginx/TLS.
 
 ### Nginx logging (PHI)
 
