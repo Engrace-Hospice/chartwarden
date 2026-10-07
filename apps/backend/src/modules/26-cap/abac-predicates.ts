@@ -30,8 +30,11 @@ export const M26_REGISTERED_ABAC_PREDICATES = [
 
 export type M26RegisteredAbacPredicate = (typeof M26_REGISTERED_ABAC_PREDICATES)[number];
 
-/** Roles that satisfy the platform-admin axis (the /v1/platform/cap/* surface). */
-const PLATFORM_ADMIN_ROLES: readonly string[] = ["platform_admin", "super_admin"];
+/** Roles that satisfy the platform-admin axis (the /v1/platform/cap/* surface). Every key must be a
+ *  reserved platform key (GAP-003, `@wardenx/auth` platform-reserved): a non-reserved key is
+ *  tenant-mintable through POST /api/v1/roles. `super_admin` was listed here, but no platform role
+ *  carries it, so it was tenant-mintable authority over the platform cap constants. */
+export const M26_PLATFORM_ADMIN_ROLE_KEYS: readonly string[] = ["platform_admin"];
 
 interface M26AbacReadContext {
   readonly organizationId: string;
@@ -144,7 +147,7 @@ export function buildM26AbacPredicates(
       return !!period && period.methodology === null && period.status === "open";
     },
     cap_platform_admin: async (context) =>
-      PLATFORM_ADMIN_ROLES.some((r) => context.roles.includes(r)),
+      M26_PLATFORM_ADMIN_ROLE_KEYS.some((r) => context.roles.includes(r)),
   };
 }
 
