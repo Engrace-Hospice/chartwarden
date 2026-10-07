@@ -23,6 +23,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
+  electionAddendumAcknowledgementSource,
   electionAddendumExemptionReason,
   electionAddendumFurnishMethod,
   electionAddendumSignerKind,
@@ -113,6 +114,11 @@ export const electionAddenda = pgTable(
       () => users.id,
       { onDelete: "set null" },
     ),
+    /** How the acknowledgement was captured (mig 0395): keyed, or a scanned signed paper copy. */
+    acknowledgementSource: electionAddendumAcknowledgementSource("acknowledgement_source"),
+    /** M22 document + exact version of the scanned signed copy (app-validated; `document_id` stays the render). */
+    acknowledgementDocumentId: uuid("acknowledgement_document_id"),
+    acknowledgementDocumentVersionId: uuid("acknowledgement_document_version_id"),
     // ── 418.24(d)(3)/(4): not furnished / not signed because the patient died, revoked or was discharged ──
     signatureNotRequiredReason: electionAddendumExemptionReason("signature_not_required_reason"),
     signatureNotRequiredNote: text("signature_not_required_note"),

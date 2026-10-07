@@ -9,6 +9,8 @@
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/furnish              furnish in writing (renders the PDF)
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature            record the receipt signature
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/refusal              record a refusal (reason required)
+//   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence  scanned signed paper copy
+//   POST   /api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence    scanned paper refusal
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required  death / revocation / discharge
 import { requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
@@ -24,6 +26,8 @@ import {
   ElectionAddendumRefusalSchema,
   ElectionAddendumSignatureNotRequiredSchema,
   ElectionAddendumSignatureSchema,
+  ElectionAddendumUploadedRefusalSchema,
+  ElectionAddendumUploadedSignatureSchema,
   ElectionAddendumViewSchema,
 } from "./election-addendum-typebox";
 import { ResourceNotFoundError } from "./service";
@@ -160,6 +164,67 @@ export function registerElectionAddendumRoutes(
         addendumId,
         body.ifVersion,
         { reason: body.reason },
+        userId,
+      );
+    },
+  );
+
+  // 418.24(c)(9) on paper: the scanned signed copy was uploaded to M22 first (verified-upload ceremony); this
+  // attaches that exact version. Same permission + ABAC as the keyed signature. A draft (paper furnished outside
+  // WardenX) needs `furnishedAt` and is furnished (paper) and signed in one transaction.
+  app.post(
+    "/api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence",
+    {
+      preHandler: [ADDENDUM_ACK, scope("election_addendum.acknowledge")],
+      schema: { response: { 200: ElectionAddendumViewSchema } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, addendumId } = ids(request);
+      const body = parse(ElectionAddendumUploadedSignatureSchema, request.body);
+      return service.attachUploadedAcknowledgement(
+        organizationId,
+        id,
+        addendumId,
+        body.ifVersion,
+        {
+          outcome: "signed",
+          documentId: body.documentId,
+          documentVersionId: body.documentVersionId,
+          signerKind: body.signerKind,
+          representativeName: body.representativeName ?? null,
+          representativeRelationship: body.representativeRelationship ?? null,
+          signedAt: body.signedAt,
+          ...(body.furnishedAt ? { furnishedAt: body.furnishedAt } : {}),
+        },
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence",
+    {
+      preHandler: [ADDENDUM_ACK, scope("election_addendum.acknowledge")],
+      schema: { response: { 200: ElectionAddendumViewSchema } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, addendumId } = ids(request);
+      const body = parse(ElectionAddendumUploadedRefusalSchema, request.body);
+      return service.attachUploadedAcknowledgement(
+        organizationId,
+        id,
+        addendumId,
+        body.ifVersion,
+        {
+          outcome: "refused",
+          documentId: body.documentId,
+          documentVersionId: body.documentVersionId,
+          reason: body.reason,
+          ...(body.refusedAt ? { refusedAt: body.refusedAt } : {}),
+          ...(body.furnishedAt ? { furnishedAt: body.furnishedAt } : {}),
+        },
         userId,
       );
     },

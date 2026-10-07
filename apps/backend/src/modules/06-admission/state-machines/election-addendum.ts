@@ -206,3 +206,59 @@ export function exemptionEventFor(
   if (status === "furnished") return { type: "recordSignatureNotRequired", reason };
   return null;
 }
+
+/** What a scanned signed (or refused) paper copy attached to a version needs to know (pure inputs). */
+export interface UploadedAcknowledgementFacts {
+  readonly status: ElectionAddendumStatus;
+  /** When the paper was signed (signature) or the refusal documented (refusal). */
+  readonly acknowledgedAt: Date;
+  /** When the paper addendum was handed over — required only when the version was never furnished in-system. */
+  readonly furnishedAt: Date | null;
+  readonly now: Date;
+}
+
+/** The plan for an uploaded acknowledgement: furnish first (paper furnished outside WardenX), or not. */
+export interface UploadedAcknowledgementPlan {
+  readonly furnishFirst: boolean;
+  /** The (c)(10) furnish date to record when `furnishFirst`; null otherwise. */
+  readonly furnishedAt: Date | null;
+}
+
+const validPast = (d: Date | null, now: Date): d is Date =>
+  d !== null && !Number.isNaN(d.getTime()) && d.getTime() <= now.getTime();
+
+/**
+ * 418.24(c)(9)/(c)(10) — attach a scanned signed (or refused) paper copy. Allowed from `furnished` (the
+ * acknowledgement step) and from `draft` (the paper was furnished outside the system, so it is furnished — by
+ * paper — at `furnishedAt` in the same step). A draft therefore REQUIRES `furnishedAt`, on or before the
+ * acknowledgement; neither date may be in the future. The acknowledgement guard itself (representative name,
+ * refusal reason) stays in {@link transitionElectionAddendum}.
+ */
+export function planUploadedAcknowledgement(
+  facts: UploadedAcknowledgementFacts,
+): UploadedAcknowledgementPlan {
+  if (facts.status !== "draft" && facts.status !== "furnished") {
+    throw new AdmissionStateError(
+      "ILLEGAL_TRANSITION",
+      `A signed paper copy cannot be attached to an election addendum that is '${facts.status}'`,
+    );
+  }
+  require_(
+    validPast(facts.acknowledgedAt, facts.now),
+    "ADDENDUM_DATE_INVALID",
+    "The signature date must be a valid date that is not in the future",
+  );
+  if (facts.status === "furnished") return { furnishFirst: false, furnishedAt: null };
+  require_(
+    facts.furnishedAt !== null,
+    "ADDENDUM_FURNISH_DATE_REQUIRED",
+    "This addendum was never furnished in WardenX: enter the date the paper copy was given to the patient",
+  );
+  require_(
+    validPast(facts.furnishedAt, facts.now) &&
+      facts.furnishedAt.getTime() <= facts.acknowledgedAt.getTime(),
+    "ADDENDUM_DATE_INVALID",
+    "The furnished date must be a valid past date on or before the signature date",
+  );
+  return { furnishFirst: true, furnishedAt: facts.furnishedAt };
+}

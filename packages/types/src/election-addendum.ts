@@ -27,6 +27,10 @@ export type ElectionAddendumFurnishMethod = "paper" | "electronic_with_paper_cop
 /** Who acknowledged receipt (mirrors `election_addendum_signer_kind`). */
 export type ElectionAddendumSignerKind = "beneficiary" | "representative";
 
+/** How the (c)(9) acknowledgement was captured (mirrors `election_addendum_acknowledgement_source`): keyed in
+ *  WardenX, or a scanned signed paper copy uploaded to M22. */
+export type ElectionAddendumAcknowledgementSource = "structured" | "uploaded";
+
 /** 418.24(d)(3)/(4) — why furnishing or signing was not required (mirrors `election_addendum_exemption_reason`). */
 export type ElectionAddendumExemptionReason = "death" | "revocation" | "discharge";
 

@@ -159,6 +159,8 @@ import {
   ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
   ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
   ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
+  ElectionAddendumUploadedRefusalSchema as M6ElectionAddendumUploadedRefusalSchema,
+  ElectionAddendumUploadedSignatureSchema as M6ElectionAddendumUploadedSignatureSchema,
   ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import {
@@ -3792,6 +3794,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admissions/:id/election-addendum/:addendumId/refusal": {
     summary: "Record a refusal to sign, with the reason (418.24(c)(9))",
     body: M6ElectionAddendumRefusalSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence": {
+    summary:
+      "Attach a scanned signed paper copy as the receipt signature (418.24(c)(9)); a draft needs furnishedAt and is furnished on paper in the same step",
+    body: M6ElectionAddendumUploadedSignatureSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence": {
+    summary:
+      "Attach a scanned paper copy documenting a refusal to sign, with the reason (418.24(c)(9))",
+    body: M6ElectionAddendumUploadedRefusalSchema,
     response: M6ElectionAddendumViewSchema,
   },
   "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required": {
