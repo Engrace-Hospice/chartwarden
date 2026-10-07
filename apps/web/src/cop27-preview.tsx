@@ -427,7 +427,11 @@ function cop27Get(path: string): unknown {
     case "/api/v1/admissions/{id}/election-addendum":
       return addendumOverview();
     case "/api/v1/documents/{id}/versions":
-      return { items: [{ id: "ver-render-1", versionNumber: 1 }], nextCursor: null, hasMore: false };
+      return {
+        items: [{ id: "ver-render-1", versionNumber: 1 }],
+        nextCursor: null,
+        hasMore: false,
+      };
     case "/api/v1/documents/{id}/versions/{versionId}/content":
       return { url: "about:blank" };
     case "/api/v1/patients/{id}":
