@@ -302,7 +302,8 @@ export function planM10AlertEmissions(input: {
           workflowItemId: schedule.scheduleId,
           attentionState: "window_expired",
           deadline: schedule.lateDeadlineAt,
-          actionTarget: `/admissions/${schedule.admissionId}/hope`,
+          deepLink: `/admissions/${schedule.admissionId}/hope`,
+          message: "A HOPE assessment timepoint has expired.",
         },
       });
       continue;
@@ -325,9 +326,12 @@ export function planM10AlertEmissions(input: {
         triggeringAssessmentId: sfv.triggeringAssessmentId,
         attentionState: missed ? "missed" : "overdue",
         deadline: sfv.dueAt,
-        actionTarget: sfv.admissionId
+        deepLink: sfv.admissionId
           ? `/admissions/${sfv.admissionId}/hope/sfv/${sfv.sfvId}`
           : "/hope/sfv",
+        message: missed
+          ? "A HOPE symptom follow-up visit was missed."
+          : "A HOPE symptom follow-up visit is overdue.",
       },
     });
   }

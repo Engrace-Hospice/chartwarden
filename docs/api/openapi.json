@@ -34612,6 +34612,7 @@
                           "category",
                           "severity",
                           "summary",
+                          "deepLink",
                           "createdAt",
                           "deliveryStatus",
                           "readAt"
@@ -34669,6 +34670,16 @@
                           },
                           "summary": {
                             "type": "string"
+                          },
+                          "deepLink": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "createdAt": {
                             "type": "string"

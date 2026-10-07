@@ -84,14 +84,14 @@ Create a verbal order: physician communication, created by, created at, check bo
 - Care Team & Assignments: the care team that the nurse or the admin should assign (the RN, the MSW, the Chaplain, the Hospice Aid, the doctor) - Ok
 - Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,... 
 So when there is something regarding a patient, everybody can see it - Ok
+- When a patient is converted, the status should be active - Ok
+- In Demographics & Identifiers, there is a bug on the sex and also we should be able to modify the patient's info - OK
+- In "New Visit" modal, the patient's address should pop up automatically - ok
+
+- In the IDG section, show the care team  members - Ok
+- In the referral, we should be able to modify the Coverage / Payers, Residence address - Ok
+
+
 
 - RN permission in admission & care plan modules
-
-
-- When a patient is converted, the status should be active
-
 - If there is Caregivers & representatives, it should populate their name
-- In Demographics & Identifiers, there is a bug on the sex and also we should be able to modify the patient's info
-- In "New Visit" modal, the patient's address should pop up automatically
-- In the IDG section, show the care team  members
-- In the referral, we should be able to modify the Coverage / Payers, Residence address, 

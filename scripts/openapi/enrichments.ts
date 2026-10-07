@@ -1871,6 +1871,7 @@ const _AlertInboxItemSchema = Type.Object({
   category: Type.String(),
   severity: Type.String(),
   summary: Type.String(),
+  deepLink: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
   deliveryStatus: Type.Union([
     Type.Literal("delivered"),

@@ -30482,6 +30482,7 @@ export interface operations {
                             category: "clinical_urgent" | "clinical_routine" | "operational" | "field_safety" | "administrative" | "system";
                             severity: "info" | "warn" | "critical";
                             summary: string;
+                            deepLink: string | null;
                             createdAt: string;
                             deliveryStatus: "delivered" | "partial" | "failed" | "pending";
                             readAt: string | null;
