@@ -364,6 +364,8 @@ describe.skipIf(!DB_URL)(
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "Patient died at home, family present.",
           deathCertifierId: MD,
+          // Claim patient status 40 (main #327 requires the place of death on a death discharge).
+          placeOfDeath: "home",
         } as never,
         USER,
       );

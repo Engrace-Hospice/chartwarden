@@ -48,11 +48,16 @@ export async function seedPhysicianRole(
   );
 }
 
-/** A 418.26(b) discharge order signed by `userId`, signed now. */
-export function dischargeOrderBy(userId: string): DischargeOrderInput {
+/**
+ * A 418.26(b) discharge order signed by `userId`. Signed now, or — for a back-dated discharge — at noon UTC
+ * of `dischargeDate` when that is earlier (the order may not post-date the discharge by more than a day).
+ */
+export function dischargeOrderBy(userId: string, dischargeDate?: string): DischargeOrderInput {
+  const now = Date.now();
+  const noonOfDischarge = dischargeDate ? Date.parse(`${dischargeDate}T12:00:00.000Z`) : now;
   return {
     signedByUserId: userId,
-    signedAt: new Date().toISOString(),
+    signedAt: new Date(Math.min(now, noonOfDischarge)).toISOString(),
     orderText: "Discharge per 42 CFR 418.26(b).",
   };
 }

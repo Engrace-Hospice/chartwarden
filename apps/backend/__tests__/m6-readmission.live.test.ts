@@ -95,6 +95,7 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 const CTI_CLINICAL = {
   terminalDiagnosisIcd10: "C34.90",
@@ -278,6 +279,8 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
         dischargeDate,
         narrative:
           "The patient's condition stabilized; no longer terminally ill per the IDG review.",
+        // 42 CFR 418.26(b) (FY 2027) — a live discharge on/after 2026-10-01 carries the physician order.
+        dischargeOrder: dischargeOrderBy(MD, dischargeDate),
         ifVersion: adm?.version,
       } as never,
       USER,
@@ -314,6 +317,8 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
         [USER, org],
       );
+    // 42 CFR 418.26(b) — the medical director who signs the live-discharge orders.
+    await seedPhysicianRole(admin, ORG, MD);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
