@@ -162,7 +162,7 @@
       "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
-      "routes": 50,
+      "routes": 56,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -192,7 +192,7 @@
       "mutatingNoBody": 0
     },
     "40-mdm": {
-      "routes": 14,
+      "routes": 19,
       "deficit": 0,
       "mutatingNoBody": 0
     },

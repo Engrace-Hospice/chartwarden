@@ -99,6 +99,7 @@ export { type NppesNpiSource, createDbNppesNpiSource } from "./nppes-npi-source"
 import type { DbClient } from "@wardenx/db";
 import { createMdmEntityProvider } from "@wardenx/mdm";
 import type { FastifyInstance } from "fastify";
+import { createGriefResourceStore, registerGriefResourceRoutes } from "./grief-resources";
 import {
   createDbMdmRouteService as _createDbMdmRouteService,
   createDbMdmStore as _createDbMdmStore,
@@ -114,4 +115,16 @@ import { registerMdmRoutes as _registerMdmRoutes } from "./routes/mdm-routes";
 export function mountMdmRoutes(app: FastifyInstance, db: DbClient): void {
   const provider = createMdmEntityProvider(_createDbMdmStore(db));
   _registerMdmRoutes(app, { provider, service: _createDbMdmRouteService(db) });
+  // GAP-158 - the tenant-curated grief-resource catalog (M16 referrals + the M31 bereaved portal read it).
+  registerGriefResourceRoutes(app, { store: createGriefResourceStore(db) });
 }
+
+// GAP-158 - the M40 grief-resource catalog (store, seam reader, routes).
+export {
+  type GriefResourceInput,
+  type GriefResourceStore,
+  type GriefResourceView,
+  buildGriefResourceReader,
+  createGriefResourceStore,
+  registerGriefResourceRoutes,
+} from "./grief-resources";

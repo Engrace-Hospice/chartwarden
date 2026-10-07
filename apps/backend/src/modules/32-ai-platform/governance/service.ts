@@ -344,6 +344,8 @@ export function aiPermittedNextStates(
 /** R5's body. */
 export interface AiCalibrationPublicationCommand extends AiCalibrationPublicationRequest {
   readonly capabilityId: string;
+  /** GAP-161 - the publishing actor (server-resolved; rides the `m32.capability.calibrated` event). */
+  readonly actorMembershipId?: string;
 }
 
 /** R5 / W6 — publish a calibration: supersede the incumbent and insert the new current row. */
@@ -365,7 +367,7 @@ export async function publishAiCapabilityCalibration(
       at,
     ),
   );
-  return deps.registry.publishCalibration(capability.id, decision.plan);
+  return deps.registry.publishCalibration(capability.id, decision.plan, command.actorMembershipId);
 }
 
 // ── §5.3 / W4 tenant opt-in ────────────────────────────────────────────────────────────────────────

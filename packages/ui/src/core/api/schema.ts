@@ -11791,6 +11791,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mdm/grief-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's grief-resource catalog (active by default) */
+        get: operations["getApiV1MdmGriefresources"];
+        put?: never;
+        /** Add a grief-resource to the tenant catalog */
+        post: operations["postApiV1MdmGriefresources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a grief resource */
+        patch: operations["patchApiV1MdmGriefresourcesById"];
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a grief resource (never deleted; M16 referral history points at it) */
+        post: operations["postApiV1MdmGriefresourcesByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a retired grief resource */
+        post: operations["postApiV1MdmGriefresourcesByIdReactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mdm/license/manual": {
         parameters: {
             query?: never;
@@ -14785,6 +14854,23 @@ export interface paths {
         patch: operations["patchApiV1PlatformCapConstantsByCapYear"];
         trace?: never;
     };
+    "/api/v1/platform/dsar-export-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant DSAR export jobs with SLA filtering (PHI-minimal; platform ops) */
+        get: operations["getApiV1PlatformDsarexportjobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/feature-flags": {
         parameters: {
             query?: never;
@@ -15124,6 +15210,40 @@ export interface paths {
         put?: never;
         /** Initiate offboarding cascade (step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugOffboard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's full onboarding task list and the machine's current step (platform ops) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip an onboarding task with a recorded rationale (platform ops; step-up) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19919,6 +20039,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's own account record */
+        get: operations["getApiV1TenantAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/baa": {
         parameters: {
             query?: never;
@@ -20033,6 +20170,40 @@ export interface paths {
         put?: never;
         /** Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up) */
         post: operations["postApiV1TenantDsarexportjobsByIdFulfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/feature-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Feature flags effective for this tenant (own row overrides the platform row) */
+        get: operations["getApiV1TenantFeatureflags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/feature-flags/{flagKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toggle a tenant-toggleable feature flag (org admin; step-up) */
+        post: operations["postApiV1TenantFeatureflagsByFlagKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -55759,6 +55930,198 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MdmGriefresources: {
+        parameters: {
+            query?: {
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            name: string;
+                            url: string | null;
+                            description: string | null;
+                            resourceKind: string;
+                            phone: string | null;
+                            audience: string | null;
+                            isActive: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    resourceKind: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MdmGriefresourcesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    resourceKind?: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdReactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MdmLicenseManual: {
         parameters: {
             query?: never;
@@ -64862,6 +65225,49 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformDsarexportjobs: {
+        parameters: {
+            query?: {
+                status?: "requested" | "generating" | "review_pending" | "extended" | "fulfilled" | "denied";
+                organizationId?: string;
+                slaBreached?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            orgSlug: string;
+                            status: string;
+                            requestSource: string;
+                            requestedAt: string;
+                            slaDueAt: string;
+                            extendedUntil: string | null;
+                            fulfilledAt: string | null;
+                            slaBreached: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformFeatureflags: {
         parameters: {
             query?: {
@@ -64888,7 +65294,7 @@ export interface operations {
                             flagKey: string;
                             organizationId: string | null;
                             flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                            valueType: "boolean" | "string" | "number" | "json";
+                            valueType: "bool" | "string" | "number" | "json";
                             value: unknown;
                             rolloutPercent: number | null;
                             killSwitchActive: boolean;
@@ -64917,7 +65323,7 @@ export interface operations {
                     flagKey: string;
                     organizationId?: string | null;
                     flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                    valueType: "boolean" | "string" | "number" | "json";
+                    valueType: "bool" | "string" | "number" | "json";
                     value: unknown;
                     rolloutPercent?: number;
                     rationale?: string;
@@ -64936,7 +65342,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;
@@ -64978,7 +65384,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;
@@ -65817,6 +66223,89 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         status: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStep: string | null;
+                        tasks: {
+                            id: string;
+                            templateKey: string;
+                            status: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    skipRationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        templateKey: string;
+                        status: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
                     };
                 };
             };
@@ -79966,6 +80455,40 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1TenantAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        organizationId: string;
+                        status: string;
+                        planLabel: string;
+                        legalBusinessName: string;
+                        dbaName: string | null;
+                        billingContactEmail: string;
+                        breachNotificationEmail: string;
+                        provisionedAt: string | null;
+                        activatedAt: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantBaa: {
         parameters: {
             query?: {
@@ -80291,6 +80814,80 @@ export interface operations {
                         deniedReason: string | null;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantFeatureflags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            flagKey: string;
+                            flagKind: string;
+                            valueType: string;
+                            value: unknown;
+                            rolloutPercent: number | null;
+                            killSwitchActive: boolean;
+                            scope: "tenant" | "platform";
+                            tenantToggleable: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantFeatureflagsByFlagKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flagKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flagKey: string;
+                        flagKind: string;
+                        valueType: string;
+                        value: unknown;
+                        rolloutPercent: number | null;
+                        killSwitchActive: boolean;
+                        scope: "tenant" | "platform";
+                        tenantToggleable: boolean;
+                        updatedAt: string;
                     };
                 };
             };

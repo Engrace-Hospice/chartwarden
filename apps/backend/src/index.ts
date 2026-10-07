@@ -255,6 +255,7 @@ import {
 } from "./modules/04-audit/jobs/audit-ops-workers";
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
+import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
@@ -1148,6 +1149,8 @@ import {
   buildDrizzleAiPlatformAbacResolver,
   buildDrizzleM32ReadService,
   buildLiveAiInvocationPipeline,
+  buildSpendReader,
+  buildTriageFollowUpQueue,
   createAiPromptRegistry,
   createDenyingAiOptInEvidenceResolver,
   createDocLensOutputProjector,
@@ -1161,12 +1164,17 @@ import {
   createDrizzleAiSeamActorResolver,
   createDrizzleAiTenantConsentStore,
   createFilesystemAiPromptArtifactReader,
+  createM32EventEmitter,
+  createOrganizationSettingsAiTokenBudgetResolver,
   createUnconfiguredAiTokenBudgetResolver,
   denyStubAiPlatformAbacResolver,
   mountM32Routes,
   registerAiPlatformAbacPredicates,
   registerAiPlatformSeams,
   registerAiProvenanceErasers,
+  registerM32TokenRollupWorker,
+  registerM32TriageFollowUpWorker,
+  scheduleM32TokenRollupJob,
   startAiBackendHealthSweep,
   wireM32Tenancy,
 } from "./modules/32-ai-platform/index";
@@ -1208,7 +1216,9 @@ import {
   buildM34WorkerDeps,
   buildPlatformEnqueue,
   buildTenantEnqueue,
+  createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
+  createDrizzleTenantAccountFlagsService,
   createM34ProvisionGateway,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -1462,6 +1472,7 @@ export function wireModuleSeams(
       ? {
           store: createDbMdmStore(deps.db),
           baaStore: createDbBaaStore(deps.db),
+          db: deps.db,
         }
       : {},
   );
@@ -2098,6 +2109,10 @@ export function wireModuleSeams(
   // MALFORMED AI configuration throws here — a deployment that asked for a backend and silently got none
   // would read as "AI is off" when it is "AI is misconfigured".
   const m32Backends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
+  // GAP-161 - the seam-side stores publish the same `m32.*` events through the catalog-validating publisher.
+  const wiredM32Events = deps.outboxPublisher
+    ? createM32EventEmitter(bindCallerModule(deps.outboxPublisher, "m32"))
+    : undefined;
   const m32PromptRegistry = deps.db
     ? createAiPromptRegistry({
         store: createDrizzleAiPromptTemplateStore({
@@ -2105,6 +2120,7 @@ export function wireModuleSeams(
           platformDb: deps.db,
           auditBypass: m34PlatformBypassAuditor,
           jobId: M32_PLATFORM_JOB_ID,
+          events: wiredM32Events,
         }),
         // F-236 — templates are reviewed files in the repo (packages/ai-platform/prompts), pinned by hash
         // on their `ai_prompt_template` row; the registry refuses a body whose hash drifted.
@@ -2130,6 +2146,7 @@ export function wireModuleSeams(
                   },
                   flags: createDrizzleFeatureFlagReader(deps.db),
                   backends: m32Backends,
+                  events: wiredM32Events,
                 }),
                 actors: createDrizzleAiSeamActorResolver(deps.db),
                 projector: createDocLensOutputProjector(),
@@ -3244,6 +3261,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // GAP-159 - M31's catalog-validating publisher + the shared emitter. The logger is late-bound: the emitter is
   // built before `app` exists, and a decision-point emit failure must reach the real log, not vanish.
   const m31OutboxPublisher = bindCallerModule(txOutboxPublisher, "m31");
+  // GAP-161 - M32's catalog-validating publisher + the shared emitter (same-tx emits from the Drizzle stores).
+  const m32Events = createM32EventEmitter(bindCallerModule(txOutboxPublisher, "m32"));
   let m31Warn: (message: string, context: Record<string, string>) => void = (message, context) =>
     console.warn(message, context);
   const m31Events = dbHandle
@@ -4067,6 +4086,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
             }),
+            // GAP-164 - the cross-tenant DSAR list + onboarding read/skip (audited platform credential) and the
+            // tenant account + feature-flag routes (tenant pool; flags through the same M1 admin seam).
+            ...(platformDbHandle
+              ? {
+                  platformOps: {
+                    service: createDrizzlePlatformOpsService({
+                      platformDb: platformDbHandle.db,
+                      auditBypass: m34PlatformBypassAuditor,
+                      platformJobId: M34_PLATFORM_JOB_ID,
+                    }),
+                  },
+                }
+              : {}),
+            tenantAccountFlags: {
+              service: createDrizzleTenantAccountFlagsService({
+                db: dbHandle.db,
+                flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              }),
+            },
             // AC-05 — SECURITY_HARDENING §22.1's 5/IP/hour on the public signup surface. The route
             // has always composed the preHandler; the composition root never injected a limiter, so
             // `createAllowAllRateLimiter()` stood and the budget was unlimited. Note this is
@@ -4688,6 +4726,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               baseUrl: process.env.PORTAL_APP_URL ?? webAppBaseUrl,
             }),
             uploadIntake: buildPortalUploadIntakePort(dbHandle.db),
+            // GAP-158 - accepting an invitation issued for a roster caregiver claims that caregiver for the login.
+            caregiverLink: { linkInTx: linkCaregiverToUserInTx },
+            // GAP-159 - invited / activated / granted ride the issue + accept transactions.
+            events: m31Events,
           });
           // GAP-092 — a bereaved family member's own opt-out is M16's D9 transition (it cancels the contact's future
           // outreach); the scope read names which contact(s) the portal account is.
@@ -4806,12 +4848,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             auditBypass: m34PlatformBypassAuditor,
             jobId: M32_PLATFORM_JOB_ID,
             userId: "",
+            events: m32Events,
           };
           const m32PromptStore = createDrizzleAiPromptTemplateStore({
             db: dbHandle.db,
             platformDb: dbHandle.db,
             auditBypass: m34PlatformBypassAuditor,
             jobId: M32_PLATFORM_JOB_ID,
+            events: m32Events,
           });
           // F-236 — R30 activation hashes the reviewed file it activates; an unresolvable reader made
           // every activation impossible. Same root as the seam-side registry (wireModuleSeams).
@@ -4827,13 +4871,21 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             platformDb: dbHandle.db,
             auditBypass: m34PlatformBypassAuditor,
             jobId: M32_PLATFORM_JOB_ID,
+            events: m32Events,
           });
+          // GAP-161 - the §4.8 triage-follow-up producer (R18 critical filing + R20 triage enqueue the plan).
+          const m32FollowUp = queueConnection
+            ? buildTriageFollowUpQueue(queueConnection)
+            : undefined;
+          if (m32FollowUp) app.addHook("onClose", () => m32FollowUp.queue.close());
           mountM32Routes(app, {
+            followUpQueue: m32FollowUp?.port,
             governance: {
               registry: m32Registry,
               consent: createDrizzleAiTenantConsentStore({
                 db: dbHandle.db,
                 userId: "",
+                events: m32Events,
               }),
               // W4.1's evidence resolver stays DENYING: the BAA / ZDR / clinical-reviewer checks are
               // three upstream seams nothing binds yet, and a default that answered "resolved" would
@@ -4847,6 +4899,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               reports: createDrizzleAiHallucinationReportStore({
                 db: dbHandle.db,
                 userId: "",
+                events: m32Events,
               }),
               evaluations: createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
               registry: m32Registry,
@@ -4864,6 +4917,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             routing: createDrizzleAiRoutingOverrideStore({
               db: dbHandle.db,
               userId: "",
+              events: m32Events,
             }),
             cipher: null,
             promptRegistry: m32PromptRegistry,
@@ -5827,6 +5881,65 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       });
     } catch (err) {
       app.log.error(err, "M30 cap-overdue cron-schedule registration failed");
+    }
+    // GAP-161 - M32 §4.8 `ai:hallucination-triage-followup` consumer: executes the plan R18/R20 enqueue
+    // (platform kill switch, the incident_demotion edge attributed to the triage owner, the system-locked alert).
+    {
+      const m32WorkerStoreDeps = {
+        db: dbHandle.db,
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M32_PLATFORM_JOB_ID,
+        userId: "",
+        events: m32Events,
+      };
+      const m32WorkerRegistry = createDrizzleAiCapabilityRegistryStore({
+        db: dbHandle.db,
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M32_PLATFORM_JOB_ID,
+        events: m32Events,
+      });
+      const m32TriageWorker = registerM32TriageFollowUpWorker({
+        connection: queueConnection,
+        safety: {
+          killSwitches: createDrizzleAiKillSwitchStore(m32WorkerStoreDeps),
+          reports: createDrizzleAiHallucinationReportStore({
+            db: dbHandle.db,
+            userId: "",
+            events: m32Events,
+          }),
+          evaluations: createDrizzleAiEvaluationRunStore(m32WorkerStoreDeps),
+          registry: m32WorkerRegistry,
+        },
+        governance: {
+          registry: m32WorkerRegistry,
+          consent: createDrizzleAiTenantConsentStore({
+            db: dbHandle.db,
+            userId: "",
+            events: m32Events,
+          }),
+          evidence: createDenyingAiOptInEvidenceResolver(),
+          evaluations: createDrizzleAiEvaluationRunStore(m32WorkerStoreDeps),
+        },
+      });
+      // GAP-161 - `ai:token-ledger-rollup` (hourly): the soft/hard token-cap alerts had no producer anywhere.
+      const m32RollupWorker = registerM32TokenRollupWorker({
+        connection: queueConnection,
+        listActiveOrgs: () => m30ActiveOrgs.listActiveOrgs(),
+        spendForOrg: buildSpendReader(dbHandle.db),
+        budgetFor: (organizationId, capabilityKey) =>
+          createOrganizationSettingsAiTokenBudgetResolver(dbHandle.db).budgetFor(
+            organizationId,
+            capabilityKey,
+          ),
+        warn: (message, context) => app.log.warn(context, message),
+      });
+      const m32RollupSchedule = await scheduleM32TokenRollupJob(queueConnection);
+      attachDlqAlertsToAll([m32TriageWorker, m32RollupWorker], "m32");
+      app.addHook("onClose", () =>
+        Promise.all([m32TriageWorker.close(), m32RollupWorker.close(), m32RollupSchedule.close()]),
+      );
     }
     app.log.info({ queues: m30Workers.length }, "M30 §4.8 BullMQ HQRP/quality workers constructed");
     // ── M27 §4.8 Cost-Report workers + the filing-deadline cron (same worker-runner shape) ──────────────

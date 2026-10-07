@@ -30,6 +30,7 @@
 // body below IS the widget's contract: severity, kind, the optional invocation link and a ≤1000-char
 // narrative, exactly as §5.5's modal describes it.
 import type { FastifyInstance } from "fastify";
+import type { TriageFollowUpEnqueuePort } from "../jobs/triage-followup-worker";
 
 import { WardenXError } from "@wardenx/types";
 
@@ -59,6 +60,12 @@ export interface HallucinationRouteDeps {
   readonly safety: AiSafetyServiceDeps;
   /** `null` ⇒ R18 refuses with 503 rather than writing cleartext into a `_cipher` column. */
   readonly cipher: AiReportCipherPort | null;
+  /**
+   * GAP-161 - the §4.8 `ai:hallucination-triage-followup` producer. R18 (a `critical` filing) and R20 enqueue the
+   * plan the rule computed; absent => the plan still rides the response and nothing executes it (the pre-GAP-161
+   * posture, kept for slice boots without a queue connection).
+   */
+  readonly followUpQueue?: TriageFollowUpEnqueuePort;
 }
 
 function cipherUnbound(): never {
@@ -73,7 +80,7 @@ export function registerHallucinationRoutes(
   app: FastifyInstance,
   deps: HallucinationRouteDeps,
 ): void {
-  const { safety, cipher } = deps;
+  const { safety, cipher, followUpQueue } = deps;
 
   // R18 — file a report. A `critical` severity comes back with D16's SEV-1 follow-up PLAN attached, so
   //       the caller (and the §4.8 worker) can see that filing this report is about to stop a capability
@@ -105,6 +112,14 @@ export function registerHallucinationRoutes(
         hallucinationKind: body.hallucinationKind,
         reporterNarrativeCipher,
       });
+      if (followUpQueue && outcome.followUp.action !== "none") {
+        await followUpQueue.enqueue({
+          organizationId: actor.organizationId,
+          reportId: outcome.report.id,
+          capabilityId: outcome.report.capabilityId,
+          plan: outcome.followUp,
+        });
+      }
       return reply.code(201).send(outcome);
     },
   );
@@ -138,10 +153,19 @@ export function registerHallucinationRoutes(
       const actor = await writeActorOf(request);
       const { reportId } = parse(ReportIdParams, request.params);
       const body = parse(TriageHallucinationReportBody, request.body);
-      return triageAiHallucinationReport(safety, actor.organizationId, reportId, {
+      const outcome = await triageAiHallucinationReport(safety, actor.organizationId, reportId, {
         ...body,
         triageOwnerMembershipId: actor.membershipId,
       });
+      if (followUpQueue && outcome.followUp.action !== "none") {
+        await followUpQueue.enqueue({
+          organizationId: actor.organizationId,
+          reportId: outcome.report.id,
+          capabilityId: outcome.report.capabilityId,
+          plan: outcome.followUp,
+        });
+      }
+      return outcome;
     },
   );
 }

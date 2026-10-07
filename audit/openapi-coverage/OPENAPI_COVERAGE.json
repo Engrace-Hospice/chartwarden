@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1453,
-    "enriched": 1453,
+    "routes": 1464,
+    "enriched": 1464,
     "deficit": 0,
-    "mutating": 826,
+    "mutating": 832,
     "mutatingNoBody": 1,
-    "gets": 593,
+    "gets": 598,
     "getsNoResponse": 8
   },
   "modules": [
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 50,
-      "enriched": 50,
+      "routes": 56,
+      "enriched": 56,
       "deficit": 0,
-      "mutating": 31,
+      "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 18,
+      "gets": 22,
       "getsNoResponse": 0
     },
     {
@@ -391,12 +391,12 @@
     },
     {
       "module": "40-mdm",
-      "routes": 14,
-      "enriched": 14,
+      "routes": 19,
+      "enriched": 19,
       "deficit": 0,
-      "mutating": 8,
+      "mutating": 12,
       "mutatingNoBody": 0,
-      "gets": 6,
+      "gets": 7,
       "getsNoResponse": 0
     },
     {

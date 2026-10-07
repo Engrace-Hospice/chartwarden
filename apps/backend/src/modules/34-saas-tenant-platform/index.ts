@@ -286,12 +286,27 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * prod shape). The §4.6 ABAC predicates are registered separately at boot via
  * `registerTenantPlatformAbacPredicates`.
  */
+import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
+import {
+  type PlatformOpsService,
+  createInMemoryPlatformOpsService,
+} from "./routes/platform/ops-service";
+import { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";
+import {
+  type TenantAccountFlagsService,
+  createInMemoryTenantAccountFlagsService,
+} from "./routes/tenant/account-flags-service";
+
 export function mountTenantPlatformRoutes(
   app: FastifyInstance,
   db: DbClient,
   services?: {
     platform?: { service: _TenantPlatformRouteService };
     tenant?: { service: _TenantRouteService };
+    /** GAP-164 - cross-tenant DSAR list + onboarding read/skip (absent => in-memory slice). */
+    platformOps?: { service: PlatformOpsService };
+    /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
+    tenantAccountFlags?: { service: TenantAccountFlagsService };
     public?: {
       service?: _SignupIntentRouteService;
       /** AC-05 — §22.1's 5/IP/hour limiter. Absent ⇒ `createAllowAllRateLimiter()`, i.e. UNLIMITED,
@@ -315,9 +330,21 @@ export function mountTenantPlatformRoutes(
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
   _registerTenantExportApprovalRoutes(app, { service: platformService });
 
+  // GAP-164 - the three platform-ops routes the first build deferred.
+  registerPlatformOpsRoutes(app, {
+    service: (services?.platformOps ?? { service: createInMemoryPlatformOpsService().service })
+      .service,
+  });
+
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
   _registerTenantTenantRoutes(app, { service: tenantService });
+  // GAP-164 - tenant account + feature flags.
+  registerTenantAccountFlagsRoutes(app, {
+    service: (
+      services?.tenantAccountFlags ?? { service: createInMemoryTenantAccountFlagsService() }
+    ).service,
+  });
 
   // ── public, session-less self-serve signup surface (503-gated by default; D14) ──
   // The route has always composed its `requireUnderRateLimit` preHandler; what was missing was a
@@ -334,3 +361,19 @@ export {
   type M34AlertRuleSeedResult,
   wireM34AlertRuleSeed,
 } from "./alert-rule-seed-persister";
+
+// GAP-164 - the six routes added after the first build (ops reads/skip + tenant account/flags).
+export {
+  type DrizzlePlatformOpsDeps,
+  type PlatformOpsService,
+  createDrizzlePlatformOpsService,
+  createInMemoryPlatformOpsService,
+} from "./routes/platform/ops-service";
+export { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
+export {
+  type TenantAccountFlagsService,
+  type TenantFlagAdminPort,
+  createDrizzleTenantAccountFlagsService,
+  createInMemoryTenantAccountFlagsService,
+} from "./routes/tenant/account-flags-service";
+export { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";

@@ -17,7 +17,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M34 `registerTenantPlatformAbacPredicates` precedent).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { canMutateSchedule, canReadSchedule, isScheduleAdmin } from "./routes/schedule-authz";
 
 /** The §4.7 predicate names M33 owns (registered into M3). Single-owner across the platform registry. */
@@ -25,7 +30,29 @@ export const M33_ABAC_PREDICATES = [
   "reportable_scope",
   "dashboard_visibility",
   "report_schedule_access",
+  "platform_admin_scope",
+  "compliance_officer_scope",
 ] as const;
+
+/** Roles that may read the compliance drilldown-audit trail (the §4.2 `compliance_officer_scope`). */
+export const COMPLIANCE_AUDIT_ROLE_KEYS = [
+  "compliance_officer",
+  "hipaa_privacy_officer",
+  "hipaa_security_officer",
+] as const;
+
+/** `platform_admin_scope` - the actor holds a role from the platform-ops catalog (the M29 / M35 single source). */
+export function isPlatformAdminActor(context: AbacContext): boolean {
+  return context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
+}
+
+/** `compliance_officer_scope` - a tenant actor holding a compliance / privacy / security officer role. */
+export function isComplianceOfficerActor(context: AbacContext): boolean {
+  return (
+    Boolean(context.organizationId) &&
+    context.roles.some((r) => (COMPLIANCE_AUDIT_ROLE_KEYS as readonly string[]).includes(r))
+  );
+}
 
 /** The four effective read scopes a §4.7 `reportable_scope` resolution can collapse to (D8). */
 export type ReportableScopeKind = "self" | "team" | "location" | "org";
@@ -239,6 +266,13 @@ export function buildM33AbacPredicates(
       }
       return false; // share_scope === 'private' and not owner
     },
+
+    // GAP-162 - the cross-tenant MV registry / replica-lag surface (§4.1 #37-40) is platform-only: a tenant role
+    // that merely holds a `report.admin.*` permission key is NOT admitted. Server-side roles only.
+    platform_admin_scope: async (context) => isPlatformAdminActor(context),
+
+    // GAP-162 - the compliance drilldown-audit trail (§4.1 #41): tenant compliance / privacy / security officers.
+    compliance_officer_scope: async (context) => isComplianceOfficerActor(context),
 
     // Schedule access (GAP-097): target = { scheduleId, mode }. `read` = owner / recipient / org_admin;
     // `write` = owner / org_admin; `admin` = org_admin only (delete_all_runs). The owner / recipients are

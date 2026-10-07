@@ -40,25 +40,6 @@ import {
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
 import {
-  FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
-  FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
-  LocationCreateRequestSchema as M2LocationCreateRequestSchema,
-  LocationDetailSchema as M2LocationDetailSchema,
-  LocationPatchRequestSchema as M2LocationPatchRequestSchema,
-  MeSessionResponseSchema as M2MeSessionResponseSchema,
-  OrganizationCreateRequestSchema as M2OrganizationCreateRequestSchema,
-  OrganizationListResponseSchema as M2OrganizationListResponseSchema,
-  OrganizationPatchRequestSchema as M2OrganizationPatchRequestSchema,
-  OrganizationViewSchema as M2OrganizationViewSchema,
-  ProviderEntityCreateRequestSchema as M2ProviderEntityCreateRequestSchema,
-  ProviderEntityDetailSchema as M2ProviderEntityDetailSchema,
-  ProviderEntityPatchRequestSchema as M2ProviderEntityPatchRequestSchema,
-  StepUpOverrideListResponseSchema as M2StepUpOverrideListResponseSchema,
-  StepUpOverrideRemovedResponseSchema as M2StepUpOverrideRemovedResponseSchema,
-  StepUpOverrideRequestSchema as M2StepUpOverrideRequestSchema,
-  StepUpOverrideSchema as M2StepUpOverrideSchema,
-} from "../../apps/backend/src/modules/02-identity/routes/org-admin-typebox";
-import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
@@ -94,6 +75,25 @@ import {
   UserDeactivateRequestSchema as M2UserDeactivateRequestSchema,
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
+import {
+  FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
+  FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
+  LocationCreateRequestSchema as M2LocationCreateRequestSchema,
+  LocationDetailSchema as M2LocationDetailSchema,
+  LocationPatchRequestSchema as M2LocationPatchRequestSchema,
+  MeSessionResponseSchema as M2MeSessionResponseSchema,
+  OrganizationCreateRequestSchema as M2OrganizationCreateRequestSchema,
+  OrganizationListResponseSchema as M2OrganizationListResponseSchema,
+  OrganizationPatchRequestSchema as M2OrganizationPatchRequestSchema,
+  OrganizationViewSchema as M2OrganizationViewSchema,
+  ProviderEntityCreateRequestSchema as M2ProviderEntityCreateRequestSchema,
+  ProviderEntityDetailSchema as M2ProviderEntityDetailSchema,
+  ProviderEntityPatchRequestSchema as M2ProviderEntityPatchRequestSchema,
+  StepUpOverrideListResponseSchema as M2StepUpOverrideListResponseSchema,
+  StepUpOverrideRemovedResponseSchema as M2StepUpOverrideRemovedResponseSchema,
+  StepUpOverrideRequestSchema as M2StepUpOverrideRequestSchema,
+  StepUpOverrideSchema as M2StepUpOverrideSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/org-admin-typebox";
 // M6 Admission — the §4.2 request bodies/queries the handlers `parse(...)` + the §4.2 response DTOs
 // (pinned to the service read views by compile-time `Conforms` aliases in admission-typebox.ts).
 import {
@@ -111,8 +111,8 @@ import {
   CtiSignSchema,
   CtiVoidSchema,
   DischargeCosignSchema,
-  DischargeDeclineSchema,
   DischargeCreateSchema,
+  DischargeDeclineSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
   ElectionPeriodPatchSchema,
@@ -648,6 +648,11 @@ import {
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+import {
+  GriefResourceBodySchema as M40GriefResourceBody,
+  GriefResourceListQuery as M40GriefResourceListQuery,
+  GriefResourcePatchSchema as M40GriefResourcePatch,
+} from "../../apps/backend/src/modules/40-mdm/grief-resources";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
@@ -11692,5 +11697,140 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Upsert one system-status component (platform_ops only)",
     body: M1SystemStatusComponentBodySchema,
     response: M1SystemStatusResponseSchema,
+  },
+});
+
+// ── GAP-164 - the six M34 routes added after the first build ──────────────────────────────────────────────
+import { PlatformDsarListQuerySchema as M34PlatformDsarListQuerySchema } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes";
+import {
+  SkipOnboardingTaskRequest as M34SkipOnboardingTaskRequest,
+  TenantFlagWriteRequest as M34TenantFlagWriteRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
+
+const _M34Nullable = (t: TSchema) => Type.Union([t, Type.Null()]);
+const _M34Str = Type.String();
+const _M34PlatformDsarJobView = Type.Object({
+  id: _M34Str,
+  organizationId: _M34Str,
+  orgSlug: _M34Str,
+  status: _M34Str,
+  requestSource: _M34Str,
+  requestedAt: _M34Str,
+  slaDueAt: _M34Str,
+  extendedUntil: _M34Nullable(_M34Str),
+  fulfilledAt: _M34Nullable(_M34Str),
+  slaBreached: Type.Boolean(),
+});
+const _M34PlatformOnboardingTaskView = Type.Object({
+  id: _M34Str,
+  templateKey: _M34Str,
+  status: _M34Str,
+  isCanonical: Type.Boolean(),
+  canonicalOrder: _M34Nullable(Type.Integer()),
+  dueAt: _M34Nullable(_M34Str),
+  startedAt: _M34Nullable(_M34Str),
+  completedAt: _M34Nullable(_M34Str),
+  blockerReason: _M34Nullable(_M34Str),
+  skipRationale: _M34Nullable(_M34Str),
+});
+const _M34TenantFlagView = Type.Object({
+  flagKey: _M34Str,
+  flagKind: _M34Str,
+  valueType: _M34Str,
+  value: Type.Unknown(),
+  rolloutPercent: _M34Nullable(Type.Number()),
+  killSwitchActive: Type.Boolean(),
+  scope: Type.Union([Type.Literal("tenant"), Type.Literal("platform")]),
+  tenantToggleable: Type.Boolean(),
+  updatedAt: _M34Str,
+});
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/dsar-export-jobs": {
+    summary: "Cross-tenant DSAR export jobs with SLA filtering (PHI-minimal; platform ops)",
+    query: M34PlatformDsarListQuerySchema,
+    response: Type.Object({
+      items: Type.Array(_M34PlatformDsarJobView),
+      nextCursor: _M34Nullable(_M34Str),
+      hasMore: Type.Boolean(),
+    }),
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/onboarding": {
+    summary: "A tenant's full onboarding task list and the machine's current step (platform ops)",
+    response: Type.Object({
+      tenantAccountId: _M34Str,
+      orgSlug: _M34Str,
+      tenantStatus: _M34Str,
+      currentStep: _M34Nullable(_M34Str),
+      tasks: Type.Array(_M34PlatformOnboardingTaskView),
+    }),
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip": {
+    summary: "Skip an onboarding task with a recorded rationale (platform ops; step-up)",
+    body: M34SkipOnboardingTaskRequest,
+    response: _M34PlatformOnboardingTaskView,
+  },
+  "GET /api/v1/tenant/account": {
+    summary: "The tenant's own account record",
+    response: Type.Object({
+      tenantAccountId: _M34Str,
+      organizationId: _M34Str,
+      status: _M34Str,
+      planLabel: _M34Str,
+      legalBusinessName: _M34Str,
+      dbaName: _M34Nullable(_M34Str),
+      billingContactEmail: _M34Str,
+      breachNotificationEmail: _M34Str,
+      provisionedAt: _M34Nullable(_M34Str),
+      activatedAt: _M34Nullable(_M34Str),
+      createdAt: _M34Str,
+    }),
+  },
+  "GET /api/v1/tenant/feature-flags": {
+    summary: "Feature flags effective for this tenant (own row overrides the platform row)",
+    response: Type.Object({ items: Type.Array(_M34TenantFlagView) }),
+  },
+  "POST /api/v1/tenant/feature-flags/:flagKey": {
+    summary: "Toggle a tenant-toggleable feature flag (org admin; step-up)",
+    body: M34TenantFlagWriteRequest,
+    response: _M34TenantFlagView,
+  },
+});
+
+// GAP-158 - M40 external grief-resource catalog (tenant-curated; `mdm.grief_resource.{read,manage}`).
+const _M40GriefResourceView = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  url: Type.Union([Type.String(), Type.Null()]),
+  description: Type.Union([Type.String(), Type.Null()]),
+  resourceKind: Type.String(),
+  phone: Type.Union([Type.String(), Type.Null()]),
+  audience: Type.Union([Type.String(), Type.Null()]),
+  isActive: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/mdm/grief-resources": {
+    summary: "The tenant's grief-resource catalog (active by default)",
+    query: M40GriefResourceListQuery,
+    response: Type.Object({ items: Type.Array(_M40GriefResourceView) }),
+  },
+  "POST /api/v1/mdm/grief-resources": {
+    summary: "Add a grief-resource to the tenant catalog",
+    body: M40GriefResourceBody,
+    response: _M40GriefResourceView,
+  },
+  "PATCH /api/v1/mdm/grief-resources/:id": {
+    summary: "Edit a grief resource",
+    body: M40GriefResourcePatch,
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/deactivate": {
+    summary: "Retire a grief resource (never deleted; M16 referral history points at it)",
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/reactivate": {
+    summary: "Reactivate a retired grief resource",
+    response: _M40GriefResourceView,
   },
 });
