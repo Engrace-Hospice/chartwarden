@@ -3671,7 +3671,8 @@
     }
   }
 
-  /* Hospice rates (23-billing-medicare/rate-tables.tsx, FY2027 workstream E) — the admissions drawer pattern. */
+  /* Hospice rates (23-billing-medicare/rate-tables.tsx, FY2027 workstream E) — the admissions drawer pattern. Also the
+     layout of Wage Index (wage-indexes.tsx) and Held Transmissions (11-orders/held-transmissions.tsx), GAP-125. */
   .wx-rates {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -3746,6 +3747,34 @@
   .wx-warning-list {
     display: grid;
     gap: 0.25rem;
+  }
+  /* A drawer's row of actions (11-orders/held-transmissions.tsx: co-sign / cancel). Held Transmissions reuses the
+     .wx-rates list + drawer layout above; .wx-held-tx only names it. */
+  .wx-drawer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  /* A short confirmation inside the kit Modal (12-dosespot/retransmit-modal.tsx). */
+  .wx-modal-body {
+    display: grid;
+    gap: 0.875rem;
+    padding: 1.5rem;
+  }
+  .wx-modal-body h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  .wx-modal-body p:not(.wx-source-line) {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .wx-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
   }
   @media (max-width: 1280px) {
     .wx-rates.has-drawer {

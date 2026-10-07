@@ -612,6 +612,14 @@
       "app": "web",
       "module": "11-orders",
       "moduleId": 11,
+      "id": "orders.held-transmissions",
+      "path": "/orders/held-transmissions",
+      "permission": "orders.transmission.view_held"
+    },
+    {
+      "app": "web",
+      "module": "11-orders",
+      "moduleId": 11,
       "id": "orders.standing",
       "path": "/standing-orders",
       "permission": "orders.read"
@@ -1647,6 +1655,14 @@
       "id": "billing.rate-tables",
       "path": "/billing/rate-tables",
       "permission": "billing.rate_table.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.wage-indexes",
+      "path": "/billing/wage-indexes",
+      "permission": "billing.wage_index.read"
     },
     {
       "app": "web",

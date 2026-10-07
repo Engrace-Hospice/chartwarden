@@ -48,8 +48,11 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     `requestSignature` refuses a controlled order outright — the ceremony would always fail. The
 //     prescribe modal READS that status (`GET /admin/controlled-substance-policy`) rather than assuming
 //     it, so an agency that certifies gets the class without a code change.
-//   • `correct` and `retransmit` — correction mints a replacement order and belongs with a lineage
-//     surface; retransmission is meaningless without the transmission worker #136 left out of scope.
+//   • `correct` — correction mints a replacement order and belongs with a lineage surface.
+// `retransmit` is BUILT (GAP-125): GAP-037 landed the DoseSpot v2 adapter and the §4.8 transmission queues
+// (`jobs/transmit-newrx.ts` is what marks an order `transmission_failed`), so the Medication Detail offers
+// Retransmit on such an order — the route mints a replacement draft (`replacesMedicationOrderId`) the prescriber
+// re-signs, gated by `prescribing.sign` + the signer ABAC and the sign standing rule (no step-up).
 //   • The med-history reconcile decision, and the roster enrol/revoke + policy edits (admin surfaces).
 // The platform-ops EPCS-certification + webhook-explorer screens (apps/admin) are deferred (`dosespot.epcs`
 // OFF in Phase 1); the M13 administration (eMAR) screens landed with M13.

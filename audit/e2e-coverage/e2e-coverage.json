@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 166,
+  "totalStaticWebScreens": 168,
   "e2eReachedCount": 19,
-  "axeReachedCount": 161,
+  "axeReachedCount": 163,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -257,6 +257,14 @@
       "module": "23-billing-medicare",
       "path": "/billing/transfer-notices",
       "permission": "billing.noe.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "billing.wage-indexes",
+      "module": "23-billing-medicare",
+      "path": "/billing/wage-indexes",
+      "permission": "billing.wage_index.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -691,6 +699,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "orders.held-transmissions",
+      "module": "11-orders",
+      "path": "/orders/held-transmissions",
+      "permission": "orders.transmission.view_held",
+      "e2eReached": false,
+      "axeReached": true
     },
     {
       "id": "orders.results-review",
@@ -1513,6 +1529,14 @@
       "axeReached": true
     },
     {
+      "id": "billing.wage-indexes",
+      "module": "23-billing-medicare",
+      "path": "/billing/wage-indexes",
+      "permission": "billing.wage_index.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "scheduling.calendar",
       "module": "17-scheduling",
       "path": "/calendar",
@@ -2014,6 +2038,14 @@
       "path": "/orders/cosign-pending",
       "permission": "orders.read",
       "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "orders.held-transmissions",
+      "module": "11-orders",
+      "path": "/orders/held-transmissions",
+      "permission": "orders.transmission.view_held",
+      "e2eReached": false,
       "axeReached": true
     },
     {

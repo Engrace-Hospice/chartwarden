@@ -20,6 +20,11 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // server never asks for would be client-side theatre; if M11 SHOULD require one, that is a spec decision
 // and a server change, not a modal.
 //
+// GAP-125 — HELD TRANSMISSIONS. `/orders/held-transmissions` is the F-201 worklist of lab orders whose HL7 message
+// dead-ended, with the F-187/F-188 attested recovery (step-up gated) and the F-202 co-sign / cancel in its drawer.
+// Gated by `orders.transmission.view_held` (the server's grant for the list); the recovery controls follow
+// `orders.transmission.recover` / `.cosign_escalated`. Before this, a held order could be recovered only via the API.
+//
 // STILL DEFERRED, named so the corpus stays the accurate inventory: the AUTHORING draft modal (all 8
 // kinds, `POST /api/v1/orders`), `correct`, and the standing-order + verbal-policy admin writes.
 //
@@ -32,6 +37,9 @@ import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignQueue = lazy(() => import("./cosign-queue").then((m) => ({ default: m.CosignQueue })));
 const OrderDetail = lazy(() => import("./order-detail").then((m) => ({ default: m.OrderDetail })));
+const HeldTransmissions = lazy(() =>
+  import("./held-transmissions").then((m) => ({ default: m.HeldTransmissions })),
+);
 const OrdersSignInbox = lazy(() =>
   import("./orders-sign-inbox").then((m) => ({ default: m.OrdersSignInbox })),
 );
@@ -103,6 +111,15 @@ export const orderScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Clinical",
       requiredPermission: "orders.read",
       screen: ResultsReviewQueue,
+    },
+    {
+      // Held lab-order transmissions — dead-ended HL7 messages awaiting an attested recovery (F-201, GAP-125).
+      id: "orders.held-transmissions",
+      path: "/orders/held-transmissions",
+      title: "Held Transmissions",
+      navGroup: "Clinical",
+      requiredPermission: "orders.transmission.view_held",
+      screen: HeldTransmissions,
     },
     {
       // Standing-order admin — templates + cadence + spawn history (D5).
