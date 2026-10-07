@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 166 statically-routable `web` screen(s) — 19/166 E2E-reached, 161/166 axe-reached.
+**Coverage:** 168 statically-routable `web` screen(s) — 19/168 E2E-reached, 163/168 axe-reached.
 
 ## Zero E2E coverage
 
@@ -40,6 +40,7 @@
 | `billing.rule-config` | 23-billing-medicare | `/billing/rule-config` | billing.rule_config.read |
 | `billing.sequestration` | 23-billing-medicare | `/billing/sequestration-policy` | billing.sequestration_policy.read |
 | `billing.transfer-notices` | 23-billing-medicare | `/billing/transfer-notices` | billing.noe.read |
+| `billing.wage-indexes` | 23-billing-medicare | `/billing/wage-indexes` | billing.wage_index.read |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `cap.dashboard` | 26-cap | `/cap` | cap.projection.read |
 | `cap.events` | 26-cap | `/cap/events` | cap.event.read |
@@ -94,6 +95,7 @@
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
 | `messaging.staff` | 36-messaging | `/messaging` | messaging.read |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
+| `orders.held-transmissions` | 11-orders | `/orders/held-transmissions` | orders.transmission.view_held |
 | `orders.results-review` | 11-orders | `/orders/results-pending-review` | orders.read |
 | `orders.verbal-expiring` | 11-orders | `/orders/verbal-expiring` | orders.read |
 | `ai.opt-in` | 32-ai-platform | `/organization/ai/opt-in` | ai.tenant_opt_in |
