@@ -665,6 +665,11 @@ jobs:
           # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
           - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }
+          - { name: "GAP-158 portal invitation link", scripts: "test:gap-158-invitation:live" }
+          - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
+          - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
+          - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }
+          - { name: "M30 CAP overdue scan", scripts: "test:gap-155:live" }
           - { name: "GAP-161 M32 events", scripts: "test:gap-161:live" }
           - { name: "GAP-164 M34 ops routes", scripts: "test:gap-164:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order

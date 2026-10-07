@@ -11791,6 +11791,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mdm/grief-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's grief-resource catalog (active by default) */
+        get: operations["getApiV1MdmGriefresources"];
+        put?: never;
+        /** Add a grief-resource to the tenant catalog */
+        post: operations["postApiV1MdmGriefresources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a grief resource */
+        patch: operations["patchApiV1MdmGriefresourcesById"];
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a grief resource (never deleted; M16 referral history points at it) */
+        post: operations["postApiV1MdmGriefresourcesByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/grief-resources/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a retired grief resource */
+        post: operations["postApiV1MdmGriefresourcesByIdReactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mdm/license/manual": {
         parameters: {
             query?: never;
@@ -55861,6 +55930,198 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MdmGriefresources: {
+        parameters: {
+            query?: {
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            name: string;
+                            url: string | null;
+                            description: string | null;
+                            resourceKind: string;
+                            phone: string | null;
+                            audience: string | null;
+                            isActive: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    resourceKind: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MdmGriefresourcesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    resourceKind?: "community_group" | "pastoral_care" | "child_camp" | "specialist_registry" | "hotline" | "other";
+                    url?: string | null;
+                    phone?: string | null;
+                    description?: string | null;
+                    audience?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmGriefresourcesByIdReactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        url: string | null;
+                        description: string | null;
+                        resourceKind: string;
+                        phone: string | null;
+                        audience: string | null;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MdmLicenseManual: {
         parameters: {
             query?: never;
@@ -65033,7 +65294,7 @@ export interface operations {
                             flagKey: string;
                             organizationId: string | null;
                             flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                            valueType: "boolean" | "string" | "number" | "json";
+                            valueType: "bool" | "string" | "number" | "json";
                             value: unknown;
                             rolloutPercent: number | null;
                             killSwitchActive: boolean;
@@ -65062,7 +65323,7 @@ export interface operations {
                     flagKey: string;
                     organizationId?: string | null;
                     flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                    valueType: "boolean" | "string" | "number" | "json";
+                    valueType: "bool" | "string" | "number" | "json";
                     value: unknown;
                     rolloutPercent?: number;
                     rationale?: string;
@@ -65081,7 +65342,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;
@@ -65123,7 +65384,7 @@ export interface operations {
                         flagKey: string;
                         organizationId: string | null;
                         flagKind: "product" | "rollout" | "kill_switch" | "migration";
-                        valueType: "boolean" | "string" | "number" | "json";
+                        valueType: "bool" | "string" | "number" | "json";
                         value: unknown;
                         rolloutPercent: number | null;
                         killSwitchActive: boolean;

@@ -3,9 +3,9 @@
  * cross-module handshake). M40's MDM routes are authorized BY M3, so their permission keys must
  * live in M3's catalog and mirror to the DB `permission` table.
  *
- * Accept (M40-T07): the 27 §4.4 keys are registered, single-owner, and namespaced under `mdm.`;
+ * Accept (M40-T07): the 29 §4.4 keys are registered, single-owner, and namespaced under `mdm.`;
  * three keys per entity kind (read/propose/overlay) for the seven kinds, plus the BAA / license /
- * platform-ops governance keys; all pure RBAC (`abac: 'none'`); the platform-only keys
+ * platform-ops governance keys, plus the two GAP-158 grief-resource catalog keys; all pure RBAC (`abac: 'none'`); the platform-only keys
  * (`mdm.canonical.write` / `mdm.merge.read` / `mdm.merge.approve`) carry the `platform` category so
  * they are never assigned to a tenant role; and they all flow into `allPermissionMirrorRows()`
  * without breaking key uniqueness.
@@ -28,7 +28,7 @@ const KINDS = [
 ];
 
 describe("M40-T07 MDM permission keys (§4.4 handshake)", () => {
-  it("registers three keys per kind plus the governance keys (27 total)", () => {
+  it("registers three keys per kind plus the governance keys (29 total)", () => {
     const expected = [
       ...KINDS.flatMap((k) => [`mdm.${k}.read`, `mdm.${k}.propose`, `mdm.${k}.overlay`]),
       "mdm.baa.read",
@@ -37,9 +37,11 @@ describe("M40-T07 MDM permission keys (§4.4 handshake)", () => {
       "mdm.canonical.write",
       "mdm.merge.read",
       "mdm.merge.approve",
+      "mdm.grief_resource.read",
+      "mdm.grief_resource.manage",
     ];
     expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS).sort()).toEqual(expected.sort());
-    expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS)).toHaveLength(27);
+    expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS)).toHaveLength(29);
   });
 
   it("every key is namespaced under `mdm.` and dot-segmented", () => {

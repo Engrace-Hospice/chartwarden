@@ -148,18 +148,23 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
     },
 
     async stage(input) {
-      return inOrg(input.organizationId, input.actingUserId, async (tx) => {
+      // A refusal that must be RECORDED (expired / rejected) is returned out of the transaction and thrown AFTER it
+      // commits: throwing inside `withOrgContext` rolls the status update back with it, so the row would stay
+      // `initiated` forever (a live test caught exactly that).
+      const outcome = await inOrg(input.organizationId, input.actingUserId, async (tx) => {
         const row = await ownUpload(tx, input.portalAccountId, input.patientId, input.uploadId);
         if (row.status === "submitted" || row.status === "rejected" || row.status === "expired") {
           throw new WardenXError("UPLOAD_CLOSED", `this upload is already ${row.status}`, 409);
         }
         if (row.expiresAt.getTime() <= now().getTime()) {
           await tx.update(UP).set({ status: "expired" }).where(eq(UP.id, row.id));
-          throw new WardenXError(
-            "UPLOAD_EXPIRED",
-            "this upload window has closed; start again",
-            410,
-          );
+          return {
+            refusal: new WardenXError(
+              "UPLOAD_EXPIRED",
+              "this upload window has closed; start again",
+              410,
+            ),
+          };
         }
         requirePortalWrite(
           input.bytes.byteLength === row.expectedByteSize,
@@ -178,13 +183,12 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
             patientDischargedReadOnly: false,
           });
         } catch (error) {
-          if (error instanceof PortalWriteError) {
-            await tx
-              .update(UP)
-              .set({ status: "rejected", rejectionCode: error.code })
-              .where(eq(UP.id, row.id));
-          }
-          throw error;
+          if (!(error instanceof PortalWriteError)) throw error;
+          await tx
+            .update(UP)
+            .set({ status: "rejected", rejectionCode: error.code })
+            .where(eq(UP.id, row.id));
+          return { refusal: error };
         }
         const sealed = await deps.cipher.encrypt(
           input.organizationId,
@@ -202,8 +206,16 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
             stagedAt: now(),
           })
           .where(eq(UP.id, row.id));
-        return { uploadId: row.id, status: "staged" as const, byteSize: input.bytes.byteLength };
+        return {
+          staged: {
+            uploadId: row.id,
+            status: "staged" as const,
+            byteSize: input.bytes.byteLength,
+          },
+        };
       });
+      if ("refusal" in outcome) throw outcome.refusal;
+      return outcome.staged;
     },
 
     async complete(input) {

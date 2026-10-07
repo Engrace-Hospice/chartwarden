@@ -350,9 +350,32 @@ chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dat
   ops. `macFeedConfigured` / `dosespotKickoffRecorded` / `xeroConnected` / `gustoConnected` default to false until
   M29 / M12 / M27 readers are injected (a step stays honestly blocked).
 
-**Not closed (follow-ups).** GAP-158 (needs a caregiver-to-user link + the M40 grief catalog), GAP-161 (M32
-publishes none of its 21 events, no workers), GAP-162 (M33 platform/compliance scope predicates, a documented
-P2C deferral), GAP-164 (six M34 §4.1 routes absent: `GET /platform/dsar-export-jobs`,
-`GET /platform/tenants/:orgSlug/onboarding`, `POST /platform/tenants/:orgSlug/onboarding/:taskId/skip`,
-`GET /tenant/account`, `GET /tenant/feature-flags`, `POST /tenant/feature-flags/:flagKey`; also the spec's
-`:orgId` is `:orgSlug` in code).
+**Close-out round (GAP-158 / 161 / 162 / 164).**
+- GAP-158 (M31/M5/M16/M40, migrations 0462 + 0463): `caregiver.user_id` (M5 `linkCaregiverToUserInTx`: first writer
+  wins, idempotent, a different user conflicts) is stamped in the SAME transaction that consumes a portal invitation
+  issued for a roster caregiver (a conflict or missing caregiver refuses the accept and rolls the token back). The
+  `PatientCaregiverReader` seam resolves the PRIMARY current caregiver's user. M40 owns `external_grief_resource`
+  (tenant-curated, RLS-forced, `mdm.grief_resource.{read,manage}`, routes under `/api/v1/mdm/grief-resources`) behind
+  the `ExternalGriefResourceReader` seam. Live proof: `gap-158-*`, `gap-173-*` suites.
+- GAP-161 (M32): all 21 events are published from real same-tx emit sites (`emitInTx`; null-org events through
+  `report_writer_insert_platform_outbox_event`). Workers built: `m32.triage_followup` and the token-ledger rollup
+  (+ schedule). `recordHitlOutcome` used to be a silent no-op on a missing row; it now asserts the row count.
+  **Blockers named exactly:** `m32.drift.detected` has no producer (needs the MLflow / ml-worker drift job);
+  the `m32.embeddings` / ml-worker queues need that same external service; the M32 governance stores run on the
+  TENANT pool because they need a privileged platform credential for `ai_capability` writes (`wardenx_app` has no
+  INSERT there), so platform-scoped writes are exercised live with a privileged handle.
+- GAP-162 (M33): `platform_admin_scope` / `compliance_officer_scope` predicates are registered AND composed on the
+  admin routes (arch:abac-composed green) with allow/deny tests.
+- GAP-164 (M34): the six routes exist with ABAC, step-up/idempotency, OpenAPI enrichments and the typed client; the
+  spec's `:orgId` is corrected to `:orgSlug`; `feature_flag.value_type` is `bool|string|number|json` in the typebox
+  (the DB enum is `bool`, not `boolean` - found by the live suite). `wardenx_platform` gained the missing
+  `feature_flag` / `support_session_event` / `onboarding_task` / `support_session` grants.
+- Pre-existing bugs the live suites found: M31 `uploads.stage` threw INSIDE the transaction, so the `expired` /
+  `rejected` status writes were rolled back (fixed: refusal is returned and thrown after commit); M32 prompt-template
+  activation emitted a numeric `version` against a string payload schema (fixed).
+- Live coverage added (own throwaway cluster, fresh DB per suite): gap-155 (CAP-overdue SQL), gap-031 (M31 prefs +
+  uploads), gap-087 (CAHPS export job + auditor magic link), gap-158 x2, gap-161, gap-164, gap-173. The
+  implementation-status matrix now reads 100% live-table coverage for M31, M40 and M30 (M31's Screens tick now
+  recognises `apps/portal`).
+- Still not proven live: M29 feed revoke / acknowledge-abnormal SQL, the M31 cron jobs (late-join watchdog,
+  post-discharge sweep), the M34 sweep workers, and the M32 BullMQ workers (unit-tested; no Redis in the live run).

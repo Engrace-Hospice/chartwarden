@@ -648,6 +648,11 @@ import {
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+import {
+  GriefResourceBodySchema as M40GriefResourceBody,
+  GriefResourceListQuery as M40GriefResourceListQuery,
+  GriefResourcePatchSchema as M40GriefResourcePatch,
+} from "../../apps/backend/src/modules/40-mdm/grief-resources";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
@@ -11696,9 +11701,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 });
 
 // ── GAP-164 - the six M34 routes added after the first build ──────────────────────────────────────────────
-import {
-  PlatformDsarListQuerySchema as M34PlatformDsarListQuerySchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes";
+import { PlatformDsarListQuerySchema as M34PlatformDsarListQuerySchema } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes";
 import {
   SkipOnboardingTaskRequest as M34SkipOnboardingTaskRequest,
   TenantFlagWriteRequest as M34TenantFlagWriteRequest,
@@ -11791,5 +11794,43 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Toggle a tenant-toggleable feature flag (org admin; step-up)",
     body: M34TenantFlagWriteRequest,
     response: _M34TenantFlagView,
+  },
+});
+
+// GAP-158 - M40 external grief-resource catalog (tenant-curated; `mdm.grief_resource.{read,manage}`).
+const _M40GriefResourceView = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  url: Type.Union([Type.String(), Type.Null()]),
+  description: Type.Union([Type.String(), Type.Null()]),
+  resourceKind: Type.String(),
+  phone: Type.Union([Type.String(), Type.Null()]),
+  audience: Type.Union([Type.String(), Type.Null()]),
+  isActive: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/mdm/grief-resources": {
+    summary: "The tenant's grief-resource catalog (active by default)",
+    query: M40GriefResourceListQuery,
+    response: Type.Object({ items: Type.Array(_M40GriefResourceView) }),
+  },
+  "POST /api/v1/mdm/grief-resources": {
+    summary: "Add a grief-resource to the tenant catalog",
+    body: M40GriefResourceBody,
+    response: _M40GriefResourceView,
+  },
+  "PATCH /api/v1/mdm/grief-resources/:id": {
+    summary: "Edit a grief resource",
+    body: M40GriefResourcePatch,
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/deactivate": {
+    summary: "Retire a grief resource (never deleted; M16 referral history points at it)",
+    response: _M40GriefResourceView,
+  },
+  "POST /api/v1/mdm/grief-resources/:id/reactivate": {
+    summary: "Reactivate a retired grief resource",
+    response: _M40GriefResourceView,
   },
 });

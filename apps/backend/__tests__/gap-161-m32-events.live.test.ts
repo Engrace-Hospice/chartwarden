@@ -189,6 +189,7 @@ describe.skipIf(!DB_URL)("GAP-161 m32 events, LIVE Postgres", () => {
       capabilityId,
       { lifecycleState: "DESIGN_REVIEW", nextReapprovalDueAt: null },
       {
+        capabilityId,
         fromState: "PROPOSED",
         toState: "DESIGN_REVIEW",
         actorMembershipId: MEMBERSHIP,

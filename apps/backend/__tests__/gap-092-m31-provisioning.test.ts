@@ -33,6 +33,7 @@ const USER = "55555555-5555-4555-8555-555555555555";
 const ACTOR = "66666666-6666-4666-8666-666666666666";
 const UPLOAD = "77777777-7777-4777-8777-777777777777";
 const INVITATION = "88888888-8888-4888-8888-888888888888";
+const GRANT_ID = "99999999-9999-4999-8999-999999999990";
 const NOW = new Date("2026-10-06T12:00:00.000Z");
 
 function cipher() {
@@ -510,6 +511,8 @@ describe("portal invitations", () => {
           version: 0,
         },
       ],
+      // The grant insert now `returning({ id })` (the granted event carries it); selects see no prior grant.
+      portal_access_grant: (op) => (op === "insert" ? [{ id: GRANT_ID }] : []),
     });
     const out = await createPortalInvitations({
       db,

@@ -11,7 +11,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 18/18 ✅ |
-| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 41/41 ✅ | ✅ | ✅ | — | 6/7 ⚠️ |
+| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 41/41 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/13 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 17/17 ✅ |
@@ -39,17 +39,17 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |
 | M28 FHIR Gateway | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ❌ | ✅ | — | 9/9 ✅ |
 | M29 External Interfaces | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ❌ | ✅ | — | 11/11 ✅ |
-| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 61/61 ✅ | ✅ | ✅ | ✅ | 18/19 ⚠️ |
-| M31 Patient/Family Portal & Telehealth | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 55/55 ✅ | ❌ | ✅ | ✅ | 3/6 ⚠️ |
+| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 61/61 ✅ | ✅ | ✅ | ✅ | 19/19 ✅ |
+| M31 Patient/Family Portal & Telehealth | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 55/55 ✅ | ✅ | ✅ | ✅ | 6/6 ✅ |
 | M32 AI Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 42/42 ✅ | ✅ | ✅ | — | 12/12 ✅ |
-| M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 50/50 ✅ | ✅ | ✅ | — | 17/17 ✅ |
+| M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 56/56 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 21/21 ✅ |
 | M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 24/24 ✅ | ✅ | ✅ | — | 16/16 ✅ |
 | M37 Inpatient Unit (IPU) Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 52/52 ✅ | ✅ | ✅ | — | 27/27 ✅ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ❌ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 22/22 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
-| M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 11/12 ⚠️ |
+| M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 
 ## Hard-fail consistency checks
 

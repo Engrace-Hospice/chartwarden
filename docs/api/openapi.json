@@ -136278,6 +136278,715 @@
         }
       }
     },
+    "/api/v1/mdm/grief-resources": {
+      "get": {
+        "operationId": "getApiV1MdmGriefresources",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "The tenant's grief-resource catalog (active by default)",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "url",
+                          "description",
+                          "resourceKind",
+                          "phone",
+                          "audience",
+                          "isActive",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resourceKind": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "audience": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MdmGriefresources",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Add a grief-resource to the tenant catalog",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "description",
+                    "resourceKind",
+                    "phone",
+                    "audience",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resourceKind": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "audience": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "resourceKind"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "resourceKind": {
+                    "anyOf": [
+                      {
+                        "const": "community_group",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pastoral_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "child_camp",
+                        "type": "string"
+                      },
+                      {
+                        "const": "specialist_registry",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hotline",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "url": {
+                    "anyOf": [
+                      {
+                        "pattern": "^https?://\\S+$",
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "audience": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/grief-resources/{id}": {
+      "patch": {
+        "operationId": "patchApiV1MdmGriefresourcesById",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Edit a grief resource",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "description",
+                    "resourceKind",
+                    "phone",
+                    "audience",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resourceKind": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "audience": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "resourceKind": {
+                    "anyOf": [
+                      {
+                        "const": "community_group",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pastoral_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "child_camp",
+                        "type": "string"
+                      },
+                      {
+                        "const": "specialist_registry",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hotline",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "url": {
+                    "anyOf": [
+                      {
+                        "pattern": "^https?://\\S+$",
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "audience": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/grief-resources/{id}/deactivate": {
+      "post": {
+        "operationId": "postApiV1MdmGriefresourcesByIdDeactivate",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Retire a grief resource (never deleted; M16 referral history points at it)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "description",
+                    "resourceKind",
+                    "phone",
+                    "audience",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resourceKind": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "audience": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/grief-resources/{id}/reactivate": {
+      "post": {
+        "operationId": "postApiV1MdmGriefresourcesByIdReactivate",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Reactivate a retired grief resource",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "description",
+                    "resourceKind",
+                    "phone",
+                    "audience",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resourceKind": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "audience": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/mdm/license/manual": {
       "post": {
         "operationId": "postApiV1MdmLicenseManual",
@@ -175557,7 +176266,7 @@
                           "valueType": {
                             "anyOf": [
                               {
-                                "const": "boolean",
+                                "const": "bool",
                                 "type": "string"
                               },
                               {
@@ -175686,7 +176395,7 @@
                     "valueType": {
                       "anyOf": [
                         {
-                          "const": "boolean",
+                          "const": "bool",
                           "type": "string"
                         },
                         {
@@ -175785,7 +176494,7 @@
                   "valueType": {
                     "anyOf": [
                       {
-                        "const": "boolean",
+                        "const": "bool",
                         "type": "string"
                       },
                       {
@@ -175894,7 +176603,7 @@
                     "valueType": {
                       "anyOf": [
                         {
-                          "const": "boolean",
+                          "const": "bool",
                           "type": "string"
                         },
                         {

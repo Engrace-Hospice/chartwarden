@@ -238,7 +238,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
                  to_char(j.requested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursorTs",
                  (j.status::text IN (${open}) AND COALESCE(j.extended_until, j.sla_due_at) < ${now().toISOString()}::timestamptz) AS "slaBreached"
             FROM dsar_export_job j
-            JOIN organization o ON o.id = j.organization_id
+            JOIN ${schema.organizations} o ON o.id = j.organization_id
            WHERE (${filter.status ?? null}::text IS NULL OR j.status::text = ${filter.status ?? null})
              AND (${filter.organizationId ?? null}::uuid IS NULL OR j.organization_id = ${filter.organizationId ?? null}::uuid)
              AND (${after?.createdAt ?? null}::timestamptz IS NULL
