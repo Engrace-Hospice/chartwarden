@@ -60,9 +60,10 @@ Host requirements — the repo cannot enforce these, so check them once per host
   and confirm the new `/var/log/nginx/wardenx-*.access.log` line shows `/api/health` with no `?q=Smith`.
 
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
-images, runs strict schema-only migrations and runtime-role provisioning, recreates `api`, `worker` and
-`web`, then runs `smoke.sh`. If any step fails it restores the previous image references and recreates
-those services. Database migrations are forward-only and are not rolled back.
+images, provisions the scoped MinIO account, runs strict schema-only migrations and runtime-role
+provisioning, recreates `api`, `worker` and `web`, then runs `smoke.sh`. If any step fails, it restores
+the previous image references and recreates those services. Database migrations are forward-only and
+are not rolled back.
 
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 
