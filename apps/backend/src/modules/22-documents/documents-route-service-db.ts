@@ -1253,7 +1253,7 @@ export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectRe
 }
 
 /**
- * Build the M22 Drizzle read backend: the production DocumentRouteService (reads real, writes 501), the
+ * Build the M22 Drizzle read backend: the production DocumentRouteService (reads and writes real), the
  * ABAC owner-fact resolver, and the signed-URL object resolver — the same trio the in-memory
  * `createInMemoryDocumentBackend` exposes, so the barrel wires them identically. The presigner is bound
  * by the caller (the throwing DegradedError stub — M22's storage adapter is unwired).

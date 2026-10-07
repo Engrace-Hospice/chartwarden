@@ -371,11 +371,7 @@ export interface M16WriteService {
     contactId: string,
     input: FlagComplicatedGriefInput,
   ): Promise<BereavedContactRowView>;
-  startOutreach(
-    actor: M16WriteActor,
-    outreachId: string,
-    expectedVersion?: number,
-  ): Promise<BereavementOutreachRowView>;
+  startOutreach(actor: M16WriteActor, outreachId: string): Promise<BereavementOutreachRowView>;
   completeOutreach(
     actor: M16WriteActor,
     outreachId: string,

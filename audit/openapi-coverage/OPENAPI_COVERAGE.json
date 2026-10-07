@@ -1,12 +1,12 @@
 {
   "totals": {
     "routes": 1413,
-    "enriched": 1408,
-    "deficit": 5,
+    "enriched": 1409,
+    "deficit": 4,
     "mutating": 800,
     "mutatingNoBody": 1,
     "gets": 580,
-    "getsNoResponse": 10
+    "getsNoResponse": 7
   },
   "modules": [
     {
@@ -147,7 +147,7 @@
       "mutating": 17,
       "mutatingNoBody": 0,
       "gets": 11,
-      "getsNoResponse": 2
+      "getsNoResponse": 0
     },
     {
       "module": "16-bereavement",
@@ -402,12 +402,12 @@
     {
       "module": "bootstrap",
       "routes": 11,
-      "enriched": 6,
-      "deficit": 5,
+      "enriched": 7,
+      "deficit": 4,
       "mutating": 1,
       "mutatingNoBody": 0,
       "gets": 10,
-      "getsNoResponse": 5
+      "getsNoResponse": 4
     }
   ]
 }

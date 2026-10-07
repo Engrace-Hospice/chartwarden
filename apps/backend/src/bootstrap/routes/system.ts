@@ -53,6 +53,11 @@ export const SystemStatusComponentBodySchema = Type.Object({
   details: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
+/** The `{ flags }` envelope `GET /api/v1/system/feature-flags` returns: flag key to resolved boolean. */
+export const FeatureFlagsResponseSchema = Type.Object({
+  flags: Type.Record(Type.String(), Type.Boolean()),
+});
+
 /** The `{ components }` envelope both status reads and the upsert return. */
 export const SystemStatusResponseSchema = Type.Object({
   components: Type.Array(

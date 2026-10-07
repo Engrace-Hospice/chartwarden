@@ -17,8 +17,9 @@ import { type DbClient, schema } from "@wardenx/db";
 // threads no siting nor an M9 snapshot into the DB backend, this slice makes documented compromises (the
 // M8/M9 convention): (1) writes envelope `withOrgContext` with `userId:""` → the M4 write-audit trigger
 // fires with a NULL actor (the acting membership is the passed `userId`, stored as created/signed_by);
-// (2) the D8 PPS/ESAS-r snapshot is skipped (null) — it needs M9's LatestAssessmentProvider, not threaded
-// here (§7.13: no external dependency blocks the write path); (3) provider/location siting is null; the
+// (2) GAP-019 / GAP-204: the D8 PPS/ESAS-r snapshot is taken at signature through M9's published
+// `LatestAssessmentProvider` seam (null only when M9 cannot answer, and then a compliance finding is
+// raised — no external dependency blocks the write path, §7.13); (3) provider/location siting is null; the
 // SFV `alert_cadence` is a minimal default until the alert planner is threaded. A correction REUSES the
 // original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
 // target_date)` demands it); the DB supersede trigger flips the original only when the correction signs.
@@ -260,8 +261,8 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
 });
 
 /**
- * The production, RLS-backed HopeRouteService + HopeAbacResolver (one object). Reads are real; writes
- * fail-closed 501. Org is bound from the request context by the caller and passed as `organizationId` —
+ * The production, RLS-backed HopeRouteService + HopeAbacResolver (one object). Reads and writes are
+ * real (Drizzle + RLS). Org is bound from the request context by the caller and passed as `organizationId` —
  * never the body. Every read runs under `withOrgContext` so RLS scopes rows to the active org.
  */
 export function createDbHopeBackend(

@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 1408/1413 routes enriched (100%) · **1/800 mutating routes read a body they publish none for** · 10/580 GETs carry no response schema
+**Totals:** 1409/1413 routes enriched (100%) · **1/800 mutating routes read a body they publish none for** · 7/580 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -24,7 +24,7 @@
 | 12-dosespot | 34 | 34 (100%) | 0 | 23 | 0 | 11 | 0 |
 | 13-emar | 28 | 28 (100%) | 0 | 18 | 0 | 10 | 0 |
 | 14-idg | 36 | 36 (100%) | 0 | 20 | 0 | 13 | 0 |
-| 15-discipline-care-plans | 28 | 28 (100%) | 0 | 17 | 0 | 11 | 2 |
+| 15-discipline-care-plans | 28 | 28 (100%) | 0 | 17 | 0 | 11 | 0 |
 | 16-bereavement | 34 | 34 (100%) | 0 | 27 | 0 | 7 | 0 |
 | 17-scheduling | 35 | 35 (100%) | 0 | 19 | 0 | 15 | 0 |
 | 18-evv | 25 | 25 (100%) | 0 | 15 | 0 | 10 | 0 |
@@ -50,4 +50,4 @@
 | 38-terminology | 19 | 19 (100%) | 0 | 6 | 0 | 12 | 0 |
 | 39-consent | 27 | 27 (100%) | 0 | 13 | 0 | 13 | 0 |
 | 40-mdm | 14 | 14 (100%) | 0 | 8 | 0 | 6 | 0 |
-| bootstrap | 11 | 6 (55%) | 5 | 1 | 0 | 10 | 5 |
+| bootstrap | 11 | 7 (64%) | 4 | 1 | 0 | 10 | 4 |

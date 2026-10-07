@@ -698,6 +698,7 @@ registerEraser('operational_schedule', schedulingEraser)
 | POST | `/api/v1/visits` | session | `visit.create` | direct manual create (skips proposal path); runs gate (D8) |
 | PATCH | `/api/v1/visits/:visitId` | session + If-Match | `visit.edit` | edit times / discipline / notes; rerun gate on assignment/time change |
 | POST | `/api/v1/visits/:visitId/start` | session | `visit.start` | self-attest start (EVV-missing path); transitions to `en_route`/`in_visit` |
+| POST | `/api/v1/visits/:visitId/arrive` | session + step-up (EVV-missing) | `visit.start` | EVV/arrival check-in: the explicit `en_route` → `in_visit` step before encounter signature; assigned clinician only |
 | POST | `/api/v1/visits/:visitId/cancel` | session | `visit.cancel` | reason ≥ 20 chars |
 | POST | `/api/v1/visits/:visitId/reschedule` | session | `visit.reschedule` | new times + reason; creates new visit in proposed/published; original → rescheduled |
 | POST | `/api/v1/visits/:visitId/no-show` | session | `visit.mark_no_show` | reason; triggers reassign-or-followup workflow |
@@ -715,6 +716,9 @@ registerEraser('operational_schedule', schedulingEraser)
 | POST | `/api/v1/time-off/:id/approve` | session | `time_off.approve` | triggers reassignment-scan |
 | POST | `/api/v1/time-off/:id/deny` | session | `time_off.approve` | reason ≥ 20 chars |
 | POST | `/api/v1/time-off/:id/cancel` | session | `time_off.cancel_own` or `time_off.approve` | pre-start cancel |
+| GET | `/api/v1/memberships/:membershipId/credentials` | session | `membership_credential.read` | list a membership's clinical-license/certification roster (staff data; no PHI); feeds the D8 `clinician_credentials_active` predicate |
+| POST | `/api/v1/memberships/:membershipId/credentials` | session | `membership_credential.grant` | grant a credential (type, effective/expiry, issuing body) |
+| DELETE | `/api/v1/memberships/:membershipId/credentials/:credentialId` | session | `membership_credential.revoke` | revoke with reason; 204 |
 | GET | `/api/v1/day-view` | session | `visit.read` | day-view for a clinician or org-wide (org-wide requires `visit.read_team`) |
 | GET | `/api/v1/week-view` | session | `visit.read` | week-view; same auth |
 | GET | `/api/v1/map-view` | session | `visit.read` | for a clinician day; includes polylines (D9 — coords only, no PHI text) |

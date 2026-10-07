@@ -19218,6 +19218,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read this org's resolved feature flags (flag key to enabled) */
         get: operations["getApiV1SystemFeatureflags"];
         put?: never;
         post?: never;
@@ -77572,7 +77573,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        flags: {
+                            [key: string]: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -82648,7 +82655,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        fiscalYear: number;
+                        volunteerHourMinutes: number;
+                        staffPatientCareMinutes: number | null;
+                        ratio: number | null;
+                        status: "unavailable" | "green" | "yellow" | "red";
+                        reason?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83361,7 +83378,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            admissionId: string;
+                            assessmentId: string;
+                            factor: string;
+                            severity: "high" | "moderate" | "low";
+                            icd10: string | null;
+                            capturedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

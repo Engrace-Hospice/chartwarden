@@ -30,6 +30,7 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
@@ -734,6 +735,7 @@ import {
   DisciplinePlanSummaryResponseSchema as M15DisciplinePlanSummaryResponseSchema,
   DisciplinePlanVersionDetailResponseSchema as M15DisciplinePlanVersionDetailResponseSchema,
   DisciplinePlanVersionListPageResponseSchema as M15DisciplinePlanVersionListPageResponseSchema,
+  MswRiskFactorPageResponseSchema as M15MswRiskFactorPageResponseSchema,
   RelevantElementsPageResponseSchema as M15RelevantElementsPageResponseSchema,
   SupervisoryCadencePageResponseSchema as M15SupervisoryCadencePageResponseSchema,
   VolunteerAssignmentViewResponseSchema as M15VolunteerAssignmentViewResponseSchema,
@@ -741,6 +743,7 @@ import {
   VolunteerComplianceGateViewResponseSchema as M15VolunteerComplianceGateViewResponseSchema,
   VolunteerEffectiveStatusViewResponseSchema as M15VolunteerEffectiveStatusViewResponseSchema,
   VolunteerHourEntryViewResponseSchema as M15VolunteerHourEntryViewResponseSchema,
+  VolunteerHourRatioViewResponseSchema as M15VolunteerHourRatioViewResponseSchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
 
 // M16 Bereavement — enrichment imports. Request schemas (already imported in enrichments.ts under these
@@ -6405,8 +6408,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
     query: M15HourRatioQuerySchema,
-    // summary-only: the service returns `unknown` — the ratio is a discriminated `available | unavailable`
-    // envelope whose unbound-M27-denominator branch (M15-F04) has no frozen view to mirror.
+    response: M15VolunteerHourRatioViewResponseSchema,
   },
   "POST /api/v1/volunteer-hour-entries": {
     summary:
@@ -6424,8 +6426,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
     query: M15RiskFactorQuerySchema,
-    // summary-only: the service returns `CursorPage<unknown>` — the MSW risk-factor row shape is not yet a
-    // frozen view (it materializes from M16's ingestion), so there is nothing to mirror without fabrication.
+    response: M15MswRiskFactorPageResponseSchema,
   },
   "GET /internal/discipline-plans/volunteer-effective-status": {
     summary:
@@ -11364,6 +11365,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // typed that body as `never` — the generated client could not express the call. The schemas live beside
 // the route's own runtime validator so the two cannot drift.
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/system/feature-flags": {
+    summary: "Read this org's resolved feature flags (flag key to enabled)",
+    response: M1FeatureFlagsResponseSchema,
+  },
   "GET /api/v1/system/status": {
     summary: "Read this org's system-status components",
     response: M1SystemStatusResponseSchema,

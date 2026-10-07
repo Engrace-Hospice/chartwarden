@@ -52,8 +52,8 @@ export { registerElectionAddendumRoutes } from "./routes/election-addendum-route
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
  * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
- * (referral inbox, admission census + detail, election periods, compliance windows); writes fail-closed
- * 501 until the M6L-T02+ Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold
+ * (referral inbox, admission census + detail, election periods, compliance windows) and writes (the full
+ * M6L-T02+ Drizzle write lifecycle; no route returns 501). Replaces the in-memory clinical-core scaffold
  * mount for M6.
  */
 export function mountAdmissionRoutes(

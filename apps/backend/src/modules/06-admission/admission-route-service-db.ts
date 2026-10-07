@@ -2668,7 +2668,7 @@ export function createDbAdmissionRouteService(
       });
     },
 
-    // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
+    // ── Writes — the M6L-T02+ Drizzle lifecycle (live). ─────────────────────────────────────────────
     // ── M6L-T02: referral intake ───────────────────────────────────────────────────────────────
     async createReferral(organizationId, input, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -4960,10 +4960,9 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.f2f.scheduled",
-          // `electionPeriodId`/`scheduledDate` are required — previously omitted, 500ing on every
-          // call. `scheduledDate` comes straight off `input` since the `face_to_face_encounter` table
-          // has no column for it today (a separate, pre-existing gap — the schedule route accepts and
-          // validates the date but never persists it; out of scope for this fix).
+          // `electionPeriodId`/`scheduledDate` are required by the event catalog. `scheduledDate` is
+          // persisted on the `face_to_face_encounter.scheduled_date` column by the insert above and
+          // echoed here from `input`.
           payload: {
             f2fId: f2f.id,
             electionPeriodId: input.electionPeriodId,

@@ -591,6 +591,36 @@ export const VolunteerEffectiveStatusViewResponseSchema = Type.Object({
   failingGates: Type.Array(Type.Object({ gateKind: Str, reason: Str })),
 });
 
+/**
+ * Route 23 — the 418.78(e) ratio. `ratio` is null exactly when `status === 'unavailable'` (an unbound or
+ * zero cost basis is never a 0% breach); `reason` explains an unavailable or stale denominator (GAP-193).
+ */
+export const VolunteerHourRatioViewResponseSchema = Type.Object({
+  providerEntityId: Str,
+  fiscalYear: Int,
+  volunteerHourMinutes: Int,
+  staffPatientCareMinutes: Type.Union([Type.Number(), Type.Null()]),
+  ratio: Type.Union([Type.Number(), Type.Null()]),
+  status: Type.Union([
+    Type.Literal("unavailable"),
+    Type.Literal("green"),
+    Type.Literal("yellow"),
+    Type.Literal("red"),
+  ]),
+  reason: Type.Optional(Str),
+});
+
+/** Route 26 — one MSW psychosocial risk factor (ids + factor + severity + ICD-10; never the narrative). */
+export const MswRiskFactorViewResponseSchema = Type.Object({
+  planId: Str,
+  admissionId: Str,
+  assessmentId: Str,
+  factor: Str,
+  severity: Type.Union([Type.Literal("high"), Type.Literal("moderate"), Type.Literal("low")]),
+  icd10: StrN,
+  capturedAt: Str,
+});
+
 /** Route 25 — the discipline elements M8 / M14 / M22 pull for a patient's plans. */
 export const RelevantElementsViewResponseSchema = Type.Object({
   planId: Str,
@@ -637,6 +667,7 @@ export const DisciplinePlanVersionListPageResponseSchema = cursorPage(
 export const VolunteerComplianceGateListPageResponseSchema = cursorPage(
   VolunteerComplianceGateViewResponseSchema,
 );
+export const MswRiskFactorPageResponseSchema = cursorPage(MswRiskFactorViewResponseSchema);
 export const RelevantElementsPageResponseSchema = cursorPage(RelevantElementsViewResponseSchema);
 export const SupervisoryCadencePageResponseSchema = cursorPage(
   SupervisoryCadenceRowViewResponseSchema,

@@ -540,14 +540,14 @@ export const tenantStepUpPolicyOverride = pgTable('tenant_step_up_policy_overrid
 
 ### 3.8 RLS Policies
 
-Authentication tables are **user-owned, cross-organization** by design (a user's passkey works at every org they belong to). They are therefore **not** under `organization_id` RLS; they are protected by user-ownership predicates and never exposed cross-user. The org-scoped tables are `organization_invitation` and `tenant_step_up_policy_override`.
+Authentication tables are **user-owned, cross-organization** by design (a user's passkey works at every org they belong to). They are therefore **not** under `organization_id` RLS; they carry **no RLS policy** (ADR-0010 D2 makes `app.org_id` the only session variable a policy may key on; migration `0006` and M1's `0001` treat user-owned, cross-org auth tables this way) and are instead scoped to the authenticated user in application-layer queries, never exposed cross-user. The org-scoped tables are `organization_invitation` and `tenant_step_up_policy_override`.
 
 | Table | RLS basis | Policy |
 |---|---|---|
-| `two_factor`, `passkey` | user-ownership | `user_id = current_setting('app.user_id')::uuid`; no org predicate (auth, not authz) |
+| `two_factor`, `passkey` | user-ownership (application layer) | **No RLS policy** (ADR-0010 D2: `app.org_id` is the only RLS session variable; see migration 0006). Every query is scoped to the authenticated session's `user_id` in code; no org predicate (auth, not authz) |
 | `organization_invitation` | org-scoped | standard `organization_id = current_setting('app.org_id')::uuid` via Module 1 RLS generator |
 | `tenant_step_up_policy_override` | org-scoped | `organization_id = current_setting('app.org_id')::uuid`; only `compliance_officer`/`org_admin` may write |
-| `session`, `account` | user-ownership + system | session lookups run in a system context during auth (pre-org-binding); post-auth reads scoped to `user_id` |
+| `session`, `account` | user-ownership (application layer) + system | session lookups run in a system context during auth (pre-org-binding); post-auth reads scoped to `user_id` |
 | `membership` (M1) | hybrid | a user may read their *own* memberships across orgs (to choose org at login); org admins read memberships within `app.org_id` only |
 
 > The "read own memberships across orgs at login" path is the one legitimate cross-org read. It runs in a **purpose-scoped system query** (`listMembershipsForUser`) that returns only `(organizationId, organizationName, membershipStatus)` — never PHI — so it cannot be used to exfiltrate tenant data. Documented as an explicit exception to "cross-tenant queries forbidden" (architecture §8(8)).

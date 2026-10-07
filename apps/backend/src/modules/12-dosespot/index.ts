@@ -212,20 +212,8 @@ export {
   eraseMedicationOrderRecord,
   registerDoseSpotErasers,
 } from "./erasers/dosespot-eraser";
-// M12-T09 — the M22 medication-order-PDF (Wave F) + M28 FHIR `MedicationRequest` (Wave H) forward seams
-// (DENY-STUBS). No M1 seam-registry entry, no `dependsOn` edge — M12 only shapes the payloads the consumers
-// will pull when they lock; the deny-stubs fail closed until then.
-export {
-  type MedicationOrderPdfRenderer,
-  type MedicationOrderPdfRenderPayload,
-  type MedicationOrderPdfResult,
-  denyStubMedicationOrderPdfRenderer,
-} from "./seams/m22-medication-order-pdf";
-export {
-  type FhirMedicationRequestPublisher,
-  type FhirMedicationRequestPublishResult,
-  denyStubFhirMedicationRequestPublisher,
-} from "./seams/m28-fhir-medication-request";
+// M12-T09 — M22 renders medication-order PDFs off the outbox and M28 pulls MedicationRequest via the
+// `MedicationOrderProvider` read seam; the former PDF/FHIR deny-stubs were never consumed and were removed (GAP-192).
 export {
   M12_DOCUMENT_BACKREF_CONSUMER,
   buildM12DocumentBackrefConsumer,

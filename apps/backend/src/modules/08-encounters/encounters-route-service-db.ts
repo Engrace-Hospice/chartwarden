@@ -11,14 +11,13 @@
 // does, folds the declared §2.8 effects into the row UPDATE, and emits its `m8.*` event on the caller's
 // transactional outbox — no route is left at 501.
 //
-// Because the EncounterRouteService interface threads no acting membership / session / attestation, this
-// slice makes three documented compromises (mirrors M7L-T02's null-actor convention): (1) writes envelope
-// `withOrgContext` with `userId:""` so the M4 write-audit trigger fires with a NULL actor; (2) columns the
-// route never captures — a signer identity, the assigned RN cosigner, a supervisor override reason — are
-// filled from the authoring membership or a documented sentinel, backfilled when the interface threads
-// them; (3) no `encounter_signature` provenance row and no `hearthnote_selection`/Layer-2 row is written
-// (the interface carries neither the session/attestation nor the selection tree) — the encounter's
-// status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
+// The EncounterRouteService interface threads no acting membership into every call, so (mirrors M7L-T02's
+// null-actor convention): (1) writes envelope `withOrgContext` with `userId:""` so the M4 write-audit
+// trigger fires with a NULL actor; (2) columns the route never captures — the assigned RN cosigner, a
+// supervisor override reason — are filled from the authoring membership or a documented sentinel. GAP-204:
+// the former compromise (3) is retired — every primary sign / cosignature / addendum-sign now writes an
+// `encounter_signature` provenance row (see the §3.3/D13 block below) and the HearthNote selection /
+// Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import {
@@ -388,7 +387,7 @@ async function admissionSummaryFor(
 }
 
 /**
- * The production, RLS-backed EncounterRouteService. Reads are real; writes fail-closed 501.
+ * The production, RLS-backed EncounterRouteService. Reads and writes are real (Drizzle + RLS).
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbEncounterRouteService(

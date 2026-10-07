@@ -58,12 +58,11 @@ read screens (Track B) + the destruction-cert eraser; the offline-draft sync wor
 
 Notes:
 - **No `dependsOn` edge** is created by any outbox consumer or forward seam (M21 supply-fulfillment / M22
-  order-PDF / M29 lab-events / M14 IDG-intake are string-literal event names or deny-stub contracts, per
+  order-PDF / M29 lab-events / M14 IDG-intake are string-literal event names, per
   ADR-0005 D1/D4). M11 `dependsOn` stays `[1, 6, 36, 38, 40]`; the relationship inventory (§10) lists the
   full coupling set but is not the edge set.
-- **M22 order-PDF (Wave F)** ships today as a typed deny-stub (`denyStubOrderPdfRenderer`, §1.3) — `available:
-  false` until M22 binds the renderer; no seam-registry entry, no edge (the M9 `AssessmentSummaryPdfRenderer`
-  precedent).
+- **M22 order-PDF** is rendered by M22 off the outbox (`m11.order.document_requested`); M11 ships no renderer
+  seam (the unconsumed `OrderPdfRenderer` deny-stub was removed, GAP-192) and has no edge.
 - All logs are PHI-free by construction: `order_id` / `patient_id` / `admission_id` / `org_id` UUIDs + enums
   only — never the `data` payload, the indication text, or lab result values (the lab appliers record only
   `criticalFlagCount` / `abnormalFlagCount`, never the values, §7.6).

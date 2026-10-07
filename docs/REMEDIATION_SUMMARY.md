@@ -38,7 +38,7 @@ Each phase used the same three tools, applied where each fits best:
 ## CI fitness surface (the enforcement backbone)
 
 `arch:fitness` = `arch:boundaries` + `arch:tables` + `arch:tenancy` + `arch:ddl`. Checks (see
-[`ARCHITECTURE_25_15_FITNESS.md`](../ARCHITECTURE_25_15_FITNESS.md)):
+[`ARCHITECTURE_25_15_FITNESS.md`](./architecture/ARCHITECTURE_25_15_FITNESS.md)):
 
 1–7 module boundaries / adapter mandate / domain+FHIR direction / leaves / helper-only tables /
 table ownership / no-cycles · 8–9 explicit-authz + read-audit (Biome) · **10 tenancy invariants
