@@ -646,8 +646,10 @@ export type M39ContributedPermissionKey = keyof typeof M39_CONTRIBUTED_PERMISSIO
  * discharge/nor/compliance are first-class admission resources, like M5's `patient.*`). The catalog
  * `abac` field is the DEFAULT predicate per route (§4.6); the route layer additionally applies an
  * explicit `requireAbac(...)` for the role-only signer/override predicates M6 owns
- * (`f2f.is_hospice_md_or_np`, `f2f.window_override`, `discharge.is_medical_director`,
- * `compliance.window_override`). `patient.scope` (route 8) is M5's re-used predicate; M6 does not
+ * (`f2f.is_hospice_md_or_np`, `f2f.window_override`, `compliance.window_override`) and the
+ * 42 CFR 418.26(b) route-40 signer predicate `discharge.is_order_signer` (medical director, physician
+ * designee, or the physician member of the patient's IDG — FY 2027; it replaced
+ * `discharge.is_medical_director`). `patient.scope` (route 8) is M5's re-used predicate; M6 does not
  * own it.
  *
  * Route 39 (`POST …/discharge`) derives its key from `reason` server-side (§6.3): the five
@@ -720,6 +722,14 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "admission.scope",
   },
+  // 42 CFR 418.25(a) — record the physician admission recommendation (the recommender is validated
+  // server-side against the signer set; this key gates who may ENTER it). Mirror row + grants: 0389.
+  "admission.record_recommendation": {
+    resource: "admission",
+    action: "record_recommendation",
+    category: "clinical",
+    abac: "admission.scope",
+  },
   // --- Election statement & period (routes 15–21) ---
   "election.draft": {
     resource: "election",
@@ -743,6 +753,26 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     resource: "election",
     action: "void",
     category: "compliance",
+    abac: "admission.scope",
+  },
+  // --- FY2027 election statement addendum (42 CFR 418.24(c)/(d); mig 0382 grants each to the roles
+  //     holding its election.* counterpart) ---
+  "election_addendum.read": {
+    resource: "election_addendum",
+    action: "read",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  "election_addendum.write": {
+    resource: "election_addendum",
+    action: "write",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  "election_addendum.acknowledge": {
+    resource: "election_addendum",
+    action: "acknowledge",
+    category: "clinical",
     abac: "admission.scope",
   },
   // --- CTI (routes 22–27) ---
@@ -830,7 +860,7 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     resource: "discharge",
     action: "cosign_for_cause",
     category: "clinical",
-    abac: "discharge.is_medical_director",
+    abac: "discharge.is_order_signer",
   },
   "discharge.record_death": {
     resource: "discharge",
@@ -1406,8 +1436,8 @@ export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIO
  * admin roster/policy/EPCS-certification keys are pure RBAC (`none`; org-admin / compliance / platform-ops
  * reference rows, step-up enforced at the route). Keys carry a `prescribing.` NAMESPACE prefix on top of the
  * `resource.action` decomposition (like M11's `orders.` / M10's `hope.`), so `key` is the full dotted
- * permission string used at `requirePermission(...)`. Fifteen keys total (§4.6; F-205, #248, added
- * `prescribing.report_error`). Kept in a dedicated const
+ * permission string used at `requirePermission(...)`. Sixteen keys total (§4.6; F-205, #248, added
+ * `prescribing.report_error`; COP27 added `prescribing.coverage_determine`). Kept in a dedicated const
  * for §3.3 attributability.
  */
 export const M12_CONTRIBUTED_PERMISSIONS = {
@@ -1464,6 +1494,15 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
   "prescribing.report_error": {
     resource: "medication_order",
     action: "report_error",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  // COP27 (42 CFR 418.24(c)) — set/change a medication order's hospice coverage determination (covered /
+  // not covered + reason) that the M6 election-statement addendum lists. Clinical, caseload-scoped like the
+  // other order writes.
+  "prescribing.coverage_determine": {
+    resource: "medication_order",
+    action: "coverage_determine",
     category: "clinical",
     abac: "caseload_or_scope",
   },
@@ -3962,6 +4001,15 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   "supplies.request.caregiver_signature": {
     resource: "supply_request",
     action: "caregiver_signature",
+    category: "clinical",
+    abac: "none",
+  },
+  // COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination (the M6
+  // election-statement addendum lists the not-covered items). A clinical determination, RBAC only like the
+  // other request writes; the service refuses it on the comfort-kit kinds.
+  "supplies.request.coverage_determine": {
+    resource: "supply_request",
+    action: "coverage_determine",
     category: "clinical",
     abac: "none",
   },

@@ -78,6 +78,7 @@ import {
   AdmissionHoldSchema,
   AdmissionListQuerySchema,
   AdmissionReadinessResponseSchema,
+  AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   CtiDraftSchema,
@@ -86,6 +87,7 @@ import {
   CtiVoidSchema,
   DischargeCosignSchema,
   DischargeCreateSchema,
+  DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
   ElectionPeriodPatchSchema,
   ElectionSignSchema,
@@ -102,6 +104,7 @@ import {
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
+  ComplianceWindowPageResponseSchema as M6ComplianceWindowPageResponseSchema,
   PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
   ReferralListResponseSchema as M6ReferralListResponseSchema,
   SummaryItemsResponseSchema as M6SummaryItemsResponseSchema,
@@ -109,6 +112,7 @@ import {
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
   NorAcknowledgeSchema,
   PatientElectionCertificationResponseSchema,
+  PhysicianSignerListResponseSchema,
   ReferralAcceptResponseSchema,
   ReferralAcceptSchema,
   ReferralActivityListResponseSchema,
@@ -147,6 +151,16 @@ import {
   DischargeWorklistQuerySchema,
   DischargeWorklistResponseSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/discharge-worklist-typebox";
+import {
+  ElectionAddendumDraftSchema as M6ElectionAddendumDraftSchema,
+  ElectionAddendumFurnishSchema as M6ElectionAddendumFurnishSchema,
+  ElectionAddendumOverviewSchema as M6ElectionAddendumOverviewSchema,
+  ElectionAddendumPatchSchema as M6ElectionAddendumPatchSchema,
+  ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
+  ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
+  ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
+  ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import {
   BenefitPeriodPlanQuerySchema,
   BenefitPeriodPlanSchema,
@@ -371,6 +385,8 @@ import {
   RateTableGetQuerySchema,
   RateTableListQuerySchema,
   RateTableListResponseSchema,
+  RateTableNationalReferenceQuerySchema,
+  RateTableNationalReferenceResponseSchema,
   RateTableViewSchema,
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
@@ -814,6 +830,7 @@ import {
   ParStockViewSchema as M21ParStockViewSchema,
   PerpetualLogViewSchema as M21PerpetualLogViewSchema,
   ReconcileReturnResultSchema as M21ReconcileReturnResultSchema,
+  SetCoverageDeterminationBody as M21SetCoverageDeterminationBody,
   SupplyItemListResponseSchema as M21SupplyItemListResponseSchema,
   SupplyItemViewSchema as M21SupplyItemViewSchema,
   SupplyRequestDetailSchema as M21SupplyRequestDetailSchema,
@@ -1458,6 +1475,7 @@ import {
   RequestSignatureRequest as M12RequestSignatureRequest,
   RevokePrescriberRequest as M12RevokePrescriberRequest,
   RxBenefitLookupRequest as M12RxBenefitLookupRequest,
+  SetCoverageDeterminationRequest as M12SetCoverageDeterminationRequest,
   SignControlledCompleteRequest as M12SignControlledCompleteRequest,
   SignControlledInitiateRequest as M12SignControlledInitiateRequest,
   SignMedicationOrderRequest as M12SignMedicationOrderRequest,
@@ -3721,6 +3739,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Activate the admission (only when the R-AC-01 gate is satisfied)",
     body: AdmissionActivateSchema,
   },
+  "POST /api/v1/admissions/:id/admission-recommendation": {
+    summary:
+      "Record the 42 CFR 418.25(a) physician admission recommendation (medical director, physician designee, or the patient's IDG physician; attending consultation)",
+    body: AdmissionRecommendationSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "GET /api/v1/admissions/:id/physician-signers": {
+    summary:
+      "Physicians eligible to sign for this admission's patient under 42 CFR 418.25(a)/418.26(b), with their capacities",
+    response: PhysicianSignerListResponseSchema,
+  },
   // Election statement & period (routes 15–21)
   "POST /api/v1/admissions/:id/election-statements": {
     summary: "Draft the beneficiary's election statement",
@@ -3733,6 +3762,43 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/election-statements/:id/sign": {
     summary: "Sign the election statement",
     body: ElectionSignSchema,
+  },
+  // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum.
+  "GET /api/v1/admissions/:id/election-addendum": {
+    summary: "Election statement addendum: current version, history and open 418.24(d) windows",
+    response: M6ElectionAddendumOverviewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum": {
+    summary:
+      "Draft the addendum (initial), refresh the draft, or start an update after a plan-of-care change",
+    body: M6ElectionAddendumDraftSchema,
+    response: M6ElectionAddendumOverviewSchema,
+  },
+  "PATCH /api/v1/admissions/:id/election-addendum/:addendumId": {
+    summary: "Edit a draft addendum (items, diagnoses, explanation)",
+    body: M6ElectionAddendumPatchSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/furnish": {
+    summary: "Furnish the addendum in writing (renders the PDF; closes the 418.24(d) window)",
+    body: M6ElectionAddendumFurnishSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature": {
+    summary: "Record the beneficiary's or representative's receipt signature (418.24(c)(9))",
+    body: M6ElectionAddendumSignatureSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/refusal": {
+    summary: "Record a refusal to sign, with the reason (418.24(c)(9))",
+    body: M6ElectionAddendumRefusalSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required": {
+    summary:
+      "Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4))",
+    body: M6ElectionAddendumSignatureNotRequiredSchema,
+    response: M6ElectionAddendumViewSchema,
   },
   "POST /api/v1/election-statements/:id/void": {
     summary: "Void an election statement",
@@ -3856,8 +3922,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: DischargeCreateSchema,
   },
   "POST /api/v1/discharges/:id/cosign-for-cause": {
-    summary: "Medical-director cosign for a for-cause discharge (§6.3 ABAC)",
+    summary:
+      "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
+  },
+  "GET /api/v1/admissions/:id/discharge-order": {
+    summary:
+      "The admission's 42 CFR 418.26(b) discharge order and for-cause cosigner (null until discharged)",
+    response: DischargeOrderResponseSchema,
   },
   // After-the-fact claim details (discharge-details-routes.ts)
   "GET /api/v1/admissions/:id/discharge-details": {
@@ -3916,9 +3988,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryItemsResponseSchema,
   },
   "GET /api/v1/compliance-windows": {
-    summary: "Org-wide compliance-window worklist (cursor-paginated)",
+    summary:
+      "Org-wide compliance-window worklist (cursor-paginated; rows carry the window kind and due instant)",
     query: M6ComplianceListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6ComplianceWindowPageResponseSchema,
   },
   "POST /api/v1/compliance-windows/:id/close": {
     summary: "Close a compliance window",
@@ -4700,6 +4773,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "File a clinician-initiated medication-error report against an order (F-205, #248)",
     body: M12ReportMedicationErrorRequest,
     response: M12MedicationErrorReportResponseSchema,
+  },
+  "PUT /api/v1/medication-orders/:id/coverage-determination": {
+    summary:
+      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+    body: M12SetCoverageDeterminationRequest,
+    response: M12MedicationOrderResponseSchema,
   },
   "POST /api/v1/medication-orders/:id/complete": {
     summary: "Complete a medication order (no-refills-no-renewal)",
@@ -7019,6 +7098,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match)",
     body: M21CaptureCaregiverSignatureBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "PUT /api/v1/supplies/supply-requests/:supplyRequestId/coverage-determination": {
+    summary:
+      "COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination (reason required when not covered; kit kinds refused; If-Match)",
+    body: M21SetCoverageDeterminationBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {
@@ -9946,6 +10031,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The live hospice rate table claim assembly would price a service date from, or null (F-210)",
     query: RateTableEffectiveQuerySchema,
     response: RateTableEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/national-reference": {
+    summary:
+      "The CMS national hospice per-diem base rates for a fiscal year, HQRP-compliant and non-compliant, with sources (reference only; pricing reads the tenant-entered table)",
+    query: RateTableNationalReferenceQuerySchema,
+    response: RateTableNationalReferenceResponseSchema,
   },
   "GET /api/v1/billing/rate-tables/:id": {
     summary: "Read one hospice rate-table version (F-210)",

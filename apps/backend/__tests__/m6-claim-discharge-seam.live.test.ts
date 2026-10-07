@@ -36,6 +36,7 @@ import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { appRoleConnectionString } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+import { seedPhysicianRole } from "./_physician-signer";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -165,6 +166,7 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
        VALUES ($1,$2,'CCN-M6CD','M6 CD Hospice','NPI-M6CD','enc','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
+    await seedPhysicianRole(admin, ORG_A, MD);
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
@@ -229,7 +231,12 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
     await svc.cosignDischarge(
       ORG_A,
       filed.id,
-      { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+      // 42 CFR 418.26(b): the cosigner signs as a physician the authority port recognises.
+      {
+        cosignerName: "Dr. Med Director",
+        cosignerNpi: "1234567893",
+        actorRoleKeys: ["medical_director"],
+      },
       filed.version,
       MD,
     );

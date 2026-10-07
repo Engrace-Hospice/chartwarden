@@ -17,6 +17,10 @@
 
 ## Remediation Changelog — Phase 2 (2026-06-11)
 
+- **Implementation note (FY2027 SSVI, 2026-10-06)** — the M30 SSVI family (internal estimate of the CMS
+  Service and Spending Variation Index) is NOT added to an M33 dashboard tile: M33 renders no HCI tile either
+  (M30 owns quality-measure methodology, §1.2), so the SSVI is shown where HCI is — the M30 quality hub. Any
+  future M33 cross-module quality tile must carry the "internal estimate — CMS publishes the official SSVI" label.
 - **Implementation note (WX-PR-014 M33 slice, 2026-08-06)** — closed the M33 §4.8 background-job gap
   WX-PR-014's original pass deliberately left untouched ("M33's gap is an order of magnitude larger than
   M30's"). Bound for real: the per-job `withOrgContext`/`withPlatformContext` tenancy envelope (previously

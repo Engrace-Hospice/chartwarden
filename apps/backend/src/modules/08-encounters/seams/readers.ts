@@ -72,6 +72,9 @@ export function createSignedEncountersReader(store: EncounterReaderStore): Signe
     async skilledNursingDayTotalsForOrg(organizationId, window) {
       return store.skilledNursingDayTotalsForOrg(organizationId, window);
     },
+    async skilledVisitDaysForOrg(organizationId, window) {
+      return store.skilledVisitDaysForOrg(organizationId, window);
+    },
     async renderPayloadFor(encounterId) {
       const payload = await store.renderPayload(encounterId);
       if (payload === null) throw new EncounterNotFoundError(encounterId);

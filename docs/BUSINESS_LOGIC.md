@@ -121,8 +121,12 @@ module.
   (42 CFR 418.22(a)(3)), not an activation one: activation needs only the hospice-MD signature, and
   M23's `cti_signed_per_period` rule blocks the claim while the CTI is still `awaiting_attending`.
 - **Face-to-face encounter**: `scheduled → completed → attested`, with a Medical-Director-only
-  window-override self-loop (documented reason required). Attestation requires a minimum-length
-  narrative from the actual performer.
+  window-override self-loop (documented reason required). Completion records the modality
+  (`encounter_location`); a telehealth recert F2F is allowed only through 2027-12-31 and, from
+  2026-01-31, only with the clinician's moratorium / enhanced-oversight / Medicare-enrollment
+  attestation (42 CFR 418.22(a)(4)(ii)). Attestation, by the actual performer, is either a
+  minimum-length narrative or a linked M8 note signed by the performer on the encounter date
+  (418.22(b)(4)).
 - Integrates with M5 (privacy flags), M7 (care-plan creation on activation), M9 (48h assessment
   check), M11 (discharge cascades discontinue orders).
 
@@ -419,7 +423,8 @@ module.
   ack_accepted/ack_partial/ack_rejected → paid/partial_paid/denied → replaced/voided`; submit is
   gated by zero unresolved blocking validation failures.
 - **Validation framework**: a frozen platform-default rule registry — patient eligibility,
-  election-period active, CTI signed per period, F2F attested for recert, NOE timeliness (warns
+  election-period active, CTI signed per period, F2F attested for recert, telehealth F2F reported
+  as a dated G0679 / revenue 0657 line from 2027-01-01 (CR 14495), NOE timeliness (warns
   day 3, blocks day 5+1), duplicate-billing check, ICD-10 sequencing, HIPPS/SIA calculation
   correctness, level-of-care coherence, EVV bracket coherence (blocks only on
   `unresolved_missing`), place-of-service consistency, modifier validity, physician credentials

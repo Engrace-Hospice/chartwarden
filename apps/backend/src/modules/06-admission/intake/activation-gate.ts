@@ -6,6 +6,8 @@
 // admission aggregate (route 10), so the §5.2.5 UI checklist and the server can never diverge (§7.2
 // "Done means" — the gate is verified by re-fetch after out-of-band mutation).
 
+import { ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION } from "../physician-authority";
+
 export type AdmissionReadinessStatus = "blocked" | "action_required" | "ready";
 export type RequirementStatus =
   | "complete"
@@ -22,7 +24,9 @@ export type RequirementCode =
   | "notice_of_rights"
   | "election_statement"
   | "cti"
-  | "f2f";
+  | "f2f"
+  | "admission_recommendation"
+  | "election_addendum";
 export type RequirementAction =
   | "RESOLVE_PATIENT"
   | "COMPLETE_ADMISSION_DETAILS"
@@ -32,7 +36,9 @@ export type RequirementAction =
   | "COMPLETE_ELECTION_SIGNATURE"
   | "COMPLETE_CTI"
   | "COMPLETE_CTI_SIGNATURE"
-  | "REVIEW_F2F";
+  | "REVIEW_F2F"
+  | "RECORD_ADMISSION_RECOMMENDATION"
+  | "COMPLETE_ELECTION_ADDENDUM";
 
 export interface AdmissionRequirementEvidence {
   readonly sourceType: "structured" | "uploaded";
@@ -161,6 +167,71 @@ export interface AdmissionReadinessFacts {
      */
     readonly exceptionDocumented?: boolean;
     readonly exceptionDueBy?: string | null;
+  };
+  /**
+   * 42 CFR 418.25(a) — has the medical director / physician designee / IDG physician member's admission
+   * recommendation been recorded? Optional so legacy fact builders read as "not recorded".
+   */
+  readonly admissionRecommendation?: { readonly recorded: boolean };
+  /**
+   * FY2027 — 42 CFR 418.24(c)/(d) election statement addendum. INFORMATIONAL ONLY: the addendum is a condition
+   * for PAYMENT (M23 `election_addendum_signed`), not for admission, so the item never blocks activation.
+   * Absent ⇒ no checklist item (callers that predate the addendum).
+   */
+  readonly electionAddendum?: {
+    /** True once the admission has been activated (the election's effective date is set). */
+    readonly activated: boolean;
+    /** True when the election is effective on/after 2026-10-01 (or, before activation, will be). */
+    readonly required: boolean;
+    /** The newest addendum version's status, or null when none exists. */
+    readonly latestStatus: string | null;
+    /** True when an addendum window is overdue. */
+    readonly overdue: boolean;
+  };
+}
+
+const ADDENDUM_LABEL = "Election Statement Addendum";
+
+/** The informational (never blocking) addendum checklist item, or null when the facts are absent. */
+export function electionAddendumRequirement(
+  facts: AdmissionReadinessFacts["electionAddendum"],
+): AdmissionReadinessRequirement | null {
+  if (!facts) return null;
+  const base = { code: "election_addendum" as const, label: ADDENDUM_LABEL, blocking: false };
+  if (!facts.required) {
+    return {
+      ...base,
+      status: "not_applicable",
+      message: "Not mandatory for elections effective before October 1, 2026.",
+    };
+  }
+  if (!facts.activated) {
+    return {
+      ...base,
+      status: "pending",
+      message:
+        "Due within 5 calendar days of the election's effective date (42 CFR 418.24(d)(1)). A condition for payment, not for admission.",
+    };
+  }
+  const settled = ["signed", "refused", "signature_not_required", "not_required"];
+  if (facts.latestStatus !== null && settled.includes(facts.latestStatus)) {
+    return { ...base, status: "complete" };
+  }
+  if (facts.latestStatus === "furnished") {
+    return {
+      ...base,
+      status: "awaiting_signature",
+      message: "Furnished. Record the signature, or document a refusal.",
+      action: "COMPLETE_ELECTION_ADDENDUM",
+    };
+  }
+  return {
+    ...base,
+    status: facts.overdue ? "overdue" : "action_required",
+    message: facts.overdue
+      ? "The addendum is past its 42 CFR 418.24(d) due date. Furnish it now."
+      : "Furnish the addendum to the patient or representative in writing.",
+    action: "COMPLETE_ELECTION_ADDENDUM",
   };
 }
 
@@ -409,6 +480,29 @@ export function evaluateAdmissionReadiness(
   } else {
     requirements.push(complete("f2f", "Face-to-Face Encounter"));
   }
+
+  // 42 CFR 418.25(a) — a payment condition surfaced on the checklist; whether it blocks activation is the one
+  // `ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION` decision (physician-authority.ts carries the rationale).
+  requirements.push(
+    facts.admissionRecommendation?.recorded
+      ? {
+          code: "admission_recommendation",
+          label: "Physician admission recommendation",
+          status: "complete",
+          blocking: ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION,
+        }
+      : {
+          code: "admission_recommendation",
+          label: "Physician admission recommendation",
+          status: "action_required",
+          blocking: ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION,
+          message:
+            "Record the admission recommendation of the medical director, physician designee or IDG physician (42 CFR 418.25(a)).",
+          action: "RECORD_ADMISSION_RECOMMENDATION",
+        },
+  );
+  const addendum = electionAddendumRequirement(facts.electionAddendum);
+  if (addendum) requirements.push(addendum);
 
   const completed = requirements.filter(
     (r) => r.status === "complete" || r.status === "not_applicable",

@@ -43,6 +43,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import {
+  type CoverageDraft,
+  HospiceCoverageFields,
+  isNotCovered,
+  validateCoverageForm,
+} from "../../shell/hospice-coverage";
+import {
   type ConceptSearchResult,
   type CreateOrderBody,
   type MedClass,
@@ -53,6 +59,7 @@ import {
   expandValueSet,
   lookupDrug,
   searchDrugs,
+  setCoverageDetermination,
 } from "./medications-api";
 
 /** The §2.11 frequency codes the sig carries. Free-form at the boundary; these are the common ones. */
@@ -119,6 +126,12 @@ export function PrescribeModal({
   const [refills, setRefills] = useState("0");
   const [physicianMdmId, setPhysicianMdmId] = useState("");
   const [prescriberDiscipline, setPrescriberDiscipline] = useState("hospice_physician");
+  // COP27 — the hospice coverage determination; a non-default value is saved right after the draft exists.
+  const [coverage, setCoverage] = useState<CoverageDraft>({
+    hospiceCoverage: "covered_related",
+    reason: "",
+  });
+  const [coverageError, setCoverageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -136,6 +149,8 @@ export function PrescribeModal({
     setAsNeededReason("");
     setRefills("0");
     setPhysicianMdmId("");
+    setCoverage({ hospiceCoverage: "covered_related", reason: "" });
+    setCoverageError(null);
     void (async () => {
       const [r, f, controlled] = await Promise.all([
         expandValueSet(client, "route_of_administration"),
@@ -180,6 +195,11 @@ export function PrescribeModal({
     !(Number(doseQuantity) > 0);
 
   async function submit(): Promise<void> {
+    const coverageInvalid = validateCoverageForm(coverage.hospiceCoverage, coverage.reason);
+    if (coverageInvalid) {
+      setCoverageError(coverageInvalid);
+      return;
+    }
     setBusy(true);
     setError(null);
     const sig: SigStructured = {
@@ -212,12 +232,30 @@ export function PrescribeModal({
       ...(medClass === "controlled_substance" ? { deaSchedule: "II" as const } : {}),
     } as CreateOrderBody;
     const res = await createOrder(client, body);
-    setBusy(false);
     if (!res.ok) {
+      setBusy(false);
       setError(res.message);
       return;
     }
-    onCreated(res.value);
+    let created = res.value;
+    if (isNotCovered(coverage.hospiceCoverage)) {
+      const cov = await setCoverageDetermination(client, created.id, {
+        hospiceCoverage: coverage.hospiceCoverage,
+        reason: coverage.reason.trim(),
+      });
+      if (!cov.ok) {
+        // The draft exists; say so rather than implying nothing was saved.
+        setBusy(false);
+        onCreated(created);
+        setError(
+          `The draft was created, but the hospice coverage determination was not saved: ${cov.message} Set it from the order detail.`,
+        );
+        return;
+      }
+      created = cov.value;
+    }
+    setBusy(false);
+    onCreated(created);
     onClose();
   }
 
@@ -399,6 +437,15 @@ export function PrescribeModal({
                 { value: "medical_director", label: "Medical director" },
                 { value: "np", label: "Nurse practitioner" },
               ]}
+            />
+            <HospiceCoverageFields
+              value={coverage}
+              onChange={(next) => {
+                setCoverage(next);
+                setCoverageError(null);
+              }}
+              error={coverageError}
+              disabled={busy}
             />
             <p style={meta}>
               This creates a DRAFT. The server decides whether your discipline may sign this class;

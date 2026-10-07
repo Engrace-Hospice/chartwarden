@@ -24,7 +24,10 @@ function ok(data: unknown) {
   };
 }
 
-function clientFor(options: { failCtiOnce?: boolean } = {}): ApiClient {
+function clientFor(
+  options: { failCtiOnce?: boolean; f2fState?: "scheduled" | "completed" | "attested" } = {},
+): ApiClient {
+  const f2fState = options.f2fState ?? "attested";
   let ctiFailuresRemaining = options.failCtiOnce ? 1 : 0;
 
   return {
@@ -111,12 +114,15 @@ function clientFor(options: { failCtiOnce?: boolean } = {}): ApiClient {
               cti: null,
               faceToFace: {
                 id: "f2f-3",
-                status: "attested",
+                status: f2fState,
                 performerRole: "hospice_physician",
-                encounterDate: "2027-03-20",
-                withinWindow: true,
+                performerUserId: session.userId,
+                encounterDate: f2fState === "scheduled" ? null : "2027-03-20",
+                encounterLocation: f2fState === "scheduled" ? null : "telehealth",
+                attestationNoteEncounterId: null,
+                withinWindow: f2fState === "scheduled" ? null : true,
                 windowOverride: false,
-                attested: true,
+                attested: f2fState === "attested",
               },
             },
             {
@@ -153,7 +159,29 @@ function clientFor(options: { failCtiOnce?: boolean } = {}): ApiClient {
       }
 
       if (path === "/api/v1/face-to-face/{id}") {
-        return ok({ id: "f2f-3", state: "attested", version: 2 });
+        return ok({ id: "f2f-3", state: f2fState, version: 2 });
+      }
+
+      if (path === "/api/v1/encounters") {
+        const note = {
+          encounterType: "face_to_face",
+          discipline: "md",
+          serviceDate: "2027-03-20",
+          authoredByUserId: session.userId,
+        };
+        return ok({
+          encounters: [
+            { ...note, id: "enc-signed", status: "signed", signedAt: "2027-03-20T18:00:00Z" },
+            { ...note, id: "enc-draft", status: "draft", signedAt: null },
+            {
+              ...note,
+              id: "enc-other-author",
+              status: "signed",
+              signedAt: "2027-03-20T19:00:00Z",
+              authoredByUserId: "someone-else",
+            },
+          ],
+        });
       }
 
       return ok({});
@@ -244,13 +272,92 @@ describe("Patient Election & Certification workspace", () => {
       await screen.findByRole("button", { name: "View Period 3 Face-to-Face details" }),
     );
 
-    const dialog = await screen.findByRole("dialog", { name: "Face-to-Face details" });
-    await waitFor(() => expect(within(dialog).getAllByText("Attested")).toHaveLength(2));
-    expect(within(dialog).getByText("Period 3")).toBeTruthy();
-    expect(within(dialog).getByText("Hospice Physician")).toBeTruthy();
+    // 2026-09-25 redesign — the F2F opens in the right rail (admissions drawer), not a centered modal.
+    const rail = await screen.findByRole("complementary", { name: "Face-to-Face details" });
+    await waitFor(() => expect(within(rail).getByText("Period 3")).toBeTruthy());
+    expect(within(rail).getByText("Hospice Physician")).toBeTruthy();
+    expect(within(rail).getByText("Telehealth (audio + video)")).toBeTruthy();
+    expect(within(rail).getByText("Written attestation")).toBeTruthy();
+    expect(within(rail).getByText("G0679")).toBeTruthy();
     expect(client.GET).toHaveBeenCalledWith("/api/v1/face-to-face/{id}", {
       params: { path: { id: "f2f-3" } },
     });
+  });
+
+  it("records a telehealth completion with the (A)-(C) eligibility answers (R-F2F-05)", async () => {
+    const client = clientFor({ f2fState: "scheduled" });
+    renderWorkspace(client);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View Period 3 Face-to-Face details" }),
+    );
+    const rail = await screen.findByRole("complementary", { name: "Face-to-Face details" });
+    const submit = await within(rail).findByRole("button", { name: "Record completion" });
+
+    fireEvent.change(within(rail).getByLabelText(/Encounter date/), {
+      target: { value: "2027-03-20" },
+    });
+    fireEvent.change(within(rail).getByLabelText(/Modality/), { target: { value: "telehealth" } });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(rail).getByLabelText(/moratorium/), { target: { value: "no" } });
+    fireEvent.change(within(rail).getByLabelText(/enhanced oversight/), {
+      target: { value: "no" },
+    });
+    fireEvent.change(within(rail).getByLabelText(/Medicare-enrolled/), {
+      target: { value: "yes" },
+    });
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith("/api/v1/face-to-face/{id}/complete", {
+        params: { path: { id: "f2f-3" } },
+        body: {
+          encounterDate: "2027-03-20",
+          encounterLocation: "telehealth",
+          telehealthEligibility: {
+            patientInMoratoriumArea: false,
+            hospiceUnderEnhancedOversight: false,
+            performerMedicareEnrolledOrOptedOut: true,
+          },
+          ifVersion: 2,
+        },
+      }),
+    );
+  });
+
+  it("attests by linking the performer's signed visit note, or a >= 100-char narrative (R-F2F-06)", async () => {
+    const client = clientFor({ f2fState: "completed" });
+    renderWorkspace(client);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View Period 3 Face-to-Face details" }),
+    );
+    const rail = await screen.findByRole("complementary", { name: "Face-to-Face details" });
+    const noteSelect = (await within(rail).findByLabelText(
+      /Signed visit note/,
+    )) as HTMLSelectElement;
+    // Only the performer's SIGNED note on the encounter date is offered.
+    expect(Array.from(noteSelect.options).map((o) => o.value)).toEqual(["", "enc-signed"]);
+    fireEvent.change(noteSelect, { target: { value: "enc-signed" } });
+    fireEvent.click(within(rail).getByRole("button", { name: "Attest face-to-face" }));
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith("/api/v1/face-to-face/{id}/attest", {
+        params: { path: { id: "f2f-3" } },
+        body: { signedNoteEncounterId: "enc-signed", ifVersion: 2 },
+      }),
+    );
+
+    fireEvent.change(within(rail).getByLabelText(/^Attestation$/), {
+      target: { value: "narrative" },
+    });
+    const attest = within(rail).getByRole("button", { name: "Attest face-to-face" });
+    fireEvent.change(within(rail).getByLabelText(/Attestation narrative/), {
+      target: { value: "too short" },
+    });
+    expect((attest as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(rail).getByLabelText(/Attestation narrative/), {
+      target: { value: "x".repeat(100) },
+    });
+    expect((attest as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows a readable detail error and retries the request", async () => {
@@ -264,6 +371,7 @@ describe("Patient Election & Certification workspace", () => {
 
     const dialog = screen.getByRole("dialog", { name: "CTI details" });
     await waitFor(() => expect(within(dialog).getByText("Initial Certification")).toBeTruthy());
-    expect(client.GET).toHaveBeenCalledTimes(4);
+    // 2 page reads + the FY2027 election-addendum read + 2 CTI detail attempts.
+    expect(client.GET).toHaveBeenCalledTimes(5);
   });
 });

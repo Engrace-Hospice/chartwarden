@@ -351,6 +351,23 @@ export interface SignedEncountersReader {
     organizationId: string,
     window: { from: LocalDate; to: LocalDate },
   ): Promise<ReadonlyArray<SkilledNursingDayTotal>>;
+
+  /**
+   * ORG-LEVEL (admission, service date) pairs with at least one SIGNED SKILLED visit — FY2027 SSVI metrics 3 and
+   * 7 (CMS-1851-F Table 9: "skilled visit (nursing, MSW, or therapy)"). "Skilled" here is `rn`, `lpn` and `msw`:
+   * the encounter model has no therapy discipline, so a therapy-only day is not returned (consumers say so).
+   * Day keys only — no minutes, no patient identifier, no narrative (D6).
+   */
+  skilledVisitDaysForOrg(
+    organizationId: string,
+    window: { from: LocalDate; to: LocalDate },
+  ): Promise<ReadonlyArray<SkilledVisitDay>>;
+}
+
+/** One (admission, service date) with ≥ 1 signed `rn`/`lpn`/`msw` encounter (§4.7 `skilledVisitDaysForOrg`). */
+export interface SkilledVisitDay {
+  readonly admissionId: AdmissionId;
+  readonly serviceDate: LocalDate;
 }
 
 /** One (admission, service date) skilled-nursing total (§4.7 `skilledNursingDayTotalsForOrg`). */

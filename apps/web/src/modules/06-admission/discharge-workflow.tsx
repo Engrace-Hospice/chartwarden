@@ -28,6 +28,14 @@ import { fmtDate } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import { DISCHARGEABLE_STATES, stateLabel } from "./admission-status";
 import {
+  type DischargeOrderDraft,
+  DischargeOrderFields,
+  dischargeOrderBody,
+  dischargeOrderComplete,
+  dischargeOrderRequiredAtFiling,
+  emptyDischargeOrder,
+} from "./discharge-order-ui";
+import {
   EMPTY_FORM,
   type EndReason,
   type FormState,
@@ -124,6 +132,8 @@ export function DischargeWorkflow(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pendingCosign, setPendingCosign] = useState<PendingCosign | null>(null);
+  // 42 CFR 418.26(b) (FY 2027) — the physician discharge order a live discharge must carry at filing.
+  const [dischargeOrder, setDischargeOrder] = useState<DischargeOrderDraft>(emptyDischargeOrder);
   const today = localToday();
 
   const def = form.reason ? REASON_BY_VALUE.get(form.reason) : undefined;
@@ -131,10 +141,18 @@ export function DischargeWorkflow(): JSX.Element {
     admission && admission !== "error" ? dateOnly(admission.admissionAt) || null : null;
   const detailErrors = useMemo(() => validateDetails(form), [form]);
   const dateError = validateDate(form.date, admissionDate, today);
+  // Only route 39 (`/discharge`) takes the order; death, for-cause (the cosign is the order), revocation and
+  // transfer-out never do. `form.date` decides the pre/post 2026-10-01 rule.
+  const takesDischargeOrder = def?.endpoint === "discharge" && def.value !== "for_cause";
+  const orderRequired =
+    takesDischargeOrder &&
+    Boolean(form.date) &&
+    dischargeOrderRequiredAtFiling(def.value, form.date);
+  const orderMissing = orderRequired && !dischargeOrderComplete(dischargeOrder);
   const valid: Record<StepId, boolean> = {
     reason: Boolean(def),
     details: Boolean(def) && Object.keys(detailErrors).length === 0,
-    date: dateError === null,
+    date: dateError === null && !orderMissing,
     review: true,
     confirm: form.attested,
   };
@@ -194,6 +212,7 @@ export function DischargeWorkflow(): JSX.Element {
         },
       });
     }
+    const orderBody = takesDischargeOrder ? dischargeOrderBody(dischargeOrder) : undefined;
     return client.POST("/api/v1/admissions/{id}/discharge", {
       params: { path: { id } },
       body: {
@@ -205,9 +224,10 @@ export function DischargeWorkflow(): JSX.Element {
         dischargeDate: form.date,
         narrative,
         ...(def.value === "for_cause" ? { forCauseReason: form.forCauseReason.trim() } : {}),
+        ...(orderBody ? { dischargeOrder: orderBody } : {}),
       },
     });
-  }, [id, def, form, client]);
+  }, [id, def, form, client, takesDischargeOrder, dischargeOrder]);
 
   const submit = useCallback(async () => {
     if (!id || !def) return;
@@ -399,6 +419,26 @@ export function DischargeWorkflow(): JSX.Element {
           </Section>
         ) : null}
 
+        {step === "date" && def && takesDischargeOrder && form.date ? (
+          <>
+            <DischargeOrderFields
+              admissionId={admission.id}
+              reason={def.value}
+              dischargeDate={form.date}
+              value={dischargeOrder}
+              onChange={(next) => {
+                setDischargeOrder(next);
+                setSubmitError(null);
+              }}
+            />
+            {showErrors.date && orderMissing ? (
+              <p className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
+                Choose the ordering physician and when the order was signed.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+
         {step === "review" && def ? (
           <Section
             icon="activity"
@@ -412,7 +452,15 @@ export function DischargeWorkflow(): JSX.Element {
         {step === "confirm" && def ? (
           <Section icon="check-circle" title="Confirm">
             <div style={{ display: "grid", gap: "0.875rem" }}>
-              <ReviewList rows={confirmRows(def.value, def.label, def.dateLabel, form)} />
+              <ReviewList
+                rows={confirmRows(
+                  def.value,
+                  def.label,
+                  def.dateLabel,
+                  form,
+                  takesDischargeOrder ? dischargeOrder : null,
+                )}
+              />
               <AttestTile checked={form.attested} onChange={(v) => update("attested", v)}>
                 {attestationText(def.value)}
               </AttestTile>
@@ -467,6 +515,7 @@ function confirmRows(
   label: string,
   dateLabel: string,
   form: FormState,
+  order: DischargeOrderDraft | null,
 ): { term: string; value: string; multiline?: boolean }[] {
   const rows: { term: string; value: string; multiline?: boolean }[] = [
     { term: "Reason", value: label },
@@ -488,6 +537,11 @@ function confirmRows(
       term: "Signed by",
       value: `${form.signingPatientName.trim()} (${form.signingRole === "patient" ? "patient" : "legal representative"})`,
     });
+  if (order && dischargeOrderComplete(order))
+    rows.push({
+      term: "Physician discharge order",
+      value: `Signed ${fmtDate(order.signedAtLocal.slice(0, 10))}${order.orderReference.trim() ? ` · ${order.orderReference.trim()}` : ""}`,
+    });
   rows.push({ term: "Narrative", value: form.narrative.trim(), multiline: true });
   return rows;
 }
@@ -503,21 +557,22 @@ function PendingCosignSection({
 }): JSX.Element {
   const cosignHref = `/discharges/${pending.dischargeId}/cosign?version=${pending.version}&admissionId=${admissionId}`;
   return (
-    <Section icon="clock" title="Pending medical-director cosign">
+    <Section icon="clock" title="Pending physician cosign">
       <div style={{ display: "grid", gap: "0.875rem" }}>
         <InlineAlert tone="success">
-          The for-cause discharge was filed. It is pending the medical director's cosign — the
-          patient stays on service until then.
+          The for-cause discharge was filed. It is pending the physician's cosign (the medical
+          director, a physician designee or the patient's IDG physician) — the patient stays on
+          service until then.
         </InlineAlert>
         <p style={bodyText}>
           Nothing has ended yet: the admission stays {stateLabel(admissionState).toLowerCase()}, the
-          benefit period stays open, and the NOTR is drafted only once the medical director cosigns.
-          If the cosign is declined, the discharge is voided.
+          benefit period stays open, and the NOTR is drafted only once the physician cosigns. If the
+          cosign is declined, the discharge is voided.
         </p>
         <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
           {pending.dischargeId ? (
             <Link to={cosignHref} className="wx-btn-primary">
-              Open medical-director cosign
+              Open physician cosign
             </Link>
           ) : null}
           <Link to={`/admissions/${admissionId}`} className="wx-btn-secondary">

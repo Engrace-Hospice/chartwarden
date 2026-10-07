@@ -63,6 +63,7 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -252,6 +253,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
         reason: "moved_out_of_service_area",
         dischargeDate: new Date().toISOString().slice(0, 10),
         narrative: "The patient relocated out of the service area and elects another hospice.",
+        dischargeOrder: dischargeOrderBy(MD),
         ifVersion: adm?.version,
       } as never,
       USER,
@@ -271,6 +273,9 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
       `INSERT INTO "user" (id,email) VALUES ($1,'f102a@x.test'),($2,'f102md@x.test'),($3,'f102at@x.test')`,
       [USER, MD, ATTENDING],
     );
+    // 42 CFR 418.26(b) — the live discharges below are dated today, so they carry a physician order.
+    await seedPhysicianRole(admin, ORG_A, MD);
+    await seedPhysicianRole(admin, ORG_B, MD);
     for (const org of [ORG_A, ORG_B]) {
       providerOf[org] = (
         await admin.query(
@@ -359,6 +364,13 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     };
   }, 180_000);
 
+  /** Tick until the backlog is claimed. Activation + discharge now also emit the FY2027 election-addendum
+   *  rows (drafted, window opened/closed, not_required), so one 25-row batch no longer always reaches the
+   *  discharge row in a suite that has built several admissions. */
+  async function drain(): Promise<void> {
+    for (let i = 0; i < 5; i += 1) await dispatcher.tick();
+  }
+
   afterAll(async () => {
     await handle?.close();
     if (admin) await admin.end();
@@ -378,7 +390,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     // every discharge on the platform has sat in for the life of the deployment.
     expect(await orderStatus(dme)).toBe("active");
 
-    await dispatcher.tick();
+    await drain();
 
     for (const id of [lab, kit, dme]) expect(await orderStatus(id)).toBe("discontinued");
     for (const id of [med, queued]) expect(await medStatus(id)).toBe("discontinued");
@@ -390,7 +402,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     const dme = await seedOrder(ORG_A, admissionId, patientId, "dme", "active");
 
     await discharge(ORG_A, admissionId);
-    await dispatcher.tick();
+    await drain();
 
     const rows = await discontinuationFor(dme);
     expect(rows).toHaveLength(1);
@@ -409,7 +421,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     const lab = await seedOrder(ORG_A, admissionId, patientId, "lab", "active");
 
     await discharge(ORG_A, admissionId);
-    await dispatcher.tick();
+    await drain();
 
     expect(await eventsFor(dme)).toEqual(
       expect.arrayContaining(["m11.order.discontinued", "m11.order.supply_cancellation_requested"]),
@@ -426,7 +438,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     const draft = await seedOrder(ORG_A, admissionId, patientId, "lab", "draft");
 
     await discharge(ORG_A, admissionId);
-    await dispatcher.tick();
+    await drain();
 
     expect(await orderStatus(done)).toBe("completed");
     expect(await orderStatus(draft)).toBe("draft");
@@ -439,12 +451,12 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     const dme = await seedOrder(ORG_A, admissionId, patientId, "dme", "active");
 
     await discharge(ORG_A, admissionId);
-    await dispatcher.tick();
+    await drain();
     const after = (await eventsFor(dme)).length;
     // The dispatcher's `(eventId, consumerName)` receipt means the handler does not re-run at all; even
     // if it did, every order is already `discontinued`, which the decider counts as skipped.
-    await dispatcher.tick();
-    await dispatcher.tick();
+    await drain();
+    await drain();
 
     expect(await discontinuationFor(dme)).toHaveLength(1);
     expect((await eventsFor(dme)).length).toBe(after);
@@ -459,7 +471,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     const orderB = await seedOrder(ORG_B, admissionB, patientB, "dme", "active");
 
     await discharge(ORG_A, admissionA);
-    await dispatcher.tick();
+    await drain();
 
     expect(await orderStatus(orderA)).toBe("discontinued");
     expect(await orderStatus(orderB)).toBe("active");

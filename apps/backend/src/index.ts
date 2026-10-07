@@ -261,6 +261,8 @@ import {
   activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  buildM6CarePlanAddendumConsumer,
+  buildM6CoverageAddendumConsumer,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
@@ -268,9 +270,12 @@ import {
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
   claimStayEndFactsForOrg,
+  composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
+  createElectionAddendumService,
+  electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
   idgCurrentLevelOfCareForOrg,
@@ -306,9 +311,11 @@ import {
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   claimDiagnosesForOrg,
+  createAddendumDiagnosesReader,
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
+  createUnrelatedProblemItemsReader,
   idgPacketCarePlanContextForOrg,
   mountCarePlanRoutes,
   registerCarePlanAbacPredicates,
@@ -337,6 +344,7 @@ import {
   registerEncounterSeams,
   registerM8CronWorkers,
   scheduleM8Jobs,
+  signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
 } from "./modules/08-encounters/index";
 import {
@@ -1142,6 +1150,7 @@ import {
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
+import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
@@ -1454,7 +1463,9 @@ export function wireModuleSeams(
   // TASK-002 — MedicationOrderProvider + RefillInboxProvider bind the Drizzle store on a db boot
   // (D14 allowlist sig projection; the cost-basis + comfort-kit rollups REFUSE with
   // M12_SEAM_SCHEMA_GAP — no cost column / not M12's table — never a fabricated $0 or "no kit").
-  registerDoseSpotSeams(deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db) } : {});
+  registerDoseSpotSeams(
+    deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db), db: deps.db } : {},
+  );
   // M13 — the two §2.12 D16 owned READ seams (MedicationAdministrationProvider — the administration read path M14
   // (IDG "administrations since last meeting") / M28 (FHIR) / M30 (PRN-effectiveness / missed-dose /
   // comfort-kit-timeliness measures) / M31 (portal summary) / M33 (dashboards) / M37 (IPU IV-pump overlay)
@@ -1559,7 +1570,9 @@ export function wireModuleSeams(
   // route and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). It is wired below,
   // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
   // routing-less row.
-  registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
+  registerSuppliesSeams(
+    deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db), db: deps.db } : {},
+  );
   // M19 — the five §4.3 owned READ seams: `OnCallProvider` (who is on call NOW for a ProviderEntity + the
   // active shifts M36's `on_call` channel synchronizer re-syncs membership from, §4.5 — the same read M20's
   // after-hours SOS parallel recipient resolves through, M20 §7.5 D14), `TriageCallReader` (M32's PHI-free
@@ -2605,6 +2618,11 @@ function buildM23AssemblyPorts(db: DbClient): {
       forRange: (orgId, patientId, range) =>
         claimAssemblyRangeContextForOrg(db, orgId, patientId, range),
     },
+    // FY2027 — M6's election addendum facts for the `election_addendum_signed` rule (42 CFR 418.24(c)).
+    m6ElectionAddendum: {
+      forAdmission: (orgId, admissionId) =>
+        electionAddendumComplianceForOrg(db, orgId, admissionId),
+    },
     // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
     m7ClaimDiagnoses: {
       forRange: (orgId, patientId, range) => claimDiagnosesForOrg(db, orgId, patientId, range),
@@ -3050,6 +3068,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // GAP-004 — the M5 §7.8 death-cascade `m5.patient.deceased` emit (deceased-db.ts).
   const m5OutboxPublisher = bindCallerModule(txOutboxPublisher, "m5");
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
+  // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum service: one instance shared by M6's routes
+  // and its M7 plan-of-care consumer. Non-covered determinations come through `composeNonCoveredItemsReaders`
+  // (M7 unrelated problems, M12 not-covered medication orders, M21 not-covered DME / supply requests). The M12 /
+  // M21 readers resolve through their seams on each call: those seams register later in boot.
+  const m6ElectionAddendum = dbHandle
+    ? createElectionAddendumService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        sources: {
+          nonCoveredItems: composeNonCoveredItemsReaders([
+            createUnrelatedProblemItemsReader(dbHandle.db),
+            {
+              listForAdmission: (orgId, admissionId) =>
+                getSeam("NonCoveredMedicationsReader").listForAdmission(orgId, admissionId),
+            },
+            {
+              listForAdmission: (orgId, admissionId) =>
+                getSeam("NonCoveredDmeSuppliesReader").listForAdmission(orgId, admissionId),
+            },
+          ]),
+          diagnoses: createAddendumDiagnosesReader(dbHandle.db),
+          // (c)(3) name + hospice medical record identifier, through M5's published PatientReader seam.
+          patientIdentity: async (organizationId, patientId) => {
+            const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
+            return p ? { name: `${p.firstName} ${p.lastName}`.trim(), mrn: p.mrn } : null;
+          },
+        },
+      })
+    : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -3608,6 +3655,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
             // GAP-022 — the F2F performer role is derived from the clinician's real role grants.
             buildF2fClinicianRoleReader(dbHandle.db),
+            // FY2027 R-F2F-06 — the § 418.22(b)(4) signed-clinical-note attestation reads M8's note facts.
+            {
+              signedNoteFor: (orgId, encounterId) =>
+                signedEncounterNoteForOrg(dbHandle.db, orgId, encounterId),
+            },
+            // FY2027 — the election statement addendum routes (42 CFR 418.24(c)/(d)).
+            m6ElectionAddendum ?? undefined,
             // Readmission workflow — whether the prior election's NOTR / final claim is on file (M23's own query;
             // M6 may not import M23, so the fact crosses here).
             {
@@ -7166,6 +7220,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 ).getAdmissionSummary(orgId, admissionId)
               ).patientId,
           }),
+          // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
+          // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
+          buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
@@ -7615,6 +7672,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
           // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
+          // FY2027 — 42 CFR 418.24(d)(2): a plan-of-care change to the unrelated determinations (M7 problem
+          // events + signed care-plan versions) opens the 3-day election-addendum update window.
+          ...(m6ElectionAddendum
+            ? [
+                buildM6CarePlanAddendumConsumer({
+                  addendum: () => m6ElectionAddendum,
+                }),
+                // FY2027 — 42 CFR 418.24(d)(2): an M12 drug / M21 DME-supply coverage determination change
+                // changes the addendum's non-covered list → the same 3-day update window.
+                buildM6CoverageAddendumConsumer({
+                  addendum: () => m6ElectionAddendum,
+                }),
+              ]
+            : []),
           // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
           buildM6LevelOfCareChangeSignedConsumer({

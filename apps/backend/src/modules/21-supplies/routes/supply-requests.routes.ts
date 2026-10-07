@@ -27,6 +27,7 @@ import {
   MarkOrderedBody,
   RequestIdParams,
   ReturnRequestBody,
+  SetCoverageDeterminationBody,
   parse,
   parseQuery,
 } from "./m21-typebox";
@@ -178,6 +179,24 @@ export function registerSupplyRequestRoutes(
       return writeService.captureCaregiverSignature(writeActorOf(request), supplyRequestId, {
         expectedUpdatedAt: ifMatchStamp(request, true),
         ...body,
+      });
+    },
+  );
+
+  // 7c — COP27 (42 CFR 418.24(c)) — the hospice coverage determination (covered_related |
+  //      not_covered_unrelated | not_covered_other + reason) the M6 election addendum lists. NOT a §2.2
+  //      transition; `If-Match` still required (a real mutation — the §7.2 lost-update race applies).
+  //      `dme` / `supply` kinds only; the determining membership is the SESSION's.
+  app.put(
+    "/api/v1/supplies/supply-requests/:supplyRequestId/coverage-determination",
+    { preHandler: [P("supplies.request.coverage_determine"), IDEMPOTENT] },
+    async (request) => {
+      const { supplyRequestId } = parse(RequestIdParams, request.params);
+      const body = parse(SetCoverageDeterminationBody, request.body);
+      return writeService.setCoverageDetermination(writeActorOf(request), supplyRequestId, {
+        expectedUpdatedAt: ifMatchStamp(request, true),
+        hospiceCoverage: body.hospiceCoverage,
+        reason: body.reason ?? null,
       });
     },
   );

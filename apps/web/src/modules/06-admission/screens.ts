@@ -187,7 +187,7 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: Readmission,
     },
     {
-      // For-cause discharge medical-director cosign (route 40). The server also applies the MD ABAC.
+      // For-cause discharge medical-director cosign (route 40). The server also applies the 418.26(b) order-signer ABAC (medical director, designee or IDG physician).
       id: "admission.discharge-cosign",
       path: "/discharges/:id/cosign",
       title: "Cosign for-cause discharge",

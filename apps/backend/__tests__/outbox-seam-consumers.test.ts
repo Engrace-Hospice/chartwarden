@@ -1,3 +1,12 @@
+import { Type } from "@sinclair/typebox";
+import { describe, expect, it } from "vitest";
+import { MODULES } from "../../../architecture/module-manifest";
+import {
+  type OutboxConsumerBinding,
+  buildOutboxRoutingPlan,
+} from "../src/bootstrap/outbox-dispatcher";
+import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
 // apps/backend/__tests__/outbox-seam-consumers.test.ts — F-043 / #103, the `seamConsumers` split.
 //
 // The catalog had ONE word for TWO delivery mechanisms. 623 (module, event) pairs used
@@ -12,15 +21,7 @@
 // minutes for the life of the deployment.
 //
 // These cases pin the distinction the fix rests on: a seam consumer is INERT for routing.
-import { Type } from "@sinclair/typebox";
-import { describe, expect, it } from "vitest";
-import { MODULES } from "../../../architecture/module-manifest";
-import {
-  type OutboxConsumerBinding,
-  buildOutboxRoutingPlan,
-} from "../src/bootstrap/outbox-dispatcher";
-import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
-import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
+import { buildM36AdmissionComplianceAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36ClinicalAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/clinical-alerts";
 import { buildM36IpuAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/ipu-iv-alerts";
@@ -133,6 +134,8 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     // GAP-105 / batch 11 — M37 §4.8 watchdog events (IRC cap, bed cleaning, restraint, GIP staleness, RN coverage,
     // equipment inspection, nursing note, reservation expiry, transfer completion), bound by `ipu-alerts.ts`.
     ...buildM36IpuAlertConsumer({ emit: async () => {} } as never).eventTypes,
+    // FY2027 — the election-addendum overdue page (`m36.admission-compliance-alerts`).
+    ...buildM36AdmissionComplianceAlertConsumer({ emit: async () => {} } as never).eventTypes,
   ]);
 
   it("no event in these contributions declares a seam module as an outbox consumer", () => {

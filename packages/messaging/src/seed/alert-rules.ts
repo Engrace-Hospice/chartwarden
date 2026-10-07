@@ -395,6 +395,30 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // FY2027 (CMS-1851-F) — the 42 CFR 418.24(d) election statement addendum window passed unfurnished
+  // (`36-messaging/outbox-consumers/admission-compliance-alerts.ts`). The addendum is a condition for payment,
+  // so the miss pages the patient's care team AND the compliance/clinical leads (a second rule, the
+  // m20 `check_in_escalated_oncall` two-audience precedent).
+  {
+    eventType: "m6.election_addendum.overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.election_addendum.overdue_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m6.admission.discharged",
     category: "clinical_routine",

@@ -12,6 +12,7 @@ import {
   type AdmissionWriteOutboxPort,
   type DpoaConsentCheckPort,
   type F2fClinicianRolePort,
+  type F2fSignedNotePort,
   type IpuBedAssignmentReaderPort,
   type ProviderEntityLocationPort,
   type ProviderEntityOrgCheckPort,
@@ -20,14 +21,33 @@ import {
 } from "./admission-route-service-db";
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
 import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+import type { ElectionAddendumService } from "./election-addendum/service";
+import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
+import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
 import type { PriorElectionClosurePort } from "./routes/readmission-service";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
 export * from "./certification/f2f-performer";
 export * from "./admission-uploaded-evidence";
+export * from "./physician-authority";
+// FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum (service, clocks, M7 consumer, routes).
+export * from "./election-addendum/index";
+export {
+  M6_CARE_PLAN_ADDENDUM_CONSUMER,
+  M6_CARE_PLAN_ADDENDUM_EVENTS,
+  buildM6CarePlanAddendumConsumer,
+  decideCarePlanAddendum,
+} from "./outbox-consumers/m7-care-plan-addendum";
+export {
+  M6_COVERAGE_ADDENDUM_CONSUMER,
+  M6_COVERAGE_ADDENDUM_EVENTS,
+  buildM6CoverageAddendumConsumer,
+  decideCoverageAddendum,
+} from "./outbox-consumers/coverage-determination-addendum";
+export { registerElectionAddendumRoutes } from "./routes/election-addendum-routes";
 
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
@@ -44,10 +64,16 @@ export function mountAdmissionRoutes(
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  f2fSignedNotes?: F2fSignedNotePort,
+  /** FY2027 — the election statement addendum service (42 CFR 418.24(c)/(d)); its routes mount when bound. */
+  electionAddendum?: ElectionAddendumService,
   /** The prior election's NOTR / final-claim status (an M23 fact) for the readmission plan; absent → `unknown`. */
   priorElectionClosure?: PriorElectionClosurePort,
 ): void {
-  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
+  // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
+  const physicianAuthority = createDbPhysicianAuthority(db);
+  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db), physicianAuthority });
+  if (electionAddendum) _registerM6AddendumRoutes(app, { service: electionAddendum });
   _registerM6Routes(app, {
     service: createDbAdmissionRouteService(
       db,
@@ -57,6 +83,8 @@ export function mountAdmissionRoutes(
       providerEntityLocations,
       dpoaConsentCheck(),
       f2fClinicianRoles,
+      f2fSignedNotes,
+      physicianAuthority,
     ),
     // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
     // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.

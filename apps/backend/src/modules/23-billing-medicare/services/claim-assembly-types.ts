@@ -10,6 +10,7 @@ import type {
   CapProjectionProvider,
   Cents,
   CertificationSnapshot,
+  ElectionAddendumSnapshot,
   ElectionPeriodSnapshot,
   EvvBracketSnapshot,
   FaceToFaceSnapshot,
@@ -297,6 +298,14 @@ export interface AssemblyOutboxPort {
   ): Promise<void>;
 }
 
+/**
+ * FY2027 — M6's election statement addendum facts for one admission (42 CFR 418.24(c)), feeding the
+ * `election_addendum_signed` rule. Bound at the composition root to M6's `electionAddendumComplianceForOrg`.
+ */
+export interface ElectionAddendumComplianceReader {
+  forAdmission(orgId: string, admissionId: string): Promise<ElectionAddendumSnapshot>;
+}
+
 /** The full injected seam bundle the assembly service depends on. */
 export interface ClaimAssemblySeams {
   readonly patientPayer: PatientPayerReader; // M5
@@ -313,6 +322,8 @@ export interface ClaimAssemblySeams {
   readonly terminology: TerminologyProvider; // M38
   readonly capProjection: CapProjectionProvider; // M26 — §11.A pre-submission cap rules (degrades, D8)
   readonly referenceData: BillingReferenceDataReader; // platform reference data (M23/M1-owned)
+  /** M6 — FY2027 election addendum facts. Optional: absent ⇒ the rule SKIPs `seam_not_bound`. */
+  readonly electionAddendum?: ElectionAddendumComplianceReader;
   /** The §11.A rule registry — built + FROZEN at composition (platform-default + MAC + tenant overlays). */
   readonly ruleRegistry: BillingRuleRegistry;
   readonly outbox: AssemblyOutboxPort; // §4.10

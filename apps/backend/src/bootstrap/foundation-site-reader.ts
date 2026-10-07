@@ -64,6 +64,13 @@ export interface FoundationSiteReader {
     tx: DbClient,
     providerEntityIds: readonly string[],
   ): Promise<readonly string[]>;
+  /** FY2027 — the provider entity's legal name: the "name of the hospice" the 42 CFR 418.24(c)(2) election
+   *  statement addendum prints (M6). Null when the provider entity is not found in the org. */
+  providerEntityLegalName(
+    tx: DbClient,
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<string | null>;
 }
 
 export function buildFoundationSiteReader(): FoundationSiteReader {
@@ -133,6 +140,15 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(eq(LOCATION.id, locationId))
         .limit(1);
       return location?.timezone ?? null;
+    },
+
+    async providerEntityLegalName(tx, organizationId, providerEntityId) {
+      const [provider] = await tx
+        .select({ legalName: PROVIDER.legalName })
+        .from(PROVIDER)
+        .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
+        .limit(1);
+      return provider?.legalName ?? null;
     },
   };
 }

@@ -24,7 +24,7 @@ import {
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
 } from "@wardenx/types";
-import type { LevelOfCare } from "@wardenx/types";
+import type { LevelOfCare, LocalDate } from "@wardenx/types";
 import {
   type AnyColumn,
   type SQL,
@@ -88,6 +88,15 @@ import {
   planTransferIn,
   transferInSourceRefusal,
 } from "./discharge/transfer-in";
+import { addendumRequiredForElection } from "./election-addendum/due-dates";
+import {
+  exemptionReasonForDischarge,
+  listAddendumVersions,
+  loadAddendumAdmissionFacts,
+  openAddendumWindows,
+  openInitialAddendumInTx,
+  settleAddendumOnLeavingCareInTx,
+} from "./election-addendum/store";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -96,6 +105,13 @@ import {
   evaluateAdmissionReadiness,
 } from "./intake";
 import { F2F_EXCEPTION_DAYS_AFTER_ADMISSION } from "./intake/benefit-period";
+import { type PhysicianAuthorityPort, dischargeOrderRequired } from "./physician-authority";
+import { createDbPhysicianAuthority } from "./physician-authority-db";
+import {
+  resolveCosignerCapacity,
+  validateAdmissionRecommendation,
+  validateDischargeOrder,
+} from "./physician-signer-checks";
 import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
@@ -114,6 +130,7 @@ import {
   ExternalReferralAlreadyIngestedError,
   InvalidReferralStateError,
   LocationProviderMismatchError,
+  RECOMMENDATION_CLOSED_STATES,
   ReferralAdmissionPathError,
   ReferralAlreadyConvertedError,
   ReferralNotReadyError,
@@ -126,6 +143,7 @@ import type {
   AdmissionAbacResolver,
   AdmissionDetail,
   AdmissionRouteService,
+  ComplianceWindowRow,
   MutationResult,
   Page,
   PatientAdmissionSummary,
@@ -147,6 +165,7 @@ import {
   transitionElectionPeriod,
 } from "./state-machines/election-period";
 import { AdmissionStateError } from "./state-machines/errors";
+import type { SignedNoteFacts } from "./state-machines/f2f-attestation-rules";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
 
@@ -221,6 +240,16 @@ export interface ProviderEntityLocationPort {
  */
 export interface F2fClinicianRolePort {
   roleKeysForUser(organizationId: string, userId: string): Promise<readonly string[] | null>;
+}
+
+/**
+ * FY2027 R-F2F-06 (42 CFR 418.22(b)(4)) — the facts of one M8 clinical note, for the signed-note F2F
+ * attestation. Encounters are M8's table, so the read is injected from the composition root (bound over
+ * M8's `signedEncounterNoteForOrg`). `null` = no such encounter in this org. An ABSENT binding refuses the
+ * signed-note path (503) rather than accepting an unverified note; the written-narrative path is unaffected.
+ */
+export interface F2fSignedNotePort {
+  signedNoteFor(organizationId: string, encounterId: string): Promise<SignedNoteFacts | null>;
 }
 
 /**
@@ -575,6 +604,9 @@ export function createDbAdmissionRouteService(
   providerEntityLocations?: ProviderEntityLocationPort,
   dpoaConsent?: DpoaConsentCheckPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  f2fSignedNotes?: F2fSignedNotePort,
+  // 42 CFR 418.25(a) / 418.26(b) — the physician signer facts (role grants + IDG care-team membership).
+  physicianAuthority: PhysicianAuthorityPort = createDbPhysicianAuthority(db),
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -1522,6 +1554,26 @@ export function createDbAdmissionRouteService(
     }
   }
 
+  /** FY2027 — the informational 42 CFR 418.24(c) checklist facts (never blocking; see activation-gate.ts). */
+  async function addendumReadinessFacts(
+    tx: DbClient,
+    admissionId: string,
+    activated: boolean,
+  ): Promise<NonNullable<AdmissionReadinessFacts["electionAddendum"]>> {
+    const addendumFacts = await loadAddendumAdmissionFacts(tx, admissionId);
+    const effective = addendumFacts?.electionEffectiveDate ?? null;
+    // Before activation the effective date is not set; activation dates it today, so judge by today.
+    const required = addendumRequiredForElection(effective ?? isoDay(now()));
+    const [latest] = await listAddendumVersions(tx, admissionId);
+    const windows = await openAddendumWindows(tx, admissionId);
+    return {
+      activated: activated && effective !== null,
+      required,
+      latestStatus: latest?.status ?? null,
+      overdue: windows.some((w) => w.status === "overdue"),
+    };
+  }
+
   async function readinessForAdmission(
     tx: DbClient,
     organizationId: string,
@@ -1538,6 +1590,8 @@ export function createDbAdmissionRouteService(
         patientResidenceAddressId: ADM.patientResidenceAddressId,
         serviceAddressLine1: ADM.serviceAddressLine1,
         attendingPhysicianId: ADM.attendingPhysicianId,
+        recommendedByUserId: ADM.recommendedByUserId,
+        activatedAt: ADM.activatedAt,
       })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
@@ -1707,6 +1761,8 @@ export function createDbAdmissionRouteService(
           return start ? addCalendarDays(start, F2F_EXCEPTION_DAYS_AFTER_ADMISSION) : null;
         })(),
       },
+      admissionRecommendation: { recorded: adm.recommendedByUserId !== null },
+      electionAddendum: await addendumReadinessFacts(tx, admissionId, !!adm.activatedAt),
     };
     return evaluateAdmissionReadiness(facts);
   }
@@ -1751,6 +1807,33 @@ export function createDbAdmissionRouteService(
     });
   }
   /** Page a status-bearing table on the integer-offset cursor, newest-first. */
+  const complianceWindowColumns = {
+    id: CW.id,
+    state: CW.status,
+    version: CW.version,
+    admissionId: CW.admissionId,
+    windowKind: CW.windowKind,
+    severity: CW.severity,
+    mustCompleteBy: CW.mustCompleteBy,
+  };
+  function toComplianceWindowRow(r: {
+    id: string;
+    state: string;
+    version: number;
+    admissionId: string;
+    windowKind: string;
+    severity: string;
+    mustCompleteBy: Date;
+  }): ComplianceWindowRow {
+    return {
+      ...toSummary(r),
+      admissionId: r.admissionId,
+      windowKind: r.windowKind,
+      severity: r.severity,
+      dueAt: r.mustCompleteBy.toISOString(),
+    };
+  }
+
   async function pageByStatus(
     organizationId: string,
     table: typeof REF | typeof ADM | typeof CW,
@@ -1929,6 +2012,15 @@ export function createDbAdmissionRouteService(
         .returning({ status: ADM.status, version: ADM.version }),
       "admission not found",
     );
+    // FY2027 — 42 CFR 418.24(d)(3)/(d)(4): leaving hospice care settles any open addendum obligation (an
+    // unfurnished draft → not_required, a furnished-but-unsigned version → signature_not_required), with the
+    // reason noted on the addendum, and closes the addendum windows.
+    await settleAddendumOnLeavingCareInTx(tx, outbox, {
+      organizationId,
+      admissionId,
+      reason: exemptionReasonForDischarge(ev.dischargeType),
+      at: now(),
+    });
     // `m6.admission.discharged`'s `reason`/`dischargeDate` were previously never supplied (`runEffects`'
     // base payload is just `{aggregateId, admissionId}`) — 500ing on EVERY discharge/revocation/
     // transfer-out. `m6.discharge.created`/`.death` need `dischargeEventId` too, but only real discharge
@@ -2172,6 +2264,12 @@ export function createDbAdmissionRouteService(
             hospicePhysicianId: ADM.hospicePhysicianId,
             primaryDiagnosisIcd10: REF.icd10TerminalPrimary,
             referringDxText: REF.referringDxText,
+            recommendedByUserId: ADM.recommendedByUserId,
+            recommenderCapacity: ADM.recommenderCapacity,
+            recommendedAt: ADM.recommendedAt,
+            attendingConsulted: ADM.attendingConsulted,
+            attendingConsultNote: ADM.attendingConsultNote,
+            attendingPhysicianId: ADM.attendingPhysicianId,
           })
           .from(ADM)
           .leftJoin(REF, eq(REF.id, ADM.referralId))
@@ -2216,6 +2314,17 @@ export function createDbAdmissionRouteService(
             : null,
           primaryDiagnosisIcd10: adm.primaryDiagnosisIcd10 ?? null,
           referringDxText: adm.referringDxText ?? null,
+          admissionRecommendation:
+            adm.recommendedByUserId && adm.recommenderCapacity && adm.recommendedAt
+              ? {
+                  recommendedByUserId: adm.recommendedByUserId,
+                  capacity: adm.recommenderCapacity,
+                  recommendedAt: adm.recommendedAt.toISOString(),
+                  attendingConsulted: adm.attendingConsulted ?? false,
+                  attendingConsultNote: adm.attendingConsultNote ?? null,
+                }
+              : null,
+          attendingPhysicianId: adm.attendingPhysicianId ?? null,
           activationGate,
           readiness: readiness ?? undefined,
         };
@@ -2316,6 +2425,9 @@ export function createDbAdmissionRouteService(
                 status: F2F.status,
                 performerRole: F2F.performerRole,
                 encounterDate: F2F.encounterDate,
+                encounterLocation: F2F.encounterLocation,
+                encounterId: F2F.encounterId,
+                performedByUserId: F2F.performedByUserId,
                 withinWindow: F2F.withinWindow,
                 windowOverride: F2F.windowOverride,
                 attestationSignedAt: F2F.attestationSignedAt,
@@ -2404,6 +2516,11 @@ export function createDbAdmissionRouteService(
                   status: f2f.status,
                   performerRole: f2f.performerRole,
                   encounterDate: f2f.encounterDate,
+                  // FY2027 R-F2F-05 / R-F2F-06 — the modality and the linked signed note (when the
+                  // § 418.22(b)(4) attestation is a clinical note rather than a written narrative).
+                  encounterLocation: f2f.encounterLocation,
+                  attestationNoteEncounterId: f2f.encounterId,
+                  performerUserId: f2f.performedByUserId,
                   withinWindow: f2f.withinWindow,
                   windowOverride: f2f.windowOverride,
                   attested: !!f2f.attestationSignedAt,
@@ -2524,15 +2641,31 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         if (!(await admissionExists(tx as DbClient, admissionId))) return null;
         const rows = await tx
-          .select({ id: CW.id, state: CW.status, version: CW.version })
+          .select(complianceWindowColumns)
           .from(CW)
           .where(eq(CW.admissionId, admissionId))
           .orderBy(desc(CW.mustCompleteBy));
-        return rows.map(toSummary);
+        return rows.map(toComplianceWindowRow);
       });
     },
     async listComplianceWindows(organizationId, query) {
-      return pageByStatus(organizationId, CW, CW.mustCompleteBy, query);
+      // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
+      // the dashboard could not tell an election-addendum window from any other kind.
+      const limit = clampLimit(query.limit);
+      const offset = parseOffset(query.cursor);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select(complianceWindowColumns)
+          .from(CW)
+          .where(query.state ? eq(CW.status, query.state as never) : undefined)
+          .orderBy(desc(CW.mustCompleteBy), desc(CW.id))
+          .limit(limit + 1)
+          .offset(offset);
+        return {
+          items: rows.slice(0, limit).map(toComplianceWindowRow),
+          nextCursor: rows.length > limit ? String(offset + limit) : null,
+        };
+      });
     },
 
     // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
@@ -4038,6 +4171,15 @@ export function createDbAdmissionRouteService(
               version: sql`${EP.version} + 1`,
             })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
+          // FY2027 — 42 CFR 418.24(d)(1): an election effective on/after 2026-10-01 owes the addendum within 5
+          // calendar days of its effective date, which this transaction has just written. Opens draft v1 + the
+          // `election_addendum_initial` window (a no-op for earlier elections and on re-entry). A transfer-in's
+          // inherited period is not a new election and is skipped with the rest of this block.
+          await openInitialAddendumInTx(tx as DbClient, outbox, {
+            organizationId,
+            admissionId: id,
+            now: activatedAt,
+          });
         }
         await reanchorAssessmentWindows(tx as DbClient, id, activatedAt);
         await runEffects(
@@ -4269,11 +4411,24 @@ export function createDbAdmissionRouteService(
           .returning({ id: ES.id, status: ES.status, version: ES.version });
         if (!r) throw new ResourceNotFoundError(id);
         const [period] = await tx
-          .select({ admissionId: EP.admissionId })
+          .select({ admissionId: EP.admissionId, effectiveAt: EP.effectiveAt })
           .from(EP)
           .where(eq(EP.id, cur.electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(cur.electionPeriodId);
+        // FY2027 — the 42 CFR 418.24(b)(1) hospice the statement names, for M22's statement template.
+        const [electingAdmission] = await tx
+          .select({ providerEntityId: ADM.providerEntityId })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        const hospiceName = electingAdmission?.providerEntityId
+          ? await foundationSites.providerEntityLegalName(
+              tx as DbClient,
+              organizationId,
+              electingAdmission.providerEntityId,
+            )
+          : null;
         await createAdmissionEvidenceService(tx).recordStructuredEvidence({
           organizationId,
           admissionId: period.admissionId,
@@ -4296,6 +4451,11 @@ export function createDbAdmissionRouteService(
             signedAt,
             // F-100 — the chart. `election_statement.patient_id` is on the row this path already read.
             patientId: cur.patientId,
+            // FY2027 — what M22's election-statement template prints (42 CFR 418.24(b)(1), (4), (8)).
+            patientName: input.signingPatientName,
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            ...(hospiceName ? { hospiceName } : {}),
+            ...(period.effectiveAt ? { effectiveDate: period.effectiveAt } : {}),
           },
           organizationId,
           aggregateKind: "election_statement",
@@ -4816,7 +4976,13 @@ export function createDbAdmissionRouteService(
         return { id: f2f.id, state: f2f.status, version: Number(f2f.version) };
       });
     },
-    async completeF2f(organizationId, id, ifVersion, encounterDate): Promise<MutationResult> {
+    async completeF2f(
+      organizationId,
+      id,
+      ifVersion,
+      encounterDate,
+      modality,
+    ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4848,8 +5014,16 @@ export function createDbAdmissionRouteService(
           periodStart: windowStart?.start ?? null,
           encounterDate,
           hasOverride: cur.override,
+          // R-F2F-05 — telehealth through 2027-12-31 only; (A)-(C) attestation from 2026-01-31.
+          encounterLocation: modality?.encounterLocation ?? null,
+          telehealthEligibility: modality?.telehealthEligibility ?? null,
           exceptionDocumented: await periodHasF2fException(tx as DbClient, cur.epId),
         });
+        const isTelehealth = modality?.encounterLocation === "telehealth";
+        const telehealthEligibility =
+          isTelehealth && modality?.telehealthEligibility
+            ? { ...modality.telehealthEligibility, attestedAt: now().toISOString() }
+            : null;
         const withinWindow: boolean | null = t.effects.some(
           (e) => e.kind === "set_flag" && e.field === "within_window_unknown",
         )
@@ -4861,6 +5035,8 @@ export function createDbAdmissionRouteService(
             .set({
               status: t.to,
               encounterDate,
+              ...(modality ? { encounterLocation: modality.encounterLocation } : {}),
+              telehealthEligibility,
               withinWindow, // null = unverified (override on file, start not derivable): the gate fails closed
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
@@ -4904,7 +5080,28 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
       attestationNarrative,
+      signedNoteEncounterId = null,
     ): Promise<MutationResult> {
+      // R-F2F-06 — exactly one § 418.22(b)(4) attestation source: the written narrative OR a linked note.
+      const hasNarrative = (attestationNarrative ?? "").trim().length > 0;
+      if (hasNarrative === (signedNoteEncounterId !== null && signedNoteEncounterId !== "")) {
+        throw new AdmissionStateError(
+          "F2F_ATTESTATION_SOURCE_REQUIRED",
+          "Provide exactly one attestation: a written attestation narrative or a linked signed clinical note",
+        );
+      }
+      // Resolved BEFORE the write transaction: the port opens its own `withOrgContext` (one pool
+      // connection per request, the `f2fClinicianRoles` precedent).
+      let note: SignedNoteFacts | null = null;
+      if (signedNoteEncounterId) {
+        if (!f2fSignedNotes)
+          throw new WardenXError(
+            "F2F_NOTE_SOURCE_UNAVAILABLE",
+            "the clinical-note reader is not bound; refusing to accept an unverified note as the F2F attestation",
+            503,
+          );
+        note = await f2fSignedNotes.signedNoteFor(organizationId, signedNoteEncounterId);
+      }
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4912,17 +5109,27 @@ export function createDbAdmissionRouteService(
             version: F2F.version,
             performer: F2F.performedByUserId,
             epId: F2F.electionPeriodId,
+            encounterDate: F2F.encounterDate,
           })
           .from(F2F)
           .where(eq(F2F.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        // GAP-022 / R-F2F-04 — run the real machine: narrative >= 100 chars and the attester IS the
+        // GAP-022 / R-F2F-04 — run the real machine: narrative >= 100 chars (or, R-F2F-06, a note signed
+        // and dated by the performer on the encounter date for THIS patient) and the attester IS the
         // performer. No falsy-actor bypass: an empty actor id never equals the stored performer.
         transitionFaceToFace(cur.status as FaceToFaceState, {
           type: "attest",
           narrative: attestationNarrative,
+          signedNote: signedNoteEncounterId
+            ? {
+                note,
+                patientId: await patientForElectionPeriod(tx as DbClient, cur.epId),
+                performerUserId: cur.performer,
+                encounterDate: cur.encounterDate as LocalDate | null,
+              }
+            : null,
           performerIsActor: actorUserId !== "" && cur.performer === actorUserId,
         });
         const attestedAt = now();
@@ -4931,7 +5138,9 @@ export function createDbAdmissionRouteService(
             .update(F2F)
             .set({
               status: "attested",
-              attestationNarrative: attestationNarrative.trim(),
+              ...(signedNoteEncounterId
+                ? { encounterId: signedNoteEncounterId, attestationNarrative: null }
+                : { attestationNarrative: (attestationNarrative ?? "").trim() }),
               attestationSignedAt: attestedAt,
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
@@ -5597,6 +5806,33 @@ export function createDbAdmissionRouteService(
       input: DischargeInput,
       actorUserId,
     ): Promise<DischargeResult> {
+      // 42 CFR 418.26(b) — validate (or require) the physician discharge order BEFORE the write transaction:
+      // the authority port opens its own org-scoped reads, so resolving it inside would hold two connections.
+      const order = input.externalSource
+        ? null
+        : await validateDischargeOrder({
+            port: physicianAuthority,
+            organizationId,
+            // Only an order needs the chart (for the IDG-membership check); its absence never does.
+            patientId: input.dischargeOrder
+              ? await withOrgContext(db, { organizationId, userId: actorUserId }, (tx) =>
+                  patientForAdmission(tx as DbClient, admissionId),
+                )
+              : "",
+            reason: input.reason,
+            dischargeDate: input.dischargeDate,
+            order: input.dischargeOrder,
+            now: now(),
+          });
+      const orderColumns = order
+        ? {
+            dischargeOrderSignedByUserId: order.signedByUserId,
+            dischargeOrderSignerCapacity: order.capacity,
+            dischargeOrderSignedAt: order.signedAt,
+            dischargeOrderText: order.orderText,
+            dischargeOrderReference: order.orderReference,
+          }
+        : {};
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
         // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
@@ -5701,6 +5937,7 @@ export function createDbAdmissionRouteService(
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
               placeOfDeath: input.reason === "death" ? (placeOfDeath ?? null) : null,
               bereavementEligible: input.reason === "death",
+              ...orderColumns,
               // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
               ...(input.externalSource
                 ? {
@@ -5738,7 +5975,35 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult> {
-      void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
+      // 42 CFR 418.26(b) — the cosigner IS the discharge-order signer. Resolve the capacity BEFORE the write
+      // transaction (the authority port opens its own org-scoped read); the predicate already admitted the
+      // actor, this records WHICH capacity and re-checks it against the discharge date's signer set.
+      const signing = await withOrgContext(
+        db,
+        { organizationId, userId: actorUserId },
+        async (tx) => {
+          const [row] = await tx
+            .select({ effectiveAt: DE.effectiveAt, source: DE.source, patientId: ADM.patientId })
+            .from(DE)
+            .innerJoin(ADM, eq(ADM.id, DE.admissionId))
+            .where(eq(DE.id, id))
+            .limit(1);
+          return row ?? null;
+        },
+      );
+      if (!signing) throw new ResourceNotFoundError(id);
+      const externalDeath = signing.source === "hl7_external";
+      const capacity = await resolveCosignerCapacity({
+        port: physicianAuthority,
+        organizationId,
+        actorUserId,
+        actorRoleKeys: input.actorRoleKeys ?? [],
+        patientId: signing.patientId,
+        dischargeDate: signing.effectiveAt,
+        externalDeath,
+        claimed: input.capacity,
+      });
+      const cosignerColumns = { cosignerName: input.cosignerName, cosignerNpi: input.cosignerNpi };
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -5771,6 +6036,7 @@ export function createDbAdmissionRouteService(
               .set({
                 cosignedAt,
                 medicalDirectorMembershipId: actorUserId,
+                ...cosignerColumns,
                 version: sql`${DE.version} + 1`,
                 updatedAt: cosignedAt,
               })
@@ -5831,6 +6097,13 @@ export function createDbAdmissionRouteService(
               // F-227 — record the director's cosign facts on the row too (columns exist since 0300).
               cosignedAt: now(),
               medicalDirectorMembershipId: actorUserId,
+              ...cosignerColumns,
+              // The cosign is the written 418.26(b) discharge order for a for-cause discharge.
+              dischargeOrderSignedByUserId: actorUserId,
+              dischargeOrderSignerCapacity: capacity,
+              dischargeOrderSignedAt: now(),
+              dischargeOrderText: input.orderText ?? null,
+              dischargeOrderReference: input.orderReference ?? null,
               version: sql`${DE.version} + 1`,
               updatedAt: now(),
             })
@@ -5867,6 +6140,141 @@ export function createDbAdmissionRouteService(
         });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
+    },
+    async recordAdmissionRecommendation(
+      organizationId,
+      admissionId,
+      input,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
+      // 42 CFR 418.25(a) — load the chart facts, validate the recommender OUTSIDE the write transaction (the
+      // authority port opens its own reads), then write under optimistic locking.
+      const adm = await withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [row] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+            attendingPhysicianId: ADM.attendingPhysicianId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        return row ?? null;
+      });
+      if (!adm) throw new ResourceNotFoundError(admissionId);
+      assertVersion(admissionId, Number(adm.version), ifVersion);
+      if (RECOMMENDATION_CLOSED_STATES.has(adm.status))
+        throw new AdmissionStateError(
+          "ADMISSION_RECOMMENDATION_INVALID",
+          `admission ${admissionId} is ${adm.status}; a recommendation can no longer be recorded`,
+        );
+      const capacity = await validateAdmissionRecommendation({
+        port: physicianAuthority,
+        organizationId,
+        patientId: adm.patientId,
+        hasAttendingPhysician: adm.attendingPhysicianId !== null,
+        input,
+        now: now(),
+      });
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const at = now();
+        const [r] = await tx
+          .update(ADM)
+          .set({
+            recommendedByUserId: input.recommendedByUserId,
+            recommenderCapacity: capacity,
+            recommendedAt: new Date(input.recommendedAt),
+            attendingConsulted: input.attendingConsulted,
+            attendingConsultNote: input.attendingConsultNote ?? null,
+            recommendationRecordedByUserId: actorUserId || null,
+            version: sql`${ADM.version} + 1`,
+            updatedAt: at,
+          })
+          .where(and(eq(ADM.id, admissionId), eq(ADM.version, ifVersion)))
+          .returning({ id: ADM.id, status: ADM.status, version: ADM.version });
+        if (!r) throw conflict(`admission ${admissionId} changed concurrently; reload and retry`);
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async getDischargeOrder(organizationId, admissionId) {
+      const found = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [adm] = await tx
+          .select({ id: ADM.id, patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) return null;
+        const [de] = await tx
+          .select({
+            id: DE.id,
+            dischargeType: DE.dischargeType,
+            status: DE.status,
+            effectiveAt: DE.effectiveAt,
+            signedBy: DE.dischargeOrderSignedByUserId,
+            capacity: DE.dischargeOrderSignerCapacity,
+            signedAt: DE.dischargeOrderSignedAt,
+            orderText: DE.dischargeOrderText,
+            orderReference: DE.dischargeOrderReference,
+            cosignerName: DE.cosignerName,
+            cosignerNpi: DE.cosignerNpi,
+            cosignedAt: DE.cosignedAt,
+          })
+          .from(DE)
+          .where(eq(DE.admissionId, admissionId))
+          .limit(1);
+        return { patientId: adm.patientId, de: de ?? null };
+      });
+      if (!found) return null;
+      const { de } = found;
+      if (!de) return { discharge: null };
+      // The signer's display name, when they are still a listed physician for this chart (ids are the record).
+      const signedByName = de.signedBy
+        ? ((await physicianAuthority.listSignerCandidates(organizationId, found.patientId)).find(
+            (c) => c.userId === de.signedBy,
+          )?.name ?? null)
+        : null;
+      return {
+        discharge: {
+          dischargeEventId: de.id,
+          reason: de.dischargeType,
+          status: de.status,
+          dischargeDate: de.effectiveAt,
+          orderRequired: dischargeOrderRequired(de.dischargeType, de.effectiveAt),
+          order:
+            de.signedBy && de.capacity && de.signedAt
+              ? {
+                  signedByUserId: de.signedBy,
+                  signedByName,
+                  capacity: de.capacity,
+                  signedAt: de.signedAt.toISOString(),
+                  orderText: de.orderText,
+                  orderReference: de.orderReference,
+                }
+              : null,
+          cosigner:
+            de.cosignerName && de.cosignerNpi
+              ? {
+                  name: de.cosignerName,
+                  npi: de.cosignerNpi,
+                  cosignedAt: de.cosignedAt?.toISOString() ?? null,
+                }
+              : null,
+        },
+      };
+    },
+    async listPhysicianSigners(organizationId, admissionId) {
+      const patientId = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select({ patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        return row?.patientId ?? null;
+      });
+      if (patientId === null) return null;
+      return { items: await physicianAuthority.listSignerCandidates(organizationId, patientId) };
     },
     async acknowledgeNor(organizationId, admissionId, input, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -6308,6 +6716,23 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+            }
+          : null;
+      });
+    },
+    async loadDischargeSigning(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ effectiveAt: DE.effectiveAt, source: DE.source, patientId: ADM.patientId })
+          .from(DE)
+          .innerJoin(ADM, eq(ADM.id, DE.admissionId))
+          .where(eq(DE.id, id))
+          .limit(1);
+        return r
+          ? {
+              patientId: r.patientId,
+              dischargeDate: r.effectiveAt,
+              externalDeath: r.source === "hl7_external",
             }
           : null;
       });

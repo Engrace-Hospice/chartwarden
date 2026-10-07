@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 164 statically-routable `web` screen(s) — 19/164 E2E-reached, 158/164 axe-reached.
+**Coverage:** 165 statically-routable `web` screen(s) — 19/165 E2E-reached, 159/165 axe-reached.
 
 ## Zero E2E coverage
 
@@ -36,6 +36,7 @@
 | `billing.noe` | 23-billing-medicare | `/billing/noe` | billing.noe.read |
 | `billing.notr` | 23-billing-medicare | `/billing/notr` | billing.notr.read |
 | `billing.overrides` | 23-billing-medicare | `/billing/overrides` | billing.validation.read_override |
+| `billing.rate-tables` | 23-billing-medicare | `/billing/rate-tables` | billing.rate_table.read |
 | `billing.rule-config` | 23-billing-medicare | `/billing/rule-config` | billing.rule_config.read |
 | `billing.sequestration` | 23-billing-medicare | `/billing/sequestration-policy` | billing.sequestration_policy.read |
 | `billing.transfer-notices` | 23-billing-medicare | `/billing/transfer-notices` | billing.noe.read |

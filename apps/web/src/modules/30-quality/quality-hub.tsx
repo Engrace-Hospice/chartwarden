@@ -34,6 +34,7 @@ import {
   readErrorMessage,
   toneOf,
 } from "./quality-status";
+import { SsviPanel } from "./ssvi-panel";
 
 type MeasureRow =
   paths["/api/v1/quality/measures"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
@@ -225,6 +226,8 @@ export function QualityHub(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
+          {/* FY2027 SSVI — an internal estimate, shown beside (never instead of) the HCI rows below. */}
+          {!loading && !error ? <SsviPanel rows={measures} /> : null}
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <span>{error}</span>

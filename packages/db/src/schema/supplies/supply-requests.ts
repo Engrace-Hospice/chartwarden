@@ -33,6 +33,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import {
+  hospiceCoverage,
   supplyCaregiverSignatureCaptureMethod,
   supplyDeliveryMethod,
   supplyRequestKind,
@@ -137,6 +138,17 @@ export const supplyRequest = pgTable(
     /** Signed: positive means the vendor billed above the accrual. */
     invoiceVarianceCents: bigint("invoice_variance_cents", { mode: "number" }),
 
+    // COP27 (42 CFR 418.24(c), mig 0386) — the hospice coverage determination the M6 election addendum lists.
+    // Meaningful for the `dme` / `supply` kinds only (a comfort kit is hospice symptom management by
+    // construction — CHECK `m21_supply_request_coverage_kind`). Default `covered_related`; a NOT-covered
+    // value requires a non-blank reason + determination instant (CHECK `m21_supply_request_coverage_reason`).
+    hospiceCoverage: hospiceCoverage("hospice_coverage").notNull().default("covered_related"),
+    /** Patient-facing clinical explanation (418.24(c)(6)). */
+    coverageReason: text("coverage_reason"),
+    coverageDeterminedAt: timestamp("coverage_determined_at", { withTimezone: true }),
+    /** Stamped from the SESSION, never the body. Logical FK → M2 membership. */
+    coverageDeterminedByMembershipId: uuid("coverage_determined_by_membership_id"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), // PARTITION KEY
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -152,6 +164,10 @@ export const supplyRequest = pgTable(
       t.admissionId,
       t.createdAt,
     ),
+    // COP27 — the NonCoveredDmeSuppliesReader seam read (per admission, not-covered rows only).
+    admissionNotCoveredIdx: index("supply_request_admission_not_covered_idx")
+      .on(t.organizationId, t.admissionId)
+      .where(sql`hospice_coverage <> 'covered_related'`),
     sourceOrderIdx: index("supply_request_source_order_idx")
       .on(t.sourceOrderId)
       .where(sql`source_order_id IS NOT NULL`),
@@ -203,6 +219,15 @@ export const supplyRequest = pgTable(
     // document id) is deliberately NOT a DB CHECK — jsonb sub-key validation belongs to the pure
     // validator (`lifecycle/caregiver-signature.ts`), mirroring how M39's `consent_record` splits the
     // same two concerns (`captureMethod` is DB-enumerated; `captureEvidenceJsonb`'s shape is app-validated).
+    coverageReasonWhenNotCovered: check(
+      "m21_supply_request_coverage_reason",
+      sql`hospice_coverage = 'covered_related'
+          OR (coverage_reason IS NOT NULL AND btrim(coverage_reason) <> '' AND coverage_determined_at IS NOT NULL)`,
+    ),
+    coverageKindIsGoods: check(
+      "m21_supply_request_coverage_kind",
+      sql`hospice_coverage = 'covered_related' OR kind IN ('dme','supply')`,
+    ),
     caregiverSignaturePaired: check(
       "m21_caregiver_signature_paired",
       sql`(caregiver_signature_capture_method IS NULL

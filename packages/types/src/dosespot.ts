@@ -202,6 +202,8 @@ export const M12_EVENT_NAMES = [
   "m12.dosespot_recovered",
   "m12.controlled_substance_policy_changed",
   "m12.medication.error_reported",
+  // COP27 (42 CFR 418.24(c)) — a clinician set/changed the order's hospice coverage determination.
+  "m12.medication_order.coverage_determination_changed",
 ] as const;
 
 /** An M12 outbox event name (§4.4). */

@@ -14,7 +14,7 @@ import type { MeasurePeriodKind } from "../contracts";
 import type { ComputeMeasureInput, QualityMeasureValueResult } from "./result";
 
 /** The measure family a code belongs to (drives dashboard grouping + which seam reads it). */
-export type MeasureFamily = "hci" | "hvldl" | "hope_derived" | "operational" | "cahps";
+export type MeasureFamily = "hci" | "ssvi" | "hvldl" | "hope_derived" | "operational" | "cahps";
 
 /** A pure measure calculator: a per-measure input type → the uniform result. */
 export type MeasureCalculator<I extends ComputeMeasureInput = ComputeMeasureInput> = (
@@ -88,7 +88,7 @@ const ROLLING: MeasurePeriodKind = "rolling_12m_to_quarter";
 /**
  * The platform measure catalog — every measure M30 computes, with its activation FY (§1.1). HCI
  * indicators + composite, HVLDL, and the operational measures activate FY2025; the HOPE-derived TFP
- * measures activate FY2028 (D4). CAHPS composite computes on calendar quarters (D14).
+ * measures activate FY2028 (D4); the SSVI family activates FY2027. CAHPS composite computes on calendar quarters (D14).
  */
 export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
   // HCI — ten indicators + composite (FY2025).
@@ -179,6 +179,89 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     activatesFy: 2025,
     calculatorVersion: "0.1.0",
     description: "Hospice Care Index composite score (0–10)",
+  },
+  // SSVI — nine metrics + total (FY2027, CMS-1851-F §III.B.2). CMS computes and publishes the official SSVI from
+  // national claims; these are the agency's INTERNAL ESTIMATE. It complements the HCI and replaces nothing.
+  {
+    code: "ssvi_metric_01",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 1 — Providing no CHC and no GIP (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_02",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 2 — RHC days in a nursing facility or SNF (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_03",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 3 — Last two RHC days of life with a skilled visit (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_04",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 4 — Live-discharge share (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_05",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 5 — Discharges with length of stay over 180 days (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_06",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 6 — Skilled-nursing minutes per RHC day (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_07",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 7 — Weekend RHC days with a skilled visit (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_08",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description:
+      "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
+  },
+  {
+    code: "ssvi_metric_09",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "SSVI 9 — Total non-hospice spending (octile points) (internal estimate)",
+  },
+  {
+    code: "ssvi_composite",
+    family: "ssvi",
+    periodKind: ROLLING,
+    activatesFy: 2027,
+    calculatorVersion: "0.1.0",
+    description: "Service and Spending Variation Index total (0–16; internal estimate)",
   },
   // HVLDL (FY2025).
   {

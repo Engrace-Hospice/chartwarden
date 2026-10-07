@@ -38,6 +38,14 @@ const RateFields = {
   laborShareChc: laborShare(),
   laborShareIrc: laborShare(),
   laborShareGip: laborShare(),
+  // FY2027 workstream E — the provider entity's declared HQRP status for this fiscal year. Drives only the
+  // national-reference sanity check (`nationalReferenceWarnings`); omitted = undeclared.
+  hqrpCompliant: Type.Optional(
+    Type.Boolean({
+      description:
+        "true = HQRP-compliant national rates; false = the 4-percentage-point HQRP-reduced rates (42 CFR 418.306(b)(2)).",
+    }),
+  ),
   entryReason: Type.Optional(Type.String({ maxLength: 2000 })),
 };
 
@@ -84,6 +92,13 @@ export const RateTableViewSchema = Type.Object({
   laborShareChc: Type.Union([Type.String(), Type.Null()]),
   laborShareIrc: Type.Union([Type.String(), Type.Null()]),
   laborShareGip: Type.Union([Type.String(), Type.Null()]),
+  /** NULL = undeclared (a version entered before migration 0394, or keyed without the flag). */
+  hqrpCompliant: Type.Union([Type.Boolean(), Type.Null()]),
+  /**
+   * Warnings from comparing the keyed rates to the CMS national reference for the fiscal year and declared HQRP
+   * status (empty = they match, or no reference is on file for that year). Advisory: never blocks pricing.
+   */
+  nationalReferenceWarnings: Type.Array(Type.String()),
   enteredByMembershipId: Type.String(),
   entryReason: Type.Union([Type.String(), Type.Null()]),
   supersededAt: Type.Union([Type.String(), Type.Null()]),
@@ -91,6 +106,40 @@ export const RateTableViewSchema = Type.Object({
   createdAt: Type.String(),
 });
 export type RateTableView = Static<typeof RateTableViewSchema>;
+
+export const RateTableNationalReferenceQuerySchema = Type.Object({
+  providerEntityId: uuid(),
+  fiscalYearStarting: Type.Integer({ minimum: 2000, maximum: 2100 }),
+});
+
+const NationalRateSetSchema = Type.Object({
+  rhcDays1to60PerDiemCents: Type.Integer(),
+  rhcDays61PlusPerDiemCents: Type.Integer(),
+  chcPerDiemCents: Type.Integer(),
+  chcHourlyRateCents: Type.Integer(),
+  ircPerDiemCents: Type.Integer(),
+  gipPerDiemCents: Type.Integer(),
+});
+
+/** The CMS national per-diem reference for one fiscal year (both HQRP columns), or null when none is on file. */
+export const RateTableNationalReferenceResponseSchema = Type.Object({
+  reference: Type.Union([
+    Type.Object({
+      fiscalYearStarting: Type.Integer(),
+      fiscalYearLabel: Type.String(),
+      paymentUpdatePct: Type.Number(),
+      hqrpReductionPctPoints: Type.Number(),
+      hqrpCompliant: NationalRateSetSchema,
+      hqrpNonCompliant: NationalRateSetSchema,
+      sources: Type.Array(Type.Object({ cite: Type.String(), url: Type.String() })),
+      note: Type.String(),
+    }),
+    Type.Null(),
+  ]),
+});
+export type RateTableNationalReferenceResponse = Static<
+  typeof RateTableNationalReferenceResponseSchema
+>;
 
 export const RateTableListResponseSchema = Type.Object({
   rateTables: Type.Array(RateTableViewSchema),

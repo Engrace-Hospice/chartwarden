@@ -21,6 +21,7 @@ import type {
   ComfortKitDispatchSource,
   ComfortKitDisposalMethod,
   CreateDirectSupplyRequestInput,
+  HospiceCoverage,
   IsoInstant,
   M21EventName,
   MembershipId,
@@ -132,6 +133,12 @@ export interface CaptureCaregiverSignatureInput extends Versioned {
   readonly witnessAttestationText?: string;
   readonly evidenceDocumentId?: string;
   readonly declinedReason?: string;
+}
+
+/** COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination. */
+export interface SetCoverageDeterminationInput extends Versioned {
+  readonly hospiceCoverage: HospiceCoverage;
+  readonly reason?: string | null;
 }
 
 export interface ConfirmReceivedInput extends Versioned {
@@ -338,6 +345,16 @@ export interface M21WriteService {
     actor: M21WriteActor,
     supplyRequestId: string,
     input: CaptureCaregiverSignatureInput,
+  ): Promise<SupplyRequestDetail>;
+  /**
+   * COP27 (42 CFR 418.24(c)) — set/change the request's hospice coverage determination (`dme` / `supply`
+   * kinds only). NOT a §2.2 transition (status does not move) but a real mutation, so `If-Match` applies.
+   * Emits `m21.supply_request.coverage_determination_changed` when the determination actually changes.
+   */
+  setCoverageDetermination(
+    actor: M21WriteActor,
+    supplyRequestId: string,
+    input: SetCoverageDeterminationInput,
   ): Promise<SupplyRequestDetail>;
   confirmReceived(
     actor: M21WriteActor,

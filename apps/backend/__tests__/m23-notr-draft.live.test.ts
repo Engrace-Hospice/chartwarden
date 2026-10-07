@@ -414,7 +414,11 @@ describe.skipIf(!DB_URL)(
       await svc.cosignDischarge(
         ORG_A,
         filed.id,
-        { cosignerName: "Dr Director", cosignerNpi: "1234567893" } as never,
+        {
+          cosignerName: "Dr Director",
+          cosignerNpi: "1234567893",
+          actorRoleKeys: ["medical_director"],
+        },
         filed.version,
         MD,
       );

@@ -28,6 +28,7 @@
 // through a JS float is not the quantity the perpetual log recorded. Money is integer CENTS for the same
 // reason (a rounding drift on a cap-relevant accrual is a reportable finding).
 import { Type } from "@sinclair/typebox";
+import { HospiceCoverageSchema } from "@wardenx/types";
 import type { M21EventName, ModuleEventContribution } from "@wardenx/types";
 
 const Id = Type.String({ minLength: 1 });
@@ -301,6 +302,32 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       reconciledAt: Iso,
     }),
     declaredConsumers: ["m27"],
+    isOutboxOnly: true,
+  },
+
+  // COP27 (42 CFR 418.24(c), workstream B) — a dme/supply request's hospice coverage determination changed.
+  // M6 is the declared consumer (the election-statement addendum must be updated within 3 days of a
+  // plan-of-care change that impacts its determinations, § 418.24(d)(2)); its binding lands with workstream
+  // A, so the pair sits in scripts/outbox-deferred-consumers.ts until the COP27 integration.
+  // PHI-POSTURE EXCEPTION (named, deliberate): `reason` is free text — the patient-facing clinical
+  // explanation the addendum is REQUIRED to disclose to the patient, non-hospice providers and Medicare
+  // contractors (§ 418.24(c)(6), (c)(9)), so carrying it to M6 is the point, not a leak.
+  {
+    eventName: "m21.supply_request.coverage_determination_changed",
+    moduleOwner: "m21",
+    description:
+      "A dme/supply request's hospice coverage determination changed (covered_related | not_covered_unrelated | not_covered_other); M6 refreshes the election-statement addendum's non-covered list.",
+    payloadSchema: Type.Object({
+      orgId: Id,
+      admissionId: Type.Optional(Id),
+      patientId: Id,
+      sourceId: Id,
+      hospiceCoverage: HospiceCoverageSchema,
+      previousHospiceCoverage: HospiceCoverageSchema,
+      reason: Type.Union([Type.String({ maxLength: 2000 }), Type.Null()]),
+      changedAt: Iso,
+    }),
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
 

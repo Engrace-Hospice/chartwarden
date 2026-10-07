@@ -41,6 +41,7 @@ const PatientClaims = lazy(() =>
 const OverrideAudit = lazy(() =>
   import("./override-audit").then((m) => ({ default: m.OverrideAudit })),
 );
+const RateTables = lazy(() => import("./rate-tables").then((m) => ({ default: m.RateTables })));
 const RuleConfigEditor = lazy(() =>
   import("./rule-config").then((m) => ({ default: m.RuleConfigEditor })),
 );
@@ -193,6 +194,15 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.eligibility.read",
       screen: EligibilityCenter,
+    },
+    // --- hospice rate table + HQRP status + CMS national reference (F-210, FY2027 workstream E) ---
+    {
+      id: "billing.rate-tables",
+      path: "/billing/rate-tables",
+      title: "Hospice Rates",
+      navGroup: "Billing",
+      requiredPermission: "billing.rate_table.read",
+      screen: RateTables,
     },
     // --- sequestration policy (§5.1 #14) ---
     {

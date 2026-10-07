@@ -408,6 +408,7 @@ export const MODULES: ModuleDef[] = [
       "notice_of_rights_acknowledgment",
       "compliance_window",
       "admission_evidence",
+      "election_addendum", // FY2027 — 42 CFR 418.24(c) election statement addendum (ADR-0015 D1 amendment)
     ],
   },
   {

@@ -232,6 +232,22 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "discharge_summary",
     appends: true,
   },
+  // FY2027 (CMS-1851-F) — the election statement addendum, one DOCUMENT per addendum VERSION (an update after a
+  // plan-of-care change is a new `election_addendum` row and a new document). `furnished` is the genesis render
+  // (the (c)(10) written copy); `acknowledged` appends a version carrying the signature, the refusal reason, or
+  // the (d)(4) signature-not-required notation — the regulation wants that noted ON the addendum. The whole
+  // 418.24(c) content rides `renderPayload`; the regulatory language is the template's own text.
+  "m6.election_addendum.furnished": {
+    aggregateIdFields: ["electionAddendumId"],
+    templateKey: "election_addendum",
+    contentField: "renderPayload",
+  },
+  "m6.election_addendum.acknowledged": {
+    aggregateIdFields: ["electionAddendumId"],
+    templateKey: "election_addendum",
+    contentField: "renderPayload",
+    appends: true,
+  },
   // ── F-144 (#248) — four render requests M22's own §4.11 sweep found catalogued, spec-named, and never
   // emitted (the producer-side gap, not a declaration gap). All emit `patientId` inside the content blob
   // (the M11/M12/M16 shape), never on the envelope.

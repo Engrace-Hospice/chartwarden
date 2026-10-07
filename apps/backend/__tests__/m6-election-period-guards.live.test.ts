@@ -29,6 +29,7 @@ import { createDbAdmissionRouteService } from "../src/modules/06-admission/admis
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -179,6 +180,8 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       `INSERT INTO "user" (id,email) VALUES ($1,'f062@x.test'), ($2,'f062-md@x.test'), ($3,'f062-att@x.test')`,
       [USER, MD, ATTENDING],
     );
+    // 42 CFR 418.26(b) — the live discharges below are dated today, so they carry a physician order.
+    await seedPhysicianRole(admin, ORG_A, MD);
     await admin.query(
       `INSERT INTO provider_entity (id,organization_id,legal_name,ccn,npi,tax_id_encrypted,fiscal_year_end)
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31'),
@@ -255,6 +258,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
           reason: "moved_out_of_service_area",
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "relocated out of the service area",
+          dischargeOrder: dischargeOrderBy(MD),
         },
         USER,
       );
@@ -282,6 +286,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
           reason: "moved_out_of_service_area",
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "relocated out of the service area",
+          dischargeOrder: dischargeOrderBy(MD),
         },
         USER,
       );
@@ -517,6 +522,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
           reason: "moved_out_of_service_area",
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "relocated out of the service area",
+          dischargeOrder: dischargeOrderBy(MD),
         },
         USER,
       );

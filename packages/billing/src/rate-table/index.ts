@@ -10,6 +10,8 @@ import { toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";
 import type { HippsRateTable } from "../hipps/calculator";
 
+export * from "./national-rates";
+
 /** The federal fiscal year (Oct 1 - Sep 30) a service date falls in, by its STARTING calendar year (2025 = FY2026). */
 export function hospiceFiscalYearStartingOf(serviceDate: IsoDate): number {
   toEpochDay(serviceDate); // validates the date

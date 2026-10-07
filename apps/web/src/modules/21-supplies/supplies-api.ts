@@ -453,6 +453,26 @@ export async function markDelivered(
   return { request: res.data, error: null };
 }
 
+/** COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination. Not a
+ *  §2.2 transition, but a real mutation: `If-Match` + `Idempotency-Key` like every other write. */
+export async function setCoverageDetermination(
+  client: ApiClient,
+  supplyRequestId: string,
+  updatedAt: string,
+  body: ReqBody<operations["putApiV1SuppliesSupplyrequestsBySupplyRequestIdCoveragedetermination"]>,
+): Promise<{ request: SupplyRequestDetail | null; error: unknown }> {
+  const res = await client.PUT(
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/coverage-determination",
+    {
+      params: { path: { supplyRequestId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
+  if (res.error) return { request: null, error: res.error };
+  return { request: res.data, error: null };
+}
+
 /** Row 8 — caregiver / clinician confirms receipt. `system_auto_confirm` is NOT reachable from here — it is
  *  the 72h fallback the §4.6 worker writes. */
 export async function confirmReceived(

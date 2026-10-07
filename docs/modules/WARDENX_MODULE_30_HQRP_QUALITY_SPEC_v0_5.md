@@ -33,6 +33,22 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
 
 ## Changelog
 
+- **Implementation note (SSVI family, FY2027, 2026-10-06)** — new `ssvi` measure family (CMS-1851-F §III.B.2,
+  Table 9): nine metrics (`ssvi_metric_01`…`09`) + `ssvi_composite`, catalog `activatesFy: 2027`, calculators in
+  `packages/quality/src/measures/ssvi/` (the HCI family layout: per-metric files, `thresholds.ts`,
+  `availability.ts`, composite in `index.ts`). Eight binary metrics earn 1 point on the CONCERN side of the
+  per-data-year cut (`SSVI_THRESHOLDS_FY2025_DATA`, inclusive), metric 9 (total non-hospice spending) earns 0–8
+  by octile; total 0–16, outlier at ≥ 13. Polarity: a metric that earns its point reports `thresholdMet=false`
+  / band red, with the points in `computation_snapshot.ssviPoints`. Metric 9 is DECLARED unavailable
+  (`SSVI_UNAVAILABLE_METRICS`, the HCI 7 blocker: other providers' Medicare claims), so the total is withheld and
+  the suppressed row records `partialScoreLowerBound` / `maxPossibleScore`. Inputs: M6 `LevelOfCarePeriodReader`
+  (1, 3, 6, 7), new `DischargeReader.ssviDischargeCounts` (4, 5, 8), M23 `ClaimLineReader` rollup's new
+  `rhcNursingFacilityDays` (Q5003/Q5004 on 0651; metric 2), new M8 `SignedEncountersReader.skilledVisitDaysForOrg`
+  (RN/LPN/MSW; the encounter model has no therapy discipline — metrics 3 and 7 may under-count). Worker routing in
+  `apps/backend/src/modules/30-quality/jobs/ssvi-resolvers.ts`. The SSVI is CMS-calculated and published with no
+  hospice submission, preview or reconsideration, is not an HQRP or Care Compare measure, and does NOT replace
+  the HCI — everything shown is labelled an INTERNAL ESTIMATE. Quality hub: an SSVI panel (score or range,
+  per-metric points, outlier badge) above the measures table; the measure domain union gains `ssvi`.
 - **Implementation note (HCI indicators 8/9 on the CMS definitions, 2026-09-26)** — indicator 8
   ("Skilled Nursing Care Minutes per Routine Home Care Day") is now CMS's MEAN: skilled-nursing (RN/LPN)
   minutes delivered on RHC days ÷ RHC days; indicator 9 ("Skilled Nursing Minutes on Weekends") is the
@@ -94,6 +110,12 @@ Concretely M30 delivers:
 - **The quality-measure-value record, one row per (measure_code, provider_entity_id, period).** Every CMS-tracked hospice quality measure is computed by a typed measure calculator in `packages/quality/src/measures/<code>.ts` and persisted as a `quality_measure_value` row carrying the numerator, denominator, ratio, and computed-at timestamp plus a `computation_snapshot` jsonb capturing the input-seam state at compute time and a SHA-256 content hash over the snapshot. The snapshot makes the measure value **reproducible** — given the snapshot, the calculator deterministically reproduces the value; given the value, the snapshot proves what data drove it. This matters because a surveyor or a quality-of-care complaint may ask "what was your HCI score on April 7, 2026, and what data drove it?" — the snapshot answers without re-running the math against today's mutated upstream data.
 
 - **The HCI (Hospice Care Index) ten-indicator computation.** Each of the ten CMS-published HCI indicators (Continuous Home Care or General Inpatient provided; Gaps in Skilled Nursing visits; Early Live Discharges; Late Live Discharges; Burdensome Transitions Type 1 and Type 2; Per-beneficiary Medicare spending; Skilled Nursing Care Minutes per Routine Home Care day; Skilled Nursing Minutes on Weekends; Visits Near Death) is a pure function over the upstream seam projections — `ClaimLineReader` and `PatientDaysProvider` from M23 for the claims-derived indicators, `LevelOfCarePeriodReader` from M6 for the level-of-care indicators, `EncounterStatisticsProvider` from M8 for the visit-near-death indicator, and `DischargeReader` from M6 for the live-discharge indicators. The HCI score is the count of indicators where the agency meets or exceeds the CMS-published threshold for the reporting period (max 10). The reference period is rolling 12 months ending the last day of the prior completed calendar quarter, matching the CMS HCI specification. Per-FY threshold values are bound to `HCI_THRESHOLDS_v<FY>` so a CMS spec update is a versioned-constant PR, not a reverse-engineering exercise across ten indicators.
+
+- **The SSVI (Service and Spending Variation Index) internal estimate (FY2027+).** The nine CMS-1851-F Table 9
+  claims-based metrics and the 0–16 total (outlier ≥ 13), computed from the agency's own records and labelled an
+  internal estimate: CMS computes and publishes the official SSVI from national claims for program-integrity
+  targeting. It complements, and does not replace, the HCI. Metric 9 (non-hospice spending) is declared
+  unavailable for the same reason as HCI indicator 7. See the 2026-10-06 changelog note.
 
 - **The HVLDL (Hospice Visits in Last Days of Life) computation.** The HVLDL is the percentage of decedent patients who received at least two visits from a qualifying discipline (FY2025: RN or MSW per CMS spec) in the last three days of life. The deceased census is the set of admissions with `m6.discharge.kind='death'` in the reference period; the qualifying-visit predicate is `EncounterStatisticsProvider.disciplineVisitsForPatientInWindow(patientId, dischargeDate-3d, dischargeDate)` returning the per-discipline visit count. The numerator is decedents with the predicate satisfied; the denominator is decedents in the reference period; the ratio is the public HVLDL. The qualifying-discipline list is bound to `HVLDL_QUALIFYING_DISCIPLINES_v<FY>` so the FY2028-projected expansion (CMS may add Chaplain or Aide to the qualifying list) is a constant change, not a code change.
 

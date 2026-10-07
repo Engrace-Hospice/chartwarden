@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 317 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 318 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 270 screen(s)
+- **web**: 271 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -225,6 +225,7 @@
 | web | 23-billing-medicare | `billing.transfer-notices` | `/billing/transfer-notices` | `billing.noe.read` | ✅ |
 | web | 23-billing-medicare | `billing.rule-config` | `/billing/rule-config` | `billing.rule_config.read` | ✅ |
 | web | 23-billing-medicare | `billing.eligibility` | `/billing/eligibility` | `billing.eligibility.read` | ✅ |
+| web | 23-billing-medicare | `billing.rate-tables` | `/billing/rate-tables` | `billing.rate_table.read` | ✅ |
 | web | 23-billing-medicare | `billing.sequestration` | `/billing/sequestration-policy` | `billing.sequestration_policy.read` | ✅ |
 | web | 23-billing-medicare | `billing.mac-credentials` | `/billing/mac-credentials` | `billing.mac_credential.read` | ✅ |
 | web | 23-billing-medicare | `billing.overrides` | `/billing/overrides` | `billing.validation.read_override` | ✅ |

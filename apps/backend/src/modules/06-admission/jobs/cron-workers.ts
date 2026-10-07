@@ -10,6 +10,7 @@ import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
+import { markOverdueAddendumWindowsInTx } from "../election-addendum/compliance";
 import { completeActiveElectionPeriod } from "../election-period-completion";
 import {
   activePeriodsPastEndForOrg,
@@ -274,6 +275,26 @@ export async function runF2fWindowMissedScanCron(deps: M6WorkerDeps): Promise<vo
 }
 
 /**
+ * `admission.window_alert` (addendum half, FY2027) — every 15 min, move each election-addendum window
+ * (42 CFR 418.24(d): 5 days from the election's effective date / 3 days from a plan-of-care change) that passed
+ * its due instant unfurnished to `overdue` and emit `m6.election_addendum.overdue` (M36 pages the care team and
+ * compliance). Idempotent: an `overdue` window is never selected again.
+ */
+export async function runElectionAddendumOverdueScanCron(deps: M6WorkerDeps): Promise<number> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  let total = 0;
+  for (const { organizationId } of orgs) {
+    // "" — the scan UPDATEs `compliance_window` (audited); see the F-178b note above.
+    const marked = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
+      markOverdueAddendumWindowsInTx(tx as unknown as DbClient, deps.outbox, organizationId, now),
+    );
+    total += marked.length;
+  }
+  return total;
+}
+
+/**
  * Hourly benefit-period auto-end (GAP-025, spec §2.3.2 "period auto-ended at midnight on its endDate").
  * For each active org, completes every ACTIVE period whose last covered day is before the org's local
  * date and publishes `m6.election.period_ended` (M23's revalidate consumer re-checks the claims the
@@ -327,10 +348,17 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
       concurrency: 1,
     }),
 
-    new Worker(M6_QUEUES.windowAlert, async () => runF2fWindowMissedScanCron(deps), {
-      connection: deps.connection,
-      concurrency: 1,
-    }),
+    new Worker(
+      M6_QUEUES.windowAlert,
+      async () => {
+        await runF2fWindowMissedScanCron(deps);
+        await runElectionAddendumOverdueScanCron(deps);
+      },
+      {
+        connection: deps.connection,
+        concurrency: 1,
+      },
+    ),
 
     new Worker(M6_QUEUES.periodAutoEnd, async () => runElectionPeriodAutoEndCron(deps), {
       connection: deps.connection,

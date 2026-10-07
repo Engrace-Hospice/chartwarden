@@ -25,6 +25,8 @@ export interface QualityClaimLineRollup {
   readonly ircDays: number;
   readonly gipDays: number;
   readonly claimLineCount: number;
+  /** SSVI metric 2 — billed RHC days with site of service Q5003 (NF/LTC) or Q5004 (SNF). */
+  readonly rhcNursingFacilityDays: number;
   readonly isForwardSeamDenyStub: false;
 }
 

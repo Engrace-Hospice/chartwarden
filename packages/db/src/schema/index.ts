@@ -223,6 +223,7 @@ export * from "./admission/discharge-events";
 export * from "./admission/notice-of-rights-acknowledgments";
 export * from "./admission/compliance-windows";
 export * from "./admission/admission-evidence";
+export * from "./admission/election-addenda";
 
 // ── Module 7 (Care Plan / IPOC) — the interdisciplinary plan of care (§3.3) ──────────────────
 // M7 owns 6 tables (M7-T02): the care_plan root + the immutable care_plan_version snapshot ledger +

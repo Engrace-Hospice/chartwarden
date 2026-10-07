@@ -31,6 +31,7 @@ interface ClaimLineReaderView {
     totalPatientDays: number;
     byLevelOfCare: { rhc: number; chc: number; irc: number; gip: number };
     claimLineCount: number;
+    rhcNursingFacilityDays: number;
   }>;
 }
 
@@ -82,6 +83,7 @@ export function buildM30BillingConsumer(): QualityBillingConsumer {
           ircDays: r.byLevelOfCare.irc,
           gipDays: r.byLevelOfCare.gip,
           claimLineCount: r.claimLineCount,
+          rhcNursingFacilityDays: r.rhcNursingFacilityDays,
           isForwardSeamDenyStub: false,
         };
       });

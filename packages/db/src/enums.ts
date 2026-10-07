@@ -857,6 +857,45 @@ export const electionStatementStatus = pgEnum("election_statement_status", [
   "voided",
 ]);
 
+// ── FY2027 election statement addendum (42 CFR 418.24(c)/(d), CMS-1851-F; mig 0381) ────────────────
+
+/** `election_addendum_status` — the addendum version lifecycle (state-machines/election-addendum.ts):
+ *  draft → furnished → signed | refused | signature_not_required, or draft → not_required. */
+export const electionAddendumStatus = pgEnum("election_addendum_status", [
+  "draft",
+  "furnished",
+  "signed",
+  "refused",
+  "signature_not_required",
+  "not_required",
+]);
+
+/** `election_addendum_trigger` — why this version exists: the election itself, or a plan-of-care change. */
+export const electionAddendumTrigger = pgEnum("election_addendum_trigger", [
+  "initial",
+  "poc_change",
+]);
+
+/** `election_addendum_furnish_method` — a written copy is always given; electronic only supplements it. */
+export const electionAddendumFurnishMethod = pgEnum("election_addendum_furnish_method", [
+  "paper",
+  "electronic_with_paper_copy",
+]);
+
+/** `election_addendum_signer_kind` — who signed the acknowledgement of receipt (418.24(c)(9)). */
+export const electionAddendumSignerKind = pgEnum("election_addendum_signer_kind", [
+  "beneficiary",
+  "representative",
+]);
+
+/** `election_addendum_exemption_reason` — 418.24(d)(3)/(4): the patient died, revoked, or was discharged
+ *  before the addendum was furnished (→ not_required) or signed (→ signature_not_required). */
+export const electionAddendumExemptionReason = pgEnum("election_addendum_exemption_reason", [
+  "death",
+  "revocation",
+  "discharge",
+]);
+
 /** `cti_status` — the §3.2 certification-of-terminal-illness lifecycle (§2.3.3). */
 export const ctiStatus = pgEnum("cti_status", [
   "drafted",
@@ -935,6 +974,17 @@ export const dischargeEventStatus = pgEnum("discharge_event_status", [
   "voided",
 ]);
 
+/**
+ * `physician_signer_capacity` — the 42 CFR 418.25(a) / 418.26(b) physician signer set (migration 0388): the
+ * hospice medical director, the physician designee (§ 418.3), or the physician member of the patient's IDG.
+ * Never the attending physician, an NP or a PA. Shared by the discharge order and the admission recommendation.
+ */
+export const physicianSignerCapacity = pgEnum("physician_signer_capacity", [
+  "medical_director",
+  "physician_designee",
+  "idg_physician_member",
+]);
+
 /** `nor_acknowledgment_method` — how the Notice of Rights was acknowledged (§3.2). */
 export const norAcknowledgmentMethod = pgEnum("nor_acknowledgment_method", [
   "wet_ink_scanned",
@@ -956,6 +1006,11 @@ export const complianceWindowKind = pgEnum("compliance_window_kind", [
   "concurrent_hospital_admission",
   "external_discharge_notice",
   "hl7_admission_cancellation",
+  // FY2027 (CMS-1851-F, 42 CFR 418.24(d), mig 0380) — the election statement addendum clocks: furnish within
+  // 5 calendar days of the election's effective date, and an update within 3 calendar days of a plan-of-care
+  // change that affects the addendum's determinations.
+  "election_addendum_initial",
+  "election_addendum_update",
 ]);
 
 /** `compliance_window_status` — the §3.2 window lifecycle (open→closing_soon→overdue→closed). */
@@ -1540,6 +1595,15 @@ export const medicationOrderStatus = pgEnum("medication_order_status", [
   "expired_unsigned",
 ]);
 
+/** `hospice_coverage` — COP27 (42 CFR 418.24(b)(6)/(c)): the hospice's coverage determination on a drug
+ *  (M12 `medication_order`) or a dme/supply request (M21 `supply_request`). Shared by both owning tables;
+ *  created once in migration 0385. Mirrors `HOSPICE_COVERAGE_VALUES` in `@wardenx/types`. */
+export const hospiceCoverage = pgEnum("hospice_coverage", [
+  "covered_related",
+  "not_covered_unrelated",
+  "not_covered_other",
+]);
+
 /** `med_class` — the §2.1 medication taxonomy (standard / controlled / compounded). */
 export const medClass = pgEnum("med_class", ["standard", "controlled_substance", "compounded"]);
 
@@ -2104,6 +2168,9 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // `m19.triage.summary_requested`: one document per triage call, one aggregate type per audience.
   "triage_summary_caregiver",
   "triage_summary_attending",
+  // FY2027 (mig 0380) — the 42 CFR 418.24(c) "Patient Notification of Hospice Non-Covered Items, Services,
+  // and Drugs" (the election statement addendum), one document per addendum version.
+  "election_addendum",
   "other",
 ]);
 

@@ -6,7 +6,25 @@
 import type { LocalDate } from "@wardenx/types";
 import { type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
+import {
+  type F2fEncounterLocation,
+  type SignedNoteFacts,
+  type TelehealthEligibilityAttestation,
+  checkF2fModality,
+  checkF2fSignedNote,
+} from "./f2f-attestation-rules";
 import { TEXT_MINIMUMS, checkF2fOverride, checkF2fPerformer, checkF2fWindow } from "./validation";
+
+/**
+ * R-F2F-06 — the § 418.22(b)(4) clinical-note attestation: the linked M8 note's facts plus what it must
+ * match (the F2F's patient, performer and encounter date).
+ */
+export interface F2fSignedNoteAttestation {
+  readonly note: SignedNoteFacts | null;
+  readonly patientId: string;
+  readonly performerUserId: string;
+  readonly encounterDate: LocalDate | null;
+}
 
 /** The §2.3.4 F2F states. */
 export type FaceToFaceState = "scheduled" | "completed" | "attested";
@@ -19,6 +37,10 @@ export type FaceToFaceEvent =
       readonly periodStart: LocalDate | null;
       readonly encounterDate: LocalDate;
       readonly hasOverride: boolean;
+      /** R-F2F-05 — the modality; telehealth is date-limited and attestation-gated. `null` = not recorded
+       *  (a non-route internal caller); the route requires it. */
+      readonly encounterLocation: F2fEncounterLocation | null;
+      readonly telehealthEligibility: TelehealthEligibilityAttestation | null;
       /** MBPM ch. 9 §20.1(5)(d) — period-3+ new admission with documented exceptional circumstances. */
       readonly exceptionDocumented?: boolean;
     }
@@ -27,7 +49,14 @@ export type FaceToFaceEvent =
       readonly isMedicalDirector: boolean;
       readonly reason: string;
     }
-  | { readonly type: "attest"; readonly narrative: string; readonly performerIsActor: boolean };
+  | {
+      readonly type: "attest";
+      /** The written attestation (≥ 100 chars). Not required when `signedNote` is supplied (R-F2F-06). */
+      readonly narrative: string | null;
+      /** R-F2F-06 — a linked signed clinical note in place of the written attestation. */
+      readonly signedNote?: F2fSignedNoteAttestation | null;
+      readonly performerIsActor: boolean;
+    };
 
 export type FaceToFaceTransition = TransitionResult<FaceToFaceState, FaceToFaceEvent["type"]>;
 
@@ -55,6 +84,11 @@ export function transitionFaceToFace(
   switch (event.type) {
     case "recordCompletion": {
       checkF2fPerformer({ performerRole: event.performerRole });
+      checkF2fModality({
+        encounterLocation: event.encounterLocation,
+        encounterDate: event.encounterDate,
+        telehealthEligibility: event.telehealthEligibility,
+      });
       const { withinWindow } = checkF2fWindow({
         periodStart: event.periodStart,
         encounterDate: event.encounterDate,
@@ -91,11 +125,16 @@ export function transitionFaceToFace(
       ]);
     }
     case "attest": {
-      require_(
-        event.narrative.trim().length >= TEXT_MINIMUMS.f2fAttestation,
-        "F2F_ATTESTATION_TOO_SHORT",
-        `F2F attestation must be ≥ ${TEXT_MINIMUMS.f2fAttestation} characters`,
-      );
+      if (event.signedNote) {
+        // R-F2F-06 — the signed clinical note IS the attestation; no separate narrative is required.
+        checkF2fSignedNote(event.signedNote);
+      } else {
+        require_(
+          (event.narrative ?? "").trim().length >= TEXT_MINIMUMS.f2fAttestation,
+          "F2F_ATTESTATION_TOO_SHORT",
+          `F2F attestation must be ≥ ${TEXT_MINIMUMS.f2fAttestation} characters`,
+        );
+      }
       require_(
         event.performerIsActor,
         "F2F_INVALID_PERFORMER",

@@ -14,6 +14,7 @@
 // it only emits the typed outbox event.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
+import { HospiceCoverageSchema } from "@wardenx/types";
 import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
@@ -531,6 +532,30 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       summary: Type.Optional(Type.String({ maxLength: 2000 })),
     }),
     declaredConsumers: ["m30"],
+    isOutboxOnly: true,
+  },
+  // COP27 (42 CFR 418.24(c), workstream B) — the hospice coverage determination on an order changed. M6 is
+  // the declared consumer (the election-statement addendum must be updated within 3 days of a plan-of-care
+  // change that impacts its determinations, § 418.24(d)(2)); its binding lands with workstream A, so the pair
+  // is registered in scripts/outbox-deferred-consumers.ts until the COP27 integration. `reason` is the
+  // patient-facing clinical explanation the addendum must disclose (§ 418.24(c)(6)) — published on purpose,
+  // the `m12.medication.error_reported.summary` posture.
+  {
+    eventName: "m12.medication_order.coverage_determination_changed",
+    moduleOwner: "m12",
+    description:
+      "`setCoverageDetermination` changed a medication order's hospice coverage determination (covered_related | not_covered_unrelated | not_covered_other); M6 refreshes the election-statement addendum's non-covered list.",
+    payloadSchema: Type.Object({
+      orgId: id,
+      admissionId: Type.Optional(id),
+      patientId: id,
+      sourceId: id,
+      hospiceCoverage: HospiceCoverageSchema,
+      previousHospiceCoverage: HospiceCoverageSchema,
+      reason: Type.Union([Type.String({ maxLength: 2000 }), Type.Null()]),
+      changedAt: isoInstant,
+    }),
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   // F-238 — M12's reply to `m22.extraction.medication_history_requested`: the DocLens medication lines it

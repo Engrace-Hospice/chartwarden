@@ -231,7 +231,14 @@ export function createDbProblemProposalService(
         if (!updated) throw new CarePlanStateError("STALE_VERSION", "stale proposal write");
         await outbox.publish(t, {
           eventName: "m7.problem.added",
-          payload: { planId, problemId: problem.id, status: problem.status },
+          payload: {
+            planId,
+            problemId: problem.id,
+            status: problem.status,
+            // FY2027 — M6's election-addendum consumer keys on the admission + relatedness (418.24(d)(2)).
+            admissionId: plan.admissionId,
+            kind: body.kind,
+          },
           organizationId: org,
           aggregateKind: "problem",
           aggregateId: problem.id,

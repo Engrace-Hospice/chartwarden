@@ -65,6 +65,16 @@ export {
   type CertificationTransition,
 } from "./certification";
 export {
+  F2F_ENCOUNTER_LOCATIONS,
+  TELEHEALTH_F2F_ALLOWED_THROUGH,
+  TELEHEALTH_F2F_EXCLUSIONS_FROM,
+  checkF2fModality,
+  checkF2fSignedNote,
+  type F2fEncounterLocation,
+  type SignedNoteFacts,
+  type TelehealthEligibilityAttestation,
+} from "./f2f-attestation-rules";
+export {
   FACE_TO_FACE_GRAPH,
   transitionFaceToFace,
   type FaceToFaceEvent,
@@ -86,3 +96,18 @@ export {
   validateTransferIn,
   type CommandCascade,
 } from "./commands";
+export {
+  ADDENDUM_TEXT_MINIMUM,
+  ELECTION_ADDENDUM_GRAPH,
+  SETTLED_ADDENDUM_STATUSES,
+  checkAddendumItems,
+  exemptionEventFor,
+  missingAddendumContent,
+  transitionElectionAddendum,
+  type AddendumContentFacts,
+  type AddendumItemInput,
+  type ElectionAddendumEmission,
+  type ElectionAddendumEvent,
+  type ElectionAddendumEventType,
+  type ElectionAddendumTransition,
+} from "./election-addendum";

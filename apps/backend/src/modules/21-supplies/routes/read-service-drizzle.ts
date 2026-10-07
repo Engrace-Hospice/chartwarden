@@ -188,6 +188,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     deliveredAt: isoN(row.deliveredAt),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+    hospiceCoverage: row.hospiceCoverage,
   });
 
   const dispatchListItemOf = (
@@ -396,6 +397,10 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           caregiverSignatureEvidenceDocumentId: row.caregiverSignatureEvidenceDocumentId ?? null,
           caregiverSignatureEvidence: (row.caregiverSignatureEvidenceJsonb ??
             null) as SupplyRequestDetail["caregiverSignatureEvidence"],
+          coverageReason: row.coverageReason ?? null,
+          coverageDeterminedAt: isoN(row.coverageDeterminedAt),
+          coverageDeterminedBy: (row.coverageDeterminedByMembershipId ??
+            null) as SupplyRequestDetail["coverageDeterminedBy"],
         };
       });
     },

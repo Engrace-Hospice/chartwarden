@@ -150,6 +150,10 @@ export function buildDrizzleM26WriteService(
         ]) {
           await tx.execute(sql.raw(`SELECT ${fn}('${period.id}'::uuid)`));
         }
+        // D3 — a tenant has now SNAPSHOTTED the constant, so it must never be amended again. Stamps
+        // `first_tenant_use_at` once (the first open wins) through the 0392 SECURITY DEFINER function —
+        // wardenx_app has no UPDATE on the platform table. Same transaction as the snapshot.
+        await tx.execute(sql`SELECT cap_platform_loader_mark_constant_in_use(${input.capYear})`);
         await outbox.publish(tx, {
           eventName: "m26.cap.year_opened",
           organizationId: actor.organizationId,

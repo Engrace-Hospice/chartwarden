@@ -42,6 +42,12 @@ export const M6_ERROR_STATUS = {
   F2F_ENCOUNTER_DATE_INVALID: 422,
   F2F_PERIOD_START_UNKNOWN: 409,
   F2F_ATTESTATION_TOO_SHORT: 422,
+  // FY2027 CoP (R-F2F-05 / R-F2F-06): telehealth modality limits (§ 418.22(a)(4)(ii)) and the signed
+  // clinical-note attestation alternative (§ 418.22(b)(4)).
+  F2F_TELEHEALTH_NOT_PERMITTED: 422,
+  F2F_TELEHEALTH_ATTESTATION_REQUIRED: 422,
+  F2F_ATTESTATION_NOTE_INVALID: 422,
+  F2F_ATTESTATION_SOURCE_REQUIRED: 422,
   // MBPM ch. 9 §20.1(5)(d) — the exceptional-circumstance path needs period 3+ and a documented reason.
   F2F_EXCEPTION_INVALID: 422,
   // Admission (§2.4.1 R-ADM-*)
@@ -67,6 +73,12 @@ export const M6_ERROR_STATUS = {
   // Discharge reason-specific capture gates (§6.3 / D11)
   NARRATIVE_REQUIRED_FOR_CAUSE: 412,
   DISCHARGE_NARRATIVE_TOO_SHORT: 422,
+  // 42 CFR 418.26(b) / 418.25(a) physician signer set (physician-authority.ts)
+  DISCHARGE_ORDER_REQUIRED: 422,
+  DISCHARGE_ORDER_TIMING_INVALID: 422,
+  PHYSICIAN_SIGNER_INVALID: 422,
+  ADMISSION_RECOMMENDATION_INVALID: 422,
+  ATTENDING_CONSULT_NOTE_REQUIRED: 422,
   // Claim patient discharge status 40/41/42 needs the place of death (CMS Pub. 100-04 Ch. 11 §30.3).
   PLACE_OF_DEATH_REQUIRED: 422,
   PLACE_OF_DEATH_NOT_ALLOWED: 422,
@@ -78,6 +90,12 @@ export const M6_ERROR_STATUS = {
   DISCHARGE_DETAIL_NOT_APPLICABLE: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
+  // FY2027 election statement addendum (42 CFR 418.24(c)/(d); state-machines/election-addendum.ts)
+  ADDENDUM_INCOMPLETE: 422,
+  ADDENDUM_ITEMS_CONFLICT: 422,
+  ADDENDUM_REFUSAL_REASON_REQUIRED: 422,
+  ADDENDUM_REPRESENTATIVE_REQUIRED: 422,
+  ADDENDUM_NOT_APPLICABLE: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;

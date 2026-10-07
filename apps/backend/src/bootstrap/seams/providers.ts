@@ -86,6 +86,7 @@ import type {
   MedicationOrderProvider,
   MileagePayrollReader,
   MswRiskFactorReader,
+  NonCoveredItemsReader,
   OnCallProvider,
   OnboardingStatusProvider,
   OrderProvider,
@@ -739,6 +740,9 @@ export const dischargeReaderDenyStub: DischargeReader = {
   liveDischargeTimingCounts() {
     throw new NotImplementedError("DischargeReader");
   },
+  ssviDischargeCounts() {
+    throw new NotImplementedError("DischargeReader");
+  },
 };
 
 /** M6 — admissions started in a period (M30 opioid_on_admission_rate denominator). Denies until M6 registers it. */
@@ -796,6 +800,9 @@ export const signedEncountersReaderDenyStub: SignedEncountersReader = {
     throw new NotImplementedError("SignedEncountersReader");
   },
   skilledNursingDayTotalsForOrg() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
+  skilledVisitDaysForOrg() {
     throw new NotImplementedError("SignedEncountersReader");
   },
 };
@@ -1061,6 +1068,20 @@ export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
   },
   asFhirMedicationRequest() {
     throw new NotImplementedError("MedicationOrderProvider");
+  },
+};
+
+/** M12 / M21 — COP27 (42 CFR 418.24(c)): the not-covered medication / dme+supply lists the M6 election
+ * addendum composes. Denies until the owning module registers the real reader: an unanswerable question
+ * must never read as "nothing is non-covered" — that would print an addendum claiming full coverage. */
+export const nonCoveredMedicationsReaderDenyStub: NonCoveredItemsReader = {
+  listForAdmission() {
+    throw new NotImplementedError("NonCoveredMedicationsReader");
+  },
+};
+export const nonCoveredDmeSuppliesReaderDenyStub: NonCoveredItemsReader = {
+  listForAdmission() {
+    throw new NotImplementedError("NonCoveredDmeSuppliesReader");
   },
 };
 
