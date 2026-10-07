@@ -5,11 +5,12 @@
 // is org-RLS'd, so a tenant connection can never prove the ABSENCE of a membership elsewhere:
 // answering "sole tenant?" is inherently a cross-tenant read, and it runs here through ONE audited
 // `withPlatformContext` entry (the active-org-enumerator precedent — every entry writes a
-// `platform.bypass_invoked` row or refuses).
+// `platform.bypass_invoked` row or refuses). M34's tenant shred resolves its identity-eraser subjects
+// through this same resolver (under its own job id), so both erasers apply one D9 rule.
 import { type DbClient, schema } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { withPlatformContext } from "@wardenx/tenancy";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 export interface SoleTenantUserResolverDeps {
@@ -42,6 +43,8 @@ export function buildSoleTenantUserResolver(
       },
       deps.auditBypass,
       async (tx) => {
+        // The subquery goes through the query builder, not a raw `sql` template: interpolating an
+        // `alias()` into raw SQL renders only `"other_membership"`, with no `"membership" AS` behind it.
         const OTHER = alias(M, "other_membership");
         const rows = await tx
           .selectDistinct({ userId: M.userId })
@@ -49,7 +52,12 @@ export function buildSoleTenantUserResolver(
           .where(
             and(
               eq(M.organizationId, orgId),
-              sql`not exists (select 1 from ${OTHER} where ${OTHER.userId} = ${M.userId} and ${OTHER.organizationId} <> ${orgId})`,
+              notExists(
+                tx
+                  .select({ one: sql`1` })
+                  .from(OTHER)
+                  .where(and(eq(OTHER.userId, M.userId), ne(OTHER.organizationId, orgId))),
+              ),
             ),
           );
         return rows.map((r) => r.userId);

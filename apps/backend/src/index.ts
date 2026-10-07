@@ -89,10 +89,7 @@ import {
 } from "./bootstrap/jobs/partition-rotation";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
-import {
-  m34ActiveMembershipUserId,
-  m34SoleTenantUserIds,
-} from "./bootstrap/m34-identity-shred-subjects";
+import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
 import {
   buildMetricsRegistry,
   mountMetricsRoute,
@@ -142,6 +139,8 @@ import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenan
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
+/** The platform-job id M34's tenant-shred identity-subject read runs under (same M36 D9 rule, own audit trail). */
+const M34_SHRED_SOLE_TENANT_JOB_ID = "m34-shred-sole-tenant-resolver";
 const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
 const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
@@ -2676,6 +2675,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob(M21_PLATFORM_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
+  // M34 tenant shred — the identity eraser's sole-tenant subjects, resolved by the SAME rule as M36's.
+  if (platformDbHandle) registerPlatformJob(M34_SHRED_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -3665,10 +3666,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M34 (Phase 2D) — mount the platform-ops + tenant-scoped surfaces over the DRIZZLE route services
           // (RLS-scoped reads under withPlatformContext/withOrgContext; commands enqueue the §4.3 queue job
           // through the BullMQ producer). The platform queue producer + the tenant queue producer are the
-          // SAME Valkey connection the workers run on. The platform service's cross-tenant reads require the
-          // M4 bypass auditor (currently fail-closed typed-TODO), so the platform surface 5xxs until that
-          // lands; tenant reads are live, while async commands refuse until the worker capability set is
-          // complete. Both fall back to the in-memory slice when no DB client is present (tests).
+          // SAME Valkey connection the workers run on. The platform service's cross-tenant reads are audited
+          // through `m34PlatformBypassAuditor`; tenant reads are live, while async commands refuse until the
+          // worker capability set is complete. Both fall back to the in-memory slice when no DB client is present (tests).
           const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
           const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
           mountTenantPlatformRoutes(app, dbHandle.db, {
@@ -4735,7 +4735,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           })(),
           shredSubjects: {
             patientIds: m34TenantPatientIds,
-            soleTenantUserIds: m34SoleTenantUserIds,
+            // M36 D9 is the one sole-tenant rule: ANY membership elsewhere (revoked included) keeps the
+            // identity; a revoked-only membership HERE still makes the user ours to erase.
+            soleTenantUserIds: (platformDb, orgId) =>
+              buildSoleTenantUserResolver({
+                platformDb,
+                auditBypass: m34PlatformBypassAuditor,
+                jobId: M34_SHRED_SOLE_TENANT_JOB_ID,
+              })(orgId),
           },
         },
       });

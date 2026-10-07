@@ -512,6 +512,9 @@ jobs:
           # and then relies on `wardenx_app` being refused a grant — a suite sharing a runner with one that
           # re-grants anything would make that assertion pass or fail for the wrong reason.
           - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
+          # The tenant shred's identity eraser and M36's messaging eraser share ONE sole-tenant-user rule
+          # (M36 D9); a revoked membership elsewhere must keep the identity. Own runner: it drops the roles.
+          - { name: "M34 sole-tenant users", scripts: "test:m34:sole-tenant-users:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
