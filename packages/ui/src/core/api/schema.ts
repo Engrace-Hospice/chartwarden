@@ -36048,8 +36048,6 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
-                    /** Format: uuid */
-                    stepUpAssertionId: string;
                 };
             };
         };

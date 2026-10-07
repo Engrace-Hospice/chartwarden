@@ -18,8 +18,7 @@
 //
 // Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
 // `publishTemplateVersion` is a platform-admin op with no tenant-layer persistence (returns the current active
-// version / a synthetic id); the `exportPhiBundle` bundle is materialized by the async export worker (the route
-// returns its tracking id). The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the
+// version / a synthetic id); `exportPhiBundle` fails closed (503, GAP-065) until the async export pipeline exists. The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the
 // reference. Every WRITE now carries its `DocumentWriteActor` (GAP-039): `actor.userId` reaches the M4
 // audit triggers through `app.user_id`, and `actor.membershipId` fills the `*_by_membership_id` columns
 // that used to take a hardcoded sentinel.
@@ -732,9 +731,13 @@ export function createDbDocumentRouteService(
       });
     },
     async exportPhiBundle(_organizationId, _actor, _args) {
-      // §4.1 — the PHI export bundle is materialized by the async export worker; the route returns the tracking
-      // id it will render under (the in-mem posture — no synchronous bundle table on the write path).
-      return { documentBundleId: randomUUID() };
+      // GAP-065 — no bundle table, job or worker exists yet (§8.9 justification / approver / encrypted object /
+      // 24h URL), so a 201 with a made-up tracking id would be a fake success. Fail closed (503) until the
+      // request is persisted and a real bundle job (or the M34 DSAR worker) produces the artifact.
+      throw new DegradedError(
+        "m22.export-phi-bundle",
+        "the right-of-access PHI export pipeline is not available; use the M34 DSAR export",
+      );
     },
 
     // ── Intake writes ────────────────────────────────────────────────────────────────────────────────

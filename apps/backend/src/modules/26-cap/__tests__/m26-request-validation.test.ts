@@ -23,6 +23,7 @@ import {
   PeriodIdParams,
   PsrImportRequest,
   PublishConstantRequest,
+  ReopenCapPeriodRequest,
   ResolveVarianceRequest,
   parse,
 } from "../routes/m26-typebox";
@@ -172,6 +173,15 @@ describe("M26 step-up is a SERVER fact, never a body field", () => {
 
   it("omits stepUpAssertionId from the finalize-settlement body", () => {
     expect(Object.keys(FinalizeSettlementRequest.properties)).toEqual(["attestation"]);
+  });
+
+  it("omits stepUpAssertionId from the reopen-period body (GAP-079)", () => {
+    expect(Object.keys(ReopenCapPeriodRequest.properties)).toEqual(["reason"]);
+    invalid(
+      ReopenCapPeriodRequest,
+      { reason: "correct a variance", stepUpAssertionId: "11111111-1111-1111-1111-111111111111" },
+      "stepUpAssertionId",
+    );
   });
 
   it("REFUSES a stepUpAssertionId a caller tries to smuggle back in", () => {

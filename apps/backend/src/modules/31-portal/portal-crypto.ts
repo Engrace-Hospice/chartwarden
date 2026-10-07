@@ -6,15 +6,20 @@
 // the ciphertext to (module, table, column, tenant), so a blob lifted from another column or another org
 // fails to open rather than decrypting into the wrong context.
 //
-// There is deliberately no `decrypt` here. Nothing reads the reason back yet — the admin roster projects
+// There is deliberately no `decrypt` on the REASON cipher. Nothing reads the reason back yet — the admin roster projects
 // ids, enums and instants and never a cipher (the store's own rule) — and shipping an unused decrypt path
 // would be a PHI read surface with no audit behind it. The version prefix is what makes adding one later
 // safe: the DEK version travels with the blob, so rotation keeps historical rows openable.
-import { createCipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 /** The M34 key-ring slice this module needs: one per-tenant DEK, versioned. */
 export interface PortalTenantKeyProvider {
   dekForOrg(organizationId: string): Promise<{ version: string; key: Buffer }>;
+  /** GAP-095 — the historical DEK a sealed blob names (rotation keeps old blobs openable). */
+  dekForOrgVersion?(
+    organizationId: string,
+    version: string,
+  ): Promise<{ version: string; key: Buffer }>;
 }
 
 /** Seals one operator-written reason for one tenant. Absent from `PortalRouteDeps` ⇒ the route refuses. */
@@ -49,9 +54,8 @@ export function createPortalReasonCipher(keys: PortalTenantKeyProvider): PortalR
 // ── F-220 (#248): the two `telehealth_visit` vendor-room columns ─────────────────────────────────────────────
 // `vendor_room_id_cipher` / `vendor_room_url_cipher` (both NOT NULL, §3.6 audit-denylisted) are written once, at
 // the lazy room mint, through the SAME per-tenant DEK provider (`dekForOrg`/`getTenantKeyProvider`, the M39
-// `consent-crypto.ts` / M8 `hearthnote-crypto.ts` / this file's reason cipher). Encrypt-only for the same reason as
-// the reason cipher: nothing reads a vendor room id back (the join route mints per-participant tokens from the
-// telehealth visit id, and the staff `/end` route never calls `endRoom` — see `outbox-consumers/m17-visit-cancelled-
+// `consent-crypto.ts` / M8 `hearthnote-crypto.ts` / this file's reason cipher). GAP-095: the join route now opens the sealed url to hand
+// the caller the real vendor room, and `/end` opens the id to close it at the vendor (previously unread — see `outbox-consumers/m17-visit-cancelled-
 // telehealth.ts`), and an unused decrypt would be a PHI read surface with no audit behind it. The AAD binds the blob to
 // (module, table, column, tenant), so a room id lifted into the url column — or into another org — fails to open.
 
@@ -61,6 +65,11 @@ export type PortalRoomColumn = "vendor_room_id" | "vendor_room_url";
 /** Seals one vendor-room value for one tenant. */
 export interface PortalRoomCipher {
   encrypt(organizationId: string, column: PortalRoomColumn, plaintext: string): Promise<string>;
+  /**
+   * GAP-095 — opens a sealed room value so the join route can hand the caller the REAL vendor url (and the
+   * end route can address the vendor room). Throws on a malformed / foreign / tampered blob.
+   */
+  decrypt(organizationId: string, column: PortalRoomColumn, envelope: string): Promise<string>;
 }
 
 /** AES-256-GCM envelope over the two `telehealth_visit` room columns; DEK version embedded for rotation. */
@@ -81,6 +90,23 @@ export function createPortalRoomCipher(keys: PortalTenantKeyProvider): PortalRoo
         tag.toString("base64url"),
         ciphertext.toString("base64url"),
       ].join(".");
+    },
+    async decrypt(organizationId, column, envelope) {
+      // `v1.<dekVersion>.<nonce>.<tag>.<ct>` — base64url parts never contain "."; the version may.
+      const parts = envelope.split(".");
+      const [v] = parts;
+      const [nonce, tag, ct] = parts.slice(-3);
+      const version = parts.slice(1, -3).join(".");
+      if (v !== "v1" || parts.length < 5 || !version || !nonce || !tag || ct === undefined) {
+        throw new Error("unrecognised telehealth_visit room envelope");
+      }
+      if (!keys.dekForOrgVersion)
+        throw new Error("tenant key provider cannot open a versioned DEK");
+      const { key } = await keys.dekForOrgVersion(organizationId, version);
+      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+      d.setAAD(Buffer.from(`m31:telehealth_visit:${column}:${organizationId}`, "utf8"));
+      d.setAuthTag(Buffer.from(tag, "base64url"));
+      return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
     },
   };
 }

@@ -64333,17 +64333,12 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "reason",
-                  "stepUpAssertionId"
+                  "reason"
                 ],
                 "properties": {
                   "reason": {
                     "minLength": 1,
                     "maxLength": 2000,
-                    "type": "string"
-                  },
-                  "stepUpAssertionId": {
-                    "format": "uuid",
                     "type": "string"
                   }
                 }

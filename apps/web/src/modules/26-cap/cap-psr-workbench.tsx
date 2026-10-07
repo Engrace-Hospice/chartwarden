@@ -16,9 +16,11 @@ import {
 // (M26 ledger vs the MAC figure) above the per-tenant threshold (default $50). Phase 1 is upload-driven — the
 // import is created via POST /api/v1/cap/periods/:id/psr-imports and the per-import variance view drills in at
 // /api/v1/cap/psr-imports/:importId/reconciliation (server-authoritative, gated on cap.psr.read/reconcile).
-// This nav surface gates visibility only (ADR-0030); the upload + per-line resolution land on the import view.
+// GAP-079 wires the per-line resolution (a variance reason + resolution notes) here; the upload stays on the
+// import view and the server stays authoritative for cap.psr.reconcile.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { CapActionDialog, sendCapMutation } from "./cap-actions";
 import { humanize, money, shortDate } from "./cap-status";
 
 interface PsrImportView {
@@ -70,6 +72,7 @@ export function CapPsrWorkbench(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<PsrVarianceView | null>(null);
 
   const loadImport = useCallback(
     async (nextImportId: string) => {
@@ -421,6 +424,7 @@ export function CapPsrWorkbench(): JSX.Element {
                         <th style={headNumStyle}>Variance</th>
                         <th style={headStyle}>Reason</th>
                         <th style={headStyle}>Status</th>
+                        <th style={headStyle}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -434,6 +438,15 @@ export function CapPsrWorkbench(): JSX.Element {
                           <td style={cellStyle}>{humanize(v.varianceReason)}</td>
                           <td style={cellStyle}>
                             <StatusPill label={humanize(v.status)} tone={statusTone(v.status)} />
+                          </td>
+                          <td style={cellStyle}>
+                            {v.status === "resolved" || v.status === "accepted" ? (
+                              <span style={mutedStyle}>—</span>
+                            ) : (
+                              <Button size="sm" tone="secondary" onClick={() => setResolving(v)}>
+                                Resolve
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -458,15 +471,50 @@ export function CapPsrWorkbench(): JSX.Element {
         )
       }
       detail={
-        <span style={mutedStyle}>
-          Uploads are created from a cap period. This workbench reads the selected import and its
-          variance queue; resolution remains server-authoritative.
-        </span>
+        <>
+          <span style={mutedStyle}>
+            Uploads are created from a cap period. Resolving a variance line records its reason and
+            notes; the server remains authoritative for who may reconcile.
+          </span>
+          <CapActionDialog
+            open={resolving !== null}
+            title="Resolve variance line"
+            hint="Pick why the M26 accrual and the PS&R figure differ and record what was done. Resolution notes are kept on the reconciliation record."
+            submitLabel="Resolve"
+            choice={{ label: "Variance reason", options: VARIANCE_REASONS }}
+            textLabel="Resolution notes"
+            textMinLength={20}
+            onClose={() => setResolving(null)}
+            onSubmit={({ text, choice }) =>
+              sendCapMutation(
+                client,
+                "PATCH",
+                "/api/v1/cap/psr-imports/{importId}/reconciliation/{lineId}/resolve",
+                { importId: loadedImportId, lineId: resolving?.id ?? "" },
+                { varianceReason: choice, resolutionNotes: text },
+              )
+            }
+            onDone={() => {
+              setResolving(null);
+              void loadImport(loadedImportId);
+            }}
+          />
+        </>
       }
       fullPageScroll
     />
   );
 }
+
+/** The server's `ResolveVarianceRequest.varianceReason` union, labelled for the picker. */
+const VARIANCE_REASONS = [
+  { value: "timing", label: "Timing" },
+  { value: "psr_correction", label: "PS&R correction" },
+  { value: "our_correction", label: "Our correction" },
+  { value: "mbi_mismatch", label: "MBI mismatch" },
+  { value: "data_quality", label: "Data quality" },
+  { value: "unknown", label: "Unknown" },
+] as const;
 
 function statusTone(value: string): "neutral" | "progress" | "success" | "warning" | "error" {
   return STATUS_TONE[value] ?? "neutral";

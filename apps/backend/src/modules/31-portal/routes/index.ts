@@ -97,6 +97,12 @@ export interface PortalRouteDeps {
    */
   readonly amendmentIntake?: PortalAmendmentIntakePort;
   /**
+   * GAP-092 — M13's caregiver-attested administration write (M13 owns `administration_record`; the composition
+   * root binds M13's Drizzle backend here). ABSENT ⇒ the attest route refuses 503: a portal that tells a
+   * caregiver "attested" must have written the M13 record, so there is no fake-success fallback.
+   */
+  readonly caregiverAttestation?: PortalCaregiverAttestationPort;
+  /**
    * GAP-093(d) — M3's engagement coverage reader for the auditor view. Absent ⇒ the `AuditorEngagementReader`
    * seam (deny-stub until M3 registers it, which 403s the view). Injectable so the route suite needs no registry.
    */
@@ -127,4 +133,19 @@ export interface PortalAmendmentIntakePort {
       decidedAt: string | null;
     }>
   >;
+}
+
+/** M13's caregiver-attested write as M31 calls it (structurally satisfied by the M13 backend adapter). */
+export interface PortalCaregiverAttestationPort {
+  record(input: {
+    organizationId: string;
+    patientId: string;
+    medicationOrderId: string;
+    administeredAt: string;
+    /** The authenticated portal account the dose is attributed to (§7.7 step 3). */
+    caregiverSessionId: string;
+    route: string;
+    doseAmount: number;
+    doseUnit: string;
+  }): Promise<{ administrationId: string; status: string }>;
 }

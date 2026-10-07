@@ -465,6 +465,7 @@ import {
   buildM13DocumentBackrefConsumer,
   buildM13MaterializeScheduleConsumer,
   buildM13ReconciliationTriggerConsumer,
+  buildPortalCaregiverAttestationPort,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
   idgMissedDosesForOrg,
@@ -4381,6 +4382,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             roomCipher: createPortalRoomCipher(getTenantKeyProvider()),
             // GAP-006 — the portal §164.526 submit lands as a real M5 `patient_amendment_request` row.
             amendmentIntake: createDbPortalAmendmentIntake(dbHandle.db),
+            // GAP-092 — the caregiver-attested dose lands as a real M13 `administration_record`.
+            caregiverAttestation: buildPortalCaregiverAttestationPort(
+              dbHandle.db,
+              m13OutboxPublisher,
+            ),
           });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet

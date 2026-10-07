@@ -758,31 +758,17 @@ export function buildDrizzleM30WriteService(
       });
     },
 
-    async createCahpsExport(actor, args: CreateCahpsExportArgs): Promise<CahpsExportJobView> {
-      return inOrgCtx(actor, async (tx) => {
-        const repo = new CahpsRepository(tx);
-        const binding = await repo.findActiveBinding(actor.organizationId);
-        if (!binding)
-          throw new ConflictError("the org has no active CAHPS vendor binding to export to");
-        const cycleMonth = firstOfMonth(args.samplePeriodStart);
-        const samples = await repo.listSamplesForCycle(actor.organizationId, cycleMonth);
-        const decedentCount = samples.filter((s) => s.exclusionReason === null).length;
-        // No `cahps_export_job` table exists in the frozen 18-table schema; synthesize the queued job view
-        // (the §4.14 export worker mints the artifact + signed URL out of band, then emits export_completed).
-        return {
-          exportId: randomUUID(),
-          organizationId: actor.organizationId,
-          vendorAdapterId: binding.vendorAdapterId,
-          samplePeriodStart: args.samplePeriodStart,
-          samplePeriodEnd: args.samplePeriodEnd,
-          status: "queued",
-          decedentCount,
-          downloadUrl: null,
-          createdAt: now().toISOString(),
-          completedAt: null,
-          failureReason: null,
-        };
-      });
+    async createCahpsExport(_actor, _args: CreateCahpsExportArgs): Promise<CahpsExportJobView> {
+      // GAP-087 — there is no `cahps_export_job` table and the export worker's vendor adapters, caregiver-contact
+      // cipher, binding config and outbox ports are unbound, so nothing can ever run a queued job. The old body
+      // returned a random `exportId` with status "queued" (and GET always 404'd). Refuse 501 instead of
+      // promising a vendor submission that cannot happen; the pipeline (job table + bound worker ports +
+      // `export_failed` catalog entry) is the follow-up.
+      throw new WardenXError(
+        "CAHPS_EXPORT_NOT_IMPLEMENTED",
+        "CAHPS vendor export is not available: no export pipeline is bound for this deployment",
+        501,
+      );
     },
 
     async ingestCahpsResults(actor, args: IngestCahpsResultsArgs): Promise<CahpsIngestResultView> {

@@ -709,15 +709,14 @@ describe("M26-T0x §2.2 cap-period lifecycle (routes 1-6, 22-24)", () => {
     expect(finalized.statusCode).toBe(200);
     expect(finalized.json().status).toBe("final");
 
-    // 5 — reopen (§4.7 cap_period_settled, step-up). FINDING 2 (file header) — the current contract
-    // requires `stepUpAssertionId` even though no server code reads it; supplied to reach the real 200.
+    // 5 — reopen (§4.7 cap_period_settled, step-up). GAP-079 closed FINDING 2: the body no longer demands a
+    // caller-supplied `stepUpAssertionId` (step-up is a server fact), so `{ reason }` alone reaches the 200.
     const reopened = await app.inject({
       method: "PATCH",
       url: `/api/v1/cap/periods/${periodId}/reopen`,
       headers: { ...SUPER, ...idemp() },
       payload: {
         reason: "Reopening FY2026 to correct a PS&R-driven variance discovered after settlement.",
-        stepUpAssertionId: randomUUID(),
       },
     });
     expect(reopened.statusCode).toBe(200);

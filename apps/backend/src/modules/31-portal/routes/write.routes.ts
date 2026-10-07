@@ -57,6 +57,29 @@ function amendmentIntakeOf(deps: PortalRouteDeps) {
   return deps.amendmentIntake;
 }
 
+function caregiverAttestationOf(deps: PortalRouteDeps) {
+  if (!deps.caregiverAttestation) {
+    throw new WardenXError(
+      "CAREGIVER_ATTESTATION_UNAVAILABLE",
+      "Dose attestations cannot be recorded right now. Please tell your care team directly.",
+      503,
+    );
+  }
+  return deps.caregiverAttestation;
+}
+
+/**
+ * GAP-092 — a portal write whose backing module has no production path yet. The route answers 501 rather than
+ * a 2xx that persisted nothing (a patient or caregiver told "ok" for a write that never happened).
+ */
+export function portalWriteNotBacked(feature: string): never {
+  throw new WardenXError(
+    "PORTAL_WRITE_NOT_BACKED",
+    `${feature} is not available yet. Please contact your care team.`,
+    501,
+  );
+}
+
 /** The slice of M8's `SignedEncountersReader` the amendment target check reads. */
 interface SignedEncounterArm {
   signedEncountersForPatientSince(
@@ -198,11 +221,21 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         },
         now().getTime(),
       );
-      // The M13 write consumes M31's published CaregiverPortalSessionResolver (D10, closed in T06); the
-      // route returns the accepted attestation reference.
+      // GAP-092 — the attestation is a real M13 `administration_record` (pending_caregiver_review); an unbound
+      // M13 port refuses 503 rather than telling the caregiver "attested" with nothing written.
+      const written = await caregiverAttestationOf(deps).record({
+        organizationId: actor.organizationId,
+        patientId: payload.patientId,
+        medicationOrderId: payload.medicationOrderId,
+        administeredAt: payload.administeredAtIso,
+        caregiverSessionId: portalAccountId,
+        route: body.route,
+        doseAmount: body.administeredAmount,
+        doseUnit: body.administeredUnit,
+      });
       return reply.code(202).send({
-        administrationId: payload.medicationOrderId,
-        status: "attested",
+        administrationId: written.administrationId,
+        status: written.status,
       });
     },
   );
@@ -229,15 +262,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         magicBytes: [],
         patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
       });
-      if (!(PORTAL_UPLOAD_MIME_ALLOWLIST as readonly string[]).includes(body.mimeType)) {
-        // planDocumentUpload throws on a bad MIME already; this is defence-in-depth on the enum.
-      }
-      const uploadId = `${portalAccountId}:${now().getTime()}`;
-      return {
-        uploadId,
-        signedUploadUrl: `https://uploads.invalid/${uploadId}`,
-        signedUploadUrlExpiresAt: new Date(now().getTime() + 15 * 60_000).toISOString(),
-      };
+      // GAP-092 — no M22 intake staging / object-store presigner is bound for portal uploads, so there is
+      // no real signed URL to mint (the old `uploads.invalid` placeholder let a caregiver "upload" into the void).
+      return portalWriteNotBacked("Document upload");
     },
   );
 
@@ -250,8 +277,8 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     async (request) => {
       const actor = actorOf(request);
       portalPatientIdOf(actor);
-      const { uploadId } = request.params as { uploadId: string };
-      return { uploadId, status: "received" };
+      // GAP-092 — nothing was staged at upload-init and nothing is emitted here; refuse rather than "received".
+      return portalWriteNotBacked("Document upload");
     },
   );
 
@@ -354,7 +381,8 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     async (request) => {
       actorOf(request);
       parse(NotificationPreferenceUpdateRequest, request.body);
-      return { ok: true };
+      // GAP-092 — no preference table / M36 reconcile is bound; refuse rather than answer ok.
+      return portalWriteNotBacked("Changing notification preferences");
     },
   );
 
@@ -371,7 +399,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     async (request) => {
       const actor = actorOf(request);
       portalAccountIdOf(actor);
-      return { ok: true };
+      // GAP-092 — no M16 opt-out port is bound; a bereaved family member who opts out must not be told
+      // "ok" while outreach continues.
+      return portalWriteNotBacked("Opting out of bereavement outreach");
     },
   );
 }

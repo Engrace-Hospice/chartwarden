@@ -12,7 +12,6 @@
 // M4, empty here until the M4 read seam is bound).
 import { ForbiddenError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
-import { resolveInvitationTtlMs } from "../lifecycle/invitation";
 import { actorOf } from "./actor";
 import {
   AUDITOR_VIEW_WINDOW_DAYS,
@@ -34,6 +33,7 @@ import {
   PortalInvitationIssueRequest,
   parse,
 } from "./portal-typebox";
+import { portalWriteNotBacked } from "./write.routes";
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
@@ -78,17 +78,11 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request, reply) => {
       await issueScope(request, reply);
-      const actor = actorOf(request);
-      const body = parse(PortalInvitationIssueRequest, request.body);
-      const ttlMs = resolveInvitationTtlMs();
-      void actor;
-      void body.caregiverId;
-      return reply.code(202).send({
-        invitationId: `${body.patientId}:${now().getTime()}`,
-        portalAccountId: `${body.patientId}:pending`,
-        status: "invited",
-        expiresAt: new Date(now().getTime() + ttlMs).toISOString(),
-      });
+      actorOf(request);
+      parse(PortalInvitationIssueRequest, request.body);
+      // GAP-092 — M2's collaborator-invite primitive and the portal_account / portal_access_grant creation
+      // path are not built, so no invitation exists to return. The old reply fabricated ids and persisted nothing.
+      return portalWriteNotBacked("Portal invitations");
     },
   );
   app.get(
@@ -99,7 +93,8 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       actorOf(request);
-      return { items: [] };
+      // GAP-092 — no invitation store exists; an empty list would read as "none outstanding".
+      return portalWriteNotBacked("Portal invitations");
     },
   );
   app.post(
@@ -113,7 +108,7 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       actorOf(request);
-      return { ok: true };
+      return portalWriteNotBacked("Revoking a portal invitation");
     },
   );
   app.post(
@@ -124,9 +119,8 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     async (request, reply) => {
       await inviteBereavedScope(request, reply);
       actorOf(request);
-      const body = parse(InviteBereavedRequest, request.body);
-      void body;
-      return reply.code(202).send({ ok: true });
+      parse(InviteBereavedRequest, request.body);
+      return portalWriteNotBacked("Inviting a bereaved family member");
     },
   );
 
@@ -239,7 +233,8 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       actorOf(request);
-      return { items: [] };
+      // GAP-092 — M4's disclosure-trail read seam is not bound here; an empty list would read as "never viewed".
+      return portalWriteNotBacked("The portal audit-view trail");
     },
   );
 

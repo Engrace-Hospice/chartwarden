@@ -888,9 +888,14 @@ export function buildDrizzleM35RouteService(
     },
 
     async createSetupIntent(_actor): Promise<SetupIntentView> {
-      // §4.13 outbox-only path: the SetupIntent is provisioned by the stripe-dispatcher worker; the tenant
-      // polls until it lands. The route returns a pending marker (no client_secret is minted route-side).
-      return { clientSecret: null, status: "pending" };
+      // GAP-100 — no stripe-dispatcher worker exists to provision a SetupIntent (and the webhook ingest is
+      // unbound), so `{clientSecret: null, status: "pending"}` was a permanent fake-pending that no poll
+      // ever resolves. Refuse 503 until the Stripe transport is bound; nothing is promised.
+      throw new WardenXError(
+        "STRIPE_DISPATCHER_UNAVAILABLE",
+        "card setup is unavailable: the Stripe dispatcher is not configured for this deployment",
+        503,
+      );
     },
 
     async attachPaymentMethod(actor, args: AttachPaymentMethodArgs): Promise<PaymentMethodView> {
