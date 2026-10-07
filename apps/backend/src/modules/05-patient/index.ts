@@ -354,7 +354,6 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import type { AdmissionCensusSummaryPort } from "./routes/service";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import type { M5OutboxPort } from "./deceased-db";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
@@ -368,6 +367,7 @@ import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } f
 import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } from "./routes/lifecycle-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
+import type { AdmissionCensusSummaryPort } from "./routes/service";
 
 /**
  * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the

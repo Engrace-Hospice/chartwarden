@@ -36,6 +36,11 @@ export interface SupervisorFeedDescriptor {
 
 /** An M36 alert the supervisor dispatches when a feed cannot start (§4.11.1 step 2). */
 export interface SupervisorAlert {
+  /** GAP-086 — which M36 rule the alert routes by (a seeded platform-default `alert_rule` exists for each). */
+  readonly kind?:
+    | "external_feed.baa_expired"
+    | "external_feed.baa_missing"
+    | "external_feed.listener_blocked";
   readonly severity: "critical" | "warning";
   readonly channel: "compliance" | "operator_on_call";
   readonly feedId: string;
@@ -145,6 +150,7 @@ export async function startFeedListener(
       reason: PLAIN_LISTENER_REFUSAL,
     });
     await deps.dispatchAlert({
+      kind: "external_feed.listener_blocked",
       severity: "critical",
       channel: "compliance",
       feedId: feed.id,
@@ -169,6 +175,10 @@ export async function startFeedListener(
       baaStatus: decision.status,
     });
     await deps.dispatchAlert({
+      kind:
+        decision.reason === "expired_baa"
+          ? "external_feed.baa_expired"
+          : "external_feed.baa_missing",
       severity: "critical",
       channel: "compliance",
       feedId: feed.id,

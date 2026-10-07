@@ -38,11 +38,7 @@ import {
   auditProviderEntityCreated,
   auditProviderEntityUpdated,
 } from "../audit/org-admin-audit";
-import {
-  type LocationPatch,
-  type OrgAdminStore,
-  type ProviderEntityPatch,
-} from "../org-admin-store";
+import type { LocationPatch, OrgAdminStore, ProviderEntityPatch } from "../org-admin-store";
 import {
   assertStatusTransition,
   normalizeTaxId,

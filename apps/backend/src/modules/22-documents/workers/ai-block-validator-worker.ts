@@ -1,3 +1,5 @@
+import type { ConnectionOptions } from "bullmq";
+import { Queue, Worker } from "bullmq";
 // apps/backend/src/modules/22-documents/workers/ai-block-validator-worker.ts — the nightly half of the §4.8
 // `ai-block-validator` (GAP-141; D7). The BOOT half is `validateDocumentsAIBlock` in the db-present `onReady`
 // hook; this re-runs the SAME check at 02:00 so a prompt template activated AFTER boot (a registry write that
@@ -6,8 +8,6 @@
 // A violation cannot "fail boot" mid-flight: it raises the critical `m22.ai_block.violation` ops alert and fails
 // the job (BullMQ keeps the failed job — no DLQ, per spec; ops is paged by the alert).
 import { type DocumentsAiPromptRegistryPort, validateDocumentsAIBlock } from "../ai-block";
-import type { ConnectionOptions } from "bullmq";
-import { Queue, Worker } from "bullmq";
 
 export const M22_AI_BLOCK_VALIDATOR_QUEUE = "documents.ai_block_validator";
 export const M22_AI_BLOCK_VALIDATOR_SCHEDULE = "0 2 * * *";

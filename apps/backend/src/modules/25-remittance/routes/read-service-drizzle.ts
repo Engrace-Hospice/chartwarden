@@ -10,7 +10,6 @@ import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm"
 import { type AgingBucketLabel, agingBucketLabel } from "../domain";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
-import { providerEntityScopeCondition } from "./scope";
 import type {
   AppealDetail,
   AppealSummary,
@@ -23,6 +22,7 @@ import type {
   RemittanceLineSummary,
   TaxonomyMergedView,
 } from "./read-service";
+import { providerEntityScopeCondition } from "./scope";
 
 /** An injected M38 CARC/RARC lookup (the composition root binds TerminologyProvider; default = floor). */
 export interface TerminologyLookupPort {

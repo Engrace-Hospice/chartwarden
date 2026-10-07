@@ -251,6 +251,51 @@ services:
       retries: 8
       start_period: 30s
 
+  # GAP-086 / M29 §4.11 — the MLLP LISTENER, a SIBLING process to `api` (crash isolation: a route crash never drops a
+  # listener, a listener crash never drops the API). OFF by default on two independent levers: the compose PROFILE
+  # (`docker compose --profile hl7-listener up -d hl7-listener`) and `M29_MLLP_LISTENER_ENABLED=true`. It runs no workers and
+  # serves only /health + /ready on LISTENER_HEALTH_PORT. Feed ports come from `external_feed.port` (the reserved 11000-11999
+  # range, D3); publish only the ports your partners use, on a PRIVATE address (never the public ingress) — widen the mapping
+  # below in a compose override. deploy.sh does not roll this service: recreate it explicitly after a release.
+  hl7-listener:
+    profiles: ["hl7-listener"]
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env.production
+    command: ["bun", "run", "apps/backend/src/index.ts"]
+    environment:
+      PROCESS_ROLE: listener
+      LISTENER_HEALTH_PORT: "3002"
+      M29_MLLP_LISTENER_ENABLED: ${M29_MLLP_LISTENER_ENABLED:-false}
+      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      REDIS_URL: redis://valkey:6379
+      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
+      MINIO_REGION: us-east-1
+    ports:
+      - "${M29_MLLP_BIND_ADDRESS:-127.0.0.1}:11000-11019:11000-11019"
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "process.exit((await fetch(`http://localhost:$${process.env.LISTENER_HEALTH_PORT ?? 3002}/ready`)).ok ? 0 : 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
   web:
     image: ${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always

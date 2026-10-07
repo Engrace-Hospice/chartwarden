@@ -3,8 +3,8 @@ import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import {
   SUPPLY_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
-  type SupplyAiPromptRegistryPort,
   SupplyAIBlockViolation,
+  type SupplyAiPromptRegistryPort,
   validateSupplyAIBlock,
 } from "./ai-block";
 import { mountM21Routes } from "./routes/mount";

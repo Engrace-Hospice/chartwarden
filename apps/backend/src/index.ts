@@ -303,6 +303,7 @@ import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
 // ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
 import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
+import { payerProgramsForPatientsForOrg } from "./modules/05-patient/seams/payer-programs-for-patients";
 import { primaryCaregiverContactForOrg } from "./modules/05-patient/seams/primary-caregiver-contact-for-org";
 import {
   M6_OUTBOX_EVENTS,
@@ -347,14 +348,15 @@ import {
   transferInNoticeContextForOrg,
   wireM6Tenancy,
 } from "./modules/06-admission/index";
-// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
-// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
 import { cahpsDeathCandidatesForOrg } from "./modules/06-admission/seams/cahps-death-candidates-for-org";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
 import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
 import { orderTriggeredRecordsForOrg } from "./modules/06-admission/seams/order-triggered-records-for-org";
 import { patientSiteForOrg } from "./modules/06-admission/seams/patient-site-for-org";
+// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
+// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { serviceCensusForOrg } from "./modules/06-admission/seams/service-census-for-org";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -401,6 +403,7 @@ import {
   signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
 } from "./modules/08-encounters/index";
+import { visitCountsByDisciplineForOrg } from "./modules/08-encounters/seams/visit-counts-by-discipline-for-org";
 import {
   M9_OUTBOX_EVENTS,
   M9_PLATFORM_JOB_ID,
@@ -611,6 +614,7 @@ import {
   scheduleM16Jobs,
   wireM16Tenancy,
 } from "./modules/16-bereavement/index";
+import { bereavementCensusForOrg } from "./modules/16-bereavement/seams/bereavement-census-for-org";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
@@ -995,6 +999,7 @@ import {
   scheduleM27Jobs,
   wireM27Tenancy,
 } from "./modules/27-cost-report/index";
+import { buildM27StatisticsSeams } from "./modules/27-cost-report/jobs/statistics-seams";
 // M28 (FHIR Gateway) boot surface — the §4.3 published read seams (M28-T06). The three impls register over
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
 // T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
@@ -1032,17 +1037,21 @@ import { buildM28ConsentRevokedConsumer } from "./modules/28-fhir/outbox-consume
 // supplied (db-less boot keeps the fail-closed deny-stubs); the ABAC resolver binds the M3 permission store +
 // a lazy M5 CaseloadProvider adapter.
 import {
+  type ExternalInterfaceBaaGate,
+  type ListenerAlertPort,
   M29_OUTBOX_EVENTS,
   M29_PLATFORM_JOB_ID,
   NPPES_SYNC_SCHEDULE,
   NppesClient,
   buildDrizzleM29AbacResolver,
   buildDrizzleOutboundFeedResolver,
+  buildM29InboundSeamPorts,
   buildM29OutboundDispatchConsumer,
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
   createDrizzleM29Store,
+  createInboundCipher as createM29InboundCipher,
   createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
   lastCompletedNppesSyncAt,
@@ -1057,6 +1066,8 @@ import {
   registerNppesSyncWorker,
   scheduleM29OutboundRetrySweepJob,
   scheduleNppesSyncJob,
+  startListenerProcess as startM29ListenerProcess,
+  startParseWorker as startM29ParseWorker,
   wireM29Tenancy,
 } from "./modules/29-external-interfaces/index";
 import { buildM30CahpsWiring } from "./modules/30-quality/cahps/wiring";
@@ -2564,7 +2575,7 @@ export function wireModuleErasers(
  *                closure; trimming that surface for a pure-worker deploy is a follow-up, not a
  *                correctness requirement here (no job processor calls back through HTTP).
  */
-type ProcessRole = "all" | "api" | "worker";
+type ProcessRole = "all" | "api" | "worker" | "listener";
 
 /**
  * The composition root. Exported (not just run inline behind `import.meta.main`) so a SEPARATE
@@ -2805,7 +2816,12 @@ function buildM23AssemblyPorts(db: DbClient): {
   return { providerCcn, assemblyPorts };
 }
 
-export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
+export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<void> {
+  // GAP-086 — `listener` is the M29 MLLP listener process (§4.11: a SIBLING process to the API for crash isolation). It
+  // boots the same composition root (seams, tenancy, key ring) but, like `api`, constructs NO BullMQ workers / crons / outbox
+  // dispatcher — it only binds the feed listeners and serves /health on `LISTENER_HEALTH_PORT`.
+  const listenerProcess = requestedRole === "listener";
+  const role: Exclude<ProcessRole, "listener"> = listenerProcess ? "api" : requestedRole;
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
   // misconfigured production deploy refuses to boot rather than serving with a weak/absent secret.
@@ -4908,6 +4924,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             store: createDrizzleM29Store(dbHandle.db, {
               outbox: m29OutboxPublisher,
               patients: () => getPatientReader(),
+              // GAP-086 — an `mllp_client_cert` credential is validated + SEALED under the tenant DEK so the listener can bind it.
+              credentialCipher: () => createM29InboundCipher(getTenantKeyProvider()),
             }),
             ...(m29NppesSync ? { nppesSyncTrigger: m29NppesSync.trigger } : {}),
           });
@@ -5876,6 +5894,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // statistics census and assembles the hospice chain inputs (Worksheet B step-down on the B-1 statistical
       // basis → Worksheet C per-diem cost by level of care). No cap/settlement worksheet on the form (M26).
       allocationInputs: buildM27AllocationInputs(),
+      // GAP-080 — the S-3 statistics sources: M6 service census + M5 payer program (Part I), M8 completed visits by
+      // discipline (Part III), FTE from M27's own wage import (Part II), M16 bereavement census (Part IV). Every
+      // cross-module fact is an org-explicit port (arch:tables stays green: M27 reads no foreign table).
+      statisticsSeams: buildM27StatisticsSeams({
+        db: dbHandle.db,
+        serviceCensus: (organizationId, window) =>
+          serviceCensusForOrg(dbHandle.db, organizationId, window),
+        payerPrograms: (organizationId, patientIds, asOf) =>
+          payerProgramsForPatientsForOrg(dbHandle.db, organizationId, patientIds, asOf),
+        visitCounts: (organizationId, window) =>
+          visitCountsByDisciplineForOrg(dbHandle.db, organizationId, window),
+        bereavementCensus: (organizationId, window) =>
+          bereavementCensusForOrg(dbHandle.db, organizationId, window),
+      }),
     });
     const m27Workers = [
       ...registerM27Workers(m27WorkerDeps),
@@ -7970,6 +8002,90 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // F-236 (ADR-0048) — the M32 backend health sweep: the only writer of `ai_model_backend.last_health_status`
   // (the routing gate never routes `unknown`). Worker role only — one writer — and only when this
   // deployment configures a backend and has the platform credential (its two-column grant).
+  // GAP-086 — M29's inbound PARSE worker (ADT → proposals, ORU → lab observations / the unmatched-review queue). Poll-based
+  // over `hl7_message_inbound.parse_status='in_progress'` with `FOR UPDATE SKIP LOCKED`, so any number of replicas coordinate
+  // through the table. It runs wherever workers run (`worker` / `all`); it is harmless with nothing to parse.
+  if (role !== "api" && dbHandle && platformDbHandle) {
+    const parseDb = dbHandle.db;
+    const m29InboundPorts = buildM29InboundSeamPorts();
+    const m29ParseOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M29_PLATFORM_JOB_ID,
+      reason: "M29 inbound HL7 parse-worker fan-out (active-org enumeration)",
+    });
+    const m29ParseWorker = startM29ParseWorker({
+      db: parseDb,
+      cipher: createM29InboundCipher(getTenantKeyProvider()),
+      patientReader: () => getPatientReader(),
+      orderReader: () => m29InboundPorts.orderReader,
+      terminology: () => m29InboundPorts.terminology,
+      consent: () => m29InboundPorts.consent,
+      // `organization.settings.hl7_internal_mrn_authority` (M5's registered key) gates cascade level L1; M1 owns the table,
+      // so the composition root reads it.
+      internalMrnAuthority: async (organizationId) => {
+        const rows = await withOrgContext(parseDb, { organizationId, userId: "" }, (tx) =>
+          (tx as unknown as DbClient)
+            .select({ settings: schema.organizations.settings })
+            .from(schema.organizations)
+            .where(eq(schema.organizations.id, organizationId))
+            .limit(1),
+        );
+        const value = (rows[0]?.settings as Record<string, unknown> | undefined)
+          ?.hl7_internal_mrn_authority;
+        return typeof value === "string" && value !== "" ? value : undefined;
+      },
+      outbox: m29OutboxPublisher,
+      activeOrgs: m29ParseOrgs,
+      log: (level, event, fields) => app.log[level](fields, event),
+    });
+    app.addHook("onClose", async () => {
+      await m29ParseWorker.close();
+    });
+    app.log.info("M29 inbound HL7 parse worker constructed");
+  } else if (role !== "api") {
+    app.log.warn(
+      "M29 inbound HL7 parse worker DISABLED: it needs DATABASE_URL and DATABASE_PLATFORM_URL (active-org enumeration)",
+    );
+  }
+  // GAP-086 — the M29 MLLP LISTENER (§4.11). Explicit opt-in: a listener binds TCP ports that accept PHI from outside, so it is
+  // OFF unless `M29_MLLP_LISTENER_ENABLED=true`, and it only runs in the dedicated `listener` process (or the all-in-one `all`
+  // role for local dev) — never in a scaled-out api/worker replica. Every skipped case is logged LOUDLY.
+  if (process.env.M29_MLLP_LISTENER_ENABLED !== "true") {
+    app.log.warn(
+      "M29 MLLP listener is OFF (set M29_MLLP_LISTENER_ENABLED=true and run PROCESS_ROLE=listener): NO inbound HL7 (ADT/ORU) is being accepted",
+    );
+  } else if (!(listenerProcess || requestedRole === "all")) {
+    app.log.warn(
+      `M29_MLLP_LISTENER_ENABLED=true is ignored in the '${requestedRole}' process role — run PROCESS_ROLE=listener (or 'all' for local dev)`,
+    );
+  } else if (!dbHandle || !platformDbHandle) {
+    app.log.error(
+      "M29 MLLP listener cannot start: it needs DATABASE_URL and DATABASE_PLATFORM_URL (active-org enumeration) — NO inbound HL7 is being accepted",
+    );
+  } else {
+    const listenerDb = dbHandle.db;
+    const listenerOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M29_PLATFORM_JOB_ID,
+      reason: "M29 MLLP listener supervisor feed enumeration (active-org enumeration)",
+    });
+    const listener = await startM29ListenerProcess({
+      db: listenerDb,
+      cipher: createM29InboundCipher(getTenantKeyProvider()),
+      activeOrgs: listenerOrgs,
+      baaGate: () => getSeam("BaaStatusProvider") as ExternalInterfaceBaaGate,
+      alerts: () => getSeam("AlertEmitter") as ListenerAlertPort,
+      log: (level, event, fields) => app.log[level](fields, event),
+    });
+    app.addHook("onClose", async () => {
+      await listener.shutdown();
+    });
+    app.log.warn(
+      `M29 MLLP listener ENABLED: ${listener.boundFeedIds().length} feed listener(s) bound (reconciling every 30s)`,
+    );
+  }
   if (role !== "api" && dbHandle && platformDbHandle) {
     const sweepBackends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
     if (sweepBackends.length > 0) {
@@ -9383,7 +9499,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // default 3001) so /health + /ready are reachable for its OWN liveness/readiness probes without
   // colliding with an API process's PORT on the same host (local/dev single-host runs).
   const port =
-    role === "worker" ? Number(process.env.WORKER_PORT ?? 3001) : Number(process.env.PORT ?? 3000);
+    role === "worker"
+      ? Number(process.env.WORKER_PORT ?? 3001)
+      : listenerProcess
+        ? Number(process.env.LISTENER_HEALTH_PORT ?? 3002)
+        : Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);

@@ -362,7 +362,12 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         actor.organizationId,
         "m31.portal_document.uploaded",
         { kind: "portal_account", id: portalAccountIdOf(actor) },
-        { uploadId: done.uploadId, portalAccountId: portalAccountIdOf(actor), patientId, purpose: "portal_upload" },
+        {
+          uploadId: done.uploadId,
+          portalAccountId: portalAccountIdOf(actor),
+          patientId,
+          purpose: "portal_upload",
+        },
       );
       return { uploadId: done.uploadId, status: done.status };
     },

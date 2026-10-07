@@ -25,9 +25,9 @@
 // never reported as due.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 export const M22_RETENTION_ROTATION_QUEUE = "documents.retention_rotation";
 /** Daily 03:00 UTC (the spec says org-TZ; the platform cron runs one UTC tick and sweeps every org). */

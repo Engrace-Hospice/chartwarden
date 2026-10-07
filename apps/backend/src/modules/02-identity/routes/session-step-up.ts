@@ -17,17 +17,17 @@
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
 import { requireSession, resolvePasskeyRpId } from "@wardenx/auth";
 import { STEP_UP_POLICY, UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
-import {
-  type SessionStepUpState,
-  stepUpSatisfies,
-  tightenStepUpPolicy,
-} from "../policy/step-up-resolver";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditStepUpCompleted,
   auditStepUpFailed,
   auditStepUpLockout,
 } from "../audit/step-up-audit";
+import {
+  type SessionStepUpState,
+  stepUpSatisfies,
+  tightenStepUpPolicy,
+} from "../policy/step-up-resolver";
 import type {
   AuthenticatedSession,
   StepUpChallenge,

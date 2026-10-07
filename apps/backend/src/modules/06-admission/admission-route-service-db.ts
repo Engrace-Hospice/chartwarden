@@ -115,8 +115,8 @@ import {
 import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
-  DeclineDischargeInput,
   CtiDraftInput,
+  DeclineDischargeInput,
   DischargeInput,
   DischargeResult,
   F2fScheduleInput,

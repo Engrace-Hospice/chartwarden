@@ -29,11 +29,13 @@ import {
   decideFeedRevokeStep,
   externalFeedCoApprovalSatisfied,
 } from "../feed/lifecycle";
+import type { InboundCipher } from "../inbound/inbound-crypto";
 import {
   type UnmatchedLabQueueItem,
   planUnmatchedBind,
   planUnmatchedDiscard,
 } from "../inbound/unmatched-lab-review";
+import { CredentialLoadError, parseCredentialBundle } from "../listener/credential-loader";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
@@ -96,6 +98,13 @@ export interface DrizzleM29StoreDeps {
    * has run. UNBOUND ⇒ the bind refuses with a 503; every other route is unaffected.
    */
   readonly patients?: M29BindPatientResolver | (() => M29BindPatientResolver);
+  /**
+   * GAP-086 — the per-tenant DEK envelope for a minted `mllp_client_cert` credential. When bound, the mint validates the
+   * mTLS bundle JSON (`{serverCertPem, serverKeyPem, expectedClientCaPem}`) and stores it SEALED, which is what lets the
+   * listener process bind a real TLS server. UNBOUND ⇒ the legacy sha256-digest behavior (the plaintext is never kept).
+   * A THUNK is accepted for the same reason as `patients` (the key provider resolves after route mount).
+   */
+  readonly credentialCipher?: InboundCipher | (() => InboundCipher);
 }
 
 /** The fail-closed stand-in when no M5 reader is bound — a bind cannot invent an agency (ARCH-011). */
@@ -543,14 +552,38 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
               ),
             );
           const digest = createHash("sha256").update(args.secret).digest("hex");
+          // GAP-086 — a TLS bundle is validated and SEALED under the tenant DEK so the listener can decrypt it; any
+          // other kind (or no cipher bound) keeps the digest-only posture.
+          const cipher =
+            typeof storeDeps.credentialCipher === "function"
+              ? storeDeps.credentialCipher()
+              : storeDeps.credentialCipher;
+          let secretCipher = digest;
+          if (cipher && args.kind === "mllp_client_cert") {
+            try {
+              parseCredentialBundle(args.secret);
+            } catch (err) {
+              if (err instanceof CredentialLoadError)
+                throw new ValidationError("mTLS credential bundle rejected", [
+                  { field: "secret", code: err.code.toUpperCase(), message: err.message },
+                ]);
+              throw err;
+            }
+            secretCipher = await cipher.encrypt(
+              orgId,
+              "external_feed_credential.secret",
+              args.secret,
+            );
+          }
           const [row] = await tx
             .insert(CRED)
             .values({
               feedId,
               organizationId: orgId,
               kind: args.kind,
-              // no DEK bound (Phase 1): the NOT-NULL cipher column carries the digest, never the plaintext.
-              secretCipher: digest,
+              // fingerprint is always the plaintext's digest prefix (ops display); the cipher column is the sealed
+              // bundle when a cipher is bound, else the digest (never the plaintext).
+              secretCipher,
               fingerprint: digest.slice(0, 8),
               status: "active",
             })
