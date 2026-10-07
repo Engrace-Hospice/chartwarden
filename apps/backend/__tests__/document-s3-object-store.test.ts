@@ -234,6 +234,45 @@ describe("createS3ObjectStore presign", () => {
     expect(second.url).toBe(first.url); // SigV4 is deterministic under a fixed clock
   });
 
+  it("uses the public endpoint only for presigned URLs", async () => {
+    const { fetchImpl, calls } = mockFetch(() => new Response(null, { status: 404 }));
+    const store = createS3ObjectStore(
+      {
+        endpoint: "http://minio:9000",
+        publicEndpoint: "https://storage.example.com",
+        accessKeyId: "k",
+        secretAccessKey: "s",
+      },
+      { fetchImpl, now: fixedNow },
+    );
+    const result = await store.presign({
+      descriptor: {
+        bucket: "tenant-abc",
+        objectKey: "documents/file.pdf",
+        ttlSeconds: 300,
+        accessKind: "signed_url_issued",
+      },
+      organizationId: orgId,
+    });
+    expect(result.url).toMatch(
+      /^https:\/\/storage\.example\.com\/tenant-abc\/documents\/file\.pdf\?/,
+    );
+    const upload = await store.presignUpload({
+      bucket: "tenant-abc",
+      objectKey: "documents/file.pdf",
+      mimeType: "application/pdf",
+      sha256Hex: sigV4Sha256Hex("file"),
+      ttlSeconds: 300,
+    });
+    expect(upload.url).toMatch(
+      /^https:\/\/storage\.example\.com\/tenant-abc\/documents\/file\.pdf\?/,
+    );
+    await expect(
+      store.inspectObject({ bucket: "tenant-abc", objectKey: "missing" }),
+    ).resolves.toBeNull();
+    expect(calls.map((call) => call.url)).toEqual(["http://minio:9000/tenant-abc/missing"]);
+  });
+
   it("falls back to the 300s default on a non-positive TTL and clamps to the SigV4 7-day max", async () => {
     const store = createS3ObjectStore(
       {
@@ -263,6 +302,14 @@ describe("createS3ObjectStore presign", () => {
     expect(() =>
       createS3ObjectStore({ endpoint: "ftp://x", accessKeyId: "k", secretAccessKey: "s" }),
     ).toThrow(/http/);
+    expect(() =>
+      createS3ObjectStore({
+        endpoint: "http://minio:9000",
+        publicEndpoint: "not a url",
+        accessKeyId: "k",
+        secretAccessKey: "s",
+      }),
+    ).toThrow(/absolute URL/);
   });
 });
 
@@ -285,11 +332,13 @@ describe("s3ObjectStoreConfigFromEnv", () => {
     expect(
       s3ObjectStoreConfigFromEnv({
         MINIO_ENDPOINT: "http://minio:9000",
+        MINIO_PUBLIC_ENDPOINT: "https://storage.example.com",
         MINIO_ACCESS_KEY: "ak",
         MINIO_SECRET_KEY: "sk",
       }),
     ).toEqual({
       endpoint: "http://minio:9000",
+      publicEndpoint: "https://storage.example.com",
       accessKeyId: "ak",
       secretAccessKey: "sk",
       forcePathStyle: true,
