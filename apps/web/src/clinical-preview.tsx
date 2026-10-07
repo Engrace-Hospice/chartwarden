@@ -1,4 +1,4 @@
-// Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions> (also ?rates, ?ssvi).
+// Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions> (also ?rates, ?ssvi, ?ssvi=empty).
 import "@fontsource-variable/inter";
 import "./index.css";
 import {
@@ -1408,9 +1408,15 @@ const ssviRows = [
   latestValue: { ...(latestValue as object), measureId },
   fiscalYear: 2027,
 }));
+/** `?ssvi=empty` — the quality worker has not written any SSVI row yet (the "not yet computed" state). */
+const ssviEmpty = new URLSearchParams(location.search).get("ssvi") === "empty";
 const ssviGet = (p: string): unknown => {
   if (p === "/api/v1/quality/measures")
-    return { items: ssviRows, nextCursor: null, hasMore: false };
+    return {
+      items: ssviEmpty ? ssviRows.filter((r) => r.domain !== "ssvi") : ssviRows,
+      nextCursor: null,
+      hasMore: false,
+    };
   if (p === "/api/v1/quality/cop/citations") return { items: [], nextCursor: null, hasMore: false };
   return undefined;
 };

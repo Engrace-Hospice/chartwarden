@@ -6,7 +6,9 @@ import { Glyph, StatusPill } from "@wardenx/ui";
 // The SSVI is CMS-calculated from national Medicare claims; hospices submit nothing and it is not an HQRP or
 // Care Compare measure. Everything here is the agency's INTERNAL ESTIMATE from its own records and is labelled
 // that way. Metric 9 (non-hospice spending, 0–8 points) needs other providers' claims, so the total is shown as
-// a range until it can be computed — never as a lower score.
+// a range until it can be computed — never as a lower score. Before the quality worker has written any SSVI row the
+// section still renders (same header and tiles, every value "—") with a plain "not yet computed" note, so the
+// hub never silently omits the FY2027 index.
 import type { JSX } from "react";
 import { fraction, measureRate } from "./quality-status";
 import {
@@ -29,31 +31,70 @@ const STATE_PILL: Record<
   not_computed: { label: "Not computed", tone: "warning" },
 };
 
-export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.Element | null {
+/** Shown while no SSVI row exists yet (the quality worker has not run since FY2027 began). */
+export const SSVI_NOT_YET_COMPUTED =
+  "Not yet computed — SSVI (FY2027) appears after the quality worker's next run. Internal estimate; CMS publishes the official SSVI.";
+
+function SsviHeader({ aside }: { aside: JSX.Element }): JSX.Element {
+  return (
+    <header>
+      <span className="wx-clinical-section-icon" aria-hidden>
+        <Glyph name="scale" size={22} strokeWidth={1.6} />
+      </span>
+      <div className="wx-rates-drawer-title">
+        <h3 id="ssvi-title">Service and Spending Variation Index</h3>
+        <p>{SSVI_INTERNAL_ESTIMATE_LABEL}</p>
+      </div>
+      <div className="wx-clinical-section-aside">{aside}</div>
+    </header>
+  );
+}
+
+/** The section before any SSVI row exists: the same tiles, every value pending, and why. */
+function SsviNotYetComputed(): JSX.Element {
+  const tiles: readonly [string, string, string][] = [
+    ["SSVI score", "—", `Out of ${SSVI_MAX_SCORE}; outlier at ${SSVI_OUTLIER_SCORE} or more`],
+    ["Utilization metrics flagged", "—", "One point each, of 8"],
+    ["Non-hospice spending", "—", "0–8 points by octile"],
+    ["Published by", "CMS", "No hospice submission · not on Care Compare"],
+  ];
+  return (
+    <section className="wx-clinical-section wx-ssvi" aria-labelledby="ssvi-title">
+      <SsviHeader aside={<StatusPill label="Not yet computed" tone="neutral" />} />
+      <div className="wx-clinical-section-body">
+        <div className="wx-ssvi-tiles">
+          {tiles.map(([label, value, note]) => (
+            <div key={label} className="wx-ssvi-tile">
+              <span>{label}</span>
+              <strong>{value}</strong>
+              <small>{note}</small>
+            </div>
+          ))}
+        </div>
+        <p className="wx-row-sub">{SSVI_NOT_YET_COMPUTED}</p>
+      </div>
+    </section>
+  );
+}
+
+export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.Element {
   const s = summarizeSsvi(rows);
-  if (!s.present) return null;
+  if (!s.present) return <SsviNotYetComputed />;
   const segments = Array.from({ length: SSVI_MAX_SCORE }, (_, i) => i);
   const filled = s.score ?? s.lowerBound;
   return (
     <section className="wx-clinical-section wx-ssvi" aria-labelledby="ssvi-title">
-      <header>
-        <span className="wx-clinical-section-icon" aria-hidden>
-          <Glyph name="scale" size={22} strokeWidth={1.6} />
-        </span>
-        <div className="wx-rates-drawer-title">
-          <h3 id="ssvi-title">Service and Spending Variation Index</h3>
-          <p>{SSVI_INTERNAL_ESTIMATE_LABEL}</p>
-        </div>
-        <div className="wx-clinical-section-aside">
-          {s.outlier === true ? (
+      <SsviHeader
+        aside={
+          s.outlier === true ? (
             <StatusPill label={`Outlier (≥ ${SSVI_OUTLIER_SCORE})`} tone="error" glyph="alert" />
           ) : s.outlier === false ? (
             <StatusPill label="Not an outlier" tone="success" />
           ) : (
             <StatusPill label="Outlier status undetermined" tone="neutral" />
-          )}
-        </div>
-      </header>
+          )
+        }
+      />
       <div className="wx-clinical-section-body">
         <div className="wx-ssvi-tiles">
           <div className={`wx-ssvi-tile${s.outlier ? " is-outlier" : ""}`}>

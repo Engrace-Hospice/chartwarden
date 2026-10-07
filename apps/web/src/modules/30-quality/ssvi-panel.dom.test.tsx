@@ -1,7 +1,7 @@
 // FY2027 SSVI panel — the internal-estimate label, the range while metric 9 is not computable, and the badge.
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SsviPanel } from "./ssvi-panel";
+import { SSVI_NOT_YET_COMPUTED, SsviPanel } from "./ssvi-panel";
 import type { SsviMeasureRow } from "./ssvi-summary";
 
 type V = NonNullable<SsviMeasureRow["latestValue"]>;
@@ -27,9 +27,20 @@ const rows = (m9: V, composite: V | null): SsviMeasureRow[] => [
 afterEach(() => cleanup());
 
 describe("SsviPanel", () => {
-  it("renders nothing before the family has any rows", () => {
-    const { container } = render(<SsviPanel rows={[]} />);
-    expect(container.textContent).toBe("");
+  it("before any SSVI row exists, renders the section with a 'not yet computed' empty state", () => {
+    render(<SsviPanel rows={[]} />);
+    const section = screen.getByRole("region", { name: "Service and Spending Variation Index" });
+    expect(within(section).getByText(SSVI_NOT_YET_COMPUTED)).toBeTruthy();
+    expect(SSVI_NOT_YET_COMPUTED).toBe(
+      "Not yet computed — SSVI (FY2027) appears after the quality worker's next run. Internal estimate; CMS publishes the official SSVI.",
+    );
+    expect(within(section).getByText("Not yet computed")).toBeTruthy();
+    expect(within(section).getByText("SSVI score")).toBeTruthy();
+    expect(within(section).queryByRole("table")).toBeNull();
+    // Rows that are not SSVI rows do not count as SSVI data.
+    cleanup();
+    render(<SsviPanel rows={[{ measureId: "hvldl", displayName: "", latestValue: v({}) }]} />);
+    expect(screen.getByText(SSVI_NOT_YET_COMPUTED)).toBeTruthy();
   });
 
   it("labels the estimate, shows a range and 'undetermined' while spending is not computable", () => {
