@@ -34355,6 +34355,27 @@
         }
       }
     },
+    "/api/v1/amendments": {
+      "get": {
+        "operationId": "getApiV1Amendments",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Staff amendment inbox — pending by default, oldest SLA first (§164.526; patient.amend_review)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/amendments/{id}/accept": {
       "post": {
         "operationId": "postApiV1AmendmentsByIdAccept",
@@ -34514,6 +34535,57 @@
                   "denialReason": {
                     "minLength": 1,
                     "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/amendments/{id}/statement": {
+      "post": {
+        "operationId": "postApiV1AmendmentsByIdStatement",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Attach a statement of disagreement to a denied amendment (§164.526(d); patient.amend_request_submit)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "statement"
+                ],
+                "properties": {
+                  "statement": {
+                    "minLength": 1,
+                    "maxLength": 5000,
                     "type": "string"
                   }
                 }
@@ -160712,6 +160784,207 @@
         }
       }
     },
+    "/api/v1/patient-matches": {
+      "get": {
+        "operationId": "getApiV1Patientmatches",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Soft-duplicate review queue, open by default (§7.3; patient.match_review)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patient-matches/{id}/merge": {
+      "post": {
+        "operationId": "postApiV1PatientmatchesByIdMerge",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Confirm a soft duplicate: fold the new chart into the existing one, in one transaction with the review close — step-up (patient.merge)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "fieldResolutions": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "object",
+                        "required": [
+                          "keep"
+                        ],
+                        "properties": {
+                          "keep": {
+                            "anyOf": [
+                              {
+                                "const": "source",
+                                "type": "string"
+                              },
+                              {
+                                "const": "target",
+                                "type": "string"
+                              },
+                              {
+                                "const": "custom",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "customValue": {}
+                        }
+                      }
+                    }
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patient-matches/{id}/not-a-match": {
+      "post": {
+        "operationId": "postApiV1PatientmatchesByIdNotamatch",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Close a soft-duplicate review as not-a-match (patient.match_review)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patient-merges/{id}/unmerge": {
+      "post": {
+        "operationId": "postApiV1PatientmergesByIdUnmerge",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Reverse a merge within 30 days (409 UNMERGE_WINDOW_EXPIRED after); restores the source status; emits m5.patient.unmerged — step-up (patient.merge)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients": {
       "get": {
         "operationId": "getApiV1Patients",
@@ -161073,6 +161346,165 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1PatientsById",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patch patient demographics — MRN/status/SSN are not patchable; emits m5.patient.updated (§4.3; patient.edit + caseload_or_scope)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "type": "object",
+                "properties": {
+                  "legalFirstName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "legalMiddleName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "legalLastName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "legalNameSuffix": {
+                    "anyOf": [
+                      {
+                        "maxLength": 32,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dob": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sexAssignedAtBirth": {
+                    "minLength": 1,
+                    "maxLength": 16,
+                    "type": "string"
+                  },
+                  "genderIdentityCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sexualOrientationCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pronounsCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "maritalStatusCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 16,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "raceCodes": {
+                    "anyOf": [
+                      {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ethnicityCodes": {
+                    "anyOf": [
+                      {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -161996,6 +162428,34 @@
       }
     },
     "/api/v1/patients/{id}/amendments": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdAmendments",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "A patient's §164.526 amendment requests (§4.3; patient.read + caseload_or_scope)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1PatientsByIdAmendments",
         "tags": [
@@ -162669,6 +163129,255 @@
         }
       }
     },
+    "/api/v1/patients/{id}/caregivers": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdCaregivers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient caregivers incl. legal-representative flags (§4.3; patient.read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByIdCaregivers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "firstName",
+                  "lastName",
+                  "relationship"
+                ],
+                "properties": {
+                  "firstName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 32,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "relationship": {
+                    "anyOf": [
+                      {
+                        "const": "spouse",
+                        "type": "string"
+                      },
+                      {
+                        "const": "child",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sibling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_family",
+                        "type": "string"
+                      },
+                      {
+                        "const": "friend",
+                        "type": "string"
+                      },
+                      {
+                        "const": "guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "paid_caregiver",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "isPrimary": {
+                    "type": "boolean"
+                  },
+                  "isLegalRepresentative": {
+                    "type": "boolean"
+                  },
+                  "lrAuthority": {
+                    "anyOf": [
+                      {
+                        "const": "dpoa_healthcare",
+                        "type": "string"
+                      },
+                      {
+                        "const": "guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "next_of_kin",
+                        "type": "string"
+                      },
+                      {
+                        "const": "none",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "lrProofDocRef": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "portalInvitationConsented": {
+                    "type": "boolean"
+                  },
+                  "involvementFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "notes": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/deceased": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdDeceased",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Record a death (§7.8 cascade) — step-up required; emits m5.patient.status_changed + m5.patient.deceased (patient.record_death)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "deceasedDate"
+                ],
+                "properties": {
+                  "deceasedDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients/{id}/demographics": {
       "get": {
         "operationId": "getApiV1PatientsByIdDemographics",
@@ -162996,6 +163705,103 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByIdIdentifiers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "mbi",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prior_mrn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hospice_external",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_mrn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ssn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "state_id",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mrn",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "issuer": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -163996,6 +164802,73 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/status": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdStatus",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Transition patient status along the §2.4.1 machine (active/on_hold/discharged) — 409 INVALID_STATUS_TRANSITION; emits m5.patient.status_changed (patient.transition_status)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "toStatus"
+                ],
+                "properties": {
+                  "toStatus": {
+                    "anyOf": [
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "on_hold",
+                        "type": "string"
+                      },
+                      {
+                        "const": "discharged",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1402,
-    "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "routes": 1415,
+    "coveredRoutes": 1415,
+    "directRoutesReferenced": 1362
   },
   "modules": [
     {
@@ -55,7 +55,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 26,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -66,11 +66,12 @@
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 39
     },
     {
       "module": "06-admission",
@@ -110,6 +111,7 @@
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",

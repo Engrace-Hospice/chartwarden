@@ -199,6 +199,8 @@ export const MODULES: ModuleDef[] = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      // GAP-011: the durable auditor magic-link token store (hash only) behind M2's AuditorSessionMinter.
+      "auditor_magic_link",
       // GAP-043: the per-membership named-approval-authority registry M27's approver predicate keys on.
       "membership_elevated_approval",
       // ADR-0023 D2 (adjudicated): the device-attestation surface M3's `device_attestation_valid`

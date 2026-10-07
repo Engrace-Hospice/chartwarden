@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 318 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 319 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 271 screen(s)
+- **web**: 272 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -43,6 +43,7 @@
 | web | 04-audit | `audit.legal-holds` | `/compliance/legal-holds` | `legalhold.read` | ✅ |
 | web | 04-audit | `audit.integrity-report` | `/compliance/audit/integrity` | `audit.integrity` | ✅ |
 | web | 04-audit | `audit.exports` | `/compliance/audit/exports` | `audit.export` | ✅ |
+| web | 04-audit | `audit.privacy-requests` | `/compliance/privacy-requests` | `audit.disclosure_report` | ✅ |
 | web | 05-patient | `patient.census` | `/patients` | `patient.read` | ✅ |
 | web | 05-patient | `search.global` | `/search` | `patient.read` | ✅ |
 | web | 05-patient | `patient.chart` | `/patients/:id` | `patient.read` | ✅ |

@@ -53,7 +53,19 @@ export interface SignedVisitNote {
 
 const PRIMARY_SIGNED = ["signed", "cosign_pending", "cosigned"];
 
+/** POST /admissions/:id/face-to-face body (R-F2F schedule). */
+export interface ScheduleFaceToFaceInput {
+  electionPeriodId: string;
+  scheduledDate: string;
+  windowStart: string;
+  windowEnd: string;
+  clinicianRole: "hospice_np" | "hospice_md";
+  scheduledClinicianId: string;
+}
+
 export interface ElectionCertificationApi {
+  scheduleFaceToFace(admissionId: string, input: ScheduleFaceToFaceInput): Promise<void>;
+  overrideFaceToFaceWindow(id: string, input: { reason: string; ifVersion: number }): Promise<void>;
   getElectionStatement(id: string): Promise<ElectionStatementDetail>;
   getCti(id: string): Promise<CtiDetail>;
   getFaceToFace(id: string): Promise<FaceToFaceDetail>;
@@ -121,6 +133,22 @@ export function createElectionCertificationApi(client: ApiClient): ElectionCerti
 
     async attestFaceToFace(id, input) {
       const { error } = await client.POST("/api/v1/face-to-face/{id}/attest", {
+        params: { path: { id } },
+        body: input,
+      });
+      if (error) throw new FaceToFaceWriteError(errorCode(error));
+    },
+
+    async scheduleFaceToFace(admissionId, input) {
+      const { error } = await client.POST("/api/v1/admissions/{id}/face-to-face", {
+        params: { path: { id: admissionId } },
+        body: input,
+      });
+      if (error) throw new FaceToFaceWriteError(errorCode(error));
+    },
+
+    async overrideFaceToFaceWindow(id, input) {
+      const { error } = await client.POST("/api/v1/face-to-face/{id}/override-window", {
         params: { path: { id } },
         body: input,
       });

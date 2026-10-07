@@ -99,11 +99,11 @@ import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { getSeam } from "../../bootstrap/index";
 import {
   type AuthzRouteDeps,
   type ComplianceNotifier,
   type M3OutboxPublisher,
-  createInMemoryAuditorSessionMinter as _auditorMinter,
   createFixedPermissionResolver as _fixedPerms,
   createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
@@ -185,7 +185,11 @@ export function mountAuthorizationRoutes(
     breakGlass,
     // GAP-011 — durable: `auditor_engagement` is written (RLS-scoped), so the M31 auditor view has a real engagement to resolve.
     engagements: _dbEngagements(db),
-    auditorSessions: _auditorMinter().minter,
+    // GAP-011 — M2's boot-validated `AuditorSessionMinter` seam (durable `auditor_magic_link` issuer on a db
+    // boot), resolved at call time so the seam registered by `registerIdentitySeams` is the one used.
+    auditorSessions: {
+      mintAuditorSession: (input) => getSeam("AuditorSessionMinter").mintAuditorSession(input),
+    },
     // With an outbox the break-glass store has already published `m3.breakglass.invoked` in the invoke's tx, so
     // the route-level notify must not notify a second time (the in-memory array nothing read was GAP-010).
     notifier: outbox ? DURABLE_VIA_OUTBOX_NOTIFIER : _notifier().notifier,

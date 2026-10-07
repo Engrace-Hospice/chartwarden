@@ -139,7 +139,14 @@ export async function markOverdueAddendumWindowsInTx(
     };
     await outbox.publish(tx, {
       eventName: "m6.compliance.window.overdue",
-      payload: { complianceWindowId: w.id, severity: "alert" },
+      payload: {
+        complianceWindowId: w.id,
+        severity: "alert",
+        admissionId: w.admissionId,
+        patientId: w.patientId,
+        windowKind: w.windowKind,
+        dueAt: w.mustCompleteBy.toISOString(),
+      },
       organizationId,
       aggregateKind: "compliance_window",
       aggregateId: w.id,

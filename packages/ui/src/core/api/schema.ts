@@ -2957,6 +2957,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/amendments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Staff amendment inbox — pending by default, oldest SLA first (§164.526; patient.amend_review) */
+        get: operations["getApiV1Amendments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/amendments/{id}/accept": {
         parameters: {
             query?: never;
@@ -2985,6 +3002,23 @@ export interface paths {
         put?: never;
         /** Deny an amendment request (denial reason required, §7.7) */
         post: operations["postApiV1AmendmentsByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/amendments/{id}/statement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a statement of disagreement to a denied amendment (§164.526(d); patient.amend_request_submit) */
+        post: operations["postApiV1AmendmentsByIdStatement"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13475,6 +13509,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patient-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Soft-duplicate review queue, open by default (§7.3; patient.match_review) */
+        get: operations["getApiV1Patientmatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-matches/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a soft duplicate: fold the new chart into the existing one, in one transaction with the review close — step-up (patient.merge) */
+        post: operations["postApiV1PatientmatchesByIdMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-matches/{id}/not-a-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a soft-duplicate review as not-a-match (patient.match_review) */
+        post: operations["postApiV1PatientmatchesByIdNotamatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patient-merges/{id}/unmerge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse a merge within 30 days (409 UNMERGE_WINDOW_EXPIRED after); restores the source status; emits m5.patient.unmerged — step-up (patient.merge) */
+        post: operations["postApiV1PatientmergesByIdUnmerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients": {
         parameters: {
             query?: never;
@@ -13507,7 +13609,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch patient demographics — MRN/status/SSN are not patchable; emits m5.patient.updated (§4.3; patient.edit + caseload_or_scope) */
+        patch: operations["patchApiV1PatientsById"];
         trace?: never;
     };
     "/api/v1/patients/{id}/addresses": {
@@ -13586,7 +13689,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** A patient's §164.526 amendment requests (§4.3; patient.read + caseload_or_scope) */
+        get: operations["getApiV1PatientsByIdAmendments"];
         put?: never;
         /** Open a record-amendment request (§7.7, 60-day SLA) */
         post: operations["postApiV1PatientsByIdAmendments"];
@@ -13648,6 +13752,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/caregivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient caregivers incl. legal-representative flags (§4.3; patient.read) */
+        get: operations["getApiV1PatientsByIdCaregivers"];
+        put?: never;
+        /** Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit) */
+        post: operations["postApiV1PatientsByIdCaregivers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/deceased": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a death (§7.8 cascade) — step-up required; emits m5.patient.status_changed + m5.patient.deceased (patient.record_death) */
+        post: operations["postApiV1PatientsByIdDeceased"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/demographics": {
         parameters: {
             query?: never;
@@ -13675,7 +13814,8 @@ export interface paths {
         /** Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2) */
         get: operations["getApiV1PatientsByIdIdentifiers"];
         put?: never;
-        post?: never;
+        /** Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers) */
+        post: operations["postApiV1PatientsByIdIdentifiers"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13762,6 +13902,23 @@ export interface paths {
         put?: never;
         /** Resync the privacy-flag snapshot from M39 consent state (M5 §4.2; privacy.admin) — WardenLens detections are re-applied, never lifted */
         post: operations["postApiV1PatientsByIdPrivacyflagsResync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition patient status along the §2.4.1 machine (active/on_hold/discharged) — 409 INVALID_STATUS_TRANSITION; emits m5.patient.status_changed (patient.transition_status) */
+        post: operations["postApiV1PatientsByIdStatus"];
         delete?: never;
         options?: never;
         head?: never;
@@ -29697,6 +29854,26 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Amendments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AmendmentsByIdAccept: {
         parameters: {
             query?: never;
@@ -29756,6 +29933,34 @@ export interface operations {
                         slaDueAt: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AmendmentsByIdStatement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    statement: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -60475,6 +60680,116 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Patientmatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmatchesByIdMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    fieldResolutions?: {
+                        [key: string]: {
+                            keep: "source" | "target" | "custom";
+                            customValue?: unknown;
+                        };
+                    };
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmatchesByIdNotamatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientmergesByIdUnmerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Patients: {
         parameters: {
             query?: {
@@ -60591,6 +60906,46 @@ export interface operations {
                         status: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PatientsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalFirstName?: string;
+                    legalMiddleName?: string | null;
+                    legalLastName?: string;
+                    legalNameSuffix?: string | null;
+                    /** Format: date */
+                    dob?: string;
+                    sexAssignedAtBirth?: string;
+                    genderIdentityCode?: string | null;
+                    sexualOrientationCode?: string | null;
+                    pronounsCode?: string | null;
+                    maritalStatusCode?: string | null;
+                    raceCodes?: string[] | null;
+                    ethnicityCodes?: string[] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -60815,6 +61170,28 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdAmendments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PatientsByIdAmendments: {
         parameters: {
             query?: never;
@@ -61028,6 +61405,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdCaregivers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdCaregivers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    firstName: string;
+                    lastName: string;
+                    email?: string | null;
+                    phone?: string | null;
+                    relationship: "spouse" | "child" | "parent" | "sibling" | "other_family" | "friend" | "guardian" | "paid_caregiver";
+                    isPrimary?: boolean;
+                    isLegalRepresentative?: boolean;
+                    lrAuthority?: "dpoa_healthcare" | "guardian" | "next_of_kin" | "none";
+                    lrProofDocRef?: string | null;
+                    portalInvitationConsented?: boolean;
+                    /** Format: date */
+                    involvementFrom?: string;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdDeceased: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    deceasedDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdDemographics: {
         parameters: {
             query?: never;
@@ -61106,6 +61574,38 @@ export interface operations {
                         }[];
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdIdentifiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "mbi" | "prior_mrn" | "hospice_external" | "partner_mrn" | "ssn" | "state_id" | "mrn";
+                    value: string;
+                    issuer?: string | null;
+                    /** Format: date */
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -61368,6 +61868,35 @@ export interface operations {
                         capturedAt: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    toStatus: "active" | "on_hold" | "discharged";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

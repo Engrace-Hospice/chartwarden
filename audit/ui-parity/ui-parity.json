@@ -170,6 +170,14 @@
     },
     {
       "app": "web",
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.privacy-requests",
+      "path": "/compliance/privacy-requests",
+      "permission": "audit.disclosure_report"
+    },
+    {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "patient.census",

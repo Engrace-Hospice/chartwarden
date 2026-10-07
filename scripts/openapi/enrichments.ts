@@ -684,6 +684,17 @@ import {
   PatientAssignmentListResponseSchema as M5EPatientAssignmentListResponseSchema,
   PatientAssignmentViewSchema as M5EPatientAssignmentViewSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/assignment-typebox";
+import {
+  CaregiverBodySchema as M5EWCaregiverBodySchema,
+  DeceasedBodySchema as M5EWDeceasedBodySchema,
+  IdentifierBodySchema as M5EWIdentifierBodySchema,
+  MatchMergeBodySchema as M5EWMatchMergeBodySchema,
+  NotAMatchBodySchema as M5EWNotAMatchBodySchema,
+  PatchPatientBodySchema as M5EWPatchPatientBodySchema,
+  StatementBodySchema as M5EWStatementBodySchema,
+  StatusBodySchema as M5EWStatusBodySchema,
+  UnmergeBodySchema as M5EWUnmergeBodySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/lifecycle-typebox";
 // M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
 // M5 patient schemas are ALREADY imported un-aliased in scripts/openapi/enrichments.ts; the M5E prefix
 // avoids a redeclaration collision when this block is merged in via a later Object.assign.
@@ -6203,6 +6214,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "End an open assignment — sets unassignedAt (default today); 409 when already ended; emits m5.patient.assignment_ended (§4.3; patient.assign)",
     body: M5EEndAssignmentBodySchema,
     response: M5EPatientAssignmentViewSchema,
+  },
+  "PATCH /api/v1/patients/:id": {
+    summary:
+      "Patch patient demographics — MRN/status/SSN are not patchable; emits m5.patient.updated (§4.3; patient.edit + caseload_or_scope)",
+    body: M5EWPatchPatientBodySchema,
+  },
+  "POST /api/v1/patients/:id/status": {
+    summary:
+      "Transition patient status along the §2.4.1 machine (active/on_hold/discharged) — 409 INVALID_STATUS_TRANSITION; emits m5.patient.status_changed (patient.transition_status)",
+    body: M5EWStatusBodySchema,
+  },
+  "POST /api/v1/patients/:id/deceased": {
+    summary:
+      "Record a death (§7.8 cascade) — step-up required; emits m5.patient.status_changed + m5.patient.deceased (patient.record_death)",
+    body: M5EWDeceasedBodySchema,
+  },
+  "POST /api/v1/patients/:id/identifiers": {
+    summary:
+      "Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers)",
+    body: M5EWIdentifierBodySchema,
+  },
+  "GET /api/v1/patients/:id/caregivers": {
+    summary: "Patient caregivers incl. legal-representative flags (§4.3; patient.read)",
+  },
+  "POST /api/v1/patients/:id/caregivers": {
+    summary:
+      "Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit)",
+    body: M5EWCaregiverBodySchema,
+  },
+  "GET /api/v1/patient-matches": {
+    summary: "Soft-duplicate review queue, open by default (§7.3; patient.match_review)",
+  },
+  "POST /api/v1/patient-matches/:id/merge": {
+    summary:
+      "Confirm a soft duplicate: fold the new chart into the existing one, in one transaction with the review close — step-up (patient.merge)",
+    body: M5EWMatchMergeBodySchema,
+  },
+  "POST /api/v1/patient-matches/:id/not-a-match": {
+    summary: "Close a soft-duplicate review as not-a-match (patient.match_review)",
+    body: M5EWNotAMatchBodySchema,
+  },
+  "POST /api/v1/patient-merges/:id/unmerge": {
+    summary:
+      "Reverse a merge within 30 days (409 UNMERGE_WINDOW_EXPIRED after); restores the source status; emits m5.patient.unmerged — step-up (patient.merge)",
+    body: M5EWUnmergeBodySchema,
+  },
+  "GET /api/v1/patients/:id/amendments": {
+    summary: "A patient's §164.526 amendment requests (§4.3; patient.read + caseload_or_scope)",
+  },
+  "GET /api/v1/amendments": {
+    summary:
+      "Staff amendment inbox — pending by default, oldest SLA first (§164.526; patient.amend_review)",
+  },
+  "POST /api/v1/amendments/:id/statement": {
+    summary:
+      "Attach a statement of disagreement to a denied amendment (§164.526(d); patient.amend_request_submit)",
+    body: M5EWStatementBodySchema,
   },
   "GET /api/v1/patients/:id/care-team": {
     summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",

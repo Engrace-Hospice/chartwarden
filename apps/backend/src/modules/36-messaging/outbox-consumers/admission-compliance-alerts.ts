@@ -18,7 +18,56 @@ import type {
 
 export const M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER = "m36.admission-compliance-alerts" as const;
 
-export const M36_ADMISSION_COMPLIANCE_ALERT_EVENT_TYPES = ["m6.election_addendum.overdue"] as const;
+export const M36_ADMISSION_COMPLIANCE_ALERT_EVENT_TYPES = [
+  "m6.election_addendum.overdue",
+  "m6.compliance.window.overdue",
+] as const;
+
+/** Window kinds whose miss is paged by the dedicated addendum event instead (never double-page). */
+const ADDENDUM_WINDOW_KINDS_PAGED_ELSEWHERE: ReadonlySet<string> = new Set([
+  "election_addendum_initial",
+  "election_addendum_update",
+]);
+
+const WINDOW_KIND_LABEL: Readonly<Record<string, string>> = {
+  initial_assessment_48h: "initial assessment (48 hours)",
+  comprehensive_assessment_5d: "comprehensive assessment (5 days)",
+  care_plan_5d: "plan of care (5 days)",
+  f2f_recert_30d_prior: "face-to-face encounter (recertification)",
+  recert_due_14d: "recertification",
+  recert_due_7d: "recertification",
+  cti_signature_lookahead_14d: "certification of terminal illness",
+  notice_of_rights: "notice of rights",
+};
+
+function planWindowOverdue(
+  p: Record<string, unknown>,
+  name: string,
+): AdmissionComplianceAlertPlan[] {
+  // Legacy emissions (pre GAP-026) carry no routing facts: nothing to route on, nothing to page.
+  if (typeof p.windowKind !== "string" || typeof p.patientId !== "string") return [];
+  if (ADDENDUM_WINDOW_KINDS_PAGED_ELSEWHERE.has(p.windowKind)) return [];
+  const windowId = requireString(p, "complianceWindowId", name);
+  const patientId = p.patientId;
+  const windowKind = p.windowKind;
+  const safe = {
+    patientId,
+    admissionId: requireString(p, "admissionId", name),
+    complianceWindowId: windowId,
+    windowKind,
+    dueAt: requireString(p, "dueAt", name),
+    deepLink: `/patients/${patientId}/election-certification`,
+    message: `The ${WINDOW_KIND_LABEL[windowKind] ?? windowKind} compliance window passed its due time without being completed.`,
+  };
+  return [
+    { alertEventType: "m6.compliance.window.overdue", correlationKey: `${windowId}:team`, safe },
+    {
+      alertEventType: "m6.compliance.window.overdue_compliance",
+      correlationKey: `${windowId}:compliance`,
+      safe,
+    },
+  ];
+}
 
 export interface AdmissionComplianceAlertPlan {
   readonly alertEventType: string;
@@ -42,6 +91,7 @@ export function planAdmissionComplianceAlerts(
 ): AdmissionComplianceAlertPlan[] {
   const p = (event.payload ?? {}) as Record<string, unknown>;
   const name = event.eventType;
+  if (name === "m6.compliance.window.overdue") return planWindowOverdue(p, name);
   if (name !== "m6.election_addendum.overdue") {
     throw new Error(`${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: unexpected event ${name}`);
   }

@@ -346,11 +346,13 @@ import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db"
 import type { M5OutboxPort } from "./deceased-db";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
+import { createDbPatientLifecyclePort as _dbLifecyclePort } from "./patient-lifecycle-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
 import type { PrivacyOfficerPorts } from "./privacy/officer";
 import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } from "./routes/assignment-routes";
+import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } from "./routes/lifecycle-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
 
@@ -377,6 +379,8 @@ export function mountPatientRoutes(
   });
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
   _registerPatientAssignmentRoutes(app, { assignments: _dbAssignmentsPort(db, outbox) });
+  // GAP-018/019/012 — status, death, identifiers, caregivers, the match queue, unmerge, amendment inbox.
+  _registerPatientLifecycleRoutes(app, { lifecycle: _dbLifecyclePort(db, outbox) });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
