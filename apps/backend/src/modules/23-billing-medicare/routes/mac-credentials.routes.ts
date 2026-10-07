@@ -37,6 +37,7 @@ const READ_ABAC = PROVIDER_SCOPE("billing.mac_credential.read", targetProviderFr
 const ADMIN = P("billing.mac_credential.admin");
 const ADMIN_ABAC = PROVIDER_SCOPE("billing.mac_credential.admin", targetProviderFromBody);
 const ADMIN_STEPUP = STEP_UP("billing.mac_credential.admin");
+const ADMIN_PARAM_ABAC = PROVIDER_SCOPE("billing.mac_credential.admin", targetProviderFromParams);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -85,6 +86,19 @@ export function registerMacCredentialRoutes(
       const actor = actorOf(request);
       const { providerEntityId } = parse(ProviderEntityParamsSchema, request.params);
       return readService.getMacCredential(actor, providerEntityId);
+    },
+  );
+
+  // POST /billing/mac-credentials/:providerEntityId/test — probe the MAC sandbox for a PE's credential and
+  // stamp `last_sandbox_test_at` on success. §4.1 #36 (GAP-144). Step-up (privileged config) + the provider
+  // scope + AI block + Idempotency-Key; the secret is never read, returned or logged.
+  app.post(
+    "/api/v1/billing/mac-credentials/:providerEntityId/test",
+    { preHandler: [ADMIN, ADMIN_PARAM_ABAC, ADMIN_STEPUP, NO_AI, IDEMPOTENT] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { providerEntityId } = parse(ProviderEntityParamsSchema, request.params);
+      return writeService.testMacCredential(actor, providerEntityId);
     },
   );
 

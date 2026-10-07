@@ -9,6 +9,7 @@ import {
   type EnvLike,
   FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
+  M24_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertProductionEnv,
   collectEnvProblems,
@@ -16,6 +17,7 @@ import {
   integrationEnabled,
   isReservedPlaceholderHost,
   reservedPlaceholderProblem,
+  withM24LaunchGatewayDefault,
 } from "../src/bootstrap/env";
 
 const GOOD: EnvLike = {
@@ -383,5 +385,31 @@ describe("F-181 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
     expect(collectEnvProblems({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toEqual(
       [],
     );
+  });
+});
+
+describe("GAP-146 — the M24 launch-gateway gate is an opt-out production switch", () => {
+  it("rejects an ambiguous value", () => {
+    expect(collectEnvProblems({ ...GOOD, M24_LAUNCH_GATEWAY_ENABLED: "yes" })).toEqual([
+      { key: "M24_LAUNCH_GATEWAY_ENABLED", problem: "must be 'true' or 'false'" },
+    ]);
+  });
+
+  it("is enabled by default in production, and an explicit false still disables it", () => {
+    expect(
+      withM24LaunchGatewayDefault({ NODE_ENV: "production" })[M24_LAUNCH_GATEWAY_ENABLED_ENV],
+    ).toBe("true");
+    expect(
+      withM24LaunchGatewayDefault({ NODE_ENV: "production", M24_LAUNCH_GATEWAY_ENABLED: "false" })[
+        M24_LAUNCH_GATEWAY_ENABLED_ENV
+      ],
+    ).toBe("false");
+  });
+
+  it("leaves dev/test untouched (unset = nothing calls out by accident)", () => {
+    expect(withM24LaunchGatewayDefault({ NODE_ENV: "development" })).toEqual({
+      NODE_ENV: "development",
+    });
+    expect(withM24LaunchGatewayDefault({})).toEqual({});
   });
 });

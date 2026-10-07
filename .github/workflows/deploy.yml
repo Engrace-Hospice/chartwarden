@@ -113,6 +113,8 @@ jobs:
       web_image: ${{ steps.images.outputs.web_image }}
       backend_digest: ${{ steps.images.outputs.backend_digest }}
       web_digest: ${{ steps.images.outputs.web_digest }}
+      docling_image: ${{ steps.images.outputs.docling_image }}
+      docling_digest: ${{ steps.images.outputs.docling_digest }}
     env:
       RELEASE_SHA: ${{ github.sha }}
     steps:
@@ -153,6 +155,18 @@ jobs:
           tags: ghcr.io/engrace-hospice/wardenx-web:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # GAP-138 — the DocLens docling-worker image. Production compose had no such service, so DOCLING_WORKER_URL
+      # was unset and every DocLens parse answered 503. Its own layer cache scope keeps the (large, rarely
+      # changing) model layers from evicting the backend's cache.
+      - name: Build and push docling-worker image
+        id: build_docling
+        uses: docker/build-push-action@v7
+        with:
+          context: services/docling-worker
+          push: true
+          tags: ghcr.io/engrace-hospice/wardenx-docling-worker:sha-${{ env.RELEASE_SHA }}
+          cache-from: type=gha,scope=docling-worker
+          cache-to: type=gha,mode=max,scope=docling-worker
       # ── supply chain (F-040/#100) ──────────────────────────────────────────────────────────────────
       #
       # Everything below addresses the same digest, never the tag. `sha-<commit>` is immutable by
@@ -164,15 +178,19 @@ jobs:
         env:
           BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
           WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
         run: |
           # A missing digest means the build step changed shape; failing here beats signing an empty
           # reference and reporting success.
           test -n "$BACKEND_DIGEST" || { echo "backend build reported no digest" >&2; exit 1; }
           test -n "$WEB_DIGEST" || { echo "web build reported no digest" >&2; exit 1; }
+          test -n "$DOCLING_DIGEST" || { echo "docling-worker build reported no digest" >&2; exit 1; }
           echo "backend_image=ghcr.io/engrace-hospice/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "web_image=ghcr.io/engrace-hospice/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "backend_digest=$BACKEND_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "docling_image=ghcr.io/engrace-hospice/wardenx-docling-worker:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "docling_digest=$DOCLING_DIGEST" >> "$GITHUB_OUTPUT"
 
       # Scan BEFORE signing. Signing a known-vulnerable image is worse than not signing it: the
       # signature is an assertion that this artefact went through our release process, and a process
@@ -202,6 +220,24 @@ jobs:
           ignore-unfixed: false
           trivyignores: .trivyignore.yaml
 
+      # The docling-worker image (Python/torch/OCR stack) is now FAIL-CLOSED like the two images above, with one
+      # deliberate difference: `ignore-unfixed: true`. Its base-layer findings that no vendor has fixed cannot be
+      # acted on from here, and gating production releases on them would make an unfixable CVE block a real fix;
+      # every FIXABLE HIGH/CRITICAL fails the release, and `.trivyignore.yaml` (expiry + statement per entry,
+      # enforced by `arch:vuln-allowlist`) is the only way past one. The first run against a real image may list
+      # fixable findings that need a pin bump in services/docling-worker/pyproject.toml/Dockerfile or an entry
+      # there — the baseline could not be taken offline (no built image / trivy in the authoring environment).
+      - name: Scan docling-worker image (fixable HIGH/CRITICAL fail the release)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+
+        with:
+          image-ref: ghcr.io/engrace-hospice/wardenx-docling-worker@${{ steps.build_docling.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
       - name: Install syft
@@ -216,14 +252,17 @@ jobs:
         env:
           BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
           WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
         run: |
           syft "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
             -o spdx-json=sbom-backend.spdx.json
           syft "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}" \
             -o spdx-json=sbom-web.spdx.json
+          syft "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}" \
+            -o spdx-json=sbom-docling.spdx.json
           # A syft run that produces a file describing nothing is a silent failure — an empty SBOM
           # answers "are we affected by this CVE?" with a confident and wrong "no".
-          for f in sbom-backend.spdx.json sbom-web.spdx.json; do
+          for f in sbom-backend.spdx.json sbom-web.spdx.json sbom-docling.spdx.json; do
             packages=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('packages',[])))" "$f")
             echo "$f: $packages package(s)"
             test "$packages" -gt 0 || { echo "$f describes no packages" >&2; exit 1; }
@@ -242,14 +281,18 @@ jobs:
         env:
           BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
           WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
           COSIGN_YES: "true"
         run: |
           cosign sign "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
           cosign sign "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
+          cosign sign "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"
           cosign attest --predicate sbom-backend.spdx.json --type spdxjson \
             "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
           cosign attest --predicate sbom-web.spdx.json --type spdxjson \
             "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
+          cosign attest --predicate sbom-docling.spdx.json --type spdxjson \
+            "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"
 
       # Verify what was just published, from the workflow, before the deploy job ever runs. Not
       # ceremony: it is the only place a signing misconfiguration surfaces as a red release instead of
@@ -258,10 +301,12 @@ jobs:
         env:
           BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
           WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
         run: |
           for ref in \
             "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
-            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"; do
+            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}" \
+            "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"; do
             cosign verify "$ref" \
               --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@${GITHUB_REF}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
@@ -293,6 +338,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           BACKEND_IMAGE: ${{ needs.release.outputs.backend_image }}
           WEB_IMAGE: ${{ needs.release.outputs.web_image }}
+          DOCLING_IMAGE: ${{ needs.release.outputs.docling_image }}
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
           port="${DEPLOY_PORT:-22}"
@@ -306,4 +352,4 @@ jobs:
             deploy/production/compose.yml \
             "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
+            "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"

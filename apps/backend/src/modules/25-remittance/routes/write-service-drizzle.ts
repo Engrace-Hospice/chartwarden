@@ -23,6 +23,7 @@ import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittanc
 import type {
   AppealCreateInput,
   AppealDecideInput,
+  AppealLateGoodCauseInput,
   AppealSubmitInput,
   DenialAssignInput,
   M25WriteService,
@@ -36,6 +37,9 @@ const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
 /** The real Drizzle transaction handle (has .select/.update/.insert), inferred from the db client. */
 type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** The appeal tiers CMS lets a provider file late with good cause (42 CFR §405.942(b)). */
+const GOOD_CAUSE_TIERS: ReadonlySet<string> = new Set(["redetermination", "reconsideration"]);
 
 class InvalidTransitionError extends WardenXError {
   constructor(from: string, to: string) {
@@ -338,6 +342,65 @@ export function buildDrizzleM25WriteService(
       );
     },
 
+    async submitAppealLateGoodCause(actor, id, input: AppealLateGoodCauseInput, ifMatch) {
+      return transitionAppeal(
+        actor,
+        id,
+        "submitted",
+        ifMatch,
+        {
+          submittedAt: sql`now()`,
+          appealNarrative: {
+            narrative: input.appealNarrative,
+            documents: input.attachedDocumentIds,
+            // M25-F03 — the MAC adjudicates good cause; this flag + the justification ride with the filing.
+            lateGoodCauseFiling: true,
+            goodCauseJustification: input.goodCauseJustification,
+          },
+        },
+        async (tx, cur) => {
+          await outbox.publish(tx, {
+            eventName: "m25.appeal.submitted",
+            organizationId: actor.organizationId,
+            aggregateKind: "appeal_case",
+            aggregateId: id,
+            payload: {
+              appealCaseId: id,
+              denialCaseId: cur.denialCaseId,
+              tier: cur.tier,
+              submittedAt: new Date().toISOString(),
+              lateGoodCauseFiling: true,
+            },
+          });
+          await outbox.publish(tx, {
+            eventName: "m25.appeal_packet.render_requested",
+            organizationId: actor.organizationId,
+            aggregateKind: "appeal_case",
+            aggregateId: id,
+            payload: { appealCaseId: id, tier: cur.tier, payload: { lateGoodCauseFiling: true } },
+          });
+        },
+        (cur) => {
+          // CMS permits a good-cause late filing only at the first two tiers (42 CFR §405.942(b)).
+          if (!GOOD_CAUSE_TIERS.has(cur.tier)) {
+            throw new WardenXError(
+              "GOOD_CAUSE_NOT_AVAILABLE",
+              `the ${cur.tier} tier has no CMS good-cause late-filing path`,
+              409,
+            );
+          }
+          // Before T-0 there is nothing late about it: the normal submit (the within-deadline path) applies.
+          if (cur.tierDeadlineAt.getTime() > Date.now()) {
+            throw new WardenXError(
+              "NOT_LATE",
+              "the appeal deadline has not elapsed; use the normal submit route",
+              409,
+            );
+          }
+        },
+      );
+    },
+
     async ackAppeal(actor, id, ifMatch) {
       return transitionAppeal(actor, id, "under_review", ifMatch, {});
     },
@@ -459,6 +522,7 @@ export function buildDrizzleM25WriteService(
         denialCaseId: AC.denialCaseId,
         claimId: AC.claimId,
         providerEntityId: AC.providerEntityId,
+        tierDeadlineAt: AC.tierDeadlineAt,
       })
       .from(AC)
       .where(eq(AC.id, id))
@@ -478,10 +542,12 @@ export function buildDrizzleM25WriteService(
     ifMatch: number,
     extra: Record<string, unknown>,
     emit?: (tx: M25Tx, cur: Awaited<ReturnType<typeof appealRow>>) => Promise<void>,
+    guard?: (cur: Awaited<ReturnType<typeof appealRow>>) => void,
   ): Promise<VersionedResult> {
     return withOrgContext(db, actor, async (tx) => {
       const cur = await appealRow(tx, id);
       if (!canTransitionAppeal(cur.state, to)) throw new InvalidTransitionError(cur.state, to);
+      guard?.(cur);
       const updated = await tx
         .update(AC)
         .set({ state: to, version: cur.version + 1, ...extra })

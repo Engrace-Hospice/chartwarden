@@ -26,6 +26,7 @@ import {
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { selectCapPeriodForCcn } from "./cap-period-selection";
 import type { M26ReadActor } from "./routes/actor";
 import type { M26ReadService } from "./routes/read-service";
 
@@ -123,15 +124,17 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
   };
 
   const accrual: CapAccrualReader = {
-    async aggregateForCostReport(orgId, capYear) {
+    async aggregateForCostReport(orgId, capYear, ccn) {
       return withOrgContext(db, systemActor(orgId), async (tx) => {
         const P = schema.capPeriod;
         const BA = schema.capBeneficiaryAccrual;
         const IA = schema.capInpatientAccrual;
         const ST = schema.capSettlement;
-        // RLS scopes to orgId; one cap period per (org, capYear) in Phase 1 (multi-CCN sums in a follow-up).
-        const periods = await tx.select().from(P).where(eq(P.capYear, capYear)).limit(1);
-        const period = periods[0];
+        // RLS scopes to orgId. GAP-149: a cap period is unique per (org, CCN, capYear), so the CCN selects it
+        // (see cap-period-selection.ts for the not-yet-CCN-bound sentinel); several CCNs with no CCN given are
+        // ambiguous and answer null rather than an arbitrary CCN's figures.
+        const periods = await tx.select().from(P).where(eq(P.capYear, capYear)).limit(50);
+        const period = selectCapPeriodForCcn(periods, ccn);
         if (!period) return null;
         const accrAgg = await tx
           .select({

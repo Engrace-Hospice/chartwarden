@@ -14,11 +14,19 @@ import {
   ClaimIdParamsSchema,
   OverrideParamsSchema,
   OverrideValidationResultBodySchema,
+  ValidationOverrideListQuerySchema,
   ValidationRunParamsSchema,
   parse,
 } from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
-import { CLAIM_CASELOAD, OVERRIDE_ELIGIBLE, P, STEP_UP } from "./guards";
+import {
+  CLAIM_CASELOAD,
+  OVERRIDE_ELIGIBLE,
+  P,
+  PROVIDER_SCOPE,
+  STEP_UP,
+  targetProviderFromQuery,
+} from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 
@@ -34,12 +42,49 @@ const RUN_ABAC = CLAIM_CASELOAD("billing.validation.run");
 const OVERRIDE = P("billing.validation.override");
 const OVERRIDE_ABAC = OVERRIDE_ELIGIBLE("billing.validation.override");
 const OVERRIDE_STEPUP = STEP_UP("billing.validation.override");
+const READ_OVERRIDES = P("billing.validation.read_override");
+const READ_OVERRIDES_ABAC = PROVIDER_SCOPE(
+  "billing.validation.read_override",
+  targetProviderFromQuery,
+);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
 /** Register the §4.1 validation-run + override routes. */
 export function registerValidationRoutes(app: FastifyInstance, deps: ValidationRouteDeps): void {
   const { readService, writeService } = deps;
+
+  // GET /billing/validation-overrides?providerEntityId= — the org-wide override audit view (compliance
+  // officer / surveyor). §4.1 #17 (GAP-144). Newest first; the provider-entity scope is the §4.7 ABAC target.
+  app.get(
+    "/api/v1/billing/validation-overrides",
+    {
+      preHandler: [READ_OVERRIDES, READ_OVERRIDES_ABAC],
+      config: {
+        auditRead: {
+          none: "billing validation overrides — claim ids, rule keys and the typed rationale; no patient identifiers",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(ValidationOverrideListQuerySchema, request.query);
+      return readService.listValidationOverrides(
+        actor,
+        {
+          providerEntityId: q.providerEntityId,
+          ...(q.ruleKey !== undefined ? { ruleKey: q.ruleKey } : {}),
+          ...(q.overrideMembershipId !== undefined
+            ? { overrideMembershipId: q.overrideMembershipId }
+            : {}),
+          ...(q.appliedFrom !== undefined ? { appliedFrom: q.appliedFrom } : {}),
+          ...(q.appliedTo !== undefined ? { appliedTo: q.appliedTo } : {}),
+        },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // GET /claims/:id/validation-runs — list validation runs (most recent first). §4.1 #14.
   app.get(

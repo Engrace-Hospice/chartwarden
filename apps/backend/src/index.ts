@@ -79,6 +79,7 @@ import {
   noteInMemoryBinding,
   registerEraser,
   registerSeam,
+  withM24LaunchGatewayDefault,
 } from "./bootstrap/index";
 import {
   PARTITION_ROTATION_CRON,
@@ -728,6 +729,7 @@ import {
   registerSuppliesSeams,
   registerSupplyEraser,
   scheduleM21Jobs,
+  validateSupplyAIBlock,
 } from "./modules/21-supplies/index";
 import { deliveredSourceOrderIdsForOrg } from "./modules/21-supplies/seams/delivered-source-orders-for-org";
 import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
@@ -738,7 +740,11 @@ import {
   type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
+  M22_FORM_RENDER_PLATFORM_JOB_ID,
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
+  M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+  registerAiBlockValidatorWorker,
+  registerRetentionRotationWorker,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -771,9 +777,14 @@ import {
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
+  registerFormRenderWorker,
   registerRecordsRequestExpiryWorker,
   s3ObjectStoreConfigFromEnv,
+  scheduleAiBlockValidator,
+  scheduleFormRender,
   scheduleRecordsRequestExpiry,
+  scheduleRetentionRotation,
+  validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -798,6 +809,7 @@ import {
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
+  buildDrizzlePlatformAdminService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
@@ -816,6 +828,8 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacJurisdictionLister,
   buildNoticeWindowPort,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
@@ -834,6 +848,7 @@ import {
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
+  validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
@@ -1954,6 +1969,8 @@ export function wireModuleSeams(
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_ORDER_SWEEPS_PLATFORM_JOB_ID); // GAP-032 — verbal pre-expiry / lab-results-overdue / completion-watcher org enumeration
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
+  registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
+  registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
   wireAmendmentSlaTenancy(); // GAP-118 — M5 §4.5 amendment SLA scan's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
@@ -2863,7 +2880,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
-  const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(process.env);
+  // GAP-146 — in production an unset M24_LAUNCH_GATEWAY_ENABLED means enabled (opt-out, like M23's switch).
+  const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(
+    withM24LaunchGatewayDefault(process.env) as NodeJS.ProcessEnv,
+  );
   const m24OregonGateway = m24LaunchConfig ? createM24OregonGateway(m24LaunchConfig) : null;
   const m24AdapterRegistry = new MedicaidAdapterRegistry([], m24OregonGateway);
   const m24SubmissionQueues =
@@ -4158,6 +4178,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+            platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
@@ -4211,6 +4232,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
+              // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+              ...(m23LaunchGateway
+                ? {
+                    macSandbox: {
+                      probe: async ({ macJurisdiction }) => {
+                        const up = await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
+                        return {
+                          ok: up,
+                          detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                        };
+                      },
+                    },
+                  }
+                : {}),
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -4289,10 +4324,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM26Routes(app, {
             readService: buildDrizzleM26ReadService(dbHandle.db),
-            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher, {
-              ...(m26PsrFiles ? { files: m26PsrFiles } : {}),
-              ...(m26PsrEnqueuer ? { enqueue: m26PsrEnqueuer.port } : {}),
-            }),
+            writeService: buildDrizzleM26WriteService(
+              dbHandle.db,
+              m26OutboxPublisher,
+              {
+                ...(m26PsrFiles ? { files: m26PsrFiles } : {}),
+                ...(m26PsrEnqueuer ? { enqueue: m26PsrEnqueuer.port } : {}),
+              },
+              async (tx, organizationId) => {
+                // GAP-149 — the M40 CCN binding: the org's CCN when exactly one provider entity carries one.
+                const rows = await (tx as DbClient)
+                  .select({ ccn: schema.providerEntities.ccn })
+                  .from(schema.providerEntities)
+                  .where(eq(schema.providerEntities.organizationId, organizationId))
+                  .limit(2);
+                const ccn = rows.length === 1 ? rows[0]?.ccn : null;
+                return typeof ccn === "string" && /^\d{6}$/.test(ccn) ? ccn : null;
+              },
+            ),
           });
           if (m26PsrEnqueuer)
             app.addHook("onClose", async () => void (await m26PsrEnqueuer.queue.close()));
@@ -4928,6 +4977,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (dbHandle) {
     app.addHook("onReady", async () => {
       await validateIpuAIBlock(getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort);
+    });
+    // GAP-137/141 — M21 D15, M23 D13 and M22 D7 AI-prohibited-zone boot validators, against the same real registry.
+    app.addHook("onReady", async () => {
+      const registry = getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort;
+      await validateSupplyAIBlock(registry);
+      await validateBillingAiBlockAtBoot(registry);
+      await validateDocumentsAIBlock(registry);
     });
   }
 
@@ -5615,6 +5671,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // buildM30WorkerDeps({ deathDischargeReader: getSeam(...) }) precedent). M23-gated rules SKIP (unbound).
       validationContext: buildM27ValidationContext({
         capResolver: m27CapSeamResolver,
+        // GAP-149 — the report's CCN selects its cap period (a two-CCN org otherwise read an arbitrary CCN's cap).
+        providerCcn: buildProviderEntityCcnResolver(dbHandle.db).ccnFor,
         providerEntity: () => getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
         // M23 billed-census + M25 actual interim payments + M12 drug-cost basis (opaque rich-seams; cast to
         // M27's consumer views). Each degrades to its deny-stub (rule SKIPS) until the producer binds live.
@@ -5726,9 +5784,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         ...m23CoreWorkerDeps,
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
-        jurisdictions: {
-          listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }],
-        },
+        // GAP-143 — the distinct MAC jurisdictions of the tenants' configured submitter credentials (was a
+        // hard-coded 'ngs_j6', so every other MAC's acks were never pulled).
+        jurisdictions: buildMacJurisdictionLister({
+          orgs: m23ActiveOrgs,
+          readOrg: buildDrizzleOrgMacJurisdictionReader(dbHandle.db),
+          onOrgError: (organizationId, err) =>
+            app.log.error({ err, organizationId }, "M23 MAC jurisdiction read failed for org"),
+        }),
       });
       m23Workers = [
         ...m23Workers,
@@ -7101,6 +7164,103 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M22 records-request expiry schedule registration failed");
     }
+    // GAP-140/141 — the M22 §4.8 workers. Best-effort M36 alerts ride the AlertEmitter seam (a throw never fails a
+    // tick; the durable record is the form_fill row / the next daily report / the failed job).
+    const m22AlertEmitter = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
+    };
+    // `form-render`: consumes `form_fill` rows in `queued` (the admin retry used to flip a row nothing consumed).
+    const m22FormRenderWorker = registerFormRenderWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      renderer: getDocumentRenderer(),
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_FORM_RENDER_PLATFORM_JOB_ID,
+        reason: "M22 form-render worker fan-out (active-org enumeration)",
+      }),
+      onTerminalFailure: async (alert) => {
+        await m22AlertEmitter.emit(alert.organizationId, {
+          eventType: "m22.document.render_failed",
+          payload: {
+            aggregateType: alert.aggregateType,
+            aggregateId: alert.aggregateId,
+            formFillId: alert.formFillId,
+            failureReason: alert.failureReason,
+            retryCount: alert.retryCount,
+          },
+          severity: "critical",
+          correlationId: `m22-form-render:${alert.formFillId}`,
+        });
+      },
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    // `retention-rotation`: the intake_artifact disposition+30d sweep (promote; report destruction-pending).
+    const m22RetentionRotationWorker = registerRetentionRotationWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+        reason: "M22 retention-rotation daily sweep fan-out (active-org enumeration)",
+      }),
+      onDestructionPending: async (alert) => {
+        await m22AlertEmitter.emit(alert.organizationId, {
+          eventType: "document.retention_destruction_pending",
+          payload: {
+            retentionClass: alert.retentionClass,
+            destructionPending: alert.destructionPending,
+            scheduledFor: alert.oldestDispositionAt,
+          },
+          severity: "info",
+          correlationId: `m22-retention:${alert.organizationId}:${alert.oldestDispositionAt.slice(0, 10)}`,
+        });
+      },
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    // `ai-block-validator`: the nightly re-run of the D7 boot check against the live registry.
+    const m22AiBlockValidatorWorker = registerAiBlockValidatorWorker({
+      connection: queueConnection,
+      registry: () => getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort,
+      onViolation: (message) => {
+        app.log.error({ event: "m22.ai_block.violation" }, message);
+      },
+    });
+    attachDlqAlertsToAll(
+      [m22FormRenderWorker, m22RetentionRotationWorker, m22AiBlockValidatorWorker],
+      "m22",
+    );
+    app.addHook("onClose", async () => {
+      await Promise.all([
+        m22FormRenderWorker.close(),
+        m22RetentionRotationWorker.close(),
+        m22AiBlockValidatorWorker.close(),
+      ]);
+    });
+    for (const [label, schedule] of [
+      ["form-render", scheduleFormRender],
+      ["retention-rotation", scheduleRetentionRotation],
+      ["ai-block-validator", scheduleAiBlockValidator],
+    ] as const) {
+      try {
+        const queue = await schedule(queueConnection);
+        app.addHook("onClose", async () => {
+          await queue.close();
+        });
+      } catch (err) {
+        app.log.error(err, `M22 ${label} schedule registration failed`);
+      }
+    }
     // M5 §4.5 `patient.snapshot_rebuild` — the quarterly full privacy-snapshot rebuild (D3 "quarterly full
     // rebuild job reconciles drift"). Same per-org fan-out as the sweeps above; per org it pages the patients
     // and re-derives each one in its own org-explicit `withOrgContext` transaction as the system (the officer
@@ -7613,6 +7773,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-160 (#248) — M26's CapConsumerStore, 8 of 9 `handlers-unbound` events now live-bound.
           buildM26UpstreamConsumer(
             createDrizzleCapConsumerStore(dbHandle.db, {
+              // GAP-150 — `m26.cap.accrual_recorded` rides the same tx as the accrual line.
+              outbox: m26OutboxPublisher,
               mbi: {
                 mbiNormalizedForPatient: (organizationId, patientId) =>
                   mbiNormalizedForPatient(dbHandle.db, organizationId, patientId),

@@ -8,15 +8,14 @@
 // resolves to deny. No Recipient ID is ever read (D12 / §3.6).
 //
 //   provider_entity_medicaid_billing_scope      — the target PE is in the actor's provider-entity set.
-//   medicaid_claim_in_billing_manager_caseload  — the claim is visible in the actor's billing scope.
+//   medicaid_claim_in_billing_manager_caseload  — the claim's provider entity is in the actor's scope (GAP-145).
 //   medicaid_override_role_eligible             — the actor holds the override role the failed rule requires.
 //   regulatory_required_rule_protected_medicaid — the rule is NOT regulatory-required (tenant may edit it).
-//   rb_arrangement_visible_in_scope             — the arrangement's PE is in the actor's provider-entity set.
+//   rb_arrangement_visible_in_scope             — the arrangement's (or R&B day's) PE is in the actor's set.
 //   state_trading_partner_credential_admin      — the PE is in scope AND the actor is a billing_manager/org_admin.
 //
-// DEFERRAL (the M25/M26 posture): the per-caseload narrowing of `medicaid_claim_in_billing_manager_caseload`
-// binds when the M5 CaseloadProvider seam binds; until then the org-RLS row-existence floor stands (a claim
-// not in the acting org always denies). Noted in P3; full caseload narrowing is a follow-up.
+// DEFERRAL: the per-PATIENT caseload narrowing of `medicaid_claim_in_billing_manager_caseload` binds when the
+// M5 CaseloadProvider seam binds; the provider-entity scope (GAP-145) is enforced now.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
@@ -53,6 +52,8 @@ export interface ReadingM24AbacResolver {
     claimId: string,
   ): Promise<{ providerEntityId: string; patientId: string } | null>;
   loadArrangementPe(ctx: M24AbacReadContext, arrangementId: string): Promise<string | null>;
+  /** GAP-145 — the provider entity an R&B day belongs to (null when absent / cross-tenant). */
+  loadRbDayPe(ctx: M24AbacReadContext, rbDayId: string): Promise<string | null>;
   loadResultRuleKey(ctx: M24AbacReadContext, resultId: string): Promise<string | null>;
 }
 
@@ -62,6 +63,9 @@ export const denyStubM24AbacResolver: ReadingM24AbacResolver = {
     return null;
   },
   async loadArrangementPe() {
+    return null;
+  },
+  async loadRbDayPe() {
     return null;
   },
   async loadResultRuleKey() {
@@ -91,6 +95,16 @@ export function buildDrizzleM24AbacResolver(db: DbClient): ReadingM24AbacResolve
           .select({ providerEntityId: A.providerEntityId })
           .from(A)
           .where(eq(A.id, arrangementId))
+          .limit(1);
+        return rows[0]?.providerEntityId ?? null;
+      });
+    },
+    async loadRbDayPe(ctx, rbDayId) {
+      return withOrgContext(db, ctx, async (tx) => {
+        const rows = await tx
+          .select({ providerEntityId: schema.rbDay.providerEntityId })
+          .from(schema.rbDay)
+          .where(eq(schema.rbDay.id, rbDayId))
           .limit(1);
         return rows[0]?.providerEntityId ?? null;
       });
@@ -153,9 +167,10 @@ export function buildM24AbacPredicates(
       const claimId = targetStr(target, "medicaidClaimId");
       if (!claimId) return false;
       const claim = await resolver.loadClaim(readContextOf(context), claimId);
-      // RLS already scoped the read to the acting org; the per-caseload narrowing binds with M5
-      // CaseloadProvider (deferred) — an org-visible claim is the floor.
-      return !!claim;
+      // GAP-145 — a claim of another provider entity is invisible even inside the same org: the claim's
+      // provider entity (loaded server-side, never from the request) must be in the actor's scope. The
+      // finer per-caseload (patient) narrowing still binds with the M5 CaseloadProvider (deferred).
+      return !!claim && peInScope(context, claim.providerEntityId);
     },
 
     medicaid_override_role_eligible: async (context, target) => {
@@ -179,6 +194,10 @@ export function buildM24AbacPredicates(
     rb_arrangement_visible_in_scope: async (context, target) => {
       const direct = targetStr(target, "providerEntityId");
       if (direct) return peInScope(context, direct);
+      const rbDayId = targetStr(target, "rbDayId");
+      if (rbDayId) {
+        return peInScope(context, await resolver.loadRbDayPe(readContextOf(context), rbDayId));
+      }
       const arrangementId = targetStr(target, "rbArrangementId");
       if (!arrangementId) return false;
       return peInScope(

@@ -7,7 +7,7 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
-import { ABAC_ARRANGEMENT, ABAC_BODY_PE, P, STEP_UP } from "./guards";
+import { ABAC_ARRANGEMENT, ABAC_BODY_PE, ABAC_RB_DAY, P, STEP_UP } from "./guards";
 import {
   CreateRbArrangementBody,
   EditRbArrangementBody,
@@ -175,7 +175,14 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   // 31 — override day status with reason
   app.patch(
     "/api/v1/rb-days/:id",
-    { preHandler: [P("medicaid.rb_day.override"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rb_day.override"),
+        ABAC_RB_DAY("medicaid.rb_day.override", "rb_arrangement_visible_in_scope"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const body = parse(OverrideRbDayBody, request.body);
       await writeService.overrideRbDay(writeActorOf(request), pParam(request, "id"), {

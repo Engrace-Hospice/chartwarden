@@ -18,13 +18,21 @@ export interface M24ReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /** GAP-145 — the actor's provider-entity scope, assembled server-side by M2 (never from the request). The
+   *  list reads narrow to it; an empty set sees nothing. */
+  readonly providerEntityIds?: readonly string[];
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
 export function actorOf(request: FastifyRequest): M24ReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    providerEntityIds: ctx.providerEntityIds ?? [],
+  };
 }
 
 /**
@@ -46,6 +54,7 @@ export function writeActorOf(request: FastifyRequest): M24WriteActor {
     organizationId: ctx.organizationId,
     userId: ctx.userId,
     roles: ctx.roles,
+    providerEntityIds: ctx.providerEntityIds ?? [],
     stepUpRecent: ctx.attributes?.stepUpRecent === true,
   };
 }

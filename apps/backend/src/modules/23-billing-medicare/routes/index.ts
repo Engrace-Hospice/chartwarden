@@ -13,6 +13,7 @@ import type { TransferNoticeService } from "../services/transfer-notice-service"
 import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
+import type { PlatformAdminRouteService } from "./platform-admin-service";
 import type { WageIndexRouteService } from "./wage-index-service";
 import type { M23WriteRouteService } from "./write-service";
 
@@ -79,12 +80,18 @@ export interface M23RouteServices {
   readonly rateTableService?: RateTableRouteService;
   /** F-211 — the tenant-entered wage-index service (absent ⇒ the /billing/wage-indexes routes are not mounted). */
   readonly wageIndexService?: WageIndexRouteService;
+  /** GAP-144 — the platform-admin commands (#41 platform-rules, #42 wage-index load); absent => not mounted. */
+  readonly platformAdminService?: PlatformAdminRouteService;
   /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
   readonly sequestrationService?: SequestrationPolicyRouteService;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
 }
 
+export {
+  type PlatformAdminRouteService,
+  buildDrizzlePlatformAdminService,
+} from "./platform-admin-service";
 export {
   type WageIndexRouteService,
   buildDrizzleWageIndexService,

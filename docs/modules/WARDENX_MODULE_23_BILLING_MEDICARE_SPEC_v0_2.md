@@ -1531,6 +1531,51 @@ All routes live under `apps/backend/src/modules/23-billing-medicare/routes/` and
 
 > **All PATCH / POST mutation routes carry `If-Match` for optimistic concurrency where the target carries a `version` column (§2.5). 412 Precondition Failed on stale.**
 
+#### 4.1.1 Implemented-route reconciliation (GAP-142 / GAP-144 — the code is the inventory of record)
+
+Architecture wins over this table where they disagree; where the *implementation* differs from the 42-row
+inventory above only in path shape, the shipped path below is binding (the OpenAPI document is generated from it).
+
+**Path-shape differences (same operation, shipped path).** Google-style `:verb` suffixes shipped as `/verb`
+sub-resources (Fastify's router treats `:` as a parameter marker), the collection nouns are plural, and the
+validation surface hangs off `/claims/:id`:
+
+| Spec # | Spec path | Shipped path |
+|---|---|---|
+| 1 | `POST /billing/claims:assemble` | `POST /billing/claims/assemble` |
+| 6-9 | `POST /billing/claims/:id:validate\|submit\|replace\|void` | `POST /billing/claims/:id/validate\|submit\|replace\|void` |
+| 6, 14, 15 | `POST /billing/claims/:id:validate`, `GET /billing/claims/:id/validation-runs`, `GET /billing/validation-runs/:runId` | `POST /claims/:id/validate`, `GET /claims/:id/validation-runs`, `GET /claims/:id/validation-runs/:runId` |
+| 16 | `POST /billing/validation-results/:resultId:override` | `POST /claims/:id/validation-runs/:runId/results/:resultId/override` |
+| 18-21 | `/billing/rule-config[/:ruleKey]`, `rule-config:custom` | `GET /billing/rule-configs`, `GET\|PATCH\|DELETE /billing/rule-configs/:id`, `POST /billing/rule-configs/custom` (keyed by overlay row `:id`, not `ruleKey`) |
+| 22-23 | `POST /billing/eligibility:check`, `GET /billing/eligibility` | `POST /billing/eligibility/check`, `GET /billing/eligibility` |
+| 24-31 | `/billing/noe-records…`, `/billing/notr-records…` (`:submit`, `:cancel`) | `/noe-records…`, `/notr-records…` (no `/billing` prefix; `/submit`, `/cancel` sub-resources) |
+| 32-33 | `/billing/sequestration-policy` | `GET\|POST /billing/sequestration-policies` (plural) |
+| 34-35 | `GET\|POST /billing/mac-credentials` | `GET\|POST /billing/mac-credentials`, plus `GET /billing/mac-credentials/:providerEntityId` |
+
+**Implemented routes with no inventory row** (previously present only in the generated OpenAPI):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/billing/rate-tables`, `/billing/rate-tables/:id`, `/billing/rate-tables/effective`, `/billing/rate-tables/national-reference` | Effective-dated hospice rate tables + the CMS national reference rates |
+| `POST` | `/billing/rate-tables`, `/billing/rate-tables/:id/supersede` | Tenant rate-table authoring and supersession (forward-dated, never in-place) |
+| `GET` | `/billing/wage-indexes`, `/billing/wage-indexes/:id`, `/billing/wage-indexes/effective` | Effective-dated wage-index factors by CBSA |
+| `POST` | `/billing/wage-indexes`, `/billing/wage-indexes/:id/supersede` | Wage-index row authoring and supersession |
+| `GET` | `/billing/sequestration-policies/:id`, `/billing/sequestration-policies/active`, `/billing/sequestration-policies/effective` | Policy reads by id / currently active / as-of date |
+| `POST` | `/billing/sequestration-policies/:id/supersede` | Supersede a policy row |
+| `GET` | `/billing/eligibility/latest`, `/billing/eligibility/hospice-periods` | Latest 271 per patient; hospice benefit-period view |
+| `GET` | `/billing/transfer-notices`, `/billing/transfer-notices/:id` | Transfer-notice (inter-hospice transfer) worklist and detail |
+| `POST` | `/billing/transfer-notices/:id/submit\|cancel\|void\|redraft\|correct-date\|confirm-prior-billing` | Transfer-notice lifecycle |
+| `POST` | `/noe-records/:id/correct`, `/notr-records/:id/correct` | NOE / NOTR correction (re-draft with a corrected date) |
+
+**Spec routes built after the first reconciliation (GAP-144), with their shipped paths and exact limits.**
+
+| # | Spec route | Shipped route | Notes |
+|---|---|---|---|
+| 17 | `GET /billing/validation-overrides` | same, `?providerEntityId=` required (the §4.7 `provider_entity_billing_scope` target) | Org-wide override audit view, newest first, keyset-paginated; filters `ruleKey`, `overrideMembershipId`, `appliedFrom/To`. Each row carries the claim id, rule key and the `m4_audit_event_id`. |
+| 36 | `POST /billing/mac-credentials/:id:test` | `POST /billing/mac-credentials/:providerEntityId/test` | `billing.mac_credential.admin` + provider scope + step-up + Idempotency-Key. **Limit:** the probe is the launch gateway's MAC **portal health probe**, not a synthetic 837I — the gateway contract has no test-interchange (ISA15=T) flag or MAC sandbox credential flow, so the secret is first exercised by the first real submission. Stamps `last_sandbox_test_at` only on success; 503 when no MAC gateway is configured. |
+| 41 | `POST /admin/billing/platform-rules` | same | `billing.rule_config.platform_admin` + step-up + Idempotency-Key. **Limit:** platform rules are code (`DEFAULT_BILLING_RULES`, each a `check` function shipped with a release); there is no dynamic platform-rule store and no engine that evaluates a stored rule DSL (not even tenant custom rules are evaluated today). The route validates the body, answers 409 `PLATFORM_RULE_EXISTS` for an existing key and an honest 501 `PLATFORM_RULES_ARE_CODE_DEFINED` for a new one — never a 2xx that registered nothing. Needs: a platform-rule table plus a DSL evaluation engine in `packages/billing`. |
+| 42 | `POST /admin/billing/wage-index:load` | `POST /admin/billing/wage-indexes/load` | Same gates. Body is the parsed CMS rows (`fiscalYearStarting`, `sourceReference`, `rows[{ccn, cbsaCode?, factorDecimal}]`, <= 7000); the server does **not** fetch `sourceReference` (no outbound fetch of a caller-supplied URI: SSRF/egress). All-or-nothing: every row is validated first (422 names up to 20 problems), then upserted in one transaction through the SECURITY DEFINER bridge `billing_platform_load_wage_index` (migration 0450), because the platform table is not writable by the app role. |
+
 ### 4.2 Representative TypeBox Schemas
 
 ```typescript

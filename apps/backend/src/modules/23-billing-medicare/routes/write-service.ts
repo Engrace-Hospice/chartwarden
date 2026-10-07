@@ -126,8 +126,40 @@ export interface M23WriteServicePorts {
    * that do not wire M6 — the check is then skipped.
    */
   readonly priorLiveEndedStay?: PriorLiveEndedStayPort;
+  /**
+   * GAP-144 (spec #36) — the MAC sandbox probe behind `POST /billing/mac-credentials/:providerEntityId/test`.
+   * Absent (no launch gateway configured) the route answers a typed 503 rather than a fabricated "ok".
+   */
+  readonly macSandbox?: MacSandboxProbePort;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
+}
+
+/**
+ * Probes a MAC jurisdiction's sandbox/portal for a configured credential. The shipped binding is the launch
+ * gateway's portal health probe (`MacPortalPort.probeHealth`): it proves the MAC portal for that jurisdiction is
+ * reachable from this deployment. It does NOT submit a synthetic test claim — the gateway contract has no
+ * "test interchange" flag (ISA15=T) and no MAC sandbox credentials flow yet, so a credential's secret is first
+ * exercised by the first real submission.
+ */
+export interface MacSandboxProbePort {
+  probe(input: {
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly macJurisdiction: string;
+  }): Promise<{ readonly ok: boolean; readonly detail: string }>;
+}
+
+/** The outcome of a MAC credential sandbox test (PHI-free; the secret is never involved). */
+export interface MacCredentialTestView {
+  readonly providerEntityId: string;
+  readonly macJurisdiction: string;
+  readonly ok: boolean;
+  readonly method: "portal_health_probe";
+  readonly detail: string;
+  readonly checkedAt: string;
+  /** Present after a successful probe (the new `last_sandbox_test_at`); null when the probe failed. */
+  readonly lastSandboxTestAt: string | null;
 }
 
 // ── accepted-view return shapes (async enqueue endpoints) ───────────────────────────────────────────────
@@ -372,4 +404,6 @@ export interface M23WriteRouteService {
     actor: M23WriteActor,
     args: UpsertMacCredentialArgs,
   ): Promise<MacCredentialView>;
+  /** GAP-144 (spec #36) — probe the MAC sandbox for a PE's credential; stamps `last_sandbox_test_at` on success. */
+  testMacCredential(actor: M23WriteActor, providerEntityId: string): Promise<MacCredentialTestView>;
 }
