@@ -14,6 +14,7 @@
   },
   "registeredModules": [
     "admin/01-ops",
+    "admin/23-billing-medicare",
     "admin/32-ai-platform",
     "admin/34-saas-platform",
     "admin/35-subscription-billing",
@@ -2271,6 +2272,14 @@
       "id": "admin.ops.outbox-detail",
       "path": "/admin/ops/outbox/:id",
       "permission": "member.manage"
+    },
+    {
+      "app": "admin",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "admin.billing.wage-index-load",
+      "path": "/admin/billing/wage-indexes/load",
+      "permission": "billing.rule_config.platform_admin"
     },
     {
       "app": "admin",

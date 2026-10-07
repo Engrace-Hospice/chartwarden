@@ -23,7 +23,7 @@
 // CROSS-MODULE FK POLICY: org/PE/location + the intra-M16 plan and contact parents are real FKs;
 // assignee_user_id (M2 membership) and rendered_document_id (M22, D14 outbox back-ref) are logical uuid.
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import {
   bereavementAnniversaryMark,
   bereavementOutreachKind,
@@ -55,6 +55,7 @@ export const bereavementOutreach = pgTable(
 
     kind: bereavementOutreachKind("kind").notNull(),
     status: bereavementOutreachStatus("status").notNull().default("scheduled"),
+    version: integer("version").notNull().default(0), // §2.5 If-Match (GAP-194, migration 0493)
     anniversaryMark: bereavementAnniversaryMark("anniversary_mark"), // NULL for ad-hoc touchpoints
 
     // D4 — copied from the plan at row creation and IMMUTABLE thereafter; the ceiling CHECK reads it.

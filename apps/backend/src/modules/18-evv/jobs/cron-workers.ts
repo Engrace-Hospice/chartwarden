@@ -1,11 +1,13 @@
 // apps/backend/src/modules/18-evv/jobs/cron-workers.ts — the LIVE BullMQ Worker + repeatable Queue construction
-// for M18's three cron-driven §4.8 workers (GAP-056; the M13 `jobs/cron-workers.ts` template). Each cron fans out
+// for M18's cron-driven §4.8 workers (incl. the `m18.dek-rotation` re-seal sweep) (GAP-056; the M13 `jobs/cron-workers.ts` template). Each cron fans out
 // over the active orgs and runs ONE org-explicit pass per org (every pass opens its own `withOrgContext` — a cron
 // tick is not a request). One org's failure never stops the orgs after it: failures are collected and rethrown
 // together so the job still fails (DLQ / alerting sees it) while every other tenant got its tick.
 import type { DbClient } from "@wardenx/db";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import type { EvvCoordsKeyProvider } from "../coords";
 import type { EvvWriteOutboxPort } from "../evv-route-service-db";
+import { createDrizzleCoordsResealStore, resealOrgCoords } from "./dek-rotation";
 import { runLateCheckSweepForOrg } from "./late-check-sweep";
 import type { EvvAggregatorDeps } from "./ports";
 import {
@@ -27,6 +29,8 @@ export interface M18CronDeps {
   readonly outbox: EvvWriteOutboxPort;
   readonly activeOrgs: M18ActiveOrgListPort;
   readonly aggregator: EvvAggregatorDeps;
+  /** M34's key ring — the `m18.dek-rotation` sweep re-seals under its current DEK version. */
+  readonly coordsKeys: EvvCoordsKeyProvider;
   readonly now?: () => Date;
 }
 
@@ -63,6 +67,7 @@ export function buildM18CronRunners(
     aggregator: deps.aggregator,
     now: deps.now,
   };
+  const resealStore = createDrizzleCoordsResealStore(deps.db);
   const fanOut = (label: string, perOrg: (organizationId: string) => Promise<unknown>) => () =>
     runForEachActiveOrg(label, deps.activeOrgs, perOrg);
   return {
@@ -75,10 +80,13 @@ export function buildM18CronRunners(
     aggregatorResponsePoller: fanOut("M18_AGGREGATOR_POLLER_TICK", (org) =>
       runAggregatorPollerForOrg(workerDeps, org),
     ),
+    dekRotation: fanOut("M18_DEK_ROTATION_SWEEP", (org) =>
+      resealOrgCoords({ store: resealStore, keys: deps.coordsKeys }, org),
+    ),
   };
 }
 
-/** Construct the three M18 cron Workers (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct the M18 cron Workers (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM18CronWorkers(deps: M18CronDeps): Worker[] {
   const runners = buildM18CronRunners(deps);
   return (Object.keys(M18_CRON_QUEUES) as (keyof typeof M18_CRON_QUEUES)[]).map(
@@ -105,7 +113,7 @@ export async function scheduleM18Jobs(connection: ConnectionOptions): Promise<Qu
         repeat: { pattern: M18_CRON_SCHEDULES[key] },
         priority: params.priority,
         attempts: params.attempts,
-        backoff: { type: "exponential", delay: params.backoffMs },
+        backoff: { type: params.backoffType, delay: params.backoffMs },
         removeOnComplete: true,
         removeOnFail: false,
       },

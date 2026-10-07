@@ -12,7 +12,8 @@
 //   • POST /orders/:id/recover-transmission/:rid/cancel    — `orders.transmission.recover`, no step-up.
 // `resend-transmission` (F-182) is deliberately NOT offered here: it re-runs the producer for an order REFUSED before any
 // message was built (`orm_refused:*` / `dispatch_refused:*`), and none of those is on this list — a held order may
-// already be at the lab, which is exactly why only the attested recovery applies to it.
+// already be at the lab, which is exactly why only the attested recovery applies to it. The resend lives on the order
+// detail instead (`resend-transmission.tsx`, offered by the server's `allowedActions.resend_transmission`).
 import type { ApiClient, operations } from "@wardenx/ui";
 import { stepUpRedirectFor } from "../../shell/step-up-redirect";
 

@@ -812,6 +812,8 @@ export const MODULES: ModuleDef[] = [
       "packages/x12-837-client",
       "apps/backend/src/modules/23-billing-medicare",
       "apps/web/src/modules/23-billing-medicare",
+      // §4.1 #42 platform-admin slice (the CMS wage-index load); M34 owns the apps/admin shell (ADR-0030)
+      "apps/admin/src/modules/23-billing-medicare",
     ],
     // +M1: the cap-projection adapter imports getSeam from apps/backend/src/bootstrap (the M1 SeamRegistry)
     // to resolve M26's CapProjectionProvider for the §11.A cap rules — a real compile edge (the M27 [1,…]

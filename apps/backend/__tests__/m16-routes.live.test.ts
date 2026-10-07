@@ -15,9 +15,12 @@
  * on an oversight route → 403; an ineligible assignee → 403), step-up (no fresh step-up → 403) and a
  * cross-tenant assertion on the app role.
  *
+ * The D6 confirm gate (`bereavementConsentActive`) is the PRODUCTION probe the composition root binds —
+ * M39's `createBereavementOutreachConsentProbe` over the Drizzle `ConsentEvaluator` — so every confirm here
+ * carries a real `bereavement_outreach_consent` row, and one test proves the gate: no consent, another
+ * tenant's consent and a revoked consent are all refused; the survivor's own signed consent confirms.
+ *
  * Seams M16 reads but does not own are bound to explicit test doubles and named here, not hidden:
- *   - `bereavementConsentActive` (D6 consent probe — production leaves it UNBOUND, see the report in
- *     the GAP-136 commit: confirm then fails closed for every contact) → a probe answering "consented";
  *   - M15's `VolunteerComplianceProvider` → a seam answering `isActive: true` for the volunteer only;
  *   - `step_up_recent` → a stub reading a header (the ceremony is proven by ac-03 / gap-003 live).
  * The 3-strikes unreachable PROPOSAL is stamped by an admin UPDATE (the cron that stamps it is proven by
@@ -40,6 +43,7 @@ import { createDbClient } from "@wardenx/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { TYPES as SEEDED_CONSENT_TYPES } from "../../../scripts/db/seed-consent-types";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
@@ -52,6 +56,8 @@ import {
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
 import { mountM16Routes } from "../src/modules/16-bereavement/routes/mount";
+import { createBereavementOutreachConsentProbe } from "../src/modules/39-consent/bereavement-outreach-consent-probe";
+import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -169,6 +175,36 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
         )
       ).rows[0].id as string;
     }
+    // M39's platform consent-type catalog (the shipped seed) — `consent_record.type_key` FKs to it.
+    for (const c of SEEDED_CONSENT_TYPES) {
+      await admin.query(
+        `INSERT INTO consent_type_catalog (
+           type_key, display_name_en, scope_discriminator, default_expiration_seconds,
+           max_term_seconds, capture_method_floor, reminder_cadence_floor, revocation_cascade_kind,
+           is_per_recipient, is_per_named_agent, is_post_mortem_eligible, requires_jurisdiction_code,
+           cfr_42_part_2_compliant, hipaa_164_508_compliant, body_text_template_key, m22_template_version
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         ON CONFLICT (type_key) DO NOTHING`,
+        [
+          c.typeKey,
+          c.displayNameEn,
+          c.scopeDiscriminator,
+          c.defaultExpirationSeconds,
+          c.maxTermSeconds,
+          c.captureMethodFloor,
+          c.reminderCadenceFloor,
+          c.revocationCascadeKind,
+          c.isPerRecipient,
+          c.isPerNamedAgent,
+          c.isPostMortemEligible,
+          c.requiresJurisdictionCode,
+          c.cfr42Part2Compliant,
+          c.hipaa164508Compliant,
+          c.bodyTextTemplateKey,
+          c.m22TemplateVersion,
+        ],
+      );
+    }
     await seedActor("don", ORG_A, "director_of_nursing");
     await seedActor("don2", ORG_A, "clinical_supervisor");
     await seedActor("counselor", ORG_A, "bereavement_counselor");
@@ -236,10 +272,11 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
           dekForOrg: async () => ({ version: "v1", key }),
           dekForOrgVersion: async () => ({ version: "v1", key }),
         }),
-        bereavementConsentActive: async () => ({
-          hasOutreachConsent: true,
-          isPrimaryCaregiverWithFamilyAccess: false,
-        }),
+        // D6 — the PRODUCTION probe, exactly as index.ts binds it, over M39's Drizzle-backed evaluator
+        // (RLS-scoped reads of consent_record as the app role). Every confirm below needs a real consent.
+        bereavementConsentActive: createBereavementOutreachConsentProbe(() =>
+          createDbConsentEvaluator(handle.db),
+        ),
       }),
     });
 
@@ -288,6 +325,34 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
   const contactVersion = async (id: string): Promise<number> =>
     (await admin.query("SELECT version FROM bereaved_contact WHERE id=$1", [id])).rows[0]
       .version as number;
+  const outreachVersion = async (id: string): Promise<number> =>
+    (await admin.query("SELECT version FROM bereavement_outreach WHERE id=$1", [id])).rows[0]
+      .version as number;
+  /** A post-death `bereavement_outreach_consent` (M39's own row shape) filed in `org` against the decedent
+   *  of `plan` — signed and in force, or signed then revoked. */
+  const seedOutreachConsent = async (
+    org: string,
+    plan: string,
+    status: "active" | "revoked" = "active",
+  ): Promise<string> => {
+    const patientId = (
+      await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [plan])
+    ).rows[0].patient_id as string;
+    const revoked = status === "revoked";
+    return (
+      await admin.query(
+        `INSERT INTO consent_record (organization_id,patient_id,type_key,scope_descriptor,grantor_kind,
+           effective_at,status,capture_method,capture_evidence_jsonb,created_by_id,version,
+           signed_at,signed_by_id,revoked_at,revoked_via_id)
+         VALUES ($1,$2,'bereavement_outreach_consent','{}'::jsonb,'bereaved_person_self',
+           now() - interval '1 day',$3,'typed_signature_in_app','{}'::jsonb,$4,1,
+           now() - interval '1 day',$4,
+           CASE WHEN $5::boolean THEN now() END, CASE WHEN $5::boolean THEN gen_random_uuid() END)
+         RETURNING id`,
+        [org, patientId, status, actors.don?.user, revoked],
+      )
+    ).rows[0].id as string;
+  };
   const outreachFor = async (contactId: string, status = "scheduled"): Promise<string[]> =>
     (
       await admin.query(
@@ -456,12 +521,108 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
         "POST",
         `/api/v1/bereavement/contacts/${contacts[name]}/confirm`,
         "counselor",
-        {},
+        { consentRecordId: await seedOutreachConsent(ORG_A, planId) },
       );
       expect(confirmed.statusCode).toBe(200);
       expect(confirmed.json().status).toBe("active");
     }
     expect(await events("m16.bereavement.contact_active")).toBe(4);
+  });
+
+  it("D6 confirm gate (production probe): no consent, another tenant's, a revoked one → refused; the survivor's own signed consent → confirmed", async () => {
+    const created = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${planId}/contacts`,
+      "counselor",
+      { displayName: "Olga Cousin", relationshipCode: "cousin" },
+    );
+    expect(created.statusCode).toBe(201);
+    const olga = created.json().contactId as string;
+    const confirm = (body: object) =>
+      call("POST", `/api/v1/bereavement/contacts/${olga}/confirm`, "counselor", body);
+    const refusedWith = async (body: object): Promise<void> => {
+      const res = await confirm(body);
+      expect(res.statusCode).toBe(422);
+      expect(JSON.stringify(res.json())).toContain("BEREAVEMENT_CONSENT_REQUIRED");
+    };
+
+    // no consent on file at all — fail closed
+    await refusedWith({});
+    // ORG_B's signed consent against the very same decedent id — invisible under RLS, so it does not count
+    await refusedWith({ consentRecordId: await seedOutreachConsent(ORG_B, planId) });
+    // the survivor's consent, signed then revoked
+    await refusedWith({ consentRecordId: await seedOutreachConsent(ORG_A, planId, "revoked") });
+    // another survivor's ACTIVE consent on the same decedent is not Olga's: none linked → refused
+    await seedOutreachConsent(ORG_A, planId);
+    await refusedWith({});
+    expect(
+      (await admin.query("SELECT status FROM bereaved_contact WHERE id=$1", [olga])).rows[0].status,
+    ).toBe("proposed");
+
+    const olgasConsent = await seedOutreachConsent(ORG_A, planId);
+    const signed = await confirm({ consentRecordId: olgasConsent });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().status).toBe("active");
+
+    // D6 — Olga's consent can never stand in for another survivor's (security review H1).
+    const rex = (
+      await call("POST", `/api/v1/bereavement/plans/${planId}/contacts`, "counselor", {
+        displayName: "Rex Neighbor",
+        relationshipCode: "friend",
+      })
+    ).json().contactId as string;
+    const borrowed = await call(
+      "POST",
+      `/api/v1/bereavement/contacts/${rex}/confirm`,
+      "counselor",
+      { consentRecordId: olgasConsent },
+    );
+    expect(borrowed.statusCode).toBe(409);
+    expect(JSON.stringify(borrowed.json())).toContain("CONSENT_RECORD_IN_USE");
+    expect(
+      (
+        await admin.query("SELECT status, consent_record_id FROM bereaved_contact WHERE id=$1", [
+          rex,
+        ])
+      ).rows[0],
+    ).toEqual({ status: "proposed", consent_record_id: null });
+    // ...nor be attached at add time,
+    const addedWithBorrowed = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${planId}/contacts`,
+      "counselor",
+      { displayName: "Rex Twin", relationshipCode: "friend", consentRecordId: olgasConsent },
+    );
+    expect(addedWithBorrowed.statusCode).toBe(409);
+    expect(JSON.stringify(addedWithBorrowed.json())).toContain("CONSENT_RECORD_IN_USE");
+    // ...and a contact already linked to a record cannot be confirmed on a different one.
+    const ownConsent = await seedOutreachConsent(ORG_A, planId);
+    const linked = (
+      await call("POST", `/api/v1/bereavement/plans/${planId}/contacts`, "counselor", {
+        displayName: "Lee Linked",
+        relationshipCode: "friend",
+        consentRecordId: ownConsent,
+      })
+    ).json().contactId as string;
+    const swapped = await call(
+      "POST",
+      `/api/v1/bereavement/contacts/${linked}/confirm`,
+      "counselor",
+      { consentRecordId: await seedOutreachConsent(ORG_A, planId) },
+    );
+    expect(swapped.statusCode).toBe(409);
+    expect(JSON.stringify(swapped.json())).toContain("CONSENT_RECORD_MISMATCH");
+    // Rex and Lee stay `proposed` (never active), so the rest of the walk's active counts are unchanged.
+    // Olga is a real active survivor now; the opt-out keeps the rest of the walk's counts unchanged.
+    expect(
+      (
+        await call("POST", `/api/v1/bereavement/contacts/${olga}/opt-out`, "counselor", {
+          optOutKind: "full",
+          sourceKind: "counselor_recorded",
+          reason: "Test contact for the D6 gate",
+        })
+      ).statusCode,
+    ).toBe(200);
   });
 
   it("contacts: opt-out then rescind; mark deceased; flag complicated grief (discipline self)", async () => {
@@ -565,57 +726,89 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       {},
     );
     expect(started.statusCode).toBe(200);
-    expect(started.json().status).toBe("in_progress");
+    expect(started.json()).toMatchObject({ status: "in_progress", version: 1 });
     expect(
       (await call("POST", `/api/v1/bereavement/outreach/${first}/start`, "counselor2", {}))
         .statusCode,
     ).toBe(404);
     const kind = started.json().kind as string;
-    const done = await call(
-      "POST",
-      `/api/v1/bereavement/outreach/${first}/complete`,
-      "counselor",
-      { kind, outcome: "engaged", contactResponded: true, notes: "Warm conversation." },
-      { "if-match": '"0"' },
-    );
+    const completeBody = {
+      kind,
+      outcome: "engaged",
+      contactResponded: true,
+      notes: "Warm conversation.",
+    };
+    const completeUrl = `/api/v1/bereavement/outreach/${first}/complete`;
+    // §2.5 (GAP-194) — the outreach row is versioned: no If-Match → 428, the pre-start version → 412
+    expect((await call("POST", completeUrl, "counselor", completeBody)).statusCode).toBe(428);
+    const stale = await call("POST", completeUrl, "counselor", completeBody, {
+      "if-match": '"0"',
+    });
+    expect(stale.statusCode).toBe(412);
+    expect(JSON.stringify(stale.json())).toContain("STALE_VERSION");
+    expect(await outreachVersion(first as string)).toBe(1);
+    const done = await call("POST", completeUrl, "counselor", completeBody, {
+      "if-match": `"${started.json().version}"`,
+    });
     expect(done.statusCode).toBe(200);
-    expect(done.json().status).toBe("completed");
+    expect(done.json()).toMatchObject({ status: "completed", version: 2 });
+    // the list (route 19) serves the same real version the write answered with
+    const listed = await call("GET", `/api/v1/bereavement/plans/${planId}/outreach`, "counselor");
+    const row = (listed.json().data as Array<{ outreachId: string; version: number }>).find(
+      (r) => r.outreachId === first,
+    );
+    expect(row?.version).toBe(2);
 
-    await call("POST", `/api/v1/bereavement/outreach/${second}/start`, "counselor", {});
-    const declined = await call(
+    const startedSecond = await call(
       "POST",
-      `/api/v1/bereavement/outreach/${second}/decline`,
+      `/api/v1/bereavement/outreach/${second}/start`,
       "counselor",
       {},
-      { "if-match": '"0"' },
+    );
+    const declineUrl = `/api/v1/bereavement/outreach/${second}/decline`;
+    expect(
+      (await call("POST", declineUrl, "counselor", {}, { "if-match": '"0"' })).statusCode,
+    ).toBe(412);
+    const declined = await call(
+      "POST",
+      declineUrl,
+      "counselor",
+      {},
+      { "if-match": `"${startedSecond.json().version}"` },
     );
     expect(declined.statusCode).toBe(200);
     expect(declined.json().status).toBe("declined");
 
-    const cancelled = await call(
-      "POST",
-      `/api/v1/bereavement/outreach/${third}/cancel`,
-      "counselor",
-      { reason: "Family travelling this month" },
-      { "if-match": '"0"' },
-    );
+    const cancelUrl = `/api/v1/bereavement/outreach/${third}/cancel`;
+    const cancelBody = { reason: "Family travelling this month" };
+    expect(
+      (await call("POST", cancelUrl, "counselor", cancelBody, { "if-match": '"7"' })).statusCode,
+    ).toBe(412);
+    const cancelled = await call("POST", cancelUrl, "counselor", cancelBody, {
+      "if-match": `"${await outreachVersion(third as string)}"`,
+    });
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().status).toBe("cancelled");
 
-    // the missed-slide is the cron's (m16-cron-workers.live); the late attempt is the route's
+    // the missed-slide is the cron's (m16-cron-workers.live, which bumps the version); the late attempt is
+    // the route's
     await admin.query(
-      "UPDATE bereavement_outreach SET status='missed', due_at=now() - interval '1 day', late_grace_until=now() + interval '3 days' WHERE id=$1",
+      "UPDATE bereavement_outreach SET status='missed', version=version+1, due_at=now() - interval '1 day', late_grace_until=now() + interval '3 days' WHERE id=$1",
       [fourth],
+    );
+    const lateUrl = `/api/v1/bereavement/outreach/${fourth}/late-attempt`;
+    expect((await call("POST", lateUrl, "counselor", {}, { "if-match": '"0"' })).statusCode).toBe(
+      412,
     );
     const late = await call(
       "POST",
-      `/api/v1/bereavement/outreach/${fourth}/late-attempt`,
+      lateUrl,
       "counselor",
       {},
-      { "if-match": '"0"' },
+      { "if-match": `"${await outreachVersion(fourth as string)}"` },
     );
     expect(late.statusCode).toBe(200);
-    expect(late.json().status).toBe("in_progress");
+    expect(late.json()).toMatchObject({ status: "in_progress", version: 2 });
     expect(await events("m16.bereavement.outreach_completed")).toBeGreaterThanOrEqual(2);
   });
 
@@ -625,7 +818,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       "POST",
       `/api/v1/bereavement/contacts/${nina}/confirm`,
       "counselor",
-      {},
+      { consentRecordId: await seedOutreachConsent(ORG_A, planId) },
     );
     expect(confirmed.statusCode).toBe(200);
     await call("POST", `/api/v1/bereavement/plans/${planId}/regenerate-schedule`, "counselor", {
@@ -634,16 +827,19 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     const rows = await outreachFor(nina);
     expect(rows.length).toBeGreaterThanOrEqual(3);
     for (const id of rows.slice(0, 3)) {
-      expect(
-        (await call("POST", `/api/v1/bereavement/outreach/${id}/start`, "counselor", {}))
-          .statusCode,
-      ).toBe(200);
+      const started = await call(
+        "POST",
+        `/api/v1/bereavement/outreach/${id}/start`,
+        "counselor",
+        {},
+      );
+      expect(started.statusCode).toBe(200);
       const nr = await call(
         "POST",
         `/api/v1/bereavement/outreach/${id}/no-response`,
         "counselor",
         {},
-        { "if-match": '"0"' },
+        { "if-match": `"${started.json().version}"` },
       );
       expect(nr.statusCode).toBe(200);
     }

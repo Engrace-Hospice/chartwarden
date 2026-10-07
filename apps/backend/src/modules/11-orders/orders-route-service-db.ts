@@ -197,6 +197,8 @@ type OrderRow = {
   cosignRequired: boolean;
   cosignStatus: string | null;
   transmissionStatus: string;
+  /** Detail-only: projected (and redacted) by `buildOrderWorkflowProjection`, never put on the list view. */
+  transmissionFailureReason: string | null;
   resultsStatus: string;
   replacesOrderId: string | null;
   triggeringAssessmentId: string | null;
@@ -267,7 +269,12 @@ const toOrderDetailView = (
         }
       : null,
   ...buildOrderWorkflowProjection(
-    { ...toOrderView(r), kindVersion: r.kindVersion, data: r.data },
+    {
+      ...toOrderView(r),
+      kindVersion: r.kindVersion,
+      data: r.data,
+      transmissionFailureReason: r.transmissionFailureReason,
+    },
     actor,
     cosignerRoleNeeded,
   ),
@@ -437,6 +444,7 @@ export function createDbOrderBackend(
         cosignRequired: OR.cosignRequired,
         cosignStatus: OR.cosignStatus,
         transmissionStatus: OR.transmissionStatus,
+        transmissionFailureReason: OR.transmissionFailureReason,
         resultsStatus: OR.resultsStatus,
         replacesOrderId: OR.replacesOrderId,
         triggeringAssessmentId: OR.triggeringAssessmentId,

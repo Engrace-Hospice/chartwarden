@@ -43,6 +43,10 @@ export const M16_ERROR_STATUS = {
   // Bereaved contact lifecycle (§2.3 / D6 / D9)
   RELATIONSHIP_NOT_IN_VALUE_SET: 422,
   BEREAVEMENT_CONSENT_REQUIRED: 422,
+  /** D6 — a confirm may not swap the consent record already linked on the contact. */
+  CONSENT_RECORD_MISMATCH: 409,
+  /** D6 — one survivor's consent never stands in for another's: a record backs at most one contact. */
+  CONSENT_RECORD_IN_USE: 409,
   OPT_OUT_REASON_REQUIRED: 422,
   OPT_OUT_CHANNEL_KINDS_REQUIRED: 422,
   OPT_OUT_RESCIND_WINDOW_EXPIRED: 409,

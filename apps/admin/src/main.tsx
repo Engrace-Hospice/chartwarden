@@ -6,11 +6,13 @@ import "./index.css"; // Tailwind v4 Preflight + the admin app's Lantern token l
 // apps/web/src/main.tsx). The one place that instantiates the typed API client, creates the admin screen
 // registry, and registers each platform-module slice into it before mounting the shell. Screens are
 // registered here, so AdminApp + the shell stay free of per-slice imports (ADR-0030). The ops (M1),
-// AI-platform (M32), SaaS-platform (M34) and subscription-billing (M35) slices register below.
+// AI-platform (M32), SaaS-platform (M34), subscription-billing (M35) and Medicare-billing platform-admin (M23)
+// slices register below.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminApp } from "./app";
 import { opsAdminScreens } from "./modules/01-ops";
+import { medicareBillingAdminScreens } from "./modules/23-billing-medicare";
 import { aiPlatformAdminScreens } from "./modules/32-ai-platform";
 import { saasPlatformAdminScreens } from "./modules/34-saas-platform";
 import { subscriptionAdminScreens } from "./modules/35-subscription-billing";
@@ -29,6 +31,7 @@ registry.register(opsAdminScreens); // WX-PR-020 (OPS-004) operator recovery —
 registry.register(saasPlatformAdminScreens); // M34 §5.1 platform-ops control plane (migrated from apps/web)
 registry.register(subscriptionAdminScreens); // M35 §5.2 subscription-billing (M35A-T04)
 registry.register(aiPlatformAdminScreens); // M32 §5.1 AI Safety Owner console (GAP-049)
+registry.register(medicareBillingAdminScreens); // M23 §4.1 #42 platform CMS wage-index load (GAP-144)
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error('Root element "#root" not found');

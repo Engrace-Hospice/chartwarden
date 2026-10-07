@@ -151,3 +151,43 @@ describe("ConsentEvaluator.evaluateBulk (§4.3 / M39-F15)", () => {
     expect(r.get("pat-2")?.allowed).toBe(true);
   });
 });
+
+describe("ConsentEvaluator.evaluate pinned to one record (`consentRecordId`, M16 D6)", () => {
+  const ctx = { sessionContext: { sessionClass: "staff" as const }, callerModule: "m16" };
+  const asOf = new Date(5000).toISOString();
+  const outreach = (over: Partial<StoredConsent>) =>
+    consent({ typeKey: "bereavement_outreach_consent", ...over });
+  const evaluatePinned = (consents: StoredConsent[], consentRecordId: string) =>
+    evalWith(consents).evaluate({
+      organizationId: ORG,
+      patientId: PAT,
+      consentType: "bereavement_outreach_consent",
+      consentRecordId,
+      asOf,
+      ...ctx,
+    });
+
+  it("allows only when THAT record is active — another person's active record does not count", async () => {
+    const consents = [
+      outreach({ id: "mine", status: "draft" }),
+      outreach({ id: "someone-else", status: "active", version: 2 }),
+    ];
+    const pinned = await evaluatePinned(consents, "mine");
+    expect(pinned).toMatchObject({ allowed: false, denyReason: "no_active_consent_on_file" });
+
+    const other = await evaluatePinned(consents, "someone-else");
+    expect(other).toMatchObject({ allowed: true, consentRecordId: "someone-else" });
+  });
+
+  it("a revoked pinned record denies consent_revoked; an unknown id denies no_active_consent_on_file", async () => {
+    const consents = [outreach({ id: "r1", status: "revoked" })];
+    expect(await evaluatePinned(consents, "r1")).toMatchObject({
+      allowed: false,
+      denyReason: "consent_revoked",
+    });
+    expect(await evaluatePinned(consents, "nope")).toMatchObject({
+      allowed: false,
+      denyReason: "no_active_consent_on_file",
+    });
+  });
+});

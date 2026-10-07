@@ -23,6 +23,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import {
@@ -114,6 +115,10 @@ export const bereavedContact = pgTable(
     // D6 — the M39 revocation cascade looks a contact up BY its consent record id.
     consentIdx: index("berv_contact_consent_idx")
       .on(t.consentRecordId)
+      .where(sql`consent_record_id IS NOT NULL`),
+    // D6 — a consent record backs at most one contact per tenant (migration 0495).
+    consentUniq: uniqueIndex("berv_contact_consent_uniq")
+      .on(t.organizationId, t.consentRecordId)
       .where(sql`consent_record_id IS NOT NULL`),
   }),
 );

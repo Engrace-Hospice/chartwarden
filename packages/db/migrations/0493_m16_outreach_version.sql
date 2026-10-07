@@ -1,0 +1,11 @@
+-- GAP-194 — §2.5 optimistic concurrency on `bereavement_outreach`.
+--
+-- The M16 outreach routes (complete / decline / no-response / cancel / late-attempt) require an `If-Match`
+-- header carrying the row version the caller read, but the table had no version column: every view answered
+-- `version: 0` and the write service could not compare anything, so two counselors acting on the same
+-- touchpoint silently last-write-won. The column mirrors `bereavement_plan.version` and
+-- `bereaved_contact.version` (integer, NOT NULL, starts at 0); every write to an outreach row bumps it — the
+-- routes, the schedule cancellations, the M8 / M22 / M39 / M5 consumers and the §4.9 crons — and a stale
+-- `If-Match` is refused 412 `STALE_VERSION`. Existing rows start at 0, which is the version every client has
+-- been sending. Additive; the table's FORCEd RLS, grants and write-audit trigger already cover the new column.
+ALTER TABLE "bereavement_outreach" ADD COLUMN IF NOT EXISTS "version" integer DEFAULT 0 NOT NULL;

@@ -102,6 +102,13 @@ export interface ConsentEvaluator {
     organizationId: string;
     patientId: string;
     consentType: ConsentTypeKey;
+    /**
+     * Pin the decision to ONE consent record. Without it the governing record is the patient's
+     * highest-version active record of the type; with it, only this record can allow. Required for a
+     * per-person type held many times per patient — `bereavement_outreach_consent` is one record per
+     * bereaved survivor (M16 D6), and one survivor's consent must never stand in for another's.
+     */
+    consentRecordId?: string;
     asOf?: string;
     sessionContext: ConsentSessionContext;
     callerModule: CallerModule;
@@ -304,6 +311,7 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
     organizationId: string;
     patientId: string;
     consentType: ConsentTypeKey;
+    consentRecordId?: string;
     asOfMs: number;
   }): Promise<{
     allowed: boolean;
@@ -313,12 +321,14 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
     scopeDescriptor?: unknown;
     denyReason?: ConsentDenyReason;
   }> {
-    const records = await store.consentsFor({
+    const all = await store.consentsFor({
       organizationId: args.organizationId,
       patientId: args.patientId,
       typeKey: args.consentType,
       asOfMs: args.asOfMs,
     });
+    const records =
+      args.consentRecordId === undefined ? all : all.filter((r) => r.id === args.consentRecordId);
     const governing = pickGoverning(records, args.asOfMs);
     if ("denyReason" in governing) return { allowed: false, denyReason: governing.denyReason };
     const record = governing.record;
@@ -386,6 +396,7 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
         organizationId: args.organizationId,
         patientId: args.patientId,
         consentType: args.consentType,
+        ...(args.consentRecordId === undefined ? {} : { consentRecordId: args.consentRecordId }),
         asOfMs: toMs(args.asOf),
       });
     },

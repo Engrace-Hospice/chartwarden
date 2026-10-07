@@ -114,6 +114,8 @@ export const evvEvent = pgTable(
       t.gpsQuality,
       t.eventAt,
     ),
+    // §4.8 `m18.dek-rotation` re-seal selection: "rows not sealed under the org's current DEK" (0494).
+    orgDekVersion: index("evv_event_org_dek_version_idx").on(t.organizationId, t.coordsDekVersion),
     // D2 active-pair invariant + D5 offline idempotency are partial-UNIQUE indexes that OMIT the
     // partition key (event_at), so they cannot live on the partitioned PARENT — declared plain here and
     // re-added as per-LEAF partial-UNIQUE in 0047 (`evv_event_active_visit_kind_uidx` ON

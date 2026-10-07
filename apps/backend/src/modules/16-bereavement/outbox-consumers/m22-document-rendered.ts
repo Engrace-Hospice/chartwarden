@@ -29,7 +29,7 @@ import { AUTO_COMPLETE_ON_RENDER_KINDS } from "@wardenx/bereavement";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { BereavementOutreachKind, IsoInstant } from "@wardenx/types";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { transitionBereavementOutreach } from "../lifecycle/index";
 import { runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -151,6 +151,9 @@ export function buildM16DocumentRenderedConsumer(deps: DocumentRenderedDeps) {
             .set({
               renderedDocumentId: facts.documentId,
               m22RenderedAt: renderedAt,
+              // §2.5 (GAP-194) — every outreach write bumps the row version, so a counselor holding the
+              // pre-render version gets 412 instead of overwriting the stamp / completion.
+              version: sql`${OUTREACH.version} + 1`,
               updatedAt: new Date(),
               ...(decision.complete
                 ? { status: "completed" as const, completedAt: renderedAt }

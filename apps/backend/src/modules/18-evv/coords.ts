@@ -23,6 +23,11 @@
 // payload that is not a valid coordinate all THROW (M18 spec §3.4: "decryption fails-loud if the per-tenant
 // DEK is missing at read time — no silent fallback").
 //
+// ROTATION. When M34 rotates the tenant DEK, the §4.8 `m18.dek-rotation` worker (`jobs/dek-rotation.ts`) opens
+// each non-legacy row under the version its envelope names and seals it again under the current one, through
+// migration 0494's SECURITY DEFINER `evv_reseal_coords` (the only path the append-only trigger allows to touch
+// these columns); the geofence snapshot moves in the same call so the two `_cipher` columns stay identical.
+//
 // LEGACY ROWS (pre-GAP-133, `base64("lat,lng")`). Prod is demo data and is fixed by reseeding, so there is
 // no backfill. Those rows are recognised by FORMAT — base64 has no '.', so it can never be mistaken for an
 // envelope — and read as `null` ("coordinate unavailable"): they are never decoded, never crash a read, and

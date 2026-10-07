@@ -98,7 +98,7 @@
 | ◻ unmatched | `node:eIAe7` | `screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md` | built · `web/24-billing-medicaid` |
 | ◻ unmatched | `node:eeoJ4` | `screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md` | built · `web/25-remittance` |
 | ◻ unmatched | `node:ejsox` | `screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md` | built · `admin/32-ai-platform` |
-| ◻ unmatched | `node:eq20w` | `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built · `web/23-billing-medicare` |
+| ◻ unmatched | `node:eq20w` | `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built · `web/23-billing-medicare` `admin/23-billing-medicare` |
 | ◻ unmatched | `node:fGKwq` | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | partial · `web/32-ai-platform` `web/02-identity` |
 | ◻ unmatched | `node:fRVXt` | `screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md` | built · `web/23-billing-medicare` `web/24-billing-medicaid` |
 | ◻ unmatched | `node:g7sGoJ` | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | built · `web/02-identity` |

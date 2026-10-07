@@ -295,6 +295,7 @@ async function cancelFutureOutreach(
       status: "cancelled",
       cancelledAt: new Date(at),
       cancellationReasonRedacted: reason,
+      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
       updatedAt: new Date(at),
     })
     .where(

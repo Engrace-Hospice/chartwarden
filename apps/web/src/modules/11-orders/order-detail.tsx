@@ -30,6 +30,8 @@ import {
   TRANSMISSION_TONE,
   stateLabel,
 } from "./orders-status";
+import { ResendResult, ResendTransmission } from "./resend-transmission";
+import { type ResendOutcome, transmissionFailureLabel } from "./resend-transmission-api";
 
 interface OrderDetailView {
   id: string;
@@ -43,6 +45,8 @@ interface OrderDetailView {
   cosignRequired: boolean;
   cosignStatus: "pending" | "attached" | null;
   transmissionStatus: string;
+  /** The server's failure token, or `null` when not failed / not visible to this reader (redacted server-side). */
+  transmissionFailureReason?: string | null;
   resultsStatus: string;
   verbalDeadlineAt: string | null;
   discontinuationReason: string | null;
@@ -77,6 +81,7 @@ interface OrderDetailView {
     complete: boolean;
     discontinue: boolean;
     correct: boolean;
+    resend_transmission?: boolean;
   };
 }
 
@@ -97,6 +102,7 @@ export function OrderDetail(): JSX.Element {
   const [verbalAttestation, setVerbalAttestation] = useState("");
   const [cosignAttestation, setCosignAttestation] = useState("");
   const [confirmDiscontinue, setConfirmDiscontinue] = useState(false);
+  const [resendOutcome, setResendOutcome] = useState<ResendOutcome | null>(null);
   const [verbalEffectiveAt, setVerbalEffectiveAt] = useState(() => {
     const now = new Date();
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
@@ -287,6 +293,17 @@ export function OrderDetail(): JSX.Element {
               <p style={hint}>
                 <output>Updating order…</output>
               </p>
+            ) : null}
+            {resendOutcome ? <ResendResult outcome={resendOutcome} /> : null}
+            {row.allowedActions.resend_transmission ? (
+              <ResendTransmission
+                orderId={row.id}
+                failureReason={row.transmissionFailureReason ?? null}
+                onResent={(outcome) => {
+                  setResendOutcome(outcome);
+                  void load();
+                }}
+              />
             ) : null}
             {row.allowedActions.edit ||
             row.allowedActions.request_signature ||
@@ -657,6 +674,12 @@ export function OrderDetail(): JSX.Element {
                     tone={TRANSMISSION_TONE[row.transmissionStatus] ?? "neutral"}
                   />
                 </dd>
+                {row.transmissionFailureReason ? (
+                  <>
+                    <dt style={dt}>Failure reason</dt>
+                    <dd style={dd}>{transmissionFailureLabel(row.transmissionFailureReason)}</dd>
+                  </>
+                ) : null}
                 <dt style={dt}>Results</dt>
                 <dd style={dd}>
                   <StatusPill

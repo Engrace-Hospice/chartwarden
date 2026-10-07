@@ -60537,6 +60537,7 @@ export interface operations {
                             labContactName: string | null;
                             labReference: string | null;
                         } | null;
+                        transmissionFailureReason: string | null;
                         allowedActions: {
                             edit: boolean;
                             request_signature: boolean;
@@ -60546,6 +60547,7 @@ export interface operations {
                             complete: boolean;
                             discontinue: boolean;
                             correct: boolean;
+                            resend_transmission: boolean;
                         };
                     };
                 };
@@ -60944,6 +60946,7 @@ export interface operations {
                                 labContactName: string | null;
                                 labReference: string | null;
                             } | null;
+                            transmissionFailureReason: string | null;
                             allowedActions: {
                                 edit: boolean;
                                 request_signature: boolean;
@@ -60953,6 +60956,7 @@ export interface operations {
                                 complete: boolean;
                                 discontinue: boolean;
                                 correct: boolean;
+                                resend_transmission: boolean;
                             };
                         };
                         recovery: {
@@ -61074,6 +61078,7 @@ export interface operations {
                                 labContactName: string | null;
                                 labReference: string | null;
                             } | null;
+                            transmissionFailureReason: string | null;
                             allowedActions: {
                                 edit: boolean;
                                 request_signature: boolean;
@@ -61083,6 +61088,7 @@ export interface operations {
                                 complete: boolean;
                                 discontinue: boolean;
                                 correct: boolean;
+                                resend_transmission: boolean;
                             };
                         };
                     };
@@ -61180,6 +61186,7 @@ export interface operations {
                                 labContactName: string | null;
                                 labReference: string | null;
                             } | null;
+                            transmissionFailureReason: string | null;
                             allowedActions: {
                                 edit: boolean;
                                 request_signature: boolean;
@@ -61189,6 +61196,7 @@ export interface operations {
                                 complete: boolean;
                                 discontinue: boolean;
                                 correct: boolean;
+                                resend_transmission: boolean;
                             };
                         };
                         recovery: {
@@ -61356,6 +61364,7 @@ export interface operations {
                                 labContactName: string | null;
                                 labReference: string | null;
                             } | null;
+                            transmissionFailureReason: string | null;
                             allowedActions: {
                                 edit: boolean;
                                 request_signature: boolean;
@@ -61365,6 +61374,7 @@ export interface operations {
                                 complete: boolean;
                                 discontinue: boolean;
                                 correct: boolean;
+                                resend_transmission: boolean;
                             };
                         };
                     };

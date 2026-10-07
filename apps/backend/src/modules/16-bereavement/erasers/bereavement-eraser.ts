@@ -223,7 +223,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
         const outreach = await tx
           .update(OUTREACH)
-          .set({ cancellationReasonRedacted: null })
+          .set({ cancellationReasonRedacted: null, version: sql`${OUTREACH.version} + 1` })
           .where(inArray(OUTREACH.planId, planIds))
           .returning({ id: OUTREACH.id });
 

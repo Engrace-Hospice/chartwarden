@@ -28,7 +28,7 @@ import { isClosedPlanStatus } from "@wardenx/bereavement";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { BereavementOutreachStatus, EncounterId, IsoInstant } from "@wardenx/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { transitionBereavementOutreach } from "../lifecycle/index";
 import { type EffectContext, runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -293,10 +293,12 @@ async function completeFromEncounter(
       status: completed.to,
       startedAt: outreach.startedAt ?? new Date(at),
       completedAt: new Date(at),
+      // §2.5 (GAP-194) — bump the row version so a counselor holding the pre-completion version gets 412.
+      version: sql`${OUTREACH.version} + 1`,
       updatedAt: new Date(),
     })
-    // No version column on bereavement_outreach (GAP-194): the status read above is the guard, so a
-    // concurrent counselor completion matches no row and this delivery rolls back to retry → no-op.
+    // The status read above is the guard: a concurrent counselor completion matches no row and this
+    // delivery rolls back to retry → no-op.
     .where(and(eq(OUTREACH.id, outreach.id), eq(OUTREACH.status, outreach.status)))
     .returning({ id: OUTREACH.id });
   if (!row) throw new Error("m16: the outreach changed underneath the encounter-signed completion");

@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 323 screens wired across web/portal/admin.
-- **admin**: 34 screen(s)
+**Coverage:** 113 documented screen specs · 42 module screen-sets registered · 324 screens wired across web/portal/admin.
+- **admin**: 35 screen(s)
 - **portal**: 14 screen(s)
 - **web**: 275 screen(s)
 
@@ -306,6 +306,7 @@
 | web | 40-mdm | `mdm.console` | `/mdm` | `mdm.physician.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
+| admin | 23-billing-medicare | `admin.billing.wage-index-load` | `/admin/billing/wage-indexes/load` | `billing.rule_config.platform_admin` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capability-detail` | `/admin/ai-platform/capabilities/:capabilityId` | `ai.capability.read` | ✅ |
 | admin | 32-ai-platform | `admin.ai-kill-switches` | `/admin/ai-platform/kill-switches` | `ai.kill_switch.read` | ✅ |

@@ -345,6 +345,9 @@ jobs:
               name: "M18 visit-cancelled/encounter-signed consumers",
               scripts: "test:m18:visit-cancelled-encounter-signed:live",
             }
+          # §4.8 `m18.dek-rotation` — coordinate re-seal under the current M34 DEK through migration 0494's
+          # SECURITY DEFINER (append-only trigger + RLS proven as the NOBYPASSRLS app role).
+          - { name: "M18 DEK-rotation re-seal", scripts: "test:m18:dek-rotation:live" }
           # F-043/#103: M20's field-safety visit consumers — the first producer `safety_check_in_schedule`
           # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
           # and the policy-version FK are all statements about Postgres, and because `readAnchors` reaches

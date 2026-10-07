@@ -248,7 +248,7 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m34.tenant.dek_rotation_completed",
     moduleOwner: "m34",
     description:
-      "A `Rotate DEK` action minted a new `tenant_key_ring` DEK version and re-wrapped under the active KEK (§4.9); M36 confirms to the platform security owner, M33 records the rotation.",
+      "A `Rotate DEK` action minted a new `tenant_key_ring` DEK version and re-wrapped under the active KEK (§4.9); M36 confirms to the platform security owner, M33 records the rotation, M18 re-seals its EVV coordinates under the new version (M18 §4.8 `m18.dek-rotation`).",
     payloadSchema: Type.Object({
       tenantAccountId: id,
       orgId: id,
@@ -256,7 +256,7 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       toVersion: id,
       rotatedAt: isoInstant,
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m18"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
