@@ -64,8 +64,8 @@ export {
 
 // §4.4 — the upstream outbox consumers (m23.claim.rejected, m18.evv.aggregator_rejected,
 // m22.document.rendered → denial seed / EVV back-link / document back-reference). The pure handlers + the
-// frozen subscription-map + `registerM25Consumers` (the boot dispatcher forward-declares one binding per
-// topic; no live inbound relay loop exists yet — the identical posture every module is in, RULE 3(d)).
+// frozen subscription-map (the former `registerM25Consumers` registrar is deleted, GAP-205; live
+// topics bind through `./outbox-consumers/*`).
 export {
   type DenialSeedStore,
   type DenialOpenedEmission,
@@ -80,7 +80,6 @@ export {
   M25_SUBSCRIPTION_MAP,
   M25_UPSTREAM_SUBSCRIPTIONS,
   dispatchM25UpstreamEvent,
-  registerM25Consumers,
 } from "./consumers/index";
 
 // §4.8 — the nightly cron handlers + the LIVE BullMQ cron-worker boot surface. The composition root

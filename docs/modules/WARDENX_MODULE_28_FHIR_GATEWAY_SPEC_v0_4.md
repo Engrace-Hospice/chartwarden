@@ -711,6 +711,10 @@ export const fhirInboundResource = pgTable('fhir_inbound_resource', {
   decisionRationale: text('decision_rationale'),             // ≥40 chars on reject
   acceptedAggregateId: uuid('accepted_aggregate_id'),
   validationErrors: jsonb('validation_errors'),
+  // GAP-198 (migration 0490): the WardenX patient the proposal is about, stamped at staging from the resource
+  // (MedicationStatement.subject.reference / Patient.id); NULL = no chart (new-patient intake) and, for a
+  // patient-scoped type, DENY in `fhir_inbound_owner_module_match`'s `caseload_or_scope` arm.
+  subjectPatientId: uuid('subject_patient_id'),
   payloadEraseScheduledAt: timestamp('payload_erase_scheduled_at', { withTimezone: true }),
 }, (t) => ({
   orgIdx: index('fhir_inbound_org_idx').on(t.organizationId, t.proposalStatus, t.proposedAt),

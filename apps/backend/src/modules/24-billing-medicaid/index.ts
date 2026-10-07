@@ -73,7 +73,6 @@ export {
   createInMemoryM24ConsumerStore,
   dispatchM24UpstreamEvent,
   M24_UPSTREAM_SUBSCRIPTIONS,
-  registerM24Consumers,
 } from "./consumers/index";
 
 // §4.9 — the BullMQ queue/cron catalog + the worker/schedule construction (boot wiring deferred — adapter).

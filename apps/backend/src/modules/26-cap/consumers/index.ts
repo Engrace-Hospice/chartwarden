@@ -1,9 +1,9 @@
 // apps/backend/src/modules/26-cap/consumers — the M26 §4.4 upstream-consumer register surface (the M25/M27
 // consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts) and exposes
-// `registerM26Consumers`. GAP-205: `registerM26Consumers` and `createInMemoryCapConsumerStore` are DEAD
-// SCAFFOLDING — nothing outside tests calls them. The LIVE M26 bindings are the `OutboxConsumerBinding`s in
-// `./outbox-binding.ts` over the Drizzle `CapConsumerStore` (`./drizzle-store.ts`), wired from
-// apps/backend/src/index.ts; `arch:outbox-bindings` proves them, not this file.
+// `dispatchM26UpstreamEvent`. GAP-205: the former `registerM26Consumers` registrar is deleted (dead
+// scaffolding). The LIVE M26 bindings are the `OutboxConsumerBinding`s in `./outbox-binding.ts` over the
+// Drizzle `CapConsumerStore` (`./drizzle-store.ts`), wired from apps/backend/src/index.ts and proven by
+// `arch:outbox-bindings`; `createInMemoryCapConsumerStore` below is test-only.
 import {
   type CapConsumerStore,
   handleClaimReversed,
@@ -13,7 +13,6 @@ import {
   handleTransfer,
 } from "./handlers";
 import {
-  type M26SubscribedTopic,
   M26_SUBSCRIPTION_MAP,
   M26_UPSTREAM_SUBSCRIPTIONS,
 } from "./subscription-map";
@@ -66,26 +65,4 @@ export async function dispatchM26UpstreamEvent(
     default:
       return { handled: false };
   }
-}
-
-/**
- * Register the M26 §4.4 upstream consumers (the M25 register-surface mirror). The boot dispatcher calls this
- * with its `bind(topic, handler)` registrar + the live store; each subscription is bound to a closure over
- * {@link dispatchM26UpstreamEvent}. NOT CALLED by the composition root (GAP-205): the live bindings are in
- * `./outbox-binding.ts`; this only returns the forward-declared subscriptions.
- */
-export function registerM26Consumers(options?: {
-  readonly store?: CapConsumerStore;
-  readonly bind?: (
-    topic: string,
-    handler: (payload: Record<string, unknown>) => Promise<M26ConsumeReport>,
-  ) => void;
-}): readonly M26SubscribedTopic[] {
-  const { store, bind } = options ?? {};
-  if (bind && store) {
-    for (const topic of M26_UPSTREAM_SUBSCRIPTIONS) {
-      bind(topic, (payload) => dispatchM26UpstreamEvent({ topic, payload }, store));
-    }
-  }
-  return M26_UPSTREAM_SUBSCRIPTIONS;
 }

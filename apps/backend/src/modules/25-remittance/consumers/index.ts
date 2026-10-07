@@ -1,10 +1,6 @@
 // apps/backend/src/modules/25-remittance/consumers — the M25 §4.4 upstream-consumer register surface (the
 // M27/M23 consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts) and
-// exposes `registerM25Consumers`. GAP-205: `registerM25Consumers` is DEAD SCAFFOLDING — nothing outside its
-// own tests calls it and no boot dispatcher takes a registrar. The LIVE M25 consumer bindings are the
-// `OutboxConsumerBinding`s in `../outbox-consumers/` (see `live-binding.ts`), wired from
-// apps/backend/src/index.ts; `arch:outbox-bindings` is what proves them, not this file. Do not describe
-// this register surface as a call site.
+// exposes `dispatchM25UpstreamEvent`. GAP-205: the former `registerM25Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
 import {
   DENY_DENIAL_TERMINOLOGY,
   type DenialOpenedEmission,
@@ -82,26 +78,4 @@ export async function dispatchM25UpstreamEvent(
     default:
       return { handled: false };
   }
-}
-
-/**
- * Register the M25 §4.4 upstream consumers (the M27 register-surface mirror). The boot dispatcher calls this
- * with its `bind(eventName, handler)` registrar + the live {@link M25ConsumerPorts}; each subscription is
- * bound to a closure over {@link dispatchM25UpstreamEvent}. NOT CALLED by the composition root (GAP-205): the
- * live bindings are `../outbox-consumers/*`; this only returns the forward-declared subscriptions.
- */
-export function registerM25Consumers(options?: {
-  readonly ports?: M25ConsumerPorts;
-  readonly bind?: (
-    topic: string,
-    handler: (payload: Record<string, unknown>) => Promise<M25ConsumeReport>,
-  ) => void;
-}): readonly string[] {
-  const { ports, bind } = options ?? {};
-  if (bind && ports) {
-    for (const topic of M25_UPSTREAM_SUBSCRIPTIONS) {
-      bind(topic, (payload) => dispatchM25UpstreamEvent({ topic, payload }, ports));
-    }
-  }
-  return M25_UPSTREAM_SUBSCRIPTIONS;
 }

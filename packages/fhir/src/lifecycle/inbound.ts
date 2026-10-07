@@ -97,3 +97,45 @@ export function fhirInboundEntryErasesPayload(status: FhirInboundStatus): boolea
 export function fhirInboundOwnerModuleFor(resourceType: string): FhirInboundOwnerModule | null {
   return FHIR_KNOWN_INBOUND_OWNER[resourceType] ?? null;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * GAP-198 — the WardenX patient an inbound proposal is ABOUT, read once at staging so the
+ * `caseload_or_scope` gate never has to open the (denylisted) payload at decision time.
+ *
+ *   - `MedicationStatement`: `subject.reference` of the form `Patient/<uuid>`.
+ *   - `Patient`: the resource's own `id` when it is a WardenX uuid (an update to an existing chart).
+ *     A Patient proposal without one is a NEW person: there is no chart to scope to, so it is `null`.
+ *
+ * Anything that is not a well-formed uuid is `null`; callers must treat `null` on a patient-scoped
+ * resource type (see {@link fhirInboundIsPatientScoped}) as DENY, never as "unscoped".
+ */
+export function fhirInboundSubjectPatientId(
+  resourceType: string,
+  payload: Record<string, unknown>,
+): string | null {
+  let candidate: unknown = null;
+  if (resourceType === "Patient") {
+    candidate = payload.id;
+  } else if (resourceType === "MedicationStatement") {
+    const subject = payload.subject;
+    const reference =
+      typeof subject === "object" && subject !== null
+        ? (subject as { reference?: unknown }).reference
+        : null;
+    if (typeof reference === "string" && reference.startsWith("Patient/")) {
+      candidate = reference.slice("Patient/".length);
+    }
+  }
+  return typeof candidate === "string" && UUID_RE.test(candidate) ? candidate.toLowerCase() : null;
+}
+
+/**
+ * True when every proposal of this type must resolve to a patient to be reviewable. `Patient` is the
+ * exception: with no resolvable id it is a new-patient intake, gated by the owner's `patient.create`
+ * permission alone.
+ */
+export function fhirInboundIsPatientScoped(resourceType: string): boolean {
+  return resourceType === "MedicationStatement";
+}

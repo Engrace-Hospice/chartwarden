@@ -16,7 +16,13 @@
  */
 @import "tailwindcss";
 
+/* GAP-207 — the shared `wx-*` list chrome (KPI strip, DataTable card, WorkQueue slots, list table). */
+@import "../../../packages/ui/src/web/styles/list-chrome.css";
+
 :root {
+  /* GAP-207: tokens read by the shared list chrome (packages/ui/src/web/styles/list-chrome.css). */
+  --color-card-border: var(--color-outline-variant);
+  --color-focus-ring: var(--color-primary);
   /* Brand — twilight indigo */
   --color-primary: #3b45a8;
   --color-primary-strong: #2b338a;
