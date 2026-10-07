@@ -117,7 +117,7 @@
       "mutatingNoBody": 0
     },
     "25-remittance": {
-      "routes": 32,
+      "routes": 33,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -182,7 +182,7 @@
       "mutatingNoBody": 0
     },
     "38-terminology": {
-      "routes": 14,
+      "routes": 19,
       "deficit": 0,
       "mutatingNoBody": 0
     },

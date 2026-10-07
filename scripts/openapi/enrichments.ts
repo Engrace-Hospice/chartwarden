@@ -851,6 +851,7 @@ import {
   AppealDecideRequestSchema as M25AppealDecideRequestSchema,
   // detail responses
   AppealDetailSchema as M25AppealDetailSchema,
+  AppealSubmitLateGoodCauseRequestSchema as M25AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema as M25AppealSubmitRequestSchema,
   // list/page responses
   AppealSummaryPageSchema as M25AppealSummaryPageSchema,
@@ -7364,6 +7365,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/appeals/:id/submit": {
     summary: "Submit an appeal to the payer (within-deadline + step-up, §4.1)",
     body: M25AppealSubmitRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/submit-late-good-cause": {
+    summary:
+      "Submit an appeal past its deadline as a late good-cause filing (redetermination/reconsideration only, step-up, §4.1 / M25-F03)",
+    body: M25AppealSubmitLateGoodCauseRequestSchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/appeals/:id/decide": {

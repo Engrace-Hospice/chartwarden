@@ -985,6 +985,7 @@ The eraser registration is the M4 destruction-cert workflow's contract. The comp
 | 20 | POST | `/api/v1/denials/:id/appeals` | `appeal.create` | Spawn appeal_case from denial; default tier=redetermination (or next-tier if prior decided) | no | 201 |
 | 21 | PATCH | `/api/v1/appeals/:id/attach` | `appeal.attach_document` | Attach a document (M22 doc id) | no | 200 |
 | 22 | POST | `/api/v1/appeals/:id/submit` | `appeal.submit` + `appeal_within_deadline` | draft → submitted; emits M22 packet-render request if not yet rendered | **yes** | 200 |
+| 22a | POST | `/api/v1/appeals/:id/submit-late-good-cause` | `appeal.submit` + step-up (no `appeal_within_deadline`) | draft → submitted past T-0, marked `lateGoodCauseFiling`; redetermination / reconsideration only (42 CFR §405.942(b)); body carries `goodCauseJustification` ≥ 40 chars; 409 `NOT_LATE` before T-0, 409 `GOOD_CAUSE_NOT_AVAILABLE` at ALJ/Council/Federal-Court (M25-F03, GAP-147) | **yes** | 200 |
 | 23 | PATCH | `/api/v1/appeals/:id/ack` | `appeal.read` (system or actor) | submitted → under_review on MAC ack receipt | no | 200 |
 | 24 | POST | `/api/v1/appeals/:id/decide` | `appeal.decide` + reason ≥40 chars | under_review → decided with outcome | no | 200 |
 | 25 | POST | `/api/v1/appeals/:id/withdraw` | `appeal.withdraw` + reason ≥40 chars | (any non-closed) → withdrawn | no | 200 |

@@ -336,3 +336,11 @@ export {
   createSignedUrlService,
 } from "./routes/signed-url-service";
 export { M22_OUTBOX_EVENTS, M22_DOCUMENT_RENDERED_EVENT } from "./events-by-m22";
+
+// GAP-141 — M22 D7 AI-boundary boot validator (db-present onReady hook in the composition root).
+export {
+  DOCUMENTS_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
+  type DocumentsAiPromptRegistryPort,
+  DocumentsAIBlockViolation,
+  validateDocumentsAIBlock,
+} from "./ai-block";

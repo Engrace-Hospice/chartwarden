@@ -1531,6 +1531,51 @@ All routes live under `apps/backend/src/modules/23-billing-medicare/routes/` and
 
 > **All PATCH / POST mutation routes carry `If-Match` for optimistic concurrency where the target carries a `version` column (§2.5). 412 Precondition Failed on stale.**
 
+#### 4.1.1 Implemented-route reconciliation (GAP-142 / GAP-144 — the code is the inventory of record)
+
+Architecture wins over this table where they disagree; where the *implementation* differs from the 42-row
+inventory above only in path shape, the shipped path below is binding (the OpenAPI document is generated from it).
+
+**Path-shape differences (same operation, shipped path).** Google-style `:verb` suffixes shipped as `/verb`
+sub-resources (Fastify's router treats `:` as a parameter marker), the collection nouns are plural, and the
+validation surface hangs off `/claims/:id`:
+
+| Spec # | Spec path | Shipped path |
+|---|---|---|
+| 1 | `POST /billing/claims:assemble` | `POST /billing/claims/assemble` |
+| 6-9 | `POST /billing/claims/:id:validate\|submit\|replace\|void` | `POST /billing/claims/:id/validate\|submit\|replace\|void` |
+| 6, 14, 15 | `POST /billing/claims/:id:validate`, `GET /billing/claims/:id/validation-runs`, `GET /billing/validation-runs/:runId` | `POST /claims/:id/validate`, `GET /claims/:id/validation-runs`, `GET /claims/:id/validation-runs/:runId` |
+| 16 | `POST /billing/validation-results/:resultId:override` | `POST /claims/:id/validation-runs/:runId/results/:resultId/override` |
+| 18-21 | `/billing/rule-config[/:ruleKey]`, `rule-config:custom` | `GET /billing/rule-configs`, `GET\|PATCH\|DELETE /billing/rule-configs/:id`, `POST /billing/rule-configs/custom` (keyed by overlay row `:id`, not `ruleKey`) |
+| 22-23 | `POST /billing/eligibility:check`, `GET /billing/eligibility` | `POST /billing/eligibility/check`, `GET /billing/eligibility` |
+| 24-31 | `/billing/noe-records…`, `/billing/notr-records…` (`:submit`, `:cancel`) | `/noe-records…`, `/notr-records…` (no `/billing` prefix; `/submit`, `/cancel` sub-resources) |
+| 32-33 | `/billing/sequestration-policy` | `GET\|POST /billing/sequestration-policies` (plural) |
+| 34-35 | `GET\|POST /billing/mac-credentials` | `GET\|POST /billing/mac-credentials`, plus `GET /billing/mac-credentials/:providerEntityId` |
+
+**Implemented routes with no inventory row** (previously present only in the generated OpenAPI):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/billing/rate-tables`, `/billing/rate-tables/:id`, `/billing/rate-tables/effective`, `/billing/rate-tables/national-reference` | Effective-dated hospice rate tables + the CMS national reference rates |
+| `POST` | `/billing/rate-tables`, `/billing/rate-tables/:id/supersede` | Tenant rate-table authoring and supersession (forward-dated, never in-place) |
+| `GET` | `/billing/wage-indexes`, `/billing/wage-indexes/:id`, `/billing/wage-indexes/effective` | Effective-dated wage-index factors by CBSA |
+| `POST` | `/billing/wage-indexes`, `/billing/wage-indexes/:id/supersede` | Wage-index row authoring and supersession |
+| `GET` | `/billing/sequestration-policies/:id`, `/billing/sequestration-policies/active`, `/billing/sequestration-policies/effective` | Policy reads by id / currently active / as-of date |
+| `POST` | `/billing/sequestration-policies/:id/supersede` | Supersede a policy row |
+| `GET` | `/billing/eligibility/latest`, `/billing/eligibility/hospice-periods` | Latest 271 per patient; hospice benefit-period view |
+| `GET` | `/billing/transfer-notices`, `/billing/transfer-notices/:id` | Transfer-notice (inter-hospice transfer) worklist and detail |
+| `POST` | `/billing/transfer-notices/:id/submit\|cancel\|void\|redraft\|correct-date\|confirm-prior-billing` | Transfer-notice lifecycle |
+| `POST` | `/noe-records/:id/correct`, `/notr-records/:id/correct` | NOE / NOTR correction (re-draft with a corrected date) |
+
+**Spec routes deliberately NOT built (deferred, GAP-144).**
+
+| # | Route | Reason / trigger |
+|---|---|---|
+| 17 | `GET /billing/validation-overrides` | Org-wide override audit view. The per-claim override history is available through `GET /claims/:id/validation-runs/:runId`; the org-wide compliance read lands with the M33 reporting consumer that needs it. |
+| 36 | `POST /billing/mac-credentials/:id:test` | Sends a synthetic claim to the MAC sandbox. Needs the real launch gateway sandbox endpoint (M23 launch gateway is deny-stubbed until the MAC onboarding); credentials are tested at first real submission today. |
+| 41 | `POST /admin/billing/platform-rules` | Not built: the platform rule catalog is code-defined and shipped with a release; there is no platform-admin console that needs an HTTP registration path yet. Deferred until that console exists. |
+| 42 | `POST /admin/billing/wage-index:load` | Not built: no CMS-file loader exists. Wage-index rows are authored through `POST /billing/wage-indexes` and `/supersede` (see above); the bulk loader is deferred until the annual-load workflow is staffed. |
+
 ### 4.2 Representative TypeBox Schemas
 
 ```typescript

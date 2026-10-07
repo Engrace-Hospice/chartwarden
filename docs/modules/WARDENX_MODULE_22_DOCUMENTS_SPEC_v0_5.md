@@ -735,8 +735,8 @@ apps/backend/src/modules/22-documents/         # Routes + services + consumers
 │   ├── extraction-pass.worker.ts               # BullMQ: classifier_complete -> extraction_complete
 │   ├── vision-verification.worker.ts           # BullMQ: high-risk fields
 │   ├── discrepancy-detection.worker.ts         # BullMQ: cross-source + chart-existing
-│   ├── retention-rotation.worker.ts            # cron: intake_artifact disposition+30d sweep
-│   └── ai-block-validator.cron.ts              # boot-time + nightly check vs M32 prompt registry
+│   ├── retention-rotation.worker.ts            # cron: intake_artifact disposition+30d sweep  [deferred, GAP-141]
+│   └── ai-block-validator.cron.ts              # boot-time + nightly check vs M32 prompt registry  [boot half built as ai-block.ts; nightly deferred, GAP-141]
 ├── consumers/                                  # outbox subscribers
 │   ├── m5-amendment-denied.ts                  # render Statement of Disagreement
 │   ├── m5-patient-merged.ts                    # document patient_id redirect
@@ -755,7 +755,7 @@ apps/backend/src/modules/22-documents/         # Routes + services + consumers
 │   ├── m39-consent-document-render-requested.ts # forward seam; deny-stub until M39 lands real path
 │   ├── m4-legal-hold-applied.ts
 │   ├── m4-legal-hold-released.ts
-│   └── minio-access-log.ts                     # MinIO access-log webhook for download confirmation
+│   └── minio-access-log.ts                     # MinIO access-log webhook for download confirmation  [deferred, GAP-141]
 ├── db/
 │   ├── schema/
 │   │   ├── documents.ts
@@ -1921,9 +1921,9 @@ The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` pre
 | `vision-verification` | candidate with `risk_level='high'` | call `DocLensVisionVerifier`; set `vision_verified`, `vision_disagreement` | 2 | 3 | exponential 30 s / 2 min / 10 min | `vision-verification-dlq`; mark candidates `vision_failed`; reviewer sees warning badge; M36 warn |
 | `discrepancy-detection` | extraction_job exits `verifying` | detect cross-source + chart-existing disagreements; create `extraction_discrepancy` rows; emit M36 alerts | 4 | 3 | exponential 30 s / 2 min / 10 min | `discrepancy-detection-dlq`; batch halted at discrepancy stage; M36 warn |
 | `chart-writeback-dispatch` | `extraction_review.complete` | emit one `m22.extraction.commit_requested` per approved candidate; insert `extraction_provenance` rows | 1 (sequential per review) | 5 | exponential 10 s / 60 s / 5 min / 20 min / 60 min | `chart-writeback-dlq`; emit `m22.extraction.commit_failed`; M36 critical alert; provenance row marked `dispatch_failed` |
-| `retention-rotation` | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) | 2 | exponential 5 min / 30 min | `retention-rotation-dlq`; M36 warn to compliance_officer; document skipped that run |
-| `ai-block-validator` | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 | 1 | — | no DLQ; boot failure is the signal; ops paged |
-| `minio-access-log-ingestor` | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 | 3 | exponential 10 s / 60 s / 5 min | `minio-access-log-dlq`; log entry dropped after DLQ; M36 warn — best-effort ingest; audit gap is acceptable for access-log only (not for write events) |
+| `retention-rotation` **(DEFERRED — GAP-141: not built; `intake_artifact` disposition+30d erasure is destructive and lands with its own review; until then the M4 destruction-cert eraser is the only disposal path)** | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) | 2 | exponential 5 min / 30 min | `retention-rotation-dlq`; M36 warn to compliance_officer; document skipped that run |
+| `ai-block-validator` **(boot half BUILT — `22-documents/ai-block.ts` `validateDocumentsAIBlock`, wired in the composition root's db-present onReady hook with the M21/M23/M37 validators; the nightly re-run is DEFERRED because the M32 registry already refuses a prohibited target at registration time)** | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 | 1 | — | no DLQ; boot failure is the signal; ops paged |
+| `minio-access-log-ingestor` **(DEFERRED — GAP-141: no MinIO bucket-notification webhook is provisioned in the production topology; signed-URL issuance is audited at mint time, download CONFIRMATION is an accepted gap until the webhook exists)** | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 | 3 | exponential 10 s / 60 s / 5 min | `minio-access-log-dlq`; log entry dropped after DLQ; M36 warn — best-effort ingest; audit gap is acceptable for access-log only (not for write events) |
 
 ### 4.9 M36 Typed Alert Payloads
 

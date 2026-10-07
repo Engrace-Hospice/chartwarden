@@ -255,6 +255,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       denialCaseId: id,
       tier: str,
       submittedAt: isoInstant,
+      /** M25-F03 — present (true) only on a `submit-late-good-cause` filing. */
+      lateGoodCauseFiling: Type.Optional(Type.Boolean()),
     }),
     // F-144 (#248) — m22 REMOVED: redundant sibling — the write service co-emits
     // `m25.appeal_packet.render_requested` in the SAME transition, already M22's real, LIVE-BOUND

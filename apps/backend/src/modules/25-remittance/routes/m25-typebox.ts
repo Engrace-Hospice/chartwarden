@@ -111,6 +111,18 @@ export const AppealSubmitRequestSchema = Type.Object({
   attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), { minItems: 1 }),
 });
 
+/**
+ * POST /appeals/:id/submit-late-good-cause (M25-F03, GAP-147) — the explicit late-filing path past T-0 for the
+ * tiers CMS allows (redetermination / reconsideration, 42 CFR §405.942(b)): the normal request body plus a
+ * documented good-cause justification of at least 40 characters. The MAC adjudicates good cause; the agency
+ * never overrides its own deadline.
+ */
+export const AppealSubmitLateGoodCauseRequestSchema = Type.Object({
+  appealNarrative: Type.String({ minLength: 100, maxLength: 10000 }),
+  attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), { minItems: 1 }),
+  goodCauseJustification: Type.String({ minLength: 40, maxLength: 4000 }),
+});
+
 /** POST /appeals/:id/decide — under_review → decided with a typed outcome; reason ≥40. */
 export const AppealDecideRequestSchema = Type.Object({
   outcome: Type.Union([

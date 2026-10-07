@@ -14,6 +14,7 @@ export interface CapAggregateSeam {
   aggregateForCostReport(
     orgId: string,
     capYear: string,
+    ccn?: string,
   ): Promise<{
     aggregateCapCents: string;
     aggregatePaymentsCents: string;
@@ -39,10 +40,12 @@ export async function resolveCapContext(
   resolve: CapSeamResolver,
   orgId: string,
   capYear: string,
+  ccn?: string | null,
 ): Promise<ResolvedCapContext> {
   try {
     const seam = resolve();
-    const agg = await seam.aggregateForCostReport(orgId, capYear);
+    // GAP-149 — the report's own CCN selects the cap period (cap is per Medicare provider number).
+    const agg = await seam.aggregateForCostReport(orgId, capYear, ccn ?? undefined);
     if (!agg) return { capContext: null, capProviderBound: false };
     return {
       capContext: {

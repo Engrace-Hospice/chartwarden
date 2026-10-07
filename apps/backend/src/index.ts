@@ -78,6 +78,7 @@ import {
   noteInMemoryBinding,
   registerEraser,
   registerSeam,
+  withM24LaunchGatewayDefault,
 } from "./bootstrap/index";
 import {
   PARTITION_ROTATION_CRON,
@@ -675,6 +676,7 @@ import {
   registerSuppliesSeams,
   registerSupplyEraser,
   scheduleM21Jobs,
+  validateSupplyAIBlock,
 } from "./modules/21-supplies/index";
 import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
 import {
@@ -719,6 +721,7 @@ import {
   registerRecordsRequestExpiryWorker,
   s3ObjectStoreConfigFromEnv,
   scheduleRecordsRequestExpiry,
+  validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -761,6 +764,8 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacJurisdictionLister,
   buildNoticeWindowPort,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
@@ -779,6 +784,7 @@ import {
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
+  validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
@@ -2788,7 +2794,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
-  const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(process.env);
+  // GAP-146 — in production an unset M24_LAUNCH_GATEWAY_ENABLED means enabled (opt-out, like M23's switch).
+  const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(
+    withM24LaunchGatewayDefault(process.env) as NodeJS.ProcessEnv,
+  );
   const m24OregonGateway = m24LaunchConfig ? createM24OregonGateway(m24LaunchConfig) : null;
   const m24AdapterRegistry = new MedicaidAdapterRegistry([], m24OregonGateway);
   const m24SubmissionQueues =
@@ -4692,6 +4701,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.addHook("onReady", async () => {
       await validateIpuAIBlock(getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort);
     });
+    // GAP-137/141 — M21 D15, M23 D13 and M22 D7 AI-prohibited-zone boot validators, against the same real registry.
+    app.addHook("onReady", async () => {
+      const registry = getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort;
+      await validateSupplyAIBlock(registry);
+      await validateBillingAiBlockAtBoot(registry);
+      await validateDocumentsAIBlock(registry);
+    });
   }
 
   // M1-T10 — boot-populate `outbox_event_catalog` from the FULL catalog (idempotent UPSERT on event_name;
@@ -5220,6 +5236,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // buildM30WorkerDeps({ deathDischargeReader: getSeam(...) }) precedent). M23-gated rules SKIP (unbound).
       validationContext: buildM27ValidationContext({
         capResolver: m27CapSeamResolver,
+        // GAP-149 — the report's CCN selects its cap period (a two-CCN org otherwise read an arbitrary CCN's cap).
+        providerCcn: buildProviderEntityCcnResolver(dbHandle.db).ccnFor,
         providerEntity: () => getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
         // M23 billed-census + M25 actual interim payments + M12 drug-cost basis (opaque rich-seams; cast to
         // M27's consumer views). Each degrades to its deny-stub (rule SKIPS) until the producer binds live.
@@ -5331,9 +5349,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         ...m23CoreWorkerDeps,
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
-        jurisdictions: {
-          listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }],
-        },
+        // GAP-143 — the distinct MAC jurisdictions of the tenants' configured submitter credentials (was a
+        // hard-coded 'ngs_j6', so every other MAC's acks were never pulled).
+        jurisdictions: buildMacJurisdictionLister({
+          orgs: m23ActiveOrgs,
+          readOrg: buildDrizzleOrgMacJurisdictionReader(dbHandle.db),
+          onOrgError: (organizationId, err) =>
+            app.log.error({ err, organizationId }, "M23 MAC jurisdiction read failed for org"),
+        }),
       });
       m23Workers = [
         ...m23Workers,
@@ -7100,6 +7123,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-160 (#248) — M26's CapConsumerStore, 8 of 9 `handlers-unbound` events now live-bound.
           buildM26UpstreamConsumer(
             createDrizzleCapConsumerStore(dbHandle.db, {
+              // GAP-150 — `m26.cap.accrual_recorded` rides the same tx as the accrual line.
+              outbox: m26OutboxPublisher,
               mbi: {
                 mbiNormalizedForPatient: (organizationId, patientId) =>
                   mbiNormalizedForPatient(dbHandle.db, organizationId, patientId),

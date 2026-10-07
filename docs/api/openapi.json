@@ -35131,6 +35131,91 @@
         }
       }
     },
+    "/api/v1/appeals/{id}/submit-late-good-cause": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdSubmitlategoodcause",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Submit an appeal past its deadline as a late good-cause filing (redetermination/reconsideration only, step-up, §4.1 / M25-F03)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "appealNarrative",
+                  "attachedDocumentIds",
+                  "goodCauseJustification"
+                ],
+                "properties": {
+                  "appealNarrative": {
+                    "minLength": 100,
+                    "maxLength": 10000,
+                    "type": "string"
+                  },
+                  "attachedDocumentIds": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "goodCauseJustification": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/appeals/{id}/withdraw": {
       "post": {
         "operationId": "postApiV1AppealsByIdWithdraw",

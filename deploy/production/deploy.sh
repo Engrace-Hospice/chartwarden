@@ -2,19 +2,25 @@
 # Deploy an already-published, immutable WardenX image on the single-VPS Compose topology.
 #
 # The workflow uploads this file on each release, then invokes it as:
-#   ./deploy.sh ghcr.io/owner/wardenx:sha-<sha> ghcr.io/owner/wardenx-web:sha-<sha>
+#   ./deploy.sh ghcr.io/owner/wardenx:sha-<sha> ghcr.io/owner/wardenx-web:sha-<sha> \
+#               ghcr.io/owner/wardenx-docling-worker:sha-<sha>
+#
+# The third argument (the DocLens docling-worker image, GAP-138) is optional so a rollback or a hand
+# deploy of an older release that predates the image still works; without it the already-configured
+# WARDENX_DOCLING_IMAGE (if any) is left alone.
 #
 # It deliberately never accepts `latest`: a deploy must always be attributable to one commit and
 # a rollback must always name an already-published immutable image.
 set -eu
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: $0 <backend-image-sha-tag> <web-image-sha-tag>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "usage: $0 <backend-image-sha-tag> <web-image-sha-tag> [<docling-worker-image-sha-tag>]" >&2
   exit 64
 fi
 
 backend_image=$1
 web_image=$2
+docling_image=${3:-}
 case "$backend_image" in
   ghcr.io/*/wardenx:sha-*) ;;
   *) echo "refusing non-immutable backend image: $backend_image" >&2; exit 64 ;;
@@ -24,6 +30,11 @@ case "$web_image" in
   *) echo "refusing non-immutable web image: $web_image" >&2; exit 64 ;;
 esac
 
+case "$docling_image" in
+  ''|ghcr.io/*/wardenx-docling-worker:sha-*) ;;
+  *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
+esac
+
 deploy_dir=${WARDENX_DEPLOY_DIR:-/opt/wardenx}
 cd "$deploy_dir"
 
@@ -31,6 +42,22 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   echo "expected .env.production and compose.yml in $deploy_dir" >&2
   exit 66
 fi
+
+# GAP-138/139 — secrets the release needs but an older `.env.production` predates. Generated ONCE and
+# appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the
+# new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
+ensure_secret() {
+  if ! grep -q "^$1=" .env.production; then
+    printf '%s=%s\n' "$1" "$2" >> .env.production
+    echo "generated $1 in .env.production"
+  fi
+}
+# The docling-worker bearer (backend -> worker); it holds no object-store credentials.
+ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
+# The scoped MinIO service account the api/worker use instead of the MinIO ROOT account (the
+# `minio-provision` one-shot creates it with a bucket-scoped policy; see compose.yml).
+ensure_secret MINIO_APP_ACCESS_KEY "wardenx-app"
+ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
 
 backup_file=$(mktemp .env.production.before-deploy.XXXXXX)
 next_file=$(mktemp .env.production.next.XXXXXX)
@@ -42,13 +69,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-awk -v backend="$backend_image" -v web="$web_image" '
-  BEGIN { saw_backend = 0; saw_web = 0 }
+awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" '
+  BEGIN { saw_backend = 0; saw_web = 0; saw_docling = 0 }
   /^WARDENX_IMAGE=/ { print "WARDENX_IMAGE=" backend; saw_backend = 1; next }
   /^WARDENX_WEB_IMAGE=/ { print "WARDENX_WEB_IMAGE=" web; saw_web = 1; next }
+  /^WARDENX_DOCLING_IMAGE=/ { if (docling != "") { print "WARDENX_DOCLING_IMAGE=" docling } else { print }; saw_docling = 1; next }
   { print }
   END {
     if (!saw_backend || !saw_web) exit 1
+    if (!saw_docling && docling != "") print "WARDENX_DOCLING_IMAGE=" docling
   }
 ' .env.production >"$next_file" || {
   echo "could not update immutable image references in .env.production" >&2
@@ -120,6 +149,7 @@ verify_image_digest() {
 
 backend_ref=$backend_image
 web_ref=$web_image
+docling_ref=$docling_image
 
 if [ "${WARDENX_DEPLOY_ALLOW_UNVERIFIED:-}" = "1" ]; then
   # A named opt-out, not a fallback. It exists so a first deploy predating the signing workflow can
@@ -148,6 +178,18 @@ else
        restore_previous_release; exit 1 ;;
   esac
 
+  if [ -n "$docling_image" ]; then
+    docling_digest=$(verify_image_digest "$docling_image")
+    case "$docling_digest" in
+      sha256:*) ;;
+      *) echo "signature verification FAILED for $docling_image" >&2
+         echo "expected identity: $cosign_identity" >&2
+         restore_previous_release; exit 1 ;;
+    esac
+    docling_ref="${docling_image%%:sha-*}@${docling_digest}"
+    echo "verified $docling_image -> $docling_digest"
+  fi
+
   # Pin to the digest cosign actually verified. `${image%%:*}` strips the `:sha-<commit>` tag, leaving
   # the repository, so the pull can only resolve to the verified artefact.
   backend_ref="${backend_image%%:sha-*}@${backend_digest}"
@@ -156,9 +198,10 @@ else
   echo "verified $web_image -> $web_digest"
 
   # Rewrite the staged file with the digest-pinned references before it becomes live.
-  awk -v backend="$backend_ref" -v web="$web_ref" '
+  awk -v backend="$backend_ref" -v web="$web_ref" -v docling="$docling_ref" '
     /^WARDENX_IMAGE=/ { print "WARDENX_IMAGE=" backend; next }
     /^WARDENX_WEB_IMAGE=/ { print "WARDENX_WEB_IMAGE=" web; next }
+    /^WARDENX_DOCLING_IMAGE=/ { if (docling != "") { print "WARDENX_DOCLING_IMAGE=" docling } else { print }; next }
     { print }
   ' "$next_file" >"$next_file.pinned" && mv "$next_file.pinned" "$next_file"
   chmod 600 "$next_file"
@@ -167,7 +210,7 @@ fi
 # Make the new release configuration visible only after its image references have been validated.
 mv "$next_file" .env.production
 
-docker compose --env-file .env.production -f compose.yml pull migrate provision api worker web || {
+docker compose --env-file .env.production -f compose.yml pull migrate provision api worker web docling-worker || {
   restore_previous_release
   exit 1
 }
@@ -216,7 +259,7 @@ docker compose --env-file .env.production -f compose.yml run --rm --no-deps prov
   restore_previous_release
   exit 1
 }
-docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web || {
+docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web docling-worker || {
   restore_previous_release
   exit 1
 }
@@ -232,4 +275,4 @@ if ! ./smoke.sh; then
 fi
 
 rm -f "$backup_file"
-echo "deployed backend=$backend_ref web=$web_ref"
+echo "deployed backend=$backend_ref web=$web_ref docling=${docling_ref:-unchanged}"

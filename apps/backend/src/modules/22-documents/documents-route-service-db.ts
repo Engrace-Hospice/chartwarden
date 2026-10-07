@@ -9,7 +9,8 @@
 // tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
-// publish (§2.5 optimistic concurrency, 412), and render retry. Binary upload/version creation (GAP-068) runs
+// publish (§2.5 optimistic concurrency, 412; persists branding + state addendum), and render retry (a
+// `failed` fill only — there is no render worker consuming `queued` form fills yet). Binary upload/version creation (GAP-068) runs
 // through ./routes/server-upload.ts over the bound object store (verified size/SHA-256, one transaction); it
 // returns a typed 503 only when no object store is configured. One route write emits a producer outbox
 // event: review completion publishes `m22.extraction.commit_requested` (F-235, ./extraction/
@@ -17,8 +18,8 @@
 // review whose approved fields would write back refuses (503) instead of completing with nothing written.
 //
 // Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
-// `publishTemplateVersion` is a platform-admin op with no tenant-layer persistence (returns the current active
-// version / a synthetic id); the `exportPhiBundle` bundle is materialized by the async export worker (the route
+// `publishTemplateVersion` is a platform-admin op this tenant-scoped service cannot perform — it answers an
+// honest 501 (GAP-140) instead of a fabricated version id; the `exportPhiBundle` bundle is materialized by the async export worker (the route
 // returns its tracking id). The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the
 // reference. Every WRITE now carries its `DocumentWriteActor` (GAP-039): `actor.userId` reaches the M4
 // audit triggers through `app.user_id`, and `actor.membershipId` fills the `*_by_membership_id` columns
@@ -38,7 +39,7 @@ import {
   type OrgId,
   WardenXError,
 } from "@wardenx/types";
-import { and, desc, eq, exists, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, isNull, lte } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";
 import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
@@ -74,6 +75,33 @@ const FT = schema.formTemplates;
 const FTV = schema.formTemplateVersions;
 const FF = schema.formFills;
 const OVL = schema.tenantTemplateOverlays;
+
+/** GAP-140 — batch states a classification confirm is refused in (a review already began, or it is over). */
+const CONFIRM_REFUSED_STATUSES: ReadonlySet<string> = new Set([
+  "extraction_complete",
+  "in_review",
+  "writeback_complete",
+  "discarded",
+  "split_into_children",
+  "split_resolved_no_split",
+  "parse_failed",
+]);
+/** GAP-140 — batch states a review cannot be opened in (terminal, split away, or unparseable). */
+const OPEN_REVIEW_REFUSED_STATUSES: ReadonlySet<string> = new Set([
+  "writeback_complete",
+  "discarded",
+  "split_into_children",
+  "split_resolved_no_split",
+  "parse_failed",
+]);
+const ADVANCES_TO_CLASSIFIER_COMPLETE: ReadonlySet<string> = new Set([
+  "uploaded",
+  "docling_complete",
+]);
+const CLASSIFIED_DOC_TYPES: ReadonlySet<string> = new Set(schema.classifiedPageDocType.enumValues);
+const isClassifiedDocType = (
+  v: string,
+): v is (typeof schema.classifiedPageDocType.enumValues)[number] => CLASSIFIED_DOC_TYPES.has(v);
 const LH = schema.documentLegalHold;
 const TAG = schema.documentTags;
 const DISC = schema.extractionDiscrepancies;
@@ -183,6 +211,30 @@ export function createDbDocumentRouteService(
   async function requireBatch(tx: DbClient, batchId: string): Promise<void> {
     const [b] = await tx.select({ id: BATCH.id }).from(BATCH).where(eq(BATCH.id, batchId)).limit(1);
     if (!b) throw new NotFoundError("intake batch");
+  }
+
+  /** GAP-140 — load the batch's status and refuse (409) when it is in one of `refused`. */
+  async function requireBatchNotIn(
+    tx: DbClient,
+    batchId: string,
+    refused: ReadonlySet<string>,
+    action: string,
+  ): Promise<string> {
+    const [b] = await tx
+      .select({ status: BATCH.status })
+      .from(BATCH)
+      .where(eq(BATCH.id, batchId))
+      .for("update")
+      .limit(1);
+    if (!b) throw new NotFoundError("intake batch");
+    if (refused.has(b.status)) {
+      throw new WardenXError(
+        "BATCH_STATE_CONFLICT",
+        `cannot ${action}: the intake batch is ${b.status}`,
+        409,
+      );
+    }
+    return b.status;
   }
 
   /** Load the review's id + parent batch (RLS-scoped) or the non-leaking 404. */
@@ -783,16 +835,62 @@ export function createDbDocumentRouteService(
         };
       });
     },
-    async confirmClassification(organizationId, actor, batchId) {
+    async confirmClassification(organizationId, actor, batchId, args) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireBatch(tx, batchId);
-        await tx.update(BATCH).set({ status: "classifier_complete" }).where(eq(BATCH.id, batchId));
-        return { batchId, status: "classifier_complete" };
+        const current = await requireBatchNotIn(
+          tx,
+          batchId,
+          CONFIRM_REFUSED_STATUSES,
+          "confirm classification",
+        );
+        // GAP-140 — the reviewer's page-range corrections used to be parsed and dropped. Each range
+        // re-labels every classified page fully inside it, and the corrected pages are marked
+        // human-confirmed by this membership (the §2.2.6 confirm pairing CHECK needs both).
+        for (const range of args?.pageRanges ?? []) {
+          if (range.toPage < range.fromPage || !isClassifiedDocType(range.docType)) {
+            throw new WardenXError(
+              "INVALID_PAGE_RANGE",
+              `page range ${range.fromPage}-${range.toPage} / '${range.docType}' is not a valid correction`,
+              422,
+            );
+          }
+          const updated = await tx
+            .update(CP)
+            .set({
+              documentType: range.docType,
+              humanConfirmed: true,
+              humanConfirmedByMembershipId: actor.membershipId,
+              humanConfirmedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(CP.intakeUploadBatchId, batchId),
+                gte(CP.pageRangeStart, range.fromPage),
+                lte(CP.pageRangeEnd, range.toPage),
+              ),
+            )
+            .returning({ id: CP.id });
+          if (updated.length === 0) {
+            throw new WardenXError(
+              "INVALID_PAGE_RANGE",
+              `no classified page lies inside pages ${range.fromPage}-${range.toPage}`,
+              422,
+            );
+          }
+        }
+        // Never moves a batch backwards: only a not-yet-classified batch advances to classifier_complete.
+        const next = ADVANCES_TO_CLASSIFIER_COMPLETE.has(current)
+          ? "classifier_complete"
+          : (current as "classifier_complete");
+        if (next !== current) {
+          await tx.update(BATCH).set({ status: next }).where(eq(BATCH.id, batchId));
+        }
+        return { batchId, status: next };
       });
     },
     async openReview(organizationId, actor, batchId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireBatch(tx, batchId);
+        await requireBatchNotIn(tx, batchId, OPEN_REVIEW_REFUSED_STATUSES, "open a review");
         const [r] = await tx
           .insert(ER)
           .values({
@@ -1086,20 +1184,17 @@ export function createDbDocumentRouteService(
     },
 
     // ── Template / overlay / render writes ───────────────────────────────────────────────────────────
-    async publishTemplateVersion(organizationId, actor, key, _args) {
-      // `form_template_version` is PLATFORM reference (wardenx_app has SELECT only) — a version publish is a
-      // platform-admin op, not a tenant write. Return the template's current active version if resolvable,
-      // else a synthetic id (no tenant-layer persistence; the in-mem posture).
-      return withOrg(db, organizationId, async (tx) => {
-        const [t] = await tx
-          .select({ active: FT.publishedActiveVersionId })
-          .from(FT)
-          .where(eq(FT.templateKey, key))
-          .limit(1);
-        return { key, versionId: t?.active ?? randomUUID() };
-      });
+    async publishTemplateVersion() {
+      // `form_template_version` is PLATFORM reference (wardenx_app has SELECT only): a version publish is a
+      // platform-admin operation this tenant-scoped service cannot perform. It used to return the current
+      // active version (or a random uuid) as if a version had been published — a fake 201 (GAP-140).
+      throw new WardenXError(
+        "NOT_IMPLEMENTED",
+        "publishing a form-template version is a platform-admin operation and is not available on the tenant API",
+        501,
+      );
     },
-    async publishOverlay(organizationId, actor, templateKey, ifVersion) {
+    async publishOverlay(organizationId, actor, templateKey, ifVersion, content) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
         const [t] = await tx
           .select({ id: FT.id })
@@ -1127,7 +1222,8 @@ export function createDbDocumentRouteService(
           .values({
             organizationId,
             templateId: t.id,
-            branding: {},
+            branding: content.branding,
+            stateAddendum: content.stateAddendum ?? null,
             isActive: true,
             publishedByMembershipId: actor.membershipId,
             publishedAt: new Date(),
@@ -1139,8 +1235,23 @@ export function createDbDocumentRouteService(
     },
     async retryRender(organizationId, actor, fillId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        const [f] = await tx.select({ id: FF.id }).from(FF).where(eq(FF.id, fillId)).limit(1);
+        const [f] = await tx
+          .select({ id: FF.id, status: FF.status })
+          .from(FF)
+          .where(eq(FF.id, fillId))
+          .for("update")
+          .limit(1);
         if (!f) throw new NotFoundError("form fill");
+        // GAP-140 — only a FAILED render is retryable; re-queuing a rendered/delivered/in-flight fill is a
+        // state-machine violation, not a retry. (No worker consumes `queued` fills yet — the render
+        // handshake is synchronous in the DocumentRenderer — so this records the operator's intent.)
+        if (f.status !== "failed") {
+          throw new WardenXError(
+            "FORM_FILL_NOT_RETRYABLE",
+            `only a failed render can be retried; this form fill is ${f.status}`,
+            409,
+          );
+        }
         await tx.update(FF).set({ status: "queued" }).where(eq(FF.id, fillId));
         return { id: fillId, status: "queued" };
       });

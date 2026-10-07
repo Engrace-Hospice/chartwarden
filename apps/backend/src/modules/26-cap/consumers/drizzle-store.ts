@@ -40,6 +40,7 @@ import { and, eq, sql } from "drizzle-orm";
 // having happened (checked via `.returning()`), so a replay increments nothing twice. The roll-up
 // UPDATEs themselves are single atomic `SET col = col + delta` statements — safe under concurrent
 // deliveries for the same patient, never a read-then-write-back race.
+import type { WriteOutboxPort } from "../routes/write-service";
 import type { AccrualLineToRecord, CapConsumerStore, InpatientDayToRecord } from "./handlers";
 
 const P = schema.capPeriod;
@@ -71,6 +72,12 @@ export interface CapFirstElectionPort {
 export interface DrizzleCapConsumerStoreDeps {
   readonly mbi: CapMbiPort;
   readonly firstElection: CapFirstElectionPort;
+  /**
+   * GAP-150 — the bound transactional outbox (callerModule `m26`). When present, `recordAccrualLine` emits the
+   * catalogued `m26.cap.accrual_recorded` IN THE SAME TRANSACTION as the accrual line it announces. Optional so
+   * a slice without an outbox (unit tests) still records; production always binds it.
+   */
+  readonly outbox?: WriteOutboxPort;
 }
 
 type CapPeriodRow = {
@@ -205,6 +212,22 @@ export function createDrizzleCapConsumerStore(
               lastUpdatedAt: new Date(),
             })
             .where(eq(BA.id, accrual.id));
+          // GAP-150 — announced only when the line was ACTUALLY inserted (a replay returned above), so the
+          // event is exactly-once per accrual line and commits atomically with it.
+          await deps.outbox?.publish(tx, {
+            eventName: "m26.cap.accrual_recorded",
+            organizationId: line.organizationId,
+            aggregateKind: "cap_beneficiary_accrual_line",
+            aggregateId: insertedLine[0].id,
+            payload: {
+              organizationId: line.organizationId,
+              capPeriodId: period.id,
+              patientId: line.patientId,
+              accrualLineId: insertedLine[0].id,
+              paidAmountCents: line.amountCents,
+              postingDate: new Date(line.postedAt).toISOString(),
+            },
+          });
           return { recorded: true };
         },
       );

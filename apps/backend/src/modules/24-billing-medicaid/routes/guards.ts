@@ -42,6 +42,13 @@ export const ABAC_ARRANGEMENT = (key: string, predicate: string): PreHandler =>
     notFoundOnDeny: true,
   }) as PreHandler;
 
+/** §4.8 ABAC over the route's `:id` R&B day (GAP-145 — the day's provider entity is resolved server-side). */
+export const ABAC_RB_DAY = (key: string, predicate: string): PreHandler =>
+  requireAbac(key, predicate, {
+    getTarget: (r) => ({ rbDayId: param(r, "id") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 /** §4.8 ABAC over the route's `:id` validation result (override-role eligibility). */
 export const ABAC_RESULT = (key: string, predicate: string): PreHandler =>
   requireAbac(key, predicate, {

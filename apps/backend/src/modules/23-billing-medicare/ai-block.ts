@@ -121,6 +121,40 @@ export function validateAiBlockForBilling(
   return templates;
 }
 
+/** The slice of M32's real `AIPromptRegistry` (D18 table-only query) the async boot validator consults. */
+export interface BillingAiPromptRegistryPort {
+  getActivePromptsTargeting(
+    entityPrefix: string,
+  ): Promise<
+    readonly { readonly templateKey: string; readonly outputEntityTargetPrefix: string }[]
+  >;
+}
+
+/** The one M32-writable projection (validation_ai_advisory) — it is NOT a forbidden target. */
+const ADMITTED_AI_OUTPUT = "validation_ai_advisory";
+
+/**
+ * §D13 BOOT VALIDATOR over the REAL M32 registry (GAP-137): the composition root calls this in a db-present
+ * onReady hook. Asks the D18 table-only query for each M23 family prefix (and the bare roots) and throws
+ * {@link AiBlockViolationError} on any active template targeting an M23 table, except the admitted
+ * read-only `validation_ai_advisory` projection. `null`/`undefined` registry (no-db boot) passes.
+ */
+export async function validateBillingAiBlockAtBoot(
+  registry: BillingAiPromptRegistryPort | null | undefined,
+): Promise<void> {
+  if (!registry) return;
+  const prefixes = [...M23_OWNED_TABLE_FAMILIES, ...M23_OWNED_TABLE_EXACT];
+  const offending: PromptTemplateDescriptor[] = [];
+  for (const prefix of prefixes) {
+    const hits = await registry.getActivePromptsTargeting(prefix);
+    for (const hit of hits) {
+      if (hit.outputEntityTargetPrefix.trim().toLowerCase() === ADMITTED_AI_OUTPUT) continue;
+      offending.push({ key: hit.templateKey, outputType: hit.outputEntityTargetPrefix });
+    }
+  }
+  if (offending.length > 0) throw new AiBlockViolationError(offending);
+}
+
 // ── The ONLY admitted AI surface: the read-only `validation_ai_advisory` projection (task 61) ──────────────
 
 /**

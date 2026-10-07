@@ -136,6 +136,8 @@ export {
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacJurisdictionLister,
   buildHetsEligibilityPort,
   createM23HetsTransport,
   m23HetsConfigFromEnv,
@@ -239,6 +241,7 @@ export {
 // boundary is the `m23-billing-no-ai-platform` dependency-cruiser rule.
 export {
   type AiAdvisoryReader,
+  type BillingAiPromptRegistryPort,
   type BillingAuditChannel,
   type M23OwnedTableFamily,
   type PromptTemplateDescriptor,
@@ -253,6 +256,7 @@ export {
   denyAiAdvisoryReader,
   outputTypeTargetsBilling,
   validateAiBlockForBilling,
+  validateBillingAiBlockAtBoot,
 } from "./ai-block";
 
 /**

@@ -9,6 +9,7 @@
 import type { FastifyInstance } from "fastify";
 import { registerSupplyCatalogRoutes } from "./catalog.routes";
 import { registerComfortKitRoutes } from "./comfort-kits.routes";
+import { rejectAiActor } from "./actor";
 import type { M21RouteServices } from "./index";
 import { registerSupplyOperationsRoutes } from "./operations.routes";
 import { registerSupplyRequestRoutes } from "./supply-requests.routes";
@@ -21,8 +22,17 @@ export { registerSupplyOperationsRoutes, type OperationsRouteDeps } from "./oper
 /** Mount every M21 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */
 export function mountM21Routes(app: FastifyInstance, services: M21RouteServices): void {
   const { readService, writeService } = services;
-  registerSupplyRequestRoutes(app, { readService, writeService });
-  registerSupplyCatalogRoutes(app, { readService, writeService });
-  registerComfortKitRoutes(app, { readService, writeService });
-  registerSupplyOperationsRoutes(app, { readService, writeService });
+  // D15 / GAP-137 — an AI principal can never reach a mutating M21 handler. A scope-level hook (rather than
+  // per-route) so a route added later is covered by default; reads stay open (M32 may read supplies).
+  const aiReject = rejectAiActor();
+  app.register(async (scope) => {
+    scope.addHook("preHandler", async (request, reply) => {
+      if (request.method === "GET" || request.method === "HEAD") return;
+      await aiReject(request, reply);
+    });
+    registerSupplyRequestRoutes(scope, { readService, writeService });
+    registerSupplyCatalogRoutes(scope, { readService, writeService });
+    registerComfortKitRoutes(scope, { readService, writeService });
+    registerSupplyOperationsRoutes(scope, { readService, writeService });
+  });
 }

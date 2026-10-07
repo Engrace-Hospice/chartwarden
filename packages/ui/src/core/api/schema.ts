@@ -3110,6 +3110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/appeals/{id}/submit-late-good-cause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit an appeal past its deadline as a late good-cause filing (redetermination/reconsideration only, step-up, §4.1 / M25-F03) */
+        post: operations["postApiV1AppealsByIdSubmitlategoodcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/withdraw": {
         parameters: {
             query?: never;
@@ -29994,6 +30011,42 @@ export interface operations {
                 "application/json": {
                     appealNarrative: string;
                     attachedDocumentIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmitlategoodcause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    appealNarrative: string;
+                    attachedDocumentIds: string[];
+                    goodCauseJustification: string;
                 };
             };
         };

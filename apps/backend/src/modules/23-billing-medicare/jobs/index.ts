@@ -64,6 +64,12 @@ export {
   m23WorkerActor,
 } from "./m23-worker-ports";
 export {
+  type MacJurisdictionOrgSource,
+  type OrgMacJurisdictionReader,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacJurisdictionLister,
+} from "./mac-jurisdictions";
+export {
   ELIGIBILITY_FRESHNESS_DAYS,
   type HetsEligibilityPortDeps,
   type HetsProviderPort,

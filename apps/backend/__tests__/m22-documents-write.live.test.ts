@@ -83,6 +83,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       )
     ).rows[0].id as string;
   }
+  const OVERLAY = {
+    branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+    stateAddendum: { stateCode: "OR", addendumText: "Oregon addendum" },
+  } as const;
+
   async function seedBatch(org: string): Promise<string> {
     return (
       await admin.query(
@@ -567,6 +572,54 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).toBe("writeback_complete");
   });
 
+  it("GAP-140: classification confirm applies pageRanges and both transitions are state-guarded", async () => {
+    const batch = await seedBatch(ORG_A);
+    const doc = (
+      await admin.query("SELECT initial_document_id AS d FROM intake_upload_batch WHERE id=$1", [
+        batch,
+      ])
+    ).rows[0].d as string;
+    await admin.query(
+      `INSERT INTO classified_page (organization_id, intake_upload_batch_id, source_document_id,
+         page_range_start, page_range_end, document_type, confidence, classifier_model_version_ref)
+       VALUES ($1,$2,$3,1,2,'unknown',0.5,'t'), ($1,$2,$3,3,3,'unknown',0.5,'t')`,
+      [ORG_A, batch, doc],
+    );
+    // A range that covers no classified page is refused, not silently ignored.
+    await expect(
+      svc.confirmClassification(ORG_A, ACTOR, batch, {
+        pageRanges: [{ fromPage: 10, toPage: 12, docType: "lab" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    await expect(
+      svc.confirmClassification(ORG_A, ACTOR, batch, {
+        pageRanges: [{ fromPage: 1, toPage: 2, docType: "not_a_type" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    const ok = await svc.confirmClassification(ORG_A, ACTOR, batch, {
+      pageRanges: [{ fromPage: 1, toPage: 2, docType: "lab" }],
+    });
+    expect(ok.status).toBe("classifier_complete");
+    const pages = (
+      await admin.query(
+        "SELECT page_range_start AS s, document_type AS t, human_confirmed AS h FROM classified_page WHERE intake_upload_batch_id=$1 ORDER BY page_range_start",
+        [batch],
+      )
+    ).rows;
+    expect(pages).toEqual([
+      { s: 1, t: "lab", h: true },
+      { s: 3, t: "unknown", h: false },
+    ]);
+    // Once a review is open, a classification confirm is a 409; a discarded batch cannot open a review.
+    await svc.openReview(ORG_A, ACTOR, batch);
+    await expect(svc.confirmClassification(ORG_A, ACTOR, batch)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    const gone = await seedBatch(ORG_A);
+    await svc.discardBatch(ORG_A, ACTOR, gone);
+    await expect(svc.openReview(ORG_A, ACTOR, gone)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it("resolveDiscrepancy closes an open discrepancy; abandonReview + discardBatch terminate", async () => {
     const batch = await seedBatch(ORG_A);
     const review = await svc.openReview(ORG_A, ACTOR, batch);
@@ -593,14 +646,25 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("publishOverlay enforces §2.5 optimistic concurrency; retryRender re-queues a form fill", async () => {
     // First publish requires If-Match version 0 → becomes version 1.
-    const first = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0);
+    const first = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0, OVERLAY);
     expect(first.version).toBe(1);
+    // GAP-140 — the body is PERSISTED (it used to be saved as `{}` / null).
+    const saved = (
+      await admin.query(
+        "SELECT branding, state_addendum FROM tenant_template_overlay WHERE id=$1",
+        [first.overlayId],
+      )
+    ).rows[0];
+    expect(saved.branding).toEqual(OVERLAY.branding);
+    expect(saved.state_addendum).toEqual(OVERLAY.stateAddendum);
     // A stale If-Match (0 again) now conflicts (412).
-    await expect(svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0)).rejects.toMatchObject({
+    await expect(
+      svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0, OVERLAY),
+    ).rejects.toMatchObject({
       statusCode: 412,
     });
     // The next publish at the correct version succeeds.
-    const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1);
+    const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1, OVERLAY);
     expect(second.version).toBe(2);
 
     // retryRender flips a failed form_fill back to queued.
@@ -617,6 +681,8 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     expect(
       (await admin.query("SELECT status FROM form_fill WHERE id=$1", [fill])).rows[0].status,
     ).toBe("queued");
+    // GAP-140 — a fill that is not failed is not retryable (409), and the status is untouched.
+    await expect(svc.retryRender(ORG_A, ACTOR, fill)).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("GAP-039: every write is attributed — audit actor + membership, not NULL and not a sentinel", async () => {
@@ -659,7 +725,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         )
       ).rows[0].n,
     );
-    await svc.publishOverlay(ORG_A, ACTOR, "election_statement", overlayVersion);
+    await svc.publishOverlay(ORG_A, ACTOR, "election_statement", overlayVersion, OVERLAY);
     // The DELETE trigger must be attributed too; a second tag survives for the column assertion below.
     await svc.removeTag(ORG_A, ACTOR, docId, tag.id);
     await svc.addTag(ORG_A, ACTOR, docId, {
