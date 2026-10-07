@@ -27,6 +27,8 @@ proposals. **If a module or screen spec conflicts with architecture, architectur
 
 [`docs/README.md`](./docs/README.md) is the master index of every document under `docs/`.
 
+Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet.
+
 - **Module specs** → [`docs/modules/`](./docs/modules/) (index: `docs/modules/README.md`). Resolve specs
   there, not the repo root. Module 29 sub-tasks: `docs/modules/module-29-tasks/`.
 - **UI screen specs** → [`docs/design/screens/`](./docs/design/screens/), indexed by
@@ -73,6 +75,8 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 - **Bound is not computing; green gates are proxies.** After adding an outbox consumer, grep
   `apps/backend/src/index.ts` for its factory — `arch:outbox-bindings` and `check:boot:platform` do not prove it is wired.
 - **Prove RLS live, not on a superuser connection.** Live suites must connect as the real NOBYPASSRLS `wardenx_app` role (`_live-app-role.ts`); a cross-tenant assertion on a superuser proves nothing.
+- **Never run live suites against the shared Docker cluster.** They `DROP ROLE wardenx_app`. Use a private `pgvector/pgvector:pg18` container on its own port with a fresh database per suite, one database at a time (roles are cluster-global, so drop the previous suite's database first).
+- **DoseSpot is unbound until configured.** `DOSESPOT_TENANT_CONFIGS` must hold a complete entry for a tenant before the M12 adapter sends anything; vendor field names are unverified until tested against a DoseSpot sandbox (`docs/history/m12-dosespot-adapter.md`).
 - **Use the real catalog-validating publisher in tests**, not `NOOP_OUTBOX`; every payload/emit-site change needs the real-publisher live suite.
 - **Relay ticks and workers are not requests**: use org-explicit `...ForOrg` seam functions or `runWithRequestContext`; wrap tenant reads in `withOrgContext`.
 - **Seam pull vs. outbox push**: check the consuming module's own spec before declaring a consumer; the consumer's decisive text beats the producer's guess.
