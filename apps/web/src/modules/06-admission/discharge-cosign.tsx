@@ -1,9 +1,9 @@
 import { InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — for-cause discharge medical-director cosign
+// apps/web/src/modules/06-admission — for-cause discharge physician cosign (42 CFR 418.26(b): medical director, physician designee or the patient's IDG physician)
 // (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER "For cause: cosign required → pending"; M6 route 40,
 // POST /api/v1/discharges/:id/cosign-for-cause). A for-cause discharge is filed as `pending_cosign` and
 // the admission stays active until this cosign lands (D11). The server gates on
-// `discharge.cosign_for_cause` plus the medical-director ABAC predicate and an `ifVersion` optimistic
+// `discharge.cosign_for_cause` plus the `discharge.is_order_signer` ABAC predicate and an `ifVersion` optimistic
 // lock. M6 exposes no discharge-event read, so the screen takes the version from `?version=` (the
 // filing response carries it, and the discharge workflow links here with it) and otherwise sends the
 // row's insert default, 0 — a stale value comes back as VERSION_MISMATCH and is shown as such, never
@@ -12,6 +12,7 @@ import { InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
 import { type JSX, type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import { type CosignOrderDraft, CosignOrderFields } from "./discharge-order-ui";
 import {
   AdmissionPanel,
   AttestTile,
@@ -36,15 +37,18 @@ import {
 import { authFailureRedirect } from "./write-workflow";
 
 const TITLE = "Cosign for-cause discharge";
-const STEPS = ["Filed", "Medical director cosign", "Discharged"] as const;
+const STEPS = ["Filed", "Physician cosign", "Discharged"] as const;
 const NPI = /^[0-9]{10}$/;
 
 const COSIGN_MESSAGES: Record<string, string> = {
   INVALID_STATE:
-    "This discharge is not awaiting a medical-director cosign. It may already be cosigned or voided.",
+    "This discharge is not awaiting a physician cosign. It may already be cosigned or voided.",
   VERSION_MISMATCH:
     "This discharge changed since the link was created. Open it again from the admission and retry.",
-  FORBIDDEN: "Only the organization's medical director can cosign a for-cause discharge.",
+  FORBIDDEN:
+    "Only the medical director, a physician designee, or this patient's IDG physician can cosign a for-cause discharge (42 CFR 418.26(b)).",
+  PHYSICIAN_SIGNER_INVALID:
+    "The capacity you chose doesn't match your roles or this patient's IDG. Choose another, or let it be detected.",
 };
 
 const COSIGN_CASCADE: readonly WhatHappensItem[] = [
@@ -58,7 +62,7 @@ type FieldErrors = Partial<Record<"name" | "npi", string>>;
 
 export function validateCosign(name: string, npi: string): FieldErrors {
   const e: FieldErrors = {};
-  if (!name.trim()) e.name = "Enter the cosigning medical director's name.";
+  if (!name.trim()) e.name = "Enter the cosigning physician's name.";
   if (!NPI.test(npi.trim())) e.npi = "Enter the 10-digit NPI.";
   return e;
 }
@@ -119,6 +123,12 @@ export function DischargeCosign(): JSX.Element {
   const [name, setName] = useState(session?.displayName ?? "");
   const [npi, setNpi] = useState("");
   const [attested, setAttested] = useState(false);
+  // 42 CFR 418.26(b) — the cosign IS the written discharge order: capacity + the order as written.
+  const [order, setOrder] = useState<CosignOrderDraft>({
+    capacity: "",
+    orderText: "",
+    orderReference: "",
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -136,7 +146,14 @@ export function DischargeCosign(): JSX.Element {
     try {
       const { error, response } = await client.POST("/api/v1/discharges/{id}/cosign-for-cause", {
         params: { path: { id } },
-        body: { cosignerName: name.trim(), cosignerNpi: npi.trim(), ifVersion },
+        body: {
+          cosignerName: name.trim(),
+          cosignerNpi: npi.trim(),
+          ...(order.capacity ? { capacity: order.capacity } : {}),
+          ...(order.orderText.trim() ? { orderText: order.orderText.trim() } : {}),
+          ...(order.orderReference.trim() ? { orderReference: order.orderReference.trim() } : {}),
+          ifVersion,
+        },
       });
       if (error) {
         const code = errorCodeOf(error);
@@ -205,7 +222,7 @@ export function DischargeCosign(): JSX.Element {
 
               <Section
                 icon="shield-check"
-                title="Medical director attestation"
+                title="Physician attestation"
                 description="Your name and NPI are stored on the discharge record. You may be asked to confirm your identity."
               >
                 <div style={{ display: "grid", gap: "0.875rem" }}>
@@ -239,6 +256,7 @@ export function DischargeCosign(): JSX.Element {
                       source="From the filed discharge"
                     />
                   </div>
+                  <CosignOrderFields value={order} onChange={setOrder} />
                   <AttestTile checked={attested} onChange={setAttested}>
                     I reviewed the for-cause reason and narrative and agree the patient should be
                     discharged for cause.
