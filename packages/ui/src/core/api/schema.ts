@@ -18980,10 +18980,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+
         /** Minimal scheduling staff directory — membership id, display name, clinical discipline */
         get: operations["getApiV1SchedulingStaff"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -30482,6 +30481,7 @@ export interface operations {
                             category: "clinical_urgent" | "clinical_routine" | "operational" | "field_safety" | "administrative" | "system";
                             severity: "info" | "warn" | "critical";
                             summary: string;
+                            deepLink: string | null;
                             createdAt: string;
                             deliveryStatus: "delivered" | "partial" | "failed" | "pending";
                             readAt: string | null;
@@ -76485,15 +76485,11 @@ export interface operations {
                         membershipId: string;
                         displayName: string;
                         discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa") | null;
-                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
         };
-    };
-    postApiV1SessionsStepup: {
-        parameters: {
             query?: never;
             header?: never;
             path?: never;

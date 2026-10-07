@@ -30,6 +30,7 @@ import {
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
+import { AlertInboxProvider } from "./alert-inbox";
 import { OfflineBanner } from "./offline-banner";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
@@ -183,7 +184,9 @@ export function AppShell({
             <FeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
                 <ToastProvider>
-                  <RouterProvider router={router} />
+                  <AlertInboxProvider>
+                    <RouterProvider router={router} />
+                  </AlertInboxProvider>
                 </ToastProvider>
               </SystemStatusProvider>
             </FeatureFlagProvider>

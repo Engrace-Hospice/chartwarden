@@ -62,6 +62,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -145,17 +146,6 @@ const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
 function iso(d: Date | null): string | null {
   return d === null ? null : d.toISOString();
 }
-
-/** PHI-free per-category inbox line (§4.7: the inbox summary never names a patient/diagnosis). The
- *  event_type is a static event CODE (not PHI); the category drives a generic human label. */
-const CATEGORY_LABEL: Record<AlertCategory, string> = {
-  clinical_urgent: "Urgent clinical alert",
-  clinical_routine: "Clinical alert",
-  operational: "Operational alert",
-  field_safety: "Field-safety alert",
-  administrative: "Administrative notice",
-  system: "System notice",
-};
 
 /** Aggregate per-recipient × channel delivery rows into the inbox item's single status (§4.2). */
 function aggregateDeliveryStatus(statuses: readonly string[]): AlertInboxItem["deliveryStatus"] {
@@ -1024,6 +1014,7 @@ export function createDbMessagingRouteService(
             alertId: AL.id,
             eventType: AL.eventType,
             severity: AL.severity,
+            payload: AL.payload,
             createdAt: AL.createdAt,
             category: ND.alertCategory,
             deliveryStatus: ND.status,
@@ -1041,6 +1032,7 @@ export function createDbMessagingRouteService(
             eventType: string;
             category: AlertCategory;
             severity: AlertSeverity;
+            payload: unknown;
             createdAt: Date;
             statuses: string[];
             readAt: Date | null;
@@ -1054,6 +1046,7 @@ export function createDbMessagingRouteService(
               eventType: r.eventType,
               category: r.category as AlertCategory,
               severity: r.severity as AlertSeverity,
+              payload: r.payload,
               createdAt: r.createdAt,
               statuses: [],
               readAt: r.readAt,
@@ -1062,18 +1055,20 @@ export function createDbMessagingRouteService(
           }
           e.statuses.push(r.deliveryStatus);
         }
-        return [...byAlert.values()].map(
-          (e): AlertInboxItem => ({
+        return [...byAlert.values()].map((e): AlertInboxItem => {
+          const presentation = projectAlertInboxPresentation(e.payload, e.category);
+          return {
             alertId: e.alertId,
             eventType: e.eventType,
             category: e.category,
             severity: e.severity,
-            summary: CATEGORY_LABEL[e.category] ?? "Notification",
+            summary: presentation.summary,
+            deepLink: presentation.deepLink,
             createdAt: e.createdAt.toISOString(),
             deliveryStatus: aggregateDeliveryStatus(e.statuses),
             readAt: iso(e.readAt),
-          }),
-        );
+          };
+        });
       });
     },
 
