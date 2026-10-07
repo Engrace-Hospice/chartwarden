@@ -12,6 +12,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { markOverdueAddendumWindowsInTx } from "../election-addendum/compliance";
 import { completeActiveElectionPeriod } from "../election-period-completion";
+import { startDueRecertPeriodsForOrg } from "../recert-period-activation";
 import {
   activePeriodsPastEndForOrg,
   ctiSignatureDueRowsForOrg,
@@ -330,7 +331,8 @@ export async function runRecertDueNotifyCron(deps: M6WorkerDeps): Promise<number
 }
 
 /**
- * Hourly benefit-period auto-end (GAP-025, spec §2.3.2 "period auto-ended at midnight on its endDate").
+ * Hourly benefit-period auto-end (GAP-025, spec §2.3.2 "period auto-ended at midnight on its endDate"),
+ * followed by the start of every signed recert period whose start date has arrived (the successor).
  * For each active org, completes every ACTIVE period whose last covered day is before the org's local
  * date and publishes `m6.election.period_ended` (M23's revalidate consumer re-checks the claims the
  * period covered). Idempotent: the status-guarded UPDATE in the shared helper means a replayed tick, or a
@@ -363,6 +365,15 @@ export async function runElectionPeriodAutoEndCron(deps: M6WorkerDeps): Promise<
             },
           );
         }
+        // §2.3.2 `setActive` "on prior period auto-close": a recert period whose CTI was signed early
+        // (42 CFR 418.22(a)(3) allows up to 15 days) starts on its own start date — the day after its
+        // predecessor ends (42 CFR 418.21(a)) — and publishes `m6.election.period_started` then, once.
+        await startDueRecertPeriodsForOrg(
+          t,
+          { outbox: deps.outbox, now: () => now },
+          organizationId,
+          today,
+        );
       },
     );
   }

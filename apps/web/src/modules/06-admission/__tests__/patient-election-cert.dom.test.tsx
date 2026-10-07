@@ -416,6 +416,49 @@ describe("Patient Election & Certification workspace", () => {
     expect((attest as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("asks for the physician narrative when the CTI has none (transfer-in draft) and signs with it", async () => {
+    const client = clientFor();
+    const narrative = "N".repeat(200);
+    let signs = 0;
+    client.POST = vi.fn(async (_path: string, init: { body?: { narrative?: string } }) => {
+      signs += 1;
+      if (init.body?.narrative === undefined) {
+        return {
+          data: undefined,
+          error: {
+            error: {
+              code: "CTI_NARRATIVE_REQUIRED",
+              message: "The certification narrative is required before signing.",
+            },
+          },
+          response: new Response(null, { status: 422 }),
+        };
+      }
+      return ok({ id: "cti-2", state: "signed", version: 5 });
+    }) as never;
+    renderWorkspace(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign CTI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add the certification narrative" });
+    const submit = within(dialog).getByRole("button", { name: "Sign CTI" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true); // < 200 characters
+
+    fireEvent.change(within(dialog).getByLabelText(/Physician narrative/), {
+      target: { value: narrative },
+    });
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(signs).toBe(2));
+    expect(client.POST).toHaveBeenLastCalledWith("/api/v1/cti/{id}/sign-hospice-md", {
+      params: { path: { id: "cti-2" } },
+      body: { ifVersion: 4, narrative },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add the certification narrative" })).toBeNull(),
+    );
+  });
+
   it("shows a readable detail error and retries the request", async () => {
     const client = clientFor({ failCtiOnce: true });
     renderWorkspace(client);

@@ -21,7 +21,7 @@ const CTI_CLINICAL = {
   prognosisStatement:
     "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative:
-    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
@@ -194,8 +194,10 @@ describe("M6-T12 §7.2 — admission wizard + activation gate (W-AD)", () => {
 });
 
 describe("M6-T12 §7.3 — recertification CTI sign (W-CTI)", () => {
-  it("W-CTI-03: a recert (period ≥2) MD signature fully signs the CTI and advances the period to active", async () => {
+  it("W-CTI-03: a recert (period ≥2) MD signature fully signs the CTI and advances the period to active on its start date", async () => {
     const backend = createInMemoryAdmissionBackend({
+      // The period starts today (the slice clock), so the signature finds its start date already arrived.
+      now: () => new Date("2026-09-27T18:00:00Z"),
       records: [
         {
           id: "adm_recert",

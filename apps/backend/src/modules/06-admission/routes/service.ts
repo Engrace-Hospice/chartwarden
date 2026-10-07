@@ -4,6 +4,7 @@
 // an AdmissionAbacResolver over the SAME dataset so M6's §4.6 ABAC predicates resolve a resource's
 // owner facts (patient / signer ids) without a cross-module schema import. Pure-ish: no clock except
 // the injected `now()` so version/date math is deterministic in tests.
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import type { LocalDate } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
 import {
@@ -37,6 +38,7 @@ import {
 } from "../intake";
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
+import { addCalendarDays } from "../certification/window-math";
 import {
   type BenefitPeriodEntry,
   assertBenefitPeriodEntry,
@@ -56,13 +58,17 @@ import {
   validateAdmissionRecommendation,
   validateDischargeOrder,
 } from "../physician-signer-checks";
+import {
+  electionPeriodKindForSequence,
+  electionPeriodScheduledEnd,
+} from "../state-machines/election-period";
 import { AdmissionStateError } from "../state-machines/errors";
 import type {
   F2fEncounterLocation,
   TelehealthEligibilityAttestation,
 } from "../state-machines/f2f-attestation-rules";
 import { transitionFaceToFace } from "../state-machines/face-to-face";
-import { daysBetween } from "../state-machines/validation";
+import { TEXT_MINIMUMS, daysBetween } from "../state-machines/validation";
 
 /** 409 VERSION_MISMATCH — an optimistic-lock failure on a state-change route (§4 intro). */
 export class VersionMismatchError extends WardenXError {
@@ -430,6 +436,13 @@ export interface ReferralReadView extends SummaryRow {
   readonly convertedAdmissionId: string | null;
   readonly rejectionReason: string | null;
   readonly qualificationBlockers: readonly { code: string; message: string }[];
+}
+/**
+ * Route 25 body beyond `ifVersion`. `narrative` is the signing physician's § 418.22(b)(3) narrative, taken at
+ * signature when the draft has none (a transfer-in drafts our CTI without one) or replaces the draft's.
+ */
+export interface CtiSignInput {
+  readonly narrative?: string;
 }
 export interface CtiDraftInput {
   readonly electionPeriodId: string;
@@ -1063,6 +1076,7 @@ export interface AdmissionRouteService {
     id: string,
     ifVersion: number,
     actorUserId: string,
+    input?: CtiSignInput,
   ): Promise<MutationResult>;
   signCtiAttending(
     organizationId: string,
@@ -2481,11 +2495,26 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "cti");
       return rec ? summary(rec) : null;
     },
-    async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId) {
+    async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId, input = {}) {
       void actorUserId;
       const rec = get(organizationId, id, "cti") ?? notFound(id);
+      const isRecert = (rec.sequence ?? 1) >= 2;
+      // Bug 3 — the narrative may be supplied at signature (a transfer-in drafts our CTI with none); a recert
+      // needs >= 200 characters (42 CFR 418.22(b)(3); the Drizzle path's adequacy gate), so refuse with 422.
+      const narrative = input.narrative?.trim() ? input.narrative : rec.narrative;
+      const narrativeLength = narrative?.trim().length ?? 0;
+      if (narrativeLength === 0 || (isRecert && narrativeLength < TEXT_MINIMUMS.ctiNarrative)) {
+        throw new WardenXError(
+          "CTI_NARRATIVE_REQUIRED",
+          `The certification narrative is required before signing: provide a physician narrative of at least ${TEXT_MINIMUMS.ctiNarrative} characters (42 CFR 418.22(b)(3)).`,
+          422,
+        );
+      }
+      rec.narrative = narrative;
       // W-CTI-03/04: period 1 with an attending needs the co-sign (→ awaiting_attending); a recert
-      // (period ≥ 2) is fully signed on the MD signature alone and advances its period to `active`.
+      // (period ≥ 2) is fully signed on the MD signature alone and advances its period to `active` AT ITS
+      // START DATE (42 CFR 418.21(a) contiguous periods) — never earlier: a recert may be signed up to 15
+      // days before the period starts (42 CFR 418.22(a)(3)), and the period stays `pending` until then.
       const outcome = decideRecertSign({
         sequence: rec.sequence ?? 1,
         patientHasAttending: rec.attendingPhysicianId != null,
@@ -2500,7 +2529,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       );
       if (outcome.activatesPeriod && rec.electionPeriodId) {
         const period = get(organizationId, rec.electionPeriodId, "election_period");
-        if (period && period.state !== "active") {
+        const today = localDateInTimeZone(now(), orgTimeZone);
+        const started = !period?.periodStartDate || period.periodStartDate <= today;
+        if (period && period.state !== "active" && started) {
           period.state = "active";
           period.version += 1;
           events.push("m6.election.period_started");
@@ -2702,10 +2733,19 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         sequence: plan.inherited.sequence,
         periodStartDate: input.priorElectionStartDate,
       });
+      // Contiguous benefit periods (42 CFR 418.21(a)): ours starts the day after the inherited one ends.
+      const nextStart = addCalendarDays(
+        electionPeriodScheduledEnd(
+          input.priorElectionStartDate,
+          electionPeriodKindForSequence(plan.inherited.sequence),
+        ),
+        1,
+      );
       const nextPeriod = insert("election_period", organizationId, plan.next.state, {
         admissionId: adm.id,
         patientId: adm.patientId,
         sequence: plan.next.sequence,
+        periodStartDate: nextStart,
       });
       // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
       // hospice's certification, no CTI required from us).
@@ -2715,6 +2755,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         sequence: plan.next.sequence,
+        periodStartDate: nextStart,
       });
       const rec = insert("transfer", organizationId, "created", {
         admissionId: adm.id,

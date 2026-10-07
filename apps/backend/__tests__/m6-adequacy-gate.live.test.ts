@@ -6,7 +6,8 @@
  * checked against the boot catalog schema, not waved through a no-op.
  *
  * What this pins, each through real rows:
- *   · the adequate path activates the period and publishes the no-PHI decision on the event
+ *   · the adequate path signs the CTI; the period starts on its own start date (the auto-end cron, the day
+ *     after period 1 ends — 42 CFR 418.21(a)) and publishes the no-PHI decision on the event
  *   · every inadequate reason that is REACHABLE through the service refuses with a typed 409
  *     `ELECTION_PERIOD_ADEQUACY_FAILED` + machine-readable `details`, and the whole tx rolls back (the CTI
  *     stays unsigned, the period stays `pending`, no `period_started` event is written)
@@ -25,6 +26,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
+import { runElectionPeriodAutoEndCron } from "../src/modules/06-admission/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
@@ -128,6 +130,11 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
     );
     await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     await svc.activateAdmission(ORG_A, admissionId, nor.version);
+    // Period 1 ends the day before EXPECTED_START, so the recert periods below are contiguous with it.
+    await admin.query("UPDATE election_period SET scheduled_end_at=$2 WHERE id=$1", [
+      periodId,
+      dayOffset(9),
+    ]);
     return { admissionId, periodId, patientId };
   }
 
@@ -192,6 +199,16 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
     );
   }
 
+  /** The hourly auto-end cron on `day` (org-local): completes period 1, starts every due signed recert. */
+  const startOn = (day: string) =>
+    runElectionPeriodAutoEndCron({
+      connection: {} as never,
+      db: handle.db,
+      outbox: validatingM6Outbox(),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      now: () => new Date(`${day}T17:00:00.000Z`),
+    });
+
   const periodStatus = async (id: string) =>
     (await admin.query("SELECT status FROM election_period WHERE id=$1", [id])).rows[0].status;
   const ctiStatus = async (id: string) =>
@@ -216,6 +233,22 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       code: "ELECTION_PERIOD_ADEQUACY_FAILED",
       statusCode: 409,
       details: codes.map((code) => ({ code })),
+    });
+    expect(await periodStatus(periodId)).toBe("pending");
+    expect(await ctiStatus(cti.id)).toBe("drafted");
+    expect(await startedEvents(periodId)).toHaveLength(0);
+  }
+
+  /** Bug 3 — a recert CTI without a >= 200-char narrative is a typed 422, everything rolled back. */
+  async function expectNarrativeRequired(
+    periodId: string,
+    cti: { id: string; version: number },
+    code: "CTI_NARRATIVE_MISSING" | "CTI_NARRATIVE_TOO_SHORT",
+  ) {
+    await expect(svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER)).rejects.toMatchObject({
+      code: "CTI_NARRATIVE_REQUIRED",
+      statusCode: 422,
+      details: [{ code }],
     });
     expect(await periodStatus(periodId)).toBe("pending");
     expect(await ctiStatus(cti.id)).toBe("drafted");
@@ -272,6 +305,10 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       await f2f(periodId);
       const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
       expect(signed.state).toBe("signed");
+      // Signed 10 days early: the period waits for its start date (no overlap with period 1).
+      expect(await periodStatus(periodId)).toBe("pending");
+      expect(await startedEvents(periodId)).toHaveLength(0);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
       const events = await startedEvents(periodId);
       expect(events).toHaveLength(1);
@@ -287,6 +324,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       const a = await activate();
       const { periodId, cti } = await recert(a.admissionId, 2);
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
       expect((await startedEvents(periodId))[0]?.adequacy).toMatchObject({
         verdict: "adequate",
@@ -299,6 +337,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       const { periodId, cti } = await recert(a.admissionId, 3);
       await f2f(periodId);
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await startOn(EXPECTED_START);
       const wire = JSON.stringify((await startedEvents(periodId))[0]?.adequacy);
       for (const secret of [MD, USER, periodId, a.admissionId, NARRATIVE_OK.slice(0, 30)]) {
         expect(wire).not.toContain(secret);
@@ -307,10 +346,10 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
   });
 
   describe("inadequate — refuses with a typed 409 and rolls everything back", () => {
-    it("CTI narrative shorter than 200 characters", async () => {
+    it("CTI narrative shorter than 200 characters → 422 CTI_NARRATIVE_REQUIRED (the signer must supply it)", async () => {
       const a = await activate();
       const { periodId, cti } = await recert(a.admissionId, 2, "n".repeat(199));
-      await expectRefused(periodId, cti, ["CTI_NARRATIVE_TOO_SHORT"]);
+      await expectNarrativeRequired(periodId, cti, "CTI_NARRATIVE_TOO_SHORT");
     });
 
     it("a skeleton CTI with no narrative at all (what transferIn drafts)", async () => {
@@ -329,9 +368,11 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
           [ORG_A, periodId, MD],
         )
       ).rows[0];
-      await expectRefused(periodId, { id: cti.id, version: Number(cti.version) }, [
+      await expectNarrativeRequired(
+        periodId,
+        { id: cti.id, version: Number(cti.version) },
         "CTI_NARRATIVE_MISSING",
-      ]);
+      );
     });
 
     it("period 3: F2F recorded outside the window (within_window=false)", async () => {
@@ -384,12 +425,13 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       await admin.query(
         `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, status,
                                       effective_at, scheduled_end_at)
-         VALUES ($1,$2,2,'ninety_day','completed',$3,$4)`,
+         VALUES ($1,$2,2,'ninety_day','active',$3,$4)`,
         [ORG_A, a.admissionId, dayOffset(-80), dayOffset(9)],
       );
       const { periodId, cti } = await recert(a.admissionId, 3, NARRATIVE_OK, null);
       await f2f(periodId); // encounter today = 10 days before derived start (today+10)
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
     });
 
@@ -444,6 +486,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       const { periodId, cti } = await recert(a.admissionId, 3);
       await f2f(periodId, { withinWindow: false, override: { reason: OVERRIDE_REASON } });
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
       expect((await startedEvents(periodId))[0]?.adequacy).toMatchObject({
         verdict: "adequate",
@@ -456,6 +499,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       const { periodId, cti } = await recert(a.admissionId, 2);
       const late = await svc.markCtiLate(ORG_A, cti.id, cti.version);
       await svc.signCtiHospiceMd(ORG_A, cti.id, late.version, USER);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
       expect((await startedEvents(periodId))[0]?.adequacy).toMatchObject({
         verdict: "adequate",
@@ -477,10 +521,10 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       const { periodId, cti } = await recert(a.admissionId, 3);
       await f2f(periodId);
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
-      const today = new Date().toISOString().slice(0, 10);
+      await startOn(EXPECTED_START);
       const ctx = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, a.patientId, {
-        from: today,
-        to: today,
+        from: EXPECTED_START,
+        to: EXPECTED_START,
       });
       expect(ctx?.certifications.find((c) => c.electionPeriodSequence === 3)).toMatchObject({
         ctiSigned: true,
@@ -502,6 +546,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       expect(await ctiStatus(cti.id)).toBe("drafted");
       // ...and the owning org still can.
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await startOn(EXPECTED_START);
       expect(await periodStatus(periodId)).toBe("active");
     });
   });

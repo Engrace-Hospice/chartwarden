@@ -330,6 +330,16 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
 
   it("recert (period 2): hospice sign fully signs + activates the period", async () => {
     const { admissionId } = await admitFor(randomUUID());
+    // Period 1 ran and ended yesterday (org-local), so period 2 — contiguous, 42 CFR 418.21(a) — starts
+    // today: the signature finds its start date arrived and starts it, completing period 1 (no overlap).
+    await admin.query(
+      `UPDATE election_period
+          SET status='active',
+              scheduled_end_at=(now() AT TIME ZONE 'America/New_York')::date - 1,
+              effective_at=(now() AT TIME ZONE 'America/New_York')::date - 90
+        WHERE admission_id=$1 AND sequence_number=1`,
+      [admissionId],
+    );
     const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
     expect(p2.state).toBe("pending");
     const cti = await svc.draftCti(
@@ -339,8 +349,12 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     );
     const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     expect(signed.state).toBe("signed");
-    const status = await admin.query("SELECT status FROM election_period WHERE id=$1", [p2.id]);
-    expect(status.rows[0].status).toBe("active"); // §7.3 recert activates the period
+    const status = await admin.query(
+      "SELECT sequence_number, status FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",
+      [admissionId],
+    );
+    // §7.3 recert activates the period on its start date; period 1 hands over (exactly one active).
+    expect(status.rows.map((r: { status: string }) => r.status)).toEqual(["completed", "active"]);
   });
 
   it("full activation via the real write path (no superuser-seeded ES/CTI)", async () => {

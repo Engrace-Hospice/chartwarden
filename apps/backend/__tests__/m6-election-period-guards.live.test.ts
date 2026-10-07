@@ -26,6 +26,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { runElectionPeriodAutoEndCron } from "../src/modules/06-admission/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
@@ -150,6 +151,27 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       USER,
     );
     return { periodId, cti };
+  }
+
+  /**
+   * Period 1 ends the day before the recert periods' expected start (`current_date + 10`); the hourly
+   * auto-end cron on that start date completes it and starts the signed recert — a recert never starts on
+   * its (early) signing day (42 CFR 418.21(a) contiguous periods, 418.22(a)(3) early recert).
+   */
+  async function runToRecertStart(admissionId: string) {
+    const { rows } = await admin.query(
+      `UPDATE election_period SET scheduled_end_at = current_date + 9
+        WHERE admission_id=$1 AND sequence_number=1 RETURNING (current_date + 10)::text AS start`,
+      [admissionId],
+    );
+    const start = rows[0].start as string;
+    await runElectionPeriodAutoEndCron({
+      connection: {} as never,
+      db: handle.db,
+      outbox: validatingM6Outbox(),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      now: () => new Date(`${start}T17:00:00.000Z`),
+    });
   }
 
   /** Record an ATTESTED face-to-face encounter on a period (what R-F2F-04 looks for). */
@@ -317,6 +339,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       await attestF2f(periodId);
       const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
       expect(signed.state).toBe("signed");
+      await runToRecertStart(a.admissionId);
       const { rows } = await admin.query("SELECT status FROM election_period WHERE id=$1", [
         periodId,
       ]);
@@ -328,6 +351,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       const { periodId, cti } = await recertPeriod(a.admissionId, 2);
       const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
       expect(signed.state).toBe("signed");
+      await runToRecertStart(a.admissionId);
       const { rows } = await admin.query("SELECT status FROM election_period WHERE id=$1", [
         periodId,
       ]);

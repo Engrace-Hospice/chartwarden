@@ -30,6 +30,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { runElectionPeriodAutoEndCron } from "../src/modules/06-admission/jobs/cron-workers";
 import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -134,6 +135,13 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
   /** Activate period 2 through production (recert, no F2F needed), then open PENDING period 3. */
   async function pending3() {
     const a = await activate();
+    // Period 1 ended yesterday (org-local), so period 2 (contiguous, 42 CFR 418.21(a)) starts today and its
+    // recert signature below starts it at once — a recert never starts before its own start date.
+    await admin.query(
+      `UPDATE election_period SET scheduled_end_at=(now() AT TIME ZONE 'America/New_York')::date - 1
+        WHERE id=$1`,
+      [a.periodId],
+    );
     const p2 = await svc.createElectionPeriod(ORG_A, a.admissionId);
     const cti2 = await svc.draftCti(
       ORG_A,
@@ -150,6 +158,23 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
     return { ...a, p2Id: p2.id, periodId: p3.id, cti: cti3 };
   }
 
+  /**
+   * Period 2 ends the day before `start`; the hourly auto-end cron on `start` completes it and starts the
+   * signed period 3 on its own start date (never on its early signing day).
+   */
+  const runToStart = async (admissionId: string, start: string) => {
+    await admin.query(
+      "UPDATE election_period SET scheduled_end_at = $2::date - 1 WHERE admission_id=$1 AND sequence_number = 2",
+      [admissionId, start],
+    );
+    await runElectionPeriodAutoEndCron({
+      connection: {} as never,
+      db: handle.db,
+      outbox: validatingM6Outbox(),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      now: () => new Date(`${start}T17:00:00.000Z`),
+    });
+  };
   const setStart = (periodId: string, start: string | null) =>
     admin.query("UPDATE election_period SET expected_start = $2 WHERE id=$1", [periodId, start]);
   const schedule = async (periodId: string) =>
@@ -282,6 +307,8 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       await svc.attestF2f(ORG_A, f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
       const signed = await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
       expect(signed.state).toBe("signed");
+      expect(await periodStatus(p.periodId)).toBe("pending"); // signed 10 days early
+      await runToStart(p.admissionId, dayOffset(10));
       expect(await periodStatus(p.periodId)).toBe("active");
       expect((await adequacyOf(p.periodId))[0]).toEqual({
         verdict: "adequate",
@@ -404,6 +431,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       });
       await svc.attestF2f(ORG_A, f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
       await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
+      await runToStart(p.admissionId, dayOffset(10));
       expect(await periodStatus(p.periodId)).toBe("active");
       expect((await adequacyOf(p.periodId))[0]).toMatchObject({
         verdict: "adequate",

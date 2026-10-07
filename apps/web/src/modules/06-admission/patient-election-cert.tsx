@@ -26,6 +26,7 @@ import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { CtiDetailModal } from "./cti-detail-modal";
+import { CtiNarrativeSignModal } from "./cti-narrative-sign-modal";
 import { ADDENDUM_WINDOW_LABEL } from "./election-addendum-format";
 import { ElectionAddendumPanel } from "./election-addendum-panel";
 import type { F2fEncounterLocation } from "./election-certification-api";
@@ -134,6 +135,11 @@ export function PatientElectionCert(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [signingCtiId, setSigningCtiId] = useState<string | null>(null);
+  /** The CTI whose sign was refused for a missing narrative (transfer-in drafts) — the narrative prompt. */
+  const [narrativeCti, setNarrativeCti] = useState<{ id: string; periodLabel: string } | null>(
+    null,
+  );
+  const [narrativeError, setNarrativeError] = useState<string | null>(null);
   const [electionDetailOpen, setElectionDetailOpen] = useState(false);
   const [ctiDetailPeriod, setCtiDetailPeriod] = useState<Period | null>(null);
   const [f2fDetailPeriod, setF2fDetailPeriod] = useState<Period | null>(null);
@@ -183,11 +189,12 @@ export function PatientElectionCert(): JSX.Element {
   }, [load]);
 
   const signCti = useCallback(
-    async (ctiId: string): Promise<void> => {
+    async (ctiId: string, periodLabel: string, narrative?: string): Promise<void> => {
       if (!canSignCti) return;
 
       setSigningCtiId(ctiId);
       setActionError(null);
+      setNarrativeError(null);
 
       const { data: currentCti, error: readError } = await client.GET("/api/v1/cti/{id}", {
         params: {
@@ -215,18 +222,31 @@ export function PatientElectionCert(): JSX.Element {
         },
         body: {
           ifVersion: detail.version,
+          ...(narrative !== undefined ? { narrative } : {}),
         } as never,
       });
 
       if (signError) {
-        setActionError(
-          "Could not sign the CTI. Check your permissions and the current CTI status.",
-        );
         setSigningCtiId(null);
+        const err = signError as { error?: { code?: string; message?: string } };
+        // The CTI has no (or too short a) physician narrative — e.g. the one transfer-in drafts. Ask the
+        // signing physician for it and sign again with it (42 CFR 418.22(b)(3)).
+        if (err.error?.code === "CTI_NARRATIVE_REQUIRED") {
+          if (narrative !== undefined)
+            setNarrativeError(err.error.message ?? "The narrative is too short.");
+          setNarrativeCti({ id: ctiId, periodLabel });
+          return;
+        }
+        setNarrativeCti(null);
+        setActionError(
+          err.error?.message ??
+            "Could not sign the CTI. Check your permissions and the current CTI status.",
+        );
         return;
       }
 
       setSigningCtiId(null);
+      setNarrativeCti(null);
       await load();
     },
     [canSignCti, client, load],
@@ -502,7 +522,10 @@ export function PatientElectionCert(): JSX.Element {
                                       style={primaryAction}
                                       disabled={signingCtiId === p.cti.id}
                                       onClick={() => {
-                                        return p?.cti && void signCti(p.cti.id);
+                                        return (
+                                          p?.cti &&
+                                          void signCti(p.cti.id, `Period ${p.sequenceNumber}`)
+                                        );
                                       }}
                                     >
                                       {signingCtiId === p.cti.id ? "Signing..." : "Sign CTI"}
@@ -709,6 +732,20 @@ export function PatientElectionCert(): JSX.Element {
             : null
         }
         onOpenChange={setElectionDetailOpen}
+      />
+
+      <CtiNarrativeSignModal
+        open={narrativeCti !== null}
+        periodLabel={narrativeCti?.periodLabel ?? ""}
+        busy={narrativeCti !== null && signingCtiId === narrativeCti.id}
+        error={narrativeError}
+        onCancel={() => {
+          setNarrativeCti(null);
+          setNarrativeError(null);
+        }}
+        onSubmit={(text) => {
+          if (narrativeCti) void signCti(narrativeCti.id, narrativeCti.periodLabel, text);
+        }}
       />
 
       <CtiDetailModal
