@@ -459,7 +459,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
       const { organizationId, userId } = actorOf(request);
       const { visitId } = parse(VisitIdParamsSchema, request.params);
       const b = parse(RescheduleVisitRequest, request.body);
-      const res = service.rescheduleVisit(organizationId, userId, visitId, {
+      const res = await service.rescheduleVisit(organizationId, userId, visitId, {
         newScheduledStartedAt: b.newScheduledStartedAt,
         newScheduledEndedAt: b.newScheduledEndedAt,
         newAssignedMembershipId: b.newAssignedMembershipId,

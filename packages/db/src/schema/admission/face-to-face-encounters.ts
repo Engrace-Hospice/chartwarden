@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { f2fEncounterLocation, f2fEncounterStatus, f2fPerformerRole } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -31,6 +32,14 @@ export interface F2fTelehealthEligibilityRecord {
   readonly performerMedicareEnrolledOrOptedOut: boolean;
   readonly attestedAt: string;
 }
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const F2F_PERIOD_ATTESTED_IDX = businessRule(
+  "f2f_period_attested_idx",
+  "This benefit period already has an attested face-to-face encounter.",
+);
 
 export const faceToFaceEncounters = pgTable(
   "face_to_face_encounter",
@@ -79,7 +88,7 @@ export const faceToFaceEncounters = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    periodAttestedUnique: uniqueIndex("f2f_period_attested_idx")
+    periodAttestedUnique: uniqueIndex(F2F_PERIOD_ATTESTED_IDX)
       .on(t.electionPeriodId)
       .where(sql`status = 'attested'`),
     performerDateIdx: index("f2f_performer_date_idx").on(t.performedByUserId, t.encounterDate),

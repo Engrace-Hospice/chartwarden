@@ -75,6 +75,7 @@ export async function runVisitAttentionCron(deps: M17WorkerDeps): Promise<void> 
         payload: {
           count: result.possibleMissedVisits,
           detectedAt: now.toISOString(),
+          deepLink: "/scheduling/day",
           message: "Scheduled visits require attention.",
         },
       });

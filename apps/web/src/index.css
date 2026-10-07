@@ -3406,6 +3406,8 @@
     top: 0;
     align-self: start;
     display: grid;
+    /* Stretched by a column layout (e.g. the detail page's aside slot when stacked), rows stay packed at the top. */
+    align-content: start;
     border: 1px solid var(--color-card-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface-lowest);
@@ -4889,4 +4891,13 @@
   .wx-addendum-split.has-drawer {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+/* The "Upload signed paper copy" form and the version's documents (election-addendum-scan-form.tsx). */
+.wx-addendum-scan {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-addendum-docs dd {
+  display: flex;
+  justify-content: flex-end;
 }

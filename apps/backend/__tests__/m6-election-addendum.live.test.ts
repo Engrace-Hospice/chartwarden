@@ -10,10 +10,18 @@
  *   · a refusal without a reason is refused; a signature settles the version
  *   · openAddendumUpdateWindow opens v2 + the 3-day `election_addendum_update` window; an unchanged signed
  *     plan-of-care diff is a no-op
+ *   · bug 5: a coverage event delivered AFTER the version reflecting it was furnished opens no version 2; a
+ *     later genuine change (new item / changed reason) opens v2 + the 3-day window from the event's createdAt;
+ *     an event while v2 is still a draft refreshes it (no v3)
  *   · the overdue scan alerts exactly once (`m6.election_addendum.overdue`)
  *   · a death discharge settles the open draft as `not_required` and closes the window
  *   · the M23 snapshot reflects the record; M7's real problem reader returns the unrelated problem only
  *   · RLS: org B sees none of org A's addendum rows and cannot write one
+ *   · a SCANNED signed paper copy (418.24(c)(9)): on a never-furnished draft it needs the furnish date, then
+ *     furnishes (paper) + signs in one step with the same events; the copy is linked in its own columns (the
+ *     rendered `document_id` untouched) and M23 sees it signed. The M22 check runs through the REAL DocumentReader
+ *     as wardenx_app: another org's document, another admission's document and a superseded version are refused;
+ *     a paper refusal is attached to a furnished version; the DB CHECK refuses an uploaded source with no document
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:election-addendum:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
@@ -22,19 +30,24 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient, organizationTimezone } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import type { NonCoveredItemSnapshot } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDocumentReaderEvidenceValidator } from "../src/modules/06-admission/admission-document-validator";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import {
   createElectionAddendumService,
   electionAddendumComplianceForOrg,
   initialAddendumDue,
+  updateAddendumDue,
 } from "../src/modules/06-admission/election-addendum/index";
 import { runElectionAddendumOverdueScanCron } from "../src/modules/06-admission/jobs/cron-workers";
+import { buildM6CoverageAddendumConsumer } from "../src/modules/06-admission/outbox-consumers/coverage-determination-addendum";
 import { createUnrelatedProblemItemsReader } from "../src/modules/07-care-plan/seams/addendum-sources";
+import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
+import { createDocumentReader } from "../src/modules/22-documents/seams/readers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
@@ -193,6 +206,10 @@ describe.skipIf(!DB_URL)(
           },
           patientIdentity: async () => ({ name: "Test Patient", mrn: "MRN-EA-1" }),
         },
+        // The REAL M22 DocumentReader (RLS-scoped through the ambient request context) behind the shared check.
+        documentValidator: createDocumentReaderEvidenceValidator(() =>
+          createDocumentReader(createDrizzleDocumentReaderStore(handle.db)),
+        ),
       });
     }, 240_000);
 
@@ -337,6 +354,124 @@ describe.skipIf(!DB_URL)(
       expect(again.outcome).toBe("draft_refreshed");
     });
 
+    it("bug 5: a late coverage event opens no version 2 when the furnished version already reflects it", async () => {
+      const { admissionId, patientId } = await activate();
+      const consumer = buildM6CoverageAddendumConsumer({ addendum: () => addendum });
+      const drugId = randomUUID();
+      const notCovered = (sourceId: string, reason: string): NonCoveredItemSnapshot => ({
+        source: "medication",
+        sourceId,
+        category: "drug",
+        description: `Drug ${sourceId.slice(0, 8)}`,
+        reason,
+        determinedAt: new Date().toISOString(),
+        determinedByUserId: null,
+      });
+      const coverageEvent = (sourceId: string, createdAt: Date) =>
+        consumer.handle({
+          id: randomUUID(),
+          organizationId: ORG_A,
+          eventType: "m12.medication_order.coverage_determination_changed",
+          aggregateKind: "medication_order",
+          aggregateId: sourceId,
+          attemptCount: 0,
+          createdAt,
+          payload: {
+            orgId: ORG_A,
+            admissionId,
+            patientId,
+            sourceId,
+            hospiceCoverage: "not_covered_unrelated",
+            previousHospiceCoverage: "covered_related",
+            reason: "Managed by the cardiologist",
+            changedAt: createdAt.toISOString(),
+          },
+        });
+
+      // The drug is marked not covered (the event is written now), then v1 is drafted from the live readers —
+      // so it already lists the drug — edited (clinician rewords the reason) and furnished.
+      const changedAt = new Date(Date.now() - 60_000);
+      reportedItems = [notCovered(drugId, "Managed by the cardiologist")];
+      const v1 = (await addendum.draft(ORG_A, admissionId, USER)).current;
+      expect(v1?.items).toHaveLength(1);
+      const edited = await addendum.updateDraft(
+        ORG_A,
+        admissionId,
+        v1?.id as string,
+        v1?.version as number,
+        {
+          items: [
+            {
+              ...v1?.items[0],
+              reasonNotCovered: "Your heart doctor manages this medicine.",
+            } as never,
+          ],
+          clinicalExplanation: "This medicine treats a condition your own doctor manages.",
+        },
+        USER,
+      );
+      const furnished = await addendum.furnish(
+        ORG_A,
+        admissionId,
+        edited.id,
+        edited.version,
+        { method: "paper" },
+        USER,
+      );
+      expect(furnished.status).toBe("furnished");
+
+      // The outbox delivers the coverage event late (and again, as a redelivery) → nothing differs → no v2.
+      await coverageEvent(drugId, changedAt);
+      await coverageEvent(drugId, changedAt);
+      let ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.history.map((v) => v.versionNumber)).toEqual([1]);
+      expect(ov?.current?.items[0]?.reasonNotCovered).toBe(
+        "Your heart doctor manages this medicine.",
+      );
+      expect(ov?.openWindows).toEqual([]);
+
+      // A later genuine change — a second drug excluded — opens v2 + the 3-day window from the event's time.
+      const secondDrug = randomUUID();
+      const realChangeAt = new Date(Date.now() - 30_000);
+      reportedItems = [
+        notCovered(drugId, "Managed by the cardiologist"),
+        notCovered(secondDrug, "Prescribed for an unrelated condition"),
+      ];
+      await coverageEvent(secondDrug, realChangeAt);
+      ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.current).toMatchObject({
+        versionNumber: 2,
+        trigger: "poc_change",
+        status: "draft",
+      });
+      expect(ov?.current?.triggeredAt).toBe(realChangeAt.toISOString());
+      const tz = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        organizationTimezone(tx as never, ORG_A),
+      );
+      const due = updateAddendumDue(realChangeAt.toISOString(), tz).dueAt;
+      expect(ov?.current?.dueAt).toBe(due);
+      expect(ov?.openWindows.map((w) => [w.kind, w.dueAt])).toEqual([
+        ["election_addendum_update", due],
+      ]);
+      // The clinician's rewording survives into v2 (the source reason did not change).
+      expect(ov?.current?.items.map((i) => i.reasonNotCovered)).toEqual([
+        "Your heart doctor manages this medicine.",
+        "Prescribed for an unrelated condition",
+      ]);
+
+      // While v2 is still a draft, another event refreshes it — never a v3.
+      reportedItems = [
+        notCovered(drugId, "Now managed by the primary care physician"),
+        notCovered(secondDrug, "Prescribed for an unrelated condition"),
+      ];
+      await coverageEvent(drugId, new Date());
+      ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.history.map((v) => v.versionNumber)).toEqual([2, 1]);
+      expect(ov?.current?.items[0]?.reasonNotCovered).toBe(
+        "Now managed by the primary care physician",
+      );
+    });
+
     it("the overdue scan alerts exactly once; a death discharge settles the draft as not_required", async () => {
       const { admissionId } = await activate();
       await admin.query(
@@ -404,6 +539,336 @@ describe.skipIf(!DB_URL)(
       expect(
         await createUnrelatedProblemItemsReader(handle.db).listForAdmission(ORG_B, admissionId),
       ).toEqual([]);
+    });
+
+    /** Seed an uploaded M22 document (as the superuser) with one active version; returns its ids. */
+    async function seedScannedCopy(a: {
+      org: string;
+      patientId: string;
+      admissionId: string | null;
+      versions?: number;
+    }) {
+      const documentId = (
+        await admin.query(
+          `INSERT INTO document (organization_id, patient_id, admission_id, retention_class, source_kind,
+             aggregate_type, title, created_by_membership_id)
+           VALUES ($1,$2,$3,'compliance','user_upload','election_addendum','Signed addendum',$4) RETURNING id`,
+          [a.org, a.patientId, a.admissionId, randomUUID()],
+        )
+      ).rows[0].id as string;
+      const versionIds: string[] = [];
+      for (let n = 1; n <= (a.versions ?? 1); n++) {
+        versionIds.push(
+          (
+            await admin.query(
+              `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+                 mime_type, byte_size, sha256_hex, uploaded_by_kind)
+               VALUES ($1,$2,$3,$4,'application/pdf','2048','abc123','system') RETURNING id`,
+              [a.org, documentId, String(n), `uploads/ea-${documentId}-v${n}.pdf`],
+            )
+          ).rows[0].id as string,
+        );
+      }
+      await admin.query("UPDATE document SET active_version_id=$1 WHERE id=$2", [
+        versionIds[versionIds.length - 1],
+        documentId,
+      ]);
+      return {
+        documentId,
+        versionIds,
+        documentVersionId: versionIds[versionIds.length - 1] as string,
+      };
+    }
+    /** The M22 seam reads through the ambient request context, as it does behind a real route. */
+    const asRequest = <T>(org: string, fn: () => Promise<T>) =>
+      runWithRequestContext({ organizationId: org, userId: USER }, fn);
+    /** A draft with the "no non-covered items" determination, ready to furnish. */
+    async function furnishableDraft() {
+      const { admissionId, patientId } = await activate();
+      reportedItems = [];
+      const ov = await addendum.draft(ORG_A, admissionId, USER);
+      const draft = await addendum.updateDraft(
+        ORG_A,
+        admissionId,
+        ov.current?.id as string,
+        ov.current?.version as number,
+        { noNonCoveredItems: true },
+        USER,
+      );
+      return { admissionId, patientId, draft };
+    }
+
+    it("a scanned signed paper copy on a never-furnished draft: furnish date required, then furnished + signed", async () => {
+      const { admissionId, patientId, draft } = await furnishableDraft();
+      const copy = await seedScannedCopy({ org: ORG_A, patientId, admissionId });
+      const signedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const furnishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const base = {
+        outcome: "signed" as const,
+        documentId: copy.documentId,
+        documentVersionId: copy.documentVersionId,
+        signerKind: "representative" as const,
+        representativeName: "Jane Doe",
+        representativeRelationship: "Daughter",
+        signedAt,
+      };
+      await expect(
+        asRequest(ORG_A, () =>
+          addendum.attachUploadedAcknowledgement(
+            ORG_A,
+            admissionId,
+            draft.id,
+            draft.version,
+            base,
+            USER,
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "ADDENDUM_FURNISH_DATE_REQUIRED" });
+      await expect(
+        asRequest(ORG_A, () =>
+          addendum.attachUploadedAcknowledgement(
+            ORG_A,
+            admissionId,
+            draft.id,
+            draft.version,
+            { ...base, signedAt: new Date(Date.now() + 86_400_000).toISOString(), furnishedAt },
+            USER,
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "ADDENDUM_DATE_INVALID" });
+
+      const signed = await asRequest(ORG_A, () =>
+        addendum.attachUploadedAcknowledgement(
+          ORG_A,
+          admissionId,
+          draft.id,
+          draft.version,
+          { ...base, furnishedAt },
+          USER,
+        ),
+      );
+      expect(signed).toMatchObject({
+        status: "signed",
+        furnishMethod: "paper",
+        furnishedAt,
+        signedAt,
+        signerKind: "representative",
+        representativeName: "Jane Doe",
+        acknowledgementSource: "uploaded",
+        acknowledgementDocumentId: copy.documentId,
+        acknowledgementDocumentVersionId: copy.documentVersionId,
+        // The rendered (c)(10) PDF is M22's back-ref, never the scanned copy.
+        documentId: null,
+      });
+      expect((await windows(admissionId))[0]).toMatchObject({
+        status: "closed",
+        closeReason: "furnished",
+      });
+      expect(await events("m6.election_addendum.furnished", admissionId)).toHaveLength(1);
+      const [ack] = await events("m6.election_addendum.acknowledged", admissionId);
+      expect(ack).toMatchObject({ outcome: "signed", electionAddendumId: draft.id });
+      const { rows: auditRows } = await admin.query(
+        `SELECT context FROM audit_event
+          WHERE resource_id=$1 AND event_type='m6.election_addendum.signature_recorded'`,
+        [draft.id],
+      );
+      expect(auditRows[0]?.context).toMatchObject({
+        acknowledgementSource: "uploaded",
+        documentId: copy.documentId,
+        furnishedOnPaper: true,
+      });
+      const snap = await electionAddendumComplianceForOrg(handle.db, ORG_A, admissionId);
+      expect(snap).toMatchObject({ anySigned: true, anyFurnished: true, versionCount: 1 });
+
+      // The DB CHECK backs the (c)(9) shape: an uploaded source must carry the document version.
+      await expect(
+        admin.query(
+          "UPDATE election_addendum SET acknowledgement_document_version_id=NULL WHERE id=$1",
+          [draft.id],
+        ),
+      ).rejects.toThrow(/election_addendum_ack_source_shape_chk/);
+    });
+
+    it("the scanned copy must be this org's, this admission's, active version; a paper refusal settles a furnished version", async () => {
+      const { admissionId, patientId, draft } = await furnishableDraft();
+      const furnished = await addendum.furnish(
+        ORG_A,
+        admissionId,
+        draft.id,
+        draft.version,
+        { method: "paper" },
+        USER,
+      );
+      const other = await activate();
+      const refusal = (copy: { documentId: string; documentVersionId: string }) =>
+        asRequest(ORG_A, () =>
+          addendum.attachUploadedAcknowledgement(
+            ORG_A,
+            admissionId,
+            furnished.id,
+            furnished.version,
+            {
+              outcome: "refused",
+              documentId: copy.documentId,
+              documentVersionId: copy.documentVersionId,
+              reason: "Patient declined to sign; refusal noted on the paper copy.",
+            },
+            USER,
+          ),
+        );
+      // Cross-tenant: org B's document (even naming org A's patient + admission) is invisible under org A's RLS.
+      const foreign = await seedScannedCopy({ org: ORG_B, patientId, admissionId });
+      await expect(refusal(foreign)).rejects.toMatchObject({
+        code: "DOCUMENT_VERSION_UNAVAILABLE",
+      });
+      // Same org, another patient's admission.
+      const wrongPatient = await seedScannedCopy({
+        org: ORG_A,
+        patientId: other.patientId,
+        admissionId: other.admissionId,
+      });
+      await expect(refusal(wrongPatient)).rejects.toMatchObject({
+        code: "ADMISSION_EVIDENCE_DOCUMENT_MISMATCH",
+      });
+      // A superseded version of the right document.
+      const twice = await seedScannedCopy({ org: ORG_A, patientId, admissionId, versions: 2 });
+      await expect(
+        refusal({ documentId: twice.documentId, documentVersionId: twice.versionIds[0] as string }),
+      ).rejects.toMatchObject({ code: "DOCUMENT_VERSION_UNAVAILABLE" });
+      expect((await addendum.overview(ORG_A, admissionId))?.current?.status).toBe("furnished");
+
+      const refused = await refusal(twice);
+      expect(refused).toMatchObject({
+        status: "refused",
+        refusalReason: "Patient declined to sign; refusal noted on the paper copy.",
+        acknowledgementSource: "uploaded",
+        acknowledgementDocumentId: twice.documentId,
+        acknowledgementDocumentVersionId: twice.documentVersionId,
+      });
+      expect(await events("m6.election_addendum.furnished", admissionId)).toHaveLength(1);
+      expect(await events("m6.election_addendum.acknowledged", admissionId)).toHaveLength(1);
+      expect(await electionAddendumComplianceForOrg(handle.db, ORG_A, admissionId)).toMatchObject({
+        anyRefusalDocumented: true,
+      });
+    });
+
+    it("an INCOMPLETE draft signed (or refused) on paper: the scan stands as the content; billing, checklist and window all satisfied", async () => {
+      const { admissionId, patientId } = await activate();
+      reportedItems = [];
+      const ov = await addendum.draft(ORG_A, admissionId, USER);
+      const draft = ov.current as NonNullable<typeof ov.current>;
+      // Neither items nor the "none" determination: the keyed furnish still refuses.
+      await expect(
+        addendum.furnish(ORG_A, admissionId, draft.id, draft.version, { method: "paper" }, USER),
+      ).rejects.toMatchObject({ code: "ADDENDUM_INCOMPLETE" });
+      const copy = await seedScannedCopy({ org: ORG_A, patientId, admissionId });
+      const furnishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const signed = await asRequest(ORG_A, () =>
+        addendum.attachUploadedAcknowledgement(
+          ORG_A,
+          admissionId,
+          draft.id,
+          draft.version,
+          {
+            outcome: "signed",
+            documentId: copy.documentId,
+            documentVersionId: copy.documentVersionId,
+            signerKind: "beneficiary",
+            signedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            furnishedAt,
+          },
+          USER,
+        ),
+      );
+      expect(signed).toMatchObject({
+        status: "signed",
+        contentSource: "scanned_paper",
+        acknowledgementSource: "uploaded",
+        // Whatever structured fields existed are kept.
+        patientName: "Test Patient",
+        items: [],
+        noNonCoveredItems: false,
+      });
+      const [furnishedEvt] = await events("m6.election_addendum.furnished", admissionId);
+      expect(furnishedEvt?.renderPayload).toMatchObject({
+        contentSource: "scanned_paper",
+        scannedCopy: { documentId: copy.documentId },
+      });
+      const [ackEvt] = await events("m6.election_addendum.acknowledged", admissionId);
+      expect(ackEvt?.renderPayload).toMatchObject({
+        contentSource: "scanned_paper",
+        acknowledgement: { source: "uploaded", outcome: "signed" },
+      });
+      expect((await windows(admissionId))[0]).toMatchObject({ status: "closed" });
+      expect(await electionAddendumComplianceForOrg(handle.db, ORG_A, admissionId)).toMatchObject({
+        anySigned: true,
+      });
+      const readiness = await svc.getAdmissionReadiness(ORG_A, admissionId);
+      expect(
+        readiness?.requirements.find((r: { code: string }) => r.code === "election_addendum"),
+      ).toMatchObject({ status: "complete" });
+
+      // The same for a refusal written on an incomplete paper copy.
+      const other = await activate();
+      const ov2 = await addendum.draft(ORG_A, other.admissionId, USER);
+      const draft2 = ov2.current as NonNullable<typeof ov2.current>;
+      const copy2 = await seedScannedCopy({
+        org: ORG_A,
+        patientId: other.patientId,
+        admissionId: other.admissionId,
+      });
+      const refused = await asRequest(ORG_A, () =>
+        addendum.attachUploadedAcknowledgement(
+          ORG_A,
+          other.admissionId,
+          draft2.id,
+          draft2.version,
+          {
+            outcome: "refused",
+            documentId: copy2.documentId,
+            documentVersionId: copy2.documentVersionId,
+            reason: "Declined to sign; noted on the paper copy.",
+            furnishedAt,
+          },
+          USER,
+        ),
+      );
+      expect(refused).toMatchObject({ status: "refused", contentSource: "scanned_paper" });
+      expect(
+        await electionAddendumComplianceForOrg(handle.db, ORG_A, other.admissionId),
+      ).toMatchObject({ anyRefusalDocumented: true });
+      // DB CHECK: content on paper cannot exist without the scanned acknowledgement.
+      await expect(
+        admin.query(
+          "UPDATE election_addendum SET acknowledgement_source='structured', acknowledgement_document_id=NULL, acknowledgement_document_version_id=NULL WHERE id=$1",
+          [draft2.id],
+        ),
+      ).rejects.toThrow(/election_addendum_content_source_shape_chk/);
+    });
+
+    it("a keyed signature records the structured source and no scanned copy", async () => {
+      const { admissionId, draft } = await furnishableDraft();
+      const furnished = await addendum.furnish(
+        ORG_A,
+        admissionId,
+        draft.id,
+        draft.version,
+        { method: "paper" },
+        USER,
+      );
+      const signed = await addendum.recordSignature(
+        ORG_A,
+        admissionId,
+        furnished.id,
+        furnished.version,
+        { signerKind: "beneficiary" },
+        USER,
+      );
+      expect(signed).toMatchObject({
+        acknowledgementSource: "structured",
+        acknowledgementDocumentId: null,
+        acknowledgementDocumentVersionId: null,
+      });
     });
 
     it("RLS: org B can neither read nor write org A's addendum rows", async () => {

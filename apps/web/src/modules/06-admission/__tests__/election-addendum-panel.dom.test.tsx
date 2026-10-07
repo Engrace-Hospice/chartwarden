@@ -31,6 +31,7 @@ function version(over: Partial<AddendumVersion> = {}): AddendumVersion {
   return {
     id: "add-1",
     admissionId: "adm-1",
+    patientId: "pat-1",
     versionNumber: 1,
     trigger: "initial",
     triggerCause: "election",
@@ -60,6 +61,10 @@ function version(over: Partial<AddendumVersion> = {}): AddendumVersion {
     signerKind: null,
     representativeName: null,
     representativeRelationship: null,
+    acknowledgementSource: null,
+    acknowledgementDocumentId: null,
+    acknowledgementDocumentVersionId: null,
+    contentSource: "structured",
     refusedAt: null,
     refusalReason: null,
     signatureNotRequiredReason: null,
@@ -101,6 +106,8 @@ function fakeApi(
     sign: vi.fn(async (_a, v) => ({ ...v, status: "signed" })),
     refuse: vi.fn(async (_a, v) => ({ ...v, status: "refused" })),
     notRequired: vi.fn(async (_a, v) => ({ ...v, status: "signature_not_required" })),
+    attachScannedCopy: vi.fn(async (_a, v) => ({ ...v, status: "signed" })),
+    documentUrl: vi.fn(async () => "https://files.example.test/signed"),
   } as unknown as ElectionAddendumApi & Record<string, ReturnType<typeof vi.fn>>;
 }
 
@@ -202,6 +209,175 @@ describe("ElectionAddendumPanel", () => {
         }),
       ),
     );
+  });
+});
+
+describe("ElectionAddendumDrawer — scanned signed paper copy (418.24(c)(9))", () => {
+  const scan = () => new File(["%PDF-1.7"], "addendum-signed.pdf", { type: "application/pdf" });
+  const pick = (drawer: HTMLElement, file: File) =>
+    fireEvent.change(within(drawer).getByLabelText(/Scanned paper copy/), {
+      target: { files: [file] },
+    });
+  const openDrawer = async (api: ElectionAddendumApi) => {
+    renderPanel(api);
+    fireEvent.click(await screen.findByRole("button", { name: "Open version 1" }));
+    return screen.findByRole("complementary", { name: "Addendum version 1" });
+  };
+
+  it("on a never-furnished draft asks for the furnish date and uploads furnished + signed", async () => {
+    const api = fakeApi(overview(version()));
+    const drawer = await openDrawer(api);
+    expect((within(drawer).getByLabelText("Record") as HTMLSelectElement).value).toBe("upload");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    expect(await within(drawer).findByText(/Choose the scanned paper copy/)).toBeTruthy();
+
+    pick(drawer, scan());
+    fireEvent.change(within(drawer).getByLabelText(/Signature date/), {
+      target: { value: "2026-10-03" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Date furnished/), {
+      target: { value: "2026-10-04" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    expect(await within(drawer).findByText(/furnished on or before/)).toBeTruthy();
+    expect(api.attachScannedCopy).not.toHaveBeenCalled();
+
+    fireEvent.change(within(drawer).getByLabelText(/Date furnished/), {
+      target: { value: "2026-10-02" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    await waitFor(() =>
+      expect(api.attachScannedCopy).toHaveBeenCalledWith(
+        "adm-1",
+        expect.objectContaining({ id: "add-1", version: 3 }),
+        expect.objectContaining({
+          outcome: "signed",
+          signerKind: "beneficiary",
+          file: expect.objectContaining({ name: "addendum-signed.pdf" }),
+          signedAt: new Date(2026, 9, 3).toISOString(),
+          furnishedAt: new Date(2026, 9, 2).toISOString(),
+        }),
+      ),
+    );
+    await waitFor(() => expect(api.overview).toHaveBeenCalledTimes(2));
+  });
+
+  it("an incomplete draft is not blocked: the form says the scan stands as the content", async () => {
+    const api = fakeApi(
+      overview(version({ items: [], medicalRecordNumber: null, clinicalExplanation: null })),
+    );
+    const drawer = await openDrawer(api);
+    expect(
+      within(drawer).getByText(/scanned paper copy will stand as the addendum's content/),
+    ).toBeTruthy();
+    expect(within(drawer).getByText(/medical record number/)).toBeTruthy();
+    pick(drawer, scan());
+    fireEvent.change(within(drawer).getByLabelText(/Signature date/), {
+      target: { value: "2026-10-03" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Date furnished/), {
+      target: { value: "2026-10-03" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    await waitFor(() => expect(api.attachScannedCopy).toHaveBeenCalledTimes(1));
+    expect(within(drawer).queryByRole("alert")).toBeNull();
+  });
+
+  it("a version whose content is on paper reads 'content on paper', not missing fields", async () => {
+    const api = fakeApi(
+      overview(
+        version({
+          status: "signed",
+          items: [],
+          furnishedAt: "2026-10-03T15:00:00.000Z",
+          signedAt: "2026-10-03T15:00:00.000Z",
+          signerKind: "beneficiary",
+          acknowledgementSource: "uploaded",
+          acknowledgementDocumentId: "doc-scan",
+          acknowledgementDocumentVersionId: "ver-scan",
+          contentSource: "scanned_paper",
+        }),
+      ),
+    );
+    const drawer = await openDrawer(api);
+    expect(within(drawer).getByText("Signed — scanned paper copy (content on paper)")).toBeTruthy();
+    expect(within(drawer).getByText(/This version was completed on paper/)).toBeTruthy();
+    expect(within(drawer).queryByText("No items recorded yet.")).toBeNull();
+  });
+
+  it("on a furnished version uploads a paper refusal without a furnish date", async () => {
+    const furnished = version({ status: "furnished", furnishedAt: "2026-10-03T15:00:00.000Z" });
+    const api = fakeApi(overview(furnished));
+    const drawer = await openDrawer(api);
+    fireEvent.change(within(drawer).getByLabelText("Record"), { target: { value: "upload" } });
+    expect(within(drawer).queryByLabelText(/Date furnished/)).toBeNull();
+    pick(drawer, scan());
+    fireEvent.change(within(drawer).getByLabelText(/The paper copy shows/), {
+      target: { value: "refused" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Why it was not signed/), {
+      target: { value: "Declined to sign; noted on the paper copy." },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Date of refusal/), {
+      target: { value: "2026-10-04" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    await waitFor(() => expect(api.attachScannedCopy).toHaveBeenCalledTimes(1));
+    const input = (api.attachScannedCopy as ReturnType<typeof vi.fn>).mock.calls[0]?.[2];
+    expect(input).toMatchObject({
+      outcome: "refused",
+      reason: "Declined to sign; noted on the paper copy.",
+      refusedAt: new Date(2026, 9, 4).toISOString(),
+    });
+    expect(input).not.toHaveProperty("furnishedAt");
+  });
+
+  it("shows the server's refusal verbatim (e.g. another patient's document)", async () => {
+    const furnished = version({ status: "furnished", furnishedAt: "2026-10-03T15:00:00.000Z" });
+    const api = fakeApi(overview(furnished));
+    (api.attachScannedCopy as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("The uploaded document is not linked to this admission and patient."),
+    );
+    const drawer = await openDrawer(api);
+    fireEvent.change(within(drawer).getByLabelText("Record"), { target: { value: "upload" } });
+    pick(drawer, scan());
+    fireEvent.change(within(drawer).getByLabelText(/Signature date/), {
+      target: { value: "2026-10-04" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    expect(
+      await within(drawer).findByText(
+        "The uploaded document is not linked to this admission and patient.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("a version signed on paper reads 'Signed — scanned paper copy' and opens the scan and the PDF", async () => {
+    const signed = version({
+      status: "signed",
+      furnishedAt: "2026-10-03T15:00:00.000Z",
+      signedAt: "2026-10-04T07:00:00.000Z",
+      signerKind: "beneficiary",
+      acknowledgementSource: "uploaded",
+      acknowledgementDocumentId: "doc-scan",
+      acknowledgementDocumentVersionId: "ver-scan",
+      documentId: "doc-render",
+    });
+    const api = fakeApi(overview(signed));
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const drawer = await openDrawer(api);
+    expect(within(drawer).getByText("Signed — scanned paper copy")).toBeTruthy();
+    expect(screen.getAllByText("Signed — scanned paper copy").length).toBe(2);
+    fireEvent.click(within(drawer).getByRole("button", { name: /Open scan/ }));
+    await waitFor(() => expect(api.documentUrl).toHaveBeenCalledWith("doc-scan", "ver-scan"));
+    fireEvent.click(within(drawer).getByRole("button", { name: /Open PDF/ }));
+    await waitFor(() => expect(api.documentUrl).toHaveBeenCalledWith("doc-render", null));
+    expect(open).toHaveBeenCalledWith(
+      "https://files.example.test/signed",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
   });
 });
 

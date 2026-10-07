@@ -16,9 +16,7 @@ import {
   handleDocumentRendered,
   handleProviderEntityOffboarded,
 } from "./handlers";
-import {
-  M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC,
-} from "./subscription-map";
+import { M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC } from "./subscription-map";
 
 /**
  * The discriminated upstream event the inbound dispatcher delivers to M27 (the topic + its structurally-

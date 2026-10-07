@@ -76,7 +76,8 @@ services:
   # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
   # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
   minio-provision:
-    image: minio/mc:latest
+    # Reuse the running server's image; it includes /usr/bin/mc and /bin/sh.
+    image: minio/minio:latest
     restart: "no"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -176,7 +177,8 @@ services:
       # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
       MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
@@ -214,7 +216,8 @@ services:
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
@@ -272,7 +275,8 @@ services:
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1

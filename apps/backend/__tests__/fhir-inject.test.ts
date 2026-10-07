@@ -248,7 +248,9 @@ function makeServer(options: MakeServerOptions = {}) {
   // A FRESH predicate registry per server (the M11-T06 precedent — the shared registry would otherwise
   // persist a predicate closed over a prior test's store across the file).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildFhirGatewayAbacPredicates({ resolver, isInCaseload: async () => true }))) {
+  for (const [name, predicate] of Object.entries(
+    buildFhirGatewayAbacPredicates({ resolver, isInCaseload: async () => true }),
+  )) {
     reg.register(name, predicate);
   }
   // `step_up_recent` is M3's predicate (composed by R39 via `requireStepUp`, not owned by M28); a fresh

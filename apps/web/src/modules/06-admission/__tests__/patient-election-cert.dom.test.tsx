@@ -29,6 +29,8 @@ function clientFor(
     failCtiOnce?: boolean;
     f2fState?: "scheduled" | "completed" | "attested";
     outsideWindow?: boolean;
+    /** Period 4's only CTI (default: none). */
+    period4CtiStatus?: "voided" | "superseded";
   } = {},
 ): ApiClient {
   const f2fState = options.f2fState ?? "attested";
@@ -138,7 +140,18 @@ function clientFor(
               actualEndAt: null,
               status: "pending",
               electionStatement: null,
-              cti: null,
+              cti: options.period4CtiStatus
+                ? {
+                    id: "cti-4",
+                    status: options.period4CtiStatus,
+                    sourceType: "structured",
+                    hospiceMdSigned: false,
+                    attendingMdSigned: false,
+                    signedLate: false,
+                    periodStart: "2027-05-29",
+                    periodEnd: "2027-07-27",
+                  }
+                : null,
               faceToFace: null,
             },
           ],
@@ -228,6 +241,27 @@ describe("Patient Election & Certification workspace", () => {
 
     expect(screen.getByRole("button", { name: "Sign CTI" })).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Create CTI" })).toHaveLength(2);
+  });
+
+  it("offers Create CTI beside a period's only (voided) CTI, which stays visible as history", async () => {
+    renderWorkspace(clientFor({ period4CtiStatus: "voided" }));
+
+    // Period 3 (no CTI) and period 4 (voided CTI only) can each start a new CTI.
+    await waitFor(() =>
+      expect(screen.getAllByRole("link", { name: "Create CTI" })).toHaveLength(2),
+    );
+    // The voided CTI is still shown, with its details reachable.
+    expect(screen.getByRole("button", { name: "View Period 4 CTI details" })).toBeTruthy();
+    // ...but it is never offered for signature.
+    expect(screen.getAllByRole("button", { name: "Sign CTI" })).toHaveLength(1);
+  });
+
+  it("does not offer Create CTI beside a superseded CTI (the live replacement blocks a new draft)", async () => {
+    renderWorkspace(clientFor({ period4CtiStatus: "superseded" }));
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("link", { name: "Create CTI" })).toHaveLength(1),
+    );
   });
 
   it("loads Election Statement details only after View details is clicked", async () => {
@@ -414,6 +448,49 @@ describe("Patient Election & Certification workspace", () => {
       target: { value: "x".repeat(100) },
     });
     expect((attest as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("asks for the physician narrative when the CTI has none (transfer-in draft) and signs with it", async () => {
+    const client = clientFor();
+    const narrative = "N".repeat(200);
+    let signs = 0;
+    client.POST = vi.fn(async (_path: string, init: { body?: { narrative?: string } }) => {
+      signs += 1;
+      if (init.body?.narrative === undefined) {
+        return {
+          data: undefined,
+          error: {
+            error: {
+              code: "CTI_NARRATIVE_REQUIRED",
+              message: "The certification narrative is required before signing.",
+            },
+          },
+          response: new Response(null, { status: 422 }),
+        };
+      }
+      return ok({ id: "cti-2", state: "signed", version: 5 });
+    }) as never;
+    renderWorkspace(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign CTI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add the certification narrative" });
+    const submit = within(dialog).getByRole("button", { name: "Sign CTI" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true); // < 200 characters
+
+    fireEvent.change(within(dialog).getByLabelText(/Physician narrative/), {
+      target: { value: narrative },
+    });
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(signs).toBe(2));
+    expect(client.POST).toHaveBeenLastCalledWith("/api/v1/cti/{id}/sign-hospice-md", {
+      params: { path: { id: "cti-2" } },
+      body: { ifVersion: 4, narrative },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add the certification narrative" })).toBeNull(),
+    );
   });
 
   it("shows a readable detail error and retries the request", async () => {

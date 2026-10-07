@@ -15,9 +15,18 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { ctiStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { electionPeriods } from "./election-periods";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const CTI_PERIOD_ACTIVE_IDX = businessRule(
+  "cti_period_active_idx",
+  "This benefit period already has an active certification of terminal illness. Open it, or void it before drafting another.",
+);
 
 export const certificationsOfTerminalIllness = pgTable(
   "certification_of_terminal_illness",
@@ -71,7 +80,7 @@ export const certificationsOfTerminalIllness = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    periodActiveUnique: uniqueIndex("cti_period_active_idx")
+    periodActiveUnique: uniqueIndex(CTI_PERIOD_ACTIVE_IDX)
       .on(t.electionPeriodId)
       .where(sql`status <> 'voided'`),
     orgSignatureDueIdx: index("cti_org_signature_due_idx")

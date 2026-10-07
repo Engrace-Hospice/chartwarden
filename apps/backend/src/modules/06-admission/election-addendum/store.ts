@@ -143,40 +143,82 @@ export function itemFromSnapshot(s: NonCoveredItemSnapshot): AddendumItem {
     reasonNotCovered: s.reason,
     source: s.source,
     sourceId: s.sourceId,
+    sourceReason: s.reason,
   };
 }
 
+const sourceKey = (source: string | undefined, id: string | undefined) => `${source}:${id}`;
+
 /**
  * Merge the sources' current determinations into a draft's items: a line a clinician typed (no source) is
- * kept; a source-backed line still reported is kept AS EDITED; one no longer reported (the relatedness
- * changed) is dropped; a newly reported determination is appended. Pure and order-stable.
+ * kept; a source-backed line still reported is kept AS EDITED unless the source's own reason changed since
+ * the line was filled (then the new patient-facing reason replaces it); one no longer reported (the
+ * relatedness changed) is dropped; a newly reported determination is appended. Pure and order-stable.
  */
 export function mergeSourceItems(
   current: readonly AddendumItem[],
   reported: readonly NonCoveredItemSnapshot[],
 ): AddendumItem[] {
-  const key = (source: string | undefined, id: string | undefined) => `${source}:${id}`;
-  const reportedKeys = new Set(reported.map((r) => key(r.source, r.sourceId)));
-  const kept = current.filter((i) => !i.source || reportedKeys.has(key(i.source, i.sourceId)));
-  const keptKeys = new Set(kept.filter((i) => i.source).map((i) => key(i.source, i.sourceId)));
+  const byKey = new Map(reported.map((r) => [sourceKey(r.source, r.sourceId), r]));
+  const kept = current.flatMap((i): AddendumItem[] => {
+    if (!i.source) return [i];
+    const r = byKey.get(sourceKey(i.source, i.sourceId));
+    if (!r) return [];
+    // A line filled before the source reason was tracked keeps its text and starts tracking now.
+    if (i.sourceReason === undefined || i.sourceReason === r.reason) {
+      return [{ ...i, sourceReason: r.reason }];
+    }
+    return [{ ...i, reasonNotCovered: r.reason, sourceReason: r.reason }];
+  });
+  const keptKeys = new Set(
+    kept.filter((i) => i.source).map((i) => sourceKey(i.source, i.sourceId)),
+  );
   const added = reported
-    .filter((r) => !keptKeys.has(key(r.source, r.sourceId)))
+    .filter((r) => !keptKeys.has(sourceKey(r.source, r.sourceId)))
     .map(itemFromSnapshot);
   return [...kept, ...added];
 }
 
-/** True when the sources' determinations differ from a version's source-backed lines (set comparison). */
+/**
+ * True when the sources' determinations differ from a version's source-backed lines: a (source, sourceId)
+ * added or withdrawn, or a determination whose patient-facing reason changed since the line was filled.
+ * Order-insensitive; a clinician's rewording of a line, and clinician-typed lines, are not differences.
+ */
 export function sourceItemsDiffer(
   version: Pick<AddendumRow, "items">,
   reported: readonly NonCoveredItemSnapshot[],
 ): boolean {
-  const onFile = new Set(
-    version.items.filter((i) => i.source).map((i) => `${i.source}:${i.sourceId}`),
+  const onFile = new Map(
+    version.items.filter((i) => i.source).map((i) => [sourceKey(i.source, i.sourceId), i]),
   );
-  const now = new Set(reported.map((r) => `${r.source}:${r.sourceId}`));
+  const now = new Map(reported.map((r) => [sourceKey(r.source, r.sourceId), r]));
   if (onFile.size !== now.size) return true;
-  for (const k of now) if (!onFile.has(k)) return true;
+  for (const [k, r] of now) {
+    const filed = onFile.get(k);
+    if (!filed) return true;
+    if (filed.sourceReason !== undefined && filed.sourceReason !== r.reason) return true;
+  }
   return false;
+}
+
+/**
+ * A clinician's draft edit replaces `items` wholesale; the tracked source reason is server-owned, so it is
+ * carried over from the stored line with the same (source, sourceId) — never taken from the request.
+ */
+export function carrySourceReasons(
+  previous: readonly AddendumItem[],
+  edited: readonly AddendumItem[],
+): AddendumItem[] {
+  const tracked = new Map(
+    previous
+      .filter((i) => i.source && i.sourceReason !== undefined)
+      .map((i) => [sourceKey(i.source, i.sourceId), i.sourceReason as string]),
+  );
+  return edited.map((i) => {
+    const { sourceReason: _ignored, ...rest } = i;
+    const reason = i.source ? tracked.get(sourceKey(i.source, i.sourceId)) : undefined;
+    return reason !== undefined ? { ...rest, sourceReason: reason } : rest;
+  });
 }
 
 // ── prefill (resolved by the caller OUTSIDE the transaction) ───────────────────────────────────────────

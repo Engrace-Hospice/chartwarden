@@ -271,6 +271,7 @@ const AlertInboxItemSchema = Type.Object({
   category: AlertCategorySchema,
   severity: SeveritySchema,
   summary: Type.String(),
+  deepLink: NullableString(),
   createdAt: Type.String(),
   deliveryStatus: DeliveryStatusSchema,
   readAt: NullableString(),

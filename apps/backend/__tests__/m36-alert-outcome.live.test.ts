@@ -193,6 +193,42 @@ describe.skipIf(!DB_URL)("F-109 — alert outcome + §2.4.4 settlement, LIVE Pos
     expect((await alertRow(alertId)).outcome).toBe("delivered");
   });
 
+  it("projects message + safe deepLink without exposing the private payload", async () => {
+    const message = "A field clinician's overdue safety check-in has escalated.";
+    const { alertId } = await emitter.emit(ORG_A, {
+      eventType: BROADCAST_EVENT,
+      payload: {
+        message,
+        deepLink: "/patients/patient-123/emar",
+        patientId: "patient-secret",
+        escalationData: { tier: 3 },
+      },
+      severity: "info",
+      correlationId: randomUUID(),
+    });
+
+    const unread = (await service.alertInbox(ORG_A, USER_A1)).find((i) => i.alertId === alertId);
+    expect(unread).toEqual({
+      alertId,
+      eventType: BROADCAST_EVENT,
+      category: "operational",
+      severity: "info",
+      summary: message,
+      deepLink: "/patients/patient-123/emar",
+      createdAt: expect.any(String),
+      deliveryStatus: "delivered",
+      readAt: null,
+    });
+    expect(unread).not.toHaveProperty("payload");
+    expect(unread).not.toHaveProperty("patientId");
+    expect(unread).not.toHaveProperty("escalationData");
+
+    await service.markAlertRead(ORG_A, USER_A1, alertId);
+    const read = (await service.alertInbox(ORG_A, USER_A1)).find((i) => i.alertId === alertId);
+    expect(read?.deliveryStatus).toBe("delivered");
+    expect(read?.readAt).toEqual(expect.any(String));
+  });
+
   it("a second poll settles nothing again (the receipt is not re-stamped)", async () => {
     const { alertId } = await emitter.emit(ORG_A, {
       eventType: BROADCAST_EVENT,

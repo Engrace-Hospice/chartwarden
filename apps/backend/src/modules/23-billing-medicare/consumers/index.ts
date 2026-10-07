@@ -30,10 +30,7 @@ import {
   handleRevocationCreated,
   handleTransferCreated,
 } from "./handlers";
-import {
-  M26_CAP_PROJECTION_TOPIC,
-  M40_CANONICAL_UPDATED_TOPIC,
-} from "./subscription-map";
+import { M26_CAP_PROJECTION_TOPIC, M40_CANONICAL_UPDATED_TOPIC } from "./subscription-map";
 
 /**
  * The discriminated upstream event the inbound dispatcher delivers to M23 (the topic + its structurally-

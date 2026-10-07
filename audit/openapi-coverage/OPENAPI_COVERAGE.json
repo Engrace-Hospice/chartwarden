@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1464,
-    "enriched": 1464,
+    "routes": 1466,
+    "enriched": 1466,
     "deficit": 0,
-    "mutating": 832,
+    "mutating": 834,
     "mutatingNoBody": 1,
     "gets": 598,
     "getsNoResponse": 8
@@ -51,10 +51,10 @@
     },
     {
       "module": "06-admission",
-      "routes": 85,
-      "enriched": 85,
+      "routes": 87,
+      "enriched": 87,
       "deficit": 0,
-      "mutating": 61,
+      "mutating": 63,
       "mutatingNoBody": 0,
       "gets": 24,
       "getsNoResponse": 0

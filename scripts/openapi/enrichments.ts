@@ -107,6 +107,7 @@ import {
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   CtiDraftSchema,
+  CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
   CtiSignSchema,
   CtiVoidSchema,
@@ -185,6 +186,8 @@ import {
   ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
   ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
   ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
+  ElectionAddendumUploadedRefusalSchema as M6ElectionAddendumUploadedRefusalSchema,
+  ElectionAddendumUploadedSignatureSchema as M6ElectionAddendumUploadedSignatureSchema,
   ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import {
@@ -1871,6 +1874,7 @@ const _AlertInboxItemSchema = Type.Object({
   category: Type.String(),
   severity: Type.String(),
   summary: Type.String(),
+  deepLink: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
   deliveryStatus: Type.Union([
     Type.Literal("delivered"),
@@ -3871,6 +3875,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M6ElectionAddendumRefusalSchema,
     response: M6ElectionAddendumViewSchema,
   },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence": {
+    summary:
+      "Attach a scanned signed paper copy as the receipt signature (418.24(c)(9)); a draft needs furnishedAt and is furnished on paper in the same step",
+    body: M6ElectionAddendumUploadedSignatureSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence": {
+    summary:
+      "Attach a scanned paper copy documenting a refusal to sign, with the reason (418.24(c)(9))",
+    body: M6ElectionAddendumUploadedRefusalSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
   "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required": {
     summary:
       "Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4))",
@@ -3931,7 +3947,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/cti/:id/sign-hospice-md": {
     summary: "Hospice medical director signs the CTI",
-    body: CtiSignSchema,
+    body: CtiHospiceMdSignSchema,
   },
   "POST /api/v1/cti/:id/sign-attending": {
     summary: "Attending physician signs the CTI (period 1)",

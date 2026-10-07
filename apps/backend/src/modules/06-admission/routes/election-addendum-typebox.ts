@@ -84,6 +84,32 @@ export const ElectionAddendumRefusalSchema = Type.Object({
   reason: Type.String({ minLength: 5, maxLength: 2000 }),
 });
 
+/** The scanned paper copy (an M22 document version uploaded first through the verified-upload ceremony). */
+const ScannedCopyFields = {
+  ifVersion: Version(),
+  documentId: Type.String({ format: "uuid" }),
+  documentVersionId: Type.String({ format: "uuid" }),
+  /** When the paper was handed over. REQUIRED when the version is still a draft (never furnished in WardenX). */
+  furnishedAt: Type.Optional(Type.String({ format: "date-time" })),
+};
+
+/** POST …/signature/uploaded-evidence — a scanned SIGNED paper copy (418.24(c)(9)). */
+export const ElectionAddendumUploadedSignatureSchema = Type.Object({
+  ...ScannedCopyFields,
+  signerKind: Type.Union([Type.Literal("beneficiary"), Type.Literal("representative")]),
+  representativeName: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
+  representativeRelationship: Type.Optional(Nullable(Type.String({ maxLength: 120 }))),
+  /** The date written on the paper signature (not in the future). */
+  signedAt: Type.String({ format: "date-time" }),
+});
+
+/** POST …/refusal/uploaded-evidence — a scanned paper copy on which the refusal is documented. */
+export const ElectionAddendumUploadedRefusalSchema = Type.Object({
+  ...ScannedCopyFields,
+  reason: Type.String({ minLength: 5, maxLength: 2000 }),
+  refusedAt: Type.Optional(Type.String({ format: "date-time" })),
+});
+
 export const ElectionAddendumSignatureNotRequiredSchema = Type.Object({
   ifVersion: Version(),
   reason: ExemptionReasonSchema,
@@ -133,6 +159,14 @@ export const ElectionAddendumViewSchema = Type.Object({
   ]),
   representativeName: NullableString,
   representativeRelationship: NullableString,
+  acknowledgementSource: Type.Union([
+    Type.Literal("structured"),
+    Type.Literal("uploaded"),
+    Type.Null(),
+  ]),
+  acknowledgementDocumentId: NullableString,
+  acknowledgementDocumentVersionId: NullableString,
+  contentSource: Type.Union([Type.Literal("structured"), Type.Literal("scanned_paper")]),
   refusedAt: NullableString,
   refusalReason: NullableString,
   signatureNotRequiredReason: Type.Union([ExemptionReasonSchema, Type.Null()]),

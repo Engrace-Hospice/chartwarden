@@ -36,12 +36,20 @@ function severityFor(eventType: string): AlertSeverity {
   return "warn";
 }
 
-function safePayload(eventType: string, payload: Record<string, unknown>): Record<string, unknown> {
+/**
+ * M36 owns alert delivery, not each module's navigation taxonomy. This consumer is the one
+ * exception: it deliberately binds several established cross-module event families, so keep the
+ * presentation next to their event-specific facts rather than falling through to the home page.
+ */
+export function presentationForClinicalEvent(
+  eventType: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
   const visitId = stringOrNull(payload, "visitId");
   const encounterId = stringOrNull(payload, "encounterId");
   const patientId = stringOrNull(payload, "patientId");
   const admissionId = stringOrNull(payload, "admissionId");
-  return {
+  const base = {
     eventType,
     visitId,
     encounterId,
@@ -51,17 +59,110 @@ function safePayload(eventType: string, payload: Record<string, unknown>): Recor
       stringOrNull(payload, "assignedMembershipId") ??
       stringOrNull(payload, "clinicianMembershipId") ??
       stringOrNull(payload, "routedToMembershipId"),
-    deepLink: visitId
-      ? `/scheduling/visits/${visitId}`
-      : encounterId && patientId
-        ? `/patients/${patientId}/encounters/${encounterId}`
-        : eventType.startsWith("m8.encounter.cosignature")
-          ? "/work/cosignatures"
-          : "/",
-    message: eventType.startsWith("m8.")
-      ? "An encounter requires attention."
-      : "A scheduled visit requires attention.",
   };
+
+  switch (eventType) {
+    case "m17.visit.cancelled":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A scheduled visit was cancelled.",
+      };
+    case "m17.visit.rescheduled":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A scheduled visit was rescheduled.",
+      };
+    case "m17.visit.no_show_detected":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A scheduled visit was marked as a no-show.",
+      };
+    case "m17.stale_visit_detected":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A scheduled visit needs review.",
+      };
+    case "m17.reassignment_needed":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A scheduled visit needs reassignment.",
+      };
+    case "m17.caregiver_reminder_due":
+      return {
+        ...base,
+        deepLink: visitId ? `/scheduling/visits/${visitId}` : undefined,
+        message: "A caregiver visit reminder is due.",
+      };
+    case "m17.time_off.requested":
+      return {
+        ...base,
+        deepLink: "/scheduling/time-off",
+        message: "A time-off request requires review.",
+      };
+    case "m17.time_off.approved":
+      return {
+        ...base,
+        deepLink: "/scheduling/time-off",
+        message: "A time-off request was approved.",
+      };
+    case "m17.time_off.denied":
+      return {
+        ...base,
+        deepLink: "/scheduling/time-off",
+        message: "A time-off request was denied.",
+      };
+    case "m17.route_optimization_degraded":
+      return {
+        ...base,
+        deepLink: "/scheduling/day",
+        message:
+          "Route optimization is unavailable; the scheduling day view is using its fallback order.",
+      };
+    case "m8.encounter.signed":
+      return {
+        ...base,
+        deepLink:
+          encounterId && patientId ? `/patients/${patientId}/encounters/${encounterId}` : undefined,
+        message: "An encounter was signed.",
+      };
+    case "m8.encounter.cosignature_routed":
+      return {
+        ...base,
+        deepLink: "/work/cosignatures",
+        message: "An encounter cosignature was routed for review.",
+      };
+    case "m8.encounter.cosignature_overdue":
+      return {
+        ...base,
+        deepLink: "/work/cosignatures",
+        message: "An encounter cosignature is overdue.",
+      };
+    case "m8.encounter.cosignature_escalated":
+      return {
+        ...base,
+        deepLink: "/work/cosignatures",
+        message: "An encounter cosignature has escalated.",
+      };
+    case "m8.encounter.cosignature_hard_cap_reached":
+      return {
+        ...base,
+        deepLink: "/work/cosignatures",
+        message: "An encounter cosignature reached its required escalation limit.",
+      };
+    case "m6.admission.discharged":
+      return {
+        ...base,
+        deepLink: admissionId ? `/admissions/${admissionId}` : undefined,
+        message: "An admission has been discharged.",
+      };
+    default:
+      return { ...base, message: "A clinical alert requires attention." };
+  }
 }
 
 export function buildM36ClinicalAlertConsumer(alerts: AlertEmitter): OutboxConsumerBinding {
@@ -75,7 +176,7 @@ export function buildM36ClinicalAlertConsumer(alerts: AlertEmitter): OutboxConsu
         eventType: event.eventType,
         severity: severityFor(event.eventType),
         correlationId: `outbox:${event.eventType}:${event.aggregateId}`,
-        payload: safePayload(event.eventType, payload),
+        payload: presentationForClinicalEvent(event.eventType, payload),
       });
     },
   };

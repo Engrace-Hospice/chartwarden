@@ -502,4 +502,15 @@ describe("TransferIn", () => {
       ).toBeTruthy(),
     );
   });
+
+  it("maps TRANSFER_IN_PERIOD_CONFLICT (carried period collides with the admission's periods)", async () => {
+    await recordWith("TRANSFER_IN_PERIOD_CONFLICT", 409);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "This admission already has a benefit period at or after the carried one. Check the prior benefit period number.",
+        ),
+      ).toBeTruthy(),
+    );
+  });
 });

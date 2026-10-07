@@ -229,6 +229,14 @@ if ! docker compose --env-file .env.production -f compose.yml run --rm --no-deps
   exit 1
 fi
 
+# `up --no-deps` below never starts dependency services. Create/refresh the scoped MinIO
+# service account before the new api/worker credentials are used (including secret rotations).
+docker compose --env-file .env.production -f compose.yml run --rm minio-provision || {
+  echo "MinIO application account provisioning failed; no migrations were applied" >&2
+  restore_previous_release
+  exit 1
+}
+
 # Production migrations are forward-only. A code rollback can restore the prior image, but cannot
 # reverse a successfully applied schema migration; migrations must therefore remain compatible.
 #

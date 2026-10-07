@@ -11,10 +11,7 @@ import {
   handleMedicarePrimaryAck,
   handleUpstreamChange,
 } from "./handlers";
-import {
-  M24_SUBSCRIPTION_MAP,
-  M24_UPSTREAM_SUBSCRIPTIONS,
-} from "./subscription-map";
+import { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 
 export { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 export type { M24ConsumerStore } from "./handlers";

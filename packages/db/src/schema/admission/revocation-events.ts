@@ -4,10 +4,19 @@
 // app-validated; admission + election_period FKs are intra-M6. One revocation per period (unique).
 // RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { bigint, date, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { electionSignerKind, revocationReason } from "../../enums";
 import { organizations } from "../organizations";
 import { admissions } from "./admissions";
 import { electionPeriods } from "./election-periods";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const REVOCATION_PERIOD_IDX = businessRule(
+  "revocation_period_idx",
+  "This benefit period has already been revoked.",
+);
 
 export const revocationEvents = pgTable(
   "revocation_event",
@@ -34,7 +43,7 @@ export const revocationEvents = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    periodUnique: uniqueIndex("revocation_period_idx").on(t.electionPeriodId),
+    periodUnique: uniqueIndex(REVOCATION_PERIOD_IDX).on(t.electionPeriodId),
   }),
 );
 

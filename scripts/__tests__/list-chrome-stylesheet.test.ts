@@ -8,7 +8,8 @@ const ROOT = join(__dirname, "../..");
 const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
 
 const SHARED = "packages/ui/src/web/styles/list-chrome.css";
-const SHARED_IMPORT = /@import "\.\.\/\.\.\/\.\.\/packages\/ui\/src\/web\/styles\/list-chrome\.css";/;
+const SHARED_IMPORT =
+  /@import "\.\.\/\.\.\/\.\.\/packages\/ui\/src\/web\/styles\/list-chrome\.css";/;
 const LIST_CHROME_SELECTORS = [
   ".wx-kpi-strip > *",
   ".wx-data-table-scroll",

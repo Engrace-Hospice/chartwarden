@@ -93,7 +93,8 @@ describe("M10 SFV watchdog planner", () => {
           triggeringAssessmentId: "assessment-1",
           attentionState: "overdue",
           deadline: "2026-06-12T23:59:59.999Z",
-          actionTarget: "/admissions/admission-1/hope/sfv/sfv-1",
+          deepLink: "/admissions/admission-1/hope/sfv/sfv-1",
+          message: "A HOPE symptom follow-up visit is overdue.",
         },
       },
     ]);
@@ -144,7 +145,8 @@ describe("M10 fixed timepoint watchdog alerts", () => {
         workflowItemId: "schedule-1",
         attentionState: "window_expired",
         deadline: "2026-06-17T23:59:59.999Z",
-        actionTarget: "/admissions/admission-1/hope",
+        deepLink: "/admissions/admission-1/hope",
+        message: "A HOPE assessment timepoint has expired.",
       },
     });
   });

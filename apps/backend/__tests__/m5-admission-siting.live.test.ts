@@ -18,10 +18,10 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-// Imported by exact file path, not the module barrel: the coordinator wires the barrel export
-// (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
+// Imported by exact file path, not the module barrel: the coordinator wires the barrel export
+// (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
 import {
   type AdmissionDischargedDeps,
@@ -67,15 +67,37 @@ describe.skipIf(!DB_URL)(
       }
     }
 
-    async function seedPatient(organizationId: string, status = "prospective"): Promise<string> {
+    async function seedPatient(
+      organizationId: string,
+      status:
+        | "prospective"
+        | "active"
+        | "on_hold"
+        | "discharged"
+        | "deceased"
+        | "merged" = "prospective",
+    ): Promise<string> {
       const row = await admin.query(
         `INSERT INTO patient
-           (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
-         VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', $3)
+           (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status, deceased_date)
+         VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', $3,
+                 CASE WHEN $3 = 'deceased' THEN '2026-01-01'::date END)
          RETURNING id`,
-        [organizationId, `MRN-${Math.random().toString(36).slice(2, 10)}`, status],
+        [
+          organizationId,
+          `MRN-${Math.random().toString(36).slice(2, 10)}`,
+          status === "merged" ? "prospective" : status,
+        ],
       );
-      return row.rows[0].id as string;
+      const patientId = row.rows[0].id as string;
+      if (status === "merged") {
+        const target = await seedPatient(organizationId);
+        await admin.query(
+          `UPDATE patient SET status = 'merged', merged_into_id = $2 WHERE id = $1`,
+          [patientId, target],
+        );
+      }
+      return patientId;
     }
 
     async function seedAdmission(opts: {
@@ -96,10 +118,22 @@ describe.skipIf(!DB_URL)(
 
     async function patientSiting(patientId: string) {
       const { rows } = await admin.query(
-        `SELECT provider_entity_id, location_id FROM patient WHERE id = $1`,
+        `SELECT provider_entity_id, location_id, status FROM patient WHERE id = $1`,
         [patientId],
       );
       return rows[0];
+    }
+
+    async function statusEvents(patientId: string) {
+      return (
+        await admin.query(
+          `SELECT event_type, payload
+             FROM outbox_event
+            WHERE event_type = 'm5.patient.status_changed'
+              AND payload->>'patientId' = $1`,
+          [patientId],
+        )
+      ).rows;
     }
 
     beforeAll(async () => {
@@ -148,7 +182,9 @@ describe.skipIf(!DB_URL)(
       ).rows[0].id as string;
 
       await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
-      handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+      handle = createDbClient({
+        connectionString: appRoleUrl(DB_URL as string),
+      });
 
       registerAdmissionSeams({
         store: (
@@ -194,10 +230,22 @@ describe.skipIf(!DB_URL)(
       const siting = await patientSiting(patientId);
       expect(siting.provider_entity_id).toBe(providerA1);
       expect(siting.location_id).toBe(locationA);
+      expect(siting.status).toBe("active");
+      expect(await statusEvents(patientId)).toMatchObject([
+        {
+          event_type: "m5.patient.status_changed",
+          payload: {
+            patientId,
+            organizationId: ORG_A,
+            fromStatus: "prospective",
+            toStatus: "active",
+          },
+        },
+      ]);
     });
 
     it("is idempotent on redelivery", async () => {
-      const patientId = await seedPatient(ORG_A);
+      const patientId = await seedPatient(ORG_A, "active");
       const admissionId = await seedAdmission({
         organizationId: ORG_A,
         patientId,
@@ -205,12 +253,20 @@ describe.skipIf(!DB_URL)(
         locationId: null,
       });
 
-      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
-      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId, patientId },
+      });
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId, patientId },
+      });
 
       const siting = await patientSiting(patientId);
       expect(siting.provider_entity_id).toBe(providerA1);
       expect(siting.location_id).toBeNull();
+      expect(siting.status).toBe("active");
+      expect(await statusEvents(patientId)).toEqual([]);
     });
 
     it("a later admission at a different provider entity overwrites the earlier siting", async () => {
@@ -249,6 +305,87 @@ describe.skipIf(!DB_URL)(
       const siting = await patientSiting(patientId);
       expect(siting.provider_entity_id).toBe(providerA2);
       expect(siting.location_id).toBeNull();
+    });
+
+    it("reactivates a discharged patient for a re-admission and emits the status transition", async () => {
+      const patientId = await seedPatient(ORG_A, "discharged");
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: locationA,
+      });
+
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId, patientId },
+      });
+
+      expect((await patientSiting(patientId)).status).toBe("active");
+      expect(await statusEvents(patientId)).toMatchObject([
+        {
+          payload: {
+            patientId,
+            organizationId: ORG_A,
+            fromStatus: "discharged",
+            toStatus: "active",
+          },
+        },
+      ]);
+    });
+
+    it.each(["deceased", "merged"] as const)(
+      "refuses to reactivate a %s patient",
+      async (status) => {
+        const patientId = await seedPatient(ORG_A, status);
+        const admissionId = await seedAdmission({
+          organizationId: ORG_A,
+          patientId,
+          providerEntityId: providerA1,
+          locationId: null,
+        });
+
+        await expect(
+          consumer.handle({
+            organizationId: ORG_A,
+            payload: { admissionId, patientId },
+          }),
+        ).rejects.toThrow(`cannot activate from status '${status}'`);
+        expect((await patientSiting(patientId)).status).toBe(status);
+        expect(await statusEvents(patientId)).toEqual([]);
+      },
+    );
+
+    it("rolls back status and siting when the transactional outbox publish fails", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: locationA,
+      });
+      const failingConsumer = buildM5AdmissionSitingConsumer({
+        db: handle.db,
+        outbox: {
+          async publish() {
+            throw new Error("synthetic outbox failure");
+          },
+        },
+      });
+
+      await expect(
+        failingConsumer.handle({
+          organizationId: ORG_A,
+          payload: { admissionId, patientId },
+        }),
+      ).rejects.toThrow("synthetic outbox failure");
+
+      expect(await patientSiting(patientId)).toMatchObject({
+        status: "prospective",
+        provider_entity_id: null,
+        location_id: null,
+      });
+      expect(await statusEvents(patientId)).toEqual([]);
     });
 
     it("is a no-op for an admission id invisible under this org's cross-tenant read", async () => {
@@ -395,7 +532,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("revocation, transfer out, no longer terminal, for cause and other all discharge; on_hold too", async () => {
-      const cases: [string, string][] = [
+      const cases: [string, "active" | "on_hold"][] = [
         ["revocation", "active"],
         ["transfer", "active"],
         ["no_longer_terminal", "on_hold"],

@@ -397,4 +397,48 @@ describe("MyVisits web workflow", () => {
       expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reschedule", expect.any(Object)),
     );
   });
+
+  it("explains a clinician scheduling conflict when rescheduling", async () => {
+    const post = vi.fn(async () => ({
+      error: {
+        code: "CONFLICT",
+        reason: "CLINICIAN_SCHEDULE_CONFLICT",
+        message: "This clinician already has another visit during this time.",
+      },
+    }));
+    renderSchedulingWidget(
+      {
+        GET: vi.fn(async (path: string) =>
+          path === "/api/v1/scheduling/eligible-clinicians"
+            ? {
+                data: [
+                  {
+                    membershipId: visit.assignedMembershipId,
+                    displayName: "Nurse One",
+                    disciplines: ["rn"],
+                    eligible: true,
+                    reasonCodes: [],
+                  },
+                ],
+              }
+            : { data: null },
+        ),
+        POST: post,
+      },
+      <VisitActionPanel visit={visit} encounter={null} onChanged={() => undefined} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /reschedule/i }));
+    await waitFor(() => expect(screen.getByRole("option", { name: /nurse one/i })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/reason for rescheduling/i), {
+      target: { value: "Patient requested a different time." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    expect(
+      await screen.findByText(
+        "The selected clinician already has a visit during this time. Choose another clinician or a different time.",
+      ),
+    ).toBeTruthy();
+  });
 });

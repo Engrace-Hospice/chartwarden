@@ -76,6 +76,7 @@ export type DocumentTypeValue =
   | "notice_of_rights"
   | "election_statement"
   | "cti"
+  | "election_addendum"
   | "referral"
   | "intake_source"
   | "other";
@@ -120,6 +121,7 @@ const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{
   { value: "notice_of_rights", label: "Notice of Rights" },
   { value: "election_statement", label: "Election Statement" },
   { value: "cti", label: "Certification of Terminal Illness" },
+  { value: "election_addendum", label: "Election statement addendum" },
   { value: "referral", label: "Referral document" },
   { value: "intake_source", label: "Intake document" },
   { value: "other", label: "Other" },
