@@ -492,8 +492,8 @@ export async function claimAssemblyRangeContextForOrg(
     const overlappingIds = overlapping.map((p) => p.id);
 
     // Attending physician (F-127, #251) — only a SIGNED statement's `attending_physician_id` is a real
-    // election, not a drafted one (`election_statement_period_idx` is unique per period, so at most one
-    // row per id).
+    // election, not a drafted one (`election_statement_period_idx` allows one non-voided statement per
+    // period, so at most one signed row per id).
     const attendingByPeriod = new Map<string, string | null>();
     if (overlappingIds.length > 0) {
       const statementRows = await tx

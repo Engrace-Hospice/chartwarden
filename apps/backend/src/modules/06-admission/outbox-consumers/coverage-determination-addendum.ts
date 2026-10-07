@@ -8,6 +8,11 @@
 //   either side not covered (newly excluded, re-included, or reason edited while excluded) → update
 //
 // An event without `admissionId` (an order outside an admission) is skipped: there is no election to amend.
+// Every update asks for a diff (`requireDiff`): drafts pre-fill from the live non-covered readers, so the
+// event may be delivered after a version that already reflects it was furnished — comparing the composed
+// current set (source + sourceId + patient-facing reason, order-insensitive) with the latest version keeps a
+// late or redelivered event from opening a needless next version and 3-day window. A genuine difference
+// still opens it, measured from the event's `createdAt`; an in-progress draft is refreshed, never versioned.
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -56,15 +61,15 @@ export function buildM6CoverageAddendumConsumer(deps: {
         event.createdAt instanceof Date && !Number.isNaN(event.createdAt.getTime())
           ? event.createdAt
           : (deps.now ?? (() => new Date()))();
-      await deps
-        .addendum()
-        .openAddendumUpdateWindow(
-          event.organizationId,
-          decision.admissionId,
-          triggeredAt,
-          event.eventType,
-          { requireDiff: false },
-        );
+      await deps.addendum().openAddendumUpdateWindow(
+        event.organizationId,
+        decision.admissionId,
+        triggeredAt,
+        event.eventType,
+        // Late delivery: the draft pre-fills from the live readers, so the version furnished after the
+        // change may already carry it — open a new version only when the sources differ from it.
+        { requireDiff: true },
+      );
     },
   };
 }

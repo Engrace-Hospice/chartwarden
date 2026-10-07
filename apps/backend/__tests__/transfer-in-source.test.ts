@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isNpiCheckDigitValid,
+  transferInPeriodConflict,
   transferInSourceRefusal,
 } from "../src/modules/06-admission/discharge/transfer-in";
 
@@ -48,5 +49,17 @@ describe("isNpiCheckDigitValid", () => {
     expect(isNpiCheckDigitValid("1245319599")).toBe(true);
     expect(isNpiCheckDigitValid("1245319598")).toBe(false);
     expect(isNpiCheckDigitValid("12345")).toBe(false);
+  });
+});
+
+describe("transferInPeriodConflict — the carried sequence must follow the admission's periods", () => {
+  it("accepts an admission with no periods, or a carried sequence after the highest", () => {
+    expect(transferInPeriodConflict([], 1)).toBeNull();
+    expect(transferInPeriodConflict([1], 2)).toBeNull();
+  });
+
+  it("refuses a carried sequence that collides with or precedes an existing period", () => {
+    expect(transferInPeriodConflict([1], 1)?.code).toBe("TRANSFER_IN_PERIOD_CONFLICT");
+    expect(transferInPeriodConflict([1, 2, 3], 2)?.code).toBe("TRANSFER_IN_PERIOD_CONFLICT");
   });
 });

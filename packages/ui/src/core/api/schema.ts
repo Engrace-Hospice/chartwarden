@@ -42231,6 +42231,7 @@ export interface operations {
             content: {
                 "application/json": {
                     ifVersion: number;
+                    narrative?: string;
                 };
             };
         };

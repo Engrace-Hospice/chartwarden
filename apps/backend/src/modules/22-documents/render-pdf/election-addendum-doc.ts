@@ -17,7 +17,7 @@
 // Plus the financial-responsibility line (418.24(b)(5) cost sharing, as the CMS model carries it) and the
 // version line (418.24(d)(2) updates).
 //
-// Signed on paper (M6 v0.9.1): when the acknowledgement came from a scanned paper copy, the acknowledgement block
+// Signed on paper (M6 v0.9.2): when the acknowledgement came from a scanned paper copy, the acknowledgement block
 // says so (with the filing date and a short document reference). When the version's CONTENT is on that paper
 // (`contentSource: scanned_paper` — an incomplete WardenX draft signed on paper), the render is a RECORD NOTICE:
 // it names the paper copy as the authoritative addendum and does NOT print the (c)(4)–(8) sections, because empty

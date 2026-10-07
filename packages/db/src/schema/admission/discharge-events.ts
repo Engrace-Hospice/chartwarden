@@ -14,10 +14,19 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { dischargeEventStatus, dischargeType, physicianSignerCapacity } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
 import { admissions } from "./admissions";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const DISCHARGE_ADMISSION_IDX = businessRule(
+  "discharge_admission_idx",
+  "This admission already has a discharge recorded.",
+);
 
 export const dischargeEvents = pgTable(
   "discharge_event",
@@ -78,7 +87,7 @@ export const dischargeEvents = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    admUnique: uniqueIndex("discharge_admission_idx").on(t.admissionId),
+    admUnique: uniqueIndex(DISCHARGE_ADMISSION_IDX).on(t.admissionId),
     sourceProposalUnique: uniqueIndex("discharge_source_proposal_idx")
       .on(t.organizationId, t.sourceProposalId)
       .where(sql`source_proposal_id IS NOT NULL`),

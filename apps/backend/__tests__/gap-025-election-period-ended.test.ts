@@ -131,11 +131,13 @@ describe("completeActiveElectionPeriod", () => {
 describe("runElectionPeriodAutoEndCron", () => {
   const withOrgContext = vi.fn();
   const activePeriodsPastEndForOrg = vi.fn();
+  const startDueRecertPeriodsForOrg = vi.fn();
 
   beforeEach(() => {
     vi.resetModules();
     withOrgContext.mockReset();
     activePeriodsPastEndForOrg.mockReset();
+    startDueRecertPeriodsForOrg.mockReset();
   });
 
   it("completes each period past its end date under the org-local date and publishes one event each", async () => {
@@ -174,6 +176,9 @@ describe("runElectionPeriodAutoEndCron", () => {
       f2fDueRowsForOrg: vi.fn(),
       f2fWindowMissedCandidatesForOrg: vi.fn(),
     }));
+    vi.doMock("../src/modules/06-admission/recert-period-activation", () => ({
+      startDueRecertPeriodsForOrg,
+    }));
     const { runElectionPeriodAutoEndCron } = await import(
       "../src/modules/06-admission/jobs/cron-workers"
     );
@@ -191,5 +196,13 @@ describe("runElectionPeriodAutoEndCron", () => {
     expect(sets[0]).toMatchObject({ status: "completed", completedByCause: "next_period" });
     expect(published.map((p) => p.eventName)).toEqual(["m6.election.period_ended"]);
     expect(published[0]?.payload).toMatchObject({ endDate: "2026-10-03", sequence: 1 });
+    // ...then, on the same tx and org-local day, starts any signed successor whose start date has arrived
+    // (§2.3.2 "setActive … on prior period auto-close"; live proof: m6-recert-period-start.live.test.ts).
+    expect(startDueRecertPeriodsForOrg).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ outbox }),
+      ORG,
+      "2026-10-05",
+    );
   });
 });

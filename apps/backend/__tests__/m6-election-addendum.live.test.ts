@@ -10,6 +10,9 @@
  *   · a refusal without a reason is refused; a signature settles the version
  *   · openAddendumUpdateWindow opens v2 + the 3-day `election_addendum_update` window; an unchanged signed
  *     plan-of-care diff is a no-op
+ *   · bug 5: a coverage event delivered AFTER the version reflecting it was furnished opens no version 2; a
+ *     later genuine change (new item / changed reason) opens v2 + the 3-day window from the event's createdAt;
+ *     an event while v2 is still a draft refreshes it (no v3)
  *   · the overdue scan alerts exactly once (`m6.election_addendum.overdue`)
  *   · a death discharge settles the open draft as `not_required` and closes the window
  *   · the M23 snapshot reflects the record; M7's real problem reader returns the unrelated problem only
@@ -38,8 +41,10 @@ import {
   createElectionAddendumService,
   electionAddendumComplianceForOrg,
   initialAddendumDue,
+  updateAddendumDue,
 } from "../src/modules/06-admission/election-addendum/index";
 import { runElectionAddendumOverdueScanCron } from "../src/modules/06-admission/jobs/cron-workers";
+import { buildM6CoverageAddendumConsumer } from "../src/modules/06-admission/outbox-consumers/coverage-determination-addendum";
 import { createUnrelatedProblemItemsReader } from "../src/modules/07-care-plan/seams/addendum-sources";
 import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
 import { createDocumentReader } from "../src/modules/22-documents/seams/readers";
@@ -347,6 +352,124 @@ describe.skipIf(!DB_URL)(
         "m7.problem.added",
       );
       expect(again.outcome).toBe("draft_refreshed");
+    });
+
+    it("bug 5: a late coverage event opens no version 2 when the furnished version already reflects it", async () => {
+      const { admissionId, patientId } = await activate();
+      const consumer = buildM6CoverageAddendumConsumer({ addendum: () => addendum });
+      const drugId = randomUUID();
+      const notCovered = (sourceId: string, reason: string): NonCoveredItemSnapshot => ({
+        source: "medication",
+        sourceId,
+        category: "drug",
+        description: `Drug ${sourceId.slice(0, 8)}`,
+        reason,
+        determinedAt: new Date().toISOString(),
+        determinedByUserId: null,
+      });
+      const coverageEvent = (sourceId: string, createdAt: Date) =>
+        consumer.handle({
+          id: randomUUID(),
+          organizationId: ORG_A,
+          eventType: "m12.medication_order.coverage_determination_changed",
+          aggregateKind: "medication_order",
+          aggregateId: sourceId,
+          attemptCount: 0,
+          createdAt,
+          payload: {
+            orgId: ORG_A,
+            admissionId,
+            patientId,
+            sourceId,
+            hospiceCoverage: "not_covered_unrelated",
+            previousHospiceCoverage: "covered_related",
+            reason: "Managed by the cardiologist",
+            changedAt: createdAt.toISOString(),
+          },
+        });
+
+      // The drug is marked not covered (the event is written now), then v1 is drafted from the live readers —
+      // so it already lists the drug — edited (clinician rewords the reason) and furnished.
+      const changedAt = new Date(Date.now() - 60_000);
+      reportedItems = [notCovered(drugId, "Managed by the cardiologist")];
+      const v1 = (await addendum.draft(ORG_A, admissionId, USER)).current;
+      expect(v1?.items).toHaveLength(1);
+      const edited = await addendum.updateDraft(
+        ORG_A,
+        admissionId,
+        v1?.id as string,
+        v1?.version as number,
+        {
+          items: [
+            {
+              ...v1?.items[0],
+              reasonNotCovered: "Your heart doctor manages this medicine.",
+            } as never,
+          ],
+          clinicalExplanation: "This medicine treats a condition your own doctor manages.",
+        },
+        USER,
+      );
+      const furnished = await addendum.furnish(
+        ORG_A,
+        admissionId,
+        edited.id,
+        edited.version,
+        { method: "paper" },
+        USER,
+      );
+      expect(furnished.status).toBe("furnished");
+
+      // The outbox delivers the coverage event late (and again, as a redelivery) → nothing differs → no v2.
+      await coverageEvent(drugId, changedAt);
+      await coverageEvent(drugId, changedAt);
+      let ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.history.map((v) => v.versionNumber)).toEqual([1]);
+      expect(ov?.current?.items[0]?.reasonNotCovered).toBe(
+        "Your heart doctor manages this medicine.",
+      );
+      expect(ov?.openWindows).toEqual([]);
+
+      // A later genuine change — a second drug excluded — opens v2 + the 3-day window from the event's time.
+      const secondDrug = randomUUID();
+      const realChangeAt = new Date(Date.now() - 30_000);
+      reportedItems = [
+        notCovered(drugId, "Managed by the cardiologist"),
+        notCovered(secondDrug, "Prescribed for an unrelated condition"),
+      ];
+      await coverageEvent(secondDrug, realChangeAt);
+      ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.current).toMatchObject({
+        versionNumber: 2,
+        trigger: "poc_change",
+        status: "draft",
+      });
+      expect(ov?.current?.triggeredAt).toBe(realChangeAt.toISOString());
+      const tz = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        organizationTimezone(tx as never, ORG_A),
+      );
+      const due = updateAddendumDue(realChangeAt.toISOString(), tz).dueAt;
+      expect(ov?.current?.dueAt).toBe(due);
+      expect(ov?.openWindows.map((w) => [w.kind, w.dueAt])).toEqual([
+        ["election_addendum_update", due],
+      ]);
+      // The clinician's rewording survives into v2 (the source reason did not change).
+      expect(ov?.current?.items.map((i) => i.reasonNotCovered)).toEqual([
+        "Your heart doctor manages this medicine.",
+        "Prescribed for an unrelated condition",
+      ]);
+
+      // While v2 is still a draft, another event refreshes it — never a v3.
+      reportedItems = [
+        notCovered(drugId, "Now managed by the primary care physician"),
+        notCovered(secondDrug, "Prescribed for an unrelated condition"),
+      ];
+      await coverageEvent(drugId, new Date());
+      ov = await addendum.overview(ORG_A, admissionId);
+      expect(ov?.history.map((v) => v.versionNumber)).toEqual([2, 1]);
+      expect(ov?.current?.items[0]?.reasonNotCovered).toBe(
+        "Now managed by the primary care physician",
+      );
     });
 
     it("the overdue scan alerts exactly once; a death discharge settles the draft as not_required", async () => {

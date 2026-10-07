@@ -86693,6 +86693,11 @@
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "narrative": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
                   }
                 }
               }

@@ -39,6 +39,7 @@ import {
   type AddendumPrefill,
   type AddendumRow,
   EMPTY_PREFILL,
+  carrySourceReasons,
   closeAddendumWindows,
   createUpdateVersionInTx,
   listAddendumVersions,
@@ -734,7 +735,9 @@ export function createElectionAddendumService(
         const row = await loadBound(tx, admissionId, addendumId, ifVersion);
         const next: AddendumRow = {
           ...row,
-          ...(patch.items !== undefined ? { items: [...patch.items] } : {}),
+          ...(patch.items !== undefined
+            ? { items: carrySourceReasons(row.items, patch.items) }
+            : {}),
           ...(patch.noNonCoveredItems !== undefined
             ? { noNonCoveredItems: patch.noNonCoveredItems }
             : {}),

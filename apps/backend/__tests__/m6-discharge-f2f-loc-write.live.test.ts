@@ -920,14 +920,23 @@ describe.skipIf(!DB_URL)(
       expect(ctis.rows[0].election_period_id).toBe(seqs.rows[1].id);
       expect(ctis.rows[0].hospice_md_id).toBe(MD);
       expect(ctis.rows[0].status).toBe("drafted");
-      // F-089 — sequence 4 is a third-or-later benefit period, so 42 CFR 418.22(a)(4) requires an
-      // attested face-to-face encounter before the recertification. This assertion used to read
-      // "signing it (hospice-MD alone, since sequence 4 !== 1) fully signs AND activates the period",
-      // which was true until F-062 (#143) reached `transitionElectionPeriod` for real and its
-      // R-F2F-04 guard started running. Transferring in does not exempt the receiving hospice: it is
-      // the one recertifying for the next period, so the encounter is ITS obligation.
+      // Bug 3 — the skeleton CTI `transferIn` drafts carries NO narrative; 42 CFR 418.22(b)(3) requires the
+      // physician's narrative on every recertification, so signing it as created is a typed 422 telling the
+      // signer exactly that (it used to be the generic adequacy 409 with no way to supply one).
       await expect(
         svc.signCtiHospiceMd(ORG_A, ctis.rows[0].id, Number(ctis.rows[0].version), USER),
+      ).rejects.toMatchObject({
+        code: "CTI_NARRATIVE_REQUIRED",
+        statusCode: 422,
+        details: [{ code: "CTI_NARRATIVE_MISSING" }],
+      });
+      // F-089 — sequence 4 is a third-or-later benefit period, so 42 CFR 418.22(a)(4) requires an
+      // attested face-to-face encounter before the recertification. Transferring in does not exempt the
+      // receiving hospice: it is the one recertifying for the next period, so the encounter is ITS obligation.
+      await expect(
+        svc.signCtiHospiceMd(ORG_A, ctis.rows[0].id, Number(ctis.rows[0].version), USER, {
+          narrative: CTI_CLINICAL.narrative,
+        }),
       ).rejects.toMatchObject({ code: "F2F_REQUIRED_FOR_RECERT" });
 
       await admin.query(
@@ -938,44 +947,24 @@ describe.skipIf(!DB_URL)(
            FROM election_period ep WHERE ep.id = $2 AND ep.expected_start IS NOT NULL`,
         [ORG_A, seqs.rows[1].id, MD, "x".repeat(120)],
       );
-      // F-217 — the F2F is now in place, but the skeleton CTI `transferIn` drafts carries NO narrative
-      // (and no route edits one), so the adequacy gate refuses it: 42 CFR 418.22(b)(3) requires the
-      // narrative on every recertification. The refusal is typed and rolls the signature back.
-      await expect(
-        svc.signCtiHospiceMd(ORG_A, ctis.rows[0].id, Number(ctis.rows[0].version), USER),
-      ).rejects.toMatchObject({
-        code: "ELECTION_PERIOD_ADEQUACY_FAILED",
-        statusCode: 409,
-        details: [{ code: "CTI_NARRATIVE_MISSING" }],
-      });
-      // Correction path: void the skeleton and draft the real CTI (with its narrative) for the period.
-      const skeleton = await admin.query(
-        "SELECT version FROM certification_of_terminal_illness WHERE id=$1",
-        [ctis.rows[0].id],
-      );
-      await svc.voidCti(
+      // The signing physician supplies the narrative at signature: the transfer-in CTI signs as created.
+      // Period 4 starts the day after the inherited period ends (2026-03-02, contiguous — 42 CFR 418.21(a)),
+      // which is already past, so the signature starts it at once, dated from that day, and completes period 3.
+      const signed = await svc.signCtiHospiceMd(
         ORG_A,
         ctis.rows[0].id,
-        "redraft with narrative",
-        Number(skeleton.rows[0].version),
-      );
-      const redraft = await svc.draftCti(
-        ORG_A,
-        {
-          electionPeriodId: seqs.rows[1].id,
-          hospiceMedicalDirectorId: MD,
-          ...CTI_CLINICAL,
-          isRecert: true,
-        },
+        Number(ctis.rows[0].version),
         USER,
+        { narrative: CTI_CLINICAL.narrative },
       );
-      // Now the same call signs AND activates the period.
-      const signed = await svc.signCtiHospiceMd(ORG_A, redraft.id, redraft.version, USER);
       expect(signed.state).toBe("signed");
-      const nextStatus = await admin.query("SELECT status FROM election_period WHERE id=$1", [
-        seqs.rows[1].id,
-      ]);
-      expect(nextStatus.rows[0].status).toBe("active");
+      const after = await admin.query(
+        `SELECT id, status, effective_at::text AS start, actual_end_at::text AS "actualEnd"
+           FROM election_period WHERE admission_id=$1 ORDER BY sequence_number`,
+        [adm.id],
+      );
+      expect(after.rows[0]).toMatchObject({ status: "completed", actualEnd: "2026-03-01" });
+      expect(after.rows[1]).toMatchObject({ status: "active", start: "2026-03-02" });
     });
   },
 );

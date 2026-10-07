@@ -107,6 +107,7 @@ import {
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   CtiDraftSchema,
+  CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
   CtiSignSchema,
   CtiVoidSchema,
@@ -3946,7 +3947,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/cti/:id/sign-hospice-md": {
     summary: "Hospice medical director signs the CTI",
-    body: CtiSignSchema,
+    body: CtiHospiceMdSignSchema,
   },
   "POST /api/v1/cti/:id/sign-attending": {
     summary: "Attending physician signs the CTI (period 1)",
