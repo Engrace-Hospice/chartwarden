@@ -74,6 +74,15 @@ export {
   recommendedActionFor,
   REMEDIATION_COVERED_RECORD_TYPES,
 } from "./remediation-service";
+// GAP-108 — the §4.3 worker layer (nine BullMQ workers over `packages/terminology-loader`), the licence-attribution
+// resolver, and the structural ports the composition root binds (job producer, platform-bucket signer).
+export * from "./jobs";
+export {
+  type AttributionResolver,
+  ATTRIBUTION_HEADER,
+  createAttributionResolver,
+} from "./attribution";
+export type { PlatformUploadSigner, TerminologyJobProducer } from "./jobs-ports";
 export {
   M38_ABAC_PREDICATES,
   buildTerminologyAbacPredicates,
@@ -84,6 +93,11 @@ import type { DbClient } from "@wardenx/db";
 import { createTerminologyProvider } from "@wardenx/terminology";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
+import { createAttributionResolver as _createAttributionResolver } from "./attribution";
+import type {
+  PlatformUploadSigner as _PlatformUploadSigner,
+  TerminologyJobProducer as _TerminologyJobProducer,
+} from "./jobs-ports";
 import {
   carePlanCodeUsageProducer as _carePlanCodeUsageProducer,
   createRemediationService as _createRemediationService,
@@ -113,6 +127,7 @@ export function mountTerminologyRoutes(
   app: FastifyInstance,
   db: DbClient,
   flags?: _TerminologyFeatureFlagReader,
+  admin: TerminologyAdminBindings = {},
 ): void {
   const provider = createTerminologyProvider(_createDbTerminologyStore(db));
   const ops = _createDbTerminologyOpsStore(db);
@@ -123,6 +138,29 @@ export function mountTerminologyRoutes(
     ops,
     producers: [_carePlanCodeUsageProducer(() => getSeam("CarePlanReader"))],
   });
-  _registerTerminologyRoutes(app, { provider, ops, remediation, ...(flags ? { flags } : {}) });
-  _registerAdminTerminologyRoutes(app, { ops });
+  // GAP-108 — licence attribution (SNOMED CT / LOINC / RxNorm): header on the `/:system/*` reads + /attributions.
+  const attribution = _createAttributionResolver(ops);
+  _registerTerminologyRoutes(app, {
+    provider,
+    ops,
+    remediation,
+    attribution,
+    ...(flags ? { flags } : {}),
+  });
+  _registerAdminTerminologyRoutes(app, {
+    ops,
+    ...(admin.jobs ? { jobs: admin.jobs } : {}),
+    ...(admin.uploads ? { uploads: admin.uploads } : {}),
+    embeddingsAvailable: admin.embeddingsAvailable ?? false,
+  });
+}
+
+/**
+ * GAP-108 — what the platform-ops routes need from the §4.3 job layer and the platform bucket. All optional: a boot
+ * without Valkey / MinIO / an embeddings backend leaves the corresponding routes answering 503 (never a silent success).
+ */
+export interface TerminologyAdminBindings {
+  readonly jobs?: _TerminologyJobProducer;
+  readonly uploads?: _PlatformUploadSigner;
+  readonly embeddingsAvailable?: boolean;
 }

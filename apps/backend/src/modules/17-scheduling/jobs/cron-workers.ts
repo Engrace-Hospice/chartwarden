@@ -82,6 +82,46 @@ export async function runVisitAttentionCron(deps: M17WorkerDeps): Promise<void> 
   }
 }
 
+/**
+ * Runs `perOrg` for every active org. One org's failure never stops the others; failures are collected and
+ * rethrown together AFTER the full pass so BullMQ still retries the job.
+ */
+async function forEachActiveOrg(
+  deps: M17WorkerDeps,
+  label: string,
+  perOrg: (organizationId: string) => Promise<void>,
+): Promise<void> {
+  const failures: string[] = [];
+  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
+    try {
+      await perOrg(organizationId);
+    } catch (err) {
+      failures.push(`${organizationId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  if (failures.length > 0) throw new Error(`${label} failed for ${failures.join("; ")}`);
+}
+
+/** §4.8 `m17.reassignment-scan` — flags published visits inside every approved PTO window. */
+export async function runReassignmentScanCron(deps: M17WorkerDeps): Promise<void> {
+  const service = createDbSchedulingBackend(deps.db, deps.outbox) as SchedulingAutomationService;
+  const now = (deps.now ?? (() => new Date()))();
+  await forEachActiveOrg(deps, "M17 reassignment-scan", async (organizationId) => {
+    await service.scanTimeOffReassignmentsForOrg(organizationId, M17_WORKER_SYSTEM_USER_ID, {
+      now,
+    });
+  });
+}
+
+/** §4.8 `m17.caregiver-reminder.cron` — `m17.caregiver_reminder_due` for opted-in visits ≤24h out. */
+export async function runCaregiverReminderCron(deps: M17WorkerDeps): Promise<void> {
+  const service = createDbSchedulingBackend(deps.db, deps.outbox) as SchedulingAutomationService;
+  const now = (deps.now ?? (() => new Date()))();
+  await forEachActiveOrg(deps, "M17 caregiver-reminder", async (organizationId) => {
+    await service.emitCaregiverRemindersForOrg(organizationId, M17_WORKER_SYSTEM_USER_ID, { now });
+  });
+}
+
 export function registerM17CronWorkers(deps: M17WorkerDeps): Worker[] {
   return [
     new Worker(M17_QUEUES.recurringMaterialize, async () => runRecurringMaterializationCron(deps), {
@@ -91,6 +131,14 @@ export function registerM17CronWorkers(deps: M17WorkerDeps): Worker[] {
     new Worker(M17_QUEUES.visitAttention, async () => runVisitAttentionCron(deps), {
       connection: deps.connection,
       concurrency: M17_QUEUE_PARAMS.visitAttention.concurrency,
+    }),
+    new Worker(M17_QUEUES.reassignmentScan, async () => runReassignmentScanCron(deps), {
+      connection: deps.connection,
+      concurrency: M17_QUEUE_PARAMS.reassignmentScan.concurrency,
+    }),
+    new Worker(M17_QUEUES.caregiverReminder, async () => runCaregiverReminderCron(deps), {
+      connection: deps.connection,
+      concurrency: M17_QUEUE_PARAMS.caregiverReminder.concurrency,
     }),
   ];
 }
@@ -122,5 +170,31 @@ export async function scheduleM17Jobs(connection: ConnectionOptions): Promise<Qu
       removeOnFail: M17_QUEUE_PARAMS.visitAttention.removeOnFail,
     },
   );
-  return [recurring, attention];
+  const reassignment = new Queue(M17_QUEUES.reassignmentScan, { connection });
+  await reassignment.add(
+    "scheduled",
+    {},
+    {
+      repeat: { pattern: M17_JOB_SCHEDULES.reassignmentScan },
+      priority: M17_QUEUE_PARAMS.reassignmentScan.priority,
+      attempts: M17_QUEUE_PARAMS.reassignmentScan.attempts,
+      backoff: M17_QUEUE_PARAMS.reassignmentScan.backoff,
+      removeOnComplete: M17_QUEUE_PARAMS.reassignmentScan.removeOnComplete,
+      removeOnFail: M17_QUEUE_PARAMS.reassignmentScan.removeOnFail,
+    },
+  );
+  const reminder = new Queue(M17_QUEUES.caregiverReminder, { connection });
+  await reminder.add(
+    "scheduled",
+    {},
+    {
+      repeat: { pattern: M17_JOB_SCHEDULES.caregiverReminder },
+      priority: M17_QUEUE_PARAMS.caregiverReminder.priority,
+      attempts: M17_QUEUE_PARAMS.caregiverReminder.attempts,
+      backoff: M17_QUEUE_PARAMS.caregiverReminder.backoff,
+      removeOnComplete: M17_QUEUE_PARAMS.caregiverReminder.removeOnComplete,
+      removeOnFail: M17_QUEUE_PARAMS.caregiverReminder.removeOnFail,
+    },
+  );
+  return [recurring, attention, reassignment, reminder];
 }

@@ -298,11 +298,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   // or invalidate — the consent-lifecycle events need no M22-side consumer at all.
   //
   // M17 §4.11 D15 — the 24h-out caregiver visit-confirmation reminder. One artifact per visit, so the
-  // key is fixed; `patientId` rides the payload top level. NOTE (reported, not fixed): no producer
-  // exists anywhere in `17-scheduling/` for this event — `jobs/cron-workers.ts` registers only
-  // `recurringMaterialize` and `visitAttention`, no caregiver-reminder cron — so this consumer binding
-  // is real and tested against the real catalogued payload shape, but nothing in production emits the
-  // event yet.
+  // key is fixed; `patientId` rides the payload top level. GAP-052: M17's `scheduling.caregiver-reminder`
+  // cron (`17-scheduling/reassignment-scan.ts` `emitDueCaregiverReminders`) is the producer.
   "m17.caregiver_reminder_due": {
     aggregateIdFields: ["visitId"],
     templateKey: "visit_confirmation",

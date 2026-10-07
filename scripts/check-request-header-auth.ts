@@ -119,6 +119,16 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "Replay-window freshness (+-5 min) only; authorization is the HMAC above plus the (org, event id) dedup key. Note the scheme does not sign the timestamp.",
   },
+  "x-twilio-signature": {
+    classification: "verified",
+    reason:
+      "Base64 HMAC-SHA1 over (exact public URL + sorted POST params) under the Twilio Auth Token, constant-time compared BEFORE the callback is believed (M36 webhooks/verify-twilio.ts, mounted by 36-messaging/delivery/webhook-mount.ts). Fails closed (503) when no Auth Token is configured. Scheme per M36 spec 4.9.2; NOT yet checked against a real Twilio delivery.",
+  },
+  "x-twilio-timestamp": {
+    classification: "not-authorization",
+    reason:
+      "Replay-window freshness (+-300 s) only (M36 webhooks/replay-guard.ts); authorization is the HMAC above, and the status update is forward-only so a replay is a no-op. Spec 4.9.1 assumes Twilio sends it; unverified against a real delivery.",
+  },
   "x-witness-attestation": {
     classification: "verified",
     reason:

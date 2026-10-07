@@ -313,3 +313,36 @@ export type {
   DeliveryEndpointVerification,
   AlertPayloadSeverity,
 } from "./interfaces/kinds";
+
+// ── GAP-101 out-of-band dispatch (§4.4 / §4.7) + vendor-callback reconcile (§4.9) — transport seams,
+//    retry/backoff policy, the per-delivery dispatch decision and the idempotent status mapping ──────
+export {
+  DELIVERY_CLAIM_LEASE_MS,
+  DELIVERY_SWEEP_BATCH_LIMIT,
+  DELIVERY_SWEEP_INTERVAL_MS,
+  TRANSPORT_NOT_CONFIGURED,
+  TransportError,
+  backoffDelayMs,
+  canTransition,
+  createDenyTransport,
+  createDenyTransports,
+  createFakeTransports,
+  dispatchClaimedDelivery,
+  hasAttemptsLeft,
+  mapVendorStatus,
+  queueParametersFor,
+} from "./dispatch";
+export type {
+  ClaimedDelivery,
+  DispatchOutcome,
+  DispatchPorts,
+  FakeTransportCall,
+  OutOfBandTransport,
+  OutOfBandTransportChannel,
+  OutOfBandTransports,
+  ResolvedDestination,
+  TransportSendRequest,
+  TransportSendResult,
+  VendorCallbackKind,
+  VendorTransition,
+} from "./dispatch";

@@ -97,6 +97,38 @@ export interface TenantExtensionGovernanceQuery {
   readonly cursor?: string | null;
 }
 
+/** One licence attestation (GAP-108) — a platform operator's statement that a non-public system's licence is held. */
+export interface LicenseAttestationEntry {
+  readonly id: string;
+  readonly systemId: CodeSystemId;
+  readonly licensee: string;
+  readonly licenseReference: string;
+  readonly attestedBy: string;
+  readonly attestedAt: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly attributionText: string;
+  readonly revokedAt: string | null;
+}
+
+/** What the route asks the database to record. */
+export interface RecordAttestationInput {
+  readonly system: CodeSystemId;
+  readonly licensee: string;
+  readonly licenseReference: string;
+  readonly attestedBy: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly attributionText: string;
+}
+
+/** An active attribution a consumer must display with a system's data. */
+export interface SystemAttribution {
+  readonly systemId: CodeSystemId;
+  readonly licensee: string;
+  readonly attributionText: string;
+}
+
 /** The data port behind M38's route-only reads and the platform-ops write door. */
 export interface TerminologyOpsStore {
   /** Every platform value set, ordered by id (§4.1 catalog). */
@@ -123,6 +155,16 @@ export interface TerminologyOpsStore {
   listTenantExtensions(
     query: TenantExtensionGovernanceQuery,
   ): Promise<readonly TenantExtensionGovernanceRow[]>;
+  /** Every licence attestation (active, expired, revoked), newest first; optionally one system's. */
+  listLicenseAttestations(system?: CodeSystemId): Promise<readonly LicenseAttestationEntry[]>;
+  /** Record an attestation through the loader door (refused for a public system). Returns its id. */
+  recordLicenseAttestation(
+    input: RecordAttestationInput,
+  ): Promise<{ readonly attestationId: string }>;
+  /** Revoke an attestation; false when it does not exist or is already revoked. */
+  revokeLicenseAttestation(attestationId: string, revokedBy: string): Promise<boolean>;
+  /** The attributions currently in force (one per system with an active attestation). */
+  activeAttributions(): Promise<readonly SystemAttribution[]>;
 }
 
 // ── in-memory slice ───────────────────────────────────────────────────────────────────────────────
@@ -137,6 +179,10 @@ export interface TerminologyOpsSeed {
   readonly versions?: readonly { system: CodeSystemId; version: string; versionId: string }[];
   /** Systems with an active version — a system absent here cannot accept an embeddings refresh. */
   readonly activeVersionBySystem?: Partial<Record<CodeSystemId, string>>;
+  /** Seeded licence attestations (GAP-108). */
+  readonly attestations?: readonly LicenseAttestationEntry[];
+  /** Systems whose catalog `license_source` is not 'public' (a registration of one needs an attestation). */
+  readonly licensedSystems?: readonly CodeSystemId[];
 }
 
 /**
@@ -147,15 +193,28 @@ export function createInMemoryTerminologyOpsStore(seed: TerminologyOpsSeed = {})
   store: TerminologyOpsStore;
   registered(): RegisterVersionInput[];
   embeddingRequests(): { system: CodeSystemId; requestedBy: string }[];
+  attestations(): LicenseAttestationEntry[];
 } {
   const registered: RegisterVersionInput[] = [];
   const embeddingRequests: { system: CodeSystemId; requestedBy: string }[] = [];
+  const attestations: LicenseAttestationEntry[] = [...(seed.attestations ?? [])];
+  const licensed = new Set<CodeSystemId>(seed.licensedSystems ?? []);
+  const isActive = (a: LicenseAttestationEntry, today: string): boolean =>
+    a.revokedAt === null &&
+    a.effectiveFrom <= today &&
+    (a.effectiveTo === null || a.effectiveTo >= today);
   const versions = new Map<string, string>(
     (seed.versions ?? []).map((v) => [`${v.system} ${v.version}`, v.versionId]),
   );
   let versionSeq = versions.size;
 
-  const store: TerminologyOpsStore = {
+  const store: Omit<
+    TerminologyOpsStore,
+    | "listLicenseAttestations"
+    | "recordLicenseAttestation"
+    | "revokeLicenseAttestation"
+    | "activeAttributions"
+  > = {
     async listValueSets() {
       return [...(seed.valueSets ?? [])].sort((a, b) => (a.id < b.id ? -1 : 1));
     },
@@ -174,6 +233,15 @@ export function createInMemoryTerminologyOpsStore(seed: TerminologyOpsSeed = {})
     },
 
     async registerVersion(input) {
+      // Mirrors terminology_loader_assert_license: a non-public system needs an active attestation.
+      if (licensed.has(input.system)) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (!attestations.some((a) => a.systemId === input.system && isActive(a, today))) {
+          throw new Error(
+            `TERMINOLOGY_LICENSE_ATTESTATION_REQUIRED: ${input.system} has no active licence attestation`,
+          );
+        }
+      }
       const key = `${input.system} ${input.version}`;
       const existing = versions.get(key);
       if (existing !== undefined) {
@@ -207,5 +275,59 @@ export function createInMemoryTerminologyOpsStore(seed: TerminologyOpsSeed = {})
     },
   };
 
-  return { store, registered: () => registered, embeddingRequests: () => embeddingRequests };
+  const memoryStore: TerminologyOpsStore = {
+    ...store,
+    async listLicenseAttestations(system) {
+      return attestations
+        .filter((a) => system === undefined || a.systemId === system)
+        .sort((a, b) => (a.attestedAt < b.attestedAt ? 1 : -1));
+    },
+    async recordLicenseAttestation(input) {
+      if (!licensed.has(input.system)) {
+        throw new Error(
+          `TERMINOLOGY_LICENSE_NOT_REQUIRED: ${input.system} is a public code system and needs no attestation`,
+        );
+      }
+      const id = `00000000-0000-4000-9000-${String(attestations.length + 1).padStart(12, "0")}`;
+      attestations.push({
+        id,
+        systemId: input.system,
+        licensee: input.licensee,
+        licenseReference: input.licenseReference,
+        attestedBy: input.attestedBy,
+        attestedAt: new Date().toISOString(),
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo,
+        attributionText: input.attributionText,
+        revokedAt: null,
+      });
+      return { attestationId: id };
+    },
+    async revokeLicenseAttestation(id) {
+      const i = attestations.findIndex((a) => a.id === id && a.revokedAt === null);
+      if (i < 0) return false;
+      attestations[i] = {
+        ...(attestations[i] as LicenseAttestationEntry),
+        revokedAt: new Date().toISOString(),
+      };
+      return true;
+    },
+    async activeAttributions() {
+      const today = new Date().toISOString().slice(0, 10);
+      return attestations
+        .filter((a) => isActive(a, today))
+        .map((a) => ({
+          systemId: a.systemId,
+          licensee: a.licensee,
+          attributionText: a.attributionText,
+        }));
+    },
+  };
+
+  return {
+    store: memoryStore,
+    registered: () => registered,
+    embeddingRequests: () => embeddingRequests,
+    attestations: () => attestations,
+  };
 }

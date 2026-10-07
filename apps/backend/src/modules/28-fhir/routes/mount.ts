@@ -7,6 +7,7 @@
 // FHIR-spec routes simply resolve their own bearer instead of composing the M3 permission preHandlers.
 import type { FastifyInstance } from "fastify";
 
+import type { BulkExportEnqueuePort, FhirExportObjectStore } from "../jobs/ports";
 import type { FhirBaaStatusView } from "../seams/index";
 import { registerAdminClientRoutes } from "./admin-clients.routes";
 import { registerAdminConfigRoutes } from "./admin-config.routes";
@@ -69,11 +70,16 @@ export interface M28RouteServices {
   readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
   /** GAP-083 — per-client token bucket (absent ⇒ per-process). */
   readonly rateLimiter?: FhirClientRateLimiter;
+  /** GAP-084 — bulk-export queue producer + output object store. Absent ⇒ `$export` answers 501. */
+  readonly exports?: {
+    readonly enqueue: BulkExportEnqueuePort;
+    readonly objects: FhirExportObjectStore;
+  };
 }
 
 /** Mount every M28 §4.1 route plugin over the composed service surface. */
 export function mountM28Routes(app: FastifyInstance, services: M28RouteServices): void {
-  const { store, audit, now, jwks, replay, tokenEndpointUrl, baa, rateLimiter } = services;
+  const { store, audit, now, jwks, replay, tokenEndpointUrl, baa, rateLimiter, exports } = services;
   registerFhirR4Routes(app, {
     store,
     audit,
@@ -83,9 +89,10 @@ export function mountM28Routes(app: FastifyInstance, services: M28RouteServices)
     tokenEndpointUrl,
     baa,
     rateLimiter,
+    exports,
   });
   registerAdminClientRoutes(app, { store, baa, now });
-  registerAdminExportRoutes(app, { store });
+  registerAdminExportRoutes(app, { store, enqueue: exports?.enqueue });
   registerAdminInboundRoutes(app, { store });
   registerAdminConfigRoutes(app, { store });
 }

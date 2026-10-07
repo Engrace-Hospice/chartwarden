@@ -1,0 +1,13 @@
+-- GAP-084 — M28 §4.8 `fhir.client-session-sweeper` / §8.4 `operational` retention (90 days hot, then routine purge).
+--
+-- Migration 0137 granted `wardenx_app` SELECT, INSERT, UPDATE on `fhir_client_session` and nothing else, which
+-- was enough for minting and revoking a token but meant the application role could never DELETE a session, so
+-- the table could never be purged by the worker that owns that retention (only the M4 destruction role, which
+-- runs for whole-org offboarding, could). The sweeper deletes rows whose `expires_at` is more than 90 days in
+-- the past, one org at a time under `withOrgContext`; RLS (`fhir_client_session_org`, FORCEd) still scopes every
+-- DELETE to the acting org, and the generated audit trigger on the parent still records it.
+--
+-- Scope of the grant: DELETE on this one table, no PHI (JTI, scopes and key fingerprint are operational). The
+-- partitioned parent's privilege is the one DML through the parent is checked against, so no per-partition
+-- grant is needed (and the monthly partitions the M1 manager creates inherit nothing they do not need).
+GRANT DELETE ON "fhir_client_session" TO wardenx_app;

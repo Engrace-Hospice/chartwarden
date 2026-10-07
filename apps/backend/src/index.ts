@@ -23,8 +23,8 @@ import {
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { createAlertPayloadRegistry } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
+import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messaging";
 // F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
 // M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
 // the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
@@ -39,6 +39,7 @@ import {
 import { DegradedError, WardenXError } from "@wardenx/types";
 import type {
   AdmissionStatusReader,
+  OrgId,
   PatientAddressReader,
   PatientId,
   ScaleType,
@@ -142,6 +143,7 @@ import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenan
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
 const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
+const M18_PLATFORM_JOB_ID = "m18-evv-automation";
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
 // GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
@@ -169,6 +171,11 @@ import {
 // §D10 readers via `getSeam` in the worker-runner block below).
 import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
+import {
+  PUBLIC_SOURCE_ADAPTERS,
+  embedderUnavailable,
+  licensedSourceDenyStub,
+} from "@wardenx/terminology-loader";
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
@@ -232,6 +239,7 @@ import {
   membershipUserIdForOrg,
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
+  patientIdsPageForOrg,
   rebuildPrivacySnapshotsForOrg,
   registerPatientErasers,
   registerPatientSeams,
@@ -260,6 +268,7 @@ import {
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   electionPeriodContextForOrg,
+  idgActiveAdmissionsForOrg,
   idgCurrentLevelOfCareForOrg,
   idgHospitalEventsForOrg,
   idgPacketInclusionForOrg,
@@ -444,6 +453,7 @@ import {
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
   idgMissedDosesForOrg,
+  ivSessionActivityForOrg,
   mountEmarRoutes,
   registerEmarAbacPredicates,
   registerEmarErasers,
@@ -555,7 +565,10 @@ import {
 import { onTimeVisitCountsForOrg } from "./modules/17-scheduling/seams/drizzle-store";
 import {
   M18_OUTBOX_EVENTS,
+  buildEvvAggregatorDeps,
   buildM18EncounterSignedConsumer,
+  buildM18SpoofDetectorConsumer,
+  buildM18SubmissionPrepConsumer,
   buildM18VisitCancelledConsumer,
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
@@ -565,6 +578,8 @@ import {
   registerEvvAbacPredicates,
   registerEvvRoutes,
   registerEvvSeams,
+  registerM18CronWorkers,
+  scheduleM18Jobs,
 } from "./modules/18-evv/index";
 import { evvComplianceCountsForOrg } from "./modules/18-evv/seams/drizzle-store";
 // F-194 (#248) — M18's org-explicit EVV-visit-provider-entity seam, injected as a port into M30's
@@ -588,10 +603,14 @@ import {
   idgTriageCarePlanChangesForOrg,
   mountM19Routes,
   registerM19CronWorkers,
+  registerM19Tier1CronWorkers,
+  registerM19TriageCronWorkers,
   registerOncallAbacPredicates,
   registerOncallSeams,
   registerTriageErasers,
   scheduleM19Jobs,
+  scheduleM19Tier1Jobs,
+  scheduleM19TriageJobs,
   wireM19Tenancy,
 } from "./modules/19-oncall/index";
 import {
@@ -823,7 +842,9 @@ import {
   M26_PLATFORM_JOB_ID,
   buildDrizzleM26ReadService,
   buildDrizzleM26WriteService,
+  buildPsrReconcileEnqueuer,
   createDrizzleCapRedactStore,
+  createPsrFileStore,
   mountM26Routes,
   registerCapErasers,
   registerM26AbacPredicates,
@@ -867,8 +888,13 @@ import {
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
 // T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
 import {
+  CAPABILITY_RELEASE_TAG,
   M28_OUTBOX_EVENTS,
+  M28_PLATFORM_JOB_ID,
+  buildBulkExportEnqueuePort,
   buildDrizzleFhirGatewayAbacResolver,
+  buildFhirExportObjectStore,
+  buildGatewayCapabilityStatement,
   createDrizzleFhirGatewayEraseStore,
   createDrizzleFhirGatewayStore,
   createDrizzleFhirPublishedSeamStore,
@@ -883,8 +909,11 @@ import {
   registerFhirGatewayAbacPredicates,
   registerFhirGatewayEraser,
   registerFhirPublishedSeams,
+  registerM28Workers,
   sampleFhirBaaCoverage,
+  scheduleM28Jobs,
   warnOnFhirBaaGap,
+  wireM28Tenancy,
 } from "./modules/28-fhir/index";
 // M29 (External Interfaces) boot surface (M29-T08) — the §4.1/§4.2 route store, the §4.4 published seams,
 // and the §4.8 ABAC predicate resolver. Seams register over their M1 deny-stubs ONLY when a Drizzle store is
@@ -1075,6 +1104,7 @@ import {
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
 import {
+  M36_DELIVERY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
@@ -1082,17 +1112,27 @@ import {
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
+  createDrizzleDeliveryDispatchStore,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   mountMessagingRoutes,
+  mountMessagingWebhookRoutes,
+  registerM36DeliveryWorkers,
   registerMessagingErasers,
   registerMessagingSeams,
+  scheduleM36DeliveryJobs,
   selectTransactionalEmailTransport,
   wireAlertRuleSeed,
+  wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
+import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
+import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
+import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
+import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
 // bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
@@ -1104,6 +1144,8 @@ import {
   buildDrizzleLcpAdmissionLookup,
   buildM37AdmissionDischargedConsumer,
   buildM37DeathRecordedConsumer,
+  buildM37IvOverlayOnOrderEndedConsumer,
+  buildM37IvOverlayOnOrderSignedConsumer,
   buildM37LcpActivatedConsumer,
   buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
@@ -1115,18 +1157,32 @@ import {
   registerIpuSeams,
   registerM37AbacPredicates,
   registerM37CronWorkers,
+  registerM37IvBedsideWorker,
+  scheduleM37IvBedsideWatchdog,
   scheduleM37Jobs,
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
+  M38_PLATFORM_JOB_ID,
+  type PlatformS3Slice,
+  buildTerminologyProducer,
+  carePlanCodeUsageProducer,
+  createDbEmbeddingStore,
+  createDbExpansionWriter,
+  createDbLoaderStore,
+  createDbTerminologyOpsStore,
   createDbTerminologyStore,
   createDrizzleTerminologyEraseStore,
+  createPlatformObjectPort,
+  createPlatformUploadSigner,
   mountTerminologyRoutes,
+  registerM38Workers,
   registerTerminologyAbacPredicates,
   registerTerminologyErasers,
   registerTerminologySeams,
+  scheduleM38Jobs,
 } from "./modules/38-terminology/index";
 import {
   M39_OUTBOX_EVENTS,
@@ -1787,6 +1843,7 @@ export function wireModuleSeams(
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
+  wireM36DeliveryTenancy(); // GAP-101 — allowlist the M36 send_* delivery-sweep job id (withPlatformContext org enumeration)
   wireM31Tenancy(); // F-222 (#248) — allowlist the cron job id so the post-discharge-grace sweep may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
@@ -1796,6 +1853,8 @@ export function wireModuleSeams(
   wireM13Tenancy(); // GAP-038/039/040 — allowlist the cron job id so the M13 §4.8 crons may enter withPlatformContext
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   wireM16Tenancy(); // GAP-048 — allowlist the cron job id so the 13-month close / miss-deadline / anniversary-lookahead fan-outs may enter withPlatformContext
+  wireM28Tenancy(); // GAP-084 — allowlist the cron job id so the M28 §4.8 sweepers may enter withPlatformContext
+  registerPlatformJob(M38_PLATFORM_JOB_ID); // GAP-108 — the M38 tenant_deprecation_scan fan-out's active-org enumeration
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
@@ -2621,6 +2680,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
@@ -2989,6 +3049,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m29OutboxPublisher = bindCallerModule(txOutboxPublisher, "m29");
   const m17OutboxPublisher = bindCallerModule(txOutboxPublisher, "m17");
   const m18OutboxPublisher = bindCallerModule(txOutboxPublisher, "m18");
+  // GAP-056 — the M18 aggregator ports (state selection live; transport/credentials/M5 identifier fail-closed).
+  const m18AggregatorDeps = dbHandle
+    ? buildEvvAggregatorDeps(dbHandle.db, process.env.EVV_AGGREGATOR_STATES)
+    : undefined;
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -3005,15 +3069,78 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // no-op) when no Valkey connection is configured. `m27Recompute.queues` is closed on shutdown alongside the
   // worker/cron-schedule queues (see the §4.8 worker-registration block below, where `app` is in scope).
   const m27Recompute = buildM27RecomputeEnqueue(queueConnection);
+  // GAP-078 — M26 PS&R import. The raw CSV goes to the tenant bucket as a DEK-encrypted envelope (the M34
+  // `TenantKeyProvider`, resolved lazily — it registers during boot) and the `cap:psr-reconcile` job is
+  // produced on the platform Valkey. Either missing (no MINIO_* / no Valkey) leaves the port unbound, so
+  // `importPsr` fails closed with a typed 503 rather than queueing an import that can never reconcile.
+  const m26PsrS3Config = s3ObjectStoreConfigFromEnv(process.env);
+  const m26PsrObjects = m26PsrS3Config ? createS3ObjectStore(m26PsrS3Config) : null;
+  const m26PsrFiles = m26PsrObjects
+    ? createPsrFileStore({
+        keys: {
+          dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+          dekForOrgVersion: (orgId, version) =>
+            getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        },
+        objects: {
+          putObject: async ({ organizationId, objectKey, bytes }) => {
+            await m26PsrObjects.putObject({
+              bucket: deriveTenantBucket(organizationId),
+              objectKey,
+              bytes,
+            });
+          },
+          getObject: async ({ organizationId, objectKey }) => {
+            const { url } = await m26PsrObjects.presign({
+              organizationId,
+              descriptor: {
+                bucket: deriveTenantBucket(organizationId),
+                objectKey,
+                ttlSeconds: 60,
+                accessKind: "content_download",
+              },
+            });
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`PS&R object read failed with HTTP ${res.status}`);
+            return new Uint8Array(await res.arrayBuffer());
+          },
+        },
+      })
+    : undefined;
+  const m26PsrEnqueuer = queueConnection ? buildPsrReconcileEnqueuer(queueConnection) : null;
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
+  // GAP-101 — M36's first publisher: the out-of-band dispatcher + vendor-webhook reconcile emit
+  // `m36.notification.delivery_failed` in the same tx that settles the delivery `failed`.
+  const m36OutboxPublisher = bindCallerModule(txOutboxPublisher, "m36");
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
   // (migration 0019 created `mdm_canonical_writer` and never a function owning it), so there was no
   // canonical change for M40 to announce; migration 0202 built the write path and events-by-m40.ts the
   // catalog. Publishes platform-wide (`organizationId: null`) — a canonical belongs to no tenant.
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
+  // GAP-084 — the M28 bulk-export machinery. Output objects live in the tenant's own MinIO bucket via the SAME
+  // SigV4 adapter M22 uses (a stateless signer — nothing to share). Without the MINIO_* contract OR a queue
+  // connection, `$export` answers 501 instead of accepting a job nothing can run (the refusing store stands in
+  // for the worker/sweeper deps below so the inbound + session crons still run).
+  const m28ExportS3Config = s3ObjectStoreConfigFromEnv(process.env);
+  const m28ExportObjects = buildFhirExportObjectStore(
+    m28ExportS3Config ? createS3ObjectStore(m28ExportS3Config) : createRefusingObjectStore(),
+    (organizationId) => deriveTenantBucket(organizationId as OrgId),
+  );
+  const m28ExportQueue =
+    queueConnection && m28ExportS3Config ? buildBulkExportEnqueuePort(queueConnection) : null;
+  // GAP-108 — M38's §4.3 job layer. Release files live in ONE platform bucket (never a tenant bucket) behind the same
+  // SigV4 adapter M22 uses; the producer needs Valkey. Either missing leaves the admin load/upload routes answering
+  // 503 (no silent success) and the load worker reading through a refusing port. The embeddings backend (local BGE-small
+  // sidecar) is not built: `embedderUnavailable` keeps refresh-embeddings fail-closed (503) and semantic search on fuzzy.
+  const m38S3Config = s3ObjectStoreConfigFromEnv(process.env);
+  const m38S3 = m38S3Config
+    ? (createS3ObjectStore(m38S3Config) as unknown as PlatformS3Slice)
+    : null;
+  const m38PlatformBucket = process.env.TERMINOLOGY_PLATFORM_BUCKET?.trim() || undefined;
+  const m38Producer = queueConnection ? buildTerminologyProducer(queueConnection) : null;
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
   const m3OutboxPublisher = bindCallerModule(txOutboxPublisher, "m3");
   // F-202/F-203 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-203): the service
@@ -3559,7 +3686,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // F-236 — `POST /intake/uploads/:id/extraction/run` enqueues; the worker process runs it.
             queueConnection ? createDocLensIntakeEnqueue(queueConnection) : undefined,
           );
-          mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
+          mountTerminologyRoutes(app, dbHandle.db, featureFlagReader, {
+            ...(m38Producer ? { jobs: m38Producer } : {}),
+            ...(m38S3 ? { uploads: createPlatformUploadSigner(m38S3, m38PlatformBucket) } : {}),
+            embeddingsAvailable: embedderUnavailable.available,
+          });
+          if (m38Producer) {
+            app.addHook("onClose", async () => {
+              await Promise.all(m38Producer.queues.map((q) => q.close()));
+            });
+          }
+          // M38 (GAP-108: the load / refresh-embeddings routes now enqueue the §4.3 jobs; /uploads presigns the platform bucket) — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,
@@ -3567,6 +3704,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             patientReader: getConsentPatientReader(),
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
+          // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
+          // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
+          // secret that is not configured answers 503 and never verifies against a default.
+          mountMessagingWebhookRoutes(app, { db: dbHandle.db, outbox: m36OutboxPublisher });
           // M34 (Phase 2D) — mount the platform-ops + tenant-scoped surfaces over the DRIZZLE route services
           // (RLS-scoped reads under withPlatformContext/withOrgContext; commands enqueue the §4.3 queue job
           // through the BullMQ producer). The platform queue producer + the tenant queue producer are the
@@ -3892,8 +4033,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM26Routes(app, {
             readService: buildDrizzleM26ReadService(dbHandle.db),
-            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher),
+            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher, {
+              ...(m26PsrFiles ? { files: m26PsrFiles } : {}),
+              ...(m26PsrEnqueuer ? { enqueue: m26PsrEnqueuer.port } : {}),
+            }),
           });
+          if (m26PsrEnqueuer)
+            app.addHook("onClose", async () => void (await m26PsrEnqueuer.queue.close()));
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM24Routes(app, {
@@ -4208,6 +4354,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // registered provider is the fail-closed deny-stub, never a boot error); the limiter is the
             // Valkey token bucket when REDIS_URL is set, per-process otherwise (the plugin's posture).
             baa: { isBaaActive: (input) => getFhirBaaStatusProvider().isBaaActive(input) },
+            exports: m28ExportQueue
+              ? { enqueue: m28ExportQueue.port, objects: m28ExportObjects }
+              : undefined,
             rateLimiter: rateLimitRedisClient
               ? createRedisFhirClientRateLimiter(rateLimitRedisClient, {
                   onStoreError: (err) =>
@@ -5346,6 +5495,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       activeOrgs: m26ActiveOrgs,
       alerts: m26Alerts,
+      ...(m26PsrFiles ? { psrFiles: m26PsrFiles, outbox: m26OutboxPublisher } : {}),
     });
     attachDlqAlertsToAll(m26Workers, "m26");
     app.addHook("onClose", async () => {
@@ -5450,6 +5600,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M8 cron-schedule registration failed");
     }
     app.log.info({ queues: m8Workers.length }, "M8 Phase-3 encounter automation crons constructed");
+
+    // ── M18 §4.8 EVV crons (GAP-056): late-check sweep + aggregator submitter drain + response poller ─────
+    if (m18AggregatorDeps) {
+      const m18ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M18_PLATFORM_JOB_ID,
+        reason: "M18 EVV crons fan-out (late-check sweep + aggregator submitter/poller)",
+      });
+      const m18Workers = registerM18CronWorkers({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m18OutboxPublisher,
+        activeOrgs: m18ActiveOrgs,
+        aggregator: m18AggregatorDeps,
+      });
+      attachDlqAlertsToAll(m18Workers, "m18");
+      app.addHook("onClose", async () => {
+        await Promise.all(m18Workers.map((w) => w.close()));
+      });
+      try {
+        const m18ScheduleQueues = await scheduleM18Jobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m18ScheduleQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M18 cron-schedule registration failed");
+      }
+      app.log.info({ queues: m18Workers.length }, "M18 EVV crons constructed");
+    }
 
     // ── M15 §4.6 discipline-plan crons (GAP-044) ─────────────────────────────────────────────────────────
     // supervisory overdue (6h) / MSW + chaplain initial overdue / volunteer gate-watcher / hour aggregator.
@@ -5576,6 +5756,201 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M21 cron-schedule registration failed");
     }
     app.log.info({ queues: m21Workers.length }, "M21 §4.6 supplies crons constructed");
+
+    // ── M28 §4.8 workers (GAP-084) ───────────────────────────────────────────────────────────────────────
+    // fhir.bulk-export (projects through the SAME consent-gated pipeline the sync reads use, re-checking the
+    // client's status / BAA / scopes at execution time) + its sweeper (24h expiry + MinIO purge, orphan
+    // re-queue), the inbound SLA watch (pending -> expired + M36 alert), the +30d inbound payload shred and the
+    // client-session sweeper. Active-org fan-out over the audited platform pool; every org's work runs under
+    // withOrgContext, publishing through the catalog-validating tx publisher (`m28`).
+    const m28ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M28_PLATFORM_JOB_ID,
+      reason: "M28 §4.8 FHIR gateway workers fan-out (active-org enumeration)",
+    });
+    const m28DisclosureStore = createDrizzleFhirGatewayStore(dbHandle.db);
+    const m28Alerts = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
+    };
+    const m28EnqueueForSweeper = m28ExportQueue ?? buildBulkExportEnqueuePort(queueConnection);
+    const m28Workers = registerM28Workers({
+      connection: queueConnection,
+      bulkExport: {
+        db: dbHandle.db,
+        outbox: m28OutboxPublisher,
+        objects: m28ExportObjects,
+        // M5's keyset patient-id enumeration, injected as a port (M28 reads no M5 table).
+        patients: {
+          patientIdsPage: (organizationId, afterId, limit) =>
+            patientIdsPageForOrg(dbHandle.db, organizationId, afterId, limit),
+        },
+        baa: { isBaaActive: (input) => getFhirBaaStatusProvider().isBaaActive(input) },
+        disclosures: m28DisclosureStore,
+        log: app.log,
+      },
+      sweeper: {
+        db: dbHandle.db,
+        outbox: m28OutboxPublisher,
+        objects: m28ExportObjects,
+        enqueue: m28EnqueueForSweeper.port,
+        activeOrgs: m28ActiveOrgs,
+        log: app.log,
+      },
+      inbound: {
+        db: dbHandle.db,
+        outbox: m28OutboxPublisher,
+        activeOrgs: m28ActiveOrgs,
+        alerts: {
+          emit: async ({ organizationId, kind, payload, correlationId }) => {
+            await m28Alerts.emit(organizationId, {
+              eventType: kind,
+              payload,
+              severity: "warn",
+              correlationId,
+            });
+          },
+        },
+        log: app.log,
+      },
+      sessions: { db: dbHandle.db, activeOrgs: m28ActiveOrgs, log: app.log },
+      // §4.8 fhir.capability-snapshot-validator — reads on the tenant pool (SELECT USING (true)); the one-time
+      // INSERT of the signed snapshot rides the audited platform pool (absent => verify-only, warned).
+      capability: {
+        db: dbHandle.db,
+        signingKey: process.env.FHIR_CAPABILITY_SIGNING_KEY,
+        buildStatement: buildGatewayCapabilityStatement,
+        releaseTag: CAPABILITY_RELEASE_TAG,
+        ...(platformDbHandle
+          ? {
+              runPlatform: (fn) =>
+                withPlatformContext(
+                  platformDbHandle.db,
+                  {
+                    jobId: M28_PLATFORM_JOB_ID,
+                    reason: "M28 fhir.capability-snapshot-validator persists the signed snapshot",
+                  },
+                  m34PlatformBypassAuditor,
+                  fn,
+                ),
+            }
+          : {}),
+        log: app.log,
+      },
+    });
+    attachDlqAlertsToAll(m28Workers, "m28");
+    app.addHook("onClose", async () => {
+      await Promise.all(m28Workers.map((w) => w.close()));
+      await m28ExportQueue?.queue.close();
+      if (!m28ExportQueue) await m28EnqueueForSweeper.queue.close();
+    });
+    try {
+      const m28ScheduleQueues = await scheduleM28Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m28ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M28 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m28Workers.length }, "M28 §4.8 FHIR gateway workers constructed");
+
+    // ── M38 §4.3 workers (GAP-108) ───────────────────────────────────────────────────────────────────────
+    // One real Worker per queue: load_version (fetch → checksum → parse → stage → activate, resumable from `staged`,
+    // failed loads leave no residue), refresh_expansions, refresh_embeddings, tenant_deprecation_scan and the five
+    // scheduled_* source jobs. Writes go through the `terminology_loader` SECURITY DEFINER functions as `wardenx_app`;
+    // the tenant scan fans out over the audited active-org enumerator and reaches each org's code usage through the
+    // owner-published CarePlanReader seam. Tier-1 fetches need TERMINOLOGY_LOADER_EGRESS=on; tier-2 (SNOMED / RxNorm /
+    // LOINC) sit behind the fail-closed credential deny-stub — no licensed fetch is wired.
+    if (m38Producer) {
+      const m38Store = createDbLoaderStore(dbHandle.db);
+      const m38Objects = m38S3
+        ? createPlatformObjectPort(m38S3, m38PlatformBucket)
+        : {
+            async read(): Promise<Uint8Array> {
+              throw new Error("platform object storage is not configured (MINIO_* unset)");
+            },
+            async write(): Promise<void> {
+              throw new Error("platform object storage is not configured (MINIO_* unset)");
+            },
+          };
+      const m38Embeddings = embedderUnavailable;
+      const m38ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M38_PLATFORM_JOB_ID,
+        reason: "M38 §4.3 tenant_deprecation_scan fan-out (active-org enumeration)",
+      });
+      const m38Alerts = getSeam("AlertEmitter") as {
+        emit(
+          orgId: string,
+          input: {
+            eventType: string;
+            payload: Record<string, unknown>;
+            severity: string;
+            correlationId: string;
+          },
+        ): Promise<unknown>;
+      };
+      const m38Workers = registerM38Workers({
+        connection: queueConnection,
+        load: {
+          store: m38Store,
+          objects: m38Objects,
+          followUps: m38Producer,
+          log: app.log,
+          today: () => new Date().toISOString().slice(0, 10),
+          embeddingsAvailable: m38Embeddings.available,
+        },
+        scheduled: {
+          store: m38Store,
+          objects: m38Objects,
+          followUps: m38Producer,
+          log: app.log,
+          now: () => new Date(),
+          fetchImpl: fetch,
+          egressEnabled: process.env.TERMINOLOGY_LOADER_EGRESS === "on",
+          publicAdapters: PUBLIC_SOURCE_ADAPTERS,
+          licensed: licensedSourceDenyStub,
+        },
+        expansions: { writer: createDbExpansionWriter(dbHandle.db) },
+        embeddings: {
+          store: createDbEmbeddingStore(dbHandle.db),
+          embedder: m38Embeddings,
+          continueRun: (system, versionId) => m38Producer.continueEmbeddings(system, versionId),
+        },
+        scan: {
+          activeOrgs: m38ActiveOrgs,
+          ops: createDbTerminologyOpsStore(dbHandle.db),
+          producers: [carePlanCodeUsageProducer(() => getSeam("CarePlanReader"))],
+          alerts: m38Alerts,
+          log: app.log,
+        },
+        failVersion: (versionId, reason) => m38Store.fail(versionId, reason),
+        log: app.log,
+      });
+      attachDlqAlertsToAll(m38Workers, "m38");
+      app.addHook("onClose", async () => {
+        await Promise.all(m38Workers.map((w) => w.close()));
+        await Promise.all(m38Producer.queues.map((q) => q.close()));
+      });
+      try {
+        const m38ScheduleQueues = await scheduleM38Jobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m38ScheduleQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M38 cron-schedule registration failed");
+      }
+      app.log.info({ queues: m38Workers.length }, "M38 §4.3 terminology workers constructed");
+    }
 
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
@@ -5760,6 +6135,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       outbox: m14OutboxPublisher,
       activeOrgs: m14ActiveOrgs,
       redis: m14SinceLastIdgRedisClient ?? undefined,
+      // GAP-042 — the review-clock sweep's per-active-admission population (M6, keyset-paginated).
+      activeAdmissions: {
+        activeAdmissionsForOrg: (organizationId, afterAdmissionId, limit) =>
+          idgActiveAdmissionsForOrg(dbHandle.db, organizationId, afterAdmissionId, limit),
+      },
       m6: {
         inclusionForOrg: (organizationId, locationId, asOfIso, wrapUpDays) =>
           idgPacketInclusionForOrg(dbHandle.db, organizationId, locationId, asOfIso, wrapUpDays),
@@ -5932,6 +6312,39 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       { queues: m39Workers.length },
       "M39 §4.9 BullMQ consent-expiration + expiration-reminder crons constructed",
     );
+
+    // ── M36 §4.4 out-of-band delivery workers (GAP-101): `messaging.send_push|sms|voice|email`. A repeatable
+    // tick per queue sweeps the pending `notification_delivery` rows of every active org (bounded batch, leased
+    // claim, §4.4.1 retry/backoff), dispatches through the transport SEAM and settles the row; a terminal failure
+    // publishes `m36.notification.delivery_failed` in the same tx. The transports are the fail-closed DENY stubs
+    // until a real web-push/Twilio/Postmark adapter is bound — so every out-of-band delivery settles `failed`
+    // (`transport_not_configured`) rather than sitting `pending` forever or being reported as sent.
+    const m36DeliveryActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M36_DELIVERY_PLATFORM_JOB_ID,
+      reason: "M36 §4.4 send_* delivery sweep (active-org enumeration)",
+    });
+    const m36DeliveryWorkers = registerM36DeliveryWorkers({
+      connection: queueConnection,
+      store: createDrizzleDeliveryDispatchStore(dbHandle.db, m36OutboxPublisher),
+      transports: createDenyTransports(),
+      appBaseUrl: webAppBaseUrl ?? "",
+      activeOrgs: m36DeliveryActiveOrgs,
+      onError: (context, err) => app.log.error({ ...context, err }, "M36 delivery sweep error"),
+    });
+    attachDlqAlertsToAll(m36DeliveryWorkers, "m36");
+    app.addHook("onClose", async () => {
+      await Promise.all(m36DeliveryWorkers.map((w) => w.close()));
+    });
+    try {
+      const m36DeliveryScheduleQueues = await scheduleM36DeliveryJobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m36DeliveryScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M36 delivery-sweep schedule registration failed");
+    }
 
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
     // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
@@ -6139,6 +6552,59 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M19 on_call_roster_sync_queue schedule registration failed");
     }
+    // M19 §4.8 Tier-1 crons (GAP-057) — `m19.shift-open.cron` / `m19.shift-close.cron` (5 min) and the
+    // `m19.coverage-gap-watchdog.cron` (30 min). `activateShift`/`completeShift` ran only from the manual route
+    // and the only `coverage_gap` emit was the reactive D10 arm. Same org fan-out as the roster-sync workers
+    // above; events go through the real catalog-validating `m19OutboxPublisher` in each shift's own org tx.
+    const m19Tier1Workers = registerM19Tier1CronWorkers({
+      db: dbHandle.db,
+      activeOrgs: m19ActiveOrgs,
+      outbox: m19OutboxPublisher,
+      providerEntities: buildFoundationSiteReader(),
+      connection: queueConnection,
+    });
+    attachDlqAlertsToAll(m19Tier1Workers, "m19");
+    app.addHook("onClose", async () => {
+      await Promise.all(m19Tier1Workers.map((w) => w.close()));
+    });
+    try {
+      const m19Tier1Queues = await scheduleM19Tier1Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m19Tier1Queues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(
+        err,
+        "M19 Tier-1 shift-open/close + coverage-gap watchdog schedule registration failed",
+      );
+    }
+    // M19 §4.8 non-Tier-1 crons (GAP-057 follow-up) — `m19.callback-sla.cron` (1 min),
+    // `m19.awaiting-callback-timeout.cron` (10 min), `m19.close-documented.cron` (15 min) and
+    // `m19.escalation-sla` (5 min). `closeCall` and the callback/escalation SLA alerts had no caller; the two
+    // SLA ticks publish `m19.triage_call.*_sla_breached` through the real catalog-validating
+    // `m19OutboxPublisher` (M36's `oncall-alerts` consumer turns them into pages), the other two advance calls
+    // (timeout -> `disposition_pending`, documented -> `closed`) in each call's own org tx.
+    const m19TriageWorkers = registerM19TriageCronWorkers({
+      db: dbHandle.db,
+      activeOrgs: m19ActiveOrgs,
+      outbox: m19OutboxPublisher,
+      connection: queueConnection,
+    });
+    attachDlqAlertsToAll(m19TriageWorkers, "m19");
+    app.addHook("onClose", async () => {
+      await Promise.all(m19TriageWorkers.map((w) => w.close()));
+    });
+    try {
+      const m19TriageQueues = await scheduleM19TriageJobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m19TriageQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(
+        err,
+        "M19 callback-sla / awaiting-callback-timeout / close-documented / escalation-sla schedule registration failed",
+      );
+    }
     // ── M37 §4.8 `ipu.rn-coverage-watchdog` cron (F-071/#174 — the M14 worker-runner shape) ──────────────
     //
     // The producer that did not exist. `ipu_rn_coverage_window` is a MATERIALIZED invariant that
@@ -6159,6 +6625,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m37OutboxPublisher,
       activeOrgs: m37ActiveOrgs,
+      // Batch 11 — the nursing-note shift watchdog reads M8's signed encounters ONLY through the registered,
+      // org-explicit `SignedEncountersReader` seam (resolved lazily per call, the M24 precedent above).
+      signedEncounters: {
+        async signedEncountersForPatientSince(organizationId, patientId, sinceIso) {
+          const reader = getSeam("SignedEncountersReader") as {
+            signedEncountersForPatientSince(
+              organizationId: string,
+              patientId: string,
+              since: string,
+            ): Promise<ReadonlyArray<{ signedAt: string; signedByMembershipId: string }>>;
+          };
+          return reader.signedEncountersForPatientSince(organizationId, patientId, sinceIso);
+        },
+      },
     });
     const m37Workers = registerM37CronWorkers(m37WorkerDeps);
     attachDlqAlertsToAll(m37Workers, "m37");
@@ -6177,6 +6657,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       { queues: m37Workers.length },
       "M37 §4.8 BullMQ rn-coverage-watchdog cron constructed",
     );
+
+    // ── M37 §2.6/§4.8 `ipu.iv-bedside-check-watchdog` cron (GAP-107) ─────────────────────────────────────
+    // Every 5 minutes: a running continuous infusion on an IPU patient that has gone a full bedside-check
+    // interval without a recorded segment raises `m37.iv_safety_overlay.bedside_check_overdue` (M36 alerts the
+    // care team). Infusion activity is M13's, read through its org-explicit `ivSessionActivityForOrg` (M37 never
+    // reads M13's tables); the org fan-out is the same audited enumerator as the rn-coverage watchdog.
+    const m37IvBedsideWorkers = registerM37IvBedsideWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m37OutboxPublisher,
+      activeOrgs: m37ActiveOrgs,
+      ivActivity: (organizationId, orderIds) =>
+        ivSessionActivityForOrg(dbHandle.db, organizationId, orderIds),
+    });
+    attachDlqAlertsToAll(m37IvBedsideWorkers, "m37");
+    app.addHook("onClose", async () => {
+      await Promise.all(m37IvBedsideWorkers.map((w) => w.close()));
+    });
+    try {
+      const m37IvBedsideQueues = await scheduleM37IvBedsideWatchdog(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m37IvBedsideQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M37 iv-bedside-check-watchdog schedule registration failed");
+    }
 
     // ── M29 D11 — the platform NPPES sync worker + its 02:30 UTC nightly repeatable (GAP-045) ────────────
     // `NPPES_SYNC_SCHEDULE` shipped as pure data whose own comment promised "the M29-T08 worker binds this
@@ -6539,9 +7045,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
           // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).
           buildM36EmarAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-105 — M37's irc-cap / restraint-reassessment / bed-cleaning / GIP-staleness watchdog alerts
+          // (M37 spec §4.9): the crons that raise them now exist, and M36 consumes them.
+          buildM36IpuAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-104 — the care_team channel membership lifecycle: assignment created/ended re-sync the roster (a
+          // clinician taken off the caseload loses channel access), discharge/death archive the channel.
+          buildM36ChannelMembershipSyncConsumer({
+            syncCareTeam: (orgId, patientId) =>
+              (getSeam("MessagingProvider") as MessagingProvider).syncCareTeamChannel(
+                orgId,
+                patientId,
+              ),
+            archiveCareTeam: (orgId, patientId) =>
+              (getSeam("MessagingProvider") as MessagingProvider).archiveCareTeamChannel(
+                orgId,
+                patientId,
+              ),
+            reopenCareTeam: (orgId, patientId) =>
+              setCareTeamChannelArchived(dbHandle.db, orgId, patientId, false),
+            patientIdForAdmission: async (orgId, admissionId) =>
+              (
+                await (
+                  getSeam("AdmissionStatusReader") as AdmissionStatusReader
+                ).getAdmissionSummary(orgId, admissionId)
+              ).patientId,
+          }),
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-107 — M37's IV-continuous bedside-check-overdue watchdog alert (M37 §2.6/D7, §4.8): previously
+          // unconsumed, so a lapsed bedside check on a running IPU infusion told the care team nothing.
+          buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // M19 §4.8/§4.9 (GAP-057) — `m19.oncall_shift.coverage_gap` (the coverage-gap watchdog cron + the D10
+          // reactive arm) -> the system-locked critical `m19.oncall.coverage_gap_detected` page.
+          buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
           // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
           // composition root — M36 never imports M14), one alert per action item.
@@ -6578,6 +7115,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             admissions: getSeam("AdmissionStatusReader") as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // GAP-056 — the §4.8 outbox-driven M18 workers: the Cures Act aggregator-submission prep (queues a
+          // submission per paired check-out) and the D9 GPS-spoof detector (advisory flag + warn event).
+          ...(m18AggregatorDeps
+            ? [
+                buildM18SubmissionPrepConsumer({
+                  db: dbHandle.db,
+                  aggregator: m18AggregatorDeps,
+                }),
+              ]
+            : []),
+          buildM18SpoofDetectorConsumer({ db: dbHandle.db, outbox: m18OutboxPublisher }),
           // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
           // void open missing-resolution rows for the cancelled visit.
           buildM18VisitCancelledConsumer({
@@ -6657,6 +7205,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             service: buildDrizzleIpuRouteService(dbHandle.db, { outbox: m37OutboxPublisher }),
             lookup: buildDrizzleLcpAdmissionLookup(dbHandle.db),
           }),
+          // GAP-107 — the WRITER of `ipu_iv_safety_overlay` (M37 §2.6/D7). Nothing ever inserted a row, so the
+          // overlay seam always answered null and M13 never gated a continuous infusion. A signed continuous-IV
+          // medication order for a patient on an open IPU admission gets its overlay; a discontinued/completed
+          // order retires it. The order facts come through M12's org-explicit seam function (a relay tick is
+          // not a request), and the overlay event goes through the real catalog-validating publisher.
+          buildM37IvOverlayOnOrderSignedConsumer({
+            db: dbHandle.db,
+            outbox: m37OutboxPublisher,
+            orderContext: (organizationId, orderId) =>
+              medicationOrderScheduleContextForOrg(dbHandle.db, organizationId, orderId),
+          }),
+          buildM37IvOverlayOnOrderEndedConsumer({ db: dbHandle.db }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole

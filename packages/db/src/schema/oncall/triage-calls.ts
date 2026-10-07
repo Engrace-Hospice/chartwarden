@@ -131,6 +131,9 @@ export const triageCall = pgTable(
     firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
     documentedAt: timestamp("documented_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** §4.8 `callback-sla.cron` — when the breach was last published. Re-armed by comparing it with the
+     *  call's latest `awaiting_callback` entry, so a call that resumes and waits again is judged afresh. */
+    callbackSlaBreachedAt: timestamp("callback_sla_breached_at", { withTimezone: true }),
 
     // BCP re-entry (M19-F08 / DR-013 / DR-066).
     paperOriginFlag: boolean("paper_origin_flag").notNull().default(false),

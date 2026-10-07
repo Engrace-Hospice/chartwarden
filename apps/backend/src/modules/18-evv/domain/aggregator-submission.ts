@@ -41,6 +41,9 @@ export type EvvAggregatorSubmissionEvent =
   | { readonly type: "poll_result"; readonly result: AggregatorPollResult }
   /** submitting → queued: per-state circuit-breaker tripped; retry per the adapter's policy (§2.2.5 / §4.8). */
   | { readonly type: "circuit_retry" }
+  /** submitting → timeout: the per-state retry budget is spent (GAP-056) — the DLQ-equivalent landing the operator
+   * triages and resubmits (§4.8 `m18.aggregator-submitter.dlq`). */
+  | { readonly type: "retries_exhausted" }
   /** rejected | timeout → queued: operator-initiated resubmit after a fix (§7.9; attempt_count++). */
   | { readonly type: "resubmit" }
   /** {pending,queued,submitting,submitted} → cancelled: operator-initiated cancel (§4.1; D7 non-terminal only). */
@@ -62,7 +65,7 @@ export const AGGREGATOR_SUBMISSION_GRAPH: Readonly<
 > = {
   pending: ["queue", "cancel"],
   queued: ["dispatch", "cancel"],
-  submitting: ["ack_async", "submit_result", "circuit_retry", "cancel"],
+  submitting: ["ack_async", "submit_result", "circuit_retry", "retries_exhausted", "cancel"],
   submitted: ["poll_result", "cancel"],
   accepted: [],
   rejected: ["resubmit"],
@@ -211,6 +214,14 @@ export function transitionAggregatorSubmission(
         status: "queued",
         event: event.type,
         effects: [{ kind: "audit" }],
+        incrementsAttempt: false,
+      };
+
+    case "retries_exhausted":
+      return {
+        status: "timeout",
+        event: event.type,
+        effects: timeoutEffects(),
         incrementsAttempt: false,
       };
 

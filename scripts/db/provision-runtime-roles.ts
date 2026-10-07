@@ -120,6 +120,9 @@ const PLATFORM_READ_TABLES = [
   "admission", // mv_census_org_daily
   "encounter", // mv_encounter_productivity_membership_day
   "evv_event", // mv_evv_compliance_org_week
+  // M28 §4.8 fhir.capability-snapshot-validator — re-reads the platform-shared signed snapshot before its
+  // one-time INSERT (see PLATFORM_PROVISION_INSERT_TABLES).
+  "fhir_capability_snapshot",
 ] as const;
 
 /**
@@ -186,6 +189,9 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   "tenant_account_status_event",
   "tenant_key_destruction_log",
   "tenant_invitation",
+  // M28 — the validator persists the signed CapabilityStatement once per release (INSERT only: a snapshot
+  // is evidence and is never updated or deleted by the platform role).
+  "fhir_capability_snapshot",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [

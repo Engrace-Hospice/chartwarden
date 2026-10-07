@@ -98,6 +98,10 @@ export * from "./terminology/value-set-tenant-extension";
 export * from "./terminology/deprecation-mapping";
 export * from "./terminology/concept-embedding";
 export * from "./terminology/terminology-update-log";
+// GAP-108 (migration 0364) — the seven common-shape concept tables, the loader staging area and the licence attestations.
+export * from "./terminology/concept-common-systems";
+export * from "./terminology/concept-staging";
+export * from "./terminology/terminology-license-attestation";
 // M36-T02 — Secure Messaging & Alerts schema (M36 spec §3.3–3.6, §3.11, §3.13). M36 owns 15
 // tables. Most are org-scoped (channel, channel_member, message, message_receipt, alert,
 // alert_rule, user_notification_preferences, tenant_alert_routing_override, notification_template,

@@ -114,6 +114,8 @@ export {
   patientDisplayLabelsForOrg,
   toPatientDisplayLabel,
 } from "./seams/patient-display-for-org";
+// GAP-084 — the org-explicit keyset patient-id enumeration M28's bulk-export worker needs (injected as a port).
+export { PATIENT_IDS_PAGE_MAX, patientIdsPageForOrg } from "./seams/patient-ids-page-for-org";
 
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {

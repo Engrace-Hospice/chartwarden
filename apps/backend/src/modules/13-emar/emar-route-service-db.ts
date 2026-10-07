@@ -82,6 +82,11 @@ import type {
   EmarScopeRefKind,
   WitnessAbacFacts,
 } from "./abac-predicates";
+import {
+  type EmarIvOverlayPort,
+  UNBOUND_IV_OVERLAY,
+  evaluateIvOverlayGate,
+} from "./iv-overlay-gate";
 import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "./order-consistency";
 import type {
   AdministrationPolicyView,
@@ -341,11 +346,17 @@ export function createDbEmarBackend(
    * the route mount, so resolving at construction time would capture the pre-registration deny-stub.
    */
   medicationOrder: () => EmarMedicationOrderPort = () => UNBOUND_MEDICATION_ORDER,
+  /**
+   * GAP-107 — M37's IV-continuous safety overlay (`IpuIvSafetyOverlayProvider`), a THUNK for the same reason.
+   * Unbound (slice/unit harnesses) = no overlay applies; the composition root binds the seam.
+   */
+  ivOverlay: () => EmarIvOverlayPort = () => UNBOUND_IV_OVERLAY,
 ): EmarRouteService {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, fn as never) as Promise<T>;
   const careTeam = caseManager;
   const medOrder = medicationOrder;
+  const overlay = ivOverlay;
 
   /** Emit one `m13.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -845,6 +856,7 @@ export function createDbEmarBackend(
         const modeMeta = ADMINISTRATION_MODE_CATALOG[args.mode];
         let ivSessionId: string | null = null;
         let ivPlan: ReturnType<typeof planIvSegment> | null = null;
+        let overlayDualWitness = false;
         if (modeMeta.isIvContinuous) {
           const ivMode = args.mode as IvSegmentMode;
           if (modeMeta.ivSessionRole === "mint") {
@@ -906,9 +918,24 @@ export function createDbEmarBackend(
             wastageAmount: body.wastageAmount,
           });
           ivSessionId = ivPlan.mintsSession ? randomUUID() : (args.ivSessionId ?? null);
+          // GAP-107 (M37 §2.6 / D7) — the IPU IV safety overlay: titration window, dual witness for a
+          // sedation-class drip, max continuous duration, bedside-check interval. 412 on refusal.
+          overlayDualWitness = (
+            await evaluateIvOverlayGate(overlay(), {
+              organizationId: orgId,
+              medicationOrderId: args.medicationOrderId,
+              mode: args.mode,
+              administeredAt: args.administeredAt,
+              priorSegments,
+              data: args.data,
+              witnessTokenPresent: Boolean(args.witnessToken),
+            })
+          ).dualWitnessRequired;
         }
-        // Non-IV: every controlled administration is witnessed. IV: the pure core's narrower rule.
-        const requiresWitness = ivPlan ? ivPlan.requiresWitness : isControlled;
+        // Non-IV: every controlled administration is witnessed. IV: the pure core's narrower rule, widened
+        // (never narrowed) by an IPU overlay that demands a dual witness.
+        const requiresWitness =
+          (ivPlan ? ivPlan.requiresWitness : isControlled) || overlayDualWitness;
 
         // D7 — a controlled administration requires a valid, in-scope, unexpired witness-attestation token.
         let witnessMembershipId: string | null = null;

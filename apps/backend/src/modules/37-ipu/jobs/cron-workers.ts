@@ -25,6 +25,8 @@ import {
   planCoverageAlerts,
   resolveAlertHorizonHours,
 } from "./index";
+import { M37_LIFECYCLE_JOBS } from "./lifecycle-workers";
+import { M37_WATCHDOG_JOBS, type SignedEncountersPort } from "./watchdog-workers";
 
 /** The system actor id the cron stamps on its per-org `withOrgContext` tx (audit attribution). The other
  *  module crons use `…0000000000NN` with their own module number; `…37` is M37's and was unused. */
@@ -44,6 +46,8 @@ export interface M37WorkerDeps {
   readonly db: DbClient;
   readonly outbox: WriteOutboxPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** M8's org-explicit signed-encounter read (nursing-note shift watchdog); the cron fails loudly when unbound. */
+  readonly signedEncounters?: SignedEncountersPort;
   now?: () => Date;
 }
 
@@ -70,12 +74,14 @@ export function buildM37WorkerDeps(deps: {
   db: DbClient;
   outbox: WriteOutboxPort;
   activeOrgs?: ActiveOrgListPort;
+  signedEncounters?: SignedEncountersPort;
 }): M37WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     outbox: deps.outbox,
     activeOrgs: deps.activeOrgs,
+    signedEncounters: deps.signedEncounters,
     now: () => new Date(),
   };
 }
@@ -271,6 +277,14 @@ export function registerM37CronWorkers(deps: M37WorkerDeps): Worker[] {
       async (job) => runRnCoverageWatchdogCron(deps, bullmqCheckpoint(job)),
       { connection, concurrency: M37_QUEUE_PARAMS.rnCoverageWatchdog.concurrency },
     ),
+    // GAP-105 — irc-cap / census / restraint / bed-cleaning / GIP-staleness (`./watchdog-workers`).
+    ...[...M37_WATCHDOG_JOBS, ...M37_LIFECYCLE_JOBS].map(
+      (job) =>
+        new Worker(job.queue, async () => job.run(deps), {
+          connection,
+          concurrency: job.params.concurrency,
+        }),
+    ),
   ];
 }
 
@@ -292,5 +306,23 @@ export async function scheduleM37Jobs(connection: ConnectionOptions): Promise<Qu
       removeOnFail: false,
     },
   );
-  return [queue];
+  const watchdogQueues = await Promise.all(
+    [...M37_WATCHDOG_JOBS, ...M37_LIFECYCLE_JOBS].map(async (job) => {
+      const jobQueue = new Queue(job.queue, { connection });
+      await jobQueue.add(
+        "scheduled",
+        {},
+        {
+          repeat: { pattern: job.schedule },
+          priority: job.params.priority,
+          attempts: job.params.attempts,
+          backoff: parseBackoff(job.params.backoff),
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
+      return jobQueue;
+    }),
+  );
+  return [queue, ...watchdogQueues];
 }

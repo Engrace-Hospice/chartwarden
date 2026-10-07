@@ -45,6 +45,9 @@ export const triageCallStateHistory = pgTable(
     }),
     /** TRUE for the cron/consumer transitions (shift close, `m8.encounter.signed`, SLA timeout). */
     systemActor: boolean("system_actor").notNull().default(false),
+    /** §4.8 `awaiting-callback-timeout.cron` — TRUE when the transition is the grace-window timeout, not a
+     *  person's or another system event's. */
+    autoTimeout: boolean("auto_timeout").notNull().default(false),
     /** Hash of the command payload; the cleartext is not stored here. */
     commandPayloadDigest: text("command_payload_digest"),
 

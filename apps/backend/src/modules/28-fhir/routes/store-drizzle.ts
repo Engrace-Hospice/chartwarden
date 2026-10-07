@@ -1,8 +1,8 @@
 // apps/backend/src/modules/28-fhir/routes/store-drizzle.ts — M28-T08 the PRODUCTION FhirGatewayStore.
 //
 // The Drizzle-backed repo the §4.1 routes run against. Every org-scoped statement opens `withOrgContext`
-// so RLS scopes it to the acting org and the M4 write-audit trigger stamps the acting membership as the
-// actor (`userId` carries the membership id on the write path — the M18 idiom). The revocation cascade
+// so RLS scopes it to the acting org and the M4 write-audit trigger stamps the acting USER (inherited from
+// the ambient request; see `ctx` below — never the membership id, which is not a "user" FK target). The revocation cascade
 // (W-FHIR-12) runs INSIDE the same transaction as the status write, so a client cannot be left `revoked`
 // with a live session.
 //
@@ -33,10 +33,12 @@ import {
 } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
+import { INBOUND_PAYLOAD_RETENTION_DAYS } from "../jobs/queues";
 import { type FhirRevocationCascadePort, cascadeClientRevocation } from "./revocation-cascade";
 import {
   type CreateClientArgs,
   type FhirBearerContext,
+  type FhirBulkExportArtifactView,
   type FhirBulkExportJobView,
   type FhirClientCreateResult,
   type FhirCredentialRotationResult,
@@ -48,6 +50,7 @@ import {
   type FhirWriteOutboxPort,
   NOOP_FHIR_OUTBOX,
   type StageInboundArgs,
+  activeJobError,
 } from "./store";
 
 /** The Drizzle transaction handle `withOrgContext` hands its callback (full query-builder surface). */
@@ -84,13 +87,19 @@ export function createDrizzleFhirGatewayStore(
   const CRED = schema.fhirClientCredential;
   const SESSION = schema.fhirClientSession;
   const JOB = schema.fhirBulkExportJob;
+  const ARTIFACT = schema.fhirBulkExportArtifact;
   const INBOUND = schema.fhirInboundResource;
   const CONFIG = schema.tenantFhirConfig;
   const DISCLOSURE = schema.fhirReadDisclosure;
 
-  const ctx = (orgId: string, membershipId = "") => ({
+  // The audit actor is NEVER a membership id: the M4 write-audit trigger FKs `app.user_id` to "user", so a
+  // membership uuid fails every audited admin write (accept/reject/cancel/revoke/...). `userId: ""` inherits
+  // the ambient authenticated request's real user id (same org, uuid) and records the NULL system actor
+  // outside a request — both valid. The accountable MEMBERSHIP is still stamped on the row itself
+  // (`decided_by_membership_id`, `approved_by_*`, `initiated_by_membership_id`).
+  const ctx = (orgId: string) => ({
     organizationId: orgId,
-    userId: membershipId,
+    userId: "",
   });
 
   /**
@@ -309,7 +318,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async createClient(orgId, args): Promise<FhirClientCreateResult> {
-      return withOrgContext(db, ctx(orgId, args.proposedByMembershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const [row] = await tx
           .insert(CLIENT)
           .values({
@@ -370,7 +379,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async approveClient(orgId, clientId, complianceMembershipId, _rationale) {
-      return withOrgContext(db, ctx(orgId, complianceMembershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const row = await loadClientTx(tx, orgId, clientId);
         if (!fhirDualApprovalSatisfied(row.approvedByAdminMembershipId, complianceMembershipId)) {
           throw new FhirStoreError(
@@ -401,7 +410,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async revokeClient(orgId, clientId, membershipId, rationale) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const row = await loadClientTx(tx, orgId, clientId);
         const cascade = await enterStatus(tx, orgId, row, "revoked", {
           revokedAt: new Date(),
@@ -420,7 +429,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async suspendClient(orgId, clientId, membershipId, reason) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const row = await loadClientTx(tx, orgId, clientId);
         const cascade = await enterStatus(tx, orgId, row, "suspended", {});
         await outbox.publish(tx, {
@@ -436,7 +445,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async rotateCredential(orgId, clientId, membershipId): Promise<FhirCredentialRotationResult> {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         await loadClientTx(tx, orgId, clientId);
         const plaintextSecret = randomBytes(32).toString("hex");
         const digest = createHash("sha256").update(plaintextSecret).digest("hex");
@@ -512,7 +521,25 @@ export function createDrizzleFhirGatewayStore(
 
     async createJob(orgId, args) {
       const membershipId = args.initiatedByMembershipId ?? "";
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        // §2.5: one active job per client. The advisory lock serialises concurrent submissions for the SAME
+        // client for the life of this tx, so the check below and the insert cannot interleave (a partial
+        // unique index would be the other way, but pre-existing never-run `accepted` rows would block it).
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`fhir-export:${args.clientId}`}))`,
+        );
+        const [active] = await tx
+          .select({ id: JOB.id })
+          .from(JOB)
+          .where(
+            and(
+              eq(JOB.organizationId, orgId),
+              eq(JOB.clientId, args.clientId),
+              inArray(JOB.status, ["accepted", "in_progress"]),
+            ),
+          )
+          .limit(1);
+        if (active) throw activeJobError();
         const envelope = JSON.stringify({
           clientId: args.clientId,
           requestKind: args.requestKind,
@@ -553,6 +580,23 @@ export function createDrizzleFhirGatewayStore(
       });
     },
 
+    async listJobArtifacts(orgId, jobId): Promise<readonly FhirBulkExportArtifactView[]> {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const rows = await tx
+          .select()
+          .from(ARTIFACT)
+          .where(and(eq(ARTIFACT.jobId, jobId), eq(ARTIFACT.organizationId, orgId)))
+          .orderBy(ARTIFACT.resourceType);
+        return rows.map((r) => ({
+          resourceType: r.resourceType,
+          objectKey: r.minioObjectKey,
+          byteSize: r.byteSize,
+          rowCount: r.rowCount,
+          checksumSha256: r.checksumSha256,
+        }));
+      });
+    },
+
     async getJob(orgId, jobId) {
       return withOrgContext(db, ctx(orgId), async (tx) => {
         const [row] = await tx
@@ -565,7 +609,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async cancelJob(orgId, jobId, membershipId) {
-      return withOrgContext(db, ctx(orgId, membershipId ?? ""), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const [row] = await tx
           .select()
           .from(JOB)
@@ -631,7 +675,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async acceptProposal(orgId, proposalId, membershipId, acceptedAggregateId, rationale) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const [row] = await tx
           .select()
           .from(INBOUND)
@@ -686,7 +730,7 @@ export function createDrizzleFhirGatewayStore(
           `a rejection rationale must be at least ${FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS} characters`,
         );
       }
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
         const [row] = await tx
           .select()
           .from(INBOUND)
@@ -708,6 +752,10 @@ export function createDrizzleFhirGatewayStore(
             decidedByMembershipId: membershipId,
             decidedAt: new Date(),
             decisionRationale: rationale,
+            // §2.2/§3.7 — the raw payload is shredded 30 days after a rejection (the destruction cron).
+            payloadEraseScheduledAt: new Date(
+              Date.now() + INBOUND_PAYLOAD_RETENTION_DAYS * 86_400_000,
+            ),
           })
           .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)));
         await outbox.publish(tx, {

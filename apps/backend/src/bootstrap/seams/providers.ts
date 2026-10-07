@@ -1864,6 +1864,9 @@ export const ipuIvSafetyOverlayProviderDenyStub: IpuIvSafetyOverlayProvider = {
   async getOverlayForOrder() {
     throw new NotImplementedError("IpuIvSafetyOverlayProvider");
   },
+  async evaluatePreAdministration() {
+    throw new NotImplementedError("IpuIvSafetyOverlayProvider");
+  },
 };
 /** M37 §4.11 — the patient visit-policy (M31 portal). */
 export const ipuVisitorReaderDenyStub: IpuVisitorReader = {

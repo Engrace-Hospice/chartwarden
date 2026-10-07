@@ -51,20 +51,8 @@ const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
  * stale in either direction.
  */
 const DEFERRED: readonly { file: string; registrar: string; reason: string }[] = [
-  {
-    file: "apps/backend/src/modules/36-messaging/routes/webhook-routes.ts",
-    registrar: "registerMessagingWebhookRoutes",
-    reason:
-      "M36 §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event). The routes and " +
-      "both §4.9 verification layers are built; the SURFACE BEHIND THEM IS NOT. `MessagingWebhookService` " +
-      "— the delivery-reconcile port every handler ends in — has no implementation anywhere in the repo " +
-      "(the only reference is the barrel's own type re-export), `MessagingWebhookDeps` needs Twilio/Postmark " +
-      "secret resolution from the M1 §8.3 store that nothing provides, and `@fastify/formbody` — which this " +
-      "file's own header says production registers, so Twilio's urlencoded body parses into the map the HMAC " +
-      "is computed over — is registered nowhere and is not a dependency. Mounting it would answer Twilio with " +
-      "a signature check over an empty body and then call a service that does not exist. Needs M36's " +
-      "delivery-reconcile implementation first; see the three paths in the published contract.",
-  },
+  // GAP-101 closed the last entry: M36's `registerMessagingWebhookRoutes` is mounted through
+  // `mountMessagingWebhookRoutes` (36-messaging/delivery/webhook-mount.ts) over a real delivery-reconcile service.
 ];
 
 // ---- file discovery -------------------------------------------------------

@@ -23,6 +23,7 @@ import type {
 } from "@wardenx/terminology";
 import { ValidationError } from "@wardenx/types";
 import type {
+  LicenseAttestationEntry as StoreAttestationEntry,
   TerminologyLoadHistoryEntry as StoreLoadHistoryEntry,
   TenantExtensionGovernanceRow as StoreTenantExtensionGovernanceRow,
   ValueSetCatalogEntry as StoreValueSetCatalogEntry,
@@ -296,21 +297,91 @@ export const AdminLoadBodySchema = Type.Object({
   checksum: Type.String({ minLength: 8, maxLength: 128 }),
   releasedOn: Type.Optional(Type.String({ format: "date" })),
   effectiveFrom: Type.Optional(Type.String({ format: "date" })),
+  /** false = stage only (the ICD-10-CM Sep dry run); the staged version is activated by a later run. Default true. */
+  activate: Type.Optional(Type.Boolean()),
 });
 export const AdminLoadResponseSchema = Type.Object({
   versionId: Type.String(),
   status: Type.String(),
   /** False when this (system, version) was already registered — the caller's request changed nothing. */
   created: Type.Boolean(),
-  /** What actually happened, so "registered" is never mistaken for "ingested". */
-  ingestion: Type.Literal("pending_loader_worker"),
+  /** `terminology.load_version` is queued; the version moves loading → staged → active (or failed) as it runs. */
+  ingestion: Type.Literal("enqueued"),
 });
 
 /** POST /api/v1/admin/terminology/:system/refresh-embeddings. */
 export const AdminRefreshEmbeddingsResponseSchema = Type.Object({
   versionId: Type.String(),
   status: Type.Literal("embedding"),
-  recompute: Type.Literal("pending_embeddings_worker"),
+  /** `terminology.refresh_embeddings` is queued (the route answers 503 when no embeddings backend is bound). */
+  recompute: Type.Literal("enqueued"),
+});
+
+/** POST /api/v1/admin/terminology/uploads — presign a checksum-enforced PUT into the PLATFORM bucket (GAP-108). */
+export const AdminUploadBodySchema = Type.Object({
+  system: CodeSystemIdSchema,
+  fileName: Type.String({ minLength: 1, maxLength: 200 }),
+  /** sha256 of the file, lowercase hex — the storage layer rejects an upload whose bytes differ. */
+  sha256: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+});
+export const AdminUploadResponseSchema = Type.Object({
+  /** Pass this as `sourceFileRef` (and `sha256` as `checksum`) to POST …/:system/load. */
+  sourceFileRef: Type.String(),
+  checksum: Type.String(),
+  upload: Type.Object({
+    url: Type.String(),
+    headers: Type.Record(Type.String(), Type.String()),
+    expiresAt: Type.String(),
+  }),
+});
+
+/** POST /api/v1/admin/terminology/:system/license-attestation — record a licence attestation (step-up). */
+export const AdminAttestationBodySchema = Type.Object({
+  licensee: Type.String({ minLength: 1, maxLength: 200 }),
+  licenseReference: Type.String({ minLength: 1, maxLength: 200 }),
+  effectiveFrom: Type.String({ format: "date" }),
+  effectiveTo: Type.Optional(Type.String({ format: "date" })),
+  /** The text the licence requires to accompany the data; shipped with every response for the system. */
+  attributionText: Type.String({ minLength: 1, maxLength: 2000 }),
+});
+export const AdminAttestationCreatedResponseSchema = Type.Object({
+  attestationId: Type.String(),
+  systemId: CodeSystemIdSchema,
+});
+export const AdminAttestationParamsSchema = Type.Object({
+  id: Type.String({
+    pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+  }),
+});
+export const AdminAttestationEntrySchema = Type.Object({
+  id: Type.String(),
+  systemId: CodeSystemIdSchema,
+  licensee: Type.String(),
+  licenseReference: Type.String(),
+  attestedBy: Type.String(),
+  attestedAt: Type.String(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+  attributionText: Type.String(),
+  revokedAt: Type.Union([Type.String(), Type.Null()]),
+});
+export const AdminAttestationsQuerySchema = Type.Object({
+  system: Type.Optional(CodeSystemIdSchema),
+});
+export const AdminAttestationsResponseSchema = Type.Object({
+  items: Type.Array(AdminAttestationEntrySchema),
+});
+export const AdminAttestationRevokedResponseSchema = Type.Object({ revoked: Type.Boolean() });
+
+/** GET /api/v1/terminology/attributions — the licence attributions a UI must display (any `terminology.read` caller). */
+export const AttributionsResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      systemId: CodeSystemIdSchema,
+      licensee: Type.String(),
+      attributionText: Type.String(),
+    }),
+  ),
 });
 
 /** GET /api/v1/admin/terminology/value-set-extensions — cross-tenant governance view. */
@@ -373,6 +444,10 @@ type _ValueSetCatalog = Conforms<
   StoreValueSetCatalogEntry
 >;
 type _AdminVersion = Conforms<Static<typeof AdminVersionEntrySchema>, StoreLoadHistoryEntry>;
+type _AdminAttestation = Conforms<
+  Static<typeof AdminAttestationEntrySchema>,
+  StoreAttestationEntry
+>;
 type _AdminExtension = Conforms<
   Static<typeof AdminExtensionEntrySchema>,
   StoreTenantExtensionGovernanceRow

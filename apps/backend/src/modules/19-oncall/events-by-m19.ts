@@ -259,8 +259,38 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       gapEndsAt: isoInstant,
       discipline: Type.Literal("clinical_rn"),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    // GAP-057 — also published by the §4.8 Tier-1 `coverage-gap-watchdog.cron` (`jobs/coverage-gap-watchdog.ts`);
+    // M36's `outbox-consumers/oncall-alerts.ts` is the bound consumer (was a seam-only m36).
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.callback_sla_breached",
+    moduleOwner: "m19",
+    description:
+      "An `awaiting_callback` call outlived its callback target (`tenant_oncall_policy.callback_sla_per_severity`) — published once per breach by the §4.8 `callback-sla.cron` (`jobs/callback-sla.ts`); M36 turns it into the `m19.triage.callback_sla_breached` warn page to the on-call roster.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      slaTargetMinutes: Type.Integer({ minimum: 1 }),
+      minutesElapsed: Type.Integer({ minimum: 0 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.escalation_sla_breached",
+    moduleOwner: "m19",
+    description:
+      "A `triage_escalation` stayed unacknowledged past its tier SLA — published (re-paged at most every 30 minutes) by the §4.8 `escalation-sla` cron (`jobs/escalation-sla.ts`); M36 turns it into the `m19.triage.escalation_sla_breached` page to the clinical-supervisor / DON / org-admin role set. Ids, an enum and minutes only — never the escalation's free text.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      escalationId: id,
+      tier: id,
+      mandatory: Type.Boolean(),
+      slaTargetMinutes: Type.Integer({ minimum: 1 }),
+      minutesOpen: Type.Integer({ minimum: 0 }),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

@@ -55,6 +55,8 @@ export const triageEscalation = pgTable(
     /** DENYLISTED (§3.6). */
     resolution: text("resolution"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /** §4.8 `escalation-sla` — when the unacknowledged-past-SLA page was last published (re-page pacing). */
+    slaBreachedAt: timestamp("sla_breached_at", { withTimezone: true }),
     resolvedByMembershipId: uuid("resolved_by_membership_id").references(() => memberships.id, {
       onDelete: "restrict",
     }),

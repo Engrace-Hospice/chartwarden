@@ -24,6 +24,11 @@ import { requirePermission } from "@wardenx/auth";
 import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@wardenx/terminology";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  ATTRIBUTION_HEADER,
+  type AttributionResolver,
+  attributionHeaderValue,
+} from "../attribution";
 import type { TerminologyOpsStore } from "../ops-store";
 import type { createRemediationService } from "../remediation-service";
 import {
@@ -78,6 +83,11 @@ export interface TerminologyRouteDeps {
    * a compliance report that cannot consult its producers must not answer "nothing to remediate").
    */
   remediation?: RemediationService;
+  /**
+   * GAP-108 — licence attribution. When bound, every `/:system/*` read of a system with an active attestation
+   * carries the `X-Terminology-Attribution` header, and `GET /api/v1/terminology/attributions` is registered.
+   */
+  attribution?: AttributionResolver;
 }
 
 /** The §7.3 report surface the remediation route calls (see ../remediation-service.ts). */
@@ -105,7 +115,34 @@ const REMEDIATION = requirePermission("terminology.deprecation_report") as PreHa
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 
 export function registerTerminologyRoutes(app: FastifyInstance, deps: TerminologyRouteDeps): void {
-  const { provider, flags, ops, remediation } = deps;
+  const { provider, flags, ops, remediation, attribution } = deps;
+
+  /** `onSend` for the `/:system/*` routes: stamp the licence attribution header when the system has one. */
+  const attributionHook = attribution
+    ? {
+        onSend: async (request: FastifyRequest, reply: FastifyReply, payload: unknown) => {
+          const system = (request.params as { system?: string } | undefined)?.system;
+          // Best-effort and only on success: a failed attribution lookup must never turn a good (or already
+          // failed) response into a different one, and an error response carries no data to attribute.
+          if (system && reply.statusCode < 400) {
+            try {
+              const text = await attribution.textFor(system as CodeSystemId);
+              if (text) reply.header(ATTRIBUTION_HEADER, attributionHeaderValue(text));
+            } catch (err) {
+              request.log.warn({ err, system }, "terminology attribution lookup failed");
+            }
+          }
+          return payload;
+        },
+      }
+    : {};
+
+  // --- GAP-108 the licence attributions a UI must display (registered before `/:system/:code`) -----
+  if (attribution) {
+    app.get("/api/v1/terminology/attributions", { preHandler: [READ] }, async () => ({
+      items: await attribution.all(),
+    }));
+  }
 
   // --- §4.1 the value-set catalog (GAP-063) ---------------------------------------------------
   // Registered BEFORE the `/:system/...` family, and static-vs-parametric anyway: Fastify's radix
@@ -154,35 +191,43 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
   }
 
   // --- §4.2 binary validate (code, asOf) — the hot path on claim lines / problem lists --------
-  app.get("/api/v1/terminology/:system/validate", { preHandler: [READ] }, async (request) => {
-    const { system } = parse(ValidateParamsSchema, request.params);
-    const { code, asOf } = parse(ValidateQuerySchema, request.query);
-    const result = await provider.validate(system as CodeSystemId, code, asOfDate(asOf));
-    return { ...result, asOf: asOf ?? null };
-  });
+  app.get(
+    "/api/v1/terminology/:system/validate",
+    { preHandler: [READ], ...attributionHook },
+    async (request) => {
+      const { system } = parse(ValidateParamsSchema, request.params);
+      const { code, asOf } = parse(ValidateQuerySchema, request.query);
+      const result = await provider.validate(system as CodeSystemId, code, asOfDate(asOf));
+      return { ...result, asOf: asOf ?? null };
+    },
+  );
 
   // --- §4.2 search (exact / fuzzy / semantic) — defined before /:code so the suffix wins ------
   // §7.7 (M38-T09): semantic mode is gated on the `ai.full` capability (Phase 2, default OFF);
   // exact/fuzzy are always available. The pgvector HNSW kNN itself lives in the Drizzle store.
-  app.get("/api/v1/terminology/:system/search", { preHandler: [READ] }, async (request) => {
-    const { system } = parse(SearchParamsSchema, request.params);
-    const q = parse(SearchQuerySchema, request.query);
-    const mode = q.mode ?? "fuzzy";
-    if (mode === "semantic") await assertSemanticEnabled(request);
-    const results = await provider.searchByText(system as CodeSystemId, q.q, {
-      mode,
-      asOf: asOfDate(q.asOf),
-      limit: q.limit ?? 10,
-      billableOnly: q.billableOnly ?? false,
-      inValueSet: q.inValueSet,
-    });
-    return { results, mode, asOf: q.asOf ?? null };
-  });
+  app.get(
+    "/api/v1/terminology/:system/search",
+    { preHandler: [READ], ...attributionHook },
+    async (request) => {
+      const { system } = parse(SearchParamsSchema, request.params);
+      const q = parse(SearchQuerySchema, request.query);
+      const mode = q.mode ?? "fuzzy";
+      if (mode === "semantic") await assertSemanticEnabled(request);
+      const results = await provider.searchByText(system as CodeSystemId, q.q, {
+        mode,
+        asOf: asOfDate(q.asOf),
+        limit: q.limit ?? 10,
+        billableOnly: q.billableOnly ?? false,
+        inValueSet: q.inValueSet,
+      });
+      return { results, mode, asOf: q.asOf ?? null };
+    },
+  );
 
   // --- §4.2 deprecation successor mapping (defined before /:code so the suffix wins) ----------
   app.get(
     "/api/v1/terminology/:system/:code/deprecation",
-    { preHandler: [READ] },
+    { preHandler: [READ], ...attributionHook },
     async (request) => {
       const { system, code } = parse(DeprecationParamsSchema, request.params);
       const mapping = await provider.getDeprecationMapping(system as CodeSystemId, code);
@@ -191,13 +236,17 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
   );
 
   // --- §4.2 lookup full concept (system-specific properties) ---------------------------------
-  app.get("/api/v1/terminology/:system/:code", { preHandler: [READ] }, async (request) => {
-    const { system, code } = parse(LookupParamsSchema, request.params);
-    const { asOf } = parse(LookupQuerySchema, request.query);
-    const concept = await provider.lookup(system as CodeSystemId, code, asOfDate(asOf));
-    if (!concept) throw notFound("concept");
-    return concept;
-  });
+  app.get(
+    "/api/v1/terminology/:system/:code",
+    { preHandler: [READ], ...attributionHook },
+    async (request) => {
+      const { system, code } = parse(LookupParamsSchema, request.params);
+      const { asOf } = parse(LookupQuerySchema, request.query);
+      const concept = await provider.lookup(system as CodeSystemId, code, asOfDate(asOf));
+      if (!concept) throw notFound("concept");
+      return concept;
+    },
+  );
 
   // --- §4.2 expanded membership at asOf (paginated; union with tenant extensions) ------------
   app.get("/api/v1/terminology/value-sets/:id/expand", { preHandler: [READ] }, async (request) => {

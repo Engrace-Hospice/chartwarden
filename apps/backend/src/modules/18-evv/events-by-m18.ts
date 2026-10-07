@@ -52,7 +52,7 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
     // outbox publication is the only cross-module communication M8 performs "at the boundary" — every
     // upstream fact M8 reads, including the EVV bracket, is an in-process SEAM call
     // (`EvvBracketResolver`), never an outbox subscription. No M18 consumer file exists anywhere in M8.
-    declaredConsumers: ["m17", "m20"],
+    declaredConsumers: ["m17", "m18", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -75,7 +75,7 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-043/#103 — M20 opens the post-visit window from the check-out (§7.1), materializing it when the
     // visit predates the cadence materializer.
     // F-140 (#248) — m8 removed: same seam-pull reasoning as `check_in_recorded` above.
-    declaredConsumers: ["m17", "m20"],
+    declaredConsumers: ["m17", "m18", "m20"],
     isOutboxOnly: true,
   },
   {

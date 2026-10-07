@@ -111,6 +111,16 @@ export const visit = pgTable(
 
     caregiverReminderOptIn: boolean("caregiver_reminder_opt_in").notNull().default(false),
     caregiverReminderSentAt: timestamp("caregiver_reminder_sent_at", { withTimezone: true }),
+    // GAP-052 (mig 0350) — the §4.8 reassignment-scan idempotency marker: the approved time_off this visit
+    // was already flagged `m17.reassignment_needed` for (logical FK, no constraint) and when.
+    reassignmentFlaggedTimeOffId: uuid("reassignment_flagged_time_off_id"),
+    reassignmentFlaggedAt: timestamp("reassignment_flagged_at", { withTimezone: true }),
+    // b11 (mig 0360) — idempotency markers: the `actual_started_at` episode + time `m17.stale_visit_detected`
+    // last fired for (re-armed on a new episode or after the 7-day re-nag window), and the M15
+    // `volunteer.assignment_inactivated` outbox event id the visit was already flagged `reassignment_needed` for.
+    staleFlaggedStartedAt: timestamp("stale_flagged_started_at", { withTimezone: true }),
+    staleFlaggedAt: timestamp("stale_flagged_at", { withTimezone: true }),
+    volunteerGateFlaggedEventId: uuid("volunteer_gate_flagged_event_id"),
 
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -427,6 +427,9 @@ export interface MedicationOrderScheduleContext {
   readonly route: string;
   readonly activatedAt: string | null;
   readonly sigStructured: SigStructuredDto;
+  /** GAP-107 — M37's IV-safety overlay keys its titration catalog on the drug and records its RxNorm code. */
+  readonly drugName: string;
+  readonly rxnormRxcui: string | null;
 }
 
 export async function medicationOrderScheduleContextForOrg(
@@ -451,6 +454,8 @@ export async function medicationOrderScheduleContextForOrg(
       route: row.route,
       activatedAt: isoN(row.activatedAt),
       sigStructured: sigStructuredOf(row.data, row.route),
+      drugName: row.drugName,
+      rxnormRxcui: row.rxnormRxcui ?? null,
     };
   });
 }

@@ -126,15 +126,32 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     meetingId: string,
     patientId: string,
     sinceCursorIso: string,
+    admissionId: string = ADMISSION,
   ): Promise<void> {
     await admin.query(
       `INSERT INTO idg_patient_packet
          (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,
           since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'{}'::jsonb,'{}'::jsonb,'seed')`,
-      [org, peOf[org], locationOf[org], meetingId, patientId, ADMISSION, sinceCursorIso],
+      [org, peOf[org], locationOf[org], meetingId, patientId, admissionId, sinceCursorIso],
     );
   }
+  /** The M6 `idgActiveAdmissionsForOrg` seam's shape, for the review-clock sweep (the real seam is proven in
+   * m14-review-clock-sweep.live.test.ts) — one ACTIVE admission at ORG_A's location, activated `days` ago. */
+  const activeAdmissionsStub = (
+    admissionId: string,
+    patientId: string,
+    activatedDaysAgo: number,
+  ) => ({
+    activeAdmissionsForOrg: async () => [
+      {
+        admissionId,
+        patientId,
+        locationId: locationOf[ORG_A],
+        activatedAtIso: new Date(Date.now() - activatedDaysAgo * 86400000).toISOString(),
+      },
+    ],
+  });
   async function packetReviewedAt(meetingId: string, patientId: string): Promise<string | null> {
     const { rows } = await admin.query(
       "SELECT last_idg_reviewed_at FROM idg_patient_packet WHERE idg_meeting_id=$1 AND patient_id=$2",
@@ -902,6 +919,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
 
   it("idg.review-clock-sweep escalates a patient at T-0, aggregating last_idg_reviewed_at across multiple packets (GAP-092)", async () => {
     const patientId = randomUUID();
+    const admissionId = randomUUID();
     const reviewed = await seedMeeting(ORG_A, "adjourned");
     const laterUnreviewed = await seedMeeting(ORG_A, "scheduled");
     // `reviewed`'s packet already has a real last_idg_reviewed_at (15 days ago → floor is today, T-0);
@@ -914,6 +932,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       reviewed,
       patientId,
       new Date(Date.now() - 40 * 86400000).toISOString(),
+      admissionId,
     );
     await admin.query(
       "UPDATE idg_patient_packet SET last_idg_reviewed_at=$1 WHERE idg_meeting_id=$2 AND patient_id=$3",
@@ -924,6 +943,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       laterUnreviewed,
       patientId,
       new Date(Date.now() - 3 * 86400000).toISOString(),
+      admissionId,
     );
 
     const deps = buildM14WorkerDeps({
@@ -931,6 +951,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       db: handle.db,
       outbox,
       activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      activeAdmissions: activeAdmissionsStub(admissionId, patientId, 40),
     });
     await runReviewClockSweepCron(deps);
 
@@ -950,15 +971,23 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
 
   it("idg.review-clock-sweep does not escalate a patient whose floor is not at T-3/T-0/T+1 today", async () => {
     const patientId = randomUUID();
+    const admissionId = randomUUID();
     const m = await seedMeeting(ORG_A, "scheduled");
     // since_cursor 5 days ago → floor 10 days from now — nowhere near any escalation stage.
-    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 5 * 86400000).toISOString());
+    await seedPacket(
+      ORG_A,
+      m,
+      patientId,
+      new Date(Date.now() - 5 * 86400000).toISOString(),
+      admissionId,
+    );
 
     const deps = buildM14WorkerDeps({
       connection: {} as never,
       db: handle.db,
       outbox,
       activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      activeAdmissions: activeAdmissionsStub(admissionId, patientId, 5),
     });
     await runReviewClockSweepCron(deps);
 

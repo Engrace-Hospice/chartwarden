@@ -189,6 +189,31 @@ describe("terminal flows from active", () => {
   });
 });
 
+describe("expireReservation (§2.12 reservation-expiry-watchdog)", () => {
+  it("steps a bed_assigned admission back to bed_pending, history only, system actor only", () => {
+    const t = transitionAdmission("bed_assigned", "gip", {
+      type: "expireReservation",
+      isSystemActor: true,
+    });
+    expect(t.to).toBe("bed_pending");
+    expect(effectKinds(t)).toEqual(["state_history"]);
+    expect(() =>
+      transitionAdmission("bed_assigned", "gip", {
+        type: "expireReservation",
+        isSystemActor: false,
+      }),
+    ).toThrow(IpuStateError);
+  });
+
+  it("is not accepted from any other state", () => {
+    for (const from of ["pending", "bed_pending", "active", "transferring", "closed"] as const) {
+      expect(() =>
+        transitionAdmission(from, "gip", { type: "expireReservation", isSystemActor: true }),
+      ).toThrow(IpuStateError);
+    }
+  });
+});
+
 describe("graph integrity + classifiers", () => {
   it("rejects illegal transitions; closed is terminal", () => {
     expect(() =>

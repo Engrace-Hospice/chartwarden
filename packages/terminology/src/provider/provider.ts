@@ -180,6 +180,7 @@ export function createTerminologyProvider(store: TerminologyStore): TerminologyP
         version: meta.version,
         status: "active",
         content: "complete",
+        ...(meta.copyright ? { copyright: meta.copyright } : {}),
         concept,
       };
     },

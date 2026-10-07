@@ -77,6 +77,14 @@ export interface ThresholdEventView {
   resolvedAt: string | null;
 }
 
+/** PHI-free quarantine detail (line numbers + codes only) — GAP-078 follow-up. */
+export interface PsrQuarantineDetail {
+  lines: { line: number; code: string }[];
+  truncated: boolean;
+  flaggedBeneficiaries: number;
+  unattributableRows: number;
+}
+
 export interface PsrImportView {
   id: string;
   capPeriodId: string;
@@ -87,6 +95,9 @@ export interface PsrImportView {
   parseError: string | null;
   beneficiaryCountPsr: number | null;
   paidTotalCentsPsr: number | null;
+  inpatientDaysPsr?: number | null;
+  rowsQuarantined?: number | null;
+  quarantineDetail?: PsrQuarantineDetail | null;
   importedAt: string;
 }
 
@@ -97,6 +108,9 @@ export interface PsrVarianceView {
   m26AccrualCents: number | null;
   psrAmountCents: number | null;
   varianceCents: number | null;
+  m26InpatientDays?: number | null;
+  psrInpatientDays?: number | null;
+  varianceDays?: number | null;
   varianceReason: string | null;
   status: string;
 }

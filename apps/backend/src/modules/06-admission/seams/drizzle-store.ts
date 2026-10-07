@@ -33,7 +33,7 @@ import type {
   LevelOfCare,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
 import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
@@ -48,9 +48,10 @@ const ES = schema.electionStatements;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-/** The actor id the org-explicit census read's withOrgContext envelope carries — an aggregate read has
- *  no acting user (the M4 audit trigger maps the empty-string sentinel to a NULL actor). */
-const ADMISSION_READER_SYSTEM_USER_ID = "";
+/** The actor the org-explicit seam envelopes carry — no acting user. `systemActor: true` pins the audit
+ *  actor to NULL (the M4 trigger maps the empty `app.user_id` to NULL); without it a blank `userId` inside
+ *  a request scope inherits the ambient request actor instead (GAP-111). The M33/M16/M26 precedent. */
+export const ADMISSION_SYSTEM_ACTOR = { userId: "", systemActor: true } as const;
 
 /** Worker-safe, explicitly tenant-scoped active-service probe for event consumers. */
 export function admissionIsActiveForOrg(
@@ -58,18 +59,14 @@ export function admissionIsActiveForOrg(
   organizationId: string,
   admissionId: string,
 ): Promise<boolean> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({ status: ADM.status })
-        .from(ADM)
-        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
-        .limit(1);
-      return row?.status === "active";
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const [row] = await tx
+      .select({ status: ADM.status })
+      .from(ADM)
+      .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+      .limit(1);
+    return row?.status === "active";
+  });
 }
 
 /**
@@ -104,37 +101,33 @@ export function admissionSchedulingContextForOrg(
   organizationId: string,
   admissionId: string,
 ): Promise<AdmissionSchedulingContext | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({
-          id: ADM.id,
-          patientId: ADM.patientId,
-          providerEntityId: ADM.providerEntityId,
-          locationId: ADM.locationId,
-          admissionAt: ADM.admissionAt,
-          activatedAt: ADM.activatedAt,
-          dischargedAt: ADM.dischargedAt,
-        })
-        .from(ADM)
-        // The explicit organization_id predicate is the second wall behind RLS (the `activeAdmissions`
-        // precedent above), so a misconfigured GUC cannot widen this read.
-        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
-        .limit(1);
-      if (!row) return null;
-      return {
-        admissionId: row.id,
-        patientId: row.patientId,
-        providerEntityId: row.providerEntityId,
-        locationId: row.locationId,
-        admissionAt: localDateN(row.admissionAt ?? row.activatedAt),
-        activatedAt: localDateN(row.activatedAt),
-        dischargedAt: localDateN(row.dischargedAt),
-      };
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: ADM.id,
+        patientId: ADM.patientId,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+        admissionAt: ADM.admissionAt,
+        activatedAt: ADM.activatedAt,
+        dischargedAt: ADM.dischargedAt,
+      })
+      .from(ADM)
+      // The explicit organization_id predicate is the second wall behind RLS (the `activeAdmissions`
+      // precedent above), so a misconfigured GUC cannot widen this read.
+      .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+      .limit(1);
+    if (!row) return null;
+    return {
+      admissionId: row.id,
+      patientId: row.patientId,
+      providerEntityId: row.providerEntityId,
+      locationId: row.locationId,
+      admissionAt: localDateN(row.admissionAt ?? row.activatedAt),
+      activatedAt: localDateN(row.activatedAt),
+      dischargedAt: localDateN(row.dischargedAt),
+    };
+  });
 }
 
 /**
@@ -170,42 +163,38 @@ export function electionPeriodContextForOrg(
   organizationId: string,
   electionPeriodId: string,
 ): Promise<ElectionPeriodContext | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({
-          id: EP.id,
-          admissionId: EP.admissionId,
-          sequenceNumber: EP.sequenceNumber,
-          status: EP.status,
-          effectiveAt: EP.effectiveAt,
-          scheduledEndAt: EP.scheduledEndAt,
-          patientId: ADM.patientId,
-          providerEntityId: ADM.providerEntityId,
-          locationId: ADM.locationId,
-        })
-        .from(EP)
-        .innerJoin(ADM, eq(ADM.id, EP.admissionId))
-        // The explicit organization_id predicate is the second wall behind RLS (the
-        // `admissionSchedulingContextForOrg` precedent), so a misconfigured GUC cannot widen this read.
-        .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
-        .limit(1);
-      if (!row) return null;
-      return {
-        electionPeriodId: row.id,
-        admissionId: row.admissionId,
-        patientId: row.patientId,
-        providerEntityId: row.providerEntityId,
-        locationId: row.locationId,
-        sequenceNumber: Number(row.sequenceNumber),
-        status: String(row.status),
-        effectiveAt: localDateN(row.effectiveAt),
-        scheduledEndAt: localDateN(row.scheduledEndAt),
-      };
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: EP.id,
+        admissionId: EP.admissionId,
+        sequenceNumber: EP.sequenceNumber,
+        status: EP.status,
+        effectiveAt: EP.effectiveAt,
+        scheduledEndAt: EP.scheduledEndAt,
+        patientId: ADM.patientId,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+      })
+      .from(EP)
+      .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+      // The explicit organization_id predicate is the second wall behind RLS (the
+      // `admissionSchedulingContextForOrg` precedent), so a misconfigured GUC cannot widen this read.
+      .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+      .limit(1);
+    if (!row) return null;
+    return {
+      electionPeriodId: row.id,
+      admissionId: row.admissionId,
+      patientId: row.patientId,
+      providerEntityId: row.providerEntityId,
+      locationId: row.locationId,
+      sequenceNumber: Number(row.sequenceNumber),
+      status: String(row.status),
+      effectiveAt: localDateN(row.effectiveAt),
+      scheduledEndAt: localDateN(row.scheduledEndAt),
+    };
+  });
 }
 
 /**
@@ -307,196 +296,192 @@ export async function claimAssemblyRangeContextForOrg(
   patientId: string,
   range: { readonly from: string; readonly to: string },
 ): Promise<ClaimAssemblyRangeContext | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const admRows = await tx
-        .select({
-          id: ADM.id,
-          admissionAt: ADM.admissionAt,
-          activatedAt: ADM.activatedAt,
-          dischargedAt: ADM.dischargedAt,
-          hospicePhysicianId: ADM.hospicePhysicianId,
-        })
-        .from(ADM)
-        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
-        .orderBy(desc(ADM.admissionAt), desc(ADM.activatedAt));
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const admRows = await tx
+      .select({
+        id: ADM.id,
+        admissionAt: ADM.admissionAt,
+        activatedAt: ADM.activatedAt,
+        dischargedAt: ADM.dischargedAt,
+        hospicePhysicianId: ADM.hospicePhysicianId,
+      })
+      .from(ADM)
+      .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+      .orderBy(desc(ADM.admissionAt), desc(ADM.activatedAt));
 
-      const candidate = admRows
-        .map((r) => ({
-          id: r.id,
-          start: r.admissionAt ?? r.activatedAt,
-          end: r.dischargedAt,
-          hospicePhysicianId: r.hospicePhysicianId,
-        }))
-        .filter(
-          (
-            r,
-          ): r is {
-            id: string;
-            start: Date;
-            end: Date | null;
-            hospicePhysicianId: string | null;
-          } => r.start !== null,
-        )
-        .find((r) => {
-          const start = localDate(r.start);
-          const end = r.end ? localDate(r.end) : null;
-          return start <= range.to && (end === null || end >= range.from);
-        });
-      if (!candidate) return null;
-      const admissionId = candidate.id;
-
-      const [dischargeRow] = await tx
-        .select({
-          effectiveAt: DE.effectiveAt,
-          dischargeType: DE.dischargeType,
-          deathAt: DE.deathAt,
-        })
-        .from(DE)
-        .where(eq(DE.admissionId, admissionId))
-        .limit(1);
-
-      const admission: ClaimRangeAdmission = {
-        admissionId,
-        hospiceAdmissionDate: localDate(candidate.start),
-        dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
-        dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
-        deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
-        hospicePhysicianId: candidate.hospicePhysicianId,
-      };
-
-      const periodRows = await tx
-        .select({
-          id: EP.id,
-          sequenceNumber: EP.sequenceNumber,
-          effectiveAt: EP.effectiveAt,
-          scheduledEndAt: EP.scheduledEndAt,
-          actualEndAt: EP.actualEndAt,
-          completedByCause: EP.completedByCause,
-        })
-        .from(EP)
-        .where(and(eq(EP.admissionId, admissionId), isNotNull(EP.effectiveAt)))
-        .orderBy(asc(EP.sequenceNumber));
-
-      const overlapping = periodRows.filter((p) => {
-        const end = p.actualEndAt ?? p.scheduledEndAt;
-        return p.effectiveAt! <= range.to && (end === null || end >= range.from);
+    const candidate = admRows
+      .map((r) => ({
+        id: r.id,
+        start: r.admissionAt ?? r.activatedAt,
+        end: r.dischargedAt,
+        hospicePhysicianId: r.hospicePhysicianId,
+      }))
+      .filter(
+        (
+          r,
+        ): r is {
+          id: string;
+          start: Date;
+          end: Date | null;
+          hospicePhysicianId: string | null;
+        } => r.start !== null,
+      )
+      .find((r) => {
+        const start = localDate(r.start);
+        const end = r.end ? localDate(r.end) : null;
+        return start <= range.to && (end === null || end >= range.from);
       });
+    if (!candidate) return null;
+    const admissionId = candidate.id;
 
-      const overlappingIds = overlapping.map((p) => p.id);
+    const [dischargeRow] = await tx
+      .select({
+        effectiveAt: DE.effectiveAt,
+        dischargeType: DE.dischargeType,
+        deathAt: DE.deathAt,
+      })
+      .from(DE)
+      .where(eq(DE.admissionId, admissionId))
+      .limit(1);
 
-      // Attending physician (F-127, #251) — only a SIGNED statement's `attending_physician_id` is a real
-      // election, not a drafted one (`election_statement_period_idx` is unique per period, so at most one
-      // row per id).
-      const attendingByPeriod = new Map<string, string | null>();
-      if (overlappingIds.length > 0) {
-        const statementRows = await tx
-          .select({
-            electionPeriodId: ES.electionPeriodId,
-            attendingPhysicianId: ES.attendingPhysicianId,
-          })
-          .from(ES)
-          .where(and(inArray(ES.electionPeriodId, overlappingIds), eq(ES.status, "signed")));
-        for (const row of statementRows) {
-          attendingByPeriod.set(row.electionPeriodId, row.attendingPhysicianId);
-        }
-      }
+    const admission: ClaimRangeAdmission = {
+      admissionId,
+      hospiceAdmissionDate: localDate(candidate.start),
+      dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
+      dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
+      deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
+      hospicePhysicianId: candidate.hospicePhysicianId,
+    };
 
-      const electionPeriods: ClaimRangeElectionPeriod[] = overlapping.map((p) => ({
-        electionPeriodId: p.id,
-        sequence: Number(p.sequenceNumber),
-        effectiveFrom: localDate(p.effectiveAt!),
-        effectiveTo: localDateN(p.actualEndAt),
-        revoked: p.completedByCause === "revocation",
-        revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
-        attendingPhysicianId: attendingByPeriod.get(p.id) ?? null,
-      }));
-      const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
+    const periodRows = await tx
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        effectiveAt: EP.effectiveAt,
+        scheduledEndAt: EP.scheduledEndAt,
+        actualEndAt: EP.actualEndAt,
+        completedByCause: EP.completedByCause,
+      })
+      .from(EP)
+      .where(and(eq(EP.admissionId, admissionId), isNotNull(EP.effectiveAt)))
+      .orderBy(asc(EP.sequenceNumber));
 
-      const certifications: ClaimRangeCertification[] = [];
-      const faceToFace: ClaimRangeFaceToFace[] = [];
-      if (overlappingIds.length > 0) {
-        const ctiRows = await tx
-          .select({
-            electionPeriodId: CTI.electionPeriodId,
-            status: CTI.status,
-            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
-            attendingMdId: CTI.attendingMdId,
-            attendingMdSignedAt: CTI.attendingMdSignedAt,
-            createdAt: CTI.createdAt,
-          })
-          .from(CTI)
-          .where(inArray(CTI.electionPeriodId, overlappingIds))
-          .orderBy(asc(CTI.createdAt));
-        for (const periodId of overlappingIds) {
-          const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
-          // F-217 — the SAME row-selection the adequacy predicate uses (`pickCertification`), so the
-          // claim-assembly facts M23 rules read and the activation gate's verdict cannot pick different
-          // CTIs for one period.
-          const pick = pickCertification(rows);
-          if (!pick) continue;
-          certifications.push({
-            electionPeriodSequence: bySequence.get(periodId)!,
-            ctiSigned: pick.status === "signed",
-            ctiSignedDate: localDateN(pick.hospiceMdSignedAt),
-            attendingCosignRequired: pick.attendingMdId !== null,
-            attendingCosigned: pick.attendingMdSignedAt !== null,
-          });
-        }
+    const overlapping = periodRows.filter((p) => {
+      const end = p.actualEndAt ?? p.scheduledEndAt;
+      return p.effectiveAt! <= range.to && (end === null || end >= range.from);
+    });
 
-        const f2fRows = await tx
-          .select({
-            electionPeriodId: F2F.electionPeriodId,
-            status: F2F.status,
-            encounterDate: F2F.encounterDate,
-            createdAt: F2F.createdAt,
-          })
-          .from(F2F)
-          .where(inArray(F2F.electionPeriodId, overlappingIds))
-          .orderBy(asc(F2F.createdAt));
-        for (const periodId of overlappingIds) {
-          const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
-          const pick = pickFaceToFace(rows); // F-217 — shared with the adequacy predicate
-          if (!pick) continue;
-          faceToFace.push({
-            electionPeriodSequence: bySequence.get(periodId)!,
-            attested: pick.status === "attested",
-            encounterDate: localDateN(pick.encounterDate),
-          });
-        }
-      }
+    const overlappingIds = overlapping.map((p) => p.id);
 
-      const locRows = await tx
+    // Attending physician (F-127, #251) — only a SIGNED statement's `attending_physician_id` is a real
+    // election, not a drafted one (`election_statement_period_idx` is unique per period, so at most one
+    // row per id).
+    const attendingByPeriod = new Map<string, string | null>();
+    if (overlappingIds.length > 0) {
+      const statementRows = await tx
         .select({
-          id: LOC.id,
-          levelOfCare: LOC.levelOfCare,
-          effectiveAt: LOC.effectiveAt,
-          endedAt: LOC.endedAt,
+          electionPeriodId: ES.electionPeriodId,
+          attendingPhysicianId: ES.attendingPhysicianId,
         })
-        .from(LOC)
-        .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
-        .orderBy(asc(LOC.effectiveAt));
+        .from(ES)
+        .where(and(inArray(ES.electionPeriodId, overlappingIds), eq(ES.status, "signed")));
+      for (const row of statementRows) {
+        attendingByPeriod.set(row.electionPeriodId, row.attendingPhysicianId);
+      }
+    }
 
-      const levelOfCarePeriods: ClaimRangeLevelOfCarePeriod[] = locRows
-        .filter((p) => {
-          const from = localDate(p.effectiveAt);
-          const to = localDateN(p.endedAt);
-          return from <= range.to && (to === null || to >= range.from);
+    const electionPeriods: ClaimRangeElectionPeriod[] = overlapping.map((p) => ({
+      electionPeriodId: p.id,
+      sequence: Number(p.sequenceNumber),
+      effectiveFrom: localDate(p.effectiveAt!),
+      effectiveTo: localDateN(p.actualEndAt),
+      revoked: p.completedByCause === "revocation",
+      revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
+      attendingPhysicianId: attendingByPeriod.get(p.id) ?? null,
+    }));
+    const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
+
+    const certifications: ClaimRangeCertification[] = [];
+    const faceToFace: ClaimRangeFaceToFace[] = [];
+    if (overlappingIds.length > 0) {
+      const ctiRows = await tx
+        .select({
+          electionPeriodId: CTI.electionPeriodId,
+          status: CTI.status,
+          hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+          attendingMdId: CTI.attendingMdId,
+          attendingMdSignedAt: CTI.attendingMdSignedAt,
+          createdAt: CTI.createdAt,
         })
-        .map((p) => ({
-          levelOfCarePeriodId: p.id,
-          levelOfCare: p.levelOfCare,
-          from: localDate(p.effectiveAt),
-          to: localDateN(p.endedAt) ?? range.to,
-          chcDocumentedHours: null,
-          gipAdmissionCriteriaDocumented: null,
-        }));
+        .from(CTI)
+        .where(inArray(CTI.electionPeriodId, overlappingIds))
+        .orderBy(asc(CTI.createdAt));
+      for (const periodId of overlappingIds) {
+        const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
+        // F-217 — the SAME row-selection the adequacy predicate uses (`pickCertification`), so the
+        // claim-assembly facts M23 rules read and the activation gate's verdict cannot pick different
+        // CTIs for one period.
+        const pick = pickCertification(rows);
+        if (!pick) continue;
+        certifications.push({
+          electionPeriodSequence: bySequence.get(periodId)!,
+          ctiSigned: pick.status === "signed",
+          ctiSignedDate: localDateN(pick.hospiceMdSignedAt),
+          attendingCosignRequired: pick.attendingMdId !== null,
+          attendingCosigned: pick.attendingMdSignedAt !== null,
+        });
+      }
 
-      return { admission, electionPeriods, certifications, faceToFace, levelOfCarePeriods };
-    },
-  );
+      const f2fRows = await tx
+        .select({
+          electionPeriodId: F2F.electionPeriodId,
+          status: F2F.status,
+          encounterDate: F2F.encounterDate,
+          createdAt: F2F.createdAt,
+        })
+        .from(F2F)
+        .where(inArray(F2F.electionPeriodId, overlappingIds))
+        .orderBy(asc(F2F.createdAt));
+      for (const periodId of overlappingIds) {
+        const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
+        const pick = pickFaceToFace(rows); // F-217 — shared with the adequacy predicate
+        if (!pick) continue;
+        faceToFace.push({
+          electionPeriodSequence: bySequence.get(periodId)!,
+          attested: pick.status === "attested",
+          encounterDate: localDateN(pick.encounterDate),
+        });
+      }
+    }
+
+    const locRows = await tx
+      .select({
+        id: LOC.id,
+        levelOfCare: LOC.levelOfCare,
+        effectiveAt: LOC.effectiveAt,
+        endedAt: LOC.endedAt,
+      })
+      .from(LOC)
+      .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
+      .orderBy(asc(LOC.effectiveAt));
+
+    const levelOfCarePeriods: ClaimRangeLevelOfCarePeriod[] = locRows
+      .filter((p) => {
+        const from = localDate(p.effectiveAt);
+        const to = localDateN(p.endedAt);
+        return from <= range.to && (to === null || to >= range.from);
+      })
+      .map((p) => ({
+        levelOfCarePeriodId: p.id,
+        levelOfCare: p.levelOfCare,
+        from: localDate(p.effectiveAt),
+        to: localDateN(p.endedAt) ?? range.to,
+        chcDocumentedHours: null,
+        gipAdmissionCriteriaDocumented: null,
+      }));
+
+    return { admission, electionPeriods, certifications, faceToFace, levelOfCarePeriods };
+  });
 }
 
 /** Minimal M6-owned context required when an event consumer creates an admission-scoped draft. */
@@ -517,50 +502,46 @@ export function activeAdmissionDraftContextForPatient(
   organizationId: string,
   patientId: string,
 ): Promise<ActiveAdmissionDraftContext | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({
-          admissionId: ADM.id,
-          providerEntityId: ADM.providerEntityId,
-          locationId: ADM.locationId,
-          attendingPhysicianId: ADM.attendingPhysicianId,
-          admittedByPhysicianId: ADM.admittedByPhysicianId,
-        })
-        .from(ADM)
-        .where(
-          and(
-            eq(ADM.organizationId, organizationId),
-            eq(ADM.patientId, patientId),
-            eq(ADM.status, "active"),
-          ),
-        )
-        .limit(1);
-      if (!row) return null;
-      const providerEntityId = row.providerEntityId;
-      const locationId = row.locationId;
-      const orderingPhysicianMdmId = row.attendingPhysicianId ?? row.admittedByPhysicianId;
-      const missing = [
-        providerEntityId === null ? "provider_entity_id" : null,
-        locationId === null ? "location_id" : null,
-        orderingPhysicianMdmId === null ? "attending_physician_id|admitted_by_physician_id" : null,
-      ].filter((value): value is string => value !== null);
-      if (missing.length > 0) {
-        throw new AdmissionSeamDataGapError("admission", row.admissionId, missing);
-      }
-      if (providerEntityId === null || locationId === null || orderingPhysicianMdmId === null) {
-        throw new Error("unreachable admission draft context narrowing failure");
-      }
-      return {
-        admissionId: row.admissionId,
-        providerEntityId,
-        locationId,
-        orderingPhysicianMdmId,
-      };
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const [row] = await tx
+      .select({
+        admissionId: ADM.id,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+        attendingPhysicianId: ADM.attendingPhysicianId,
+        admittedByPhysicianId: ADM.admittedByPhysicianId,
+      })
+      .from(ADM)
+      .where(
+        and(
+          eq(ADM.organizationId, organizationId),
+          eq(ADM.patientId, patientId),
+          eq(ADM.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row) return null;
+    const providerEntityId = row.providerEntityId;
+    const locationId = row.locationId;
+    const orderingPhysicianMdmId = row.attendingPhysicianId ?? row.admittedByPhysicianId;
+    const missing = [
+      providerEntityId === null ? "provider_entity_id" : null,
+      locationId === null ? "location_id" : null,
+      orderingPhysicianMdmId === null ? "attending_physician_id|admitted_by_physician_id" : null,
+    ].filter((value): value is string => value !== null);
+    if (missing.length > 0) {
+      throw new AdmissionSeamDataGapError("admission", row.admissionId, missing);
+    }
+    if (providerEntityId === null || locationId === null || orderingPhysicianMdmId === null) {
+      throw new Error("unreachable admission draft context narrowing failure");
+    }
+    return {
+      admissionId: row.admissionId,
+      providerEntityId,
+      locationId,
+      orderingPhysicianMdmId,
+    };
+  });
 }
 
 /** M6-owned siting-only facts for a patient's active admission — the {@link activeAdmissionDraftContextForPatient}
@@ -583,33 +564,29 @@ export function activeAdmissionSitingForPatientForOrg(
   organizationId: string,
   patientId: string,
 ): Promise<ActiveAdmissionSitingContext | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({
-          admissionId: ADM.id,
-          providerEntityId: ADM.providerEntityId,
-          locationId: ADM.locationId,
-        })
-        .from(ADM)
-        .where(
-          and(
-            eq(ADM.organizationId, organizationId),
-            eq(ADM.patientId, patientId),
-            eq(ADM.status, "active"),
-          ),
-        )
-        .limit(1);
-      if (!row || row.providerEntityId === null || row.locationId === null) return null;
-      return {
-        admissionId: row.admissionId,
-        providerEntityId: row.providerEntityId,
-        locationId: row.locationId,
-      };
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const [row] = await tx
+      .select({
+        admissionId: ADM.id,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+      })
+      .from(ADM)
+      .where(
+        and(
+          eq(ADM.organizationId, organizationId),
+          eq(ADM.patientId, patientId),
+          eq(ADM.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row || row.providerEntityId === null || row.locationId === null) return null;
+    return {
+      admissionId: row.admissionId,
+      providerEntityId: row.providerEntityId,
+      locationId: row.locationId,
+    };
+  });
 }
 
 /** M6-owned, RLS-backed referral visibility probe for referral-bound document artifacts. */
@@ -626,7 +603,7 @@ export function createReferralReader(db: DbClient): import("@wardenx/types").Ref
       });
     },
     async getReferralSubject({ organizationId, referralId }) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
         const [row] = await tx
           .select({
             id: REF.id,
@@ -865,7 +842,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     },
 
     async admissionSummary(organizationId, admissionId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
         const [row] = await tx
           .select(admissionCols)
           .from(ADM)
@@ -881,33 +858,29 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     },
 
     async admissionSiting(organizationId, admissionId) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-        async (tx) => {
-          const [row] = await tx
-            .select({
-              admissionId: ADM.id,
-              organizationId: ADM.organizationId,
-              providerEntityId: ADM.providerEntityId,
-              locationId: ADM.locationId,
-              admissionAt: ADM.admissionAt,
-              activatedAt: ADM.activatedAt,
-            })
-            .from(ADM)
-            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
-            .limit(1);
-          if (!row) return null; // unknown id / not visible under RLS
-          return {
-            admissionId: row.admissionId,
-            organizationId: row.organizationId,
-            providerEntityId: row.providerEntityId,
-            locationId: row.locationId,
-            admissionAt: row.admissionAt?.toISOString() ?? null,
-            activatedAt: row.activatedAt?.toISOString() ?? null,
-          };
-        },
-      );
+      return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+        const [row] = await tx
+          .select({
+            admissionId: ADM.id,
+            organizationId: ADM.organizationId,
+            providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+          })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1);
+        if (!row) return null; // unknown id / not visible under RLS
+        return {
+          admissionId: row.admissionId,
+          organizationId: row.organizationId,
+          providerEntityId: row.providerEntityId,
+          locationId: row.locationId,
+          admissionAt: row.admissionAt?.toISOString() ?? null,
+          activatedAt: row.activatedAt?.toISOString() ?? null,
+        };
+      });
     },
 
     async levelOfCarePeriods(admissionId) {
@@ -1016,7 +989,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         db,
         {
           organizationId: scope.orgId,
-          userId: ADMISSION_READER_SYSTEM_USER_ID,
+          ...ADMISSION_SYSTEM_ACTOR,
         },
         async (tx) => {
           const rows = await tx
@@ -1092,56 +1065,111 @@ export function idgPacketInclusionForOrg(
   asOfIso: string,
   wrapUpDays: number,
 ): Promise<readonly IdgPacketInclusionCandidate[]> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const asOf = new Date(asOfIso);
-      const wrapUpStart = new Date(asOf.getTime() - wrapUpDays * 86_400_000);
-      const rows = await tx
-        .select({
-          id: ADM.id,
-          patientId: ADM.patientId,
-          providerEntityId: ADM.providerEntityId,
-          locationId: ADM.locationId,
-          status: ADM.status,
-          activatedAt: ADM.activatedAt,
-          admissionAt: ADM.admissionAt,
-          dischargedAt: ADM.dischargedAt,
-        })
-        .from(ADM)
-        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.locationId, locationId)));
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const asOf = new Date(asOfIso);
+    const wrapUpStart = new Date(asOf.getTime() - wrapUpDays * 86_400_000);
+    const rows = await tx
+      .select({
+        id: ADM.id,
+        patientId: ADM.patientId,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+        status: ADM.status,
+        activatedAt: ADM.activatedAt,
+        admissionAt: ADM.admissionAt,
+        dischargedAt: ADM.dischargedAt,
+      })
+      .from(ADM)
+      .where(and(eq(ADM.organizationId, organizationId), eq(ADM.locationId, locationId)));
 
-      const out: IdgPacketInclusionCandidate[] = [];
-      for (const r of rows) {
-        if (r.providerEntityId === null || r.locationId === null) continue;
-        const activatedAtIso = (r.activatedAt ?? r.admissionAt)?.toISOString() ?? null;
-        if (activatedAtIso === null) continue; // never activated — cannot be on a caseload
-        if (r.status === "active") {
-          out.push({
-            admissionId: r.id,
-            patientId: r.patientId,
-            providerEntityId: r.providerEntityId,
-            locationId: r.locationId,
-            activatedAtIso,
-            inclusionReason: "active",
-          });
-          continue;
-        }
-        if (r.dischargedAt !== null && r.dischargedAt >= wrapUpStart && r.dischargedAt <= asOf) {
-          out.push({
-            admissionId: r.id,
-            patientId: r.patientId,
-            providerEntityId: r.providerEntityId,
-            locationId: r.locationId,
-            activatedAtIso,
-            inclusionReason: "post_discharge_wrap_up",
-          });
-        }
+    const out: IdgPacketInclusionCandidate[] = [];
+    for (const r of rows) {
+      if (r.providerEntityId === null || r.locationId === null) continue;
+      const activatedAtIso = (r.activatedAt ?? r.admissionAt)?.toISOString() ?? null;
+      if (activatedAtIso === null) continue; // never activated — cannot be on a caseload
+      if (r.status === "active") {
+        out.push({
+          admissionId: r.id,
+          patientId: r.patientId,
+          providerEntityId: r.providerEntityId,
+          locationId: r.locationId,
+          activatedAtIso,
+          inclusionReason: "active",
+        });
+        continue;
       }
-      return out;
-    },
-  );
+      if (r.dischargedAt !== null && r.dischargedAt >= wrapUpStart && r.dischargedAt <= asOf) {
+        out.push({
+          admissionId: r.id,
+          patientId: r.patientId,
+          providerEntityId: r.providerEntityId,
+          locationId: r.locationId,
+          activatedAtIso,
+          inclusionReason: "post_discharge_wrap_up",
+        });
+      }
+    }
+    return out;
+  });
+}
+
+/** One ACTIVE admission as M14's `idg.review-clock-sweep` needs it (GAP-042): the §418.56(d) clock runs per
+ * active admission, anchored at `activatedAtIso` until the first IDG review is stamped. */
+export interface IdgActiveAdmission {
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly locationId: string;
+  readonly activatedAtIso: string;
+}
+
+/**
+ * The org's ACTIVE admissions for M14's per-admission 15-day review-clock sweep (GAP-042; spec §4.8
+ * `evaluate-per-patient-floor`, "per active admission, fallback admission `activated_at`"). Org-explicit,
+ * worker-callable and KEYSET-PAGINATED (`id > afterAdmissionId`, ascending, at most `limit` rows) so a cron
+ * tick can bound each read. `status='active'` only — `on_hold`/discharged/bereavement admissions are not
+ * receiving active hospice care, so no §418.56(d) clock applies. An admission with no site (`location_id`
+ * null) or never activated is skipped: it cannot have been on an IDG caseload (the same rule as
+ * `idgPacketInclusionForOrg`).
+ */
+export function idgActiveAdmissionsForOrg(
+  db: DbClient,
+  organizationId: string,
+  afterAdmissionId: string | null,
+  limit: number,
+): Promise<readonly IdgActiveAdmission[]> {
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const rows = await tx
+      .select({
+        id: ADM.id,
+        patientId: ADM.patientId,
+        locationId: ADM.locationId,
+        activatedAt: ADM.activatedAt,
+        admissionAt: ADM.admissionAt,
+      })
+      .from(ADM)
+      .where(
+        and(
+          eq(ADM.organizationId, organizationId),
+          eq(ADM.status, "active"),
+          isNotNull(ADM.locationId),
+          afterAdmissionId === null ? undefined : gt(ADM.id, afterAdmissionId),
+        ),
+      )
+      .orderBy(asc(ADM.id))
+      .limit(limit);
+    const out: IdgActiveAdmission[] = [];
+    for (const r of rows) {
+      const activatedAtIso = (r.activatedAt ?? r.admissionAt)?.toISOString() ?? null;
+      if (r.locationId === null || activatedAtIso === null) continue;
+      out.push({
+        admissionId: r.id,
+        patientId: r.patientId,
+        locationId: r.locationId,
+        activatedAtIso,
+      });
+    }
+    return out;
+  });
 }
 
 /**
@@ -1159,25 +1187,21 @@ export function idgCurrentLevelOfCareForOrg(
   admissionId: string,
   asOfIso: string,
 ): Promise<LevelOfCare | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const rows = await tx
-        .select({
-          levelOfCare: LOC.levelOfCare,
-          effectiveAt: LOC.effectiveAt,
-          endedAt: LOC.endedAt,
-        })
-        .from(LOC)
-        .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
-        .orderBy(desc(LOC.effectiveAt));
-      if (rows.length === 0) return null;
-      const asOf = new Date(asOfIso);
-      const open = rows.find(
-        (r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf),
-      );
-      return (open ?? rows[0])!.levelOfCare;
-    },
-  );
+  return withOrgContext(db, { organizationId, ...ADMISSION_SYSTEM_ACTOR }, async (tx) => {
+    const rows = await tx
+      .select({
+        levelOfCare: LOC.levelOfCare,
+        effectiveAt: LOC.effectiveAt,
+        endedAt: LOC.endedAt,
+      })
+      .from(LOC)
+      .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
+      .orderBy(desc(LOC.effectiveAt));
+    if (rows.length === 0) return null;
+    const asOf = new Date(asOfIso);
+    const open = rows.find(
+      (r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf),
+    );
+    return (open ?? rows[0])!.levelOfCare;
+  });
 }

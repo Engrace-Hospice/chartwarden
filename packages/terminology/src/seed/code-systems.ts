@@ -53,7 +53,9 @@ export const PLATFORM_CODE_SYSTEMS: readonly PlatformCodeSystemSeed[] = [
   {
     id: "rxnorm",
     name: "RxNorm",
-    licenseSource: "public",
+    // GAP-108 (policy 2026-10-06): the FULL RxNorm release is UMLS-licensed — only the Current Prescribable
+    // Content subset is public — so a load of it needs a licence attestation. Spec §3.9 had 'public'.
+    licenseSource: "umls",
     sourceUri: "https://www.nlm.nih.gov/research/umls/rxnorm",
   },
   {

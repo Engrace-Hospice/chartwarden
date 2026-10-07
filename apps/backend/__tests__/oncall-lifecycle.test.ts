@@ -197,13 +197,15 @@ describe("§2.2.1 — the triage-call transition table is a WHITELIST, not a ran
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("is a SUBSET of migration 0108's forward-transition trigger whitelist", () => {
+  it("is a SUBSET of the forward-transition trigger whitelist in force (0108, redefined by 0362)", () => {
     // The DB trigger is the coarse net; this table is the policy. Every app edge must be one the database
     // would accept — an edge the trigger rejects is a 500 at 2 a.m. The converse is deliberately NOT
     // asserted: 0108 admits `documented_pending_encounter → abandoned` and this table does not, because
     // once a disposition is selected and the M8 encounter created, "the caller hung up" is no longer an
     // outcome — the clinical decision is already on the record and the §2.7 D-B park must not be
     // abandonable while the encounter-creator worker is still retrying.
+    // 0362 re-creates the guard with the §4.8 timeout edge (`awaiting_callback → disposition_pending`);
+    // the LATER definition is the one in force, so it is the one the app table must fit inside.
     const sql = readFileSync(
       join(
         import.meta.dirname,
@@ -213,7 +215,7 @@ describe("§2.2.1 — the triage-call transition table is a WHITELIST, not a ran
         "packages",
         "db",
         "migrations",
-        "0108_oncall_m19_rls_audit_triggers.sql",
+        "0362_m19_cron_sla_markers_auto_timeout.sql",
       ),
       "utf8",
     );

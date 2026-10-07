@@ -1,4 +1,4 @@
-import { buildCapabilityStatement, isSupportedScope } from "@wardenx/fhir";
+import { isSupportedScope } from "@wardenx/fhir";
 // apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts — §4.1 R1-R22: the FHIR-spec HTTP surface.
 //
 // These routes authenticate with a SMART bearer token (NOT a WardenX session), so they do NOT compose the
@@ -29,13 +29,15 @@ import { buildCapabilityStatement, isSupportedScope } from "@wardenx/fhir";
 import type { OperationOutcome } from "@wardenx/fhir";
 import {
   FHIR_FORWARD_SEAM_RESOURCES,
-  FHIR_PHASE_1_VERSION,
   FHIR_SESSION_TTL_MINUTES,
   type FhirReadDisclosureEnvelope,
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
+import type { BulkExportEnqueuePort, FhirExportObjectStore } from "../jobs/ports";
+import { PRESIGNED_OUTPUT_TTL_SECONDS } from "../jobs/queues";
 import { type FhirBaaStatusView, getFhirTerminologyProvider } from "../seams/index";
+import { buildGatewayCapabilityStatement } from "./capability-statement";
 import { BAA_NOT_IN_FORCE_CODE, isBaaInForce, isIpAllowed } from "./client-gates";
 import {
   type FhirClientRateLimiter,
@@ -61,7 +63,7 @@ import {
   servedResource,
   supportsInteraction,
 } from "./projection";
-import type { FhirBearerContext, FhirGatewayStore } from "./store";
+import { type FhirBearerContext, type FhirGatewayStore, FhirStoreError } from "./store";
 import {
   type FhirAssertionReplayGuard,
   type FhirJwksFetcher,
@@ -94,6 +96,15 @@ export interface FhirR4RouteDeps {
   readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
   /** GAP-083 / D16 — per-client token bucket. Defaults to a per-process bucket. */
   readonly rateLimiter?: FhirClientRateLimiter;
+  /**
+   * GAP-084 — the bulk-export machinery: the queue producer the `$export` routes enqueue on after commit, and
+   * the object store the poll presigns output URLs from. ABSENT ⇒ `$export` answers 501 (not 202): accepting a
+   * job nothing will ever run is the bug this closes.
+   */
+  readonly exports?: {
+    readonly enqueue: BulkExportEnqueuePort;
+    readonly objects: FhirExportObjectStore;
+  };
 }
 
 /**
@@ -105,6 +116,9 @@ export interface FhirR4RouteDeps {
  * thing any partner's tooling fetched — anonymously, before authenticating (F-035, #95).
  */
 const ADVERTISED_RESOURCES = SERVED_RESOURCES.map((r) => r.type);
+
+/** Where a consumer finds the sha256 of an export output file (W-FHIR-04 step 6). */
+const CHECKSUM_EXTENSION_URL = "urn:wardenx:fhir:bulk-export:checksum-sha256";
 
 const bearerToken = (request: FastifyRequest): string | null => {
   const header = request.headers.authorization;
@@ -240,31 +254,7 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
 
   // ── R1 — CapabilityStatement (anonymous per FHIR convention) ─────────────────────────────────────
   app.get("/fhir/r4/metadata", async (_request, reply) => {
-    const statement = buildCapabilityStatement({
-      fhirVersion: FHIR_PHASE_1_VERSION,
-      releaseTag: "phase-1",
-      publicationDate: "2026-01-01",
-      baseUrl: "/fhir/r4",
-      // Each resource declares the interactions it ACTUALLY supports, which is what
-      // `CapabilityStatement.rest.resource.interaction` is for. Encounter is `search-type` only —
-      // M8 publishes a patient-scoped signed-encounter read and no read-by-id, so an instance read has
-      // no data path and claiming one would be the same false promise in a smaller font.
-      resources: SERVED_RESOURCES.map((r) => ({
-        type: r.type,
-        interactions: r.interactions,
-        searchParams: r.searchParams,
-      })),
-      operations: [
-        {
-          name: "export",
-          definition: "http://hl7.org/fhir/uv/bulkdata/OperationDefinition/export",
-        },
-        {
-          name: "everything",
-          definition: "http://hl7.org/fhir/OperationDefinition/Patient-everything",
-        },
-      ],
-    });
+    const statement = buildGatewayCapabilityStatement();
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
     return statement;
   });
@@ -446,6 +436,43 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     };
   });
 
+  /**
+   * The Bulk Data 2.0 completion manifest: one `output[]` entry per resource type (a freshly presigned,
+   * short-TTL URL — minted per poll, never stored) and the `OperationOutcome` file as `error[]`. The sha256 of
+   * each file rides as an extension so a consumer can verify the bytes it downloads.
+   */
+  const buildExportManifest = async (
+    organizationId: string,
+    job: { readonly id: string; readonly completedAt: string | null },
+  ): Promise<Record<string, unknown>> => {
+    const exportsDeps = deps.exports;
+    const artifacts = await store.listJobArtifacts(organizationId, job.id);
+    const output: Record<string, unknown>[] = [];
+    const error: Record<string, unknown>[] = [];
+    for (const artifact of artifacts) {
+      if (artifact.objectKey === "" || exportsDeps === undefined) continue;
+      const { url } = await exportsDeps.objects.presignGet({
+        organizationId,
+        objectKey: artifact.objectKey,
+        ttlSeconds: PRESIGNED_OUTPUT_TTL_SECONDS,
+      });
+      const entry = {
+        type: artifact.resourceType,
+        url,
+        count: artifact.rowCount,
+        extension: [{ url: CHECKSUM_EXTENSION_URL, valueString: artifact.checksumSha256 }],
+      };
+      (artifact.resourceType === "OperationOutcome" ? error : output).push(entry);
+    }
+    return {
+      transactionTime: job.completedAt,
+      request: "/fhir/r4/$export",
+      requiresAccessToken: true,
+      output,
+      error,
+    };
+  };
+
   // ── R7 / R9 — system-level + all-patient $export ─────────────────────────────────────────────────
   const handleExport = async (
     request: FastifyRequest,
@@ -455,6 +482,32 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
   ): Promise<FastifyReply> => {
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
+    if (deps.exports === undefined) {
+      return reply.send(
+        sendOutcome(
+          reply,
+          501,
+          "error",
+          "not-supported",
+          "bulk export is not enabled on this deployment",
+          "FHIR_EXPORT_NOT_ENABLED",
+        ),
+      );
+    }
+    if (requestKind === "group") {
+      // No Group resource is served and no seam exposes group membership, so there is nothing to expand
+      // `Group/:id` into. Refusing is the honest answer; exporting the whole tenant would be a disclosure.
+      return reply.send(
+        sendOutcome(
+          reply,
+          501,
+          "error",
+          "not-supported",
+          "Group-level $export is not supported: no Group membership source is available",
+          "FHIR_EXPORT_GROUP_NOT_SUPPORTED",
+        ),
+      );
+    }
     const query = parseQuery(ExportQuery, request.query);
     const resourceTypes = query._type
       ? query._type
@@ -462,26 +515,59 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
           .map((s) => s.trim())
           .filter(Boolean)
       : [...ADVERTISED_RESOURCES];
+    const unsupported = resourceTypes.find((t) => !supportsInteraction(t, "search-type"));
+    if (unsupported !== undefined) {
+      return reply.send(
+        sendOutcome(
+          reply,
+          400,
+          "error",
+          "not-supported",
+          `resource type ${unsupported} is not served by this gateway`,
+          "FHIR_EXPORT_TYPE_NOT_SUPPORTED",
+        ),
+      );
+    }
     const denied = resourceTypes.find((t) => !hasReadScope(ctx, t));
     if (denied !== undefined) {
-      sendOutcome(
-        reply,
-        403,
-        "error",
-        "forbidden",
-        `scope system/${denied}.read is required`,
-        "FHIR_SCOPE_DENIED",
+      return reply.send(
+        sendOutcome(
+          reply,
+          403,
+          "error",
+          "forbidden",
+          `scope system/${denied}.read is required`,
+          "FHIR_SCOPE_DENIED",
+        ),
       );
-      return reply;
     }
-    const job = await store.createJob(ctx.organizationId, {
-      clientId: ctx.clientId,
-      requestKind,
-      groupId,
-      resourceTypes,
-      since: query._since,
-      initiatedByMembershipId: null,
-    });
+    let job: Awaited<ReturnType<FhirGatewayStore["createJob"]>>;
+    try {
+      job = await store.createJob(ctx.organizationId, {
+        clientId: ctx.clientId,
+        requestKind,
+        groupId,
+        resourceTypes,
+        since: query._since,
+        initiatedByMembershipId: null,
+      });
+    } catch (err) {
+      // §2.2 — one active export per client: a second submission is a 429 OperationOutcome.
+      if (err instanceof FhirStoreError && err.httpStatus === 429) {
+        return reply.send(sendOutcome(reply, 429, "error", "throttled", err.message, err.code));
+      }
+      throw err;
+    }
+    // After commit. A failed enqueue leaves the job `accepted`; the sweeper re-queues it, so the client is
+    // still told 202 (the job exists and WILL run) and the failure is loud in the log.
+    try {
+      await deps.exports.enqueue.enqueue(ctx.organizationId, job.id);
+    } catch (err) {
+      request.log.error(
+        { err, jobId: job.id },
+        "M28 $export: enqueue failed; the sweeper will retry",
+      );
+    }
     reply
       .code(202)
       .header("content-location", `/fhir/r4/$export-poll-status/${job.id}`)
@@ -508,7 +594,9 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     if (ctx === null) return reply;
     const jobId = (request.params as { jobId: string }).jobId;
     const job = await store.getJob(ctx.organizationId, jobId);
-    if (job === null) {
+    // A client may poll ONLY its own jobs: the job id is not a capability, and the output URLs it mints
+    // are PHI. Another client's job is indistinguishable from an absent one.
+    if (job === null || job.clientId !== ctx.clientId) {
       return sendOutcome(
         reply,
         404,
@@ -518,7 +606,11 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         "FHIR_EXPORT_JOB_NOT_FOUND",
       );
     }
-    if (job.status === "expired") {
+    const outputExpired =
+      job.status === "completed" &&
+      job.expiresAt !== null &&
+      Date.parse(job.expiresAt) <= Date.parse(now());
+    if (job.status === "expired" || outputExpired) {
       return sendOutcome(
         reply,
         410,
@@ -529,13 +621,29 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       );
     }
     if (job.status === "completed") {
+      if (deps.exports === undefined) {
+        return sendOutcome(
+          reply,
+          503,
+          "error",
+          "processing",
+          "bulk export storage is not available",
+          "FHIR_EXPORT_STORAGE_UNAVAILABLE",
+        );
+      }
+      const manifest = await buildExportManifest(ctx.organizationId, job);
       reply.code(200).header("content-type", FHIR_JSON_CONTENT_TYPE);
-      return {
-        transactionTime: job.completedAt,
-        request: "/fhir/r4/$export",
-        requiresAccessToken: true,
-        output: [],
-      };
+      return manifest;
+    }
+    if (job.status === "failed" || job.status === "cancelled") {
+      return sendOutcome(
+        reply,
+        job.status === "failed" ? 500 : 410,
+        "error",
+        "processing",
+        job.status === "failed" ? "the bulk export failed" : "the bulk export was cancelled",
+        job.status === "failed" ? "FHIR_EXPORT_FAILED" : "FHIR_EXPORT_CANCELLED",
+      );
     }
     reply.code(202).header("x-progress", job.status);
     return { status: job.status };
@@ -546,6 +654,17 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     const jobId = (request.params as { jobId: string }).jobId;
+    const owned = await store.getJob(ctx.organizationId, jobId);
+    if (owned === null || owned.clientId !== ctx.clientId) {
+      return sendOutcome(
+        reply,
+        404,
+        "error",
+        "not-found",
+        "bulk export job not found",
+        "FHIR_EXPORT_JOB_NOT_FOUND",
+      );
+    }
     await store.cancelJob(ctx.organizationId, jobId, null);
     reply.code(202).header("content-type", FHIR_JSON_CONTENT_TYPE);
     return {

@@ -207,10 +207,14 @@ export const M37_OUTBOX_EVENT_NAMES = [
   "m37.ipu_admission.discharged",
   "m37.ipu_admission.death_recorded",
   "m37.ipu_admission.closed",
+  // §4.8 transfer-completion-watchdog — a `transferring` admission nobody confirmed within the hour.
+  "m37.ipu_admission.transfer_unconfirmed",
   // bed cleaning (§2.12)
   "m37.bed.cleaning_started",
   "m37.bed.ready",
   "m37.bed.cleaning_overdue",
+  // §2.12 reservation-expiry-watchdog — a `reserved` bed's 4-hour hold lapsed and was released.
+  "m37.bed.reservation_expired",
   // RN coverage (§2.3)
   "m37.shift.coverage_gap_projected",
   "m37.shift.rn_uncovered",
@@ -337,11 +341,51 @@ export interface IpuIvSafetyOverlayView {
   readonly bedsideCheckIntervalMinutes: number;
   readonly isSedationClass: boolean;
 }
+/** One administration M13 is about to commit, presented to the overlay (§2.6 / §4.11). */
+export interface IpuIvPreAdministrationInput {
+  /** The M12 medication order the infusion is filed under (the overlay's `order_id`). */
+  readonly orderId: string;
+  /** The rate on the `iv_continuous_start` / `iv_continuous_rate_change`; null when none was stated. */
+  readonly proposedRate: number | null;
+  /** The unit the rate was entered in, when carried (a mismatch against the overlay's unit is refused). */
+  readonly proposedRateUnit: string | null;
+  /** Whether a dual-witness attestation token is attached to the administration. */
+  readonly witnessTokenPresent: boolean;
+  /** Hours the infusion has been running (first segment -> this one); 0 for a start. */
+  readonly hoursSinceContinuousStart: number;
+  /** Minutes since the session's last segment; 0 for a start. */
+  readonly minutesSinceLastBedsideCheck: number;
+  /**
+   * True for an `iv_continuous_rate_change`. A titration is exempt from the overdue-bedside-check refusal: the
+   * clinician at the bedside must be able to adjust the drip for a patient in distress (the watchdog still pages
+   * an overdue check). Absent/false keeps every check.
+   */
+  readonly isTitration?: boolean;
+}
+
+/** The overlay's verdict. `overlayApplies=false` means no active overlay: M13's own checks stand alone. */
+export interface IpuIvPreAdministrationVerdict {
+  readonly overlayApplies: boolean;
+  readonly pass: boolean;
+  /** True when the overlay demands a dual witness, so M13 must verify the attached token before commit. */
+  readonly dualWitnessRequired: boolean;
+  readonly failureCode?:
+    | "IV_RATE_OUTSIDE_TITRATION_WINDOW"
+    | "IV_DUAL_WITNESS_REQUIRED"
+    | "IV_MAX_CONTINUOUS_DURATION_REACHED"
+    | "IV_BEDSIDE_CHECK_OVERDUE";
+}
+
 export interface IpuIvSafetyOverlayProvider {
   getOverlayForOrder(
     organizationId: OrgId,
     orderId: string,
   ): Promise<IpuIvSafetyOverlayView | null>;
+  /** §2.6 — M13's pre-administration gate for `iv_continuous_start` / `iv_continuous_rate_change`. */
+  evaluatePreAdministration(
+    organizationId: OrgId,
+    input: IpuIvPreAdministrationInput,
+  ): Promise<IpuIvPreAdministrationVerdict>;
 }
 
 /** M31 portal — the visit-policy for a patient (active restrictions folded in). */

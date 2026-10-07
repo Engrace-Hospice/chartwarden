@@ -420,6 +420,13 @@
       "name": "@wardenx/terminology",
       "version": "0.0.0",
     },
+    "packages/terminology-loader": {
+      "name": "@wardenx/terminology-loader",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/terminology": "workspace:*",
+      },
+    },
     "packages/triage-vendors": {
       "name": "@wardenx/triage-vendors",
       "version": "0.0.0",
@@ -1062,6 +1069,7 @@
     "@wardenx/tenancy": ["@wardenx/tenancy@workspace:packages/tenancy"],
 
     "@wardenx/terminology": ["@wardenx/terminology@workspace:packages/terminology"],
+    "@wardenx/terminology-loader": ["@wardenx/terminology-loader@workspace:packages/terminology-loader"],
 
     "@wardenx/triage-vendors": ["@wardenx/triage-vendors@workspace:packages/triage-vendors"],
 

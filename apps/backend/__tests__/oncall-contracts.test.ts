@@ -267,9 +267,9 @@ describe("§4.10 outbox catalog", () => {
     }
   });
 
-  it("publishes fourteen topics with no duplicates", () => {
-    expect(M19_EVENT_NAMES).toHaveLength(14);
-    expect(new Set(M19_EVENT_NAMES).size).toBe(14);
+  it("publishes sixteen topics with no duplicates", () => {
+    expect(M19_EVENT_NAMES).toHaveLength(16);
+    expect(new Set(M19_EVENT_NAMES).size).toBe(16);
   });
 
   it("keeps the two topics M33's reporting catalog ALREADY subscribes to", () => {

@@ -21,16 +21,13 @@
 // `alertEventType`'s `mN.` prefix being its own, exactly as `declaredConsumers` below already gates who is
 // allowed to act on the event at all.
 //
-// NO PRODUCER EXISTS YET, AND THAT IS A SEPARATE, LARGER, DECLARED ABSENCE — not this catalog's job to
-// close. `notification_delivery.status` is never written `'failed'` anywhere in the codebase:
-// `packages/messaging/src` has queue *descriptors* for send_push/send_sms/send_voice/send_email/
-// delivery_reconcile (§4.4, jobs/queues.ts) but no Worker/Queue construction, no `dispatchers/` directory,
-// no Twilio/Postmark/push adapter, and the webhook routes that would reconcile vendor delivery callbacks
-// have no `MessagingWebhookService` behind them (a separately registered `route-reachability` deferral).
-// Building that out-of-band dispatch + reconciliation pipeline is its own multi-part project, not a
-// continuation of the M2/M28/M36 catalog-gap pattern — this catalog entry, and the two real consumer
-// bindings it makes possible (M19, M20 — see their `consumers/`), are what a producer will satisfy the
-// moment that pipeline lands, rather than an undeclared name a producer would need to invent too.
+// THE PRODUCER (GAP-101): `delivery/delivery-settlement.ts` publishes this event, in the same transaction that
+// settles a `notification_delivery` row `failed` — from the out-of-band dispatcher (retries exhausted, a
+// non-retryable vendor refusal, no verified endpoint, or the fail-closed `transport_not_configured` deny-stub)
+// and from the vendor-webhook reconcile (Twilio `undelivered`/`failed`, Postmark `Bounce`/`SpamComplaint`).
+// `recipientKind` is read from the alert's `alert_rule` resolver; `recipientMembershipId` is null (the delivery
+// row carries the user id, not the membership); `providerEntityId` / `sourceAggregateId` are read from
+// `alert.payload` when the emitting module put them there, else null.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -57,7 +54,7 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m36.notification.delivery_failed",
     moduleOwner: "m36",
     description:
-      "A notification_delivery row settled to a terminal failed status after D7 retries were exhausted — an alert a consumer requested could not be delivered to a recipient on a given channel. PHI-free by construction (ids + failure class only). NO PRODUCER YET — see this file's header; the out-of-band dispatch pipeline that would settle a delivery to 'failed' is unbuilt.",
+      "A notification_delivery row settled to a terminal failed status after D7 retries were exhausted — an alert a consumer requested could not be delivered to a recipient on a given channel. PHI-free by construction (ids + failure class only). Produced by the out-of-band dispatcher and the vendor-webhook reconcile (see this file's header).",
     payloadSchema: Type.Object({
       notificationId: id,
       organizationId: id,

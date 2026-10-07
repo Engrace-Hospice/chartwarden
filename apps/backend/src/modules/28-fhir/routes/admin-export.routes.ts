@@ -2,6 +2,7 @@
 // export administration. R33's cancel gates on `bulk_export_initiator_or_admin` (§4.7).
 import type { FastifyInstance } from "fastify";
 
+import type { BulkExportEnqueuePort } from "../jobs/ports";
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_BULK_EXPORT_CANCEL, ABAC_IN_ORG, P } from "./guards";
 import {
@@ -15,10 +16,12 @@ import type { FhirGatewayStore } from "./store";
 
 export interface AdminExportRouteDeps {
   readonly store: FhirGatewayStore;
+  /** GAP-084 — the `fhir.bulk-export` producer. Absent ⇒ R32 answers 501 rather than accept a job nothing runs. */
+  readonly enqueue?: BulkExportEnqueuePort;
 }
 
 export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExportRouteDeps): void {
-  const { store } = deps;
+  const { store, enqueue } = deps;
 
   // R31 — list the org's bulk-export jobs.
   app.get(
@@ -45,6 +48,12 @@ export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExpor
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(InitiateBulkExportBody, request.body);
+      if (enqueue === undefined) {
+        return reply.code(501).send({
+          code: "FHIR_EXPORT_NOT_ENABLED",
+          message: "bulk export is not enabled on this deployment",
+        });
+      }
       const job = await store.createJob(actor.organizationId, {
         clientId: body.clientId,
         requestKind: body.requestKind,
@@ -54,6 +63,15 @@ export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExpor
         since: body.since,
         initiatedByMembershipId: actor.membershipId,
       });
+      // After commit; a lost enqueue leaves the job `accepted` and the sweeper re-queues it.
+      try {
+        await enqueue.enqueue(actor.organizationId, job.id);
+      } catch (err) {
+        request.log.error(
+          { err, jobId: job.id },
+          "M28 R32: enqueue failed; the sweeper will retry",
+        );
+      }
       return reply.code(202).send(job);
     },
   );

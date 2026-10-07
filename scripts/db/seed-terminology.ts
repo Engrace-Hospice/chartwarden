@@ -62,7 +62,7 @@ async function main(): Promise<void> {
 
   await db.query(
     `INSERT INTO code_system (id, name, license_source, source_uri, updated_at)
-     VALUES ('rxnorm', 'RxNorm', 'NLM (UMLS licence)', 'https://www.nlm.nih.gov/research/umls/rxnorm/', now())
+     VALUES ('rxnorm', 'RxNorm', 'umls', 'https://www.nlm.nih.gov/research/umls/rxnorm/', now())
      ON CONFLICT (id) DO NOTHING`,
   );
 

@@ -324,7 +324,12 @@ jobs:
               name: "M17 volunteer/triage consumers",
               scripts: "test:m17:volunteer-triage-consumers:live",
             }
-          - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
+          # GAP-052 — the §4.8 PTO reassignment scan + caregiver-reminder cron.
+          - {
+              name: "M17 reassignment scan / caregiver reminder",
+              scripts: "test:m17:reassignment-reminder:live",
+            }
+          - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live test:m18:workers:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.
           - {
@@ -346,6 +351,11 @@ jobs:
           # the `FOR UPDATE SKIP LOCKED` claim are both statements about Postgres, and cross-tenant
           # isolation runs on the real NOBYPASSRLS `wardenx_app` role.
           - { name: "M19 Roster-sync debounce", scripts: "test:m19:roster-sync-debounce:live" }
+          # GAP-057 (M19 §4.8 Tier-1 crons): shift-open / shift-close / coverage-gap watchdog. Live because the
+          # due predicates, the (status, version)-guarded UPDATE, the same-tx outbox row and the cross-tenant
+          # isolation (real NOBYPASSRLS wardenx_app role + real catalog-validating publisher) are Postgres facts.
+          - { name: "M19 Tier-1 crons", scripts: "test:m19:tier1-crons:live" }
+          - { name: "M19 triage crons", scripts: "test:m19:triage-crons:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
           # F-111 (#249): the §4.8 `m20.sos-sla-watchdog.cron` worker — decideSosWatchdog shipped with
           # M20-T03 and had no production caller anywhere. Live because the double-escalation lock is a
@@ -485,6 +495,12 @@ jobs:
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
           # so it fails if 0206's policy or its SECURITY DEFINER functions go missing.
           - { name: "M38 terminology admin", scripts: "test:m38:admin:live" }
+          # GAP-108: M38's terminology LOADER + the nine §4.3 jobs. Before this there was no worker at all and
+          # the load route only registered a version row. As NOBYPASSRLS wardenx_app (writes via the 0364
+          # `terminology_loader_*` definer functions): load -> stage -> active, checksum-mismatch failure with no
+          # residue, resume from staged, two versions coexisting, the licence-attestation gate for
+          # snomed/loinc/rxnorm, per-tenant deprecation-scan isolation, and a real BullMQ run over Valkey.
+          - { name: "M38 terminology loader + jobs", scripts: "test:m38:loader:live" }
           # GAP-098: the SEC-052 oversized-hold DISCOVERY surface — the cross-tenant platform-ops list
           # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
           # promised in its doc comment and never emitted. Held-ness is derived from the newest ledger
@@ -515,6 +531,12 @@ jobs:
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
+          # GAP-107 (M37 §2.6/D7) — the IV-continuous safety overlay writer, M13's pre-administration gate and the
+          # bedside-check watchdog, end to end. Own runner: it DROPs/re-CREATEs `public` and the cluster roles.
+          - { name: "M37 IV safety overlay", scripts: "test:m37:iv-overlay:live" }
+          - { name: "M37 watchdog crons", scripts: "test:m37:watchdogs:live" }
+          # Batch 11 — the five lifecycle crons GAP-105 left unbuilt + the IRC 30-day resumption carry-over.
+          - { name: "M37 lifecycle crons", scripts: "test:m37:lifecycle:live" }
           # F-158 (#248) — M37's first outbox consumer, the §4.5 admission-discharged cascade.
           - {
               name: "M37 admission-discharged cascade",
@@ -603,7 +625,7 @@ jobs:
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
           - {
               name: "M26 Cap Management",
-              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live",
             }
           - {
               name: "M30 HQRP & Quality",
@@ -631,6 +653,8 @@ jobs:
               name: "M36 Messaging alerts",
               scripts: "test:m36:alert-emitter:live test:m36:alert-outcome:live test:m36:locked-alert-rule:live",
             }
+          # GAP-104 — care_team channel membership lifecycle (unassign revokes access, discharge archives).
+          - { name: "M36 Channel membership", scripts: "test:m36:channel-membership:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
@@ -830,16 +854,22 @@ jobs:
           - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }
           # GAP-062 — the M21 §4.6 crons (par-monitor, 30d overdue flip, 72h auto-confirm) via the real publisher.
           - { name: "M21 cron workers", scripts: "test:m21:cron-workers:live" }
+          # GAP-084 — the M28 §4.8 workers: bulk export + sweeper, inbound SLA watch + payload shred, session sweeper.
+          - { name: "M28 FHIR workers", scripts: "test:m28:workers:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           # F-234 (#248) — the M14 <-> M15 IDG-decision loop (discipline_plan_update -> apply -> ack).
           - { name: "M15 IDG decision loop", scripts: "test:m15:idg-decision:live" }
           # GAP-044 — the five M15 §4.6 crons (supervisory/MSW/chaplain overdue, gate watcher, hour aggregator).
           - { name: "M15 crons", scripts: "test:m15:crons:live" }
+          # GAP-101 — M36 out-of-band delivery workers (send_push/sms/voice/email) + vendor-webhook reconcile.
+          - { name: "M36 out-of-band delivery", scripts: "test:m36:delivery:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
           - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
           # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
           - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
+          # GAP-042 — the §418.56(d) review-clock sweep over the M6 active-admission population.
+          - { name: "M14 review-clock sweep", scripts: "test:m14:review-clock-sweep:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
           - { name: "M16 early close + source encounter", scripts: "test:m16:early-close:live" }
           # GAP-048 — the §4.9 crons: 13-month auto-close, miss-deadline, anniversary lookahead.

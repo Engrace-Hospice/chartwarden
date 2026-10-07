@@ -40,58 +40,53 @@ interface ConceptCols {
   readonly end: PgColumn;
 }
 
+/** The common-shape columns every per-system concept table carries (§2.3). */
+function commonCols(t: {
+  code: PgColumn;
+  display: PgColumn;
+  status: PgColumn;
+  effectiveDate: PgColumn;
+  endDate: PgColumn;
+}): Omit<ConceptCols, "table"> {
+  return {
+    code: t.code,
+    display: t.display,
+    status: t.status,
+    effective: t.effectiveDate,
+    end: t.endDate,
+  };
+}
+
 /**
- * The four Phase-1 systems with a bespoke concept table (§2.3). The other seven (icd10pcs, ndc,
- * hcpcs, cvx, revenue, carc, rarc) exist in the `code_system` catalog but have no concept table in
- * Phase 1, so every concept read for them resolves to empty — the same shape the in-memory slice
- * gives an unseeded system.
+ * The per-system concept tables (§2.3 one-table-per-system). icd10cm / snomed / loinc / rxnorm carry bespoke
+ * columns; icd10pcs / ndc / hcpcs / cvx / revenue / carc / rarc (migration 0364, GAP-108) carry the common shape
+ * only. `cms_hope` has no concept table (an instrument roster curated in M10), so its reads resolve to empty —
+ * the same shape the in-memory slice gives an unseeded system.
  */
 function conceptCols(system: CodeSystemId): ConceptCols | null {
   switch (system) {
-    case "icd10cm": {
-      const t = schema.conceptIcd10cm;
-      return {
-        table: t,
-        code: t.code,
-        display: t.display,
-        status: t.status,
-        effective: t.effectiveDate,
-        end: t.endDate,
-      };
-    }
-    case "snomed": {
-      const t = schema.conceptSnomed;
-      return {
-        table: t,
-        code: t.code,
-        display: t.display,
-        status: t.status,
-        effective: t.effectiveDate,
-        end: t.endDate,
-      };
-    }
-    case "loinc": {
-      const t = schema.conceptLoinc;
-      return {
-        table: t,
-        code: t.code,
-        display: t.display,
-        status: t.status,
-        effective: t.effectiveDate,
-        end: t.endDate,
-      };
-    }
-    case "rxnorm": {
-      const t = schema.conceptRxnorm;
-      return {
-        table: t,
-        code: t.code,
-        display: t.display,
-        status: t.status,
-        effective: t.effectiveDate,
-        end: t.endDate,
-      };
-    }
+    case "icd10cm":
+      return { table: schema.conceptIcd10cm, ...commonCols(schema.conceptIcd10cm) };
+    case "snomed":
+      return { table: schema.conceptSnomed, ...commonCols(schema.conceptSnomed) };
+    case "loinc":
+      return { table: schema.conceptLoinc, ...commonCols(schema.conceptLoinc) };
+    case "rxnorm":
+      return { table: schema.conceptRxnorm, ...commonCols(schema.conceptRxnorm) };
+    case "icd10pcs":
+      return { table: schema.conceptIcd10pcs, ...commonCols(schema.conceptIcd10pcs) };
+    case "ndc":
+      return { table: schema.conceptNdc, ...commonCols(schema.conceptNdc) };
+    case "hcpcs":
+      return { table: schema.conceptHcpcs, ...commonCols(schema.conceptHcpcs) };
+    case "cvx":
+      return { table: schema.conceptCvx, ...commonCols(schema.conceptCvx) };
+    case "revenue":
+      return { table: schema.conceptRevenue, ...commonCols(schema.conceptRevenue) };
+    case "carc":
+      return { table: schema.conceptCarc, ...commonCols(schema.conceptCarc) };
+    case "rarc":
+      return { table: schema.conceptRarc, ...commonCols(schema.conceptRarc) };
     default:
       return null;
   }
@@ -186,6 +181,11 @@ function mapConcept(system: CodeSystemId, r: AnyConceptRow): ResolvedConcept<Cod
           ndcs: r.ndcs ?? [],
         },
       };
+    case "hcpcs": {
+      // The loader tags each HCPCS row `recordKind` ('code' | 'modifier'); the seam's `kind` carries it.
+      const kind = r.properties?.recordKind;
+      return { ...base, properties: { kind: typeof kind === "string" ? kind : null } };
+    }
     default:
       return { ...base, properties: {} as ResolvedConcept<CodeSystemId>["properties"] };
   }
@@ -408,14 +408,33 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
     async codeSystemMeta(system, asOfIso) {
       const CS = schema.codeSystems;
       const V = schema.codeSystemVersions;
-      const [csRows, verRows] = await Promise.all([
+      const A = schema.terminologyLicenseAttestations;
+      const today = new Date().toISOString().slice(0, 10);
+      const [csRows, attRows, verRows] = await Promise.all([
         db.select({ sourceUri: CS.sourceUri }).from(CS).where(eq(CS.id, system)).limit(1),
+        // GAP-108: the licence attribution in force TODAY (FHIR `CodeSystem.copyright`). It is a property of how the
+        // data is being served now, not of the as-of date the content is projected at.
+        db
+          .select({ text: A.attributionText })
+          .from(A)
+          .where(
+            and(
+              eq(A.systemId, system),
+              isNull(A.revokedAt),
+              lte(A.effectiveFrom, today),
+              or(isNull(A.effectiveTo), gte(A.effectiveTo, today)),
+            ),
+          )
+          .orderBy(desc(A.effectiveFrom))
+          .limit(1),
         db
           .select({ version: V.version })
           .from(V)
           .where(
             and(
               eq(V.codeSystemId, system),
+              // GAP-108: a `loading`/`staged`/`failed` version is not yet (or never) in force.
+              inArray(V.status, ["active", "superseded"]),
               lte(V.effectiveFrom, asOfIso),
               or(isNull(V.effectiveTo), gte(V.effectiveTo, asOfIso)),
             ),
@@ -423,9 +442,11 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
           .orderBy(desc(V.effectiveFrom))
           .limit(1),
       ]);
+      const copyright = attRows[0]?.text;
       return {
         url: csRows[0]?.sourceUri ?? `urn:wardenx:codesystem:${system}`,
         version: verRows[0]?.version ?? "0",
+        ...(copyright ? { copyright } : {}),
       } satisfies CodeSystemMeta;
     },
 

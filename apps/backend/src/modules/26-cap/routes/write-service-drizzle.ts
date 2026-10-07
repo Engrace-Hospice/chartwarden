@@ -20,8 +20,9 @@ import {
 } from "@wardenx/cap-management";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
+import type { PsrFileStorePort, PsrReconcileEnqueuePort } from "../psr/psr-reconcile";
 import type { M26WriteActor } from "./actor";
 import type { PeriodView, ProjectionView, SettlementView } from "./read-service";
 import type {
@@ -52,9 +53,23 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 const iso = (d: Date | string | null): string =>
   d === null ? "" : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 
+/** Max decoded PS&R CSV size accepted on import (the route body limit is the outer bound). */
+const PSR_MAX_FILE_BYTES = 10 * 1024 * 1024;
+const STRICT_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+const invalidFile = (message: string): ValidationError =>
+  new ValidationError(message, [{ field: "fileBase64", code: "INVALID", message }]);
+
+/** The PS&R import collaborators (GAP-078): the DEK-encrypted raw-file store + the reconcile-job producer. */
+export interface PsrImportDeps {
+  readonly files?: PsrFileStorePort;
+  readonly enqueue?: PsrReconcileEnqueuePort;
+}
+
 export function buildDrizzleM26WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
+  psr: PsrImportDeps = {},
 ): M26WriteService {
   const P = schema.capPeriod;
   const ML = schema.capPeriodMethodologyLock;
@@ -181,7 +196,11 @@ export function buildDrizzleM26WriteService(
         assertTransition(period.status, "in_settlement");
         const updated = await tx
           .update(P)
-          .set({ status: "in_settlement", closedAt: new Date(), closedBy: actor.userId })
+          .set({
+            status: "in_settlement",
+            closedAt: new Date(),
+            closedBy: actor.userId || null, // the cap-year-close cron is the NULL system actor
+          })
           .where(eq(P.id, periodId))
           .returning();
         await outbox.publish(tx, {
@@ -332,17 +351,36 @@ export function buildDrizzleM26WriteService(
     },
 
     async importPsr(actor, periodId, input: ImportPsrInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      // Fail closed BEFORE touching the DB: an import whose bytes cannot be stored or whose job cannot be
+      // queued would be the fake-success the audit named (GAP-078) — a 'queued' row that never reconciles.
+      if (!psr.files || !psr.enqueue)
+        throw new DegradedError("psr-import", "PS&R file storage / job queue is not bound");
+      const { files, enqueue } = psr;
+      const b64 = input.fileBase64.replace(/\s+/g, "");
+      if (!STRICT_BASE64.test(b64) || b64.length % 4 !== 0)
+        throw invalidFile("fileBase64 is not valid base64");
+      const bytes = Buffer.from(b64, "base64");
+      if (bytes.byteLength === 0) throw invalidFile("PS&R file is empty");
+      if (bytes.byteLength > PSR_MAX_FILE_BYTES)
+        throw invalidFile("PS&R file exceeds the 10 MiB import limit");
+      const sha = createHash("sha256").update(bytes).digest("hex");
+      const res = await withOrgContext(db, actor, async (tx) => {
         await loadPeriod(tx, periodId);
-        const bytes = Buffer.from(input.fileBase64, "base64");
-        const sha = createHash("sha256").update(bytes).digest("hex");
-        // Dedup by file hash (§2.6): a re-upload returns the prior import.
+        // Dedup by file hash (§2.6): a re-upload returns the prior import (and re-queues one that is still
+        // waiting or failed, so a lost enqueue is healed by the client's retry).
         const existing = await tx
-          .select({ id: PI.id })
+          .select({ id: PI.id, parseStatus: PI.parseStatus })
           .from(PI)
           .where(and(eq(PI.capPeriodId, periodId), eq(PI.fileSha256, sha)))
           .limit(1);
-        if (existing[0]) return { importId: existing[0].id };
+        if (existing[0])
+          return {
+            importId: existing[0].id,
+            requeue: existing[0].parseStatus !== "reconciled",
+          };
+        // The raw CSV is stored DEK-encrypted in the object store under a PHI-free, content-addressed key (§3.3).
+        const fileStorageKey = `psr/${actor.organizationId}/${sha}.csv`;
+        await files.put(actor.organizationId, fileStorageKey, bytes);
         const inserted = await tx
           .insert(PI)
           .values({
@@ -351,16 +389,17 @@ export function buildDrizzleM26WriteService(
             macRegion: input.macRegion as (typeof PI.macRegion.enumValues)[number],
             psrPeriodFrom: input.psrPeriodFrom,
             psrPeriodTo: input.psrPeriodTo,
-            // The raw CSV is stored DEK-encrypted via MinIO when the storage seam binds (§3.3); the key is
-            // deterministic on the import id until then.
-            fileStorageKey: `psr/${actor.organizationId}/${sha}.csv`,
+            fileStorageKey,
             fileSha256: sha,
             importedBy: actor.userId,
             parseStatus: "queued",
           })
           .returning({ id: PI.id });
-        return { importId: inserted[0]!.id };
+        return { importId: inserted[0]!.id, requeue: true };
       });
+      if (res.requeue)
+        await enqueue.enqueue({ organizationId: actor.organizationId, importId: res.importId });
+      return { importId: res.importId };
     },
 
     async resolveVariance(actor, lineId, input: ResolveVarianceInput) {

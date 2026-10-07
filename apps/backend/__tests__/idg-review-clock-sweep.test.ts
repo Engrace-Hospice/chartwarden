@@ -26,7 +26,7 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
     admissionId: "adm-1",
     locationId: "loc-1",
     lastIdgReviewedAt: null,
-    earliestSinceCursorIso: "2026-06-05T00:00:00.000Z", // + 15d = 2026-06-20 (T-0 from NOW)
+    activatedAtIso: "2026-06-05T00:00:00.000Z", // + 15d = 2026-06-20 (T-0 from NOW)
     ...over,
   });
 
@@ -47,7 +47,7 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
 
   it("escalates t_minus_3 when the floor is 3 calendar days out (clinical_routine)", () => {
     const plan = planReviewClockSweep(
-      [snap({ earliestSinceCursorIso: "2026-06-08T00:00:00.000Z" })], // +15d = 2026-06-23
+      [snap({ activatedAtIso: "2026-06-08T00:00:00.000Z" })], // +15d = 2026-06-23
       NOW,
     );
     expect(plan).toHaveLength(1);
@@ -56,7 +56,7 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
 
   it("escalates t_plus_1 when the floor lapsed exactly 1 calendar day ago (critical)", () => {
     const plan = planReviewClockSweep(
-      [snap({ earliestSinceCursorIso: "2026-06-04T00:00:00.000Z" })], // +15d = 2026-06-19
+      [snap({ activatedAtIso: "2026-06-04T00:00:00.000Z" })], // +15d = 2026-06-19
       NOW,
     );
     expect(plan).toHaveLength(1);
@@ -72,7 +72,7 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
       "2026-06-03T00:00:00.000Z", // floor 2026-06-18 → T+2
     ];
     for (const cursor of cursorsForNonStageDays) {
-      const plan = planReviewClockSweep([snap({ earliestSinceCursorIso: cursor })], NOW);
+      const plan = planReviewClockSweep([snap({ activatedAtIso: cursor })], NOW);
       expect(plan).toEqual([]);
     }
   });
@@ -82,7 +82,7 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
       [
         snap({
           lastIdgReviewedAt: "2026-06-05T00:00:00.000Z", // +15d = 2026-06-20 → t_zero
-          earliestSinceCursorIso: "2026-01-01T00:00:00.000Z", // would be far past T+1 if used instead
+          activatedAtIso: "2026-01-01T00:00:00.000Z", // would be far past T+1 if used instead
         }),
       ],
       NOW,
@@ -94,9 +94,9 @@ describe("planReviewClockSweep — M14-F01 / ADR-0018 D2 T-3/T-0/T+1 escalation"
   it("evaluates every patient independently in one tick", () => {
     const plan = planReviewClockSweep(
       [
-        snap({ patientId: "pat-a", earliestSinceCursorIso: "2026-06-05T00:00:00.000Z" }), // t_zero
-        snap({ patientId: "pat-b", earliestSinceCursorIso: "2026-06-08T00:00:00.000Z" }), // t_minus_3
-        snap({ patientId: "pat-c", earliestSinceCursorIso: "2026-06-01T00:00:00.000Z" }), // no stage
+        snap({ patientId: "pat-a", activatedAtIso: "2026-06-05T00:00:00.000Z" }), // t_zero
+        snap({ patientId: "pat-b", activatedAtIso: "2026-06-08T00:00:00.000Z" }), // t_minus_3
+        snap({ patientId: "pat-c", activatedAtIso: "2026-06-01T00:00:00.000Z" }), // no stage
       ],
       NOW,
     );

@@ -17,6 +17,7 @@ import type {
   PlatformConstantView,
   ProjectionView,
   PsrImportView,
+  PsrQuarantineDetail,
   PsrVarianceView,
   SettlementView,
   ThresholdEventFilters,
@@ -262,6 +263,9 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
           parseError: r.parseError ?? null,
           beneficiaryCountPsr: r.beneficiaryCountPsr ?? null,
           paidTotalCentsPsr: r.paidTotalCentsPsr ?? null,
+          inpatientDaysPsr: r.inpatientDaysPsr ?? null,
+          rowsQuarantined: r.rowsQuarantined ?? null,
+          quarantineDetail: (r.quarantineDetail as PsrQuarantineDetail | null) ?? null,
           importedAt: iso(r.importedAt),
         } satisfies PsrImportView;
       });
@@ -283,6 +287,9 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
             m26AccrualCents: r.m26AccrualCents ?? null,
             psrAmountCents: r.psrAmountCents ?? null,
             varianceCents: r.varianceCents ?? null,
+            m26InpatientDays: r.m26InpatientDays ?? null,
+            psrInpatientDays: r.psrInpatientDays ?? null,
+            varianceDays: r.varianceDays ?? null,
             varianceReason: r.varianceReason ?? null,
             status: r.status,
           }),

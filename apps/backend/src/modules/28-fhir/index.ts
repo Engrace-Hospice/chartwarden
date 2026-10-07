@@ -69,3 +69,37 @@ export {
   sampleFhirBaaCoverage,
   warnOnFhirBaaGap,
 } from "./routes/index";
+// GAP-084 — the §4.8 BullMQ workers (bulk export + sweeper, inbound SLA watch + payload destruction, client
+// session sweeper), their ports and queue catalog.
+export {
+  type ActiveOrgListPort as FhirActiveOrgListPort,
+  type BulkExportEnqueuePort,
+  type BulkExportOutcome,
+  type BulkExportWorkerDeps,
+  type ExportPatientEnumeratorPort,
+  type FhirAlertPort,
+  type FhirDisclosureSink,
+  type FhirExportObjectStore,
+  type FhirJobBaaPort,
+  type FhirJobOutboxPort,
+  type M28WorkerDeps,
+  M28_JOB_SCHEDULES,
+  M28_PLATFORM_JOB_ID,
+  M28_QUEUES,
+  type CapabilitySnapshotDeps,
+  buildBulkExportEnqueuePort,
+  buildFhirExportObjectStore,
+  registerM28Workers,
+  runBulkExportJob,
+  runCapabilitySnapshotValidator,
+  runBulkExportSweeper,
+  runClientSessionSweeper,
+  runInboundPayloadDestruction,
+  runInboundSlaWatch,
+  scheduleM28Jobs,
+  wireM28Tenancy,
+} from "./jobs/index";
+export {
+  CAPABILITY_RELEASE_TAG,
+  buildGatewayCapabilityStatement,
+} from "./routes/capability-statement";

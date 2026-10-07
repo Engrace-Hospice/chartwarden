@@ -15,6 +15,7 @@
 // invariant. `syncOnCallChannel`/`syncBereavementChannel`/`archiveCareTeamChannel` stay forward-seam
 // deferrals — driven by M16/M17/M19 outbox events not wired in Phase 1 — since they have no equivalent
 // read seam yet (a clear NOT_IMPLEMENTED throw beats reconciling against source data with no producer).
+// GAP-104 (2026-10-05): `archiveCareTeamChannel` is real (see `outbox-consumers/channel-membership-sync.ts`).
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   ChannelKind,
@@ -235,7 +236,7 @@ export function createDbMessagingProvider(
         async (tx) => {
           const shape = channelShape("care_team");
           const existing = (await tx
-            .select({ id: CH.id })
+            .select({ id: CH.id, isArchived: CH.isArchived })
             .from(CH)
             .where(
               and(
@@ -244,7 +245,8 @@ export function createDbMessagingProvider(
                 eq(CH.subjectId, patientId),
               ),
             )
-            .limit(1)) as Array<{ id: string }>;
+            .limit(1)) as Array<{ id: string; isArchived: boolean }>;
+          const channelArchived = existing[0]?.isArchived ?? false;
           const channelId = existing[0]
             ? existing[0].id
             : (
@@ -270,7 +272,11 @@ export function createDbMessagingProvider(
             )) as Array<{ id: string; userId: string; source: "auto" | "manual" }>;
           const activeUserIds = new Set(activeMembers.map((m) => m.userId));
 
-          const toAdd = [...roster].filter((userId) => !activeUserIds.has(userId));
+          // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
+          // (a clinician unassigned after discharge must lose access) and history stays readable.
+          const toAdd = channelArchived
+            ? []
+            : [...roster].filter((userId) => !activeUserIds.has(userId));
           const toRemove = activeMembers.filter(
             (m) => m.source === "auto" && !roster.has(m.userId),
           );
@@ -300,10 +306,41 @@ export function createDbMessagingProvider(
     async syncBereavementChannel() {
       notWired("syncBereavementChannel");
     },
-    async archiveCareTeamChannel() {
-      notWired("archiveCareTeamChannel");
+    // GAP-104 — spec §2.3/§4.7: a discharged/deceased patient's care_team channel is archived (no new
+    // messages — `sendMessage` 410s on `is_archived`), never deleted: the 6+ yr `care_related` history is
+    // retained and existing members keep read access. Idempotent; no channel = nothing to archive.
+    async archiveCareTeamChannel(orgId, patientId) {
+      await setCareTeamChannelArchived(db, orgId, patientId, true);
     },
   };
+}
+
+/**
+ * Flip a patient's `care_team` channel archived / active. Returns whether a row changed (false = no
+ * channel, or already in that state — re-delivery is a no-op). Un-archiving is the spec's "care_team on
+ * un-discharge" transition (§2.3 state machine); it clears `archives_at` so the channel reads as live.
+ */
+export async function setCareTeamChannelArchived(
+  db: DbClient,
+  orgId: string,
+  patientId: string,
+  archived: boolean,
+): Promise<boolean> {
+  return withOrgContext(db, { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID }, async (tx) => {
+    const changed = (await tx
+      .update(CH)
+      .set({ isArchived: archived, archivesAt: archived ? new Date() : null })
+      .where(
+        and(
+          eq(CH.organizationId, orgId),
+          eq(CH.channelKind, "care_team"),
+          eq(CH.subjectId, patientId),
+          eq(CH.isArchived, !archived),
+        ),
+      )
+      .returning({ id: CH.id })) as Array<{ id: string }>;
+    return changed.length > 0;
+  });
 }
 
 /** A human title for a freshly opened channel when the caller supplied none (title is NOT NULL). */

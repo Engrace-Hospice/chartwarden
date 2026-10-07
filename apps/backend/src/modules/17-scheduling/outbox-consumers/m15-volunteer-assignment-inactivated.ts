@@ -24,13 +24,13 @@
 // existing `reassignVisit`/publish routes — the alert IS the "drop from the schedule" mechanism this
 // module can honestly perform without guessing who replaces the volunteer.
 //
-// IDEMPOTENT BY CONSTRUCTION (retry-safety, not redelivery-after-success — the established convention
-// every sibling consumer in this file relies on: the relay does not redeliver a event once its handler
-// returns without throwing): the whole scan + emit batch runs inside ONE transaction, so a throw partway
-// through commits nothing and a retry re-scans cleanly from scratch — never a partial double-alert.
+// IDEMPOTENT: the whole scan + emit batch runs inside ONE transaction (a throw partway commits nothing), AND
+// each visit is stamped with the delivered outbox event id (`visit.volunteer_gate_flagged_event_id`, mig 0360)
+// in the same tx as the publish, so a REPLAY of the same event flags nothing twice while a genuinely new
+// inactivation (a new event id) still flags the visit again.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 const V = schema.visit;
 
@@ -82,23 +82,30 @@ export function buildM17VolunteerAssignmentInactivatedConsumer(
     consumerModule: "m17" as const,
     eventTypes: [M17_VOLUNTEER_ASSIGNMENT_INACTIVATED_CONSUMER.eventName] as const,
     async handle(event: {
+      readonly id: string;
       readonly organizationId: string;
       readonly payload: unknown;
     }): Promise<void> {
       const facts = factsOf(event.payload);
+      if (typeof event.id !== "string" || event.id.length === 0) {
+        throw new Error(
+          `${M17_VOLUNTEER_ASSIGNMENT_INACTIVATED_CONSUMER.consumerName}: event has no id`,
+        );
+      }
       const organizationId = event.organizationId;
 
       await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
         const tx = scoped as unknown as DbClient;
 
         const affectedVisits = await tx
-          .select({ id: V.id })
+          .select({ id: V.id, serviceDate: V.serviceDate })
           .from(V)
           .where(
             and(
               eq(V.organizationId, organizationId),
               eq(V.assignedMembershipId, facts.volunteerMembershipId),
               inArray(V.status, ["published", "en_route", "in_visit"]),
+              sql`${V.volunteerGateFlaggedEventId} IS DISTINCT FROM ${event.id}`,
             ),
           );
 
@@ -114,6 +121,10 @@ export function buildM17VolunteerAssignmentInactivatedConsumer(
               reason: "volunteer_gate_expired",
             },
           });
+          await tx
+            .update(V)
+            .set({ volunteerGateFlaggedEventId: event.id })
+            .where(and(eq(V.id, visit.id), eq(V.serviceDate, visit.serviceDate)));
         }
       });
     },

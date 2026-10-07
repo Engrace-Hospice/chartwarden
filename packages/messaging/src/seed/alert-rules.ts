@@ -187,6 +187,173 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: true,
     enabled: true,
   },
+  // GAP-105 — M37's §4.8 watchdog alerts (`36-messaging/outbox-consumers/ipu-alerts.ts`). The payloads carry no
+  // patient id (unit / admission / bed scoped), so each resolves a `role_set`. `cap_breached` is the spec's
+  // block-severity alert (`critical` on the legacy ladder) and blocks billing at the ABAC gate, so it reaches
+  // compliance as well as nursing leadership.
+  {
+    eventType: "m37.irc_episode.cap_approaching",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.irc_episode.cap_breached",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["don", "compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.restraint.reassessment_due",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.bed.cleaning_overdue",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.gip_criteria.reassessment_due",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // Batch 11 — the remaining M37 §4.8/§4.9 alerts (same consumer). Spec recipients named roles this platform has
+  // no key for (charge nurse, admissions coordinator, facilities manager, medical director): they resolve to the
+  // nearest platform role set (`clinical_lead` / `don` / `org_admin`) until those roles exist. `rn_uncovered` is
+  // the block-severity CoP 418.100 24/7-RN alert, so it is system-locked (migration 0363 flips a seeded row).
+  {
+    eventType: "m37.shift.rn_uncovered",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["don", "clinical_lead", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
+  {
+    eventType: "m37.shift.coverage_gap_projected",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["don", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.equipment.inspection_due",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.equipment.inspection_overdue",
+    category: "operational",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.nursing_note.shift_overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.bed.reservation_expired",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m37.ipu_admission.transfer_unconfirmed",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-057 — M19's coverage-gap watchdog page (`36-messaging/outbox-consumers/oncall-alerts.ts`). M19 spec
+  // §4.9: critical, `role_set` of org_admin + clinical_supervisor, system-locked — an uncovered clinical_rn
+  // window is the CoP 418.100(c)(2) hole no tenant setting may silence (migration 0352 flips an already-seeded row).
+  {
+    eventType: "m19.oncall.coverage_gap_detected",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_supervisor"] },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
+  // GAP-057 follow-up — M19's §4.8 SLA crons (`36-messaging/outbox-consumers/oncall-alerts.ts`). The callback
+  // breach is the §4.9 `m19.triage.callback_sla_breached` rule verbatim (warn, `on_call`, NOT locked). The
+  // escalation-SLA page is not in §4.9: it reaches the supervisory role set (an unacknowledged escalation
+  // means the tier's own recipient did not answer, so paging that same recipient again would be circular);
+  // the consumer raises it at `critical` for a mandatory (D7) row. Unlocked, like every §4.9 rule the spec
+  // does not name locked (a user decision whether the mandatory case should be — flagged in the M19 changelog).
+  {
+    eventType: "m19.triage.callback_sla_breached",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "on_call",
+    resolverArgs: { providerEntityIdPath: "providerEntityId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m19.triage.escalation_sla_breached",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "patient.hospitalization_risk_high",
     category: "clinical_urgent",
@@ -398,6 +565,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
       providerEntityScopedRoleKeys: ["billing_manager", "biller"],
       providerEntityFallbackRoleKeys: ["billing_manager"],
     },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-084 — M28 §4.9 `fhir.inbound.proposal_overdue`: the `fhir.inbound-sla-watch` cron expired a staged inbound
+  // proposal nobody reviewed inside the tenant's SLA (W-FHIR-06 "alert to Compliance Officer"). Org Admin is the
+  // fallback holder so an org with no Compliance Officer role assigned still sees it.
+  {
+    eventType: "fhir.inbound.proposal_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -683,6 +863,33 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-107 — M37 §2.6/D7's `iv-bedside-check-watchdog` (`36-messaging/outbox-consumers/ipu-iv-alerts.ts`): a
+  // running IV infusion on an IPU patient went a full bedside-check interval unchecked. Warn, to the patient's
+  // care team (the primary IPU nurse is on it) via the payload's `patientId`.
+  {
+    eventType: "m37.iv_safety_overlay.bedside_check_overdue",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-108 — M38 §4.3 `terminology.tenant_deprecation_scan` / §7.3 / §8.1: after a code-system load that deprecated
+  // codes, each tenant whose records still use them is told once (warn, the Compliance Officer + org admin; in-app +
+  // email — a coding-compliance exposure, not a page). Raised by the M38 worker through AlertEmitter, so there is no
+  // outbox consumer; the payload is counts + up to ten code strings (reference data, no PHI).
+  {
+    eventType: "m38.tenant_deprecation_scan.completed",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a
@@ -694,6 +901,8 @@ export const SYSTEM_LOCKED_EVENT_TYPES = [
   "system.backup_failure",
   "m3.breakglass.invoked",
   "m20.safety.coverage_gap_detected",
+  "m19.oncall.coverage_gap_detected",
+  "m37.shift.rn_uncovered",
 ] as const;
 
 /** Row shape the boot slice UPSERTs into `alert_rule` (mirrors the Drizzle columns, §3.6).

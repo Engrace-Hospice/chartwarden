@@ -124,6 +124,7 @@ export function stateHistoryPort(): StateHistoryPort {
         transitionedAt: row.transitionedAt,
         actorMembershipId: row.actorMembershipId,
         systemActor: row.systemActor,
+        ...(row.autoTimeout ? { autoTimeout: true } : {}),
         commandPayloadDigest: row.commandPayloadDigest,
       });
     },

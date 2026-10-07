@@ -75,6 +75,8 @@ export {
   createReferralReader,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgActiveAdmissionsForOrg,
+  type IdgActiveAdmission,
 } from "./drizzle-store";
 // M14 IDG screens — the org-explicit, BATCHED per-patient recert/F2F window read (M6's own pure window math).
 export {

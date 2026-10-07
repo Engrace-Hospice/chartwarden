@@ -7,7 +7,7 @@
 // creation (immutable) so the voice-SOS-only CHECK is a local-column comparison — PostgreSQL
 // forbids a subquery in a CHECK.
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { alertCategory, alertSeverity, notificationChannel, notificationStatus } from "../../enums";
 import { users } from "../users";
 import { alerts } from "./alerts";
@@ -37,6 +37,10 @@ export const notificationDeliveries = pgTable(
     queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     settledAt: timestamp("settled_at", { withTimezone: true }),
+    // GAP-101 (migration 0355) — the out-of-band dispatcher's queue bookkeeping (a row is its own queue entry).
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    claimedUntil: timestamp("claimed_until", { withTimezone: true }),
   },
   (t) => ({
     byAlert: index("notification_delivery_alert_idx").on(t.alertId),

@@ -134,6 +134,8 @@ export interface StateHistoryInsert {
   readonly transitionedAt: Date;
   readonly actorMembershipId: string | null;
   readonly systemActor: boolean;
+  /** §4.8 — TRUE only for the awaiting-callback timeout transition. */
+  readonly autoTimeout?: boolean;
   readonly commandPayloadDigest: string | null;
 }
 
@@ -199,6 +201,7 @@ export async function runEffects(
           // route-driven transition from silently recording itself as the system's.
           actorMembershipId: effect.systemActor ? null : ctx.actorMembershipId,
           systemActor: effect.systemActor,
+          ...(effect.autoTimeout ? { autoTimeout: true } : {}),
           commandPayloadDigest: ctx.commandPayloadDigest,
         });
         break;

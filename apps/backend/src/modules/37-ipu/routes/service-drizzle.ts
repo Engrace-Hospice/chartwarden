@@ -46,6 +46,7 @@ import {
   resolveBodyReleaseEventFacts,
   sessionStepUpAssertionId,
 } from "./ipu-trust-gates";
+import { openIrcEpisodeRow } from "./irc-episode-open";
 
 // Re-exported for existing importers; the definitions live in ipu-trust-gates (see the note there).
 export type { AdmissionDischargeReader, RestraintOrderReader, VisitorConsentGate };
@@ -506,13 +507,27 @@ export function buildDrizzleIpuRouteService(
           byMembershipId: actor.membershipId,
         });
       } else if (eff.kind === "open_irc_episode") {
-        await t.insert(schema.ircEpisode).values({
+        // §2.5 — a re-admission within 30 days of a closed episode RESUMES its day count, so the episode may
+        // open already at/over the cap: announce that state entry here, in the same transaction.
+        const opened = await openIrcEpisodeRow(t, {
           organizationId: actor.organizationId,
           ipuAdmissionId: admission.id,
           providerEntityId: admission.providerEntityId,
           patientId: admission.patientId,
-          expectedEndAt: new Date(Date.now() + 5 * 86_400_000),
         });
+        if (opened.event) {
+          await outbox.publish(t, {
+            eventName: opened.event,
+            payload: {
+              ipuAdmissionId: admission.id,
+              organizationId: actor.organizationId,
+              consecutiveDayCount: opened.consecutiveDayCount,
+            },
+            organizationId: actor.organizationId,
+            aggregateKind: "irc_episode",
+            aggregateId: opened.episodeId,
+          });
+        }
       } else if (eff.kind === "close_irc_episode") {
         await t
           .update(schema.ircEpisode)

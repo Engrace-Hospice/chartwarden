@@ -37,6 +37,12 @@ export interface TenantExtensionInput {
 export interface CodeSystemMeta {
   readonly url: string;
   readonly version: string;
+  /**
+   * The attribution/copyright text a licence requires to accompany the system's data (SNOMED CT, LOINC, RxNorm —
+   * from the active `terminology_license_attestation`). Absent for public systems; surfaced as the FHIR
+   * `CodeSystem.copyright` element.
+   */
+  readonly copyright?: string;
 }
 
 /**

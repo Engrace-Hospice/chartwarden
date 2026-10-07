@@ -88,6 +88,8 @@ export const ircEpisode = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     expectedEndAt: timestamp("expected_end_at", { withTimezone: true }).notNull(),
     consecutiveDayCount: smallint("consecutive_day_count").notNull().default(1),
+    // §2.5 resumption (0363): the days inherited from a prior episode closed within 30 days (0 = fresh).
+    carriedOverDays: smallint("carried_over_days").notNull().default(0),
     state: ircEpisodeState("state").notNull().default("active"),
     capOverrideInvoked: boolean("cap_override_invoked").notNull().default(false),
     capOverrideInvokedBy: uuid("cap_override_invoked_by"),

@@ -55,6 +55,15 @@ export interface FoundationSiteReader {
    * `DEFAULT_ORDER_TIME_ZONE`, the same fallback M10's `m6-admission-workflow.ts` consumer already uses).
    */
   locationTimezone(tx: DbClient, locationId: string): Promise<string | null>;
+  /**
+   * GAP-057 — which of `providerEntityIds` are `active` in the caller's org. M19's §4.8 coverage-gap
+   * watchdog narrows its own policy-bearing entities to the ones that are live (a suspended CCN has no
+   * coverage obligation). Ids that do not resolve under the caller's RLS scope are simply absent.
+   */
+  activeProviderEntityIds(
+    tx: DbClient,
+    providerEntityIds: readonly string[],
+  ): Promise<readonly string[]>;
 }
 
 export function buildFoundationSiteReader(): FoundationSiteReader {
@@ -106,6 +115,15 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         iqiesFacilityId: provider.iqiesFacilityId,
         stateCode: typeof state === "string" ? state.trim() : null,
       };
+    },
+
+    async activeProviderEntityIds(tx, providerEntityIds) {
+      if (providerEntityIds.length === 0) return [];
+      const rows = await tx
+        .select({ id: PROVIDER.id })
+        .from(PROVIDER)
+        .where(and(inArray(PROVIDER.id, [...providerEntityIds]), eq(PROVIDER.status, "active")));
+      return rows.map((r) => r.id);
     },
 
     async locationTimezone(tx, locationId) {
