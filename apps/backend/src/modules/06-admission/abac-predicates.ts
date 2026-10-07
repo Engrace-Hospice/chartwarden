@@ -142,23 +142,30 @@ export function buildAdmissionAbacPredicates(
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
-  /** The §6.8 clinician arm of `admission.scope` for an unsited admission of `patientId` (see admissionScopeFor). */
+  /**
+   * The §6.8 clinician arm of `admission.scope` for an UNSITED admission (see admissionScopeFor): an admitting
+   * clinician reaches it only when (a) they opened it (`createdByUserId`, POST /admissions) or (c) the patient's chart
+   * is sited at their site. A chart that has never been sited grants NOTHING here — otherwise every clinician with any
+   * site scope reached every other site's pending admission of a brand-new patient. (No intended site is recorded at
+   * creation — POST /admissions carries none — so there is no (b) arm.)
+   */
   const unsitedAdmissionAtCallerSite = async (
     context: AbacContext,
-    patientId: string,
+    facts: { patientId: string; createdByUserId?: string | null },
   ): Promise<boolean> => {
     if (!hasAdmittingClinicianRole(context.roles)) return false;
+    if (context.userId && facts.createdByUserId && facts.createdByUserId === context.userId)
+      return true;
     if (context.providerEntityIds.length === 0 && context.locationIds.length === 0) return false;
-    const chart = await resolver.loadPatientIntakeFacts(context.organizationId, patientId);
+    const chart = await resolver.loadPatientIntakeFacts(context.organizationId, facts.patientId);
     if (!chart) return false;
-    if (chart.providerEntityId === null && chart.locationId === null) return true;
     return inCallerSite(context, chart.providerEntityId, chart.locationId);
   };
 
   /** Caseload-or-scope over an admission's patient (medical_director = org-wide). §4.6 admission.scope. */
   const admissionScopeFor = async (
     context: AbacContext,
-    facts: { patientId: string; providerEntityId: string | null },
+    facts: { patientId: string; providerEntityId: string | null; createdByUserId?: string | null },
   ): Promise<boolean> => {
     if (hasRole(context, "medical_director")) return true; // org-wide
     if (
@@ -170,13 +177,9 @@ export function buildAdmissionAbacPredicates(
       return true;
     // An admitting clinician (§6.8) and an UNSITED admission — a new admission stays unsited until its election is
     // drafted, so without this the nurse / physician who just opened it could not reach it. Narrower than the
-    // unsited-admission roles above (which reach every unsited admission of the org): only when the patient's chart is
-    // sited at the caller's site, or the chart has never been sited (a brand-new patient — the same reach
-    // `admission_clinical_site_scope` gave the create). A SITED admission keeps the provider-entity arm alone.
-    if (
-      facts.providerEntityId === null &&
-      (await unsitedAdmissionAtCallerSite(context, facts.patientId))
-    )
+    // unsited-admission roles above (which reach every unsited admission of the org): only the clinician who opened
+    // it, or one at the site the patient's chart is sited at. A SITED admission keeps the provider-entity arm alone.
+    if (facts.providerEntityId === null && (await unsitedAdmissionAtCallerSite(context, facts)))
       return true;
     if (!context.userId) return false;
     return isInCaseload({
@@ -278,6 +281,7 @@ export function buildAdmissionAbacPredicates(
       return admissionScopeFor(context, {
         patientId: facts.patientId,
         providerEntityId: facts.providerEntityId,
+        createdByUserId: facts.createdByUserId ?? null,
       });
     },
     "compliance.window_override": async (context) => hasRole(context, "compliance_officer"),
@@ -305,8 +309,9 @@ export function buildAdmissionAbacPredicates(
     //     admission (an ongoing stay is its care team's, reached through `caseload_or_scope`);
     //   • the patient's site — M5 stamps the chart from the activated admission — is the caller's ({@link inCallerSite}).
     //     A chart with no site falls back to the named earlier stay's site (a legacy unsited chart); a BRAND-NEW
-    //     patient (no admission in this org at all, so never sited) has no site to compare and is reachable by any
-    //     admitting clinician who has a site scope — the same reach `admission_intake_scope` gives intake.
+    //     patient (no admission in this org at all, so never sited) is placed by their latest site-naming referral;
+    //     only a patient with no site anywhere (no referral site either) is reachable by any admitting clinician who
+    //     has a site scope — create-time only: the pending admission is then reachable by its creator alone.
     // Target: `patientId`, and/or `admissionId` (the readmission-context route, keyed by the earlier stay) /
     // `priorAdmissionId` (POST /admissions' `readmittedFromAdmissionId`). When both a patient and a stay are named the
     // stay must be THAT patient's (a stay can never lend its site to another chart). Composed (OR) beside the routes'
@@ -328,7 +333,13 @@ export function buildAdmissionAbacPredicates(
       if (facts.providerEntityId !== null || facts.locationId !== null)
         return inCallerSite(context, facts.providerEntityId, facts.locationId);
       if (stay) return inCallerSite(context, stay.providerEntityId, stay.locationId ?? null);
-      return !facts.hasAnyAdmission;
+      if (facts.hasAnyAdmission) return false;
+      // A never-admitted patient: placed at the site of their latest site-naming referral when there is one.
+      if (facts.referralProviderEntityId !== null || facts.referralLocationId !== null)
+        return inCallerSite(context, facts.referralProviderEntityId, facts.referralLocationId);
+      // No site anywhere (a chart registered directly, no referral): create-time reach for any admitting clinician
+      // with a site scope. Once opened, the admission is reachable only by its creator until it is sited.
+      return true;
     },
   };
 }

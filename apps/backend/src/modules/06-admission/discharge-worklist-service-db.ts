@@ -114,7 +114,13 @@ export interface DischargeWorklistServiceDeps {
     organizationId: string,
     patientId: string,
   ) => Promise<WorklistPatientIdentity | null>;
+  /** Where a failed name lookup is reported (ids + error class only, never PHI). Defaults to stderr. */
+  readonly log?: (event: string, detail: Record<string, unknown>) => void;
 }
+
+const defaultLog = (event: string, detail: Record<string, unknown>): void => {
+  console.warn(JSON.stringify({ event, ...detail }));
+};
 
 const seamPatientIdentity = async (
   organizationId: string,
@@ -129,6 +135,7 @@ export function createDbDischargeWorklistService(
   deps: DischargeWorklistServiceDeps = {},
 ): DischargeWorklistService {
   const patientIdentity = deps.patientIdentity ?? seamPatientIdentity;
+  const log = deps.log ?? defaultLog;
 
   /** Attach name + MRN to a Readmit page (one M5 read per distinct patient, bounded by the page size). */
   async function withPatients(
@@ -139,7 +146,19 @@ export function createDbDischargeWorklistService(
     const resolved = new Map(
       await Promise.all(
         ids.map(
-          async (id) => [id, await patientIdentity(organizationId, id).catch(() => null)] as const,
+          async (id) =>
+            [
+              id,
+              await patientIdentity(organizationId, id).catch((error: unknown) => {
+                // The row still renders ("Unresolved patient"); the failure must not be silent.
+                log("m6.discharge_worklist.patient_lookup_failed", {
+                  organizationId,
+                  patientId: id,
+                  error: error instanceof Error ? error.name : "unknown",
+                });
+                return null;
+              }),
+            ] as const,
         ),
       ),
     );

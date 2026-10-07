@@ -54,6 +54,8 @@ const P_ACTIVE_A = "33333333-3333-4333-8333-333333333333";
 const P_ORG_B = "44444444-4444-4444-8444-444444444444";
 /** A brand-new prospective patient — no admission, never sited. */
 const P_NEW = "55555555-5555-4555-8555-555555555555";
+/** A never-admitted patient whose referral was taken at site B. */
+const P_REF_B = "12121212-1212-4121-8121-121212121212";
 /** A legacy chart left unsited, with an earlier stay at site A. */
 const P_UNSITED = "66666666-6666-4666-8666-666666666666";
 /** Sited at PE_A but at the OTHER location of it (LOC_A2). */
@@ -207,6 +209,29 @@ describe("admission_clinical_site_scope — the predicate", () => {
     expect(await fn(ctx(["rn"], { pe: [PE_A] }, ORG_B), { patientId: P_ORG_B })).toBe(true);
   });
 
+  it("a never-admitted patient REFERRED to another site belongs to that site (the referral sites it)", async () => {
+    const backend = createInMemoryAdmissionBackend({
+      records: [
+        ...RECORDS,
+        { id: P_REF_B, organizationId: ORG, kind: "patient" },
+        {
+          id: "r0r0r0r0-r0r0-4r0r-8r0r-r0r0r0r0r0r0",
+          organizationId: ORG,
+          kind: "referral",
+          patientId: P_REF_B,
+          providerEntityId: PE_B,
+        },
+      ],
+    });
+    const fn = buildAdmissionAbacPredicates({
+      resolver: backend.resolver,
+      isInCaseload: async () => false,
+    }).admission_clinical_site_scope;
+    if (!fn) throw new Error("missing");
+    expect(await fn(ctx(["rn"]), { patientId: P_REF_B })).toBe(false);
+    expect(await fn(ctx(["rn"], { pe: [PE_B] }), { patientId: P_REF_B })).toBe(true);
+  });
+
   it("a brand-new patient (no admission, never sited) is reachable by a clinician with a site scope", async () => {
     const fn = predicate();
     expect(await fn(ctx(["rn"]), { patientId: P_NEW })).toBe(true);
@@ -264,7 +289,9 @@ describe("admission.scope — an admitting clinician and an unsited admission", 
   const P_PENDING_A = "88888888-8888-4888-8888-88888888888a";
   const ADM_PENDING_A = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1"; // unsited, patient sited at site A
   const ADM_PENDING_B = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2"; // unsited, patient sited at site B
-  const ADM_PENDING_NEW = "b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3"; // unsited, patient never sited
+  const ADM_PENDING_NEW = "b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3"; // unsited, never-sited patient, opened by nurse B
+  const ADM_PENDING_MINE = "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b4"; // unsited, never-sited patient, opened by u1
+  const P_UNSITED_NEW = "99999999-9999-4999-8999-99999999999a";
   const records = [
     ...RECORDS,
     {
@@ -288,7 +315,17 @@ describe("admission.scope — an admitting clinician and an unsited admission", 
       kind: "admission",
       state: "pending",
       patientId: P_NEW,
+      createdByUserId: "u_b", // opened by site B's nurse
     },
+    {
+      id: ADM_PENDING_MINE,
+      organizationId: ORG,
+      kind: "admission",
+      state: "pending",
+      patientId: P_UNSITED_NEW,
+      createdByUserId: "u1", // opened by the caller
+    },
+    { id: P_UNSITED_NEW, organizationId: ORG, kind: "patient" },
   ];
   const scope = () => {
     const backend = createInMemoryAdmissionBackend({ records });
@@ -312,9 +349,16 @@ describe("admission.scope — an admitting clinician and an unsited admission", 
     );
   });
 
-  it("reaches an unsited admission of a never-sited patient only with a site scope", async () => {
-    expect(await scope()(ctx(["rn"]), { id: ADM_PENDING_NEW })).toBe(true);
-    expect(await scope()(ctx(["rn"], { pe: [], loc: [] }), { id: ADM_PENDING_NEW })).toBe(false);
+  it("a never-sited patient's pending admission: only the clinician who opened it, never any site scope", async () => {
+    // Nurse A (u1, site A) must NOT reach the pending admission site B's nurse opened for a brand-new patient —
+    // the old "chart never sited ⇒ allow" rule let any admitting clinician with any site scope reach it.
+    expect(await scope()(ctx(["rn"]), { id: ADM_PENDING_NEW })).toBe(false);
+    expect(await scope()(ctx(["rn"], { pe: [PE_B] }), { id: ADM_PENDING_NEW })).toBe(false);
+    // …her own, she does (even with no site scope: she created it)
+    expect(await scope()(ctx(["rn"]), { id: ADM_PENDING_MINE })).toBe(true);
+    // the creator arm is for admitting clinicians only, and never across orgs
+    expect(await scope()(ctx(["msw"]), { id: ADM_PENDING_MINE })).toBe(false);
+    expect(await scope()(ctx(["rn"], { pe: [PE_A] }, ORG_B), { id: ADM_PENDING_MINE })).toBe(false);
   });
 
   it("gives nothing to a non-admitting role, and nothing new on a SITED admission", async () => {
@@ -366,8 +410,9 @@ function makeServer() {
   });
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
-      grant("nurse_a", FLOW_KEYS),
-      grant("nurse_b", FLOW_KEYS),
+      // `admission.update` too, so the PATCH case below is decided by ABAC (404), not RBAC.
+      grant("nurse_a", [...FLOW_KEYS, "admission.update"]),
+      grant("nurse_b", [...FLOW_KEYS, "admission.update"]),
       grant("nurse_noperm", ["admission.read"]),
       grant("office", FLOW_KEYS),
       grant("nurse_org_b", FLOW_KEYS, ORG_B),
@@ -468,6 +513,42 @@ describe("the readmission-flow routes for an admitting clinician", () => {
       payload: CREATE(P_B, ADM_B),
     });
     expect(readmit.statusCode).toBe(201);
+  });
+
+  it("a pending admission nurse B opened for a brand-new patient: nurse A cannot read or update it; B can", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/admissions",
+      headers: NURSE_B,
+      payload: CREATE(P_NEW),
+    });
+    expect(created.statusCode).toBe(201);
+    const id = (created.json() as { id: string }).id;
+    expect(
+      (await app.inject({ method: "GET", url: `/api/v1/admissions/${id}`, headers: NURSE_B }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: `/api/v1/admissions/${id}`, headers: NURSE_A }))
+        .statusCode,
+    ).toBe(404);
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admissions/${id}`,
+      headers: NURSE_A,
+      payload: { hospicePhysicianId: MD, ifVersion: 0 },
+    });
+    expect(patch.statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/admissions/${id}`,
+          headers: hdr("nurse_org_b", "rn", PE_B, ORG_B),
+        })
+      ).statusCode,
+    ).toBe(404);
   });
 
   it("POST /admissions: another site, an active patient, another org → 404", async () => {

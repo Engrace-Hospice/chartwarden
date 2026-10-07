@@ -1120,6 +1120,16 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     const patientOrgB = randomUUID();
     await seedM5Patient(admin, ORG_B, patientOrgB);
 
+    // `admission.update` for the rn role, so the PATCH cases below are decided by ABAC (404), not RBAC (403). Granted
+    // before any request (the RBAC cache) and revoked in `finally` (the 0379 test below pins the rn role's keys).
+    await admin.query(
+      `INSERT INTO permission (key, resource, action, category, default_abac, description)
+       VALUES ('admission.update','admission','update','clinical','admission.scope','') ON CONFLICT DO NOTHING`,
+    );
+    await admin.query(
+      `INSERT INTO role_permission (organization_id, role_id, permission_key)
+       SELECT organization_id, id, 'admission.update' FROM role WHERE key='rn' ON CONFLICT DO NOTHING`,
+    );
     resetAuthorizationContract();
     resetRbacEngine();
     registerDbEffectivePermissionResolver(handle.db);
@@ -1249,7 +1259,43 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
         expect((await get(`/api/v1/admissions/${id}`, NURSE_A)).statusCode, id).toBe(200);
       expect((await get(`/api/v1/admissions/${readmissionId}`, NURSE_B)).statusCode).toBe(404);
       expect((await get(`/api/v1/admissions/${freshId}`, NURSE_ORG_B)).statusCode).toBe(404);
+      const creator = await one<{ created_by_user_id: string | null }>(
+        "SELECT created_by_user_id FROM admission WHERE id=$1",
+        [freshId],
+      );
+      expect(creator.created_by_user_id).toBe(nurseA);
+
+      // A brand-new patient's PENDING admission is its creator's (and its site's, once sited) — never "any clinician
+      // with a site scope": nurse B opens one for a never-sited patient; nurse A can neither read nor update it.
+      const patientNewB = randomUUID();
+      await seedM5Patient(admin, ORG, patientNewB);
+      const openedByB = await post(body(patientNewB), NURSE_B);
+      expect(openedByB.statusCode).toBe(201);
+      const pendingB = openedByB.json() as { id: string; version: number };
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_B)).statusCode).toBe(200);
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_A)).statusCode).toBe(404);
+      expect((await get(`/api/v1/admissions/${pendingB.id}`, NURSE_ORG_B)).statusCode).toBe(404);
+      const patchByA = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admissions/${pendingB.id}`,
+        headers: NURSE_A,
+        payload: { hospicePhysicianId: MD, ifVersion: pendingB.version },
+      });
+      expect(patchByA.statusCode).toBe(404);
+      const patchByB = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admissions/${pendingB.id}`,
+        headers: NURSE_B,
+        payload: { hospicePhysicianId: MD, ifVersion: pendingB.version },
+      });
+      expect(patchByB.statusCode).toBe(200);
+      // nurse A's own pending admission stays hers: still 200 after B's work
+      expect((await get(`/api/v1/admissions/${freshId}`, NURSE_A)).statusCode).toBe(200);
+      expect((await get(`/api/v1/admissions/${freshId}`, NURSE_B)).statusCode).toBe(404);
     } finally {
+      await admin.query(
+        "DELETE FROM role_permission WHERE permission_key='admission.update' AND role_id IN (SELECT id FROM role WHERE key='rn')",
+      );
       await app.close();
       resetAuthorizationContract();
       resetRbacEngine();

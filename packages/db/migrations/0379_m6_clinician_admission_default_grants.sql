@@ -13,10 +13,17 @@
 -- `admission_clinical_site_scope` ABAC predicate (the caller's own provider entity / location) — this migration only
 -- grants the permissions.
 --
--- Idempotent (`ON CONFLICT DO NOTHING`); never removes a grant. The permission mirror rows are inserted too, in case
+-- Plus `admission.created_by_user_id` (nullable logical user id, no backfill — the 0373 precedent): the staff member
+-- who opened the admission through POST /admissions. `admission.scope` lets an admitting clinician reach an UNSITED
+-- (pre-election) admission only when they opened it, or the patient's chart is sited at their site — never merely
+-- because the chart has no site yet. The org RLS policies, FORCE RLS and the M4 write-audit triggers already cover it.
+--
+-- Idempotent (`ON CONFLICT DO NOTHING`, `ADD COLUMN IF NOT EXISTS`); never removes a grant. The permission mirror rows are inserted too, in case
 -- the environment's `permission` table predates `db:sync:permissions` picking the keys up. The single source of truth
 -- is `ADMITTING_CLINICIAN_DEFAULT_GRANTS` in packages/auth/src/roles/admitting-clinician-grants.ts —
 -- `m6-readmission.live.test.ts` pins this file to it.
+ALTER TABLE "admission" ADD COLUMN IF NOT EXISTS "created_by_user_id" uuid;--> statement-breakpoint
+
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('admission.create', 'admission', 'create', 'clinical', 'patient.scope', ''),
   ('admission.read', 'admission', 'read', 'clinical', 'admission.scope', ''),
