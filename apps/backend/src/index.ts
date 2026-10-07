@@ -89,6 +89,20 @@ import {
   summarizeRotation,
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
+import {
+  AUDIT_ARCHIVE_CRON,
+  AUDIT_ARCHIVE_QUEUE,
+  auditArchiveConfigFromEnv,
+  platformCatalogRunner,
+  runAuditArchive,
+  wireAuditArchiveTenancy,
+} from "./bootstrap/jobs/audit-archive";
+import {
+  IDEMPOTENCY_CLEANUP_JOB_ID,
+  registerIdempotencyCleanupWorker,
+  scheduleIdempotencyCleanup,
+  wireIdempotencyCleanupTenancy,
+} from "./bootstrap/jobs/idempotency-cleanup";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
@@ -187,6 +201,7 @@ import {
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
+  mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
   registerIdentityErasers,
@@ -196,6 +211,7 @@ import {
   type ActorPermissionResolver,
   type M3OutboxPublisher,
   M3_OUTBOX_EVENTS,
+  M3_PLATFORM_JOB_ID,
   createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
@@ -206,6 +222,9 @@ import {
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
   registerAuthorizationSeams,
+  registerM3CronWorkers,
+  scheduleM3Jobs,
+  wireM3ReaperTenancy,
 } from "./modules/03-authorization/index";
 import { M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID } from "./modules/03-authorization/jobs/close-engagements";
 import { registerCloseEngagementsWorker } from "./modules/03-authorization/jobs/close-engagements-worker";
@@ -231,6 +250,9 @@ import {
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
   buildM5ExtractionAllergyConsumer,
+  buildM5GeocodeAddressConsumer,
+  patientIsDeceasedForOrg,
+  resolveGeocoder,
   buildM5ExtractionWritebackConsumer,
   buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
@@ -255,6 +277,10 @@ import {
   rebuildPrivacySnapshotsForOrg,
   registerPatientErasers,
   registerPatientSeams,
+  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
+  registerAmendmentSlaWorker,
+  scheduleAmendmentSla,
+  wireAmendmentSlaTenancy,
   registerSnapshotRebuildWorker,
   scheduleSnapshotRebuild,
 } from "./modules/05-patient/index";
@@ -305,6 +331,7 @@ import {
   scheduleM6Jobs,
   transferInNoticeContextForOrg,
   wireM6Tenancy,
+  admissionCensusSummaryForOrg,
 } from "./modules/06-admission/index";
 // F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
 // restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
@@ -1181,6 +1208,7 @@ import {
 } from "./modules/36-messaging/index";
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
+import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
@@ -1925,6 +1953,7 @@ export function wireModuleSeams(
   registerPlatformJob(M11_ORDER_SWEEPS_PLATFORM_JOB_ID); // GAP-032 — verbal pre-expiry / lab-results-overdue / completion-watcher org enumeration
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
+  wireAmendmentSlaTenancy(); // GAP-118 — M5 §4.5 amendment SLA scan's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
@@ -1936,6 +1965,11 @@ export function wireModuleSeams(
   // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
   // module can see the others', so it is registered here with them rather than from a module wiring file.
   wirePartitionRotationTenancy();
+  // GAP-113 / GAP-117 — the M1 idempotency.cleanup sweeper and the M3 reap_breakglass cron fan out over the
+  // active orgs through the audited platform pool, so both job ids must be allowlisted.
+  wireIdempotencyCleanupTenancy();
+  wireM3ReaperTenancy();
+  wireAuditArchiveTenancy(); // GAP-113 — the audit.archive job reads every tenant's closed audit partitions
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). GAP-098: on a DB boot the grant/session/flag/onboarding-task facts resolve through the
@@ -3606,7 +3640,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // import it).
             dashboardSeeder: createDbSystemDashboardSeeder(dbHandle.db),
             outbox: m2OutboxPublisher,
+            // GAP-115 — M5's deceased-status fact for the funeral-home link (M2 may not read M5's table).
+            deceasedPatients: {
+              isDeceased: (organizationId, patientId) =>
+                patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
+            },
           });
+          // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
+          // overrides). The tax-id envelope cipher is NOT bound: it is the KMS-backed key ring (the same
+          // unbound port M8/M20/M32 refuse on), so `POST /provider-entities` answers 503 TAX_ID_CIPHER_UNBOUND
+          // until it is — an EIN is never stored in the clear.
+          mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
           // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
           // on one replica only and dies with the process.
@@ -3652,29 +3696,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
           // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.
-          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher, {
-            consent: buildPart2ConsentStateReader(dbHandle.db),
-            intake: buildIntakeSudBatchReader(dbHandle.db),
-            history: (() => {
-              const auditQuery = createDbAuditQuery(dbHandle.db);
-              return {
-                async snapshotHistory(organizationId: string, patientId: string) {
-                  const page = await auditQuery.searchEvents(organizationId, {
-                    resourceKind: "patient_privacy_flag_snapshot",
-                    resourceId: patientId,
-                    limit: 100,
-                  });
-                  return page.items.map((e) => ({
-                    at: e.createdAt,
-                    actorUserId: e.actorUserId,
-                    eventType: e.eventType,
-                    before: e.before,
-                    after: e.after,
-                  }));
-                },
-              };
-            })(),
-          });
+          mountPatientRoutes(
+            app,
+            dbHandle.db,
+            m5OutboxPublisher,
+            {
+              consent: buildPart2ConsentStateReader(dbHandle.db),
+              intake: buildIntakeSudBatchReader(dbHandle.db),
+              history: (() => {
+                const auditQuery = createDbAuditQuery(dbHandle.db);
+                return {
+                  async snapshotHistory(organizationId: string, patientId: string) {
+                    const page = await auditQuery.searchEvents(organizationId, {
+                      resourceKind: "patient_privacy_flag_snapshot",
+                      resourceId: patientId,
+                      limit: 100,
+                    });
+                    return page.items.map((e) => ({
+                      at: e.createdAt,
+                      actorUserId: e.actorUserId,
+                      eventType: e.eventType,
+                      before: e.before,
+                      after: e.after,
+                    }));
+                  },
+                };
+              })(),
+            },
+            {
+              // GAP-119 — the census KPI strip's admission-owned figures: M6 publishes the org-explicit read, M5
+              // receives it as a port (no cross-module table read).
+              admissionSummary: (organizationId) =>
+                admissionCensusSummaryForOrg(dbHandle.db, organizationId),
+            },
+          );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(
@@ -5296,6 +5351,65 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "partition-rotation cron registration failed");
     }
 
+    // ── audit.archive — the cold tier for closed audit_event partitions (GAP-113, M1 §4.8) ───────────────
+    // Monthly: copy each CLOSED audit_event partition older than the hot window to object storage as
+    // checksummed gzip parts + a manifest, VERIFY them back from the store, and (only if AUDIT_ARCHIVE_DETACH=true)
+    // detach the partition. It never drops anything — destruction is M4's certificate-driven act. Unconfigured
+    // (no AUDIT_ARCHIVE_BUCKET, or no MINIO_* credentials) it is a logged skip: the hot tier keeps everything.
+    // Platform credential, like partition rotation: reading every tenant's audit rows and detaching a partition
+    // are definer-rights functions (migration 0432) that `wardenx_platform` is granted EXECUTE on.
+    const auditArchiveSetup = auditArchiveConfigFromEnv(process.env);
+    const auditArchiveWorker = new Worker(
+      AUDIT_ARCHIVE_QUEUE,
+      async () => {
+        if (!auditArchiveSetup || !m34DsarObjectStore) {
+          app.log.warn(
+            {
+              bucketConfigured: auditArchiveSetup !== null,
+              objectStoreConfigured: m34DsarObjectStore !== null,
+            },
+            "audit.archive skipped: AUDIT_ARCHIVE_BUCKET and the MINIO_* credentials are both required",
+          );
+          return { skipped: "unconfigured" };
+        }
+        const run = await runAuditArchive({
+          withCatalog: platformCatalogRunner({
+            platformDb: platformDbHandle?.db ?? dbHandle.db,
+            auditBypass: m34PlatformBypassAuditor,
+          }),
+          store: m34DsarObjectStore,
+          config: auditArchiveSetup.config,
+          hotMonths: auditArchiveSetup.hotMonths,
+          log: (msg, detail) => app.log.info(detail, msg),
+        });
+        return { archived: run.archived.length, deferred: run.deferred };
+      },
+      { connection: queueConnection, concurrency: 1 },
+    );
+    attachDlqAlertsToAll([auditArchiveWorker], "platform");
+    app.addHook("onClose", async () => {
+      await auditArchiveWorker.close();
+    });
+    try {
+      const auditArchiveQueue = new Queue(AUDIT_ARCHIVE_QUEUE, { connection: queueConnection });
+      await auditArchiveQueue.add(
+        "scheduled",
+        {},
+        {
+          repeat: { pattern: AUDIT_ARCHIVE_CRON },
+          attempts: 5,
+          backoff: { type: "exponential", delay: 30_000 },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
+      app.addHook("onClose", async () => {
+        await auditArchiveQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "audit.archive cron registration failed");
+    }
+
     // ── M30 §4.8 HQRP/quality workers + cron schedules (the same worker-runner shape) ───────────────────
     // Construct the four §4.8 WORK-queue Workers (measure_recompute / cahps_export / outbreak_detection /
     // risk_register_refresh) + the four STANDALONE cron consumers + their four repeatable cron-schedule
@@ -6121,6 +6235,46 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
 
     app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
+
+    // ── M1 idempotency.cleanup (GAP-113) + M3 reap_breakglass (GAP-117) ──────────────────────────────────
+    const m1m3ActiveOrgs = (jobId: string, reason: string) =>
+      buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId,
+        reason,
+      });
+    const m3ReaperWorkers = registerM3CronWorkers(queueConnection, {
+      db: dbHandle.db,
+      outbox: m3OutboxPublisher as M3OutboxPublisher,
+      activeOrgs: m1m3ActiveOrgs(
+        M3_PLATFORM_JOB_ID,
+        "M3 reap_breakglass cron (active-org enumeration)",
+      ),
+    });
+    const idempotencyCleanupWorker = registerIdempotencyCleanupWorker(queueConnection, {
+      db: dbHandle.db,
+      activeOrgs: m1m3ActiveOrgs(
+        IDEMPOTENCY_CLEANUP_JOB_ID,
+        "M1 idempotency.cleanup cron (active-org enumeration)",
+      ),
+    });
+    attachDlqAlertsToAll([...m3ReaperWorkers, idempotencyCleanupWorker], "m1m3");
+    app.addHook("onClose", async () => {
+      await Promise.all([...m3ReaperWorkers, idempotencyCleanupWorker].map((w) => w.close()));
+    });
+    try {
+      const m1m3ScheduleQueues = [
+        ...(await scheduleM3Jobs(queueConnection)),
+        await scheduleIdempotencyCleanup(queueConnection),
+      ];
+      app.addHook("onClose", async () => {
+        await Promise.all(m1m3ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M1/M3 cleanup cron-schedule registration failed");
+    }
+    app.log.info("M1 idempotency.cleanup and M3 reap_breakglass crons constructed");
 
     // ── M21 §4.6 crons (GAP-062) ─────────────────────────────────────────────────────────────────────────
     // par-monitor (`m21.par.below_threshold` / `stockout_imminent`), unreturned-kit-monitor (the automatic
@@ -6956,10 +7110,31 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         }),
       log: (msg, detail) => app.log.info(detail, msg),
     });
-    attachDlqAlertsToAll([m5SnapshotRebuildWorker], "m5");
+    // GAP-118 — M5 §4.5 `amendment_sla_scan`: daily, once-per-request due-soon / overdue events for pending
+    // §164.526 amendment requests (M36 pages the privacy officer + compliance).
+    const m5AmendmentSlaWorker = registerAmendmentSlaWorker(queueConnection, {
+      db: dbHandle.db,
+      outbox: m5OutboxPublisher,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
+        reason: "M5 §4.5 amendment SLA scan fan-out",
+      }),
+    });
+    attachDlqAlertsToAll([m5SnapshotRebuildWorker, m5AmendmentSlaWorker], "m5");
     app.addHook("onClose", async () => {
       await m5SnapshotRebuildWorker.close();
+      await m5AmendmentSlaWorker.close();
     });
+    try {
+      const m5AmendmentSlaQueue = await scheduleAmendmentSla(queueConnection);
+      app.addHook("onClose", async () => {
+        await m5AmendmentSlaQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M5 amendment SLA schedule registration failed");
+    }
     try {
       const m5SnapshotRebuildQueue = await scheduleSnapshotRebuild(queueConnection);
       app.addHook("onClose", async () => {
@@ -7553,6 +7728,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-118 — M5's §164.526 amendment-SLA events (due soon / overdue) page the privacy officer + compliance.
+          buildM36AmendmentSlaAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
@@ -7865,6 +8042,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // §2.4.1 — a LIVE discharge (revocation, transfer out, moved, no longer terminal, for cause,
           // other) moves the chart `active/on_hold → discharged`; a death is the death cascade's.
           buildM5AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // GAP-118 — M5's own `geocode_address` job as the consumer of `m5.patient.address_changed`. The vendor
+          // is NOT bound (a geocode sends a patient's home address to a third party: no vendor / BAA / key exists),
+          // so `resolveGeocoder` returns the fail-closed port unless GEOCODER_VENDOR + GEOCODER_API_KEY +
+          // GEOCODER_BAA_ATTESTED=true name a registered adapter — events dead-letter visibly until then.
+          buildM5GeocodeAddressConsumer({
+            db: dbHandle.db,
+            geocoder: resolveGeocoder(process.env),
+          }),
           // F-165 (#248, m24 group) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
           // M17's shift-assignment Valkey cache, unioned additively into `CaseloadProvider`'s read
           // (see `wireModuleSeams`'s `caseloadShiftCacheRedis` wiring above). Gated on the dedicated

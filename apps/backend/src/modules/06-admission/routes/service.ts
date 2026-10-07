@@ -535,6 +535,11 @@ export interface DischargeResult extends MutationResult {
  * order: the signer is the actor, judged on `actorRoleKeys` — the SERVER-derived `request.context.roles`,
  * never a body field — plus the IDG care-team fact. `capacity` is an optional claim that must be backed.
  */
+/** GAP-121 — body of the for-cause decline route. */
+export interface DeclineDischargeInput {
+  readonly declineReason: string;
+}
+
 export interface CosignDischargeInput {
   readonly cosignerName: string;
   readonly cosignerNpi: string;
@@ -1156,6 +1161,14 @@ export interface AdmissionRouteService {
     ifVersion: number,
     actorUserId: string,
   ): Promise<MutationResult>;
+  /** GAP-121 — decline a for-cause discharge awaiting cosign: voided, admission stays active. */
+  declineDischarge(
+    organizationId: string,
+    id: string,
+    input: DeclineDischargeInput,
+    ifVersion: number,
+    actorUserId: string,
+  ): Promise<MutationResult>;
   // 42 CFR 418.25(a) / 418.26(b) physician signer set
   recordAdmissionRecommendation(
     organizationId: string,
@@ -1305,6 +1318,8 @@ interface Rec {
   dischargeOrderText?: string | null;
   dischargeOrderReference?: string | null;
   cosignedAt?: string;
+  /** GAP-121 — the user who filed a for-cause discharge (the cosigner must differ). */
+  filedByUserId?: string;
   cosignerName?: string;
   cosignerNpi?: string;
 }
@@ -2704,7 +2719,6 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       };
     },
     async discharge(organizationId, admissionId, input, actorUserId) {
-      void actorUserId;
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       // §6.3 — the per-reason narrative gates (D11 tightens no_longer_terminal/other; for_cause needs a
       // forCauseReason). The reason→permission key is already enforced at the route preHandler.
@@ -2758,6 +2772,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
           patientId: adm.patientId,
           reason: input.reason,
           effectiveAt: input.dischargeDate,
+          filedByUserId: actorUserId,
         });
         return {
           ...summary(rec),
@@ -2802,6 +2817,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
     async cosignDischarge(organizationId, id, input, ifVersion, actorUserId) {
       const rec = get(organizationId, id, "discharge") ?? notFound(id);
+      // GAP-121 — two-person control: the person who filed a for-cause discharge cannot cosign it.
+      if (rec.filedByUserId && rec.filedByUserId === actorUserId)
+        throw new WardenXError(
+          "DISCHARGE_COSIGNER_IS_FILER",
+          "The person who filed a for-cause discharge cannot cosign it; another medical director must.",
+          409,
+        );
       // 42 CFR 418.26(b) — the cosigner is the discharge-order signer (the actor; server-derived roles).
       const capacity = await resolveCosignerCapacity({
         port: physicianAuthority,
@@ -2832,6 +2854,27 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
           adm.pendingForCauseDischarge = outcome.pendingForCauseDischarge;
           adm.version += 1;
           events.push("m6.admission.discharged");
+        }
+      }
+      return res;
+    },
+
+    async declineDischarge(organizationId, id, _input, ifVersion, _actorUserId) {
+      const rec = get(organizationId, id, "discharge") ?? notFound(id);
+      if (rec.state !== "awaiting_cosign")
+        throw new WardenXError(
+          "INVALID_STATE",
+          `discharge ${id} is not awaiting a medical-director cosign (state '${rec.state}')`,
+          409,
+        );
+      // GAP-121 — a decline voids the discharge and releases the admission (it never left `active`).
+      const outcome = resolveForCauseDischarge("reject");
+      const res = transition(rec, outcome.dischargeState, ifVersion);
+      if (rec.admissionId) {
+        const adm = get(organizationId, rec.admissionId, "admission");
+        if (adm) {
+          adm.pendingForCauseDischarge = outcome.pendingForCauseDischarge;
+          adm.version += 1;
         }
       }
       return res;

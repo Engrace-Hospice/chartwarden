@@ -67,6 +67,9 @@ export const dischargeEvents = pgTable(
     dischargeOrderSignedAt: timestamp("discharge_order_signed_at", { withTimezone: true }),
     dischargeOrderText: text("discharge_order_text"),
     dischargeOrderReference: text("discharge_order_reference"),
+    // GAP-121 (migration 0430) — who FILED a for-cause discharge. The route-40 cosigner must be a different user
+    // (two-person control); NULL on rows filed before the column existed and on every non-for-cause reason.
+    filedByUserId: uuid("filed_by_user_id").references(() => users.id, { onDelete: "restrict" }),
     // Route-40 cosigner identity as attested on the cosign body (previously validated, then discarded).
     cosignerName: text("cosigner_name"),
     cosignerNpi: text("cosigner_npi"),

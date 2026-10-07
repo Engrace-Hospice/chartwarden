@@ -62,6 +62,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // GAP-026 — the generic (non-addendum) compliance window miss.
       "m6.compliance.window.overdue",
       "m6.compliance.window.overdue_compliance",
+      // GAP-118 — §164.526 amendment request SLA (privacy officer + compliance).
+      "m5.patient.amendment_sla_due_soon",
+      "m5.patient.amendment_sla_overdue",
       "m6.admission.discharged",
       "visit.late",
       "m17.visit.cancelled",

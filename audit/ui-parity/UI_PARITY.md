@@ -65,6 +65,7 @@
 | web | 06-admission | `admission.readmit` | `/admissions/:id/readmit` | `admission.create` | ✅ |
 | web | 06-admission | `admission.discharge-cosign` | `/discharges/:id/cosign` | `discharge.cosign_for_cause` | ✅ |
 | web | 06-admission | `admission.discharge-details` | `/admissions/:id/discharge-details` | `admission.read` | ✅ |
+| web | 06-admission | `admission.level-of-care-change` | `/admissions/:id/level-of-care/new` | `loc.change` | ✅ |
 | web | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | `care_plan.read` | ✅ |
@@ -294,13 +295,13 @@
 | web | 37-ipu | `ipu.bedside` | `/ipu/admissions/:id` | `m37.ipu_admission.read` | ✅ |
 | web | 37-ipu | `ipu.census` | `/ipu/census` | `m37.census.read` | ✅ |
 | web | 37-ipu | `ipu.equipment` | `/ipu/equipment` | `m37.equipment.read` | ✅ |
-| web | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |
+| web | 38-terminology | `terminology.admin` | `/terminology` | `terminology.read` | ✅ |
 | web | 39-consent | `consent.record-manager` | `/patients/:patientId/consents` | `consent.read` | ✅ |
 | web | 39-consent | `consent.capture` | `/patients/:patientId/consents/new` | `consent.author` | ✅ |
 | web | 39-consent | `consent.detail` | `/patients/:patientId/consents/:consentId` | `consent.read` | ✅ |
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
-| web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
+| web | 40-mdm | `mdm.console` | `/mdm` | `mdm.physician.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |

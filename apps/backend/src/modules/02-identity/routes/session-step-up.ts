@@ -17,6 +17,11 @@
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
 import { requireSession, resolvePasskeyRpId } from "@wardenx/auth";
 import { STEP_UP_POLICY, UnauthorizedError, ValidationError } from "@wardenx/types";
+import {
+  type SessionStepUpState,
+  stepUpSatisfies,
+  tightenStepUpPolicy,
+} from "../policy/step-up-resolver";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditStepUpCompleted,
@@ -119,7 +124,49 @@ function defaultWebauthnChallenge(): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/** `none` = never stepped up; `fresh` = inside the platform floor's window; `expired` = stepped up, too long ago. */
+export type StepUpStatus = "none" | "fresh" | "expired";
+
+/**
+ * GAP-115 — what `GET /api/v1/me/session` reports about step-up, measured against the PLATFORM FLOOR
+ * (`STEP_UP_POLICY`). A tenant may have tightened a specific operation, so `fresh` here is "fresh enough for
+ * the loosest gate"; the 403 `STEP_UP_REQUIRED` stays the authority. The client uses it to open the step-up
+ * modal before the gated action fires instead of after the 403 round trip (M2 D8).
+ */
+export function describeStepUp(
+  state: SessionStepUpState,
+  now: Date,
+): { stepUpStatus: StepUpStatus; stepUpExpiresAt: string | null; stepUpSecondsRemaining: number } {
+  if (!state.lastStepUpAt || !state.lastStepUpFactor)
+    return { stepUpStatus: "none", stepUpExpiresAt: null, stepUpSecondsRemaining: 0 };
+  const policy = tightenStepUpPolicy(null);
+  const expiresAtMs = state.lastStepUpAt.getTime() + policy.maxAgeSec * 1000;
+  const fresh = stepUpSatisfies(policy, state, now).allow;
+  return {
+    stepUpStatus: fresh ? "fresh" : "expired",
+    stepUpExpiresAt: new Date(expiresAtMs).toISOString(),
+    stepUpSecondsRemaining: fresh
+      ? Math.max(0, Math.ceil((expiresAtMs - now.getTime()) / 1000))
+      : 0,
+  };
+}
+
 export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRouteDeps): void {
+  // --- GAP-115 (M2 §4.1, D8) — the read-only view of the session's step-up state ---------------
+  app.get("/api/v1/me/session", async (request) => {
+    await requireSession()(request); // Authorization Contract session gate — fails closed
+    const session = await (deps.meSessions ?? deps.sessions).resolve(request);
+    if (!session) throw new UnauthorizedError();
+    return {
+      sessionId: session.sessionId,
+      userId: session.userId,
+      organizationId: session.organizationId,
+      lastStepUpAt: session.lastStepUpAt ? session.lastStepUpAt.toISOString() : null,
+      lastStepUpFactor: session.lastStepUpFactor,
+      ...describeStepUp(session, (deps.now ?? (() => new Date()))()),
+    };
+  });
+
   const newChallengeId = deps.newChallengeId ?? (() => crypto.randomUUID());
   const newWebauthnChallenge = deps.newWebauthnChallenge ?? defaultWebauthnChallenge;
   const rpId = deps.webauthnRpId ?? resolvePasskeyRpId();

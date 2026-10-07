@@ -230,6 +230,12 @@ export {
   priorEpisodesForOrg,
   rhcPriorStayFacts,
 } from "./seams/prior-episodes";
+// GAP-119 — the org-explicit census summary M5's KPI strip pulls (counts only; injected into M5 as a port).
+export {
+  RECERT_DUE_WITHIN_DAYS,
+  admissionCensusSummaryForOrg,
+} from "./seams/admission-census-summary-for-org";
+export type { AdmissionCensusSummary } from "./seams/admission-census-summary-for-org";
 export * from "./intake/benefit-period";
 export type { DischargeDetailsService } from "./routes/discharge-details-service";
 export type { DischargeWorklistService } from "./routes/discharge-worklist-service";

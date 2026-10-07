@@ -260,7 +260,8 @@ export const CollaboratorInviteResponseSchema = Type.Object({
 
 /** POST /api/v1/collaborators/consume — the scoped external-collaborator session (§7.6). */
 export const CollaboratorConsumeResponseSchema = Type.Object({
-  sessionClass: Type.Literal("external_collaborator"),
+  // GAP-115 — a funeral-home link (POST /funeral/invite) is consumed through the same route.
+  sessionClass: Type.Union([Type.Literal("external_collaborator"), Type.Literal("funeral_home")]),
   scope: Type.Object({ patientId: Type.String() }),
   expiresAt: Type.String(),
 });

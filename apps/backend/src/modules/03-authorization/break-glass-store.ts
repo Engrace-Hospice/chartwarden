@@ -10,9 +10,10 @@
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, desc, eq, gt, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne } from "drizzle-orm";
 import {
   BreakGlassCosignError,
+  BreakGlassRevokeError,
   type BreakGlassStatus,
   type BreakGlassStore,
   type BreakGlassView,
@@ -159,9 +160,26 @@ export function createDbBreakGlassStore(db: DbClient, outbox?: M3OutboxPublisher
         const updated = (await tx
           .update(schema.breakGlassEvents)
           .set({ status: "revoked" })
-          .where(eq(schema.breakGlassEvents.id, eventId))
+          .where(
+            and(
+              eq(schema.breakGlassEvents.id, eventId),
+              // GAP-117 — only an unsettled grant can be revoked; the guard lives in the WHERE (like
+              // cosign) so a revoke racing the reaper or a second revoke matches no row.
+              inArray(schema.breakGlassEvents.status, ["active", "cosign_pending"]),
+            ),
+          )
           .returning(COLUMNS)) as Row[];
-        if (!updated[0]) throw new Error(`unknown break-glass event ${eventId}`);
+        if (!updated[0]) {
+          const existing = (await tx
+            .select(COLUMNS)
+            .from(schema.breakGlassEvents)
+            .where(eq(schema.breakGlassEvents.id, eventId))
+            .limit(1)) as Row[];
+          if (!existing[0]) throw new Error(`unknown break-glass event ${eventId}`);
+          throw new BreakGlassRevokeError(
+            `break-glass event ${eventId} is ${existing[0].status}, not revocable`,
+          );
+        }
         const view = toView(updated[0]);
         await outbox?.publish(tx as never, {
           eventName: "m3.breakglass.ended",

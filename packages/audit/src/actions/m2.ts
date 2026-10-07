@@ -33,6 +33,23 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "m2.session.terminated_step_up_lockout",
     "A session was terminated after step-up lockout.",
   ),
+  // GAP-115 — the M2 org-admin surface (organization / provider-entity / location management, the tenant
+  // step-up override registry, the funeral-home link). Field NAMES only in the trail, never values.
+  compliance("m2.organization.created", "An organization spine row was created (platform operator)."),
+  compliance("m2.organization.updated", "An organization's name was edited."),
+  compliance("m2.provider_entity.created", "A provider entity (Medicare-certified provider) was created."),
+  compliance("m2.provider_entity.updated", "A provider entity was edited."),
+  compliance("m2.location.created", "A service location was created."),
+  compliance("m2.location.updated", "A service location was edited."),
+  compliance(
+    "m2.session.step_up_policy_override.configured",
+    "A tenant step-up policy override (tighten-only) was set for an operation.",
+  ),
+  compliance(
+    "m2.session.step_up_policy_override.removed",
+    "A tenant step-up policy override was removed (the platform floor applies again).",
+  ),
+  compliance("m2.funeral.invited", "A per-deceased funeral-home magic-link was issued."),
   // ADR-0023 D2 / SecHardening §12.4 — device attestation. The FAILED event is as load-bearing as the
   // passing one: §12.4 names the server-side audit as the complement to on-device detection, and a
   // handset that repeatedly fails the posture check is exactly the pattern it is asking to surface.

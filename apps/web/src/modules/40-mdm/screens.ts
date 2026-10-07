@@ -12,6 +12,8 @@ export const mdmScreens: ScreenRegistryModule<ComponentType> = {
       id: "mdm.console",
       path: "/mdm",
       title: "Master Data",
+      // GAP-116 — the console reads the clinical-directory kinds; physician is the one every directory reader holds.
+      requiredPermission: "mdm.physician.read",
       navGroup: "Admin",
       screen: MdmConsole,
     },

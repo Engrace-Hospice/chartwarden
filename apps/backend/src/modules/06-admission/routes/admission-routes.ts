@@ -30,6 +30,7 @@ import {
   deriveDischargePermissionKey,
 } from "../discharge";
 import { AdmissionStateError } from "../state-machines/errors";
+import { assertGipAttestations } from "../state-machines/level-of-care";
 import {
   AdmissionActivateSchema,
   AdmissionCreateSchema,
@@ -47,6 +48,7 @@ import {
   CtiSignSchema,
   CtiVoidSchema,
   DischargeCosignSchema,
+  DischargeDeclineSchema,
   DischargeCreateSchema,
   ElectionPeriodCreateSchema,
   ElectionPeriodPatchSchema,
@@ -1264,6 +1266,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocChangeSchema, request.body);
+      assertGipAttestations(body.newLevel, body.gipAttestations);
       const res = await service.changeLoc(
         organizationId,
         idOf(request),
@@ -1389,7 +1392,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // §6.3: the permission key is derived from `reason` server-side (dischargeReasonGuard).
   app.post(
     "/api/v1/admissions/:id/discharge",
-    { preHandler: [dischargeReasonGuard()] },
+    // GAP-121 — the discharge is a chart-scoped write: the reason-derived permission AND `admission.scope`
+    // (a same-org clinician outside the patient's caseload gets the non-leaking 404).
+    { preHandler: [dischargeReasonGuard(), admissionScope("discharge.create")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       throwBodyIssue(checkPlaceOfDeathBody(request.body));
@@ -1430,6 +1435,24 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           orderText: body.orderText,
           orderReference: body.orderReference,
         },
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  // GAP-121 — the other half of the two-person control: the director declines instead of cosigning. The
+  // discharge is voided and the admission stays active. Same permission + signer-set predicate as the cosign.
+  app.post(
+    "/api/v1/discharges/:id/decline-for-cause",
+    { preHandler: [DISCHARGE_COSIGN, ABAC_DISCHARGE_ORDER_SIGNER] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(DischargeDeclineSchema, request.body);
+      return service.declineDischarge(
+        organizationId,
+        idOf(request),
+        { declineReason: body.declineReason },
         body.ifVersion,
         userId,
       );

@@ -161,6 +161,12 @@ const PLATFORM_WRITER_FUNCTIONS = [
   // this grant widens WHO may rotate partitions, not what the platform role can do to the schema.
   "rotate_time_partitions(int)",
   "time_partition_coverage()",
+  // GAP-113 — the `audit.archive` job's three entry points (migration 0432). Reading every tenant's closed audit
+  // partitions and detaching one need BYPASSRLS / table ownership the platform role must not hold; each function
+  // is SECURITY DEFINER and validates its partition name against `pg_inherits` before using it. None can drop.
+  "audit_archive_candidates(int)",
+  "audit_archive_read_batch(text, uuid, int)",
+  "audit_archive_detach(text, bigint)",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no wardenx_app grant): full write. */

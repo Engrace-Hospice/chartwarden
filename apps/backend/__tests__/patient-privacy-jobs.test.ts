@@ -85,9 +85,10 @@ describe("§4.5 geocode job", () => {
 });
 
 describe("§4.6 outbox event catalog", () => {
-  it("declares 17 m5.patient.* / m5.patient_allergy.* events, all owned by m5", () => {
+  it("declares 19 m5.patient.* / m5.patient_allergy.* events, all owned by m5", () => {
     // F-238 added `m5.patient_allergy.draft_created_from_extraction` (the DocLens allergy reply).
-    expect(M5_OUTBOX_EVENTS).toHaveLength(17);
+    // GAP-118 added `m5.patient.amendment_sla_due_soon` / `.amendment_sla_overdue` (the daily SLA scan).
+    expect(M5_OUTBOX_EVENTS).toHaveLength(19);
     for (const e of M5_OUTBOX_EVENTS) {
       expect(e.moduleOwner).toBe("m5");
       expect(/^m5\.patient(_allergy)?\./.test(e.eventName)).toBe(true);

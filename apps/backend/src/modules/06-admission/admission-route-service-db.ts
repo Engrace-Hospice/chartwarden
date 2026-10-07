@@ -115,6 +115,7 @@ import {
 import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
+  DeclineDischargeInput,
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
@@ -5882,6 +5883,8 @@ export function createDbAdmissionRouteService(
                 effectiveAt: input.dischargeDate,
                 narrative: input.narrative,
                 forCauseReason: input.forCauseReason ?? null,
+                // GAP-121 — the filer; the cosign refuses the same user (two-person control).
+                filedByUserId: actorUserId,
               })
               .returning({
                 id: DE.id,
@@ -6014,12 +6017,21 @@ export function createDbAdmissionRouteService(
             source: DE.source,
             sourceProposalId: DE.sourceProposalId,
             cosignedAt: DE.cosignedAt,
+            filedByUserId: DE.filedByUserId,
           })
           .from(DE)
           .where(eq(DE.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
+        // GAP-121 — two-person control: the filer of a for-cause discharge cannot cosign it. (An external
+        // death has no filer — `filed_by_user_id` is only ever set on the for-cause filing.)
+        if (cur.filedByUserId !== null && cur.filedByUserId === actorUserId)
+          throw new WardenXError(
+            "DISCHARGE_COSIGNER_IS_FILER",
+            "The person who filed a for-cause discharge cannot cosign it; another medical director must.",
+            409,
+          );
         // F-227 (#248) — W-M6-31: an EXTERNAL-source death is already `completed` (admission discharged at
         // intake); the director's cosign is the after-the-fact attestation, not the completion.
         if (cur.source === "hl7_external") {
@@ -6138,6 +6150,46 @@ export function createDbAdmissionRouteService(
           aggregateKind: "discharge_event",
           aggregateId: id,
         });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    // GAP-121 — the director's other option on a for-cause filing: decline it. The discharge is voided (the
+    // admission was held `active` the whole time, so nothing else moves). Version- and status-guarded.
+    async declineDischarge(
+      organizationId,
+      id,
+      input: DeclineDischargeInput,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: DE.status, version: DE.version, source: DE.source })
+          .from(DE)
+          .where(eq(DE.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.source === "hl7_external" || cur.status !== "pending_cosign")
+          throw conflict(
+            `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
+          );
+        const outcome = resolveForCauseDischarge("reject");
+        const r = firstOrThrow(
+          await tx
+            .update(DE)
+            .set({
+              status: outcome.dischargeState,
+              medicalDirectorMembershipId: actorUserId,
+              // The reason lives on the audited row (free text, scrubbed by the M4 write-audit trigger).
+              narrative: sql`coalesce(${DE.narrative}, '') || E'\n[declined] ' || ${input.declineReason}`,
+              version: sql`${DE.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(DE.id, id), eq(DE.version, ifVersion), eq(DE.status, "pending_cosign")))
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge not found",
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

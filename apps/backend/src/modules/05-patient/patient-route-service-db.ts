@@ -14,6 +14,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
+import { changeToApply, isAmendableField, normalizeRequestedChange } from "./amendments";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { M5OutboxPort } from "./deceased-db";
 import { insertSoftMatchReviews } from "./match-review-db";
@@ -28,6 +29,7 @@ import type {
   AdmitResult,
   AssignmentView,
   CareTeamView,
+  AdmissionCensusSummaryPort,
   CensusMetrics,
   CreatePatientAssignmentInput,
   DemographicsView,
@@ -110,6 +112,7 @@ const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
 export function createDbPatientRouteService(
   db: DbClient,
   outbox: M5OutboxPort = NOOP_OUTBOX,
+  ports: { readonly admissionSummary?: AdmissionCensusSummaryPort } = {},
 ): PatientRouteService {
   const list = async (
     organizationId: string,
@@ -164,8 +167,8 @@ export function createDbPatientRouteService(
   };
 
   // §4.2 census KPI strip — a single COUNT…GROUP BY status, org-scoped by RLS under withOrgContext.
-  const censusMetrics = async (organizationId: string): Promise<CensusMetrics> =>
-    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+  const censusMetrics = async (organizationId: string): Promise<CensusMetrics> => {
+    const counts = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = await tx
         .select({ status: P.status, n: sql<number>`count(*)::int` })
         .from(P)
@@ -178,6 +181,18 @@ export function createDbPatientRouteService(
       }
       return { total, byStatus };
     });
+    // GAP-119 — the admission-owned KPIs come from M6's published summary (org-explicit, counts only). Its
+    // own transaction, after the census one is closed; a failure degrades the strip, it never fails the read.
+    let admissions: CensusMetrics["admissions"] = null;
+    if (ports.admissionSummary) {
+      try {
+        admissions = await ports.admissionSummary(organizationId);
+      } catch {
+        admissions = null;
+      }
+    }
+    return { ...counts, admissions };
+  };
 
   const getPatient = async (organizationId: string, id: string): Promise<PatientView | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -889,16 +904,46 @@ export function createDbPatientRouteService(
       return { addressId, cascadeEmitted: "m5.patient.address_changed" };
     });
 
-  // §7.7: open a record-amendment request; SLA due = received + 60 days. The §4.x body captures
-  // scope + rationale only, so requested_changes is an empty object until the schema carries it.
+  // §7.7: open a record-amendment request; SLA due = received + 60 days. GAP-118 — a demographic request names
+  // the ONE field to change and the value it should hold (closed allowlist, `./amendments`); the current value
+  // is captured here so the reviewer sees what is being replaced, and an accepted request applies it.
   const submitAmendment = async (
     organizationId: string,
     patientId: string,
-    input: { scope: string; rationale: string },
+    input: {
+      scope: string;
+      rationale: string;
+      requestedChange?: { fieldPath: string; requestedValue: string | null };
+    },
     actorUserId: string,
   ) =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
       await assertPatientVisible(tx, patientId);
+      const change = normalizeRequestedChange(
+        input.scope,
+        input.requestedChange,
+        new Date().toISOString().slice(0, 10),
+      );
+      let requestedChanges: Record<string, unknown> = {};
+      if (change) {
+        let currentValue: string | null = null;
+        if (isAmendableField(change.fieldPath)) {
+          const col = P[change.fieldPath];
+          const cur = (await tx
+            .select({ current: col })
+            .from(P)
+            .where(eq(P.id, patientId))
+            .limit(1)) as Array<{
+            current: string | null;
+          }>;
+          currentValue = cur[0]?.current ?? null;
+        }
+        requestedChanges = {
+          fieldPath: change.fieldPath,
+          currentValue,
+          requestedValue: change.requestedValue,
+        };
+      }
       const slaDueAt = new Date(Date.now() + SIXTY_DAYS_MS);
       const inserted = (await tx
         .insert(schema.patientAmendmentRequests)
@@ -907,7 +952,7 @@ export function createDbPatientRouteService(
           patientId,
           requestedByUserId: actorUserId,
           scope: input.scope,
-          requestedChanges: {},
+          requestedChanges,
           rationale: input.rationale,
           status: "pending",
           slaDueAt,
@@ -939,19 +984,39 @@ export function createDbPatientRouteService(
     actorUserId: string,
   ) =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-      if (!decision.accept && !decision.denialReason) throw new Error("denial requires a reason");
+      // GAP-118 — typed errors (a plain `Error` surfaced as a 500) and a status guard: a decided request
+      // cannot be re-decided (an accepted amendment flipped to denied would rewrite the HIPAA §164.526 record).
+      if (!decision.accept && !decision.denialReason)
+        throw new WardenXError("DENIAL_REASON_REQUIRED", "A denial requires a reason.", 422);
       const rows = (await tx
         .select({
           patientId: schema.patientAmendmentRequests.patientId,
+          status: schema.patientAmendmentRequests.status,
+          scope: schema.patientAmendmentRequests.scope,
+          requestedChanges: schema.patientAmendmentRequests.requestedChanges,
           slaDueAt: schema.patientAmendmentRequests.slaDueAt,
         })
         .from(schema.patientAmendmentRequests)
         .where(eq(schema.patientAmendmentRequests.id, amendmentId))
-        .limit(1)) as Array<{ patientId: string; slaDueAt: Date }>;
+        .limit(1)) as Array<{
+        patientId: string;
+        status: string;
+        scope: string;
+        requestedChanges: unknown;
+        slaDueAt: Date;
+      }>;
       const row = rows[0];
-      if (!row) throw new Error(`amendment ${amendmentId} not found`);
+      if (!row) throw new WardenXError("NOT_FOUND", "amendment request not found", 404);
+      const notPending = () =>
+        new WardenXError(
+          "AMENDMENT_NOT_PENDING",
+          "This amendment request has already been decided.",
+          409,
+        );
+      if (row.status !== "pending") throw notPending();
       const status = decision.accept ? ("accepted" as const) : ("denied" as const);
-      await tx
+      // The guard is repeated in the WHERE so two reviewers racing the same request cannot both win.
+      const decided = (await tx
         .update(schema.patientAmendmentRequests)
         .set({
           status,
@@ -959,7 +1024,27 @@ export function createDbPatientRouteService(
           reviewerUserId: actorUserId || null,
           decidedAt: new Date(),
         })
-        .where(eq(schema.patientAmendmentRequests.id, amendmentId));
+        .where(
+          and(
+            eq(schema.patientAmendmentRequests.id, amendmentId),
+            eq(schema.patientAmendmentRequests.status, "pending"),
+          ),
+        )
+        .returning({ id: schema.patientAmendmentRequests.id })) as Array<{ id: string }>;
+      if (decided.length === 0) throw notPending();
+      // GAP-118 — an ACCEPTED demographic amendment changes the chart, in this same transaction. Clinical /
+      // narrative amendments are recorded and linked (164.526(c)), never used to overwrite the source note.
+      const applied = decision.accept ? changeToApply(row.scope, row.requestedChanges) : null;
+      if (applied) {
+        await tx
+          .update(P)
+          .set({ [applied.column]: applied.value } as Partial<typeof P.$inferInsert>)
+          .where(eq(P.id, row.patientId));
+        // The chart changed — M12 (DoseSpot sync) and M24 (claim revalidation) subscribe to this.
+        await emitPatientEvent(tx, organizationId, row.patientId, "m5.patient.updated", {
+          changed: [applied.column],
+        });
+      }
       await emitPatientEvent(tx, organizationId, row.patientId, "m5.patient.amendment_decided", {
         amendmentId,
         decision: status,

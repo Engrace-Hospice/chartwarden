@@ -66,7 +66,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // seam PULL (`coordsForAddress`), never this push event.
     // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
     // `m12.patient-sync-address-changed` (D4).
-    declaredConsumers: ["m24", "m12"],
+    // GAP-118 — m5 ADDED: the re-geocode is now a real consumer (`outbox-consumers/m5-geocode-address.ts`).
+    declaredConsumers: ["m24", "m12", "m5"],
     isOutboxOnly: true,
   },
   {
@@ -224,6 +225,33 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
       decision: Type.String(),
     }),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m5.patient.amendment_sla_due_soon",
+    moduleOwner: "m5",
+    description:
+      "A pending §164.526 amendment request is within 10 days of its 60-day deadline (daily SLA scan, once per request).",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      amendmentId: Type.String(),
+      slaDueAt: Type.String({ minLength: 1 }),
+    }),
+    // M36 pages the privacy / compliance audience (`36-messaging/outbox-consumers/amendment-sla-alerts.ts`).
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m5.patient.amendment_sla_overdue",
+    moduleOwner: "m5",
+    description:
+      "A pending §164.526 amendment request passed its 60-day deadline undecided (daily SLA scan, once per request).",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      amendmentId: Type.String(),
+      slaDueAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

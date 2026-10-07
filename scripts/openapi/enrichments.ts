@@ -30,9 +30,34 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  HealthResponseSchema as M1HealthResponseSchema,
+  ReadyResponseSchema as M1ReadyResponseSchema,
+  VersionResponseSchema as M1VersionResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/health";
+import {
+  FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
+import {
+  FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
+  FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
+  LocationCreateRequestSchema as M2LocationCreateRequestSchema,
+  LocationDetailSchema as M2LocationDetailSchema,
+  LocationPatchRequestSchema as M2LocationPatchRequestSchema,
+  MeSessionResponseSchema as M2MeSessionResponseSchema,
+  OrganizationCreateRequestSchema as M2OrganizationCreateRequestSchema,
+  OrganizationListResponseSchema as M2OrganizationListResponseSchema,
+  OrganizationPatchRequestSchema as M2OrganizationPatchRequestSchema,
+  OrganizationViewSchema as M2OrganizationViewSchema,
+  ProviderEntityCreateRequestSchema as M2ProviderEntityCreateRequestSchema,
+  ProviderEntityDetailSchema as M2ProviderEntityDetailSchema,
+  ProviderEntityPatchRequestSchema as M2ProviderEntityPatchRequestSchema,
+  StepUpOverrideListResponseSchema as M2StepUpOverrideListResponseSchema,
+  StepUpOverrideRemovedResponseSchema as M2StepUpOverrideRemovedResponseSchema,
+  StepUpOverrideRequestSchema as M2StepUpOverrideRequestSchema,
+  StepUpOverrideSchema as M2StepUpOverrideSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/org-admin-typebox";
 import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
@@ -86,6 +111,7 @@ import {
   CtiSignSchema,
   CtiVoidSchema,
   DischargeCosignSchema,
+  DischargeDeclineSchema,
   DischargeCreateSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
@@ -3959,6 +3985,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
   },
+  "POST /api/v1/discharges/:id/decline-for-cause": {
+    summary:
+      "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
+    body: DischargeDeclineSchema,
+  },
   "GET /api/v1/admissions/:id/discharge-order": {
     summary:
       "The admission's 42 CFR 418.26(b) discharge order and for-cause cosigner (null until discharged)",
@@ -5980,6 +6011,81 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Mint a per-patient magic-link (caseload_membership ABAC, §7.6)",
     body: M2CollaboratorInviteRequestSchema,
     response: M2CollaboratorInviteResponseSchema,
+  },
+  // GAP-115 (M2 §4.1) — the org-admin surface.
+  "GET /api/v1/me/session": {
+    summary:
+      "The caller's session metadata incl. last step-up and its freshness against the platform floor (D8)",
+    response: M2MeSessionResponseSchema,
+  },
+  "GET /api/v1/orgs": {
+    summary:
+      "Organizations: the caller's own org (org admin) or every org, searchable (platform operator)",
+    response: M2OrganizationListResponseSchema,
+  },
+  "POST /api/v1/orgs": {
+    summary: "Create an organization spine row (platform operator only)",
+    body: M2OrganizationCreateRequestSchema,
+    response: M2OrganizationViewSchema,
+  },
+  "GET /api/v1/orgs/:id": {
+    summary: "One organization (own org, or any for a platform operator)",
+    response: M2OrganizationViewSchema,
+  },
+  "PATCH /api/v1/orgs/:id": {
+    summary: "Edit an organization's display name (own org) / legal name (platform operator)",
+    body: M2OrganizationPatchRequestSchema,
+    response: M2OrganizationViewSchema,
+  },
+  "GET /api/v1/provider-entities/:id": {
+    summary: "One provider entity of the caller's org (the tax id is never returned)",
+    response: M2ProviderEntityDetailSchema,
+  },
+  "POST /api/v1/provider-entities": {
+    summary:
+      "Create a provider entity (CCN, NPI check digit, EIN enveloped by the cipher; 503 TAX_ID_CIPHER_UNBOUND until the KMS cipher is bound)",
+    body: M2ProviderEntityCreateRequestSchema,
+    response: M2ProviderEntityDetailSchema,
+  },
+  "PATCH /api/v1/provider-entities/:id": {
+    summary:
+      "Edit names / iQIES id / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here",
+    body: M2ProviderEntityPatchRequestSchema,
+    response: M2ProviderEntityDetailSchema,
+  },
+  "GET /api/v1/locations/:id": {
+    summary: "One service location of the caller's org",
+    response: M2LocationDetailSchema,
+  },
+  "POST /api/v1/locations": {
+    summary: "Create a service location under one of the caller's provider entities",
+    body: M2LocationCreateRequestSchema,
+    response: M2LocationDetailSchema,
+  },
+  "PATCH /api/v1/locations/:id": {
+    summary: "Edit a location's address / contact / timezone / lifecycle status",
+    body: M2LocationPatchRequestSchema,
+    response: M2LocationDetailSchema,
+  },
+  "GET /api/v1/orgs/:id/step-up-overrides": {
+    summary: "The tenant's per-operation step-up overrides (tighten-only)",
+    response: M2StepUpOverrideListResponseSchema,
+  },
+  "POST /api/v1/orgs/:id/step-up-overrides": {
+    summary:
+      "Set / replace one operation's step-up override — may only TIGHTEN the platform floor; needs a fresh step-up (W-M2-10)",
+    body: M2StepUpOverrideRequestSchema,
+    response: M2StepUpOverrideSchema,
+  },
+  "DELETE /api/v1/orgs/:id/step-up-overrides/:operationKey": {
+    summary: "Remove an override (the platform floor applies again); needs a fresh step-up",
+    response: M2StepUpOverrideRemovedResponseSchema,
+  },
+  "POST /api/v1/funeral/invite": {
+    summary:
+      "Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased)",
+    body: M2FuneralInviteRequestSchema,
+    response: M2FuneralInviteResponseSchema,
   },
   "POST /api/v1/collaborators/consume": {
     summary: "Consume the link → scoped external-collaborator session (§7.6)",
@@ -11461,6 +11567,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // typed that body as `never` — the generated client could not express the call. The schemas live beside
 // the route's own runtime validator so the two cannot drift.
 Object.assign(ROUTE_ENRICHMENTS, {
+  // GAP-114 — the unauthenticated probes and the feature-flag read carried no published contract.
+  "GET /health": {
+    summary: "Liveness probe (unauthenticated)",
+    response: M1HealthResponseSchema,
+  },
+  "GET /ready": {
+    summary:
+      "Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down",
+    response: M1ReadyResponseSchema,
+  },
+  // Prometheus text exposition (not JSON), so no JSON response schema — the entry documents the route.
+  "GET /metrics": {
+    summary:
+      "Prometheus text-format metrics for internal scraping (unauthenticated, not a public route)",
+  },
+  "GET /version": {
+    summary: "Build identity: version, git SHA and build time (unauthenticated)",
+    response: M1VersionResponseSchema,
+  },
+  "GET /api/v1/system/feature-flags": {
+    summary: "This org's resolved feature flags",
+    response: M1FeatureFlagsResponseSchema,
+  },
   "GET /api/v1/system/status": {
     summary: "Read this org's system-status components",
     response: M1SystemStatusResponseSchema,

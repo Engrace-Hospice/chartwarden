@@ -440,6 +440,29 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-118 — a §164.526 amendment request nearing / past its 60-day deadline
+  // (`36-messaging/outbox-consumers/amendment-sla-alerts.ts`). Records-management work, so it pages the privacy
+  // officer and compliance, not the care team.
+  {
+    eventType: "m5.patient.amendment_sla_due_soon",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_privacy_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m5.patient.amendment_sla_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_privacy_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m6.admission.discharged",
     category: "clinical_routine",

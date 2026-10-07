@@ -86,6 +86,13 @@ export {
   createProposedRoleGuard,
 } from "./proposed-role-ceiling";
 export { createDbBreakGlassStore } from "./break-glass-store";
+// GAP-117 — the reap_breakglass cron (expires lapsed grants).
+export {
+  M3_PLATFORM_JOB_ID,
+  registerM3CronWorkers,
+  scheduleM3Jobs,
+  wireM3ReaperTenancy,
+} from "./break-glass-reaper";
 // GAP-011 / GAP-093 — the durable engagement store and the published AuditorEngagementReader.
 export { createDbEngagementStore } from "./engagement-store";
 export { createDbAuditorEngagementReader } from "./engagement-reader";

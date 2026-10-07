@@ -46,8 +46,10 @@ import {
   auditUserDeactivated,
   auditUserInvited,
 } from "../audit/identity-audit";
+import { auditFuneralInvited } from "../audit/org-admin-audit";
 import {
   type Actor,
+  FUNERAL_LINK_TTL_SEC,
   type IdentityRouteDeps,
   type InvitationDetail,
   LinkError,
@@ -904,7 +906,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     }
 
     const sessionId = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + collabTtlSec * 1000).toISOString();
+    const sessionTtlSec = scope.kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : collabTtlSec;
+    const expiresAt = new Date(Date.now() + sessionTtlSec * 1000).toISOString();
     await auditCollaboratorSessionStarted(
       deps.audit,
       auditContextFor(request, {
@@ -923,9 +926,63 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     });
     // Production sets the external_collaborator session cookie here; scope is exactly 1 patient.
     return reply.code(200).send({
-      sessionClass: "external_collaborator",
+      sessionClass: scope.kind ?? "external_collaborator",
       scope: { patientId: scope.patientId },
       expiresAt,
     });
+  });
+
+  // --- GAP-115 (M2 §4.1, §3.6) Funeral home: mint a per-deceased link --------------------------
+  // The same one-time link store as the collaborator link, with the funeral-home session class and its 72 h
+  // lifetime. Gated like the collaborator link (session + the `caseload_membership` ABAC on the patient) and
+  // FAIL-CLOSED on the one fact only M5 owns: the patient must be deceased. With no deceased-status reader bound
+  // the route refuses (503) rather than minting disposition access for a living patient.
+  app.post("/api/v1/funeral/invite", async (request, reply) => {
+    await requireSession()(request);
+    await requirePermission("funeral.invite")(request); // RBAC first; `requireAbac` below is ABAC only
+    await requireAbac("funeral.invite", "caseload_membership", {
+      getTarget: (req) => {
+        const patientId = (req.body as { patientId?: unknown } | null)?.patientId;
+        return typeof patientId === "string" ? { patientId } : {};
+      },
+    })(request);
+    const actor = await resolveActor(deps, request);
+    if (!actor.organizationId || !actor.membershipId) {
+      throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);
+    }
+    const patientId = readString(request.body, "patientId");
+    if (!deps.deceasedPatients) {
+      throw unavailable(
+        "DECEASED_STATUS_UNAVAILABLE",
+        "the deceased-status reader is not bound; a funeral-home link cannot be minted until it is",
+      );
+    }
+    if (!(await deps.deceasedPatients.isDeceased(actor.organizationId, patientId))) {
+      throw new WardenXError(
+        "PATIENT_NOT_DECEASED",
+        "a funeral-home link can only be issued for a deceased patient",
+        409,
+      );
+    }
+    const link = await deps.collaborators.create({
+      organizationId: actor.organizationId,
+      patientId,
+      invitedByMembershipId: actor.membershipId,
+      kind: "funeral_home",
+    });
+    await auditFuneralInvited(
+      deps.audit,
+      auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
+      { linkId: link.linkId, organizationId: actor.organizationId, patientId },
+    );
+    await publishM2(deps, {
+      eventName: "m2.funeral.invited",
+      payload: { linkId: link.linkId, organizationId: actor.organizationId, patientId },
+      organizationId: actor.organizationId,
+      aggregateKind: "funeral_link",
+      aggregateId: link.linkId,
+    });
+    // Token delivered out-of-band — never in the body (same as the collaborator link).
+    return reply.code(201).send({ linkId: link.linkId, expiresAt: link.expiresAt });
   });
 }

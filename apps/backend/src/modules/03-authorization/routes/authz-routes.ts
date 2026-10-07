@@ -23,6 +23,7 @@
 import type { AuditContext } from "@wardenx/audit";
 import {
   allPermissionMirrorRows,
+  isSystemLocked,
   isTenantRoleReserved,
   requirePermission,
   requireSession,
@@ -53,6 +54,7 @@ import {
 import {
   type AuthzRouteDeps,
   BreakGlassCosignError,
+  BreakGlassRevokeError,
   type BreakGlassView,
   RoleLockedError,
 } from "../authz-ports";
@@ -111,9 +113,20 @@ function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
   );
 }
 
+/** GAP-117 — a revoke of a break-glass event that is already settled (revoked / expired / denied). */
+function revokeRefusedToHttp(err: BreakGlassRevokeError): WardenXError {
+  return new WardenXError("BREAKGLASS_NOT_REVOCABLE", err.message, 409);
+}
+
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 /** GAP-003/GAP-096 — platform authority is neither mintable nor assignable through a tenant's role
  *  surface. Operators grant it out of band (`bun run db:platform-role`, OPS_RUNBOOK §16.5). */
+const lastRequiredRole = (roleKey: string) =>
+  new WardenXError(
+    "LAST_REQUIRED_ROLE",
+    `cannot remove the last holder of the CoP-required role '${roleKey}'; assign it to another member first`,
+    409,
+  );
 const reservedRole = () =>
   new WardenXError(
     "RESERVED_ROLE",
@@ -322,6 +335,15 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { organizationId } = actorOf(request.context);
       const { id: membershipId, rid: roleId } = parse(MembershipRoleParams, request.params);
       const role = await deps.roles.get(roleId);
+      // GAP-117 (spec §2.4) — the last holder of a CoP-required (system-locked) role cannot be stripped,
+      // or the org is left without a Medical Director / DON / Administrator / Compliance Officer.
+      if (role && isSystemLocked(role.key)) {
+        const held = await deps.membershipRoles.listForMembership(membershipId);
+        const holdsIt = held.some((g) => g.roleId === roleId);
+        if (holdsIt && (await deps.membershipRoles.countActiveHolders(roleId)) <= 1) {
+          throw lastRequiredRole(role.key);
+        }
+      }
       const revoked = await deps.membershipRoles.revoke(membershipId, roleId);
       if (!revoked) throw notFound("role grant");
       await auditRoleRevoked(deps.audit, auditContextFor(request), {
@@ -432,7 +454,13 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       actorOf(request.context);
       const { id: eventId } = parse(BreakGlassIdParams, request.params);
       if (!(await deps.breakGlass.get(eventId))) throw notFound("break-glass event");
-      const event = await deps.breakGlass.revoke(eventId);
+      let event: BreakGlassView;
+      try {
+        event = await deps.breakGlass.revoke(eventId);
+      } catch (err) {
+        if (err instanceof BreakGlassRevokeError) throw revokeRefusedToHttp(err);
+        throw err;
+      }
       await auditBreakGlassRevoked(deps.audit, auditContextFor(request), { eventId });
       return reply.code(200).send({ breakGlassId: event.eventId, status: event.status });
     },

@@ -1023,3 +1023,36 @@ describe("M10 — #48 the HQRP compliance dashboard distinguishes no-data from a
     await app.close();
   });
 });
+
+describe("GAP-124 — draft writes apply the discipline floor and regenerate is scoped", () => {
+  it("a chaplain holding hope.timepoint.write is 403 on PUT draft and PATCH answers", async () => {
+    const { app } = makeServer();
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/v1/hope/assessments/${SIGNED_A}`,
+      headers: CHAPLAIN,
+      payload: { data: {} },
+    });
+    expect(put.statusCode).toBe(403);
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/hope/assessments/${SIGNED_A}/answers`,
+      headers: CHAPLAIN,
+      payload: { operations: [] },
+    });
+    expect(patch.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("regenerate-schedules is denied for an admission outside the actor's scope", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/hope/admin/regenerate-schedules",
+      headers: RN,
+      payload: { admissionId: ADMISSION },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+});

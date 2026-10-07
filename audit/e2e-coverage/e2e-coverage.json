@@ -552,9 +552,9 @@
       "id": "mdm.console",
       "module": "40-mdm",
       "path": "/mdm",
-      "permission": "(none)",
+      "permission": "mdm.physician.read",
       "e2eReached": false,
-      "axeReached": false
+      "axeReached": true
     },
     {
       "id": "ai.my-preferences",
@@ -1088,7 +1088,7 @@
       "id": "terminology.admin",
       "module": "38-terminology",
       "path": "/terminology",
-      "permission": "(none)",
+      "permission": "terminology.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1202,14 +1202,6 @@
       "id": "identity.mfa-challenge",
       "module": "02-identity",
       "path": "/login/2fa",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
-      "id": "mdm.console",
-      "module": "40-mdm",
-      "path": "/mdm",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -1852,9 +1844,9 @@
       "id": "mdm.console",
       "module": "40-mdm",
       "path": "/mdm",
-      "permission": "(none)",
+      "permission": "mdm.physician.read",
       "e2eReached": false,
-      "axeReached": false
+      "axeReached": true
     },
     {
       "id": "ai.my-preferences",
@@ -2468,7 +2460,7 @@
       "id": "terminology.admin",
       "module": "38-terminology",
       "path": "/terminology",
-      "permission": "(none)",
+      "permission": "terminology.read",
       "e2eReached": false,
       "axeReached": true
     },

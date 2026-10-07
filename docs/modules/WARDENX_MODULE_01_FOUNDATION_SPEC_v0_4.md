@@ -2534,6 +2534,19 @@ Module 1 creates and consumes:
 | `idempotency.cleanup` | `purge_expired` | Delete expired idempotency keys from PG (Valkey TTL handles its own) | Hourly cron |
 | `outbox.cleanup` | `purge_dispatched` | Delete `outbox_event` rows 30 days post-dispatch (§24.1) | Daily cron |
 
+> **Implementation status (GAP-113).** `idempotency.cleanup` is implemented (`apps/backend/src/bootstrap/jobs/idempotency-cleanup.ts`):
+> hourly, per active org under RLS, batched DELETE of rows past `expires_at`; a failing org does not stop the
+> others and the pass rejects so BullMQ retries (purge is reentrant, §4.8.1). **`audit.archive` is implemented**
+> (`apps/backend/src/bootstrap/jobs/audit-archive.ts`, migration 0432): monthly, on the platform credential, it
+> copies each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13) to the
+> `AUDIT_ARCHIVE_BUCKET` as gzip'd NDJSON parts plus a checksummed `manifest.json`, **verifying every object back
+> from the store** (server-enforced SHA-256 + `inspectObject`) before it counts. It **never drops** a partition —
+> destruction stays M4's certificate-driven act (§4.8.1: never drop a partition whose archive failed holds
+> trivially). Detaching an archived partition from the hot table is a separate opt-in (`AUDIT_ARCHIVE_DETACH=true`,
+> off by default) because a detached range is no longer searched through `audit_event` until M4's retention policy
+> for archived ranges is agreed. Unconfigured (no bucket / no `MINIO_*` credentials) the job logs a skip and the hot
+> tier keeps everything.
+
 #### 4.8.1 Queue parameters (M01-F09 / SD-059 / OPS-035)
 
 Every queue declares explicit retry/backoff/concurrency/DLQ parameters — the v0.4 spec declared

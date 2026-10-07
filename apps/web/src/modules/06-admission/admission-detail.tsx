@@ -1333,6 +1333,15 @@ export function AdmissionDetail(): JSX.Element {
                 </Link>
               ) : null}
               {(admission.state === "active" || admission.state === "on_hold") &&
+              hasPermission("loc.change") ? (
+                <Link
+                  to={`/admissions/${admission.id}/level-of-care/new`}
+                  className="wx-btn-secondary"
+                >
+                  Change level of care
+                </Link>
+              ) : null}
+              {(admission.state === "active" || admission.state === "on_hold") &&
               hasPermission("discharge.death") ? (
                 <Link to={`/admissions/${admission.id}/death`} className="wx-btn-secondary">
                   Record death

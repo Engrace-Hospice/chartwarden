@@ -756,6 +756,25 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | GET/POST/PATCH | `/api/v1/locations[...]` | admin | `org_admin` | yes | Location management |
 | GET/POST | `/api/v1/orgs/:id/step-up-overrides[...]` | admin | `org_admin`/`compliance_officer` | yes | configure per-operation tenant step-up tightening |
 
+> **Implementation status (GAP-115).** Built: `GET /api/v1/me/session` (session metadata + `stepUpStatus`
+> measured against the platform floor); `GET/POST /api/v1/orgs/:id/step-up-overrides` + `DELETE .../:operationKey`
+> (`step_up_override.manage`; tighten-only validated in the route AND by `trg_tenant_step_up_tighten_only`; the
+> writes need a fresh step-up; audited + `m2.session.step_up_policy_override.configured`); `GET/POST /api/v1/orgs`,
+> `GET/PATCH /api/v1/orgs/:id` (own org for a tenant admin, any org for a platform operator; POST and the legal
+> name are platform-only); `GET/POST/PATCH /api/v1/provider-entities[/:id]` and `/api/v1/locations[/:id]`
+> (org-bound; the CMS identity — CCN, NPI, tax id, fiscal year end — is immutable through PATCH; a location can
+> only be activated under an active provider entity); `POST /api/v1/funeral/invite` (72h one-time link, caseload
+> ABAC, 409 unless the patient is deceased). Lifecycle activate/suspend/close of an org stays the platform route
+> (§11 D19) and tenant provisioning stays M34's.
+> **Blocked, exactly:** (1) `POST /provider-entities` answers `503 TAX_ID_CIPHER_UNBOUND` until the KMS-backed
+> envelope cipher for `provider_entity.tax_id_encrypted` is bound at the composition root (an EIN is never stored
+> in the clear; every other route works); (2) the collaborator/funeral magic-link store is still process-local
+> (no M2 token table) and `POST /collaborators/consume` does not yet mint a `session` row, so a funeral link —
+> like the collaborator link before it — is issued, audited and one-time but not yet redeemable end to end;
+> (3) the spec's HearthNote opt-in flag has no settings key and no reader in any module, so it is not built.
+> Session list/revoke and screen-unlock remain path drift (Better Auth's default endpoints plus a client-side
+> re-sign-in), not `/me/session[...]` routes.
+
 ### 4.2 Representative Per-Route Specs
 
 #### POST /api/v1/auth/select-organization
