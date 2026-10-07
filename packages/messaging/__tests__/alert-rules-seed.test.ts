@@ -117,6 +117,12 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m37.iv_safety_overlay.bedside_check_overdue",
       // GAP-108 — M38's per-tenant deprecation-scan alert (the loader's follow-up job).
       "m38.tenant_deprecation_scan.completed",
+      // GAP-155 - M30's SRA reminder calendar + CAP-overdue alert.
+      "m30.alerts.sra_due_90",
+      "m30.alerts.sra_due_60",
+      "m30.alerts.sra_due_30",
+      "m30.alerts.sra_overdue",
+      "m30.incident.cap_overdue",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

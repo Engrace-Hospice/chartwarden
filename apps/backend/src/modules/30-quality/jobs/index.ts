@@ -19,3 +19,9 @@ export {
   registerM30Workers,
   scheduleM30Jobs,
 } from "./m30-jobs";
+// GAP-155 - the CAP-overdue producer cron.
+export {
+  M30_CAP_OVERDUE_QUEUE,
+  registerM30CapOverdueWorker,
+  scheduleM30CapOverdueJob,
+} from "./cap-overdue-scan";

@@ -934,6 +934,59 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-155 (M30 spec 4.9) - the SRA reminder calendar (m30.sra_reminders cron emits these payload types as the
+  // event type) and the CAP-overdue alert (m30.cap_overdue_scan cron). Previously rule-less, so an emit reached nobody.
+  // sra_due_30 also carries the 7-day milestone (the payload catalog has no sra_due_7).
+  {
+    eventType: "m30.alerts.sra_due_90",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_due_60",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer", "administrator"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_due_30",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer", "administrator"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_overdue",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["administrator", "org_admin", "compliance_officer"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.incident.cap_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator", "compliance_officer", "clinical_lead"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a

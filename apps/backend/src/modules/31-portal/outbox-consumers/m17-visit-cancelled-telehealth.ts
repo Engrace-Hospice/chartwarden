@@ -33,6 +33,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { TelehealthLifecycleState } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import type { M31EventEmitter } from "../events";
 import { canTransitionTelehealth } from "../telehealth/visit-lifecycle";
 
 const TV = schema.telehealthVisits;
@@ -48,6 +49,8 @@ export const M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER = {
 
 export interface VisitCancelledTelehealthConsumerDeps {
   readonly db: DbClient;
+  /** GAP-159 - same-tx `m31.telehealth.visit_ended` emit (absent in slice/tests). */
+  readonly events?: M31EventEmitter;
 }
 
 function factsOf(payload: unknown): { visitId: string; reason: string } {
@@ -105,7 +108,7 @@ export function buildM31VisitCancelledTelehealthConsumer(
           const startedMs = row.visitStartedAt ? row.visitStartedAt.getTime() : null;
           const now = new Date();
 
-          await tx
+          const [updated] = await tx
             .update(TV)
             .set({
               lifecycleState: "ended_aborted",
@@ -117,7 +120,22 @@ export function buildM31VisitCancelledTelehealthConsumer(
               version: row.version + 1,
               updatedAt: now,
             })
-            .where(and(eq(TV.id, row.id), eq(TV.version, row.version)));
+            .where(and(eq(TV.id, row.id), eq(TV.version, row.version)))
+            .returning({ id: TV.id });
+          if (updated) {
+            await deps.events?.emitInTx(
+              tx,
+              organizationId,
+              "m31.telehealth.visit_ended",
+              { kind: "telehealth_visit", id: row.id },
+              {
+                telehealthVisitId: row.id,
+                m17VisitId: facts.visitId,
+                lifecycleState: "ended_aborted",
+                endReason: "other",
+              },
+            );
+          }
           // No `.returning()` check needed beyond the WHERE-on-version race guard: a lost race here means
           // another writer already moved the row past this transition in the same tick, which is the
           // correct outcome to leave alone (the M18 consumer precedent's "lost a version race — the next

@@ -319,19 +319,26 @@ chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dat
   admission (M6 siting seam injected at the composition root); the primary entity stays the fallback for
   subject-less writes and unsited patients. CAHPS result ingest and QAPI program creation stay on the primary
   entity (no patient subject).
-- GAP-155 (M30, SRA half): `m30.sra_reminders` now has a bound open-cycle scan and an M36 `AlertEmitter`
-  dispatch. **Open:** `m30.incident.cap_overdue` still has no producer (CAP action items live in
-  `incident_report.kind_data`; a scan cron is a follow-up), and the M36 platform-default `alert_rule` rows for
-  `m30.alerts.sra_*` are not seeded, so an emit resolves no recipients until they are.
+- GAP-155 (M30): `m30.sra_reminders` has a bound open-cycle scan and an M36 `AlertEmitter` dispatch; the five
+  platform-default `alert_rule` rows (`m30.alerts.sra_due_90/60/30`, `sra_overdue`, `m30.incident.cap_overdue`) are
+  seeded in `PLATFORM_DEFAULT_ALERT_RULES`; and `m30.cap_overdue_scan` (daily 08:00 UTC) is the producer of
+  `m30.incident.cap_overdue` over `incident_report.kind_data._m30.capPlan`, publishing the event and raising the alert
+  (every-2-days dedupe bucket).
 - GAP-156 (M30): SRA finding/remediation mutations enforce `ownsSraCycle` (owner or an `sra.admin` role) in the
   write service.
 - GAP-157 / GAP-160: recorded as explicit deferrals in `docs/design/DEFERRED_SCREENS.md` (footnote ³¹).
-- GAP-159 (M31, partial): `AdmissionStatusReader.isDischargedReadOnly` is implemented (the post-discharge
-  read-only gate is no longer dead code). **Open:** M31 still publishes none of its 22 events and the six §4.8
-  queues are unbuilt.
-- GAP-163 (M34, partial): `tenant.bundle_expiry_sweep` has a worker and its own schedule, org-scoped, destroying
-  DSAR / tenant-export bundle objects past TTL. **Open:** `onboarding_advance`, `baa_expiry_sweep` and
-  `support_session_close_sweep` remain unbuilt (their schedule stays unregistered so no queue grows unconsumed).
+- GAP-159 (M31): `AdmissionStatusReader.isDischargedReadOnly` is implemented (the post-discharge read-only gate is
+  no longer dead code). Follow-up round: all 22 events are catalogued and 19 have emit sites, the late-join watchdog
+  queue is built, and the other five queues are closed as drift or covered (see `m31-portal-deferrals.md`, batch 17).
+  **Open:** `invited` / `activated` / `recording_completed` have no M31 write site (M2 invitation layer and the vendor
+  webhook mapping are unbuilt).
+- GAP-163 (M34): `tenant.bundle_expiry_sweep`, `tenant.baa_expiry_sweep` (daily), `tenant.support_session_close_sweep`
+  (every 5 min) and `tenant.onboarding_advance` (per-tenant job + daily 06:00 fan-out) have workers and schedules;
+  the bundle reaper logs a boot warning when MINIO_* is absent. **Open (blocker):** the onboarding worker does not
+  auto-activate a tenant: the lifecycle `activate` effect-runner and a system actor for its audit do not exist, so on
+  completion it publishes `m34.tenant.onboarding_completed` + the alert and logs that activation is left to platform
+  ops. `macFeedConfigured` / `dosespotKickoffRecorded` / `xeroConnected` / `gustoConnected` default to false until
+  M29 / M12 / M27 readers are injected (a step stays honestly blocked).
 
 **Not closed (follow-ups).** GAP-158 (needs a caregiver-to-user link + the M40 grief catalog), GAP-161 (M32
 publishes none of its 21 events, no workers), GAP-162 (M33 platform/compliance scope predicates, a documented

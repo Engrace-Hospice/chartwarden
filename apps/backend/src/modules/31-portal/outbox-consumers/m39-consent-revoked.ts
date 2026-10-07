@@ -52,6 +52,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 
 const PAG = schema.portalAccessGrants;
 
@@ -65,6 +66,8 @@ export const M31_CONSENT_REVOKED_CONSUMER = {
 
 export interface ConsentRevokedGrantCascadeConsumerDeps {
   readonly db: DbClient;
+  /** GAP-159 - same-tx `m31.portal_access_grant.revoked` emit (absent in slice/tests). */
+  readonly events?: M31EventEmitter;
 }
 
 interface ConsentRevokedFacts {
@@ -106,7 +109,7 @@ export function buildM31ConsentRevokedGrantCascadeConsumer(
           const tx = scoped as unknown as DbClient;
           const now = new Date();
 
-          await tx
+          const revoked = await tx
             .update(PAG)
             .set({
               revokedAt: now,
@@ -120,7 +123,13 @@ export function buildM31ConsentRevokedGrantCascadeConsumer(
                 eq(PAG.sourceConsentRecordId, facts.consentRecordId),
                 isNull(PAG.revokedAt),
               ),
-            );
+            )
+            .returning({
+              id: PAG.id,
+              portalAccountId: PAG.portalAccountId,
+              patientId: PAG.patientId,
+            });
+          await emitGrantsRevoked(deps.events, tx, organizationId, revoked, "consent_revoked");
         },
       );
     },

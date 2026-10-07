@@ -44,3 +44,12 @@ export {
   createPortalRoomCipher,
 } from "./routes/index";
 export { mountM31Routes } from "./routes/mount";
+
+// GAP-159 - the 22-event outbox catalog + the emitter every emit site shares.
+export { M31_OUTBOX_EVENTS } from "./events-by-m31";
+export {
+  type M31EventEmitter,
+  type M31OutboxPublisher,
+  bindM31EventEmitter,
+  createM31EventEmitter,
+} from "./events";

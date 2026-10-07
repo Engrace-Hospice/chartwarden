@@ -32,6 +32,7 @@ export {
 } from "./guards";
 export { parse, parseQuery } from "./portal-typebox";
 
+import type { M31EventEmitter } from "../events";
 import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
@@ -101,6 +102,8 @@ export interface PortalRouteDeps {
    * seam (deny-stub until M3 registers it, which 403s the view). Injectable so the route suite needs no registry.
    */
   readonly engagementReader?: import("./auditor-engagement").EngagementCoverageReader;
+  /** GAP-159 - the M31 outbox emitter for decision-point events (session, upload, amendment, message). */
+  readonly events?: M31EventEmitter;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

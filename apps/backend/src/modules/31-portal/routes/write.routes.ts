@@ -218,21 +218,43 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       const patientId = portalPatientIdOf(actor);
       const portalAccountId = portalAccountIdOf(actor);
       const body = parse(PortalDocumentUploadInitRequest, request.body);
-      planDocumentUpload({
-        orgId: actor.organizationId,
-        patientId,
-        portalAccountId,
-        byteSize: body.expectedByteSize,
-        declaredMime: body.mimeType,
-        // magic-byte verification runs on the real bytes at upload-complete; init validates the declared
-        // MIME against the allowlist so a rejected type never mints a signed URL.
-        magicBytes: [],
-        patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
-      });
+      const readOnly = await dischargedReadOnly(actor.organizationId, patientId);
+      try {
+        planDocumentUpload({
+          orgId: actor.organizationId,
+          patientId,
+          portalAccountId,
+          byteSize: body.expectedByteSize,
+          declaredMime: body.mimeType,
+          // magic-byte verification runs on the real bytes at upload-complete; init validates the declared
+          // MIME against the allowlist so a rejected type never mints a signed URL.
+          magicBytes: [],
+          patientDischargedReadOnly: readOnly,
+        });
+      } catch (error) {
+        // GAP-159 - the sanitized reason is the stable error CODE, never pipeline detail (spec 7.8 step 7).
+        await deps.events?.emit(
+          actor.organizationId,
+          "m31.portal_document.upload_rejected",
+          { kind: "portal_account", id: portalAccountId },
+          {
+            portalAccountId,
+            patientId,
+            rejectionReason: error instanceof WardenXError ? error.code : "UPLOAD_REJECTED",
+          },
+        );
+        throw error;
+      }
       if (!(PORTAL_UPLOAD_MIME_ALLOWLIST as readonly string[]).includes(body.mimeType)) {
         // planDocumentUpload throws on a bad MIME already; this is defence-in-depth on the enum.
       }
       const uploadId = `${portalAccountId}:${now().getTime()}`;
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_document.upload_started",
+        { kind: "portal_account", id: portalAccountId },
+        { uploadId, portalAccountId, patientId, purpose: body.purpose },
+      );
       return {
         uploadId,
         signedUploadUrl: `https://uploads.invalid/${uploadId}`,
@@ -249,8 +271,15 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
     },
     async (request) => {
       const actor = actorOf(request);
-      portalPatientIdOf(actor);
+      const patientId = portalPatientIdOf(actor);
+      const portalAccountId = portalAccountIdOf(actor);
       const { uploadId } = request.params as { uploadId: string };
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_document.uploaded",
+        { kind: "portal_account", id: portalAccountId },
+        { uploadId, portalAccountId, patientId, purpose: "portal_upload" },
+      );
       return { uploadId, status: "received" };
     },
   );
@@ -291,6 +320,17 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         targetRef,
         requestedChange: payload.requestedChange,
       });
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_amendment_request.submitted",
+        { kind: "portal_account", id: portalAccountId },
+        {
+          amendmentRequestRefId: created.id,
+          m5AmendmentRequestId: created.id,
+          portalAccountId,
+          patientId,
+        },
+      );
       return reply.code(202).send({ amendmentRequestRefId: created.id, status: created.status });
     },
   );
@@ -341,6 +381,13 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         authorUserId: actor.userId,
         body: body.body,
       });
+      const portalAccountId = portalAccountIdOf(actor);
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_message.sent_via_m36",
+        { kind: "portal_account", id: portalAccountId },
+        { portalAccountId, patientId, channelId: channel.channelId },
+      );
       return { messageId: sent.messageId };
     },
   );

@@ -36,6 +36,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 import { type FlipCandidateGrant, planBereavedWindowClose } from "../lifecycle/bereaved-flip";
 
 const PAG = schema.portalAccessGrants;
@@ -51,6 +52,8 @@ export const M31_BEREAVEMENT_PLAN_CLOSED_CONSUMER = {
 
 export interface BereavementPlanClosedConsumerDeps {
   readonly db: DbClient;
+  /** GAP-159 - same-tx grant-revoked + bereaved-window-closed emits (absent in slice/tests). */
+  readonly events?: M31EventEmitter;
 }
 
 interface PlanClosedFacts {
@@ -135,7 +138,7 @@ export function buildM31BereavementPlanClosedConsumer(deps: BereavementPlanClose
 
             const now = new Date();
             for (const rev of plan.revoke) {
-              await tx
+              const revokedRows = await tx
                 .update(PAG)
                 .set({
                   revokedAt: now,
@@ -143,7 +146,28 @@ export function buildM31BereavementPlanClosedConsumer(deps: BereavementPlanClose
                   version: sql`${PAG.version} + 1`,
                   updatedAt: now,
                 })
-                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
+                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)))
+                .returning({
+                  id: PAG.id,
+                  portalAccountId: PAG.portalAccountId,
+                  patientId: PAG.patientId,
+                });
+              await emitGrantsRevoked(
+                deps.events,
+                tx,
+                organizationId,
+                revokedRows,
+                rev.revokeCascadeSource,
+              );
+              for (const r of revokedRows) {
+                await deps.events?.emitInTx(
+                  tx,
+                  organizationId,
+                  "m31.portal_account.bereaved_window_closed",
+                  { kind: "portal_account", id: r.portalAccountId },
+                  { portalAccountId: r.portalAccountId, patientId: r.patientId },
+                );
+              }
             }
           },
         );
