@@ -1,7 +1,6 @@
 // apps/web/src/modules/06-admission/election-addendum-format.ts — pure labels / tones / countdown for the
 // election statement addendum panel (42 CFR 418.24(c)/(d)). No React, unit-testable.
 import type { StatusTone } from "@wardenx/ui";
-import type { UploadStage } from "../../shell/document-workflows";
 import type {
   AddendumOverview,
   AddendumStatus,
@@ -117,23 +116,18 @@ export function todayInput(now: Date = new Date()): string {
 
 /** How the acknowledgement was captured, for the drawer and the panel ("Signed — scanned paper copy"). */
 export function acknowledgementLabel(
-  v: Pick<AddendumVersion, "status" | "acknowledgementSource">,
+  v: Pick<AddendumVersion, "status" | "acknowledgementSource" | "contentSource">,
 ): string | null {
   if (v.status !== "signed" && v.status !== "refused") return null;
   const outcome = v.status === "signed" ? "Signed" : "Refused";
-  if (v.acknowledgementSource === "uploaded") return `${outcome} — scanned paper copy`;
+  if (v.acknowledgementSource === "uploaded") {
+    return v.contentSource === "scanned_paper"
+      ? `${outcome} — scanned paper copy (content on paper)`
+      : `${outcome} — scanned paper copy`;
+  }
   if (v.acknowledgementSource === "structured") return `${outcome} — recorded in WardenX`;
   return outcome;
 }
-
-export const UPLOAD_STAGE_LABEL: Record<UploadStage | "attaching", string> = {
-  idle: "",
-  preparing: "Preparing the scan…",
-  uploading: "Uploading the scan…",
-  verifying: "Verifying the upload…",
-  complete: "Upload verified",
-  attaching: "Attaching it to the addendum…",
-};
 
 /** What the paper copy form needs before it can upload. */
 export interface ScannedCopyDraft {
@@ -171,4 +165,33 @@ export function scannedCopyProblem(
     }
   }
   return null;
+}
+
+/** The (c) elements a draft still lacks (mirrors the server's completeness check, `addendumContentGaps`). */
+export function draftContentGaps(
+  v: Pick<
+    AddendumVersion,
+    | "hospiceName"
+    | "patientName"
+    | "medicalRecordNumber"
+    | "terminalDiagnosis"
+    | "items"
+    | "noNonCoveredItems"
+    | "clinicalExplanation"
+  >,
+): string[] {
+  const blank = (x: string | null | undefined) => (x ?? "").trim().length === 0;
+  const gaps: string[] = [];
+  if (blank(v.hospiceName)) gaps.push("hospice name");
+  if (blank(v.patientName)) gaps.push("patient name");
+  if (blank(v.medicalRecordNumber)) gaps.push("medical record number");
+  if (v.terminalDiagnosis.length === 0) gaps.push("terminal diagnosis");
+  if (v.items.length === 0 && !v.noNonCoveredItems) {
+    gaps.push("the non-covered items, or that there are none");
+  }
+  if (v.items.length > 0 && blank(v.clinicalExplanation)) gaps.push("clinical explanation");
+  if (v.items.some((i) => blank(i.description) || blank(i.reasonNotCovered))) {
+    gaps.push("a description and reason for every item");
+  }
+  return gaps;
 }

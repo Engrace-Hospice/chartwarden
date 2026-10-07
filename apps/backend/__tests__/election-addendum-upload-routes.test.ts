@@ -63,6 +63,7 @@ const VIEW: Awaited<ReturnType<ElectionAddendumService["attachUploadedAcknowledg
   acknowledgementSource: "uploaded",
   acknowledgementDocumentId: DOC,
   acknowledgementDocumentVersionId: VER,
+  contentSource: "structured",
   refusedAt: null,
   refusalReason: null,
   signatureNotRequiredReason: null,

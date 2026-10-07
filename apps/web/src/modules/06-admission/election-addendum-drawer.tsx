@@ -334,7 +334,9 @@ export function ElectionAddendumDrawer({
             <dl className="wx-kv wx-addendum-docs">
               {v.documentId ? (
                 <>
-                  <dt>Printed addendum</dt>
+                  <dt>
+                    {v.contentSource === "scanned_paper" ? "Record notice" : "Printed addendum"}
+                  </dt>
                   <dd>
                     <Button
                       tone="tertiary"
@@ -409,6 +411,14 @@ export function ElectionAddendumDrawer({
                 </Button>
               </div>
             </>
+          ) : v.contentSource === "scanned_paper" ? (
+            <p className="wx-pa-source">
+              <Glyph name="file-check" size={12} />
+              <span>
+                On the signed paper copy. This version was completed on paper; open the scan for its
+                determinations.
+              </span>
+            </p>
           ) : v.noNonCoveredItems ? (
             <p className="wx-row-sub">Everything is related to the terminal illness and covered.</p>
           ) : v.items.length === 0 ? (

@@ -159,7 +159,11 @@ export function ElectionAddendumPanel({
         {current ? (
           <div className="wx-addendum-group">
             <h4 className="wx-addendum-subhead">Not covered by the hospice</h4>
-            {current.noNonCoveredItems ? (
+            {current.contentSource === "scanned_paper" ? (
+              <p className="wx-row-sub">
+                On the signed paper copy — open version {current.versionNumber} for the scan.
+              </p>
+            ) : current.noNonCoveredItems ? (
               <p className="wx-row-sub">
                 All conditions, items, services, and drugs are related and covered.
               </p>

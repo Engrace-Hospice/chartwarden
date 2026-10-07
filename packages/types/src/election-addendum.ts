@@ -31,6 +31,10 @@ export type ElectionAddendumSignerKind = "beneficiary" | "representative";
  *  WardenX, or a scanned signed paper copy uploaded to M22. */
 export type ElectionAddendumAcknowledgementSource = "structured" | "uploaded";
 
+/** Where a version's 418.24(c) content lives (mirrors `election_addendum_content_source`): in WardenX, or on the
+ *  signed paper copy that was scanned (an incomplete draft acknowledged on paper). */
+export type ElectionAddendumContentSource = "structured" | "scanned_paper";
+
 /** 418.24(d)(3)/(4) — why furnishing or signing was not required (mirrors `election_addendum_exemption_reason`). */
 export type ElectionAddendumExemptionReason = "death" | "revocation" | "discharge";
 
@@ -107,7 +111,13 @@ export interface ElectionAddendumRenderPayload {
   /** (c)(10) the date furnished (org-local yyyy-mm-dd). */
   readonly furnishedDate: LocalDate;
   readonly furnishMethod: ElectionAddendumFurnishMethod;
+  /** `scanned_paper`: the authoritative (c) content is the scanned paper copy; the render is a record notice. */
+  readonly contentSource: ElectionAddendumContentSource;
+  /** The scanned paper copy filed for this version (M22 document id + org-local filing date), if any. */
+  readonly scannedCopy: { readonly documentId: string; readonly filedDate: LocalDate } | null;
   readonly acknowledgement: {
+    /** How receipt was acknowledged; null while pending or for a (d)(4) exemption. */
+    readonly source: ElectionAddendumAcknowledgementSource | null;
     readonly outcome: "pending" | "signed" | "refused" | "signature_not_required";
     readonly signedDate: LocalDate | null;
     readonly signerKind: ElectionAddendumSignerKind | null;

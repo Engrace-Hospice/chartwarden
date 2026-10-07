@@ -629,6 +629,100 @@ describe.skipIf(!DB_URL)(
       });
     });
 
+    it("an INCOMPLETE draft signed (or refused) on paper: the scan stands as the content; billing, checklist and window all satisfied", async () => {
+      const { admissionId, patientId } = await activate();
+      reportedItems = [];
+      const ov = await addendum.draft(ORG_A, admissionId, USER);
+      const draft = ov.current as NonNullable<typeof ov.current>;
+      // Neither items nor the "none" determination: the keyed furnish still refuses.
+      await expect(
+        addendum.furnish(ORG_A, admissionId, draft.id, draft.version, { method: "paper" }, USER),
+      ).rejects.toMatchObject({ code: "ADDENDUM_INCOMPLETE" });
+      const copy = await seedScannedCopy({ org: ORG_A, patientId, admissionId });
+      const furnishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const signed = await asRequest(ORG_A, () =>
+        addendum.attachUploadedAcknowledgement(
+          ORG_A,
+          admissionId,
+          draft.id,
+          draft.version,
+          {
+            outcome: "signed",
+            documentId: copy.documentId,
+            documentVersionId: copy.documentVersionId,
+            signerKind: "beneficiary",
+            signedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            furnishedAt,
+          },
+          USER,
+        ),
+      );
+      expect(signed).toMatchObject({
+        status: "signed",
+        contentSource: "scanned_paper",
+        acknowledgementSource: "uploaded",
+        // Whatever structured fields existed are kept.
+        patientName: "Test Patient",
+        items: [],
+        noNonCoveredItems: false,
+      });
+      const [furnishedEvt] = await events("m6.election_addendum.furnished", admissionId);
+      expect(furnishedEvt?.renderPayload).toMatchObject({
+        contentSource: "scanned_paper",
+        scannedCopy: { documentId: copy.documentId },
+      });
+      const [ackEvt] = await events("m6.election_addendum.acknowledged", admissionId);
+      expect(ackEvt?.renderPayload).toMatchObject({
+        contentSource: "scanned_paper",
+        acknowledgement: { source: "uploaded", outcome: "signed" },
+      });
+      expect((await windows(admissionId))[0]).toMatchObject({ status: "closed" });
+      expect(await electionAddendumComplianceForOrg(handle.db, ORG_A, admissionId)).toMatchObject({
+        anySigned: true,
+      });
+      const readiness = await svc.getAdmissionReadiness(ORG_A, admissionId);
+      expect(
+        readiness?.requirements.find((r: { code: string }) => r.code === "election_addendum"),
+      ).toMatchObject({ status: "complete" });
+
+      // The same for a refusal written on an incomplete paper copy.
+      const other = await activate();
+      const ov2 = await addendum.draft(ORG_A, other.admissionId, USER);
+      const draft2 = ov2.current as NonNullable<typeof ov2.current>;
+      const copy2 = await seedScannedCopy({
+        org: ORG_A,
+        patientId: other.patientId,
+        admissionId: other.admissionId,
+      });
+      const refused = await asRequest(ORG_A, () =>
+        addendum.attachUploadedAcknowledgement(
+          ORG_A,
+          other.admissionId,
+          draft2.id,
+          draft2.version,
+          {
+            outcome: "refused",
+            documentId: copy2.documentId,
+            documentVersionId: copy2.documentVersionId,
+            reason: "Declined to sign; noted on the paper copy.",
+            furnishedAt,
+          },
+          USER,
+        ),
+      );
+      expect(refused).toMatchObject({ status: "refused", contentSource: "scanned_paper" });
+      expect(
+        await electionAddendumComplianceForOrg(handle.db, ORG_A, other.admissionId),
+      ).toMatchObject({ anyRefusalDocumented: true });
+      // DB CHECK: content on paper cannot exist without the scanned acknowledgement.
+      await expect(
+        admin.query(
+          "UPDATE election_addendum SET acknowledgement_source='structured', acknowledgement_document_id=NULL, acknowledgement_document_version_id=NULL WHERE id=$1",
+          [draft2.id],
+        ),
+      ).rejects.toThrow(/election_addendum_content_source_shape_chk/);
+    });
+
     it("a keyed signature records the structured source and no scanned copy", async () => {
       const { admissionId, draft } = await furnishableDraft();
       const furnished = await addendum.furnish(

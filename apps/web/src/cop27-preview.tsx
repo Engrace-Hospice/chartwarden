@@ -4,7 +4,11 @@
 //   ?addendum=none|draft|furnished|signed|refused|overdue|legacy|upload|uploaded — Election & Certification
 //       with the election statement addendum section (click a version row to open its drawer). `upload` is a
 //       draft furnished on paper outside WardenX (its drawer opens on "Upload signed paper copy"); `uploaded` is
-//       a version signed on a scanned paper copy (drawer: "Signed — scanned paper copy" + Open scan / Open PDF).
+//       a version signed on a scanned paper copy (drawer: "Signed — scanned paper copy" + Open scan / Open PDF);
+//       `upload-incomplete` is an incomplete draft (the form says the scan stands as the content); `paper` is a
+//       version whose content is on the signed paper copy.
+//   ?admit=upload-nor|upload-election|upload-election-sign|upload-cti — the admission intake workspace with
+//       that evidence upload drawer open (the shared scanned-upload kit).
 //   ?coverage=med|supply|dashboard — hospice coverage section/badges on M12 medication detail, M21
 //       supply-request detail and the M21 supply dashboard.
 //   ?admit=intake|active|discharged — admission detail: 418.25(a) recommendation section (+ capture drawer
@@ -14,7 +18,10 @@ import type { ApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { AdmissionDetail } from "./modules/06-admission/admission-detail";
+import {
+  AdmissionDetail,
+  type InitialEvidenceUpload,
+} from "./modules/06-admission/admission-detail";
 import { PatientElectionCert } from "./modules/06-admission/patient-election-cert";
 import { MedicationDetail } from "./modules/12-dosespot/medication-detail";
 import { SupplyTeamDashboard } from "./modules/21-supplies/supply-dashboard";
@@ -25,6 +32,8 @@ const query = new URLSearchParams(location.search);
 const addendumMode = query.get("addendum");
 const coverageMode = query.get("coverage");
 const admitMode = query.get("admit");
+/** `?admit=intake` and the `upload-*` modes all show the pending intake workspace (uploads open from it). */
+const intakeMode = admitMode === "intake" || (admitMode?.startsWith("upload-") ?? false);
 
 export const isCop27Preview = addendumMode !== null || coverageMode !== null || admitMode !== null;
 
@@ -94,6 +103,7 @@ function addendumVersion(status: string, overrides: Record<string, unknown> = {}
     acknowledgementSource: status === "signed" || status === "refused" ? "structured" : null,
     acknowledgementDocumentId: null,
     acknowledgementDocumentVersionId: null,
+    contentSource: "structured",
     refusedAt: null,
     refusalReason: null,
     signatureNotRequiredReason: null,
@@ -153,6 +163,28 @@ function addendumOverview() {
         representativeRelationship: "Daughter",
       });
       return { ...base, current: v, history: [v, prior] };
+    }
+    case "upload-incomplete": {
+      const v = addendumVersion("draft", {
+        items: [],
+        clinicalExplanation: null,
+        terminalDiagnosis: [],
+      });
+      return { ...base, current: v, history: [v], openWindows: [initialWindow(1)] };
+    }
+    case "paper": {
+      const v = addendumVersion("signed", {
+        items: [],
+        clinicalExplanation: null,
+        furnishedAt: isoAt(-3),
+        signedAt: isoAt(-3),
+        signerKind: "beneficiary",
+        acknowledgementSource: "uploaded",
+        acknowledgementDocumentId: "doc-scan-2",
+        acknowledgementDocumentVersionId: "ver-scan-2",
+        contentSource: "scanned_paper",
+      });
+      return { ...base, current: v, history: [v] };
     }
     case "uploaded": {
       const v = addendumVersion("signed", {
@@ -334,9 +366,8 @@ const SIGNERS = {
 };
 
 function admissionDetail() {
-  const state =
-    admitMode === "intake" ? "pending" : admitMode === "discharged" ? "discharged" : "active";
-  const recorded = admitMode !== "intake";
+  const state = intakeMode ? "pending" : admitMode === "discharged" ? "discharged" : "active";
+  const recorded = !intakeMode;
   return {
     id: "adm1",
     state,
@@ -449,7 +480,7 @@ function cop27Get(path: string): unknown {
     case "/api/v1/admissions/{id}":
       return admissionDetail();
     case "/api/v1/admissions/{id}/readiness":
-      return admitMode === "intake" ? readiness() : null;
+      return intakeMode ? readiness() : null;
     case "/api/v1/admissions/{id}/physician-signers":
       return SIGNERS;
     case "/api/v1/admissions/{id}/discharge-order":
@@ -515,7 +546,21 @@ function entryAndRoutes(): { entry: string; routes: JSX.Element } {
     };
   return {
     entry: "/admissions/adm1",
-    routes: <Route path="/admissions/:id" element={<AdmissionDetail />} />,
+    routes: (
+      <Route
+        path="/admissions/:id"
+        element={
+          <AdmissionDetail
+            {...(admitMode?.startsWith("upload-")
+              ? {
+                  initialUpload:
+                    `${admitMode.slice("upload-".length)}-upload` as InitialEvidenceUpload,
+                }
+              : {})}
+          />
+        }
+      />
+    ),
   };
 }
 

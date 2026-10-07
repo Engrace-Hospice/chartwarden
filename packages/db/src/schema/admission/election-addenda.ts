@@ -24,6 +24,7 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   electionAddendumAcknowledgementSource,
+  electionAddendumContentSource,
   electionAddendumExemptionReason,
   electionAddendumFurnishMethod,
   electionAddendumSignerKind,
@@ -94,6 +95,8 @@ export const electionAddenda = pgTable(
     items: jsonb("items").$type<ElectionAddendumItemRow[]>().notNull().default(sql`'[]'::jsonb`),
     /** The documented "everything is related and covered" determination (FR-F: "not a blank form"). */
     noNonCoveredItems: boolean("no_non_covered_items").notNull().default(false),
+    /** Where the (c) content lives (mig 0396): `scanned_paper` = the signed paper copy is the addendum. */
+    contentSource: electionAddendumContentSource("content_source").notNull().default("structured"),
     clinicalExplanation: text("clinical_explanation"),
     guidelineReferences: text("guideline_references"),
     // ── 418.24(d) clock + (c)(10) furnish ──

@@ -17,6 +17,14 @@
 // Plus the financial-responsibility line (418.24(b)(5) cost sharing, as the CMS model carries it) and the
 // version line (418.24(d)(2) updates).
 //
+// Signed on paper (M6 v0.9.1): when the acknowledgement came from a scanned paper copy, the acknowledgement block
+// says so (with the filing date and a short document reference). When the version's CONTENT is on that paper
+// (`contentSource: scanned_paper` — an incomplete WardenX draft signed on paper), the render is a RECORD NOTICE:
+// it names the paper copy as the authoritative addendum and does NOT print the (c)(4)–(8) sections, because empty
+// sections would misstate the determinations (an empty list would otherwise print "the hospice will cover
+// everything"). It is still rendered — rather than skipped — so the furnished / acknowledged events keep one
+// M22 document per version and the chart shows where the addendum is.
+//
 // The language is plain English at the CMS model's reading level. Nothing here reads a field by anything but
 // its name, so an unexpected payload field can never reach the page.
 import { type Block, type DocModel, latestInstant } from "./doc-model";
@@ -68,8 +76,24 @@ function diagnosisLines(v: unknown): string[] {
   });
 }
 
-function acknowledgementBlocks(ack: Readonly<Record<string, unknown>>): Block[] {
+/** The short document reference printed for a scanned copy (the M22 id's first 8 characters). */
+export function scannedCopyRef(documentId: unknown): string {
+  const id = str(documentId) ?? "";
+  return id.slice(0, 8) || "on file";
+}
+
+/** "scanned and filed <date> (document <ref>)", or a dateless form when the scan reference is absent. */
+function filedPhrase(scan: Readonly<Record<string, unknown>>): string {
+  const date = str(scan.filedDate) ? ` ${fmtDate(scan.filedDate)}` : "";
+  return `scanned and filed${date} (document ${scannedCopyRef(scan.documentId)})`;
+}
+
+function acknowledgementBlocks(
+  ack: Readonly<Record<string, unknown>>,
+  scan: Readonly<Record<string, unknown>>,
+): Block[] {
   const outcome = str(ack.outcome) ?? "pending";
+  const onPaper = str(ack.source) === "uploaded";
   const blocks: Block[] = [
     { kind: "heading", level: 1, text: "Acknowledgement of receipt" },
     { kind: "paragraph", text: RECEIPT_ONLY },
@@ -89,12 +113,24 @@ function acknowledgementBlocks(ack: Readonly<Record<string, unknown>>): Block[] 
         ["Date signed", fmtDate(ack.signedDate)],
       ],
     });
+    if (onPaper) {
+      blocks.push({
+        kind: "paragraph",
+        text: `Acknowledged on a signed paper copy, ${filedPhrase(scan)}.`,
+      });
+    }
   } else if (outcome === "refused") {
     blocks.push({
       kind: "banner",
       tone: "warn",
       text: `Not signed. The beneficiary (or representative) refused to sign. Reason: ${str(ack.refusalReason) ?? "not recorded"}`,
     });
+    if (onPaper) {
+      blocks.push({
+        kind: "paragraph",
+        text: `The refusal is documented on the paper copy, ${filedPhrase(scan)}.`,
+      });
+    }
   } else if (outcome === "signature_not_required") {
     const why = EXEMPTION_LABEL[str(ack.exemptionReason) ?? ""] ?? "the patient left hospice care";
     const note = str(ack.exemptionNote);
@@ -122,8 +158,46 @@ function acknowledgementBlocks(ack: Readonly<Record<string, unknown>>): Block[] 
   return blocks;
 }
 
+/** The record notice for a version whose content is the scanned paper copy (no (c)(4)–(8) sections). */
+function contentOnPaperDoc(p: Readonly<Record<string, unknown>>, version: number): Block[] {
+  const scan = rec(p.scannedCopy);
+  return [
+    {
+      kind: "title",
+      text: ELECTION_ADDENDUM_DOC_TITLE,
+      subtitle: `Version ${version} — content on the signed paper copy`,
+    },
+    {
+      kind: "facts",
+      rows: [
+        ["Hospice", str(p.hospiceName) ?? "—"],
+        ["Patient name", str(p.patientName) ?? "—"],
+        ["Medical record number", str(p.medicalRecordNumber) ?? "—"],
+        ["Date furnished", fmtDate(p.furnishedDate)],
+        ["Furnished", humanize(p.furnishMethod)],
+      ],
+    },
+    {
+      kind: "banner",
+      tone: "warn",
+      text: `The authoritative content of this addendum — the conditions, items, services, and drugs the hospice will not cover and the reasons (42 CFR 418.24(c)(4)–(8)) — is the signed paper copy furnished on ${fmtDate(p.furnishedDate)}, ${filedPhrase(scan)}. This page records that the addendum was furnished and acknowledged; it does not restate the paper's content.`,
+    },
+  ];
+}
+
 export function buildElectionAddendumDoc(payload: unknown): DocModel {
   const p = rec(payload);
+  if (str(p.contentSource) === "scanned_paper") {
+    const version = typeof p.versionNumber === "number" ? p.versionNumber : 1;
+    return {
+      title: ELECTION_ADDENDUM_DOC_TITLE,
+      createdAtIso: createdAt(p),
+      blocks: [
+        ...contentOnPaperDoc(p, version),
+        ...acknowledgementBlocks(rec(p.acknowledgement), rec(p.scannedCopy)),
+      ],
+    };
+  }
   const items = arr(p.items).map(rec);
   const version = typeof p.versionNumber === "number" ? p.versionNumber : 1;
   const update = str(p.trigger) === "poc_change";
@@ -209,16 +283,16 @@ export function buildElectionAddendumDoc(payload: unknown): DocModel {
   blocks.push({ kind: "heading", level: 1, text: "Your right to immediate advocacy" });
   blocks.push({ kind: "paragraph", text: ADDENDUM_ADVOCACY });
 
-  blocks.push(...acknowledgementBlocks(rec(p.acknowledgement)));
+  blocks.push(...acknowledgementBlocks(rec(p.acknowledgement), rec(p.scannedCopy)));
 
-  return {
-    title: ELECTION_ADDENDUM_DOC_TITLE,
-    createdAtIso: latestInstant([
-      typeof p.furnishedDate === "string" ? `${p.furnishedDate}T12:00:00.000Z` : undefined,
-      typeof rec(p.acknowledgement).signedDate === "string"
-        ? `${rec(p.acknowledgement).signedDate}T12:00:00.000Z`
-        : undefined,
-    ]),
-    blocks,
-  };
+  return { title: ELECTION_ADDENDUM_DOC_TITLE, createdAtIso: createdAt(p), blocks };
+}
+
+function createdAt(p: Readonly<Record<string, unknown>>): string {
+  return latestInstant([
+    typeof p.furnishedDate === "string" ? `${p.furnishedDate}T12:00:00.000Z` : undefined,
+    typeof rec(p.acknowledgement).signedDate === "string"
+      ? `${rec(p.acknowledgement).signedDate}T12:00:00.000Z`
+      : undefined,
+  ]);
 }

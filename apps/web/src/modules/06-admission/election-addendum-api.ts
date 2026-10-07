@@ -58,6 +58,8 @@ export interface AddendumVersion {
   acknowledgementSource: AcknowledgementSource | null;
   acknowledgementDocumentId: string | null;
   acknowledgementDocumentVersionId: string | null;
+  /** Where the (c) content lives: `scanned_paper` = the signed paper copy is the addendum. */
+  contentSource: "structured" | "scanned_paper";
   refusedAt: string | null;
   refusalReason: string | null;
   signatureNotRequiredReason: "death" | "revocation" | "discharge" | null;

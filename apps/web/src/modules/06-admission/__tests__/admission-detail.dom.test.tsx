@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
-import { AdmissionDetail } from "../admission-detail";
+import { AdmissionDetail, type InitialEvidenceUpload } from "../admission-detail";
 
 const session: Session = {
   userId: "11111111-1111-4111-8111-111111111111",
@@ -200,13 +200,20 @@ function clientFor(readinessResponse = readiness()): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderWithShell(client: ApiClient, as: Session = session): void {
+function renderWithShell(
+  client: ApiClient,
+  as: Session = session,
+  initialUpload?: InitialEvidenceUpload,
+): void {
   render(
     <MemoryRouter initialEntries={[`/admissions/${admissionId}`]}>
       <ApiClientProvider client={client}>
         <SessionProvider session={as}>
           <Routes>
-            <Route path="/admissions/:id" element={<AdmissionDetail />} />
+            <Route
+              path="/admissions/:id"
+              element={<AdmissionDetail {...(initialUpload ? { initialUpload } : {})} />}
+            />
           </Routes>
         </SessionProvider>
       </ApiClientProvider>
@@ -686,5 +693,36 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     const buttons = screen.getAllByRole("button", { name: /review f2f/i });
     expect(buttons.length).toBeGreaterThan(0);
     for (const b of buttons) expect((b as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("Evidence upload ceremonies (NOR / Election / CTI) in the right-hand drawer", () => {
+  it("opens in place of the readiness rail and refuses to submit without a file", async () => {
+    const client = clientFor();
+    renderWithShell(client, session, "nor-upload");
+    const aside = await screen.findByRole("complementary", { name: "Upload Notice of Rights" });
+    fireEvent.click(within(aside).getByRole("button", { name: "Attach document" }));
+    expect(await within(aside).findByText("Choose a document to upload.")).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+    fireEvent.click(within(aside).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Upload Notice of Rights" })).toBeNull(),
+    );
+  });
+
+  it("a signed Election Statement upload still requires the signer name and date", async () => {
+    const client = clientFor();
+    renderWithShell(client, session, "election-sign-upload");
+    const aside = await screen.findByRole("complementary", {
+      name: "Upload signed Election Statement",
+    });
+    fireEvent.change(within(aside).getByLabelText(/^Document/), {
+      target: { files: [new File(["%PDF"], "es.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(within(aside).getByRole("button", { name: "Attach document" }));
+    expect(
+      await within(aside).findByText(/Signer name, signer role, and signature date are required/),
+    ).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
   });
 });

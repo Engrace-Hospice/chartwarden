@@ -12,6 +12,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   type AddendumDiagnosesReader,
   type ElectionAddendumAcknowledgementSource,
+  type ElectionAddendumContentSource,
   type ElectionAddendumExemptionReason,
   type ElectionAddendumFurnishMethod,
   type ElectionAddendumSignerKind,
@@ -24,12 +25,13 @@ import { ResourceNotFoundError } from "../routes/service";
 import {
   type AddendumContentFacts,
   type ElectionAddendumEvent,
+  addendumContentGaps,
   planUploadedAcknowledgement,
   transitionElectionAddendum,
 } from "../state-machines/election-addendum";
 import { AdmissionStateError } from "../state-machines/errors";
 import type { AddendumOutboxPort as AdmissionWriteOutboxPort } from "./outbox-port";
-import { buildAddendumRenderPayload } from "./render-payload";
+import { type ScannedCopyRef, buildAddendumRenderPayload } from "./render-payload";
 import {
   ADDENDUM_WINDOW_KINDS,
   type AddendumAdmissionFacts,
@@ -122,6 +124,8 @@ export interface ElectionAddendumView {
   /** The scanned signed paper copy (M22), when `acknowledgementSource` is `uploaded`. */
   readonly acknowledgementDocumentId: string | null;
   readonly acknowledgementDocumentVersionId: string | null;
+  /** Where the (c) content lives: `scanned_paper` = the signed paper copy is the addendum. */
+  readonly contentSource: ElectionAddendumContentSource;
   readonly refusedAt: string | null;
   readonly refusalReason: string | null;
   readonly signatureNotRequiredReason: AddendumRow["signatureNotRequiredReason"];
@@ -294,6 +298,7 @@ export function toAddendumView(r: AddendumRow): ElectionAddendumView {
     acknowledgementSource: r.acknowledgementSource,
     acknowledgementDocumentId: r.acknowledgementDocumentId,
     acknowledgementDocumentVersionId: r.acknowledgementDocumentVersionId,
+    contentSource: r.contentSource,
     refusedAt: iso(r.refusedAt),
     refusalReason: r.refusalReason,
     signatureNotRequiredReason: r.signatureNotRequiredReason,
@@ -554,13 +559,20 @@ export function createElectionAddendumService(
     method: ElectionAddendumFurnishMethod,
     furnishedAt: Date,
     actorUserId: string,
+    paper?: { readonly contentOnPaper: boolean; readonly scan: ScannedCopyRef },
   ): Promise<AddendumRow> {
     const at = now();
+    const contentOnPaper = paper?.contentOnPaper ?? false;
     const updated = await writeTransition(
       tx,
       row,
-      { type: "furnish", content: contentFacts(row), method },
-      { furnishedAt, furnishMethod: method, furnishedByUserId: actorUserId },
+      { type: "furnish", content: contentFacts(row), method, contentOnPaper },
+      {
+        furnishedAt,
+        furnishMethod: method,
+        furnishedByUserId: actorUserId,
+        ...(contentOnPaper ? { contentSource: "scanned_paper" as const } : {}),
+      },
     );
     await supersedePriorVersionsInTx(tx, admissionId, updated.id, updated.versionNumber, at);
     await closeAddendumWindows(tx, outbox, {
@@ -583,7 +595,7 @@ export function createElectionAddendumService(
         versionNumber: updated.versionNumber,
         furnishedAt: furnishedAt.toISOString(),
         furnishMethod: method,
-        renderPayload: buildAddendumRenderPayload(updated, tz),
+        renderPayload: buildAddendumRenderPayload(updated, tz, paper?.scan),
       },
       organizationId,
       aggregateKind: "election_addendum",
@@ -601,6 +613,7 @@ export function createElectionAddendumService(
           admissionId,
           versionNumber: updated.versionNumber,
           method,
+          contentOnPaper,
           lateByDueAt: !!updated.dueAt && furnishedAt.getTime() > updated.dueAt.getTime(),
         },
       },
@@ -874,6 +887,7 @@ export function createElectionAddendumService(
           status: row.status,
           acknowledgedAt,
           furnishedAt: input.furnishedAt ? new Date(input.furnishedAt) : null,
+          contentGaps: addendumContentGaps(contentFacts(row)),
           now: now(),
         });
         if (plan.furnishFirst && plan.furnishedAt) {
@@ -885,6 +899,10 @@ export function createElectionAddendumService(
             "paper",
             plan.furnishedAt,
             actorUserId,
+            {
+              contentOnPaper: plan.contentOnPaper,
+              scan: { documentId: input.documentId, filedAt: now() },
+            },
           );
         }
         const auditContext = {
@@ -892,6 +910,7 @@ export function createElectionAddendumService(
           documentId: input.documentId,
           documentVersionId: input.documentVersionId,
           furnishedOnPaper: plan.furnishFirst,
+          contentOnPaper: plan.contentOnPaper,
         };
         if (input.outcome === "refused") {
           return acknowledgeInTx(

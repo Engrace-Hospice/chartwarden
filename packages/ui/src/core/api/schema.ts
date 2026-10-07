@@ -27001,6 +27001,7 @@ export interface operations {
                             acknowledgementSource: "structured" | "uploaded" | null;
                             acknowledgementDocumentId: string | null;
                             acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27054,6 +27055,7 @@ export interface operations {
                             acknowledgementSource: "structured" | "uploaded" | null;
                             acknowledgementDocumentId: string | null;
                             acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27146,6 +27148,7 @@ export interface operations {
                             acknowledgementSource: "structured" | "uploaded" | null;
                             acknowledgementDocumentId: string | null;
                             acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27199,6 +27202,7 @@ export interface operations {
                             acknowledgementSource: "structured" | "uploaded" | null;
                             acknowledgementDocumentId: string | null;
                             acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27310,6 +27314,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27396,6 +27401,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27480,6 +27486,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27572,6 +27579,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27660,6 +27668,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27745,6 +27754,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27839,6 +27849,7 @@ export interface operations {
                         acknowledgementSource: "structured" | "uploaded" | null;
                         acknowledgementDocumentId: string | null;
                         acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;

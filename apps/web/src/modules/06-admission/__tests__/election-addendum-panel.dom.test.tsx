@@ -64,6 +64,7 @@ function version(over: Partial<AddendumVersion> = {}): AddendumVersion {
     acknowledgementSource: null,
     acknowledgementDocumentId: null,
     acknowledgementDocumentVersionId: null,
+    contentSource: "structured",
     refusedAt: null,
     refusalReason: null,
     signatureNotRequiredReason: null,
@@ -259,6 +260,49 @@ describe("ElectionAddendumDrawer — scanned signed paper copy (418.24(c)(9))", 
       ),
     );
     await waitFor(() => expect(api.overview).toHaveBeenCalledTimes(2));
+  });
+
+  it("an incomplete draft is not blocked: the form says the scan stands as the content", async () => {
+    const api = fakeApi(
+      overview(version({ items: [], medicalRecordNumber: null, clinicalExplanation: null })),
+    );
+    const drawer = await openDrawer(api);
+    expect(
+      within(drawer).getByText(/scanned paper copy will stand as the addendum's content/),
+    ).toBeTruthy();
+    expect(within(drawer).getByText(/medical record number/)).toBeTruthy();
+    pick(drawer, scan());
+    fireEvent.change(within(drawer).getByLabelText(/Signature date/), {
+      target: { value: "2026-10-03" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Date furnished/), {
+      target: { value: "2026-10-03" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload and attach" }));
+    await waitFor(() => expect(api.attachScannedCopy).toHaveBeenCalledTimes(1));
+    expect(within(drawer).queryByRole("alert")).toBeNull();
+  });
+
+  it("a version whose content is on paper reads 'content on paper', not missing fields", async () => {
+    const api = fakeApi(
+      overview(
+        version({
+          status: "signed",
+          items: [],
+          furnishedAt: "2026-10-03T15:00:00.000Z",
+          signedAt: "2026-10-03T15:00:00.000Z",
+          signerKind: "beneficiary",
+          acknowledgementSource: "uploaded",
+          acknowledgementDocumentId: "doc-scan",
+          acknowledgementDocumentVersionId: "ver-scan",
+          contentSource: "scanned_paper",
+        }),
+      ),
+    );
+    const drawer = await openDrawer(api);
+    expect(within(drawer).getByText("Signed — scanned paper copy (content on paper)")).toBeTruthy();
+    expect(within(drawer).getByText(/This version was completed on paper/)).toBeTruthy();
+    expect(within(drawer).queryByText("No items recorded yet.")).toBeNull();
   });
 
   it("on a furnished version uploads a paper refusal without a furnish date", async () => {

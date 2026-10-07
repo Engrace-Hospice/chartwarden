@@ -3,23 +3,26 @@
 // staff scan it and attach it here. The file goes through the verified M22 upload ceremony (prepare → upload →
 // verify), then the server attaches that exact version as the acknowledgement. A draft that was furnished on paper
 // outside WardenX also needs the date it was handed over ((c)(10)) — the server furnishes and signs in one step.
-// Kit controls only; the server re-checks every rule and its message is shown verbatim.
+// An INCOMPLETE draft is not blocked: the signed paper copy IS the furnished addendum, so the form says plainly
+// that the scan will stand as the addendum's content (the server records `contentSource: scanned_paper`).
+// Kit controls only (the shared scanned-upload kit); the server re-checks every rule, its message shown verbatim.
 import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@wardenx/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import type { UploadStage } from "../../shell/document-workflows";
 import type { AddendumVersion, ElectionAddendumApi } from "./election-addendum-api";
 import {
-  UPLOAD_STAGE_LABEL,
+  draftContentGaps,
   localDateToIso,
   scannedCopyProblem,
   todayInput,
 } from "./election-addendum-format";
+import { ScannedFileField, type ScannedUploadStage, UploadStageNotice } from "./scanned-upload";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/jpeg,image/png,image/tiff";
 
 type Outcome = "signed" | "refused";
-type Stage = UploadStage | "attaching";
+type Stage = ScannedUploadStage;
 
 export function ScannedCopyForm({
   admissionId,
@@ -34,6 +37,8 @@ export function ScannedCopyForm({
 }): JSX.Element {
   const today = todayInput();
   const needsFurnishDate = v.status === "draft";
+  // Only a never-furnished draft can carry its content on paper (a furnished version is complete by definition).
+  const gaps = needsFurnishDate ? draftContentGaps(v) : [];
   const [file, setFile] = useState<File | null>(null);
   const [outcome, setOutcome] = useState<Outcome>("signed");
   const [signerKind, setSignerKind] = useState<"beneficiary" | "representative">("beneficiary");
@@ -107,14 +112,18 @@ export function ScannedCopyForm({
   return (
     <div className="wx-addendum-scan">
       {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-      <TextField
-        type="file"
-        label="Scanned paper copy"
-        hint="PDF, JPEG, PNG or TIFF, up to 25 MB."
+      {gaps.length > 0 ? (
+        <InlineAlert tone="info">
+          This draft is not complete in WardenX (missing: {gaps.join("; ")}). That is fine: the
+          scanned paper copy will stand as the addendum's content, and nothing needs to be filled in
+          here first.
+        </InlineAlert>
+      ) : null}
+      <ScannedFileField
         accept={ACCEPT}
+        hint="PDF, JPEG, PNG or TIFF, up to 25 MB."
         disabled={busy}
-        required
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        onFile={setFile}
       />
       <SelectField
         label="The paper copy shows"
@@ -187,7 +196,7 @@ export function ScannedCopyForm({
           onChange={(e) => setFurnishedDate(e.target.value)}
         />
       ) : null}
-      {stage !== "idle" ? <InlineAlert tone="info">{UPLOAD_STAGE_LABEL[stage]}</InlineAlert> : null}
+      <UploadStageNotice stage={stage} />
       <p className="wx-row-sub">
         The scan is filed in the patient's documents and linked to this version. The printed
         addendum stays on file alongside it.

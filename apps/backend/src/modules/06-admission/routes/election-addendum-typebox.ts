@@ -166,6 +166,7 @@ export const ElectionAddendumViewSchema = Type.Object({
   ]),
   acknowledgementDocumentId: NullableString,
   acknowledgementDocumentVersionId: NullableString,
+  contentSource: Type.Union([Type.Literal("structured"), Type.Literal("scanned_paper")]),
   refusedAt: NullableString,
   refusalReason: NullableString,
   signatureNotRequiredReason: Type.Union([ExemptionReasonSchema, Type.Null()]),

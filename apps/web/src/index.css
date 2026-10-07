@@ -3605,6 +3605,8 @@
     top: 0;
     align-self: start;
     display: grid;
+    /* Stretched by a column layout (e.g. the detail page's aside slot when stacked), rows stay packed at the top. */
+    align-content: start;
     border: 1px solid var(--color-card-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface-lowest);
