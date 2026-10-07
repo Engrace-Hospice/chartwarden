@@ -49,6 +49,9 @@ export function AdmissionCreate(): JSX.Element {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [step, setStep] = useState<StepId>("intake");
+  // Field errors show only once the user has tried to leave a step with it incomplete.
+  const [attempted, setAttempted] = useState<ReadonlySet<StepId>>(new Set());
+  const showErrors = attempted.has(step);
   const [patientId, setPatientId] = useState(searchParams.get("patientId") ?? "");
   const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>("in_person");
   const [attendingPhysicianId, setAttendingPhysicianId] = useState("");
@@ -161,6 +164,7 @@ export function AdmissionCreate(): JSX.Element {
   function next(): void {
     if (step === "intake" && intakeReady) setStep("clinical");
     else if (step === "clinical" && clinicalReady) setStep("review");
+    else setAttempted((prev) => new Set(prev).add(step));
   }
   function previous(): void {
     if (currentIndex > 0) setStep(STEP_IDS[currentIndex - 1] ?? "intake");
@@ -198,10 +202,7 @@ export function AdmissionCreate(): JSX.Element {
             </Button>
           ) : null}
           {step !== "review" ? (
-            <Button
-              onClick={next}
-              disabled={saving || (step === "intake" ? !intakeReady : !clinicalReady)}
-            >
+            <Button onClick={next} disabled={saving}>
               Continue
             </Button>
           ) : (
@@ -244,7 +245,11 @@ export function AdmissionCreate(): JSX.Element {
                 label="Patient"
                 value={patientId}
                 onChange={setPatientId}
-                error={patientId.trim() ? undefined : "Select a patient before continuing."}
+                error={
+                  showErrors && !patientId.trim()
+                    ? "Select a patient before continuing."
+                    : undefined
+                }
                 required
               />
               <SelectField
@@ -309,7 +314,9 @@ export function AdmissionCreate(): JSX.Element {
                 value={hospiceMedicalDirectorId}
                 onChange={setHospiceMedicalDirectorId}
                 error={
-                  hospiceMedicalDirectorId.trim() ? undefined : "Select a hospice medical director."
+                  showErrors && !hospiceMedicalDirectorId.trim()
+                    ? "Select a hospice medical director."
+                    : undefined
                 }
                 required
               />
