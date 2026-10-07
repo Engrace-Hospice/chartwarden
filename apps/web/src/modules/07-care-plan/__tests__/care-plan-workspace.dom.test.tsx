@@ -392,7 +392,7 @@ describe("M7 Care Plan workspace", () => {
     // agrees with its button (finalize sends the draft to the physician, not to a manager).
     expect(screen.getByText("Interim Revision v2 in draft")).toBeTruthy();
     expect(screen.getAllByText("Ready for physician review").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Ready for manager review")).toBeNull();
+    expect(screen.queryByText(/manager review/i)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
     expect(screen.getAllByText(/Nurse Practitioner/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Send to hospice physician" }));

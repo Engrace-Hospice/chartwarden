@@ -826,7 +826,7 @@ function WorkflowGuide({
 }
 
 function WorkflowSteps({ current }: { current: 0 | 1 | 2 | 3 }): JSX.Element {
-  const steps = ["Build plan", "Manager review", "Physician signature", "Active"] as const;
+  const steps = ["Build plan", "Send for review", "Physician signature", "Active"] as const;
   return (
     <ol style={stepper} aria-label="Care Plan workflow">
       {steps.map((label, index) => {
@@ -1267,7 +1267,7 @@ function RevisionPanel({
             <div>
               <h3 style={smallTitle}>Hospice physician review & signature</h3>
               <p style={muted}>
-                Candidate content is frozen after care-plan manager review. Return to draft only
+                Candidate content is frozen while the hospice physician reviews it. Return to draft only
                 when clinical edits are required before physician signature.
               </p>
             </div>
