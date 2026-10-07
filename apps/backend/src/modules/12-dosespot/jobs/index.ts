@@ -36,3 +36,12 @@ export {
   scheduleDoseSpotSyncQueueDrain,
 } from "./worker";
 export { M12_PLATFORM_JOB_ID, wireM12Tenancy } from "./wiring";
+// GAP-037 — the §4.8 catalog accounted for queue by queue (built vs. explicitly deferred, with the blocker).
+export {
+  type M12DeferredQueue,
+  type M12QueueEntry,
+  M12_DEFERRED_QUEUES,
+  M12_QUEUE_CATALOG,
+  M12_SPEC_QUEUE_NAMES,
+  describeM12DeferredQueues,
+} from "./queue-catalog";

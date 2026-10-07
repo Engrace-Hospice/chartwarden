@@ -31,6 +31,7 @@ import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messa
 import { type PseudonymKeyProvider, loadPseudonymKekRing } from "@wardenx/subscription-billing";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import {
+  getRequestContext,
   registerPlatformJob,
   runWithRequestContext,
   withOrgContext,
@@ -417,6 +418,7 @@ import {
   scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
 import {
+  M12_DEFERRED_QUEUES,
   M12_OUTBOX_EVENTS,
   M12_PLATFORM_JOB_ID,
   buildM12AdmissionActivatedMedHxConsumer,
@@ -439,6 +441,7 @@ import {
   createDrizzlePatientSyncEnqueuePort,
   createEnvWebhookSecretResolver,
   createWebhookBodyCipher,
+  describeM12DeferredQueues,
   idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
@@ -637,9 +640,13 @@ import {
   buildDrizzleSafetySeamStore,
   buildFieldSafetyConsumers,
   buildM20WorkerDeps,
+  createCoordinateDecipher,
   createDrizzleSafetyEraseStore,
+  createSafetyCiphers,
   createSafetyPolicyProvider,
+  createSosRecipientCounter,
   denyStubSafetyAbacResolver,
+  lazyTenantKeys,
   mountM20Routes,
   registerFieldSafetyAbacPredicates,
   registerFieldSafetySeams,
@@ -1615,6 +1622,11 @@ export function wireModuleSeams(
     registerFieldSafetySeams({
       store: buildDrizzleSafetySeamStore(deps.db),
       signals: safetyClinicianSignalCache(),
+      // GAP-060 — §8.6 coordinate decipher over the same per-tenant DEK envelope M20's write path seals with.
+      decipher: createCoordinateDecipher(
+        createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider)).decipher,
+        () => getRequestContext()?.organizationId,
+      ),
     });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
@@ -4351,11 +4363,27 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `null` rather than `0`: "we could not ask the §4.5 composed resolver" is what the mobile client
           // renders as the D15 `tel:` direct-dial fallback, and "0 recipients" would instead read as a
           // genuine coverage gap the tenant caused.
-          const m20ReadService = buildDrizzleM20ReadService(dbHandle.db);
+          // GAP-060 — the cipher, decipher and recipient counter ARE bound now (the "deliberately unbound"
+          // paragraph above describes the pre-GAP-060 behaviour): the DEK envelope sits over
+          // `getTenantKeyProvider()` (the M8/M29/M31/M39 precedent, resolved lazily) and the §4.5 count is
+          // M20's own §4.3 supervisor registry (a floor — `null`, never 0, when nobody is confirmed).
+          const m20Ciphers = createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider));
+          const m20ReadService = buildDrizzleM20ReadService(dbHandle.db, {
+            decipher: m20Ciphers.decipher,
+          });
           mountM20Routes(app, {
             readService: m20ReadService,
             writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
               outbox: m20OutboxPublisher,
+              cipher: m20Ciphers.cipher,
+              recipientCountFor: createSosRecipientCounter({
+                supervisorsForClinician: (orgId, membershipId, kind) =>
+                  getSeam("SafetySupervisorProvider").supervisorsForClinician(
+                    orgId,
+                    membershipId,
+                    kind,
+                  ),
+              }),
             }),
           });
           // M31 (Patient/Family Portal & Telehealth) — mount the forty-seven §4.1 routes over the Drizzle
@@ -6680,6 +6708,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M12 dosespot_sync_queue drain schedule registration failed");
     }
+    // GAP-037 — the seven §4.8 queues that are NOT built (transmission + the refill / IAL2 / timeout / EPCS
+    // crons) are gated on the DoseSpot vendor integration; say so at every boot rather than leaving it implicit.
+    app.log.warn(
+      { deferredQueues: M12_DEFERRED_QUEUES.map((q) => q.queue) },
+      describeM12DeferredQueues(),
+    );
     // M19 §4.5 path 1 / §4.8 — the `on_call_roster_sync_queue` drain (`m19.shift-sync.debounced`) +
     // catch-up-seed workers (m19 `handlers-unbound` group, #248; F-155's own finding, now built).
     // `reconcileOnCallRoster`/`decideRosterSyncTrigger` (`roster/shift-sync.ts`) were complete and unit-

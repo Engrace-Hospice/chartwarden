@@ -102,8 +102,15 @@ export interface AssignVendorInput extends Versioned {
   readonly overrideReason?: string;
 }
 
+export interface RecordVendorInvoiceInput extends Versioned {
+  /** The vendor's actual invoice total, integer cents (GAP-063 / D16). */
+  readonly invoiceTotalCents: number;
+}
+
 export interface MarkOrderedInput extends Versioned {
   readonly vendorOrderReference: string;
+  /** GAP-063 / D16 — the vendor-quoted total (integer cents); when present it is accrued to M27. */
+  readonly vendorQuotedTotalCents?: number;
 }
 
 export interface MarkInTransitInput extends Versioned {
@@ -324,6 +331,12 @@ export interface M21WriteService {
     actor: M21WriteActor,
     supplyRequestId: string,
     input: MarkOrderedInput,
+  ): Promise<SupplyRequestDetail>;
+  /** GAP-063 / D16 — match the vendor's actual invoice against the accrued quote; emits `invoice_reconciled`. */
+  recordVendorInvoice(
+    actor: M21WriteActor,
+    supplyRequestId: string,
+    input: RecordVendorInvoiceInput,
   ): Promise<SupplyRequestDetail>;
   markInTransit(
     actor: M21WriteActor,

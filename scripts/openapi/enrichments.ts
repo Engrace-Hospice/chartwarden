@@ -332,6 +332,7 @@ import {
   MarkOrderedBody as M21MarkOrderedBody,
   ObserveParStockBody as M21ObserveParStockBody,
   ReconcileReturnBody as M21ReconcileReturnBody,
+  RecordVendorInvoiceBody as M21RecordVendorInvoiceBody,
   RetireSupplyItemBody as M21RetireSupplyItemBody,
   ReturnRequestBody as M21ReturnRequestBody,
   SupersedeTemplateBody as M21SupersedeTemplateBody,
@@ -7080,8 +7081,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-ordered": {
-    summary: "Vendor accepted (PO reference; If-Match)",
+    summary:
+      "Vendor accepted (PO reference; optional vendorQuotedTotalCents accrues the quote and emits invoice_accrued, GAP-063; If-Match)",
     body: M21MarkOrderedBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/vendor-invoice": {
+    summary:
+      "GAP-063 / D16 — record the vendor's actual invoice against the accrued quote (signed variance; emits invoice_reconciled once; 409 when never accrued or already reconciled; If-Match)",
+    body: M21RecordVendorInvoiceBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-in-transit": {

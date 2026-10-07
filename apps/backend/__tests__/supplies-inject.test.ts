@@ -783,6 +783,13 @@ function createFakeBackend() {
       r.updatedAt = NOW;
       return requestDetail(r);
     },
+    async recordVendorInvoice(_actor, id, input) {
+      const r = requests.get(id) ?? notFound("supply request");
+      r.invoiceTotalCents = input.invoiceTotalCents;
+      r.invoiceReconciledAt = NOW;
+      r.updatedAt = NOW;
+      return requestDetail(r);
+    },
     async markInTransit(_actor, id, input) {
       const r = requests.get(id) ?? notFound("supply request");
       r.status = "in_transit";
@@ -1643,6 +1650,50 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
       hospiceCoverage: "not_covered_unrelated",
       coverageReason: "Unrelated equipment.",
     });
+    await app.close();
+  });
+
+  it("GAP-063: POST vendor-invoice validates an integer-cents body and needs If-Match", async () => {
+    const { app } = makeServer();
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...COORD, "idempotency-key": "req-inv" },
+      payload: {
+        patientId: fakeId(),
+        admissionId: fakeId(),
+        locationId: LOC_A,
+        deliveryAddress: ADDRESS,
+        kindPayload: { kind: "dme" },
+      },
+    });
+    const id = create.json().supplyRequestId as string;
+    const url = `/api/v1/supplies/supply-requests/${id}/vendor-invoice`;
+
+    const fractional = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-inv-1", "if-match": NOW },
+      payload: { invoiceTotalCents: 12.5 },
+    });
+    expect(fractional.statusCode).toBe(422);
+
+    const noIfMatch = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-inv-2" },
+      payload: { invoiceTotalCents: 12500 },
+    });
+    expect(noIfMatch.statusCode).toBe(428);
+
+    const ok = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...COORD, "idempotency-key": "req-inv-3", "if-match": NOW },
+      payload: { invoiceTotalCents: 12500 },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ invoiceTotalCents: 12500 });
     await app.close();
   });
 

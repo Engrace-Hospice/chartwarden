@@ -336,7 +336,17 @@ export const AssignVendorBody = Type.Object({
  */
 export const MarkOrderedBody = Type.Object({
   vendorOrderReference: Type.String({ minLength: 1, maxLength: 128 }),
+  /** GAP-063 / D16 — the vendor-quoted order total, integer CENTS. When present it is the cost accrual:
+   *  `invoice_total_cents` + `invoice_accrued_at` are written and `m21.supply_request.invoice_accrued` is
+   *  emitted in the same transaction. Absent ⇒ nothing is accrued (never a fabricated zero). */
+  vendorQuotedTotalCents: Type.Optional(Type.Integer({ minimum: 0 })),
 });
+
+/** GAP-063 / D16 — the vendor's actual invoice total (integer cents), matched against the accrual. */
+export const RecordVendorInvoiceBody = Type.Object(
+  { invoiceTotalCents: Type.Integer({ minimum: 0 }) },
+  { additionalProperties: false },
+);
 
 export const MarkInTransitBody = Type.Object({
   trackingNumber: Type.String({ minLength: 1, maxLength: 128 }),
@@ -579,6 +589,7 @@ export type MarkDeliveredBody = Static<typeof MarkDeliveredBody>;
 export type CaptureCaregiverSignatureBody = Static<typeof CaptureCaregiverSignatureBody>;
 export type ConfirmReceivedBody = Static<typeof ConfirmReceivedBody>;
 export type SetCoverageDeterminationBody = Static<typeof SetCoverageDeterminationBody>;
+export type RecordVendorInvoiceBody = Static<typeof RecordVendorInvoiceBody>;
 export type CancelRequestBody = Static<typeof CancelRequestBody>;
 export type ReturnRequestBody = Static<typeof ReturnRequestBody>;
 export type CreateSupplyItemBody = Static<typeof CreateSupplyItemBody>;

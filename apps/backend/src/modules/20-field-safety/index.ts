@@ -127,6 +127,8 @@ export * from "./lifecycle";
 export * from "./permission-keys";
 export * from "./routes/index";
 export * from "./routes/mount";
+export * from "./safety-crypto";
+export * from "./sos-recipient-count";
 export * from "./seams";
 // F-111 (#249) — the §4.8 `m20.sos-sla-watchdog.cron` LIVE BullMQ Worker/Queue construction (the
 // M9/M25/M7 precedent) + the platform-tenancy registration its active-org fan-out needs.

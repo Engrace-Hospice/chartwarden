@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1402,
-    "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "routes": 1403,
+    "coveredRoutes": 1403,
+    "directRoutesReferenced": 1350
   },
   "modules": [
     {
@@ -275,14 +275,14 @@
     },
     {
       "module": "21-supplies",
-      "routes": 39,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 39
+      "directRoutesReferenced": 40
     },
     {
       "module": "22-documents",
