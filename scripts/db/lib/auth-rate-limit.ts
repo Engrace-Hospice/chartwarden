@@ -33,7 +33,7 @@ const MAX_SERVER_ERROR_RETRIES = 2;
 const SERVER_ERROR_BACKOFF_MS = 2_000;
 
 /** Better Auth reports seconds on `x-retry-after`; WardenX's SD-055 tier on the standard header. */
-function retryDelaySeconds(response: Response): number {
+export function retryDelaySeconds(response: Response): number {
   for (const header of ["retry-after", "x-retry-after"]) {
     const value = Number(response.headers.get(header));
     // Both limiters compare their window with a strict `>`, so wait one second past the edge.
