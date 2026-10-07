@@ -1,8 +1,12 @@
 // M26 backend unit tests — the §4.7 ABAC predicate resolvers (over an injected resolver, no DB), the §4.10
 // outbox-event catalog conformance (naming / owner / declared consumers), and the §4.6 permission surface.
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, isReservedPlatformRoleKey } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
-import { type ReadingM26AbacResolver, buildM26AbacPredicates } from "../abac-predicates";
+import {
+  M26_PLATFORM_ADMIN_ROLE_KEYS,
+  type ReadingM26AbacResolver,
+  buildM26AbacPredicates,
+} from "../abac-predicates";
 import { M26_OUTBOX_EVENTS } from "../events-by-m26";
 import { M26_PERMISSION_KEY_LIST } from "../permission-keys";
 
@@ -75,6 +79,16 @@ describe("M26 §4.7 ABAC predicates", () => {
     const p = buildM26AbacPredicates({ resolver: resolver(null, null) });
     expect(await p.cap_platform_admin!(ctx(["platform_admin"]), target())).toBe(true);
     expect(await p.cap_platform_admin!(ctx(["billing_manager"]), target())).toBe(false);
+  });
+
+  it("cap_platform_admin is satisfied only by reserved platform keys (GAP-003)", async () => {
+    // A tenant may mint any non-reserved key (POST /api/v1/roles), so a non-reserved key here would be
+    // tenant-mintable authority over the platform cap constants every tenant's cap is computed from.
+    const p = buildM26AbacPredicates({ resolver: resolver(null, null) });
+    expect(await p.cap_platform_admin!(ctx(["super_admin"]), target())).toBe(false);
+    for (const key of M26_PLATFORM_ADMIN_ROLE_KEYS) {
+      expect(isReservedPlatformRoleKey(key), key).toBe(true);
+    }
   });
 
   it("a deny-stub resolver (no db) fails closed", async () => {
