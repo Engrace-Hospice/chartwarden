@@ -234,6 +234,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts",
+        "apps/backend/__tests__/m16-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 34
@@ -276,6 +277,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/field-safety-inject.test.ts",
+        "apps/backend/__tests__/m20-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 30

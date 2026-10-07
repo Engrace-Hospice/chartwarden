@@ -152,11 +152,24 @@ export const ABAC_SUPERVISOR_OR_SELF = (action: string): PreHandler => {
   );
 };
 
-/** §4.1 rows 12, 13, 15 — the incident surface (`incident_subject_or_supervisor`). */
+/**
+ * §4.1 rows 12, 13, 15 — the incident surface (`incident_subject_or_supervisor`).
+ *
+ * On the CREATE (no id param) the subject is the body's `affectedClinicianMembershipId` — the one
+ * membership id a caller may supply (routes/actor.ts). It MUST reach the predicate: with a nameless target
+ * the predicate answers "opening one on myself" for anyone, so a clinician could file an incident on a
+ * peer without the supervisor arm (GAP-136, found by the live route suite).
+ */
 export const ABAC_INCIDENT_SUBJECT = (action: string, idParam?: string): PreHandler =>
   requireAbac(action, "incident_subject_or_supervisor", {
-    getTarget: (r) =>
-      idParam === undefined ? {} : { incidentId: param(r as TargetRequest, idParam) },
+    getTarget: (r) => {
+      if (idParam !== undefined) return { incidentId: param(r as TargetRequest, idParam) };
+      const subject = ((r as TargetRequest).body as Record<string, unknown> | undefined)
+        ?.affectedClinicianMembershipId;
+      return typeof subject === "string" && subject.length > 0
+        ? { clinicianMembershipId: subject }
+        : {};
+    },
     notFoundOnDeny: idParam !== undefined,
   }) as PreHandler;
 
