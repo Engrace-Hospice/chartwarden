@@ -258,6 +258,31 @@ describe.skipIf(!DB_URL)("GAP-015 patient assignment routes — LIVE Postgres", 
     expect((await assign(RN_2, "primary_rn")).statusCode).toBe(201);
   });
 
+  it("allows several open additional RNs (`rn`) beside the one primary_rn (v0.6.1)", async () => {
+    expect((await assign(RN_1, "primary_rn")).statusCode).toBe(201);
+    const second = await assign(RN_2, "rn");
+    expect(second.statusCode).toBe(201);
+    expect(second.json()).toMatchObject({ clinicianUserId: RN_2, role: "rn", current: true });
+    // DON is also an active ORG_A member: a second open `rn` on the same patient is fine.
+    expect((await assign(DON, "rn")).statusCode).toBe(201);
+    // The open-duplicate guard still applies per (patient, clinician, role).
+    const dup = await assign(RN_2, "rn");
+    expect(dup.statusCode).toBe(409);
+    expect(JSON.stringify(dup.json())).toContain("ASSIGNMENT_ALREADY_OPEN");
+    // An `rn` is never the RN case manager: primary_rn stays single.
+    const secondPrimary = await assign(RN_2, "primary_rn");
+    expect(secondPrimary.statusCode).toBe(409);
+    expect(JSON.stringify(secondPrimary.json())).toContain("PRIMARY_RN_ALREADY_ASSIGNED");
+    const { rows } = await admin.query(
+      "SELECT role::text AS role, count(*)::int AS n FROM patient_assignment WHERE patient_id=$1 AND unassigned_at IS NULL GROUP BY role ORDER BY role",
+      [patientId],
+    );
+    expect(rows).toEqual([
+      { role: "primary_rn", n: 1 },
+      { role: "rn", n: 2 },
+    ]);
+  });
+
   it("refuses a duplicate open (patient, clinician, role) with 409 ASSIGNMENT_ALREADY_OPEN", async () => {
     expect((await assign(RN_1, "np")).statusCode).toBe(201);
     const dup = await assign(RN_1, "np");

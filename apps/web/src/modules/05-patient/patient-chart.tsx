@@ -2006,6 +2006,8 @@ interface TeamMember {
 const ROLE_LABELS: Record<string, string> = {
   primary_rn: "Primary RN",
 
+  rn: "RN",
+
   attending_clinician: "Attending clinician",
 
   case_manager_msw: "Case manager (MSW)",
@@ -2025,6 +2027,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const ASSIGNABLE_ROLES = [
   "primary_rn",
+  "rn",
   "attending_clinician",
   "case_manager_msw",
   "chaplain",
@@ -2032,6 +2035,8 @@ const ASSIGNABLE_ROLES = [
   "np",
   "md",
 ] as const;
+
+type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 
@@ -2157,7 +2162,7 @@ function CareTeamRolePicker({
   );
 }
 
-function CareTeamTab({
+export function CareTeamTab({
   patientId,
   organizationId,
 }: {
@@ -2170,8 +2175,8 @@ function CareTeamTab({
   const [members, setMembers] = useState<Map<string, TeamMember>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [assignOpen, setAssignOpen] = useState(false);
-  const [membershipId, setMembershipId] = useState("");
-  const [membershipLabel, setMembershipLabel] = useState("");
+  const [clinicianUserId, setClinicianUserId] = useState("");
+  const [clinicianLabel, setClinicianLabel] = useState("");
   const [assignmentRole, setAssignmentRole] = useState("primary_rn");
   const [assigning, setAssigning] = useState(false);
   const [assignmentError, setAssignmentError] = useState<{
@@ -2499,14 +2504,15 @@ function CareTeamTab({
           <div style={assignmentModalBody}>
             <MembershipLookupField
               label="Clinician"
-              value={membershipId}
-              valueLabel={membershipLabel}
+              value={clinicianUserId}
+              valueLabel={clinicianLabel}
+              idKind="user"
               appearance="modal"
               placeholder="Search staff by name or email..."
               hint="Only active members of this organization are available."
               onChange={(value, option) => {
-                setMembershipId(value);
-                setMembershipLabel(option?.searchLabel ?? "");
+                setClinicianUserId(value);
+                setClinicianLabel(option?.searchLabel ?? "");
                 setAssignmentError(null);
               }}
               required
@@ -2536,24 +2542,18 @@ function CareTeamTab({
               Cancel
             </Button>
             <Button
-              disabled={!membershipId || assigning}
+              disabled={!clinicianUserId || assigning}
               onClick={() =>
                 void (async () => {
                   setAssigning(true);
                   setAssignmentError(null);
-                  // This new M5 operation is intentionally not in the generated client yet. Keep this
-                  // narrow cast at the boundary so TypeScript does not try to recursively instantiate
-                  // the entire OpenAPI paths map for an ungenerated literal route.
-                  const res = await (
-                    client as unknown as {
-                      POST: (path: string, options: unknown) => Promise<{ error?: unknown }>;
-                    }
-                  ).POST("/api/v1/patients/{id}/assignments", {
+                  // §4.3 takes the clinician's USER id; the picker runs in `idKind="user"` mode to supply it.
+                  const res = await client.POST("/api/v1/patients/{id}/assignments", {
                     params: { path: { id: patientId } },
                     body: {
-                      clinicianMembershipId: membershipId,
-                      role: assignmentRole,
-                    } as never,
+                      clinicianUserId,
+                      role: assignmentRole as AssignableRole,
+                    },
                   });
 
                   if (res.error) {
@@ -2563,8 +2563,8 @@ function CareTeamTab({
                   }
 
                   setAssignOpen(false);
-                  setMembershipId("");
-                  setMembershipLabel("");
+                  setClinicianUserId("");
+                  setClinicianLabel("");
                   setAssignmentRole("primary_rn");
                   setAssigning(false);
                   toast.show("Care team member assigned.", { tone: "success" });

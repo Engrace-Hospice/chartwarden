@@ -63034,7 +63034,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     clinicianUserId: string;
-                    role: "primary_rn" | "attending_clinician" | "case_manager_msw" | "chaplain" | "aide" | "np" | "md" | "volunteer" | "bereavement";
+                    role: "primary_rn" | "rn" | "attending_clinician" | "case_manager_msw" | "chaplain" | "aide" | "np" | "md" | "volunteer" | "bereavement";
                     /** Format: date */
                     assignedAt?: string;
                     reason?: string;
