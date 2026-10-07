@@ -22,11 +22,6 @@ type TargetRequest = {
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
 
-const bodyStr = (request: TargetRequest, key: string): string | undefined => {
-  const value = (request.body as Record<string, unknown> | undefined)?.[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-};
-
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.7 key catalog M29 contributes). */
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
@@ -65,12 +60,12 @@ export const ABAC_FEED_BAA = (action: string, idParam = "feedId"): PreHandler =>
 /**
  * §4.1.1 / D20 — revoke a feed: `external_feed_compliance_co_approver_distinct`, 403 on deny.
  *
- * The co-approver must differ from the primary approver. The primary approver is supplied in the body
- * (`primaryApproverId`); the store enforces distinctness against the STORED approver too (defense in depth).
+ * The co-approver must differ from the first approver, which the predicate reads from the STORED feed row
+ * (GAP-153) — never from the request body; the store re-checks the same stored value in its own transaction.
  */
 export const ABAC_FEED_CO_APPROVER = (action: string): PreHandler =>
   requireAbac(action, "external_feed_compliance_co_approver_distinct", {
-    getTarget: (r) => ({ primaryApproverId: bodyStr(r as TargetRequest, "primaryApproverId") }),
+    getTarget: (r) => ({ feedId: param(r as TargetRequest, "feedId") }),
     notFoundOnDeny: false,
   }) as PreHandler;
 

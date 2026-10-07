@@ -432,7 +432,7 @@ Invoked from T-29.07's `POST /api/v1/hl7/unmatched-labs/:id/bind` route before t
 import { db } from '@wardenx/db'
 import { labObservation, labObservationValue } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { SudPolicyEngine } from './sud-policy-engine'
 import type { Logger } from 'pino'
 
@@ -445,7 +445,7 @@ export async function recheckSudOnBind(input: {
   logger: Logger
 }): Promise<{ statusChanged: boolean; newStatus: string }> {
   // Load the obx list from values
-  const valueRows = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) =>
+  const valueRows = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) =>
     tx
       .select({ loincCode: labObservationValue.loincCode })
       .from(labObservationValue)
@@ -462,7 +462,7 @@ export async function recheckSudOnBind(input: {
   })
 
   // Resolve current status to determine whether to re-encrypt
-  const [currentObs] = await withTenantContext(db, { organizationId: input.organizationId }, async (tx) =>
+  const [currentObs] = await withOrgContext(db, { organizationId: input.organizationId }, async (tx) =>
     tx.select().from(labObservation).where(eq(labObservation.id, input.observationId)).limit(1),
   )
   if (!currentObs) throw new Error('observation_not_found')
@@ -470,7 +470,7 @@ export async function recheckSudOnBind(input: {
   const prior = currentObs.sudRedactionStatus
   if (prior === decision.redactionStatus) {
     // No change; just update the evaluation timestamps
-    await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+    await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
       await tx.update(labObservation).set({
         sudConsentEvaluatedAt: decision.consentEvaluatedAt,
         sudConsentDecisionRef: decision.consentDecisionRef,
@@ -487,7 +487,7 @@ export async function recheckSudOnBind(input: {
   //   not_applicable → redacted_*: the lab wasn't SUD at ingest but is now (catalog drift); redact values
   //   unredacted_* → redacted_*: redact values (consent absent at bind)
 
-  await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
     if (decision.redactionStatus === 'unredacted_consent_explicit' &&
         prior.startsWith('redacted_')) {
       // We need to restore the plaintext. But the plaintext was destroyed at ingest
@@ -580,7 +580,7 @@ import { pino } from 'pino'
 import { db } from '@wardenx/db'
 import { labObservation, labObservationValue } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { mkOutbox } from '@wardenx/foundation/seams/outbox'
 
 interface ConsentWithdrawnPayload {
@@ -601,7 +601,7 @@ export function registerSudBackRedactionConsumer(outboxSub: any): void {
     handler: async ({ payload }) => {
       if (payload.dataClass !== 'sud_test') return  // not our class
 
-      const observationsToRedact = await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) =>
+      const observationsToRedact = await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) =>
         tx
           .select({ id: labObservation.id })
           .from(labObservation)
@@ -617,7 +617,7 @@ export function registerSudBackRedactionConsumer(outboxSub: any): void {
       )
 
       for (const obs of observationsToRedact) {
-        await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) => {
+        await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) => {
           await tx.update(labObservationValue).set({ observationValue: '[REDACTED_SUD]' }).where(eq(labObservationValue.observationId, obs.id))
           await tx.update(labObservation).set({
             sudRedactionStatus: 'back_redacted_consent_withdrawn',
@@ -676,7 +676,7 @@ import { Type } from '@sinclair/typebox'
 import { db } from '@wardenx/db'
 import { labObservation, labObservationValue, labObservationSudUnredactGrant } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { ulid } from 'ulid'
 import { requirePermissions } from '@wardenx/foundation/auth'
 import { requirePredicate } from '@wardenx/foundation/abac'
@@ -710,7 +710,7 @@ export function registerSudUnredactRoutes(app: FastifyInstance): void {
       const organizationId = req.user!.organizationId
 
       // Verify the observation exists + is SUD-class
-      const [obs] = await withTenantContext(db, { organizationId }, async (tx) =>
+      const [obs] = await withOrgContext(db, { organizationId }, async (tx) =>
         tx
           .select()
           .from(labObservation)
@@ -725,7 +725,7 @@ export function registerSudUnredactRoutes(app: FastifyInstance): void {
       const grantId = ulid()
       const initialState = emergencyBasis42cfr2_51 ? 'approved' : 'requested'  // §6.2 short-circuit
 
-      await withTenantContext(db, { organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId }, async (tx) => {
         await tx.insert(labObservationSudUnredactGrant).values({
           id: grantId,
           organizationId,
@@ -774,7 +774,7 @@ export function registerSudUnredactRoutes(app: FastifyInstance): void {
       const organizationId = req.user!.organizationId
 
       // Atomic update WHERE state='requested'
-      const updated = await withTenantContext(db, { organizationId }, async (tx) => {
+      const updated = await withOrgContext(db, { organizationId }, async (tx) => {
         const result = await tx
           .update(labObservationSudUnredactGrant)
           .set({
@@ -822,7 +822,7 @@ export function registerSudUnredactRoutes(app: FastifyInstance): void {
       const { grantId } = req.params as { grantId: string }
       const organizationId = req.user!.organizationId
 
-      const grant = await withTenantContext(db, { organizationId }, async (tx) => {
+      const grant = await withOrgContext(db, { organizationId }, async (tx) => {
         const result = await tx
           .update(labObservationSudUnredactGrant)
           .set({ state: 'exercised', exercisedAt: new Date() })
@@ -878,7 +878,7 @@ export const sudUnredactDistinctApprover = {
   name: 'sud_unredact_distinct_approver' as const,
   async evaluate(ctx: PredicateContext): Promise<{ allow: boolean; reason?: string }> {
     if (ctx.resource?.kind !== 'sud_unredact_grant') return { allow: false, reason: 'wrong_resource' }
-    const [row] = await withTenantContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
+    const [row] = await withOrgContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
       tx.select({ requestedBy: labObservationSudUnredactGrant.requestedByMembershipId }).from(labObservationSudUnredactGrant).where(eq(labObservationSudUnredactGrant.id, ctx.resource.id)).limit(1),
     )
     if (!row) return { allow: false, reason: 'grant_not_found' }
@@ -892,7 +892,7 @@ export const sudUnredactAuthorized = {
   name: 'sud_unredact_authorized' as const,
   async evaluate(ctx: PredicateContext): Promise<{ allow: boolean; reason?: string }> {
     if (ctx.resource?.kind !== 'sud_unredact_grant') return { allow: false, reason: 'wrong_resource' }
-    const [row] = await withTenantContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
+    const [row] = await withOrgContext(ctx.db, { organizationId: ctx.subject.organizationId }, async (tx) =>
       tx.select().from(labObservationSudUnredactGrant).where(eq(labObservationSudUnredactGrant.id, ctx.resource.id)).limit(1),
     )
     if (!row) return { allow: false, reason: 'grant_not_found' }

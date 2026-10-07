@@ -62,6 +62,15 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
+import {
+  MAX_VERIFICATION_ATTEMPTS,
+  VERIFICATION_CODE_TTL_MS,
+  type VerificationOutcome,
+  checkVerificationCode,
+  generateVerificationCode,
+  hashVerificationCode,
+} from "./endpoint-verification";
 import {
   type MessageBodyCipher,
   channelOr404,
@@ -137,17 +146,6 @@ const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
 function iso(d: Date | null): string | null {
   return d === null ? null : d.toISOString();
 }
-
-/** PHI-free per-category inbox line (§4.7: the inbox summary never names a patient/diagnosis). The
- *  event_type is a static event CODE (not PHI); the category drives a generic human label. */
-const CATEGORY_LABEL: Record<AlertCategory, string> = {
-  clinical_urgent: "Urgent clinical alert",
-  clinical_routine: "Clinical alert",
-  operational: "Operational alert",
-  field_safety: "Field-safety alert",
-  administrative: "Administrative notice",
-  system: "System notice",
-};
 
 /** Aggregate per-recipient × channel delivery rows into the inbox item's single status (§4.2). */
 function aggregateDeliveryStatus(statuses: readonly string[]): AlertInboxItem["deliveryStatus"] {
@@ -234,12 +232,48 @@ async function assertMayManageMembers(
 const seamPatientLocationIds: PatientLocationResolver = (organizationId, patientId) =>
   getSeam("PatientSitingReader").getPatientLocationIds({ organizationId, patientId });
 
+/** Map a failed OTP outcome to its HTTP error (the in-memory service uses the same `INVALID_TOKEN`). */
+function verificationFailure(outcome: Exclude<VerificationOutcome, "ok">): WardenXError {
+  switch (outcome) {
+    case "locked":
+      return new WardenXError(
+        "VERIFICATION_LOCKED",
+        `too many wrong codes (max ${MAX_VERIFICATION_ATTEMPTS}); re-register the endpoint for a new code`,
+        429,
+      );
+    case "expired":
+      return new WardenXError(
+        "VERIFICATION_EXPIRED",
+        "verification code expired; re-register the endpoint for a new code",
+        422,
+      );
+    case "not_issued":
+      return new WardenXError(
+        "VERIFICATION_NOT_ISSUED",
+        "no verification code was issued for this endpoint; re-register it",
+        422,
+      );
+    case "mismatch":
+      return new WardenXError("INVALID_TOKEN", "verification token does not match", 422);
+  }
+}
+
 export function createDbMessagingRouteService(
   db: DbClient,
   opts: {
     kek?: Buffer;
     cipher?: MessageBodyCipher;
     resolvePatientLocationIds?: PatientLocationResolver;
+    /**
+     * GAP-166 — delivers the freshly issued sms/email verification code to the endpoint itself. There is no
+     * out-of-band dispatcher yet, so by default NOTHING is sent and the endpoint simply stays `pending`
+     * (fail closed: an unverified endpoint is never a delivery target). A throw rolls the registration back.
+     */
+    sendEndpointVerificationCode?: (input: {
+      channel: DeliveryEndpointChannel;
+      target: string;
+      code: string;
+    }) => Promise<void>;
   } = {},
 ): MessagingRouteService {
   const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
@@ -803,6 +837,23 @@ export function createDbMessagingRouteService(
           verificationStatus: DeliveryEndpointVerification;
         }>;
         const r = rows[0]!;
+        if (!verified) {
+          // GAP-166 — issue the §4.2 OTP: store only its salted hash + expiry, hand the code to the sender.
+          const code = generateVerificationCode();
+          await tx
+            .update(DE)
+            .set({
+              verificationTokenHash: hashVerificationCode(r.id, code),
+              verificationTokenExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+              verificationAttempts: 0,
+            })
+            .where(eq(DE.id, r.id));
+          await opts.sendEndpointVerificationCode?.({
+            channel: r.channel,
+            target: input.target,
+            code,
+          });
+        }
         return {
           endpointId: r.id,
           channel: r.channel,
@@ -813,40 +864,63 @@ export function createDbMessagingRouteService(
 
     // --- confirm a verification (push is already verified) -------------------------------------
     async verifyEndpoint(orgId, userId, endpointId, token) {
-      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      // The outcome is decided inside the tx but the error is thrown AFTER it commits: a wrong guess must
+      // persist its attempt increment, and a throw inside `withOrgContext` would roll that back.
+      const result = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const rows = (await tx
           .select({
             channel: DE.channel,
             verificationStatus: DE.verificationStatus,
+            tokenHash: DE.verificationTokenHash,
+            expiresAt: DE.verificationTokenExpiresAt,
+            attempts: DE.verificationAttempts,
           })
           .from(DE)
           .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)))
           .limit(1)) as Array<{
           channel: DeliveryEndpointChannel;
           verificationStatus: DeliveryEndpointVerification;
+          tokenHash: string | null;
+          expiresAt: Date | null;
+          attempts: number;
         }>;
         const r = rows[0];
         if (!r) throw new NotFoundError("delivery endpoint", endpointId);
-        if (r.verificationStatus === "verified") {
-          return {
-            endpointId,
-            channel: r.channel,
-            verificationStatus: r.verificationStatus,
-          };
-        }
-        // NOTE: the §4.2 OTP check needs a token-hash column on `delivery_endpoint` (not in the
-        // schema yet); until that lands the route confirms possession and flips pending → verified.
-        void token;
-        await tx
-          .update(DE)
-          .set({ verificationStatus: "verified", verifiedAt: new Date() })
-          .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)));
-        return {
+        const ok = {
           endpointId,
           channel: r.channel,
-          verificationStatus: "verified" as const,
+          verificationStatus: r.verificationStatus,
         };
+        if (r.verificationStatus === "verified") return { outcome: "ok" as const, body: ok };
+        // GAP-166 — the §4.2 OTP: constant-time compare against the stored hash, with TTL + attempt cap.
+        const outcome = checkVerificationCode(
+          { endpointId, tokenHash: r.tokenHash, expiresAt: r.expiresAt, attempts: r.attempts },
+          token,
+          new Date(),
+        );
+        if (outcome === "ok") {
+          await tx
+            .update(DE)
+            .set({
+              verificationStatus: "verified",
+              verifiedAt: new Date(),
+              verificationTokenHash: null,
+              verificationTokenExpiresAt: null,
+              verificationAttempts: 0,
+            })
+            .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)));
+          return { outcome, body: { ...ok, verificationStatus: "verified" as const } };
+        }
+        if (outcome === "mismatch") {
+          await tx
+            .update(DE)
+            .set({ verificationAttempts: sql`${DE.verificationAttempts} + 1` })
+            .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)));
+        }
+        return { outcome, body: ok };
       });
+      if (result.outcome !== "ok") throw verificationFailure(result.outcome);
+      return result.body;
     },
 
     async removeEndpoint(orgId, userId, endpointId) {
@@ -940,6 +1014,7 @@ export function createDbMessagingRouteService(
             alertId: AL.id,
             eventType: AL.eventType,
             severity: AL.severity,
+            payload: AL.payload,
             createdAt: AL.createdAt,
             category: ND.alertCategory,
             deliveryStatus: ND.status,
@@ -957,6 +1032,7 @@ export function createDbMessagingRouteService(
             eventType: string;
             category: AlertCategory;
             severity: AlertSeverity;
+            payload: unknown;
             createdAt: Date;
             statuses: string[];
             readAt: Date | null;
@@ -970,6 +1046,7 @@ export function createDbMessagingRouteService(
               eventType: r.eventType,
               category: r.category as AlertCategory,
               severity: r.severity as AlertSeverity,
+              payload: r.payload,
               createdAt: r.createdAt,
               statuses: [],
               readAt: r.readAt,
@@ -978,18 +1055,20 @@ export function createDbMessagingRouteService(
           }
           e.statuses.push(r.deliveryStatus);
         }
-        return [...byAlert.values()].map(
-          (e): AlertInboxItem => ({
+        return [...byAlert.values()].map((e): AlertInboxItem => {
+          const presentation = projectAlertInboxPresentation(e.payload, e.category);
+          return {
             alertId: e.alertId,
             eventType: e.eventType,
             category: e.category,
             severity: e.severity,
-            summary: CATEGORY_LABEL[e.category] ?? "Notification",
+            summary: presentation.summary,
+            deepLink: presentation.deepLink,
             createdAt: e.createdAt.toISOString(),
             deliveryStatus: aggregateDeliveryStatus(e.statuses),
             readAt: iso(e.readAt),
-          }),
-        );
+          };
+        });
       });
     },
 

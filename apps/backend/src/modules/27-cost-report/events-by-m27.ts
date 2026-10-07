@@ -319,6 +319,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       totalVisits: Type.Integer(),
       capProviderSkipped: Type.Boolean(),
       claimProviderSkipped: Type.Boolean(),
+      /** GAP-080 — true when no completed wage import exists, so no FTE could be derived (the map is empty). */
+      fteSourceMissing: Type.Optional(Type.Boolean()),
     }),
     declaredConsumers: [],
     seamConsumers: ["m33"],

@@ -1,5 +1,6 @@
 // apps/backend/src/modules/28-fhir/routes/admin-export.routes.ts — §4.1 R31-R33: operator-facing bulk
 // export administration. R33's cancel gates on `bulk_export_initiator_or_admin` (§4.7).
+import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import type { BulkExportEnqueuePort } from "../jobs/ports";
@@ -49,10 +50,11 @@ export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExpor
       const actor = writeActorOf(request);
       const body = parse(InitiateBulkExportBody, request.body);
       if (enqueue === undefined) {
-        return reply.code(501).send({
-          code: "FHIR_EXPORT_NOT_ENABLED",
-          message: "bulk export is not enabled on this deployment",
-        });
+        throw new WardenXError(
+          "FHIR_EXPORT_NOT_ENABLED",
+          "bulk export is not enabled on this deployment",
+          501,
+        );
       }
       const job = await store.createJob(actor.organizationId, {
         clientId: body.clientId,

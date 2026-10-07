@@ -17,6 +17,7 @@ import type {
   EncounterCreator,
   HospitalizationRiskProvider,
   MedicationOrderProvider,
+  OrderProvider,
   OrderSignatureProvider,
   ProtocolSuggestionProvider,
   RefillInboxProvider,
@@ -79,6 +80,14 @@ export function getEncounterCreator(): EncounterCreator {
  */
 export function getOrderSignatureProvider(): OrderSignatureProvider {
   return getSeam("OrderSignatureProvider");
+}
+
+/**
+ * M19 CONSUMES M11's §4.3 `OrderProvider` — the read-back that proves a `verbal_order_recorded` disposition names a
+ * REAL order for THIS patient before the id is stored on the call (GAP-134). Strictly read-only.
+ */
+export function getOrderProvider(): OrderProvider {
+  return getSeam("OrderProvider");
 }
 
 /**

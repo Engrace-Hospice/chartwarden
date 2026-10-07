@@ -14,10 +14,12 @@ import {
 // apps/web/src/modules/26-cap — M26, the SETTLEMENT WORKSHEET (R2, §5.1.6). The final cap calculation for the
 // period in settlement: final paid, final cap, overage/underage, and the owed direction. Resolves the period
 // currently in_settlement (or the latest), then reads its worksheet. Propose/finalize are server-authoritative
-// mutations gated on cap.settlement.manage + step-up (D12); this read surface gates nav visibility only.
+// mutations gated on cap.settlement.manage + step-up (D12) — GAP-079 wires both here (propose, then finalize with a
+// written attestation); the server still decides every permission / ABAC / step-up rule.
 // Lantern: WorkQueueLayout + summary rows + §6.6 StatusPill; CSS-var tokens only.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { CapActionDialog, sendCapMutation } from "./cap-actions";
 import {
   PERIOD_STATUS_TONE,
   SETTLEMENT_STATUS_TONE,
@@ -69,6 +71,7 @@ export function CapSettlement(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<"propose" | "finalize" | null>(null);
 
   const loadSettlement = useCallback(
     async (targetPeriodId: string) => {
@@ -113,6 +116,9 @@ export function CapSettlement(): JSX.Element {
   }, [load]);
 
   const period = periods.find((p) => p.id === periodId) ?? null;
+  const canPropose = period?.status === "in_settlement" && !settlement;
+  const canFinalize =
+    period?.status === "in_settlement" && !!settlement && settlement.status !== "final";
   const periodOptions = useMemo(
     () =>
       periods.map((p) => ({
@@ -160,17 +166,29 @@ export function CapSettlement(): JSX.Element {
             period ? `Revenue Cycle — ${period.capYear}` : "Revenue Cycle — Cap settlement"
           }
           actions={
-            settlement ? (
-              <StatusPill
-                tone={toneOf(SETTLEMENT_STATUS_TONE, settlement.status)}
-                label={humanize(settlement.status)}
-              />
-            ) : period ? (
-              <StatusPill
-                tone={toneOf(PERIOD_STATUS_TONE, period.status)}
-                label={humanize(period.status)}
-              />
-            ) : null
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              {canPropose ? (
+                <Button tone="primary" onClick={() => setDialog("propose")}>
+                  Propose settlement
+                </Button>
+              ) : null}
+              {canFinalize ? (
+                <Button tone="primary" onClick={() => setDialog("finalize")}>
+                  Finalize settlement
+                </Button>
+              ) : null}
+              {settlement ? (
+                <StatusPill
+                  tone={toneOf(SETTLEMENT_STATUS_TONE, settlement.status)}
+                  label={humanize(settlement.status)}
+                />
+              ) : period ? (
+                <StatusPill
+                  tone={toneOf(PERIOD_STATUS_TONE, period.status)}
+                  label={humanize(period.status)}
+                />
+              ) : null}
+            </div>
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
@@ -338,10 +356,50 @@ export function CapSettlement(): JSX.Element {
         )
       }
       detail={
-        <span style={mutedStyle}>
-          Settlement mutations remain server-authoritative and step-up gated. This surface is the
-          read worksheet for final review.
-        </span>
+        <>
+          <span style={mutedStyle}>
+            Settlement mutations stay server-authoritative: finalizing requires a fresh step-up and
+            a written attestation.
+          </span>
+          <CapActionDialog
+            open={dialog === "propose"}
+            title="Propose settlement"
+            hint="Computes the final cap worksheet for this period from the accrued ledger. You can review it before finalizing."
+            submitLabel="Propose"
+            onClose={() => setDialog(null)}
+            onSubmit={() =>
+              sendCapMutation(client, "POST", "/api/v1/cap/settlements/{periodId}/propose", {
+                periodId,
+              })
+            }
+            onDone={() => {
+              setDialog(null);
+              void loadSettlement(periodId);
+            }}
+          />
+          <CapActionDialog
+            open={dialog === "finalize"}
+            title="Finalize settlement"
+            hint="Finalizing locks this worksheet and settles the period. It needs a fresh step-up and your attestation that the figures are accurate."
+            submitLabel="Finalize"
+            textLabel="Attestation"
+            textMinLength={20}
+            onClose={() => setDialog(null)}
+            onSubmit={({ text }) =>
+              sendCapMutation(
+                client,
+                "PATCH",
+                "/api/v1/cap/settlements/{periodId}/finalize",
+                { periodId },
+                { attestation: text },
+              )
+            }
+            onDone={() => {
+              setDialog(null);
+              void load();
+            }}
+          />
+        </>
       }
       fullPageScroll
     />

@@ -14,6 +14,7 @@ export const terminologyScreens: ScreenRegistryModule<ComponentType> = {
       id: "terminology.admin",
       path: "/terminology",
       title: "Terminology",
+      requiredPermission: "terminology.read", // GAP-116 — the console only runs the search read (terminology.admin.read gates the load-status surface, not built here)
       navGroup: "Admin",
       screen: TerminologyAdmin,
     },

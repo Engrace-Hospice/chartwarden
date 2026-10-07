@@ -96,6 +96,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
             category: "clinical_urgent",
             severity: "warn",
             summary: "SFV follow-up due",
+            deepLink: null,
             createdAt: "2026-06-14T00:00:00Z",
             deliveryStatus: "delivered",
             readAt: null,
@@ -497,7 +498,38 @@ describe("M36-T07 messaging route inventory", () => {
         headers: RN1,
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json().alerts.map((a: { alertId: string }) => a.alertId)).toContain("al_1");
+      const alert = res.json().alerts.find((a: { alertId: string }) => a.alertId === "al_1");
+      expect(alert).toMatchObject({
+        summary: "SFV follow-up due",
+        deepLink: null,
+        deliveryStatus: "delivered",
+        readAt: null,
+      });
+      expect(alert).not.toHaveProperty("payload");
+      await app.close();
+    });
+
+    it("keeps read/unread state working with the presentation fields", async () => {
+      const { app } = makeServer();
+      const marked = await app.inject({
+        method: "POST",
+        url: "/api/v1/alerts/al_1/read",
+        headers: RN1,
+      });
+      expect(marked.statusCode).toBe(204);
+
+      const inbox = await app.inject({
+        method: "GET",
+        url: "/api/v1/alerts/inbox",
+        headers: RN1,
+      });
+      const alert = inbox.json().alerts.find((a: { alertId: string }) => a.alertId === "al_1");
+      expect(alert).toMatchObject({
+        summary: "SFV follow-up due",
+        deepLink: null,
+        deliveryStatus: "delivered",
+      });
+      expect(alert.readAt).toEqual(expect.any(String));
       await app.close();
     });
 

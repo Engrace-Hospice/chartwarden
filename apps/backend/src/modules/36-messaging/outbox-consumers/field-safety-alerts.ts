@@ -85,7 +85,7 @@ function planFor(event: DispatchableOutboxEvent): FieldSafetyAlertPlan {
           kind: p.kind,
           expectedAt: p.expectedAt,
           minutesOverdue: p.minutesOverdue,
-          deepLink: "/field-safety",
+          deepLink: "/safety",
           message: "A field clinician's safety check-in is overdue.",
         },
       };
@@ -104,7 +104,7 @@ function planFor(event: DispatchableOutboxEvent): FieldSafetyAlertPlan {
           tier,
           afterHours: p.afterHours === true,
           minutesOverdue: p.minutesOverdue,
-          deepLink: "/field-safety",
+          deepLink: "/safety",
           message: "A field clinician's overdue safety check-in has escalated.",
         },
       };
@@ -120,7 +120,7 @@ function planFor(event: DispatchableOutboxEvent): FieldSafetyAlertPlan {
           clinicianMembershipId,
           reason,
           detectedAt,
-          deepLink: "/field-safety",
+          deepLink: "/safety",
           message: "A field clinician has nobody subscribed to be paged for her safety alerts.",
         },
       };

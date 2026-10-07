@@ -84,7 +84,7 @@ export const M3_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m3.engagement.closed",
     moduleOwner: "m3",
     description:
-      "An auditor engagement reached end_at (or was closed). Registered ahead of GAP-011's durable engagement store; not yet published.",
+      "An auditor engagement reached end_at and was closed by the authz.close_engagements cron (GAP-011).",
     payloadSchema: Type.Object({
       engagementId: id,
       organizationId: id,

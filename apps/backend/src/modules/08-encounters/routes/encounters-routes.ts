@@ -12,9 +12,10 @@
 // → 412 VERSION_MISMATCH on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
 // freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
 // (STEP_UP_AUTH_REQUIRED → 412 when stale).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import {
   AddendumParamsSchema,
@@ -48,6 +49,35 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface EncounterRouteDeps {
   service: EncounterRouteService;
+  /**
+   * The patients on a clinician's caseload (GAP-182) — defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
+   */
+  caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<
+    readonly string[]
+  >;
+}
+
+/**
+ * GAP-182 — the caseload narrowing the org-wide encounter list applies. Org-wide scope roles are
+ * unrestricted (`null`); everyone else sees their caseload plus the one patient a pinned session names.
+ * Fail-CLOSED: a caseload that cannot be resolved narrows to the session patient (or nothing).
+ */
+async function listScopeOf(
+  request: FastifyRequest,
+  lookup: NonNullable<EncounterRouteDeps["caseloadPatientIds"]>,
+): Promise<readonly string[] | null> {
+  const ctx = request.context;
+  if (hasOrgWideScope(ctx.roles)) return null;
+  const pinned = ctx.attributes?.sessionPatientId;
+  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
+  if (!ctx.userId) return sessionIds;
+  try {
+    const caseload = await lookup({ organizationId: ctx.organizationId, userId: ctx.userId });
+    return [...new Set([...caseload, ...sessionIds])];
+  } catch {
+    return sessionIds;
+  }
 }
 
 function actorOf(request: FastifyRequest): {
@@ -170,6 +200,8 @@ const IF_MATCH = requireIfMatch() as PreHandler;
 
 export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRouteDeps): void {
   const { service } = deps;
+  const caseloadPatientIds =
+    deps.caseloadPatientIds ?? ((q) => getSeam("CaseloadProvider").caseloadPatientIds(q));
 
   // 1 — create draft encounter.
   app.post("/api/v1/encounters", { preHandler: [AUTHOR, SCOPE_CREATE] }, async (request, reply) => {
@@ -196,7 +228,8 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 26 — list encounters (static path BEFORE the :encounterId param routes for clarity).
   // GAP-014: deliberately NOT `encounter.scope`-gated — a list route has no single id for the
   // predicate's target model to scope against (M6/M7 precedent); narrowing rows to caseload is a
-  // query-level filtering concern, not a boolean route gate. RBAC (`READ`) + RLS still apply.
+  // query-level filtering concern, not a boolean route gate. GAP-182: the narrowing is now applied
+  // (`listScopeOf`) — org-wide scope roles see every row, everyone else only their caseload.
   app.get(
     "/api/v1/encounters",
     {
@@ -206,7 +239,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(EncounterListQuerySchema, request.query);
+      const patientIds = await listScopeOf(request, caseloadPatientIds);
       return service.listEncounters(organizationId, {
+        ...(patientIds ? { patientIds } : {}),
         patientId: q.patientId,
         admissionId: q.admissionId,
         authorId: q.authorId,

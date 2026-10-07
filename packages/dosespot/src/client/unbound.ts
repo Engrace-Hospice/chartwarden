@@ -11,6 +11,7 @@ import type {
   DoseSpotNewRxResponse,
   DoseSpotPatientResponse,
   DoseSpotPrescriberResponse,
+  DoseSpotPrescriptionStatusResponse,
   DoseSpotRxBenefitResponse,
 } from "./contract";
 import { DegradedError, type DoseSpotOperation } from "./errors";
@@ -41,6 +42,8 @@ export function createUnboundDoseSpotClient(): DoseSpotClient {
     pullMedicationHistory: (): Promise<DoseSpotMedHistoryResponse> =>
       Promise.reject(deny("pullMedicationHistory")),
     respondToRefillRequest: (): Promise<void> => Promise.reject(deny("respondToRefillRequest")),
+    getPrescriptionStatus: (): Promise<DoseSpotPrescriptionStatusResponse> =>
+      Promise.reject(deny("getPrescriptionStatus")),
     initiateEpcsSigningSession: (): Promise<DoseSpotEpcsSessionResponse> =>
       Promise.reject(deny("initiateEpcsSigningSession")),
   };

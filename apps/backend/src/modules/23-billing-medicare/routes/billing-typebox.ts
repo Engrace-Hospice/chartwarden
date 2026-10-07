@@ -116,6 +116,15 @@ export const PatientQuerySchema = Type.Object({ patientId: uuid() });
 export const ProviderEntityQuerySchema = Type.Object({ providerEntityId: Type.Optional(uuid()) });
 export const RequiredProviderEntityQuerySchema = Type.Object({ providerEntityId: uuid() });
 export const MacCredentialListQuerySchema = Type.Object({ ...PageQuery });
+/** GET /billing/validation-overrides — the org-wide override audit view (spec #17). */
+export const ValidationOverrideListQuerySchema = Type.Object({
+  providerEntityId: uuid(),
+  ruleKey: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+  overrideMembershipId: Type.Optional(uuid()),
+  appliedFrom: Type.Optional(Type.String({ format: "date-time" })),
+  appliedTo: Type.Optional(Type.String({ format: "date-time" })),
+  ...PageQuery,
+});
 export const MetricsQuerySchema = Type.Object({ providerEntityId: Type.Optional(uuid()) });
 
 // ── validation / override bodies ───────────────────────────────────────────────────────────────────────

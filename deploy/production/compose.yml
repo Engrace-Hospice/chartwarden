@@ -45,6 +45,14 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
+      # GAP-141 — download CONFIRMATION for signed URLs. MinIO's audit webhook posts one record per S3 API call to
+      # the api over the compose network (cluster-wide: no per-bucket notification to configure for the dynamic
+      # `tenant-*` buckets); the api keeps only successful GetObject calls on tenant buckets and records them as
+      # `signed_url_consumed` in document_access_log. Delivery is best-effort (an audit gap is accepted for this
+      # stream); the endpoint answers 503 until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set (deploy.sh generates it).
+      MINIO_AUDIT_WEBHOOK_ENABLE_wardenx: "on"
+      MINIO_AUDIT_WEBHOOK_ENDPOINT_wardenx: http://api:3000/api/v1/webhooks/minio/access-log
+      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_wardenx: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
     volumes:
       - minio-data:/data
     # Port 9000 is reachable only by host Nginx. Do not publish 9001: the admin console is not
@@ -56,6 +64,75 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # GAP-139 — the api and worker used to authenticate to the object store AS THE MINIO ROOT ACCOUNT, so a
+  # compromised app process held full administrative control of every tenant bucket, the policy store and
+  # the IAM store. This one-shot creates a scoped service account instead: object + bucket operations on
+  # the per-tenant `tenant-*` buckets and the `wardenx-*` platform/readiness buckets, and NOTHING administrative.
+  # The action list is the audited set of S3 calls the object-store adapter makes (HEAD/PUT bucket, HEAD/PUT/GET
+  # object, presigned GET, `?versions` list + versioned DELETE for the D12 shred, the readiness HEAD). The adapter
+  # uses no multipart upload, lifecycle, retention, legal-hold or versioning-configuration call, so none is granted;
+  # a new call needs its action added here deliberately. It is
+  # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
+  # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
+  minio-provision:
+    # Reuse the running server's image; it includes /usr/bin/mc and /bin/sh.
+    image: minio/minio:latest
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        cat > /tmp/wardenx-app-policy.json <<'POLICY'
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": ["s3:CreateBucket", "s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketVersions"],
+              "Resource": ["arn:aws:s3:::tenant-*", "arn:aws:s3:::wardenx-*"]
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion", "s3:DeleteObjectVersion"],
+              "Resource": ["arn:aws:s3:::tenant-*/*", "arn:aws:s3:::wardenx-*/*"]
+            }
+          ]
+        }
+        POLICY
+        mc admin policy create local wardenx-app /tmp/wardenx-app-policy.json
+        mc admin user add local "$$MINIO_APP_ACCESS_KEY" "$$MINIO_APP_SECRET_KEY"
+        mc admin policy attach local wardenx-app --user "$$MINIO_APP_ACCESS_KEY"
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  # GAP-138 — DocLens stage 2 (OCR + layout). Without this service DOCLING_WORKER_URL was unset in
+  # production, the backend bound `createUnboundDoclingClient`, and every DocLens parse answered 503.
+  # CPU-only, models baked into the image (no egress needed), reachable only on the compose network by
+  # the api/worker with the DOCLING_WORKER_TOKEN bearer; it holds no object-store credentials (the
+  # backend hands it a short-lived presigned URL) and publishes no host port. The image is built, signed
+  # and passed to deploy.sh by deploy.yml. api/worker deliberately do NOT `depends_on` it: a down worker
+  # degrades DocLens to a typed 503, it must never block the rest of the EHR from starting or rolling back.
+  docling-worker:
+    image: ${WARDENX_DOCLING_IMAGE:-ghcr.io/engrace-hospice/wardenx-docling-worker:unset}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   migrate:
     image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
@@ -97,11 +174,18 @@ services:
       DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
+      MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1
+      # GAP-138 — DocLens parse worker (compose-network only).
+      DOCLING_WORKER_URL: http://docling-worker:8000
+      DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -111,6 +195,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-provision:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/ready')).ok ? 0 : 1)"]
       interval: 15s
@@ -130,10 +216,15 @@ services:
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1
+      # GAP-138 — DocLens parse worker (compose-network only).
+      DOCLING_WORKER_URL: http://docling-worker:8000
+      DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     depends_on:
       provision:
         condition: service_completed_successfully
@@ -141,6 +232,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-provision:
+        condition: service_completed_successfully
     # F-038/#98 — the worker had no healthcheck, so `docker compose ps` reported it "running" the instant
     # the process started and a worker that booted then died left the deploy green while every background
     # job silently stopped. It publishes no port (it serves no public traffic), so the check runs inside
@@ -155,6 +248,52 @@ services:
           "bun",
           "-e",
           "process.exit((await fetch(`http://localhost:$${process.env.WORKER_PORT ?? 3001}/ready`)).ok ? 0 : 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  # GAP-086 / M29 §4.11 — the MLLP LISTENER, a SIBLING process to `api` (crash isolation: a route crash never drops a
+  # listener, a listener crash never drops the API). OFF by default on two independent levers: the compose PROFILE
+  # (`docker compose --profile hl7-listener up -d hl7-listener`) and `M29_MLLP_LISTENER_ENABLED=true`. It runs no workers and
+  # serves only /health + /ready on LISTENER_HEALTH_PORT. Feed ports come from `external_feed.port` (the reserved 11000-11999
+  # range, D3); publish only the ports your partners use, on a PRIVATE address (never the public ingress) — widen the mapping
+  # below in a compose override. deploy.sh does not roll this service: recreate it explicitly after a release.
+  hl7-listener:
+    profiles: ["hl7-listener"]
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env.production
+    command: ["bun", "run", "apps/backend/src/index.ts"]
+    environment:
+      PROCESS_ROLE: listener
+      LISTENER_HEALTH_PORT: "3002"
+      M29_MLLP_LISTENER_ENABLED: ${M29_MLLP_LISTENER_ENABLED:-false}
+      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      REDIS_URL: redis://valkey:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
+      MINIO_REGION: us-east-1
+    ports:
+      - "${M29_MLLP_BIND_ADDRESS:-127.0.0.1}:11000-11019:11000-11019"
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "process.exit((await fetch(`http://localhost:$${process.env.LISTENER_HEALTH_PORT ?? 3002}/ready`)).ok ? 0 : 1)",
         ]
       interval: 15s
       timeout: 5s

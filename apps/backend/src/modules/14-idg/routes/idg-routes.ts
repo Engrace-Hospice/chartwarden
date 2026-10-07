@@ -34,6 +34,13 @@ import {
   attendanceSelfOnlyError,
   planAttendanceRecord,
 } from "./attendance-authority";
+import {
+  type IdgCaseloadResolver,
+  assertIdgPatientInScope,
+  filterIdgPatientsInScope,
+  patientScopeFactsOf,
+  seamIdgCaseloadResolver,
+} from "./caseload-scope";
 import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   type IdgRecertWindowFact,
@@ -91,6 +98,11 @@ export interface IdgRouteDeps {
    * seam-registry-backed, fail-closed port — an unbound M39 REDACTS. Injected in tests.
    */
   sudDisclosure?: PacketDisclosurePort;
+  /**
+   * GAP-128 — the per-patient caseload resolver for the packet read and idg-history. Defaults to M5's published
+   * `CaseloadProvider` seam (an unbound seam fails closed for non-org-wide roles). Injected in tests.
+   */
+  caseload?: IdgCaseloadResolver;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -222,6 +234,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   const recertPort = deps.enrichment?.recertWindows;
   const membershipDisplay = deps.enrichment?.membershipDisplay;
   const sudDisclosure = deps.sudDisclosure ?? seamPacketDisclosurePort;
+  const caseload = deps.caseload ?? seamIdgCaseloadResolver;
 
   // 1 — list the meeting schedule for a location/range (location-scoped server-side).
   app.get(
@@ -246,12 +259,22 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   });
 
   // 3 — update a recurring policy.
-  app.patch("/api/v1/idg/recurring-policies/:id", { preHandler: [SCHEDULE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    const b = parse(RecurringPolicyRequest, request.body);
-    return service.updateRecurringPolicy(organizationId, userId, id, b);
-  });
+  app.patch(
+    "/api/v1/idg/recurring-policies/:id",
+    { preHandler: [SCHEDULE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(RecurringPolicyRequest, request.body);
+      return service.updateRecurringPolicy(
+        organizationId,
+        userId,
+        id,
+        b,
+        ifMatchVersionOf(request),
+      );
+    },
+  );
 
   // 3b — schedule ONE ad-hoc meeting (§4.1; the recurring worker is the only other creator). Location scope
   // is enforced here (the create has no meeting `:id` for `idg_meeting_scope` to resolve): a location outside
@@ -464,19 +487,33 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 11 — coordinator amends an attendance row.
-  app.patch("/api/v1/idg/attendance/:id", { preHandler: [COORDINATE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    const b = parse(UpdateAttendanceRequest, request.body);
-    return service.updateAttendance(organizationId, userId, id, b.status as IdgAttendanceStatus);
-  });
+  app.patch(
+    "/api/v1/idg/attendance/:id",
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(UpdateAttendanceRequest, request.body);
+      return service.updateAttendance(
+        organizationId,
+        userId,
+        id,
+        b.status as IdgAttendanceStatus,
+        ifMatchVersionOf(request),
+      );
+    },
+  );
 
   // 12 — coordinator removes an erroneous attendance row (pre-start only; enforced in service).
-  app.delete("/api/v1/idg/attendance/:id", { preHandler: [COORDINATE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    return service.removeAttendance(organizationId, userId, id);
-  });
+  app.delete(
+    "/api/v1/idg/attendance/:id",
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.removeAttendance(organizationId, userId, id, ifMatchVersionOf(request));
+    },
+  );
 
   // 12b — list the meeting's attendance roster (F-062). The three attendance WRITES shipped without
   // one, so the §2.7 participation the `quorate_decision` predicate evaluates could be written, amended
@@ -508,7 +545,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       return withPatientDisplay(
         patientDisplay,
         organizationId,
-        await service.listPackets(organizationId, id),
+        await filterIdgPatientsInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          await service.listPackets(organizationId, id),
+          caseload,
+        ),
         request.log,
       );
     },
@@ -524,6 +566,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
+      await assertIdgPatientInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        patientId,
+        caseload,
+      );
       // W-SUD-01: the per-actor Part 2 verdict is resolved lazily (only for a SUD-flagged patient) and the
       // elision happens in the service's read path, before the view is shaped — never a UI hide.
       const membershipId = request.context?.attributes.membershipId;
@@ -566,6 +614,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
+      await assertIdgPatientInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        patientId,
+        caseload,
+      );
       return service.getPatientIdgHistory(organizationId, patientId);
     },
   );
@@ -587,19 +641,27 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 16 — update an agenda item.
-  app.patch("/api/v1/idg/agenda/:id", { preHandler: [COORDINATE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    parse(UpdateAgendaItemRequest, request.body);
-    return service.updateAgendaItem(organizationId, userId, id);
-  });
+  app.patch(
+    "/api/v1/idg/agenda/:id",
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      parse(UpdateAgendaItemRequest, request.body);
+      return service.updateAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
+    },
+  );
 
   // 17 — delete an agenda item.
-  app.delete("/api/v1/idg/agenda/:id", { preHandler: [COORDINATE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    return service.removeAgendaItem(organizationId, userId, id);
-  });
+  app.delete(
+    "/api/v1/idg/agenda/:id",
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.removeAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
+    },
+  );
 
   // 17b — list the meeting's agenda in `sort_order` (F-062; add/update/remove had no reader).
   app.get(
@@ -640,12 +702,22 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
 
   // 19 — update an open decision (open status only; enforced in service).
   // `If-Match` carries the version the caller read (428 absent, 400 malformed, 412 STALE_VERSION when stale).
-  app.patch("/api/v1/idg/decisions/:id", { preHandler: [DECIDE, IF_MATCH] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    const b = parse(UpdateDecisionRequest, request.body);
-    return service.updateDecision(organizationId, userId, id, b.payload, ifMatchVersionOf(request));
-  });
+  app.patch(
+    "/api/v1/idg/decisions/:id",
+    { preHandler: [DECIDE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(UpdateDecisionRequest, request.body);
+      return service.updateDecision(
+        organizationId,
+        userId,
+        id,
+        b.payload,
+        ifMatchVersionOf(request),
+      );
+    },
+  );
 
   // 20 — supersede a prior decision (a new row in a later meeting; §2.8).
   app.post(
@@ -734,19 +806,35 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 22 — update an action item (assignee self-service via idg.act, or coordinator).
-  app.patch("/api/v1/idg/action-items/:id", { preHandler: [ACT] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    const b = parse(UpdateActionItemRequest, request.body);
-    return service.updateActionItem(organizationId, userId, id, b.status);
-  });
+  app.patch(
+    "/api/v1/idg/action-items/:id",
+    { preHandler: [ACT, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(UpdateActionItemRequest, request.body);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      return service.updateActionItem(
+        organizationId,
+        userId,
+        id,
+        b.status,
+        isCoordinator,
+        ifMatchVersionOf(request),
+      );
+    },
+  );
 
   // 23 — delete an action item (pre-adjourn only; enforced in service).
-  app.delete("/api/v1/idg/action-items/:id", { preHandler: [COORDINATE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    return service.removeActionItem(organizationId, userId, id);
-  });
+  app.delete(
+    "/api/v1/idg/action-items/:id",
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.removeActionItem(organizationId, userId, id, ifMatchVersionOf(request));
+    },
+  );
 
   // 24 — list action items (assignee self-scoped; location-scoped server-side).
   app.get(

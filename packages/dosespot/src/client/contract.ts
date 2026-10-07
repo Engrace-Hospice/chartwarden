@@ -11,6 +11,9 @@
  * upstream API upserts keyed on `wardenxPatientId`, so repeated calls are no-ops, §2.6). */
 export interface DoseSpotPatientPayload {
   readonly wardenxPatientId: string;
+  /** The DoseSpot-side patient id when one is already recorded (`dosespot_patient_sync`): the adapter then
+   * EDITS that patient rather than creating a duplicate. Absent ⇒ the adapter creates. */
+  readonly existingDosespotPatientId?: string;
   readonly firstName: string;
   readonly lastName: string;
   readonly dateOfBirth: string;
@@ -61,7 +64,10 @@ export interface DoseSpotNewRxPayload {
   readonly quantity: number;
   readonly daysSupply: number;
   readonly refillsAuthorized: number;
-  readonly pharmacyDosespotId: string;
+  /** The DoseSpot pharmacy id when M40 holds one. Absent ⇒ the prescription routes to the patient's preferred
+   * pharmacy on the DoseSpot side (a `PharmacySelect` status on the poll means none was set). */
+  readonly pharmacyDosespotId?: string;
+  readonly drugName?: string;
   readonly deaSchedule?: string;
 }
 
@@ -69,6 +75,17 @@ export interface DoseSpotNewRxPayload {
 export interface DoseSpotNewRxResponse {
   readonly dosespotPrescriptionId: string;
   readonly transmittedAt: string;
+}
+
+/** §4.8 `transmission_timeout_sweep` — the observed DoseSpot-side status of one prescription. `phase` is OUR
+ * normalisation of DoseSpot's status enum: `sent` (eRxSent/FaxSent/PharmacyVerified/EpcsSigned-then-sent),
+ * `pending` (still in Entered/Sending/ReadyToSign/…), `failed` (Error/EpcsError/Retracted/Deleted) or
+ * `needs_pharmacy` (PharmacySelect). `rawStatus` is the vendor value, kept for the audit/alert text only. */
+export interface DoseSpotPrescriptionStatusResponse {
+  readonly dosespotPrescriptionId: string;
+  readonly phase: "sent" | "pending" | "failed" | "needs_pharmacy";
+  readonly rawStatus: string;
+  readonly observedAt: string;
 }
 
 /** §2.9 — the RxBenefit (formulary/coverage) lookup payload. */
@@ -167,6 +184,12 @@ export interface DoseSpotClient {
     refillRequestId: string,
     payload: DoseSpotRefillResponsePayload,
   ): Promise<void>;
+  /** §4.8 — poll one prescription's status (the `transmission_timeout_sweep` ack/nack source). */
+  getPrescriptionStatus(
+    orgId: string,
+    dosespotPatientId: string,
+    dosespotPrescriptionId: string,
+  ): Promise<DoseSpotPrescriptionStatusResponse>;
   /** EPCS — architecture ships Phase 1 but prod transmission is feature-flag-OFF per D18 (deny-stubbed). */
   initiateEpcsSigningSession(
     orgId: string,

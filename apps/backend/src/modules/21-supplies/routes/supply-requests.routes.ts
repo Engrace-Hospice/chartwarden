@@ -25,6 +25,7 @@ import {
   MarkDeliveredBody,
   MarkInTransitBody,
   MarkOrderedBody,
+  RecordVendorInvoiceBody,
   RequestIdParams,
   ReturnRequestBody,
   SetCoverageDeterminationBody,
@@ -131,6 +132,21 @@ export function registerSupplyRequestRoutes(
       return writeService.markOrdered(writeActorOf(request), supplyRequestId, {
         expectedUpdatedAt: ifMatchStamp(request, true),
         ...body,
+      });
+    },
+  );
+
+  // 5b — GAP-063 / D16 — the vendor's actual invoice, matched against the quote accrued at mark-ordered (Phase-1
+  //      manual entry; Phase-2 the EDI 810). Not a §2.2 transition; emits `invoice_reconciled` to M27.
+  app.post(
+    "/api/v1/supplies/supply-requests/:supplyRequestId/vendor-invoice",
+    { preHandler: [P("supplies.request.invoice_reconcile"), IDEMPOTENT] },
+    async (request) => {
+      const { supplyRequestId } = parse(RequestIdParams, request.params);
+      const body = parse(RecordVendorInvoiceBody, request.body);
+      return writeService.recordVendorInvoice(writeActorOf(request), supplyRequestId, {
+        expectedUpdatedAt: ifMatchStamp(request, true),
+        invoiceTotalCents: body.invoiceTotalCents,
       });
     },
   );

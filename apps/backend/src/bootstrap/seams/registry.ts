@@ -128,6 +128,7 @@ import {
   patientAdmissionClearanceReaderDenyStub,
   patientAllergyReaderDenyStub,
   patientCaregiverReaderDenyStub,
+  patientCaregiverRosterReaderDenyStub,
   patientCounterProviderDenyStub,
   patientCoverageReaderDenyStub,
   patientDaysProviderDenyStub,
@@ -251,6 +252,14 @@ export const REQUIRED_SEAMS = [
   // M5 — TASK-015/ARCH-018: the M31 `state_two_party_recording_consent_present` ABAC read (D9/§3.8).
   // PHI: a residence state is PHI-adjacent (M5 owns patient_address); M5 registers a real impl over
   // `patient_address` at boot.
+  // M5 — GAP-129: the caregiver roster M16 seeds a bereavement plan from. PHI (names + contact channels); M5
+  // registers a real impl over `patient_caregiver` + `caregiver` at a db boot.
+  {
+    key: "PatientCaregiverRosterReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCaregiverRosterReaderDenyStub,
+  },
   {
     key: "PatientAddressReader",
     ownerModule: 5,
@@ -615,8 +624,10 @@ export const REQUIRED_SEAMS = [
   // (M35-T05). Until these entries existed, M35 was reachable cross-module ONLY through its §4.11 outbox
   // events: M33's revenue/subscription dashboards and M34's SaaS console (ADR-0025: seam-both-ways, NO edge
   // either direction) had no read path to the subscription header, the billing-block gate, the MRR/ARR
-  // snapshots, or the plan catalog at all. M35 registers the real Drizzle-backed impls over the deny-stubs
-  // when its routes/stores land (M35-T06); until then `validateSeams()` applies the fail-closed deny-stub.
+  // snapshots, or the plan catalog at all. GAP-208: these six are DORMANT — no module registers a live impl
+  // over the deny-stubs and no in-repo consumer resolves them via `getSeam` today (M33/M34 read M35 through
+  // its outbox events and platform routes); `validateSeams()` applies the fail-closed deny-stub. Wiring a
+  // real impl, or retiring an entry, is the follow-up — do not read this list as a live read path.
   //
   // All SIX are aggregate/subscription-header/catalog metadata — no patient row crosses (usage counts are
   // pseudonymized, D6/§8.5) → phi:false throughout.

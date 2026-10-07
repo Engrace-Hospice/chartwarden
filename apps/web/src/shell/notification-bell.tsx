@@ -1,48 +1,8 @@
-import { BACKGROUND_REQUEST_HEADERS, Glyph, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Glyph } from "@wardenx/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
-
-interface AlertItem {
-  alertId: string;
-  eventType: string;
-  category: string;
-  severity: string;
-  summary: string;
-  createdAt: string;
-  deliveryStatus: "delivered" | "partial" | "failed" | "pending";
-  readAt: string | null;
-}
-
-type AlertReadPost = (
-  path: string,
-  options: {
-    params: {
-      path: {
-        id: string;
-      };
-    };
-  },
-) => Promise<{
-  data?: unknown;
-  error?: unknown;
-  response?: Response;
-}>;
-
-async function postAlertRead(
-  client: ReturnType<typeof useApiClient>,
-  alertId: string,
-): Promise<{ error?: unknown }> {
-  const post = client.POST as unknown as AlertReadPost;
-
-  return post("/api/v1/alerts/{id}/read", {
-    params: {
-      path: {
-        id: alertId,
-      },
-    },
-  });
-}
+import { useAlertInbox } from "./alert-inbox";
 
 function relativeTime(value: string): string {
   const then = new Date(value).getTime();
@@ -67,57 +27,12 @@ function categoryLabel(value: string): string {
 }
 
 export function NotificationBell(): JSX.Element {
-  const client = useApiClient();
   const navigate = useNavigate();
+  const { alerts, unreadCount, loading, loadFailed, load, activateAlert } = useAlertInbox();
 
   const [open, setOpen] = useState(false);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(
-    async (background = false): Promise<void> => {
-      setLoading(true);
-
-      // The timer poll is not user activity (GAP-002): marked so it cannot defeat the idle logoff.
-      const { data, error } = await client.GET(
-        "/api/v1/alerts/inbox",
-        background ? { headers: BACKGROUND_REQUEST_HEADERS } : {},
-      );
-
-      setLoading(false);
-
-      if (error) {
-        setLoadFailed(true);
-        return;
-      }
-
-      setLoadFailed(false);
-      setAlerts((data?.alerts ?? []) as AlertItem[]);
-    },
-    [client],
-  );
-
-  useEffect(() => {
-    void load();
-
-    const interval = window.setInterval(() => {
-      void load(true);
-    }, 60_000);
-
-    function handleFocus(): void {
-      void load();
-    }
-
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [load]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,30 +58,7 @@ export function NotificationBell(): JSX.Element {
     };
   }, [open]);
 
-  const unreadCount = useMemo(
-    () => alerts.filter((alert) => alert.readAt === null).length,
-    [alerts],
-  );
-
-  const recentAlerts = useMemo(() => alerts.slice(0, 5), [alerts]);
-
-  async function markRead(alert: AlertItem): Promise<void> {
-    if (alert.readAt !== null) return;
-
-    // Optimistic UI: remove the badge immediately.
-    const readAt = new Date().toISOString();
-
-    setAlerts((current) =>
-      current.map((item) => (item.alertId === alert.alertId ? { ...item, readAt } : item)),
-    );
-
-    const { error } = await postAlertRead(client, alert.alertId);
-
-    if (error) {
-      // Restore canonical server state if the mutation failed.
-      void load();
-    }
-  }
+  const recentAlerts = useMemo(() => (alerts ?? []).slice(0, 5), [alerts]);
 
   function openAllNotifications(): void {
     setOpen(false);
@@ -239,9 +131,9 @@ export function NotificationBell(): JSX.Element {
           </div>
 
           <div style={bodyStyle}>
-            {loading && alerts.length === 0 ? (
+            {loading && recentAlerts.length === 0 ? (
               <div style={stateStyle}>Loading notifications…</div>
-            ) : loadFailed && alerts.length === 0 ? (
+            ) : loadFailed && recentAlerts.length === 0 ? (
               <div style={stateStyle}>Notifications could not be loaded.</div>
             ) : recentAlerts.length === 0 ? (
               <div style={emptyStyle}>
@@ -263,7 +155,7 @@ export function NotificationBell(): JSX.Element {
                   <button
                     key={alert.alertId}
                     type="button"
-                    onClick={() => void markRead(alert)}
+                    onClick={() => activateAlert(alert, navigate)}
                     style={{
                       ...alertRowStyle,
                       ...(unread ? unreadRowStyle : {}),

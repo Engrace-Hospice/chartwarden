@@ -650,6 +650,10 @@ function createM24Backend(): {
     async loadArrangementPe(_ctx, arrangementId) {
       return arrangements.get(arrangementId)?.providerEntityId ?? null;
     },
+    async loadRbDayPe(_ctx, rbDayId) {
+      const day = rbDays.get(rbDayId);
+      return day ? (arrangements.get(day.rbArrangementId)?.providerEntityId ?? null) : null;
+    },
     async loadResultRuleKey(_ctx, resultId) {
       return validationResults.get(resultId)?.ruleKey ?? null;
     },
@@ -1125,6 +1129,49 @@ describe.each(ROUTE_CASES)("M24 route smoke — $label", (c) => {
       payload: c.payload,
     });
     expect(res.statusCode).toBe(c.expectStatus);
+    await app.close();
+  });
+});
+
+// GAP-145 — provider-entity scoping: an actor scoped to another provider entity cannot reach this PE's claim
+// or R&B day, even though RBAC passes and the row is in the same org.
+describe("GAP-145 — M24 claim / R&B authorization is provider-entity scoped", () => {
+  const OTHER_PE_HEADERS = {
+    ...SUPER_HEADERS,
+    "x-test-pe": "99999999-9999-4999-8999-999999999999",
+  };
+
+  it("a claim of another provider entity is a non-leaking 404 (RBAC passes, ABAC denies)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/medicaid-claims/${CLAIM}`,
+      headers: OTHER_PE_HEADERS,
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("the actor's own provider entity still reads the claim", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/medicaid-claims/${CLAIM}`,
+      headers: SUPER_HEADERS,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("PATCH /rb-days/:id on another provider entity's day is a 404 and never reaches the handler", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/rb-days/${DAY}`,
+      headers: { ...OTHER_PE_HEADERS, ...IDEMP("g145-rb") },
+      payload: { status: "excluded", exclusionReason: "x", reason: "x" },
+    });
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 });

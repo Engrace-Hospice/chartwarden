@@ -51,6 +51,12 @@ export const M21_ERROR_STATUS = {
   /** COP27 (42 CFR 418.24(c)) — a hospice coverage determination applies to the `dme` / `supply` kinds only;
    *  a comfort-kit drug is determined on its M12 medication order. */
   M21_COVERAGE_NOT_APPLICABLE_TO_KIND: 422,
+  /** GAP-063 / D16 — a vendor quote or invoice total must be a non-negative integer number of cents. */
+  M21_INVOICE_AMOUNT_INVALID: 422,
+  /** GAP-063 / D16 — an invoice arrived for a request that never recorded a vendor quote to accrue. */
+  M21_INVOICE_NOT_ACCRUED: 409,
+  /** GAP-063 / D16 — the vendor invoice was already reconciled; a second one is not silently applied. */
+  M21_INVOICE_ALREADY_RECONCILED: 409,
 
   // ── §2.3 comfort-kit template ──────────────────────────────────────────────────────────────────────
   /** §7.2 — a tenant template removed / loosened a platform-floor medication. */

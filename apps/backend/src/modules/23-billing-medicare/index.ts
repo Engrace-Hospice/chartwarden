@@ -65,6 +65,7 @@ export {
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
   buildDrizzleWageIndexService,
+  buildDrizzlePlatformAdminService,
   buildDrizzleSequestrationPolicyService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
@@ -96,14 +97,13 @@ export {
 } from "./erasers/billing-eraser";
 
 // §4.4 / §4.10 — the upstream outbox consumers (M5/M6/M8/M18/M40 LIVE; M25/M26 forward-seam deny-stubs). Like
-// the M27 consumers posture, `registerM23Consumers` ships module-only (NOT wired into the boot dispatcher
-// subscription from the composition root — conservative until the dispatcher subscription is active).
+// the former `registerM23Consumers` registrar is deleted (GAP-205, dead scaffolding); live topics bind
+// through `./outbox-consumers/*`.
 export {
   type M23ConsumerPorts,
   type M23UpstreamSubscription,
   M23_OUTBOX_SUBSCRIPTIONS,
   dispatchM23UpstreamEvent,
-  registerM23Consumers,
 } from "./consumers/index";
 
 // §4.8 — the LIVE BullMQ worker/cron boot surface. The composition root constructs the §4.8 work-queue
@@ -136,6 +136,8 @@ export {
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacJurisdictionLister,
   buildHetsEligibilityPort,
   createM23HetsTransport,
   m23HetsConfigFromEnv,
@@ -239,6 +241,7 @@ export {
 // boundary is the `m23-billing-no-ai-platform` dependency-cruiser rule.
 export {
   type AiAdvisoryReader,
+  type BillingAiPromptRegistryPort,
   type BillingAuditChannel,
   type M23OwnedTableFamily,
   type PromptTemplateDescriptor,
@@ -253,6 +256,7 @@ export {
   denyAiAdvisoryReader,
   outputTypeTargetsBilling,
   validateAiBlockForBilling,
+  validateBillingAiBlockAtBoot,
 } from "./ai-block";
 
 /**

@@ -388,10 +388,17 @@ export interface InvitationStore {
   rescind(invitationId: string): Promise<boolean> | boolean;
 }
 
+/** Whether a patient of an org is deceased — the one M5 fact the funeral-home link needs. */
+export interface DeceasedPatientReader {
+  isDeceased(organizationId: string, patientId: string): Promise<boolean>;
+}
+
 /** The scope an external-collaborator session carries (exactly one patient, spec §7.6). */
 export interface CollaboratorScope {
   readonly patientId: string;
   readonly organizationId: string;
+  /** Which session class the link yields (GAP-115: `funeral_home` links share this store). Default collaborator. */
+  readonly kind?: "external_collaborator" | "funeral_home";
 }
 
 /** Mint / consume per-patient external-collaborator magic-links (30-min TTL, one-time). */
@@ -400,6 +407,10 @@ export interface CollaboratorLinkStore {
     organizationId: string;
     patientId: string;
     invitedByMembershipId: string;
+    /** GAP-115 — `funeral_home` mints the per-deceased link (72h); default `external_collaborator` (30 min). */
+    kind?: "external_collaborator" | "funeral_home";
+    /** Override the link's TTL (seconds). */
+    ttlSec?: number;
   }): Promise<{ linkId: string; expiresAt: string }> | { linkId: string; expiresAt: string };
   /** Atomically consume a token → its scope. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
@@ -530,6 +541,11 @@ export interface IdentityRouteDeps {
   sessions: SessionWriter;
   invitations: InvitationStore;
   collaborators: CollaboratorLinkStore;
+  /**
+   * GAP-115 — M5's deceased-status fact, injected as a local port (M2 may not read M5). Unbound ->
+   * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE` (fail closed).
+   */
+  deceasedPatients?: DeceasedPatientReader;
   users: UserDirectory;
   /** Audit sink for the M2 lifecycle events (audit() executor — denylist runs there). */
   audit: import("@wardenx/audit").AuditExecutor;
@@ -602,7 +618,14 @@ export function createContextActorResolver(): ActorResolver {
         userId: ctx.userId,
         sessionId: sid,
         organizationId: ctx.organizationId || null,
-        membershipId: null,
+        // The acting MEMBERSHIP, from the same request attribute the step-up context resolver reads
+        // (step-up-adapters-db.ts). It was hard-coded null, which made every route that attributes an action to
+        // a membership (the collaborator / funeral link mint, the step-up override configuredBy) refuse a real
+        // staff session with "an org-bound staff session is required".
+        membershipId:
+          ctx.attributes && typeof ctx.attributes.membershipId === "string"
+            ? ctx.attributes.membershipId
+            : null,
         roles: ctx.roles,
       };
     },
@@ -840,6 +863,9 @@ export function createInMemoryUserIdentityReader(
   };
 }
 
+/** A funeral-home magic link's default lifetime: 72 hours (M2 spec §3.6 — "72 hr default (configurable)"). */
+export const FUNERAL_LINK_TTL_SEC = 72 * 3600;
+
 /** In-memory external-collaborator link store (30-min TTL, one-time token). */
 export function createInMemoryCollaboratorLinkStore(): {
   store: CollaboratorLinkStore;
@@ -852,17 +878,20 @@ export function createInMemoryCollaboratorLinkStore(): {
   }
   const links = new Map<string, Link>(); // token → link
   const store: CollaboratorLinkStore = {
-    create({ organizationId, patientId }) {
+    create({ organizationId, patientId, kind, ttlSec }) {
       const token = crypto.randomUUID();
       const linkId = crypto.randomUUID();
+      // §7.6 — a collaborator link lives 30 min; a funeral-home link (GAP-115, §3.6) 72 h by default.
+      const ttlMs = (ttlSec ?? (kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : 30 * 60)) * 1000;
       links.set(token, {
         token,
         organizationId,
         patientId,
-        expiresAtMs: Date.now() + 30 * 60 * 1000, // 30-min TTL (§7.6)
+        kind: kind ?? "external_collaborator",
+        expiresAtMs: Date.now() + ttlMs,
         consumed: false,
       });
-      return { linkId, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
+      return { linkId, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
     },
     consume(token) {
       const link = links.get(token);
@@ -871,7 +900,7 @@ export function createInMemoryCollaboratorLinkStore(): {
       if (link.expiresAtMs <= Date.now())
         throw new LinkError("expired", "collaborator link expired");
       link.consumed = true; // one-time (§7.6: useless after first consumption)
-      return { patientId: link.patientId, organizationId: link.organizationId };
+      return { patientId: link.patientId, organizationId: link.organizationId, kind: link.kind };
     },
   };
   return {

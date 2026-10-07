@@ -48,6 +48,9 @@ type SeedIds = {
   dischargeEvent: string;
   noticeOfRightsAcknowledgment: string;
   complianceWindow: string;
+  referralActivity: string;
+  referralNote: string;
+  admissionEvidence: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -63,6 +66,14 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "discharge_event", key: "dischargeEvent" },
   { table: "notice_of_rights_acknowledgment", key: "noticeOfRightsAcknowledgment" },
   { table: "compliance_window", key: "complianceWindow" },
+];
+
+// GAP-183 — org-scoped PHI tables added after the twelve above, previously without a cross-tenant proof as
+// `wardenx_app`: the referral audit trail, the free-text referral notes, and the admission evidence index.
+const EXTRA_COVERED: { table: string; key: keyof SeedIds }[] = [
+  { table: "referral_activity", key: "referralActivity" },
+  { table: "referral_note", key: "referralNote" },
+  { table: "admission_evidence", key: "admissionEvidence" },
 ];
 
 describe.skipIf(!DB_URL)("M6 Admission — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -236,6 +247,31 @@ describe.skipIf(!DB_URL)("M6 Admission — RLS cross-tenant denial — LIVE Post
       )
     ).rows[0].id as string;
 
+    const referralActivity = (
+      await db.query(
+        `INSERT INTO referral_activity (organization_id, referral_id, action) VALUES ($1,$2,'received')
+         RETURNING id`,
+        [org, referral],
+      )
+    ).rows[0].id as string;
+
+    const referralNote = (
+      await db.query(
+        `INSERT INTO referral_note (organization_id, referral_id, content) VALUES ($1,$2,'intake note')
+         RETURNING id`,
+        [org, referral],
+      )
+    ).rows[0].id as string;
+
+    const admissionEvidence = (
+      await db.query(
+        `INSERT INTO admission_evidence (organization_id, admission_id, patient_id, requirement_type,
+           source_type, structured_entity_type, structured_entity_id)
+         VALUES ($1,$2,$3,'notice_of_rights','structured','notice_of_rights',$4) RETURNING id`,
+        [org, admission, PATIENT, noticeOfRightsAcknowledgment],
+      )
+    ).rows[0].id as string;
+
     return {
       providerEntity,
       location,
@@ -251,6 +287,9 @@ describe.skipIf(!DB_URL)("M6 Admission — RLS cross-tenant denial — LIVE Post
       dischargeEvent,
       noticeOfRightsAcknowledgment,
       complianceWindow,
+      referralActivity,
+      referralNote,
+      admissionEvidence,
     };
   }
 
@@ -300,7 +339,9 @@ describe.skipIf(!DB_URL)("M6 Admission — RLS cross-tenant denial — LIVE Post
     }
   });
 
-  it.each(COVERED)(
+  // GAP-183 — tables whose RLS policy lives in a LATER migration than the file the policy-shape case above
+  // reads, so they are proven here by behaviour (and the catalog check below) rather than by policy text.
+  it.each([...COVERED, ...EXTRA_COVERED])(
     "$table: org A sees its row, org B cannot (cross-tenant denial)",
     async ({ table, key }) => {
       const id = a[key];

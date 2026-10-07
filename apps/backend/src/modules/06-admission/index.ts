@@ -53,8 +53,8 @@ export { registerElectionAddendumRoutes } from "./routes/election-addendum-route
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
  * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
- * (referral inbox, admission census + detail, election periods, compliance windows); writes fail-closed
- * 501 until the M6L-T02+ Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold
+ * (referral inbox, admission census + detail, election periods, compliance windows) and writes (the full
+ * M6L-T02+ Drizzle write lifecycle; no route returns 501). Replaces the in-memory clinical-core scaffold
  * mount for M6.
  */
 export function mountAdmissionRoutes(
@@ -231,6 +231,12 @@ export {
   priorEpisodesForOrg,
   rhcPriorStayFacts,
 } from "./seams/prior-episodes";
+// GAP-119 — the org-explicit census summary M5's KPI strip pulls (counts only; injected into M5 as a port).
+export {
+  RECERT_DUE_WITHIN_DAYS,
+  admissionCensusSummaryForOrg,
+} from "./seams/admission-census-summary-for-org";
+export type { AdmissionCensusSummary } from "./seams/admission-census-summary-for-org";
 export * from "./intake/benefit-period";
 export type { DischargeDetailsService } from "./routes/discharge-details-service";
 export type { DischargeWorklistService } from "./routes/discharge-worklist-service";

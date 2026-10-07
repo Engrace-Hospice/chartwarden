@@ -19,7 +19,14 @@ export {
   runPostDischargeGraceSweepOnce,
 } from "./post-discharge-grace-sweep";
 export {
+  registerM31LateJoinWatchdogWorker,
   registerM31PostDischargeGraceWorker,
+  scheduleM31LateJoinWatchdogJob,
   scheduleM31PostDischargeGraceJob,
 } from "./cron-workers";
+export {
+  M31_LATE_JOIN_WINDOW_MS,
+  lateJoinEndReason,
+  runLateJoinWatchdogOnce,
+} from "./late-join-watchdog";
 export { M31_PLATFORM_JOB_ID, wireM31Tenancy } from "./wiring";

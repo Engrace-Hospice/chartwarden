@@ -1,15 +1,17 @@
 // apps/backend/src/modules/39-consent/jobs/cron-workers.ts — the LIVE BullMQ Worker + repeatable Queue
-// construction for M39's §4.9 `m39.consent_expiration` and `m39.expiration_reminder` hourly crons (F-216;
+// construction for M39's §4.9 `m39.consent_expiration` / `m39.expiration_reminder` hourly crons and the GAP-171 `m39.revocation_cascade_retry` sweep (F-216;
 // the M14/M20 `jobs/cron-workers.ts` template). The per-org bodies are `./expiration.ts`; this file is only
 // the BullMQ shell + the fail-closed dep bag.
 import type { DbClient } from "@wardenx/db";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { ConsentWriteOutboxPort } from "../consent-store-db";
+import { type M39AlertPort, runCascadeRetryCron } from "./cascade-retry";
 import {
   type M39ActiveOrgListPort,
   runConsentExpirationCron,
   runExpirationReminderCron,
 } from "./expiration";
+import { runDraftAutoExpireCron, runRenewalCycleCloseCron } from "./housekeeping";
 import { M39_JOB_SCHEDULES, M39_QUEUES, M39_QUEUE_PARAMS } from "./index";
 
 export type { M39ActiveOrgListPort } from "./expiration";
@@ -21,7 +23,22 @@ export interface M39WorkerDeps {
   readonly db: DbClient;
   readonly outbox: ConsentWriteOutboxPort;
   readonly activeOrgs?: M39ActiveOrgListPort;
+  /** The M36 AlertEmitter (the CRITICAL cascade-failed alert). Lazy fail-closed when unbound. */
+  readonly alerts?: M39AlertPort;
   now?: () => Date;
+}
+
+function alertsOf(deps: M39WorkerDeps): M39AlertPort {
+  return (
+    deps.alerts ?? {
+      emit: () =>
+        Promise.reject(
+          new Error(
+            "M39_WORKER_PORT_UNBOUND: alerts.emit — bind the M36 AlertEmitter (the cascade-failed alert)",
+          ),
+        ),
+    }
+  );
 }
 
 function activeOrgsOf(deps: M39WorkerDeps): M39ActiveOrgListPort {
@@ -43,17 +60,19 @@ export function buildM39WorkerDeps(deps: {
   db: DbClient;
   outbox: ConsentWriteOutboxPort;
   activeOrgs?: M39ActiveOrgListPort;
+  alerts?: M39AlertPort;
 }): M39WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     outbox: deps.outbox,
     activeOrgs: deps.activeOrgs,
+    alerts: deps.alerts,
     now: () => new Date(),
   };
 }
 
-/** Construct both M39 crons' Workers (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct all five M39 crons' Workers (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM39CronWorkers(deps: M39WorkerDeps): Worker[] {
   const { connection } = deps;
   const base = { db: deps.db, outbox: deps.outbox, now: deps.now };
@@ -71,6 +90,39 @@ export function registerM39CronWorkers(deps: M39WorkerDeps): Worker[] {
         await runExpirationReminderCron({ ...base, activeOrgs: activeOrgsOf(deps) });
       },
       { connection, concurrency: M39_QUEUE_PARAMS.expirationReminder.concurrency },
+    ),
+    new Worker(
+      M39_QUEUES.revocationCascadeRetry,
+      async () => {
+        await runCascadeRetryCron({
+          ...base,
+          alerts: alertsOf(deps),
+          activeOrgs: activeOrgsOf(deps),
+        });
+      },
+      { connection, concurrency: M39_QUEUE_PARAMS.revocationCascadeRetry.concurrency },
+    ),
+    new Worker(
+      M39_QUEUES.renewalCycleClose,
+      async () => {
+        await runRenewalCycleCloseCron({
+          db: deps.db,
+          now: deps.now,
+          activeOrgs: activeOrgsOf(deps),
+        });
+      },
+      { connection, concurrency: M39_QUEUE_PARAMS.renewalCycleClose.concurrency },
+    ),
+    new Worker(
+      M39_QUEUES.draftAutoExpire,
+      async () => {
+        await runDraftAutoExpireCron({
+          db: deps.db,
+          now: deps.now,
+          activeOrgs: activeOrgsOf(deps),
+        });
+      },
+      { connection, concurrency: M39_QUEUE_PARAMS.draftAutoExpire.concurrency },
     ),
   ];
 }
@@ -99,6 +151,21 @@ export async function scheduleM39Jobs(connection: ConnectionOptions): Promise<Qu
       queue: M39_QUEUES.expirationReminder,
       pattern: M39_JOB_SCHEDULES.expirationReminder,
       params: M39_QUEUE_PARAMS.expirationReminder,
+    },
+    {
+      queue: M39_QUEUES.revocationCascadeRetry,
+      pattern: M39_JOB_SCHEDULES.revocationCascadeRetry,
+      params: M39_QUEUE_PARAMS.revocationCascadeRetry,
+    },
+    {
+      queue: M39_QUEUES.renewalCycleClose,
+      pattern: M39_JOB_SCHEDULES.renewalCycleClose,
+      params: M39_QUEUE_PARAMS.renewalCycleClose,
+    },
+    {
+      queue: M39_QUEUES.draftAutoExpire,
+      pattern: M39_JOB_SCHEDULES.draftAutoExpire,
+      params: M39_QUEUE_PARAMS.draftAutoExpire,
     },
   ] as const;
   const queues: Queue[] = [];

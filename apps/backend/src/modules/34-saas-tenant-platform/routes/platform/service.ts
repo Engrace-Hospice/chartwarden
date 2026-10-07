@@ -628,7 +628,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       flagKey: f.flagKey,
       organizationId: f.organizationId ?? null,
       flagKind: f.flagKind ?? "product",
-      valueType: f.valueType ?? "boolean",
+      valueType: f.valueType ?? "bool",
       value: f.value ?? false,
       rolloutPercent: f.rolloutPercent ?? null,
       killSwitchActive: f.killSwitchActive ?? false,

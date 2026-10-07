@@ -40,21 +40,36 @@ interface PatientSummary {
 interface CensusMetrics {
   total: number;
   byStatus: Record<string, number>;
+  /** GAP-119 — M6's published admission summary; null when that read is unavailable. */
+  admissions?: {
+    admissionsToday: number;
+    dischargesToday: number;
+    gipActive: number;
+    recertsDue: number;
+  } | null;
 }
 
-// §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count;
-// the cross-module KPIs show "—" with the owning module noted — honest, never fabricated numbers.
+// §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count. GAP-119 —
+// the other four used to say they were waiting on modules that have long shipped (M6 Admission, billing). The
+// figures are M6's: it publishes an org-explicit summary that the backend injects into the census-metrics
+// response (`admissions`), so M5 reads no M6 table. Each card also opens the owning screen. When M6's read is
+// unavailable the card shows "—", never a made-up number.
 function CensusKpis({
   metrics,
   status,
   onStatusSelect,
+  onOpen,
 }: {
   metrics: CensusMetrics | null;
   status: string;
   onStatusSelect: (status: string) => void;
+  onOpen: (path: string) => void;
 }): JSX.Element {
   const active = metrics?.byStatus?.active ?? 0;
   const total = metrics?.total ?? 0;
+  // A figure is shown only when M6 answered; otherwise "—" (never a made-up zero).
+  const adm = metrics?.admissions ?? null;
+  const figure = (n: number | undefined): number | string => (adm && n !== undefined ? n : "—");
   return (
     <KpiStrip>
       <KpiCard
@@ -66,21 +81,36 @@ function CensusKpis({
         selected={status === "active"}
         onSelect={() => onStatusSelect(status === "active" ? "" : "active")}
       />
-      <KpiCard label="Admissions" value="—" detail="Today · M6 Admission" icon="user-plus" />
+      <KpiCard
+        label="Admissions"
+        value={figure(adm?.admissionsToday)}
+        detail="Today · open Admissions"
+        icon="user-plus"
+        onSelect={() => onOpen("/admissions")}
+      />
       <KpiCard
         label="Discharges"
-        value="—"
-        detail="Today · M6 Admission"
+        value={figure(adm?.dischargesToday)}
+        detail="Today · open the discharge worklist"
         icon="arrow-right"
         accentColor="var(--color-viz-violet)"
+        onSelect={() => onOpen("/admissions/discharges")}
       />
-      <KpiCard label="GIP" value="—" detail="Billing source pending" icon="bed" tone="warning" />
+      <KpiCard
+        label="GIP"
+        value={figure(adm?.gipActive)}
+        detail="In general inpatient care · open IPU"
+        icon="bed"
+        tone="warning"
+        onSelect={() => onOpen("/ipu")}
+      />
       <KpiCard
         label="Recerts due"
-        value="—"
-        detail="M6 Certification"
+        value={figure(adm?.recertsDue)}
+        detail="Within 14 days · open compliance"
         icon="calendar-check"
         accentColor="var(--color-viz-teal)"
+        onSelect={() => onOpen("/compliance/admissions")}
       />
     </KpiStrip>
   );
@@ -163,7 +193,14 @@ export function PatientListCensus(): JSX.Element {
           </div>
         </PageHeader>
       }
-      kpis={<CensusKpis metrics={metrics} status={status} onStatusSelect={setStatus} />}
+      kpis={
+        <CensusKpis
+          metrics={metrics}
+          status={status}
+          onStatusSelect={setStatus}
+          onOpen={(path) => navigate(path)}
+        />
+      }
       filters={
         <div style={{ display: "grid", gap: "0.75rem" }}>
           {error ? (

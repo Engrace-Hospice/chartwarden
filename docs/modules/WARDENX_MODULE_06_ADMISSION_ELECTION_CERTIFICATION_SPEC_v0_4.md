@@ -601,7 +601,7 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-ADM-01` Admission `activate` requires NOR acknowledged | `activate` | `NOTICE_OF_RIGHTS_REQUIRED` (409) |
 | `R-ADM-02` Admission `activate` requires no overdue `initial_assessment_48h` window unless explicitly overridden by DON role | `activate` | `INITIAL_ASSESSMENT_OVERDUE` (409) |
 | `R-ADM-03` `for_cause` discharge requires explicit DON + Medical Director co-sign (two distinct users with the respective roles) | `executeDischarge` | `FOR_CAUSE_REQUIRES_COSIGN` (409) |
-| `R-LCP-01` GIP requires uncontrolled-symptoms or end-of-life-imminent documentation (free-text in `reason`, min 30 chars) | `requestAssign` | `GIP_DOCUMENTATION_INSUFFICIENT` (422) |
+| `R-LCP-01` GIP requires uncontrolled-symptoms or end-of-life-imminent documentation (free-text in `reason`, min 30 chars). **Complementary to D12, not a competing rule (GAP-122):** D12's three attestations (`gipAttestations.*`, all `true`) are enforced at the clinician-initiated `POST /admissions/:id/level-of-care` route (`412 GIP_DOCUMENTATION_INCOMPLETE`); this reason floor is enforced inside the state machine, so it also covers the M11 level-of-care-order path, whose attestation is the signed order itself | `requestAssign` | `GIP_DOCUMENTATION_INSUFFICIENT` (422) |
 | `R-LCP-02` CHC requires evidence of 8+ hours of skilled care over 24h documented (a flag + reason for now; M8 visit aggregation in Phase 2) | `requestAssign` | warning surfaced (Phase 1) / `CHC_INSUFFICIENT_EVIDENCE` (409, Phase 2) |
 | `R-RV-01` Revocation effective date cannot precede signed date | DB CHECK + service | `REVOCATION_EFFECTIVE_BEFORE_SIGNED` (422) |
 | `R-XFR-01` Only one transfer per benefit period | `createTransfer` | `TRANSFER_LIMIT_EXCEEDED` (409) |
@@ -2285,6 +2285,8 @@ Type.Object({
 | `admission.emit_form_request` | on election sign / CTI sign / NOR ack / F2F attest / discharge | post to outbox; M22 will render the form PDF and back-ref `document_id` |
 | `admission.window_alert` | scheduled (every 15 min) | move overdue windows to alert severity; emit metrics |
 
+> **As-built (GAP-026):** `admission.window_alert` now escalates EVERY window kind (`jobs/window-escalation.ts`: `open → closing_soon → overdue`, `m6.compliance.window.overdue` carrying `admissionId, patientId, windowKind, dueAt`, paged by M36 to the care team and compliance; addendum kinds keep their dedicated event, `info`/auto-acknowledged external-signal windows never page). `admission.recert_due_notify` is live: it opens a `recert_due_14d` compliance window 14 days before an active period's end (closed once the period leaves `active`; an uncompleted recert then escalates like any other window), instead of notifying M14 directly. **Documented deferrals:** `admission.recompute_windows` (the 15-minute scan re-derives status from `must_complete_by`, so there is no separate recompute state to refresh; the pure `planRecomputeWindows` stays unbound) and `admission.cti_late_followup` (the CTI signature SLA is already covered by `m6.cti.signature_due_1d` / `signature_overdue` and the `cti_signature_lookahead_14d` window; no separate late-cert reminder worker).
+
 > All jobs are **idempotent** and keyed on `(admissionId, eventType, payloadHash)` so duplicate enqueues from outbox-redelivery are no-ops. M1's outbox relay handles transactional dispatch.
 
 ### 4.4 Outbox Event Contract
@@ -2323,7 +2325,7 @@ Every state change in M6 emits exactly one event row into the M1 outbox table in
 | `m6.nor.acknowledged` | route 41 | `norAcknowledgmentId, admissionId, acknowledgedAt` | M22, M23 |
 | `m6.compliance.window.opened` | trigger / job / `AdmissionEventApplier` | `complianceWindowId, admissionId, windowType, dueAt, severity` | M14, M30 (`info`-severity external signals) |
 | `m6.compliance.window.closed` | trigger | `complianceWindowId, closedAt, closedVia` | M30 |
-| `m6.compliance.window.overdue` | job `admission.window_alert` | `complianceWindowId, severity:'alert'` | M14, M30 |
+| `m6.compliance.window.overdue` | job `admission.window_alert` | `complianceWindowId, severity:'alert', admissionId, patientId, windowKind, dueAt` | M36 (care team + compliance alerts) |
 | `m6.compliance.window.overridden` | route 46 | `complianceWindowId, reason` | M30 |
 | `m6.bereavement.eligible` | derived from `m6.discharge.death` post-rule check | `admissionId, patientId, eligibleAt` | M16 |
 | `m6.applier.refused` | `AdmissionEventApplier` on contract violation (D13) | `proposalId, organizationId, reason, refusedAt` | M30 (external-event-applier health) |

@@ -10,7 +10,10 @@
 // the step-up gate on approve (denied without recent step-up).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
   registerEffectivePermissionResolver,
+  resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
@@ -22,7 +25,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { registerMdmRoutes } from "../src/modules/40-mdm/index";
+import { buildMdmAbacPredicates, registerMdmRoutes } from "../src/modules/40-mdm/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -99,6 +102,11 @@ function makeServer() {
   registerEffectivePermissionResolver(grantStore.store);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const registry = registerAbacRegistry(createPredicateRegistry());
+  for (const [name, predicate] of Object.entries(buildMdmAbacPredicates())) {
+    registry.register(name, predicate);
+  }
+  registry.register("step_up_recent", async () => false);
   registerMdmRoutes(app, { provider, service });
   return { app, service, provider };
 }
@@ -119,10 +127,12 @@ const OPS = { "x-test-user": "ops_1", "x-test-org": ORG, "x-test-roles": "platfo
 beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
+  resetAbacRegistry();
 });
 afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
+  resetAbacRegistry();
 });
 
 describe("M40-T07 — MDM routes (§4.1–4.2, §4.4 gating)", () => {
@@ -223,6 +233,39 @@ describe("M40-T07 — MDM routes (§4.1–4.2, §4.4 gating)", () => {
     expect(list.statusCode).toBe(200);
     expect(list.json().entries).toHaveLength(1);
     expect(list.json().entries[0].baaStatus).toBe("executed");
+    await app.close();
+  });
+
+  it("GAP-172: holding the admin keys is NOT enough without the platform_ops role", async () => {
+    const { app } = makeServer();
+    // A tenant org_admin that somehow acquired the platform keys (a key travels with a role template).
+    const grantStore = createInMemoryEffectivePermissionStore([
+      {
+        orgId: ORG,
+        userId: "tenant_admin_1",
+        grants: [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: ["mdm.merge.read", "mdm.canonical.write"],
+          },
+        ],
+      },
+    ]);
+    registerEffectivePermissionResolver(grantStore.store);
+    const tenantAdmin = {
+      "x-test-user": "tenant_admin_1",
+      "x-test-org": ORG,
+      "x-test-roles": "org_admin",
+    };
+    for (const [method, url] of [
+      ["GET", "/api/v1/admin/mdm/merge-requests"],
+      ["GET", "/api/v1/admin/mdm/nppes/sync-log"],
+    ] as const) {
+      const res = await app.inject({ method, url, headers: tenantAdmin });
+      expect(res.statusCode).toBe(403);
+    }
     await app.close();
   });
 

@@ -62,6 +62,10 @@ export interface AppealSubmitInput {
   readonly appealNarrative: string;
   readonly attachedDocumentIds: readonly string[];
 }
+/** M25-F03 — a late good-cause filing: the normal submit input plus the documented justification (>= 40). */
+export interface AppealLateGoodCauseInput extends AppealSubmitInput {
+  readonly goodCauseJustification: string;
+}
 export interface AppealDecideInput {
   readonly outcome: "favorable" | "partial" | "unfavorable";
   readonly decidedAt: string;
@@ -138,6 +142,13 @@ export interface M25WriteService {
     actor: M25WriteActor,
     id: string,
     input: AppealSubmitInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
+  /** M25-F03 — submit past T-0 marked `late_good_cause_filing` (redetermination / reconsideration only). */
+  submitAppealLateGoodCause(
+    actor: M25WriteActor,
+    id: string,
+    input: AppealLateGoodCauseInput,
     ifMatch: number,
   ): Promise<VersionedResult>;
   ackAppeal(actor: M25WriteActor, id: string, ifMatch: number): Promise<VersionedResult>;

@@ -93,6 +93,7 @@ import type {
   PatientAdmissionClearanceReader,
   PatientAllergyReader,
   PatientCaregiverReader,
+  PatientCaregiverRosterReader,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
   PatientIntakeResolver,
@@ -163,6 +164,7 @@ export type SeamName =
   | "PatientAdmissionClearanceReader" // M5 — high-level privacy clearance for admission activation
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "MbiUnlockReader" // M5 — M23-ONLY: transient MBI + name/DOB for one HETS 270 build (never persisted)
+  | "PatientCaregiverRosterReader" // M5 — GAP-129: the current caregiver roster (M16 seeds a bereavement plan's contacts from it)
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
   | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
   | "NonCoveredMedicationsReader" // M12 — COP27: active medication orders determined NOT hospice-covered (M6 election addendum, 42 CFR 418.24(c))
@@ -1053,6 +1055,7 @@ export interface SeamContracts {
   PatientCoverageReader: PatientCoverageReader;
   MbiUnlockReader: MbiUnlockReader;
   PatientCaregiverReader: PatientCaregiverReader;
+  PatientCaregiverRosterReader: PatientCaregiverRosterReader;
   PatientAddressReader: PatientAddressReader;
   PatientAllergyReader: PatientAllergyReader;
   NonCoveredMedicationsReader: NonCoveredItemsReader;

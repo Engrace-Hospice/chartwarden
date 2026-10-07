@@ -240,6 +240,12 @@ export const EnqueueRecomputeBodySchema = Type.Object({
 export const BindCahpsVendorBodySchema = Type.Object({
   vendorAdapterId: Type.String({ minLength: 1, maxLength: 120 }),
   effectiveFrom: isoDate(),
+  /**
+   * GAP-087 — the vendor's connection configuration (API keys, endpoints, account ids). Validated by the adapter's own
+   * `validateConfig`, then sealed under the tenant DEK; it is never echoed back. Omitted ⇒ the binding opens
+   * unconfigured (fine for the `manual` adapter, which needs no credentials).
+   */
+  configuration: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export const ExcludeCahpsDecedentBodySchema = Type.Object({
   exclusionReason: Type.String({ minLength: 4, maxLength: 500 }),

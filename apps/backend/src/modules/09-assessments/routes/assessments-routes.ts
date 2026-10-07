@@ -26,7 +26,7 @@ import {
 // predicate instead (`ASSESSMENT_SCOPE_FOR` — see abac-predicates.ts header for why). The 2 internal batch
 // routes and the 4 admin license/policy routes are unchanged (spec ABAC column is "caller asserts" / "—").
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { ScaleType } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -89,6 +89,20 @@ function recorderDisciplineFor(roles: readonly string[], scaleType: ScaleType): 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const READ = P("assessment.read");
+
+/**
+ * GAP-182 — the `/internal/...` seam routes (11, 12) take ANY `patientId` behind `assessment.read` alone, so a
+ * human clinician could read a patient outside their caseload by calling them directly. Their real callers
+ * (M7 / M10 / M32) consume the in-process `LatestAssessmentProvider` / `ScaleSeriesProvider` seams, not these
+ * URLs; the routes are for SYSTEM principals only (§4.1 "system principal"). A human session — whatever
+ * permissions it holds — is refused before the handler runs. Same rule M15's `/internal/...` routes apply.
+ */
+const SYSTEM_PRINCIPAL_ONLY: PreHandler = async (request) => {
+  const kind = request.context?.attributes?.actorKind;
+  if (typeof kind !== "string" || !kind.startsWith("system")) {
+    throw new ForbiddenError("this seam route is reachable by system principals only (§4.1)");
+  }
+};
 const AUTHOR = P("assessment.author");
 const AMEND = P("assessment.amend");
 const COSIGN = P("assessment.cosign");
@@ -329,10 +343,13 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/significant-changes/:eventId/acknowledge",
     { preHandler: [ACK_CHANGE, ASSESSMENT_SCOPE_FOR("assessment.acknowledge_change")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { eventId } = parse(ChangeEventParamsSchema, request.params);
-      parse(AcknowledgeChangeSchema, request.body);
-      return service.acknowledgeChange(organizationId, eventId);
+      const body = parse(AcknowledgeChangeSchema, request.body);
+      return service.acknowledgeChange(organizationId, eventId, {
+        ackBy: userId,
+        ...(typeof body?.note === "string" && body.note.length > 0 ? { note: body.note } : {}),
+      });
     },
   );
 
@@ -340,7 +357,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/internal/assessments/latest-batch",
     {
-      preHandler: [READ],
+      preHandler: [READ, SYSTEM_PRINCIPAL_ONLY],
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {
@@ -354,7 +371,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/internal/assessments/series-batch",
     {
-      preHandler: [READ],
+      preHandler: [READ, SYSTEM_PRINCIPAL_ONLY],
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {

@@ -59,6 +59,12 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // FY2027 — the 42 CFR 418.24(d) election addendum window missed (care team + compliance audiences).
       "m6.election_addendum.overdue",
       "m6.election_addendum.overdue_compliance",
+      // GAP-026 — the generic (non-addendum) compliance window miss.
+      "m6.compliance.window.overdue",
+      "m6.compliance.window.overdue_compliance",
+      // GAP-118 — §164.526 amendment request SLA (privacy officer + compliance).
+      "m5.patient.amendment_sla_due_soon",
+      "m5.patient.amendment_sla_overdue",
       "m6.admission.discharged",
       "visit.late",
       "m17.visit.cancelled",
@@ -95,8 +101,13 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "hl7_outbound.transmission_storm",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
+      // GAP-086 — the MLLP listener could not bind an active inbound feed (not a BAA refusal).
+      "external_feed.listener_blocked",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
+      // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
+      "m11.order.verbal_expiring_soon",
+      "m11.order.results_overdue",
       // F-201 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
       // sweep giving up.
       "m11.order.transmission_held_aging",
@@ -117,6 +128,15 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m37.iv_safety_overlay.bedside_check_overdue",
       // GAP-108 — M38's per-tenant deprecation-scan alert (the loader's follow-up job).
       "m38.tenant_deprecation_scan.completed",
+      // GAP-155 - M30's SRA reminder calendar + CAP-overdue alert.
+      "m30.alerts.sra_due_90",
+      "m30.alerts.sra_due_60",
+      "m30.alerts.sra_due_30",
+      "m30.alerts.sra_overdue",
+      "m39.consent.revoked_cascade_failed",
+      "mdm.license_expiring",
+      "m30.incident.cap_overdue",
+      "mdm.baa_expiring",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

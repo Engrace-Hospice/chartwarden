@@ -18,7 +18,33 @@ export {
 } from "./drift";
 
 export {
+  BAA_SCAN_LOOKAHEAD_DAYS,
+  daysUntil,
+  planBaaExpiryAlerts,
+  windowFor,
+  type BaaExpiryAlertPlan,
+  type BaaExpirySeverity,
+  type BaaExpiryWindow,
+  type BaaScanRecord,
+} from "./baa-scan";
+
+export {
+  planLicenseExpiryAlerts,
+  type LicenseExpiryAlertPlan,
+  type LicenseScanRecord,
+} from "./license-scan";
+
+export {
+  PROVISIONAL_AGING_MAX_IDS,
+  PROVISIONAL_AGING_THRESHOLD_DAYS,
+  planProvisionalAging,
+  type ProvisionalAgingPlan,
+  type ProvisionalRow,
+} from "./provisional-aging";
+
+export {
   runNppesNightlyDelta,
+  runNppesWeeklyFull,
   type NppesNightlyPorts,
   type NppesNightlyResult,
   type NppesSyncLogEntry,

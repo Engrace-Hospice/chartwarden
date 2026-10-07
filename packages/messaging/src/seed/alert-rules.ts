@@ -419,6 +419,50 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-026 — any other compliance window (CTI, NOR, assessments, care plan, recert) passing its due time.
+  {
+    eventType: "m6.compliance.window.overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.compliance.window.overdue_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-118 — a §164.526 amendment request nearing / past its 60-day deadline
+  // (`36-messaging/outbox-consumers/amendment-sla-alerts.ts`). Records-management work, so it pages the privacy
+  // officer and compliance, not the care team.
+  {
+    eventType: "m5.patient.amendment_sla_due_soon",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_privacy_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m5.patient.amendment_sla_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_privacy_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m6.admission.discharged",
     category: "clinical_routine",
@@ -726,6 +770,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-086 — the MLLP listener supervisor could not bind an ACTIVE inbound feed for a reason other than a BAA gate
+  // refusal (cleartext protocol refused in production, no/undecryptable mTLS credential, port unavailable). No inbound HL7
+  // is being accepted on that feed, so the audience is the one that can fix the feed: compliance + org admins.
+  {
+    eventType: "external_feed.listener_blocked",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
@@ -749,6 +806,27 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // who can act — a tenant's operator (`org_admin`) and the clinical leads who own lab orders (the §5.3 "operator, M11
   // owners" pairing F-188 used for the outbound-failure alert). Warn at 4 h, critical at 24 h (the emit severity carries the
   // stage; ids + a fixed reason token only in the payload).
+  // GAP-032 — the verbal-order pre-expiry (12h warn / 2h critical) and lab-results-overdue sweeps.
+  {
+    eventType: "m11.order.verbal_expiring_soon",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.results_overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m11.order.transmission_held_aging",
     category: "operational",
@@ -928,6 +1006,102 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     eventType: "m38.tenant_deprecation_scan.completed",
     category: "administrative",
     severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-155 (M30 spec 4.9) - the SRA reminder calendar (m30.sra_reminders cron emits these payload types as the
+  // event type) and the CAP-overdue alert (m30.cap_overdue_scan cron). Previously rule-less, so an emit reached nobody.
+  // sra_due_30 also carries the 7-day milestone (the payload catalog has no sra_due_7).
+  {
+    eventType: "m30.alerts.sra_due_90",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_due_60",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer", "administrator"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_due_30",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer", "administrator"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.sra_overdue",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["administrator", "org_admin", "compliance_officer"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-171 — M39 §2.2.3 / §4.10: a consent-revocation cascade exhausted its retry budget with a consumer still
+  // un-ACKed (`partial_failed`). A revoked consent that some surface still honours is a privacy exposure, so it is
+  // `critical` and goes to the Compliance Officer + org admin on in-app + email. Raised by the M39
+  // `revocation_cascade_retry` cron / manual retry through AlertEmitter (no outbox consumer). Payload: ids and
+  // consumer names only — no PHI.
+  {
+    eventType: "m39.consent.revoked_cascade_failed",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-173 — M40 §4.3 `mdm.baa_expiration_scan` / §4.4: a facility/payer BAA is 90, 30 or 0 days from expiry.
+  // Once it lapses the §7.7 gate denies disclosure to that entity, so the Compliance Officer + org admin hear
+  // about it in time to renew. The scan's own severity ladder (info / warn / critical per window) is the input
+  // severity; this rule's floor is `info` so the 90-day heads-up is not inflated. Raised through AlertEmitter
+  // by the M40 daily cron (no outbox consumer); payload is a BAA record id + entity ref + dates, no PHI.
+  // GAP-173 — M40 §4.4 `mdm.license_expiring` (Phase 1: from manual entry): a physician/credential license is 90, 30
+  // or 0 days from expiry. Compliance Officer + org admin, in-app + email; payload `{ physicianId, state,
+  // daysUntilExpiry }` + entity ref and window, no PHI. Raised by the M40 daily cron through AlertEmitter.
+  {
+    eventType: "mdm.license_expiring",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.incident.cap_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator", "compliance_officer", "clinical_lead"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "mdm.baa_expiring",
+    category: "administrative",
+    severityFloor: "info",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
     channelsOverride: ["in_app", "email"],

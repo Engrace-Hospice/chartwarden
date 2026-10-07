@@ -113,7 +113,7 @@ M14) — state machines, validation rules, calculators — decoupled from Fastif
 independently unit-testable. `apps/backend/src/modules/NN-*` is the thin HTTP/DB adapter layer on
 top. A handful of shared/infrastructure packages underpin everything:
 
-- `packages/db` — Drizzle schema + the 190+ SQL migrations (`packages/db/migrations/`)
+- `packages/db` — Drizzle schema + the SQL migrations (`packages/db/migrations/`)
 - `packages/auth` — Better Auth config, passkey/WebAuthn
 - `packages/audit` — the Audit Capture Contract (trigger generator, read-audit declarations)
 - `packages/tenancy` — RLS/org-context helpers
@@ -157,7 +157,7 @@ reads the same way.
 ### 1. The manifest is the single source of truth
 
 `architecture/module-manifest.ts` declares, per module: its code paths, its `dependsOn` list, and
-the Postgres tables it owns (461 tables across 40 modules). The `apps/` + `packages/` tree is
+the Postgres tables it owns (the table count is a generated figure — see `audit/`, not this prose). The `apps/` + `packages/` tree is
 **generated from this manifest** via `bun run scaffold`; `arch:parity` fails the build if the tree
 and manifest drift apart. A module boundary violation (importing another module's internals
 directly) is caught by `dependency-cruiser` (`architecture/.dependency-cruiser.cjs`), not just by

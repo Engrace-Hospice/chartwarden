@@ -13,8 +13,9 @@
 > **Phase-2 tenancy three-column sweep (2026-06-11; ADR-0010 D1 / ARCH-011) — M05-F04 closed.** All
 > **16 PHI tables** now carry `organization_id` (NOT NULL) + `provider_entity_id` + `location_id`
 > (nullable — the patient spine is org-level until admission, then PE/location are denormalized from
-> the admission/primary address). The `location_scope` ABAC predicate on `patient.create` now
-> evaluates against `patient.location_id` (it previously had no column). See the §3.3 tenancy note for
+> the admission/primary address). The `location_scope` ABAC predicate on patient **reads** evaluates
+> against `patient.location_id`; `patient.create` is **org-wide** (GAP-120 — a patient being created has no
+> location yet, so there is nothing to scope against; see §3.3). See the §3.3 tenancy note for
 > the nullability rationale, SD-028 composite indexes, and the M1 `providerEntities`/`locations`
 > imports. This satisfies `check-tenancy` (fitness #10). *(M05's other audited items — F01 SOGI/SSN
 > field-gating, F02 the M1 `dependsOn` + the org-table collision-guard trigger, §164.526 amendment
@@ -495,8 +496,13 @@ The `partner_mrn` value on `patient_identifier_kind` is added by migration `0035
 > admission** — a `prospective`/`referral` patient has no ProviderEntity or service Location yet; they
 > are populated (and denormalized onto every patient-scoped child table) when the admission activates,
 > from the admission's ProviderEntity and the primary-address-derived Location. Concretely:
-> - The `location_scope` ABAC predicate on `patient.create`/reads now evaluates against
+> - The `location_scope` ABAC predicate on patient **reads** evaluates against
 >   **`patient.location_id`** (previously it had no column to evaluate against — M05-F04).
+> - **`patient.create` is org-wide — no `location_scope` (GAP-120).** `POST /patients` carries no `locationId`
+>   and `patient.location_id` is NULL until the admission activates, so the predicate has no target to
+>   evaluate; binding it would either deny everyone or (as an absent-target fallback) look like a guard while
+>   allowing everyone. The control on creation is the RBAC key `patient.create` (§4.7) plus the §2.3 match
+>   pipeline; location scoping begins when the admission sites the patient (M6).
 > - Every table gets the **SD-028 composite index** `(organization_id, location_id, <natural_key>)`
 >   for partition/plan locality; PE-scoped surfaces (admissions, claims) index `(organization_id,
 >   provider_entity_id, …)`.
@@ -1232,33 +1238,36 @@ Like Modules 3 and 4, this module ships obligations every consuming module must 
 |---|---|---|---|---|
 | GET | `/api/v1/patients` | `patient.read` | `caseload_or_scope` (narrows list) | search: name/MRN/MBI/DOB; cursor-paginated; returns canonical only (excludes `merged`) |
 | GET | `/api/v1/patients/:id` | `patient.read` | `caseload_or_scope` | follows `merged_into_id` and returns 301-like in body for merged |
-| POST | `/api/v1/patients` | `patient.create` | `location_scope` (creator's location) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
+| POST | `/api/v1/patients` | `patient.create` | none — org-wide (GAP-120; no location exists until admission) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
 | PATCH | `/api/v1/patients/:id` | `patient.edit` | `caseload_or_scope` | MRN immutable; SSN write requires `phi.write_ssn` (step-up); `status` transitions per §2.4 |
 | POST | `/api/v1/patients/:id/status` | `patient.transition_status` | `caseload_or_scope` | enforces state-machine transitions |
 | POST | `/api/v1/patients/:id/deceased` | `patient.record_death` | `caseload_or_scope` | sets `status='deceased'`, `deceased_date`; emits cascade |
 | GET | `/api/v1/patients/:id/addresses` | `patient.read` | `caseload_or_scope` | history list |
 | POST | `/api/v1/patients/:id/addresses` | `patient.edit` | `caseload_or_scope` | append-only; if `is_primary=true`, atomically closes the prior primary |
 | GET | `/api/v1/patients/:id/identifiers` | `patient.read` | `caseload_or_scope` | SSN/state-id returned as `last4` unless `phi.read_ssn` |
-| POST | `/api/v1/patients/:id/identifiers` | `patient.edit_identifiers` | `caseload_or_scope` | MRN insert blocked once one exists; SSN write requires `phi.write_ssn` |
+| POST | `/api/v1/patients/:id/identifiers` | `patient.edit_identifiers` | `caseload_or_scope` | MRN insert blocked once one exists; SSN write requires `phi.write_ssn` **DEFERRED (unbuilt):** no POST; identifiers are written at create/merge time (read route only). |
 | GET | `/api/v1/patients/:id/payers` | `patient.read` | `caseload_or_scope` | coverage stack |
 | POST | `/api/v1/patients/:id/payers` | `patient.edit_payers` | `caseload_or_scope` | rank-aware insert |
-| GET | `/api/v1/patients/:id/caregivers` | `patient.read` | `caseload_or_scope` | |
-| POST | `/api/v1/patients/:id/caregivers` | `patient.edit` | `caseload_or_scope` | enforces single primary; LR requires authority + proof doc |
+| GET | `/api/v1/patients/:id/caregivers` | `patient.read` | `caseload_or_scope` | **DEFERRED (unbuilt):** no caregivers route; the care team is `GET /api/v1/patients/:id/care-team` + assignments. |
+| POST | `/api/v1/patients/:id/caregivers` | `patient.edit` | `caseload_or_scope` | enforces single primary; LR requires authority + proof doc **DEFERRED (unbuilt):** no caregivers route; see the care-team/assignments rows. |
 | GET | `/api/v1/patients/:id/assignments` | `patient.read` | `caseload_or_scope` | care-team |
 | POST | `/api/v1/patients/:id/assignments` | `patient.assign` | `caseload_or_scope` (assigner must already have access) | invalidates caseload cache |
 | POST | `/api/v1/patients/:id/assignments/:assignmentId/end` | `patient.assign` | `caseload_or_scope` | sets `unassignedAt`; cascades cache invalidation + audit |
-| GET | `/api/v1/patient-matches` | `patient.match_review` | none (org-scoped) | open queue |
-| POST | `/api/v1/patient-matches/:id/merge` | `patient.merge` (step-up) | none | confirms merge; writes `patient_merge` |
-| POST | `/api/v1/patient-matches/:id/not-a-match` | `patient.match_review` | none | closes review; future suppression hint |
+| GET | `/api/v1/patient-matches` | `patient.match_review` | none (org-scoped) | open queue **DEFERRED (unbuilt):** no review-queue route; the only as-built match surface is `POST /api/v1/referrals/:id/patient-matches` (M6 referral intake). |
+| POST | `/api/v1/patient-matches/:id/merge` | `patient.merge` (step-up) | none | confirms merge; writes `patient_merge` **DEFERRED (unbuilt):** no route; merges go through `POST /api/v1/patients/:id/merge`. |
+| POST | `/api/v1/patient-matches/:id/not-a-match` | `patient.match_review` | none | closes review; future suppression hint **DEFERRED (unbuilt):** no route (see the match-queue row). |
 | POST | `/api/v1/patients/:id/merge` | `patient.merge` (step-up) | `caseload_or_scope` on both source + target | direct merge (admin-initiated, outside queue) |
-| POST | `/api/v1/patient-merges/:id/unmerge` | `patient.merge` (step-up; ≤30d) OR `platform_ops` break-glass (>30d) | none | reverses |
+| POST | `/api/v1/patient-merges/:id/unmerge` | `patient.merge` (step-up; ≤30d) OR `platform_ops` break-glass (>30d) | none | reverses **DEFERRED (unbuilt):** no unmerge route. |
 | GET | `/api/v1/patients/:id/privacy-flags` | `patient.read` | `caseload_or_scope` | returns snapshot + `capturedAt` + staleness flag |
 | POST | `/api/v1/patients/:id/privacy-flags/resync` | `privacy.admin` | none | force re-read from M39; admin-only |
-| GET | `/api/v1/patients/:id/amendments` | `patient.read` | `caseload_or_scope` | list |
+| GET | `/api/v1/patients/:id/amendments` | `patient.read` | `caseload_or_scope` | list **DEFERRED (unbuilt):** no list route; as-built are `POST /api/v1/patients/:id/amendments`, `POST /api/v1/amendments/:id/{accept,deny}` and the portal `GET /api/v1/portal/amendments` + `POST /api/v1/portal/amendments/submit`. |
 | POST | `/api/v1/patients/:id/amendments` | `patient.amend_request_submit` (portal) OR `patient.amend_request_record` (staff entering) | `caseload_or_scope` | `sla_due_at = receivedAt + 60d` |
 | POST | `/api/v1/amendments/:id/accept` | `patient.amend_review` | none | applies changes via standard write path with full pre/post audit |
 | POST | `/api/v1/amendments/:id/deny` | `patient.amend_review` | none | requires `denial_reason`; opens statement-of-disagreement window |
-| POST | `/api/v1/amendments/:id/statement` | `patient.amend_request_submit` | none | patient/rep submits SoD; attached to subsequent disclosures |
+| POST | `/api/v1/amendments/:id/statement` | `patient.amend_request_submit` | none | patient/rep submits SoD; attached to subsequent disclosures **DEFERRED (unbuilt):** no route; the portal submit route above carries the statement. |
+
+> **As-built `/api/v1/*` routes not in the table (GAP-184):** `GET /api/v1/patients/:id/demographics`, `GET /api/v1/patients/:id/care-team`, `GET /api/v1/patients/:id/allergies` + `POST …/allergies/:allergyId/{verify,entered-in-error}`, `GET /api/v1/patients/:id/privacy`, `GET /api/v1/patients/census-metrics`, `GET /api/v1/privacy/restricted-patients`, `POST /api/v1/privacy/snapshot-rebuild`.
+
 
 ### 4.4 Complete Route Schemas (TypeBox)
 
@@ -1539,7 +1548,7 @@ Module 5 contributes these to Module 3's permission catalog (§3.3 of M3 spec). 
 | Key | Default roles | ABAC | Notes |
 |---|---|---|---|
 | `patient.read` | all internal clinical roles (RN, LPN, Aide, MSW, Chaplain, NP, MD, Pharmacist, Bereavement), org_admin, Compliance/Privacy Officer | `caseload_or_scope` for clinical; `none` for org_admin/Compliance | most-used permission in the system |
-| `patient.create` | RN-Case-Manager, Admissions Nurse, MD, NP, org_admin | `location_scope` | runs match pipeline |
+| `patient.create` | RN-Case-Manager, Admissions Nurse, MD, NP, org_admin | none (org-wide, GAP-120) | runs match pipeline |
 | `patient.create_bypass_match` | (assigned to none by default) | none | step-up + `critical` audit |
 | `patient.edit` | RN-Case-Manager, MSW, NP, MD, org_admin | `caseload_or_scope` | demographics, addresses, caregivers |
 | `patient.edit_identifiers` | Admissions Nurse, Billing roles, org_admin | `caseload_or_scope` | MRN immutable; SSN requires `phi.write_ssn` |
@@ -1601,7 +1610,7 @@ export interface PatientReader {
 import { db } from '@wardenx/db'
 import { patient, patientIdentifier } from '@wardenx/db/schema/patient'
 import { sql, eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { PatientReader, PatientIdentity } from '@wardenx/foundation/seams'
 import type { Logger } from 'pino'
 
@@ -1613,7 +1622,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByMrn(input: { organizationId: string; mrn: string }): Promise<PatientIdentity | null> {
     return await this.timed('findByMrn', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select({
             id: patient.id,
@@ -1642,7 +1651,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByExternalMrn(input: { organizationId: string; assigningAuthority: string; value: string }): Promise<PatientIdentity | null> {
     return await this.timed('findByExternalMrn', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const normalized = input.assigningAuthority.toUpperCase()
         const rows = await tx
           .select({
@@ -1673,7 +1682,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findBySsnLast4AndDob(input: { organizationId: string; ssnLast4: string; dateOfBirth: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findBySsnLast4AndDob', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select({
             id: patient.id,
@@ -1703,7 +1712,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByNameDobSex(input: { organizationId: string; lastName: string; firstName: string; dateOfBirth: string; administrativeSex: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findByNameDobSex', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const rows = await tx
           .select(/* same projection as above */)
           .from(patient)
@@ -1724,7 +1733,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findByLooseName(input: { organizationId: string; lastName: string; firstNameInitial?: string; dateOfBirth: string }): Promise<readonly PatientIdentity[]> {
     return await this.timed('findByLooseName', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const conds = [
           eq(patient.organizationId, input.organizationId),
           sql`LOWER(${patient.legalLastName}) = LOWER(${input.lastName})`,
@@ -1748,7 +1757,7 @@ export class PatientReaderImpl implements PatientReader {
 
   async findById(input: { organizationId: string; id: string }): Promise<PatientIdentity | null> {
     return await this.timed('findById', async () =>
-      withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+      withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
         const [row] = await tx
           .select(/* projection */)
           .from(patient)
@@ -1954,7 +1963,7 @@ export interface PatientMutator {
 import { db } from '@wardenx/db'
 import { patient, patientIdentifier, patientAddress, patientNameAlias, patientPhone, patientEmail, patientCommunicationPreference } from '@wardenx/db/schema/patient'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { ulid } from 'ulid'
 import type { PatientMutator, PatientMutatorInput, PatientMutatorResult } from '@wardenx/foundation/seams'
 import { PatientNotFoundError, PatientMergeRedirectError } from '@wardenx/foundation/seams'
@@ -2012,7 +2021,7 @@ export class PatientMutatorImpl implements PatientMutator {
     }
 
     // 2. Load patient + check merge-redirect refusal
-    return await withTenantContext(db, { organizationId }, async (tx) => {
+    return await withOrgContext(db, { organizationId }, async (tx) => {
       const [row] = await tx
         .select({ id: patient.id, mergedIntoId: patient.mergedIntoId, status: patient.status })
         .from(patient)
@@ -2431,7 +2440,7 @@ Delivered in `apps/web` (admin + clinical web). Portal-side amendment submission
 
 **Patient creation (`/patients/new`)** — three-step wizard with live match pipeline:
 
-1. *Identity*: legal name, preferred, DOB, sex assigned at birth, gender identity / pronouns. As the user types the last name + DOB, a background `POST /api/v1/patients/_match-preview` (auth-gated; same matcher) shows live "Possible matches in this org" panel; clicking a match opens the existing patient without creating a new one.
+1. *Identity*: legal name, preferred, DOB, sex assigned at birth, gender identity / pronouns. As the user types the last name + DOB, a background `POST /api/v1/patients/_match-preview` (**DEFERRED — unbuilt**) (auth-gated; same matcher) shows live "Possible matches in this org" panel; clicking a match opens the existing patient without creating a new one.
 2. *Demographics & contact*: race/ethnicity (USCDI value-set autocomplete via Module 38), preferred language, primary address (USPS autocomplete), primary phone (E.164 mask).
 3. *Identifiers & payer*: MRN (auto-generated or override), MBI (with format validation), SSN (masked input, encrypted server-side; field-level RBAC), primary payer (search M40 canonical; subscriber ID, effective date).
 
@@ -2899,3 +2908,13 @@ Architecture §10.6.6 assigns the patient's allergy list to Module 5 ("Allergies
 - **Per org** (`jobs/snapshot-rebuild.ts`, `rebuildPrivacySnapshotsForOrg(db, orgId, deps)`). Org-explicit. Patients are paged by id (200 per read transaction), and each patient's write is its own `withOrgContext` transaction. If a patient fails, the rest still run; the org's failures are re-raised after the pass so BullMQ retries.
 - **Schedule** (`jobs/snapshot-rebuild-worker.ts`). Queue `m5.snapshot_rebuild`. Cron `0 3 1 1,4,7,10 *`: 03:00 on 1 Jan/Apr/Jul/Oct (§4.5 says "quarterly" and gives no time). The worker fans out over active orgs through the audited platform enumerator (platform job `m5.snapshot_rebuild`) and runs as the system (`userId` empty; the M4 trigger records no actor). It has DLQ alerts and close hooks and runs in the worker role. The run summary (patients, rewritten, flag changes, stale cleared, unchanged, failed) is **logged as counts only**. The spec asks for no audit/system event beyond the M4 row audit of each write.
 - **Manual admin route** — `POST /api/v1/privacy/snapshot-rebuild` (`privacy.admin`, ABAC none; the path is not named in §4.2, which lists only the per-patient resync). It runs the same per-org rebuild synchronously for the caller's org only, as the acting officer (so the M4 trail names them), and returns the counts. The Privacy Officer screen has no button for it yet.
+
+## As built — §4.3 route inventory completion and the soft-duplicate queue (GAP-018 / GAP-019 / GAP-012, 2026-10-06)
+
+The route inventory had 15 rows that were specified and never registered (the status matrix counted only registered routes). Registered now, in `routes/lifecycle-routes.ts` over `PatientLifecyclePort` (`patient-lifecycle.ts`; Drizzle port `patient-lifecycle-db.ts`, bound in `mountPatientRoutes`). No migration: every column already existed.
+
+- **Soft duplicates (§7.3).** `admit` inserts one open `patient_match_review` per soft candidate in the admit transaction (`match-review-db.ts`; highest score first; the snapshot never carries the SSN) and returns the ids in `matchReviewIds`. `GET /patient-matches` (`patient.match_review`, default `open`), `POST /patient-matches/:id/merge` (`patient.merge` + step-up; the new chart folds into the existing one in the SAME transaction as the review close via `mergePatientsInTx`; sibling open reviews of the merged-away chart are cancelled) and `POST /patient-matches/:id/not-a-match`.
+- **Unmerge.** `POST /patient-merges/:id/unmerge` (`patient.merge` + step-up) within 30 days; restores the source's pre-merge status (recorded by the merge under `merged_field_diff.__sourcePriorStatus`, fallback `prospective`), reverts the target's resolved fields that nobody has edited since, emits `m5.patient.unmerged`. **Deferred:** the >30-day `platform_ops` break-glass path (409 `UNMERGE_WINDOW_EXPIRED`).
+- **Chart writes.** `PATCH /patients/:id` (demographics only; `mrn`/`status`/`ssn` are refused by the schema), `POST /patients/:id/status` (§2.4.1 manual edges: prospective→active, active↔on_hold, active/on_hold→discharged, discharged→active; `deceased` and `merged` are not reachable here), `POST /patients/:id/deceased` (step-up; the same cascade as the M6 death consumer, with the acting user recorded), `POST /patients/:id/identifiers` (`mbi` supersedes the open MBI; `prior_mrn`/`hospice_external`/`partner_mrn`), `GET|POST /patients/:id/caregivers` (single open primary; a legal representative needs an authority and a proof document). **Deferred:** `ssn`/`state_id` writes (422 `SENSITIVE_IDENTIFIER_UNSUPPORTED`) — they need the envelope-encrypted path and the `phi.write_ssn` step-up, which is the same follow-up as SSN storage on admit; the MRN stays immutable (409 `MRN_IMMUTABLE`).
+- **Amendments (GAP-012 backend).** `GET /patients/:id/amendments`, the staff inbox `GET /amendments` (`patient.amend_review`, pending first by SLA; not in §4.3, added for the HIPAA privacy work queue) and `POST /amendments/:id/statement` (statement of disagreement, denied amendments only; a second statement is appended, never replaces). `decideAmendment` now records the reviewer and `decided_at`.
+- **Still not built:** `POST /patients/:id/privacy-flags/resync` is built elsewhere (Privacy Officer section). `reauthToken` stays retired in favour of `requireStepUp`.

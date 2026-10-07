@@ -124,8 +124,16 @@ export interface CapAccrualReader {
    * The cap-period aggregate for a cap year (M27 cost-report Worksheet-E inputs). Resolves the org's
    * cap_period for `capYear`, sums the accrual/inpatient ledgers, and uses the settled figures once a
    * settlement is final. Returns null when no cap period exists for that year.
+   *
+   * GAP-149: `ccn` selects the cap period of ONE Medicare provider number (cap is per CCN). Omitted, the
+   * single period of a one-CCN org is used; with several CCNs and no `ccn` the answer is null (ambiguous —
+   * never an arbitrary CCN's figures).
    */
-  aggregateForCostReport(orgId: string, capYear: string): Promise<CostReportCapAggregate | null>;
+  aggregateForCostReport(
+    orgId: string,
+    capYear: string,
+    ccn?: string,
+  ): Promise<CostReportCapAggregate | null>;
 }
 
 // ── CapSettlementProvider (M27 cost report) ────────────────────────────────────────────────────────

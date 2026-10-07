@@ -43,6 +43,8 @@ export interface MedicationOrderEraseCounts {
   readonly dispenses?: number;
   /** F-230 — `dosespot_patient_sync` (patient -> vendor patient id) rows deleted for the patient. */
   readonly patientSyncRows?: number;
+  /** GAP-037 — `rx_benefit_cache` rows deleted for the patient. */
+  readonly rxBenefitCacheRows?: number;
   /** Whole `medication_order` partitions DETACHed + DROPped (the partition-drop path). */
   readonly partitionsDropped: number;
   /**
@@ -111,6 +113,7 @@ export async function eraseMedicationOrderRecord(
     (counts.medicationHistoryPulls ?? 0) +
     (counts.dispenses ?? 0) +
     (counts.patientSyncRows ?? 0) +
+    (counts.rxBenefitCacheRows ?? 0) +
     counts.orderSignatures +
     counts.orderVerbalOrders;
   return { erased, counts };
@@ -138,6 +141,7 @@ export function createInMemoryMedicationOrderEraseStore(
     medicationHistoryPulls: 0,
     dispenses: 0,
     patientSyncRows: 0,
+    rxBenefitCacheRows: 0,
     partitionsDropped: 0,
     orderSignatures: 0,
     orderVerbalOrders: 0,
@@ -200,6 +204,7 @@ export function createDrizzleMedicationOrderEraseStore(
   const PULL = schema.medicationHistoryPulls;
   const DISP = schema.medicationOrderDispenses;
   const SYNC = schema.dosespotPatientSync;
+  const RXB = schema.rxBenefitCache;
 
   /** The patient's erasable medication-order ids (`created_at < boundary`) — the cascade key. */
   const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
@@ -300,6 +305,12 @@ export function createDrizzleMedicationOrderEraseStore(
             .where(and(eq(SYNC.patientId, patientId), lt(SYNC.createdAt, boundary)))
             .returning({ id: SYNC.id }),
         );
+        const rxBenefitCacheRows = await del(() =>
+          tx
+            .delete(RXB)
+            .where(and(eq(RXB.patientId, patientId), lt(RXB.createdAt, boundary)))
+            .returning({ id: RXB.id }),
+        );
 
         // The partitioned parent, via the partition-key predicate (row-delete arm).
         const medicationOrders = await del(() =>
@@ -321,6 +332,7 @@ export function createDrizzleMedicationOrderEraseStore(
           medicationHistoryPulls,
           dispenses,
           patientSyncRows,
+          rxBenefitCacheRows,
           partitionsDropped: 0,
           orderSignatures,
           orderVerbalOrders,

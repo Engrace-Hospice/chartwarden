@@ -81,6 +81,8 @@ export interface ApplyMigrationsOptions {
   readonly baseline?: boolean;
   /** Checksum drift on an already-applied file throws instead of only warning. */
   readonly strict?: boolean;
+  /** An applied ledger row whose migration file no longer exists throws instead of only warning. */
+  readonly strictOrphans?: boolean;
 }
 
 export interface ApplyMigrationsResult {
@@ -90,6 +92,8 @@ export interface ApplyMigrationsResult {
   readonly pending: readonly string[];
   /** Already-applied files whose on-disk contents no longer match their recorded checksum. */
   readonly drifted: readonly string[];
+  /** Tracking rows whose migration file is gone from disk (renamed/deleted after being applied). */
+  readonly orphaned: readonly string[];
 }
 
 /**
@@ -171,7 +175,20 @@ export async function applyMigrations(
       `Baselined: recorded ${untracked.length} migration(s) as applied WITHOUT running them ` +
         `(${applied.size} already tracked). Assuming this DB is at head.`,
     );
-    return { ran: [], pending: [], drifted: [] };
+    return { ran: [], pending: [], drifted: [], orphaned: [] };
+  }
+
+  const fileSet = new Set(files);
+  const orphaned = [...applied.keys()].filter((f) => !fileSet.has(f)).sort();
+  for (const f of orphaned) {
+    console.log(
+      `  ⚠ ${f} is recorded as applied but its file no longer exists (renamed or deleted)`,
+    );
+  }
+  if (opts.strictOrphans && orphaned.length > 0) {
+    throw new Error(
+      `--strict-orphans: ${orphaned.length} applied migration(s) have no file: ${orphaned.join(", ")}`,
+    );
   }
 
   const pending = files.filter((f) => !applied.has(f));
@@ -228,7 +245,7 @@ export async function applyMigrations(
   }
   console.log(`Applied ${ran.length} new migration(s).`);
 
-  return { ran, pending, drifted };
+  return { ran, pending, drifted, orphaned };
 }
 
 export interface BootstrapAppRoleOptions {
@@ -284,6 +301,7 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
 
 const BASELINE = process.argv.includes("--baseline");
 const STRICT = process.argv.includes("--strict");
+const STRICT_ORPHANS = process.argv.includes("--strict-orphans");
 const SCHEMA_ONLY = process.argv.includes("--schema-only");
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const BYPASSRLS_REQUESTED = process.env.WARDENX_DEV_BYPASSRLS === "1";
@@ -306,6 +324,7 @@ async function main(): Promise<void> {
       migrationsDir: MIGRATIONS_DIR,
       baseline: BASELINE,
       strict: STRICT,
+      strictOrphans: STRICT_ORPHANS,
     });
     if (SCHEMA_ONLY) {
       console.log(

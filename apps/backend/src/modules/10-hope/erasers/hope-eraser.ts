@@ -236,6 +236,7 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
   const FINDING = schema.hopeValidationFindings;
   const SUB = schema.hopeSubmissions;
   const ITEM = schema.hopeSubmissionItems;
+  const REVIEW = schema.hopeRetentionReviews;
 
   return {
     async lockPatient(organizationId, patientId) {
@@ -308,6 +309,10 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
         const schedules = (
           await tx.delete(SCHED).where(eq(SCHED.patientId, patientId)).returning({ id: SCHED.id })
         ).length;
+
+        // The retention-scan ledger row (GAP-181) describes the record just destroyed; the next scan re-creates
+        // it if any HOPE rows survive. It is operational bookkeeping, not clinical evidence.
+        await tx.delete(REVIEW).where(eq(REVIEW.patientId, patientId));
 
         // Row-delete path only — see the factory doc; a partition is never DETACHed/DROPped here.
         // Idempotent by construction: a second erase finds nothing and reports `zero`'s shape.

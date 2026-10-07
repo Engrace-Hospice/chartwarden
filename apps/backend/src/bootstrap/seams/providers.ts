@@ -96,6 +96,7 @@ import type {
   PatientAdmissionClearanceReader,
   PatientAllergyReader,
   PatientCaregiverReader,
+  PatientCaregiverRosterReader,
   PatientCounterProvider,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
@@ -260,6 +261,12 @@ export const patientCaregiverReaderDenyStub: PatientCaregiverReader = {
  * predicate already treats an unreadable residence as fail-closed-to-two-party, so a thrown deny-stub
  * here does not change that posture — it only removes the unregistered-name `SeamError` path).
  */
+export const patientCaregiverRosterReaderDenyStub: PatientCaregiverRosterReader = {
+  caregiversForPatient() {
+    throw new NotImplementedError("PatientCaregiverRosterReader");
+  },
+};
+
 export const patientAddressReaderDenyStub: PatientAddressReader = {
   primaryAddress() {
     throw new NotImplementedError("PatientAddressReader");

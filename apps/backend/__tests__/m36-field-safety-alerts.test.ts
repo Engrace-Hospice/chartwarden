@@ -123,6 +123,7 @@ describe("M36 field-safety alert consumer (GAP-061)", () => {
       },
     });
     expect(input.payload).not.toHaveProperty("orgId");
+    expect(input.payload).toMatchObject({ deepLink: "/safety" });
   });
 
   it("does not raise an on-call page for overdue or coverage-gap events", async () => {
@@ -163,6 +164,7 @@ describe("M36 field-safety alert consumer (GAP-061)", () => {
     expect(input.payload).not.toHaveProperty("orgId");
     expect(input.payload).not.toHaveProperty("organizationId");
     expect(input.payload).toMatchObject({ clinicianMembershipId: CLINICIAN, minutesOverdue: 30 });
+    expect(input.payload).toMatchObject({ deepLink: "/safety" });
   });
 
   it("throws on a malformed payload so the relay retries to the DLQ instead of dropping a safety page", async () => {

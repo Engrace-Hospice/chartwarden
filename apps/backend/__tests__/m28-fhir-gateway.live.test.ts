@@ -35,6 +35,8 @@ import {
   registerPatientSeams,
 } from "../src/modules/05-patient/index";
 import {
+  buildDrizzleFhirGatewayAbacResolver,
+  buildFhirGatewayAbacPredicates,
   createDrizzleFhirGatewayStore,
   createDrizzleFhirPublishedSeamStore,
 } from "../src/modules/28-fhir/index";
@@ -421,5 +423,114 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(foreign.json().total).toBe(0);
+  });
+  it("GAP-198: the 0490 backfill stamps legacy rows from their payload and leaves the rest NULL", async () => {
+    const insert = async (type: string, owner: string, payload: object) =>
+      (
+        await admin.query(
+          `INSERT INTO fhir_inbound_resource
+             (organization_id, source_client_id, resource_type, payload, payload_sha256, owner_module)
+           VALUES ($1,$2,$3,$4::jsonb,'x',$5::fhir_inbound_owner_module) RETURNING id`,
+          [ORG_A, CLIENT_A, type, JSON.stringify(payload), owner],
+        )
+      ).rows[0].id as string;
+    const legacyMed = await insert("MedicationStatement", "m12", {
+      subject: { reference: `Patient/${patientA.toUpperCase()}` },
+    });
+    const legacyBad = await insert("MedicationStatement", "m12", {
+      subject: { reference: "Patient/not-a-uuid" },
+    });
+    const legacyPatient = await insert("Patient", "m5", { id: patientA });
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0490_m28_inbound_subject_patient.sql"), "utf8");
+    const backfill = sql.slice(sql.indexOf("UPDATE"), sql.indexOf("-->", sql.indexOf("UPDATE")));
+    await admin.query(
+      "UPDATE fhir_inbound_resource SET subject_patient_id = NULL WHERE id = ANY($1::uuid[])",
+      [[legacyMed, legacyBad, legacyPatient]],
+    );
+    await admin.query(backfill);
+    const got = await admin.query(
+      "SELECT id, subject_patient_id FROM fhir_inbound_resource WHERE id = ANY($1::uuid[])",
+      [[legacyMed, legacyBad, legacyPatient]],
+    );
+    const byId = new Map(got.rows.map((r) => [r.id, r.subject_patient_id]));
+    expect(byId.get(legacyMed)).toBe(patientA);
+    expect(byId.get(legacyPatient)).toBe(patientA);
+    expect(byId.get(legacyBad)).toBeNull();
+  });
+
+  it("GAP-198: staging stamps subject_patient_id and the caseload gate resolves it under RLS", async () => {
+    await admin.query("UPDATE fhir_client SET allowed_scopes = $2::jsonb WHERE id = $1", [
+      CLIENT_A,
+      JSON.stringify(["system/MedicationStatement.write", "system/Patient.write"]),
+    ]);
+    const minted = await mint(
+      CLIENT_A,
+      SECRET_A,
+      "system/MedicationStatement.write system/Patient.write",
+    );
+    expect(minted.statusCode).toBe(200);
+    const bearer = { authorization: `Bearer ${minted.json().access_token as string}` };
+
+    const med = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/MedicationStatement",
+      headers: bearer,
+      payload: {
+        resourceType: "MedicationStatement",
+        status: "active",
+        subject: { reference: `Patient/${patientA}` },
+      },
+    });
+    expect(med.statusCode).toBe(202);
+    const intake = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/Patient",
+      headers: bearer,
+      payload: { resourceType: "Patient", name: [{ family: "Newperson" }] },
+    });
+    expect(intake.statusCode).toBe(202);
+
+    const rows = await admin.query(
+      "SELECT id, resource_type, subject_patient_id FROM fhir_inbound_resource WHERE organization_id = $1 ORDER BY proposed_at DESC",
+      [ORG_A],
+    );
+    const medRow = rows.rows.find((r) => r.resource_type === "MedicationStatement");
+    const patientRow = rows.rows.find((r) => r.resource_type === "Patient");
+    expect(medRow.subject_patient_id).toBe(patientA);
+    expect(patientRow.subject_patient_id).toBeNull();
+
+    // The real Drizzle resolver, as wardenx_app: org A sees the facts, org B's context sees nothing.
+    const resolver = buildDrizzleFhirGatewayAbacResolver({ db: handle.db });
+    expect(await resolver.inboundSubjectPatient(ORG_A, medRow.id)).toEqual({
+      resourceType: "MedicationStatement",
+      subjectPatientId: patientA,
+    });
+    expect(await resolver.inboundSubjectPatient(ORG_B, medRow.id)).toBeNull();
+
+    // The full predicate over it: caseload decides for the chart; the new-patient intake needs none.
+    let inCaseload = false;
+    const predicate = buildFhirGatewayAbacPredicates({
+      resolver: { ...resolver, holdsPermission: async () => true },
+      isInCaseload: async (q) => inCaseload && q.patientId === patientA,
+    }).fhir_inbound_owner_module_match;
+    const ctx = {
+      organizationId: ORG_A,
+      userId: "user-1",
+      roles: [] as string[],
+      attributes: { membershipId: "m-1" },
+    } as never;
+    expect(await predicate(ctx, { proposalId: medRow.id } as never)).toBe(false);
+    inCaseload = true;
+    expect(await predicate(ctx, { proposalId: medRow.id } as never)).toBe(true);
+    expect(await predicate(ctx, { proposalId: patientRow.id } as never)).toBe(true);
+    // Cross-tenant: org B's actor cannot even see the proposal.
+    expect(
+      await predicate(
+        { ...(ctx as object), organizationId: ORG_B } as never,
+        {
+          proposalId: medRow.id,
+        } as never,
+      ),
+    ).toBe(false);
   });
 });

@@ -468,8 +468,11 @@ eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
 IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
 On-Call Triage + On-Call Roster & Protocols (M19; done²⁷), Field Safety (M20; done²⁸),
 Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
-Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
-Portal/Telehealth (M31; done²⁹), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
+Remittance & Denials (M25; done — worklists plus the manual-match / appeal / denial writes), Cap (M26; done — dashboard,
+periods, events, settlement, platform constants and the PSR workbench, with the step-up-gated propose / finalize / close / reopen /
+resolve / acknowledge actions wired (GAP-079); opening a period and locking methodology have no screen yet), Cost Report (M27), FHIR (M28),
+HQRP (M30; read-only incidents screen, lifecycle actions deferred³¹),
+Portal/Telehealth (M31; done²⁹; staff telehealth room deferred³¹), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 
 > ²⁴ **M15 Discipline Care Plans + Volunteer Management now LIVE (Wave P2-1, M15-T07).** Twelve screens under
@@ -742,8 +745,8 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > and CSS-var tokens only (zero hex).
 >
 > **Honest gaps, stated rather than faked.** The portal is a separate app, so it is invisible to the
-> `arch:ui-parity` matrix (which scans `apps/web` + `main.tsx` only) — the 226 registered count does not
-> include it; the portal carries its own registry-unit test instead. The **staff-admin §5.3 pane** (the
+> `arch:ui-parity` matrix (it reports the portal as its own app, apart from the `apps/web` count; see the generated
+> `audit/ui-parity/UI_PARITY.md` for the current numbers, which this ledger deliberately does not restate); the portal carries its own registry-unit test instead. The **staff-admin §5.3 pane** (the
 > `portal.admin.*` roster/telehealth/audit surfaces) stays a forward-surface — it belongs to the staff app
 > and would need a `apps/web/src/modules/31-portal` codePath the wave acceptance explicitly withholds from
 > M31. Notification-preference **writes** (the PATCH needs a preference id the read DTO does not return) and
@@ -804,6 +807,19 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > screen rather than fabricated. Mutating tenant actions present the entry and surface the server's outcome;
 > the card-entry Stripe Element + setup-intent handshake is wired against the live routes but the vendor SDK
 > mounts in the running app.
+
+> ³¹ **Explicit deferrals recorded (batch 17, GAP-157 / GAP-160) — not "done", not silently absent.**
+> *M30 QAPI incidents lifecycle.* `apps/web/src/modules/30-quality/qapi-incidents.tsx` is a **read-only**
+> list: it issues GETs only. The backend lifecycle is live (`incidents.routes.ts` — create, submit, triage,
+> investigate, resolve, close, reopen), but the report / investigate / close **actions** have no screen
+> yet. M30 stays `deferred` for those actions until the incident drawer (flat rail/drawer pattern, shared
+> kit) is built; the screen must not be read as the incident workflow.
+> *M31 staff telehealth room.* Only the portal (`apps/portal`) joins a telehealth visit. The clinician
+> join/leave/start-recording routes (`POST /api/v1/telehealth/visits/:visitId/join`, `/leave`, `/start-recording`) are live in
+> `31-portal/routes/telehealth.routes.ts` but have **no staff-app room UI**; the forward-surface note in
+> footnote ²⁹ covers the portal admin pane, not the clinician room. A staff room is a `deferred` row and
+> needs an `apps/web/src/modules/31-portal` codePath (withheld from M31 so far) plus the vendor adapter
+> (still unbound — see `docs/history/m31-portal-deferrals.md`).
 
 ---
 

@@ -104,6 +104,7 @@ import {
   mountM31Routes,
 } from "../src/modules/31-portal/index";
 import type { M17VisitForRoom } from "../src/modules/31-portal/telehealth/room-mint";
+import { planDocumentUpload } from "../src/modules/31-portal/write-paths/document-upload";
 
 // ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
 // session attributes M31's `actor.ts` reads (`bereavement-inject.test.ts`'s `x-test-portal-account`
@@ -174,6 +175,17 @@ function createFakePortalStore(): {
   const grants = new Map<string, PortalAccessGrantDigest>();
   const visits = new Map<string, TelehealthVisitDigest>();
   const recording = new Map<string, { enabled: boolean; startedByUserId: string | null }>();
+  /** GAP-095 — the sealed room columns + presence + vendor recording id the vendor-facing routes read. */
+  const rooms = new Map<
+    string,
+    {
+      vendorRoomIdCipher: string;
+      vendorRoomUrlCipher: string;
+      vendorRecordingId: string | null;
+      patientLeftAt: string | null;
+      clinicianLeftAt: string | null;
+    }
+  >();
   const statusChangeReasons: { id: string; action: string; reasonCipher: string }[] = [];
 
   const findActiveGrant = (
@@ -337,7 +349,26 @@ function createFakePortalStore(): {
         linkedEncounterId: null,
       };
       visits.set(row.id, digest);
+      rooms.set(row.id, {
+        vendorRoomIdCipher: row.vendorRoomIdCipher,
+        vendorRoomUrlCipher: row.vendorRoomUrlCipher,
+        vendorRecordingId: null,
+        patientLeftAt: null,
+        clinicianLeftAt: null,
+      });
       return digest;
+    },
+    async telehealthRoomFacts(_orgId, id) {
+      if (!visits.has(id)) return null;
+      return (
+        rooms.get(id) ?? {
+          vendorRoomIdCipher: `sealed:vendor_room_id:room-${id}`,
+          vendorRoomUrlCipher: `sealed:vendor_room_url:https://vendor.invalid/room-${id}`,
+          vendorRecordingId: null,
+          patientLeftAt: null,
+          clinicianLeftAt: null,
+        }
+      );
     },
     async telehealthList() {
       return [...visits.values()];
@@ -359,6 +390,22 @@ function createFakePortalStore(): {
               : patch.recordingStartedByUserId,
         });
       }
+      const priorRoom = (await store.telehealthRoomFacts("", id))!;
+      rooms.set(id, {
+        ...priorRoom,
+        vendorRecordingId:
+          patch.vendorRecordingId === undefined
+            ? priorRoom.vendorRecordingId
+            : patch.vendorRecordingId,
+        patientLeftAt:
+          patch.patientLeftAt === undefined
+            ? priorRoom.patientLeftAt
+            : (patch.patientLeftAt?.toISOString() ?? null),
+        clinicianLeftAt:
+          patch.clinicianLeftAt === undefined
+            ? priorRoom.clinicianLeftAt
+            : (patch.clinicianLeftAt?.toISOString() ?? null),
+      });
       const updated: TelehealthVisitDigest = {
         ...row,
         lifecycleState: (patch.lifecycleState ?? row.lifecycleState) as TelehealthLifecycleState,
@@ -435,6 +482,12 @@ function makeServer(
     readonly lazyMint?: { readonly visit: M17VisitForRoom | null; readonly vendorCanMint: boolean };
     /** GAP-006 — leave M5's amendment intake UNBOUND (submit/list must then refuse 503). */
     readonly amendmentIntakeUnbound?: boolean;
+    /** GAP-092 — leave M13's caregiver-attestation write UNBOUND (the attest route must then refuse 503). */
+    readonly caregiverAttestationUnbound?: boolean;
+    /** GAP-092 — leave the provisioning services / M16 opt-out / M4 audit ports UNBOUND (503 on every write). */
+    readonly provisioningUnbound?: boolean;
+    /** GAP-095 — override pieces of the fake vendor adapter (spies / failures). */
+    readonly telehealthAdapter?: Partial<TelehealthAdapterPort>;
     /** M31 staff-telehealth scope — what the M5 `CaseloadProvider` answers (`userId → patient ids`), or
      *  `"throws"` for an unreadable seam. Default: `staff_user` carries `PATIENT` (the seeded visits' patient). */
     readonly staffCaseload?: Readonly<Record<string, readonly string[]>> | "throws";
@@ -485,6 +538,124 @@ function makeServer(
           slaDueAt: NOW,
           decidedAt: null,
         }));
+    },
+  };
+
+  // GAP-092 — stands in for M13's `buildPortalCaregiverAttestationPort` (the real write is proven in M13's suite).
+  const caregiverWrites: Array<Record<string, unknown>> = [];
+  const caregiverAttestation = {
+    async record(input: Record<string, unknown>) {
+      caregiverWrites.push(input);
+      return {
+        administrationId: "99999999-9999-4999-8999-999999999999",
+        status: "pending_caregiver_review",
+      };
+    },
+  };
+
+  // GAP-092 — thin stand-ins for the provisioning services (each is proven against its own fake DB in
+  // `gap-092-m31-provisioning.test.ts`); the route layer's own logic runs for real around them.
+  const provisioningCalls: Array<{ op: string; input: unknown }> = [];
+  const provisioning = {
+    preferences: {
+      async list() {
+        return { channels: [{ channel: "email", enabled: true }] };
+      },
+      async update(input: unknown) {
+        provisioningCalls.push({ op: "preferences.update", input });
+        return { channels: [] };
+      },
+    },
+    uploads: {
+      async begin(input: {
+        mimeType: string;
+        expectedByteSize: number;
+        patientDischargedReadOnly: boolean;
+        organizationId: string;
+        patientId: string;
+        portalAccountId: string;
+      }) {
+        // the real §7.8 gate, so the route's 415 / 413 / 403 behaviour is still exercised end to end
+        planDocumentUpload({
+          orgId: input.organizationId,
+          patientId: input.patientId as never,
+          portalAccountId: input.portalAccountId,
+          byteSize: input.expectedByteSize,
+          declaredMime: input.mimeType,
+          magicBytes: [],
+          patientDischargedReadOnly: input.patientDischargedReadOnly,
+        });
+        provisioningCalls.push({ op: "uploads.begin", input });
+        return {
+          uploadId: UPLOAD_ID,
+          contentPath: `/api/v1/portal/documents/uploads/${UPLOAD_ID}/content`,
+          expiresAt: NOW,
+        };
+      },
+      async stage(input: { bytes: Buffer }) {
+        provisioningCalls.push({ op: "uploads.stage", input });
+        return { uploadId: UPLOAD_ID, status: "staged" as const, byteSize: input.bytes.byteLength };
+      },
+      async complete(input: unknown) {
+        provisioningCalls.push({ op: "uploads.complete", input });
+        return {
+          uploadId: UPLOAD_ID,
+          status: "received" as const,
+          documentId: "d0d0d0d0-d0d0-4d0d-8d0d-d0d0d0d0d0d0",
+          intakeBatchId: "b0b0b0b0-b0b0-4b0b-8b0b-b0b0b0b0b0b0",
+        };
+      },
+    },
+    invitations: {
+      async issue(input: { patientId: string; relationship: string }) {
+        provisioningCalls.push({ op: "invitations.issue", input });
+        return {
+          invitationId: "11111111-aaaa-4aaa-8aaa-111111111111",
+          portalAccountId: ACCOUNT,
+          status: "invited" as const,
+          expiresAt: NOW,
+          inviteUrl: null,
+        };
+      },
+      async list() {
+        return [
+          {
+            invitationId: "11111111-aaaa-4aaa-8aaa-111111111111",
+            relationship: "family_caregiver",
+            status: "outstanding" as const,
+            issuedAt: NOW,
+            expiresAt: NOW,
+          },
+        ];
+      },
+      async revoke(organizationId: string, actingUserId: string, invitationId: string) {
+        provisioningCalls.push({
+          op: "invitations.revoke",
+          input: { organizationId, actingUserId, invitationId },
+        });
+      },
+      async accept(token: string) {
+        provisioningCalls.push({ op: "invitations.accept", input: token });
+        return {
+          portalAccountId: ACCOUNT,
+          patientId: PATIENT,
+          grantKind: "family_caregiver" as const,
+          status: "active" as const,
+          replayed: false,
+        };
+      },
+    },
+  };
+  const bereavementOptOut = {
+    async optOut(input: unknown) {
+      provisioningCalls.push({ op: "bereavement.optOut", input });
+      return { contactsOptedOut: 1, alreadyOptedOut: 0 };
+    },
+  };
+  const accountAudit = {
+    async viewsForUser(input: unknown) {
+      provisioningCalls.push({ op: "audit.views", input });
+      return { items: [], nextCursor: null };
     },
   };
 
@@ -708,6 +879,7 @@ function makeServer(
     ...(opts.telehealthWebhookSignatureValid === false
       ? { ...FAKE_TELEHEALTH_ADAPTER, verifyWebhookSignature: () => false }
       : FAKE_TELEHEALTH_ADAPTER),
+    ...(opts.telehealthAdapter ?? {}),
     ...(opts.lazyMint?.vendorCanMint
       ? {
           async mintRoom(input: { telehealthVisitId: string }) {
@@ -730,17 +902,26 @@ function makeServer(
     },
     now: () => new Date(NOW),
     ...(opts.amendmentIntakeUnbound ? {} : { amendmentIntake }),
+    ...(opts.caregiverAttestationUnbound ? {} : { caregiverAttestation }),
+    ...(opts.provisioningUnbound
+      ? {}
+      : { provisioning: provisioning as never, bereavementOptOut, accountAudit }),
+    roomCipher: {
+      async encrypt(_org: string, column: string, plaintext: string) {
+        return `sealed:${column}:${plaintext}`;
+      },
+      async decrypt(_org: string, column: string, envelope: string) {
+        const prefix = `sealed:${column}:`;
+        if (!envelope.startsWith(prefix)) throw new Error("foreign envelope");
+        return envelope.slice(prefix.length);
+      },
+    },
     ...(opts.lazyMint
       ? {
           visitReader: {
             async visitForOrg(orgId: string, visitId: string) {
               const v = opts.lazyMint?.visit ?? null;
               return v && v.id === visitId && v.organizationId === orgId ? v : null;
-            },
-          },
-          roomCipher: {
-            async encrypt(_org: string, column: string, plaintext: string) {
-              return `sealed:${column}:${plaintext}`;
             },
           },
         }
@@ -756,7 +937,15 @@ function makeServer(
         }),
   };
   mountM31Routes(app, deps);
-  return { app, backend, messagingCalls, amendments, mintedRooms };
+  return {
+    app,
+    backend,
+    messagingCalls,
+    amendments,
+    mintedRooms,
+    caregiverWrites,
+    provisioningCalls,
+  };
 }
 
 const CAREGIVER = {
@@ -1376,8 +1565,8 @@ describe("M31 route smoke — fixed findings", () => {
     await app.close();
   });
 
-  it("fix #3: document upload-init succeeds for a fully valid PDF declaration (was: always 415)", async () => {
-    const { app } = makeServer();
+  it("fix #3 / GAP-092: a valid PDF declaration passes validation (not 415) and returns the content route, not a placeholder URL", async () => {
+    const { app, provisioningCalls } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/portal/documents/upload-init",
@@ -1385,7 +1574,164 @@ describe("M31 route smoke — fixed findings", () => {
       payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 2048 },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().uploadId).toBeDefined();
+    expect(res.json().signedUploadUrl).toBe(
+      `/api/v1/portal/documents/uploads/${res.json().uploadId}/content`,
+    );
+    expect(res.json().signedUploadUrl).not.toContain("invalid");
+    expect(provisioningCalls[0]).toMatchObject({
+      op: "uploads.begin",
+      input: { portalAccountId: ACCOUNT, patientId: PATIENT, expectedByteSize: 2048 },
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the content PUT reaches the staging service with the raw bytes; complete hands off to intake", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const bytes = Buffer.from("%PDF-1.7 test");
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/v1/portal/documents/uploads/${UPLOAD_ID}/content`,
+      headers: { ...CAREGIVER, "content-type": "application/pdf" },
+      payload: bytes,
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json()).toMatchObject({ status: "staged", byteSize: bytes.byteLength });
+    const staged = provisioningCalls.find((c) => c.op === "uploads.stage");
+    expect((staged?.input as { bytes: Buffer }).bytes.equals(bytes)).toBe(true);
+
+    const done = await app.inject({
+      method: "POST",
+      url: `/api/v1/portal/documents/upload-complete/${UPLOAD_ID}`,
+      headers: { ...CAREGIVER, ...IDEMP("k-092-complete") },
+      payload: {},
+    });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toEqual({ uploadId: UPLOAD_ID, status: "received" });
+    await app.close();
+  });
+
+  it("GAP-092: every provisioning write refuses 503 when the services are unbound (no fake success)", async () => {
+    const { app } = makeServer({ provisioningUnbound: true });
+    const calls: Array<[string, string, Record<string, unknown>, Record<string, string>]> = [
+      [
+        "POST",
+        "/api/v1/portal/documents/upload-init",
+        { purpose: "other", mimeType: "application/pdf", expectedByteSize: 10 },
+        CAREGIVER,
+      ],
+      ["PATCH", "/api/v1/portal/notification-preferences/sms", { enabled: true }, CAREGIVER],
+      ["POST", "/api/v1/portal/bereavement/opt-out", {}, CAREGIVER],
+      [
+        "POST",
+        "/api/v1/admin/portal-invitations/11111111-aaaa-4aaa-8aaa-111111111111/revoke",
+        {},
+        STAFF,
+      ],
+    ];
+    for (const [i, [method, url, payload, headers]] of calls.entries()) {
+      const res = await app.inject({
+        method: method as "POST" | "PATCH",
+        url,
+        headers: { ...headers, ...IDEMP(`k-092-503-${i}`) },
+        payload,
+      });
+      expect(res.statusCode, `${method} ${url}`).toBe(503);
+    }
+    await app.close();
+  });
+
+  it("GAP-092: notification-preference PATCH passes the id-or-channel and the update through", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/portal/notification-preferences/sms",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-pref") },
+      payload: { enabled: true, quietHoursStartHour: 22, quietHoursEndHour: 7 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(provisioningCalls.find((c) => c.op === "preferences.update")?.input).toMatchObject({
+      portalAccountId: ACCOUNT,
+      idOrChannel: "sms",
+      update: { enabled: true, quietHoursStartHour: 22, quietHoursEndHour: 7 },
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the opt-out is the M16 port's call for the SESSION's account, never a bare ok", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/bereavement/opt-out",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-optout") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, contactsOptedOut: 1 });
+    expect(provisioningCalls.find((c) => c.op === "bereavement.optOut")?.input).toMatchObject({
+      portalAccountId: ACCOUNT,
+    });
+    await app.close();
+  });
+
+  it("GAP-092: the public accept route needs no session and hands the token to provisioning", async () => {
+    const { app, provisioningCalls } = makeServer();
+    const token = `${ORG}.${"A".repeat(43)}`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/invitations/accept",
+      headers: {},
+      payload: { token },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "active", grantKind: "family_caregiver" });
+    expect(provisioningCalls.find((c) => c.op === "invitations.accept")?.input).toBe(token);
+    await app.close();
+  });
+
+  it("GAP-092: caregiver-attested lands in the M13 port with the attested dose and the portal account as session", async () => {
+    const { app, caregiverWrites } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/administrations/caregiver-attested",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-a") },
+      payload: {
+        medicationOrderId: MED_ORDER_ID,
+        administeredAt: NOW,
+        administeredAmount: 0.5,
+        administeredUnit: "mL",
+        route: "sublingual",
+        caregiverAttestationText: "Given as scheduled; patient tolerated well.",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ status: "pending_caregiver_review" });
+    expect(caregiverWrites).toHaveLength(1);
+    expect(caregiverWrites[0]).toMatchObject({
+      medicationOrderId: MED_ORDER_ID,
+      caregiverSessionId: ACCOUNT,
+      doseAmount: 0.5,
+      doseUnit: "mL",
+      route: "sublingual",
+    });
+    await app.close();
+  });
+
+  it("GAP-092: caregiver-attested refuses 503 when M13's write is unbound (no fake 202)", async () => {
+    const { app } = makeServer({ caregiverAttestationUnbound: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/administrations/caregiver-attested",
+      headers: { ...CAREGIVER, ...IDEMP("k-092-b") },
+      payload: {
+        medicationOrderId: MED_ORDER_ID,
+        administeredAt: NOW,
+        administeredAmount: 0.5,
+        administeredUnit: "mL",
+        route: "sublingual",
+        caregiverAttestationText: "Given as scheduled; patient tolerated well.",
+      },
+    });
+    expect(res.statusCode).toBe(503);
     await app.close();
   });
 
@@ -2369,6 +2715,131 @@ describe("M31 GAP-093 — auditor engagement view is engagement-scoped", () => {
   it("403s a STAFF session on the auditor route even in the same org", async () => {
     const { app } = makeServer();
     expect((await get(app, ENGAGEMENT, STAFF)).statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe("M31 telehealth — the lifecycle reaches the vendor (GAP-095)", () => {
+  const postStaff = (
+    app: ReturnType<typeof makeServer>["app"],
+    verb: string,
+    key: string,
+    payload: Record<string, unknown> = {},
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/${verb}`,
+      headers: { ...STAFF, ...IDEMP(key) },
+      payload,
+    });
+
+  it("join returns the DECRYPTED vendor room url, not a placeholder", async () => {
+    const { app } = makeServer();
+    const res = await postStaff(app, "join", "k095-join");
+    expect(res.statusCode).toBe(200);
+    expect(res.json().vendorJoinUrl).toBe(`https://vendor.invalid/room-${VISIT_ROOM_MINTED}`);
+    expect(res.json().vendorJoinUrl).not.toContain("telehealth.invalid");
+    await app.close();
+  });
+
+  it("join refuses 503 and leaves the lifecycle untouched when the token cannot be minted", async () => {
+    const { app, backend } = makeServer({
+      telehealthAdapter: {
+        async mintParticipantToken() {
+          throw new Error("vendor down");
+        },
+      },
+    });
+    const res = await postStaff(app, "join", "k095-join-down");
+    expect(res.statusCode).toBe(503);
+    expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+      "room_minted",
+    );
+    await app.close();
+  });
+
+  it("join refuses 503 for the fail-closed NOOP shape (empty token) instead of returning a dead room", async () => {
+    const { app, backend } = makeServer({
+      telehealthAdapter: {
+        async mintParticipantToken() {
+          return { token: "", expiresAt: NOW };
+        },
+      },
+    });
+    expect((await postStaff(app, "join", "k095-join-noop")).statusCode).toBe(503);
+    expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+      "room_minted",
+    );
+    await app.close();
+  });
+
+  it("leave persists the departure, and a re-join clears it", async () => {
+    const { app, backend } = makeServer();
+    await postStaff(app, "join", "k095-l-join");
+    expect((await postStaff(app, "leave", "k095-l-leave")).statusCode).toBe(200);
+    expect(
+      (await backend.store.telehealthRoomFacts(ORG, VISIT_ROOM_MINTED))?.clinicianLeftAt,
+    ).not.toBeNull();
+    await postStaff(app, "join", "k095-l-rejoin");
+    expect(
+      (await backend.store.telehealthRoomFacts(ORG, VISIT_ROOM_MINTED))?.clinicianLeftAt,
+    ).toBeNull();
+    await app.close();
+  });
+
+  it("end closes the VENDOR room by its decrypted id and records who was still present", async () => {
+    const endRoom = vi.fn(async () => {});
+    const { app, backend } = makeServer({ telehealthAdapter: { endRoom } });
+    await postStaff(app, "join", "k095-e-join");
+    await postStaff(app, "leave", "k095-e-leave");
+    const res = await postStaff(app, "end", "k095-e-end");
+    expect(res.statusCode).toBe(200);
+    expect(endRoom).toHaveBeenCalledWith(`room-${VISIT_ROOM_MINTED}`);
+    const ended = await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED);
+    expect(ended?.lifecycleState).toBe("ended_aborted");
+    expect(ended?.endReason).toBe("both_dropped");
+    await app.close();
+  });
+
+  it("end reports 503 when the vendor cannot close the room, but the local close is kept and a retry re-calls the vendor", async () => {
+    let fail = true;
+    const endRoom = vi.fn(async () => {
+      if (fail) throw new Error("vendor down");
+    });
+    const { app, backend } = makeServer({ telehealthAdapter: { endRoom } });
+    await postStaff(app, "join", "k095-r-join");
+    expect((await postStaff(app, "end", "k095-r-end1")).statusCode).toBe(503);
+    expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+      "ended_aborted",
+    );
+    fail = false;
+    expect((await postStaff(app, "end", "k095-r-end2")).statusCode).toBe(200);
+    expect(endRoom).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("start-recording addresses the vendor ROOM id and keeps the vendor recording id; stop-recording stops that recording", async () => {
+    const startRecording = vi.fn(async () => ({ vendorRecordingId: "rec-77" }));
+    const stopRecording = vi.fn(async () => ({
+      recordingUrl: "https://vendor.invalid/r",
+      durationSec: 1,
+    }));
+    const { app, backend } = makeServer({ telehealthAdapter: { startRecording, stopRecording } });
+    const started = await postStaff(app, "start-recording", "k095-rec-1", {
+      acknowledgesStateRules: true,
+      acknowledgesPatientConsent: true,
+    });
+    expect(started.statusCode).toBe(200);
+    expect(startRecording).toHaveBeenCalledWith(`room-${VISIT_ROOM_MINTED}`);
+    expect(
+      (await backend.store.telehealthRoomFacts(ORG, VISIT_ROOM_MINTED))?.vendorRecordingId,
+    ).toBe("rec-77");
+    const stopped = await postStaff(app, "stop-recording", "k095-rec-2");
+    expect(stopped.statusCode).toBe(200);
+    expect(stopRecording).toHaveBeenCalledWith(`room-${VISIT_ROOM_MINTED}`, "rec-77");
+    expect(
+      (await backend.store.telehealthRoomFacts(ORG, VISIT_ROOM_MINTED))?.vendorRecordingId,
+    ).toBeNull();
     await app.close();
   });
 });

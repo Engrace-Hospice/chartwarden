@@ -506,10 +506,12 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.get(
     "/api/v1/internal/care-plan/relevant-elements",
-    // §4.1: deliberately un-gated on `caseload_or_scope` — the spec's own route table marks this
-    // internal M8-caller route "M8 caller asserts scope (no gate)". RBAC (`READ`) + RLS still apply.
+    // GAP-182 — this was deliberately un-gated ("M8 caller asserts scope"), but the route takes ANY
+    // `patientId` and the web encounter screen calls it with a HUMAN session, so "the caller asserts" meant
+    // nobody did. It is now scoped like every other patient-keyed M7 read: `caseload_or_scope` over the
+    // query's `patientId` (org-wide scope roles pass; everyone else needs the patient on their caseload).
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_BY_QUERY_PATIENT("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan_element" } },
     },
     async (request) => {

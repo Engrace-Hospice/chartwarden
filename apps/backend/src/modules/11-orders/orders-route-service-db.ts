@@ -121,6 +121,7 @@ import type {
 import {
   type OrderCaseloadResolver,
   assertActorHoldsDiscipline,
+  assertMayEditDraft,
   assertPatientInActorScope,
   seamCaseloadResolver,
 } from "./routes/service-actor-guards";
@@ -632,6 +633,7 @@ export function createDbOrderBackend(
           kindVersion,
           data: args.data ?? {},
           priority: args.priority ?? "routine",
+          indicationText: args.indicationText ?? null,
           status: "draft",
           version: 1,
           drafterMembershipId: userId,
@@ -1030,18 +1032,27 @@ export function createDbOrderBackend(
       });
     },
 
-    async editDraft(organizationId, id, data, priority, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+    async editDraft(
+      organizationId,
+      id,
+      data,
+      priority,
+      actor = EMPTY_ORDER_DETAIL_ACTOR,
+      indicationText?: string,
+    ) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
         await assertInScope(actor, organizationId, r.patientId);
         if (r.status !== "draft")
           throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
+        assertMayEditDraft(actor, r);
         await t
           .update(OR)
           .set({
             data: data ?? {},
             priority: priority ?? r.priority,
+            ...(indicationText !== undefined ? { indicationText } : {}),
             version: r.version + 1,
             updatedAt: new Date(),
           })

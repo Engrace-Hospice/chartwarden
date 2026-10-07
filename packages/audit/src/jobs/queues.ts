@@ -30,6 +30,8 @@ export type AuditQueueName = (typeof AUDIT_QUEUES)[keyof typeof AUDIT_QUEUES];
  * app wiring registers these as BullMQ repeatable jobs; the rest are event-triggered.
  */
 export const AUDIT_JOB_SCHEDULES = {
+  /** Monthly, 03:30 UTC on the 2nd — the M1-owned `audit.archive` cold-tier job (GAP-113). */
+  archive: "30 3 2 * *",
   /** Daily at 02:15 UTC — the nightly retention window (§4.4, §12.6). */
   retentionScan: "15 2 * * *",
   /** Quarterly: 03:30 UTC on the 1st of Jan/Apr/Jul/Oct (§4.4 integrity sample). */

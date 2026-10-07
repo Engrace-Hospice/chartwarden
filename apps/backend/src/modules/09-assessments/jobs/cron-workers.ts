@@ -18,17 +18,24 @@ import type { DbClient } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
+  closeReassessmentDue,
   escalateSignificantChange,
+  insertReassessmentDue,
   latestAssessmentsPerPatientScaleForOrg,
   openSignificantChangesForOrg,
+  reassessmentDueRowsForOrg,
+  scaleCadencePoliciesForOrg,
   scaleLicensesForOrg,
   updateLicenseStatus,
+  updateReassessmentDue,
+  updateReassessmentDueDatesOnly,
 } from "./cron-store";
 import {
   type M9QueueName,
   M9_JOB_SCHEDULES,
   M9_QUEUES,
   M9_QUEUE_PARAMS,
+  effectiveCadenceDays,
   planChangeEscalation,
   planLicenseStatusScan,
   planReassessmentDueScan,
@@ -59,12 +66,30 @@ export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
 }
 
+/**
+ * M6's org-explicit, keyset-paginated active-admission read (`idgActiveAdmissionsForOrg`), bound at the
+ * composition root as a structural port — M9's `dependsOn` has no M6 edge, so the cadence scan learns "who is
+ * actively admitted" through this port rather than an import (the M14 `ActiveAdmissionPort` precedent).
+ */
+export interface ActiveAdmissionPort {
+  activeAdmissionsForOrg(
+    organizationId: string,
+    afterAdmissionId: string | null,
+    limit: number,
+  ): Promise<readonly { readonly admissionId: string; readonly patientId: string }[]>;
+}
+
+/** Page size for the active-admission read (bounded memory per tick). */
+const ACTIVE_ADMISSION_PAGE_SIZE = 500;
+
 /** The dep bag the composition root injects. `outbox` is REQUIRED; `activeOrgs` defaults fail-closed. */
 export interface M9WorkerDeps {
   readonly connection: ConnectionOptions;
   readonly db: DbClient;
   readonly outbox: AssessmentOutboxPublishPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** The cadence scan's active-patient population (M6). Unbound => the scan fails closed, never guesses. */
+  readonly activeAdmissions?: ActiveAdmissionPort;
   now?: () => Date;
 }
 
@@ -91,12 +116,14 @@ export function buildM9WorkerDeps(deps: {
   db: DbClient;
   outbox: AssessmentOutboxPublishPort;
   activeOrgs?: ActiveOrgListPort;
+  activeAdmissions?: ActiveAdmissionPort;
 }): M9WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     outbox: deps.outbox,
     activeOrgs: deps.activeOrgs,
+    activeAdmissions: deps.activeAdmissions,
     now: () => new Date(),
   };
 }
@@ -187,27 +214,127 @@ export async function runChangeEscalationCron(deps: M9WorkerDeps): Promise<void>
   }
 }
 
+/** Every patient on an ACTIVE admission in the org, paged through the injected M6 port (fail-closed if unbound). */
+async function activePatientIdsOf(
+  deps: M9WorkerDeps,
+  organizationId: string,
+): Promise<Set<string>> {
+  const port = deps.activeAdmissions;
+  if (!port) {
+    return unbound(
+      "activeAdmissions.activeAdmissionsForOrg",
+      "bind M6 idgActiveAdmissionsForOrg at the composition root",
+    );
+  }
+  const patients = new Set<string>();
+  let after: string | null = null;
+  for (;;) {
+    const page = await port.activeAdmissionsForOrg(
+      organizationId,
+      after,
+      ACTIVE_ADMISSION_PAGE_SIZE,
+    );
+    for (const a of page) patients.add(a.patientId);
+    const last = page[page.length - 1];
+    if (!last || page.length < ACTIVE_ADMISSION_PAGE_SIZE) return patients;
+    after = last.admissionId;
+  }
+}
+
 /**
- * `reassessment-due-scan` (§4.8 daily) — flag (patient, scale) past its reassessment cadence. Per the
- * pure function's own header comment, the runner is meant to "refresh the chart-banner cache" — but no
- * such cache-write seam exists anywhere in this codebase yet (confirmed by prior research), and building
- * new cache infrastructure is out of this task's scope. So this cron does the scan and structured-logs
- * the overdue count only: it still runs on schedule and is observable via logs, without inventing a new
- * persistence layer the rest of the app doesn't read from yet.
+ * `reassessment-due-scan` (§4.8 daily) — derive each ACTIVELY ADMITTED patient's next reassessment due date per
+ * scale (CoP 418.54(d) 15-day floor, tightened — never loosened — by `scale_policy.reassessment_cadence_overrides`;
+ * a disabled scale is skipped) and persist it in M9's own `assessment_reassessment_due` ledger, which the chart
+ * banner reads. When a pair newly goes overdue it publishes `m9.assessment.reassessment_due` ONCE per overdue
+ * episode (M36 surfaces the alert through its seam path; no cross-module write). A new capture moves `due_at`
+ * forward, so the pair re-opens and the banner clears; rows for patients who left active care, or whose scale was
+ * turned off, are closed. Everything for one org commits in ONE tx with the outbox rows (system actor; overdue is
+ * a soft state and never blocks recording).
  */
 export async function runReassessmentDueCron(deps: M9WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
+    const activePatients = await activePatientIdsOf(deps, organizationId);
     await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
       const t = tx as unknown as DbClient;
-      const latest = await latestAssessmentsPerPatientScaleForOrg(t, organizationId);
-      const flags = planReassessmentDueScan(latest, now);
-      const overdueCount = flags.filter((f) => f.overdue).length;
-      // No chart-banner cache seam exists yet (see this function's header) — log-only, on purpose.
-      console.log(
-        `M9 cadence scan: organizationId=${organizationId} evaluated=${flags.length} overdue=${overdueCount}`,
+      const policies = await scaleCadencePoliciesForOrg(t, organizationId);
+      const latest = (await latestAssessmentsPerPatientScaleForOrg(t, organizationId)).filter(
+        (s) =>
+          activePatients.has(s.patientId) &&
+          s.providerEntityId !== undefined &&
+          s.locationId !== undefined &&
+          policies.get(s.scaleType)?.enabled !== false,
       );
+      const flags = planReassessmentDueScan(latest, now, (scale) =>
+        effectiveCadenceDays(scale, policies.get(scale)?.cadenceOverrides),
+      );
+      const snapshotByKey = new Map(latest.map((s) => [`${s.patientId}:${s.scaleType}`, s]));
+      const existing = new Map(
+        (await reassessmentDueRowsForOrg(t, organizationId)).map((r) => [
+          `${r.patientId}:${r.scaleType}`,
+          r,
+        ]),
+      );
+      const seen = new Set<string>();
+      for (const flag of flags) {
+        const key = `${flag.patientId}:${flag.scaleType}`;
+        const snap = snapshotByKey.get(key);
+        if (!snap || snap.providerEntityId === undefined || snap.locationId === undefined) continue;
+        seen.add(key);
+        const prior = existing.get(key);
+        // A NEW overdue episode: first sight, a re-open after close, or open -> overdue. A pair that stays
+        // overdue is not re-announced (the alert already exists; M36 owns re-delivery).
+        const newlyOverdue = flag.overdue && (!prior || prior.status !== "overdue");
+        const common = {
+          lastCapturedAt: new Date(snap.lastCapturedAt),
+          cadenceDays: flag.cadenceDays,
+          dueAt: new Date(flag.dueAt),
+          status: flag.overdue ? ("overdue" as const) : ("open" as const),
+        };
+        const episode = newlyOverdue
+          ? { overdueSince: now, alertedAt: now }
+          : { overdueSince: null, alertedAt: null };
+        let rowId: string;
+        if (!prior) {
+          rowId = await insertReassessmentDue(t, {
+            organizationId,
+            providerEntityId: snap.providerEntityId,
+            locationId: snap.locationId,
+            patientId: flag.patientId,
+            scaleType: flag.scaleType,
+            ...common,
+            ...episode,
+          });
+        } else {
+          rowId = prior.id;
+          if (flag.overdue && !newlyOverdue) {
+            // Still overdue: refresh the dates only; the episode markers on the row are untouched.
+            await updateReassessmentDueDatesOnly(t, prior.id, common, now);
+          } else {
+            await updateReassessmentDue(t, prior.id, { ...common, ...episode }, now);
+          }
+        }
+        if (newlyOverdue) {
+          await deps.outbox.publish(t, {
+            eventName: "m9.assessment.reassessment_due",
+            payload: {
+              patientId: flag.patientId,
+              scaleType: flag.scaleType,
+              dueAt: flag.dueAt,
+              lastCapturedAt: snap.lastCapturedAt,
+              cadenceDays: flag.cadenceDays,
+            },
+            organizationId,
+            aggregateKind: "assessment_reassessment_due",
+            aggregateId: rowId,
+          });
+        }
+      }
+      const stale = [...existing.entries()]
+        .filter(([key, row]) => !seen.has(key) && row.status !== "closed")
+        .map(([, row]) => row.id);
+      await closeReassessmentDue(t, stale, now);
     });
   }
 }

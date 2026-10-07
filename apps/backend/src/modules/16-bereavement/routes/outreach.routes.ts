@@ -54,7 +54,7 @@ export function registerBereavementOutreachRoutes(
     async (request) => {
       const { outreachId } = parse(OutreachParams, request.params);
       parse(StartOutreachBody, request.body);
-      return writeService.startOutreach(writeActorOf(request), outreachId, ifMatchVersion(request));
+      return writeService.startOutreach(writeActorOf(request), outreachId);
     },
   );
 

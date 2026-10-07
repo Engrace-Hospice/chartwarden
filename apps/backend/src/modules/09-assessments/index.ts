@@ -97,6 +97,7 @@ export {
   M9_QUEUES,
   M9_QUEUE_PARAMS,
   REASSESSMENT_CADENCE_DAYS,
+  effectiveCadenceDays,
   jobIdempotencyKey,
   planChangeEscalation,
   planLicenseStatusScan,

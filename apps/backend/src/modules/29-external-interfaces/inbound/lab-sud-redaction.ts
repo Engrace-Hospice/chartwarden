@@ -21,12 +21,16 @@ export interface LabSudTerminologyPort extends LabTerminologyPort {
   classifyLoinc(input: {
     code: string;
     asOfDate: string;
+    /** GAP-086 — lets the provider include the tenant's own SUD-test extension codes. */
+    organizationId?: string;
   }): Promise<{ readonly categories: readonly string[] }>;
 }
 
 /** The narrow slice of M39's `ConsentEvaluator` the SUD gate needs (§4.3 `evaluateForIngressRedaction`). */
 export interface LabConsentPort {
   evaluateForIngressRedaction(input: {
+    /** GAP-086 — the tenant the consent is evaluated in (the real M39 evaluator is org-explicit). */
+    organizationId?: string;
     patientId: string;
     dataClass: string;
     asOf: string;
@@ -44,6 +48,8 @@ export interface LabSudDecision {
 }
 
 export interface LabSudInput {
+  /** GAP-086 — forwarded to the consent port; the real evaluator requires it. */
+  readonly organizationId?: string;
   /** The matched patient (null ⇒ unmatched; no redaction here, deferred to bind-time). */
   readonly patientId: string | null;
   readonly loincCodes: readonly string[];
@@ -69,7 +75,11 @@ export async function decideLabSudRedaction(
     const code = raw.trim();
     if (code === "") continue;
     try {
-      const { categories } = await deps.terminology.classifyLoinc({ code, asOfDate: input.asOf });
+      const { categories } = await deps.terminology.classifyLoinc({
+        code,
+        asOfDate: input.asOf,
+        ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      });
       if (categories.includes(SUD_TEST_CATEGORY)) {
         sudDetected = true;
         break;
@@ -85,6 +95,7 @@ export async function decideLabSudRedaction(
 
   try {
     const decision = await deps.consent.evaluateForIngressRedaction({
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
       patientId: input.patientId,
       dataClass: XI_SUD_INGRESS_DATA_CLASS,
       asOf: input.asOf,

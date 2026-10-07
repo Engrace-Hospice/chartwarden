@@ -6,7 +6,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { RegulatoryDecimal } from "@wardenx/shared/money";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { type AgingBucketLabel, agingBucketLabel } from "../domain";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
@@ -22,6 +22,7 @@ import type {
   RemittanceLineSummary,
   TaxonomyMergedView,
 } from "./read-service";
+import { providerEntityScopeCondition } from "./scope";
 
 /** An injected M38 CARC/RARC lookup (the composition root binds TerminologyProvider; default = floor). */
 export interface TerminologyLookupPort {
@@ -54,12 +55,31 @@ export function buildDrizzleM25ReadService(
   const TO = schema.denialTaxonomyOverlay;
   const PR = schema.patientResponsibilityLedger;
 
+  /**
+   * GAP-148 — the provider-entity scope condition, from the SERVER-assembled actor. `undefined` scope =
+   * unrestricted (org-wide oversight role / service principal): only the caller's optional filter applies. A
+   * scoped actor is narrowed to its entities; a filter naming an entity outside the scope, or an empty scope,
+   * matches nothing (an out-of-scope row reads as absent, never as forbidden).
+   */
+  const peScope = (
+    column: Parameters<typeof eq>[0],
+    actor: M25ReadActor,
+    requested?: string,
+  ): SQL | undefined => providerEntityScopeCondition(column, actor.providerEntityScope, requested);
+  /** The same scope over a remittance LINE, which carries no provider entity of its own (its advice does). */
+  const lineScope = (actor: M25ReadActor): SQL | undefined => {
+    const adviceScope = peScope(RA.providerEntityId, actor);
+    return adviceScope
+      ? sql`${RL.remittanceAdviceId} IN (SELECT ${RA.id} FROM ${RA} WHERE ${adviceScope})`
+      : undefined;
+  };
+
   return {
     async listAdvices(actor, filters, cursor, limit) {
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          filters.providerEntityId ? eq(RA.providerEntityId, filters.providerEntityId) : undefined,
+          peScope(RA.providerEntityId, actor, filters.providerEntityId),
           filters.parseStatus
             ? eq(RA.parseStatus, filters.parseStatus as (typeof RA.parseStatus.enumValues)[number])
             : undefined,
@@ -87,7 +107,11 @@ export function buildDrizzleM25ReadService(
 
     async getAdvice(actor, id) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(RA).where(eq(RA.id, id)).limit(1);
+        const rows = await tx
+          .select()
+          .from(RA)
+          .where(and(eq(RA.id, id), peScope(RA.providerEntityId, actor)))
+          .limit(1);
         return rows[0] ? toAdviceSummary(rows[0]) : null;
       });
     },
@@ -96,6 +120,7 @@ export function buildDrizzleM25ReadService(
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
+          lineScope(actor),
           filters.remittanceAdviceId
             ? eq(RL.remittanceAdviceId, filters.remittanceAdviceId)
             : undefined,
@@ -126,7 +151,11 @@ export function buildDrizzleM25ReadService(
 
     async getLine(actor, id) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(RL).where(eq(RL.id, id)).limit(1);
+        const rows = await tx
+          .select()
+          .from(RL)
+          .where(and(eq(RL.id, id), lineScope(actor)))
+          .limit(1);
         return rows[0] ? toLineSummary(rows[0]) : null;
       });
     },
@@ -139,6 +168,7 @@ export function buildDrizzleM25ReadService(
           providerEntityId
             ? sql`${RL.remittanceAdviceId} IN (SELECT id FROM ${RA} WHERE ${RA.providerEntityId} = ${providerEntityId})`
             : undefined,
+          lineScope(actor),
           c
             ? or(
                 lt(RL.receivedAt, new Date(c.createdAt)),
@@ -165,7 +195,7 @@ export function buildDrizzleM25ReadService(
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          filters.providerEntityId ? eq(DC.providerEntityId, filters.providerEntityId) : undefined,
+          peScope(DC.providerEntityId, actor, filters.providerEntityId),
           filters.assigneeMembershipId
             ? eq(DC.assigneeMembershipId, filters.assigneeMembershipId)
             : undefined,
@@ -195,7 +225,11 @@ export function buildDrizzleM25ReadService(
 
     async getDenial(actor, id) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(DC).where(eq(DC.id, id)).limit(1);
+        const rows = await tx
+          .select()
+          .from(DC)
+          .where(and(eq(DC.id, id), peScope(DC.providerEntityId, actor)))
+          .limit(1);
         return rows[0] ? toDenialItem(rows[0]) : null;
       });
     },
@@ -210,6 +244,7 @@ export function buildDrizzleM25ReadService(
           filters.tier
             ? eq(AC.tier, filters.tier as (typeof AC.tier.enumValues)[number])
             : undefined,
+          peScope(AC.providerEntityId, actor),
           c
             ? or(
                 lt(AC.createdAt, new Date(c.createdAt)),
@@ -234,7 +269,11 @@ export function buildDrizzleM25ReadService(
 
     async getAppeal(actor, id) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(AC).where(eq(AC.id, id)).limit(1);
+        const rows = await tx
+          .select()
+          .from(AC)
+          .where(and(eq(AC.id, id), peScope(AC.providerEntityId, actor)))
+          .limit(1);
         if (!rows[0]) return null;
         const events = await tx
           .select({ id: AE.id, eventKind: AE.eventKind, occurredAt: AE.occurredAt })
@@ -282,7 +321,12 @@ export function buildDrizzleM25ReadService(
         const open = await tx
           .select({ bucket: DC.agingBucketDays, dollar: DC.dollarValue })
           .from(DC)
-          .where(sql`${DC.state} IN ('open','in_progress','escalated')`)
+          .where(
+            and(
+              sql`${DC.state} IN ('open','in_progress','escalated')`,
+              peScope(DC.providerEntityId, actor),
+            ),
+          )
           .limit(100000);
         const counts = Object.fromEntries(AGING_LABELS.map((l) => [l, 0])) as Record<
           AgingBucketLabel,

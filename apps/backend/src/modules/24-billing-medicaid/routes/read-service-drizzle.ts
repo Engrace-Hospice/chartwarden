@@ -6,7 +6,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { isUsableCipher } from "../credential-crypto";
 import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {
@@ -131,6 +131,18 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
     version: r.version,
   });
 
+  /** GAP-145 — the provider-entity scope condition, derived from the SERVER-assembled actor. A requested
+   *  provider entity outside the scope (or an actor with no scope) matches nothing rather than leaking. */
+  const peScope = (
+    column: Parameters<typeof eq>[0],
+    actor: { readonly providerEntityIds?: readonly string[] },
+    requested?: string,
+  ): SQL => {
+    const allowed = actor.providerEntityIds ?? [];
+    if (requested) return allowed.includes(requested) ? eq(column, requested) : sql`false`;
+    return allowed.length > 0 ? inArray(column, [...allowed]) : sql`false`;
+  };
+
   return {
     async listClaims(actor, filters, cursor, limit) {
       const c = decodeCursor(cursor);
@@ -143,7 +155,7 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
           filters.mcoId ? eq(C.mcoId, filters.mcoId) : undefined,
           filters.serviceState ? eq(C.serviceState, filters.serviceState) : undefined,
           filters.patientId ? eq(C.patientId, filters.patientId) : undefined,
-          filters.providerEntityId ? eq(C.providerEntityId, filters.providerEntityId) : undefined,
+          peScope(C.providerEntityId, actor, filters.providerEntityId),
           c ? sql`(${C.createdAt}, ${C.id}) < (${new Date(c.ts)}, ${c.id})` : undefined,
         ].filter(Boolean);
         const rows = await tx
@@ -476,6 +488,7 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
     async listRbDays(actor, filters) {
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
+          peScope(RD.providerEntityId, actor),
           filters.patientId ? eq(RD.patientId, filters.patientId) : undefined,
           filters.rbArrangementId ? eq(RD.rbArrangementId, filters.rbArrangementId) : undefined,
           filters.status

@@ -99,16 +99,16 @@ export function PortalDocumentList(): JSX.Element {
         setUploadMsg({ tone: "err", msg: readError(init.response?.status) });
         return;
       }
-      const { uploadId, signedUploadUrl } = init.data as {
-        uploadId: string;
-        signedUploadUrl: string;
-      };
-      const put = await fetch(signedUploadUrl, {
-        method: "PUT",
-        body: file,
+      const { uploadId } = init.data as { uploadId: string };
+      // The bytes go to the M31 content route under the caregiver's session, through the typed client so the
+      // CSRF header and correlation id ride along (a raw `fetch` carries neither). Sealed server-side on arrival.
+      const put = await client.PUT("/api/v1/portal/documents/uploads/{uploadId}/content", {
+        params: { path: { uploadId } },
+        body: file as never,
+        bodySerializer: (body: unknown) => body as BodyInit,
         headers: { "content-type": file.type || "application/octet-stream" },
-      });
-      if (!put.ok) {
+      } as never);
+      if (put.error) {
         setUploadMsg({
           tone: "err",
           msg: "Upload failed while sending the file. Please try again.",

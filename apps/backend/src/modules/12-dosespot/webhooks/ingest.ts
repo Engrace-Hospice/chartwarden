@@ -11,16 +11,22 @@
 // typed handler, and record the processing outcome. One transaction on purpose: a receipt row that committed
 // while its handler did not would make the dedup key swallow every redelivery forever.
 //
-// Handled today: `script_status_update` with status `Dispensed`/`PickedUp` -> `medication_order_dispense` row +
-// `m12.medication_order.dispensed_at_pharmacy`. Every other (event_type, status) is PERSISTED and audited but
-// its outcome is recorded honestly as `*_not_handled` — no refill inbox, no ack/nack transitions, no
-// MedHx-result ingest here (separate, unbuilt handlers; see docs/history F-230).
+// Handled: `script_status_update` Dispensed/PickedUp -> `medication_order_dispense` row +
+// `m12.medication_order.dispensed_at_pharmacy`; Sent -> pharmacy ack (order activates); RxFillError/Rejected ->
+// pharmacy nack; `refill_request` -> a pending `refill_request` + `m12.refill_request_received`;
+// `prescriber_status_changed` -> the prescriber's IAL2 status (GAP-037, `./handlers.ts`). Every other
+// (event_type, status) is PERSISTED and audited but its outcome is recorded honestly as `*_not_handled`
+// (`medication_history_result`, `patient_mismatch`; see docs/history F-230 / m12-dosespot-adapter.md).
 //
 // NEVER emits without a verified, persisted, parsed vendor payload. The body is never logged in the clear.
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  isAckStatus,
   isDispenseStatus,
+  isNackStatus,
+  parsePrescriberStatusPayload,
+  parseRefillRequestPayload,
   parseScriptStatusUpdate,
   parseWebhookEnvelope,
   verifyWebhookEnvelope,
@@ -29,6 +35,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import type { WebhookBodyCipher } from "./body-crypto";
+import { handleAckOrNack, handlePrescriberStatus, handleRefillRequest } from "./handlers";
 import type { DoseSpotWebhookSecretResolver } from "./secrets";
 
 const EVT = schema.dosespotWebhookEvents;
@@ -117,16 +124,14 @@ export async function ingestDoseSpotWebhook(
 
       let outcome: string;
       let errorClass: string | null = null;
-      if (envelope.event_type !== "script_status_update") {
-        outcome = "event_type_not_handled";
-      } else {
+      const at = envelope.occurred_at ? new Date(envelope.occurred_at) : now;
+      const eventAt = Number.isNaN(at.getTime()) ? now : at;
+      if (envelope.event_type === "script_status_update") {
         const update = parseScriptStatusUpdate(envelope.payload);
         if (!update.ok) {
           outcome = "malformed_payload";
           errorClass = "PAYLOAD_SHAPE";
-        } else if (!isDispenseStatus(update.update.status)) {
-          outcome = "status_not_handled";
-        } else {
+        } else if (isDispenseStatus(update.update.status)) {
           outcome = await handleDispense(tx, deps.outbox, {
             organizationId,
             webhookEventId: receipt.id,
@@ -136,7 +141,45 @@ export async function ingestDoseSpotWebhook(
             occurredAt: update.update.status_at ?? envelope.occurred_at,
             fillNumber: update.update.fill_number,
           });
+        } else if (isAckStatus(update.update.status) || isNackStatus(update.update.status)) {
+          outcome = await handleAckOrNack(tx, deps.outbox, {
+            organizationId,
+            update: update.update,
+            kind: isAckStatus(update.update.status) ? "ack" : "nack",
+            at: now,
+          });
+        } else {
+          outcome = "status_not_handled";
         }
+      } else if (envelope.event_type === "refill_request") {
+        const refill = parseRefillRequestPayload(envelope.payload);
+        if (!refill.ok) {
+          outcome = "malformed_payload";
+          errorClass = "PAYLOAD_SHAPE";
+        } else {
+          outcome = await handleRefillRequest(tx, deps.outbox, {
+            organizationId,
+            dosespotEventId: envelope.dosespot_event_id,
+            refill: refill.refill,
+            receivedAt: eventAt,
+          });
+        }
+      } else if (envelope.event_type === "prescriber_status_changed") {
+        const status = parsePrescriberStatusPayload(envelope.payload);
+        if (!status.ok) {
+          outcome = "malformed_payload";
+          errorClass = "PAYLOAD_SHAPE";
+        } else {
+          outcome = await handlePrescriberStatus(tx, {
+            organizationId,
+            status: status.status,
+            at: now,
+          });
+          if (outcome === "malformed_payload") errorClass = "PAYLOAD_SHAPE";
+        }
+      } else {
+        // medication_history_result / patient_mismatch: persisted + audited, no handler yet.
+        outcome = "event_type_not_handled";
       }
       await tx
         .update(EVT)

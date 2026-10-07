@@ -8,10 +8,15 @@
 // never sees a real identity (per-participant short-TTL tokens), and the room url/token are cipher-only in
 // the row (never projected). The Record button is D9-gated by `state_two_party_recording_consent_present`
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
-import { deriveEndReason, endStateFor, foldParticipantJoin } from "../telehealth/visit-lifecycle";
+import {
+  deriveEndReason,
+  endStateFor,
+  foldParticipantJoin,
+  isTelehealthEnded,
+} from "../telehealth/visit-lifecycle";
 import { type M31Actor, actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
@@ -78,6 +83,34 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     return assertStaffMayAccessVisit(scopeDeps, actorOf(request), visitId, opts);
   };
 
+  /** GAP-095 — every vendor-facing call that cannot be made refuses 503; nothing is fabricated or half-written. */
+  const vendorUnavailable = (what: string): WardenXError =>
+    new WardenXError(
+      "TELEHEALTH_VENDOR_UNAVAILABLE",
+      `the telehealth vendor is unavailable: ${what}`,
+      503,
+    );
+
+  /** GAP-095 — open a sealed room column (the real vendor room id / url); 503 when it cannot be opened. */
+  const openRoomValue = async (
+    organizationId: string,
+    telehealthVisitId: string,
+    column: "vendor_room_id" | "vendor_room_url",
+  ): Promise<string> => {
+    if (!deps.roomCipher) throw vendorUnavailable("no room cipher is bound");
+    const facts = await store.telehealthRoomFacts(organizationId, telehealthVisitId);
+    if (!facts) throw new NotFoundError("telehealth visit not found");
+    try {
+      return await deps.roomCipher.decrypt(
+        organizationId,
+        column,
+        column === "vendor_room_id" ? facts.vendorRoomIdCipher : facts.vendorRoomUrlCipher,
+      );
+    } catch {
+      throw vendorUnavailable("the stored room cannot be opened");
+    }
+  };
+
   /**
    * GAP-093 — only the clinician who STARTED a recording may stop it (§4.6 `telehealth.record_stop`:
    * "whoever started"). Nothing recording ⇒ idempotent no-op for any in-scope clinician. When the starter
@@ -134,6 +167,21 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       if (who === "patient") assertVisitIsSessionPatients(actor, visit);
       const telehealthVisitId = visit.telehealthVisitId;
       const nextState = foldParticipantJoin(visit.lifecycleState, who);
+      // GAP-095 — mint the credential and open the room BEFORE writing the lifecycle: a vendor/cipher failure
+      // must leave the visit untouched (it used to write `in_progress` first, then hand back a fake url).
+      let token: Awaited<ReturnType<TelehealthAdapterPort["mintParticipantToken"]>>;
+      try {
+        token = await adapter.mintParticipantToken({ telehealthVisitId, role: who });
+      } catch {
+        throw vendorUnavailable("a participant token could not be minted");
+      }
+      if (!token.token) throw vendorUnavailable("no vendor adapter is bound");
+      const vendorJoinUrl = await openRoomValue(
+        actor.organizationId,
+        telehealthVisitId,
+        "vendor_room_url",
+      );
+      const leftPatch = who === "patient" ? { patientLeftAt: null } : { clinicianLeftAt: null };
       if (nextState !== visit.lifecycleState) {
         const startsNow = visit.visitStartedAt === null && nextState === "in_progress";
         await store.updateTelehealthLifecycle(
@@ -144,16 +192,21 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
             lifecycleState: nextState,
             firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
             ...(startsNow ? { visitStartedAt: now() } : {}),
+            ...leftPatch,
           },
         );
+      } else {
+        // A re-join of an already-present party still clears that party's `left` mark.
+        await store.updateTelehealthLifecycle(
+          actor.organizationId,
+          actor.userId,
+          telehealthVisitId,
+          leftPatch,
+        );
       }
-      const token = await adapter.mintParticipantToken({
-        telehealthVisitId,
-        role: who,
-      });
       return {
         vendor: adapter.vendor,
-        vendorJoinUrl: `https://telehealth.invalid/${telehealthVisitId}`,
+        vendorJoinUrl,
         vendorParticipantToken: token.token,
         tokenExpiresAt: token.expiresAt,
         audioOnlyFallbackActive: visit.audioOnlyFallbackActive,
@@ -169,6 +222,16 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       const visit = await store.telehealthById(actor.organizationId, visitId);
       if (!visit) throw new NotFoundError("telehealth visit not found");
       if (who === "patient") assertVisitIsSessionPatients(actor, visit);
+      // GAP-095 — persist the departure (leave used to store nothing, so `end` could not tell who dropped).
+      // An ended visit has nobody left to mark; the call stays an idempotent no-op.
+      if (!isTelehealthEnded(visit.lifecycleState)) {
+        await store.updateTelehealthLifecycle(
+          actor.organizationId,
+          actor.userId,
+          visit.telehealthVisitId,
+          who === "patient" ? { patientLeftAt: now() } : { clinicianLeftAt: now() },
+        );
+      }
       return { ok: true };
     };
 
@@ -245,10 +308,20 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       parse(StartRecordingRequest, request.body);
       const visit = await store.telehealthById(actor.organizationId, visitId);
       if (!visit) throw new NotFoundError("telehealth visit not found");
-      await adapter.startRecording(visitId);
+      // GAP-095 — address the VENDOR room (not our visit id) and keep the vendor's recording id.
+      const vendorRoomId = await openRoomValue(actor.organizationId, visitId, "vendor_room_id");
+      let started: { vendorRecordingId: string };
+      try {
+        started = await adapter.startRecording(vendorRoomId);
+      } catch {
+        throw vendorUnavailable("the recording could not be started");
+      }
+      if (!started.vendorRecordingId)
+        throw vendorUnavailable("the vendor returned no recording id");
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
         recordingEnabled: true,
         recordingRequested: true,
+        vendorRecordingId: started.vendorRecordingId,
         // GAP-093 — the starter is the SESSION user, never a body field.
         recordingStartedByUserId: actor.userId,
       });
@@ -272,11 +345,23 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       const { visitId } = request.params as { visitId: string };
       const facts = await reassertStaff(request);
       await assertMayStopRecording(actor, visitId, facts.assignedMembershipId);
+      // GAP-095 — stop the recording at the vendor too (before clearing local state, so a vendor failure keeps
+      // the row truthful). A recording started before 0420 has no stored vendor id and is only cleared locally.
+      const room = await store.telehealthRoomFacts(actor.organizationId, visitId);
+      if (room?.vendorRecordingId) {
+        const vendorRoomId = await openRoomValue(actor.organizationId, visitId, "vendor_room_id");
+        try {
+          await adapter.stopRecording(vendorRoomId, room.vendorRecordingId);
+        } catch {
+          throw vendorUnavailable("the recording could not be stopped");
+        }
+      }
       // `recording_requested` must drop with `recording_enabled` (CHECK telehealth_visit_recording_requires_enabled);
       // `recordingStartedByUserId` is kept as the record of who ran the last recording.
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
         recordingEnabled: false,
         recordingRequested: false,
+        vendorRecordingId: null,
       });
       return { ok: true };
     },
@@ -299,19 +384,36 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       await reassertStaff(request);
       const visit = await store.telehealthById(actor.organizationId, visitId);
       if (!visit) throw new NotFoundError("telehealth visit not found");
-      const clean = visit.lifecycleState === "in_progress";
-      const endReason = deriveEndReason({
-        clean,
-        patientPresentAtEnd: false,
-        clinicianPresentAtEnd: true,
-      });
-      const startedMs = visit.visitStartedAt ? Date.parse(visit.visitStartedAt) : now().getTime();
-      await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
-        lifecycleState: endStateFor(clean),
-        visitEndedAt: now(),
-        endReason,
-        totalDurationSec: Math.max(0, Math.round((now().getTime() - startedMs) / 1000)),
-      });
+      const room = await store.telehealthRoomFacts(actor.organizationId, visitId);
+      if (!room) throw new NotFoundError("telehealth visit not found");
+      // GAP-095 — close the VENDOR room (end used to flip our row only, leaving a live room). Done after the
+      // local close so a vendor failure is reported (503) without losing the close; a retry is idempotent.
+      if (!isTelehealthEnded(visit.lifecycleState)) {
+        const clean = visit.lifecycleState === "in_progress";
+        // Presence at end: a party is present if it joined (the state machine records that) and has not left.
+        const patientJoined =
+          visit.lifecycleState === "patient_joined" || visit.lifecycleState === "in_progress";
+        const clinicianJoined =
+          visit.lifecycleState === "clinician_joined" || visit.lifecycleState === "in_progress";
+        const endReason = deriveEndReason({
+          clean,
+          patientPresentAtEnd: patientJoined && room.patientLeftAt === null,
+          clinicianPresentAtEnd: clinicianJoined && room.clinicianLeftAt === null,
+        });
+        const startedMs = visit.visitStartedAt ? Date.parse(visit.visitStartedAt) : now().getTime();
+        await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
+          lifecycleState: endStateFor(clean),
+          visitEndedAt: now(),
+          endReason,
+          totalDurationSec: Math.max(0, Math.round((now().getTime() - startedMs) / 1000)),
+        });
+      }
+      const vendorRoomId = await openRoomValue(actor.organizationId, visitId, "vendor_room_id");
+      try {
+        await adapter.endRoom(vendorRoomId);
+      } catch {
+        throw vendorUnavailable("the vendor room could not be closed; retry to finish closing it");
+      }
       return { ok: true };
     },
   );

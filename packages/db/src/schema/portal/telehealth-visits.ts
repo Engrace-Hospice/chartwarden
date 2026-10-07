@@ -65,6 +65,11 @@ export const telehealthVisits = pgTable(
       onDelete: "restrict",
     }),
 
+    // GAP-095: who has left the room (NULL = never left / re-joined) and the vendor's opaque recording id.
+    patientLeftAt: timestamp("patient_left_at", { withTimezone: true }),
+    clinicianLeftAt: timestamp("clinician_left_at", { withTimezone: true }),
+    vendorRecordingId: text("vendor_recording_id"),
+
     roomMintedAt: timestamp("room_minted_at", { withTimezone: true }).notNull().defaultNow(),
     firstParticipantJoinedAt: timestamp("first_participant_joined_at", { withTimezone: true }),
     visitStartedAt: timestamp("visit_started_at", { withTimezone: true }),

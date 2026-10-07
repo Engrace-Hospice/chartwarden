@@ -68,6 +68,7 @@ export const M10_JOB_SCHEDULES = {
   "iqies-submit-worker": "*/30 * * * *", // every 30 minutes
   "iqies-reconcile-worker": "0 * * * *", // hourly
   "hope-partition-rotation": "0 3 1 * *", // monthly
+  "hope-retention-scan": "0 4 2 * *", // monthly, the day after partition rotation (GAP-181)
 } as const;
 
 /** The §4.8.1 per-job BullMQ parameter tuple (priority / attempts / backoff / concurrency), declared as
@@ -119,6 +120,7 @@ export const M10_JOB_PARAMS = {
     backoff: "exponential 120s",
     concurrency: 1,
   },
+  "hope-retention-scan": { priority: 5, attempts: 3, backoff: "exponential 120s", concurrency: 1 },
 } as const;
 
 /**

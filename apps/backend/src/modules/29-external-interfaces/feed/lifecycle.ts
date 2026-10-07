@@ -151,6 +151,21 @@ export function externalFeedCoApprovalSatisfied(
   );
 }
 
+/** GAP-153 / D20 — what a revoke call does given the STORED first approver (never a body-supplied one). */
+export type FeedRevokeStep = "request" | "complete" | "self_approval";
+
+/**
+ * Dual-approval revoke: with no first approver on file this call IS the first approval (`request`); a second,
+ * DISTINCT membership completes the revoke (`complete`); the same membership approving twice is refused.
+ */
+export function decideFeedRevokeStep(
+  storedRequesterMembershipId: string | null | undefined,
+  actorMembershipId: string,
+): FeedRevokeStep {
+  if (!storedRequesterMembershipId) return "request";
+  return storedRequesterMembershipId === actorMembershipId ? "self_approval" : "complete";
+}
+
 /** True when the edge binds the MLLP listener on entry to `active` — the activation service must run the
  *  M40 BAA gate (`feed/baa-gate.ts`) BEFORE writing the new status (D16). */
 export function externalFeedEdgeBindsListener(

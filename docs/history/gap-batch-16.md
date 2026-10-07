@@ -1,0 +1,39 @@
+# Gap batch 16 — GAP-137 … GAP-150 (M21–M26, production topology)
+
+Source: `docs/audits/GAP_ANALYSIS_20261004.md` §3. All P2. No migration was needed (the 0450–0459 range is unused).
+
+| GAP | Module | Outcome |
+|---|---|---|
+| 137 | M21 / M23 | `validateSupplyAIBlock` (M21 D15) built; the M23 D13 validator gained an async variant over the REAL M32 registry (`validateBillingAiBlockAtBoot`, admits only the read-only `validation_ai_advisory`). Both run in the composition root's db-present `onReady` hook beside `validateIpuAIBlock`. M21 mounts a scope-level `rejectAiActor` hook: every non-GET M21 route refuses an `actor_kind='ai_*'` principal. |
+| 138 | M22 deploy | Production `compose.yml` gained the `docling-worker` service (compose-network only, no object-store credentials, no `depends_on` from api/worker so a down worker degrades DocLens to a 503 and never blocks a rollback); `deploy.yml` builds, SBOMs, signs and verifies the image and passes it as a third `deploy.sh` argument (optional, so older releases still deploy); `deploy.sh` verifies its signature, pins its digest and generates `DOCLING_WORKER_TOKEN` once. The docling image is scanned **report-only** until its Python/torch HIGH/CRITICAL baseline is triaged into `.trivyignore.yaml` — follow-up. |
+| 139 | M22 deploy | api and worker no longer use the MinIO root account. A `minio-provision` one-shot creates a service account whose policy covers only `tenant-*` / `wardenx-*` buckets and their objects (no admin actions); `deploy.sh` generates `MINIO_APP_ACCESS_KEY/SECRET_KEY` once, BEFORE the rollback backup is taken so a rollback interpolates cleanly. The root credential is used only by `minio-provision` and the minio container. |
+| 140 | M22 | Overlay publish persists `branding` + `stateAddendum`; classification confirm applies `pageRanges` (422 on an invalid/empty range, corrected pages marked human-confirmed) and both confirm and open-review are state-guarded (409 `BATCH_STATE_CONFLICT`); `publishTemplateVersion` answers 501 instead of a fabricated version (platform reference table, SELECT-only for the app role); `retryRender` only retries a `failed` fill (409 otherwise). Note: no render worker consumes `queued` form fills yet. |
+| 141 | M22 | The boot half of `ai-block-validator` is built (`22-documents/ai-block.ts`, human-decision zone: `extraction_decision/review/provenance`). `retention-rotation` (destructive; needs its own review) and `minio-access-log-ingestor` (no webhook in the production topology) and the nightly validator re-run are recorded as DEFERRED in the M22 spec §4.8. |
+| 142 / 144 | M23 | Spec §4.1.1 reconciles the implemented routes: path-shape table, ~27 routes that existed only in OpenAPI, and the four spec routes deliberately not built (override audit view, mac-credentials `:test`, `platform-rules`, `wage-index:load`). |
+| 143 | M23 | The MAC jurisdiction cron list is the distinct `mac_jurisdiction` of the active tenants' configured submitter credentials (per-org read under RLS through the audited active-org enumerator), not `'ngs_j6'`. |
+| 145 | M24 | `medicaid_claim_in_billing_manager_caseload` now requires the claim's provider entity in the actor's scope; `PATCH /rb-days/:id` composes `rb_arrangement_visible_in_scope` over the day's provider entity; claim and R&B-day lists are narrowed to the actor's server-assembled provider entities (empty/absent scope sees nothing). |
+| 146 | M24 | `M24_LAUNCH_GATEWAY_ENABLED` is an opt-out production switch (`withM24LaunchGatewayDefault`), validated by `collectEnvProblems`, documented in `.env.example`. dev/test keep unset = off. |
+| 147 | M25 | `POST /appeals/:id/submit-late-good-cause` (step-up, justification >= 40 chars, redetermination/reconsideration only, 409 before T-0). The flag rides in the packet payload and the optional `lateGoodCauseFiling` field of `m25.appeal.submitted`. |
+| 148 | M25 | Reads (advices, lines, unmatched, denials + metrics, appeals) apply the same server-derived `providerEntityScope` the write side uses (`routes/scope.ts`); an out-of-scope row reads as absent. |
+| 149 | M26 / M27 | `CapAccrualReader.aggregateForCostReport(org, year, ccn?)`; M27 passes the report's CCN. Because `openPeriod` still writes the `000000` sentinel CCN, selection prefers an exact CCN, then the single sentinel period, and answers null (rules skip) when ambiguous. |
+| 150 | M26 | `m26.cap.accrual_recorded` is published inside `recordAccrualLine`'s transaction (exactly once per inserted line; a replay emits nothing). `psr_variance_raised` was already emitted by the batch-10 PS&R reconcile worker. |
+
+## Verification habits this batch reinforced
+
+- A scope-level Fastify hook (`app.register` + `addHook`) is the way to cover every future route of a module; a per-route guard is silently missed by the next route added.
+- Compose files are validated with `docker compose --env-file <fake> config`; every `${VAR:?}` in a service a rollback restarts must also exist in the restored env file (hence the secrets are generated before the backup).
+- Live suites touched but NOT run (no shared stack): `m22-documents-write.live.test.ts`, `m26-cap-consumer-store.live.test.ts`.
+
+
+## Follow-up round (the "fix all" pass)
+
+| GAP | Outcome |
+|---|---|
+| 141 / 140 | Built: `form-render` worker (every minute; consumes `queued` form fills, 3 attempts, `m22.document.render_failed` on terminal failure), `retention-rotation` (daily; promotes written-back intake documents to `clinical_record`, REPORTS no-writeback ones past retention as `document.retention_destruction_pending`), the nightly `ai-block-validator` re-run, and the MinIO access-log ingestor (MinIO audit webhook -> `POST /api/v1/webhooks/minio/access-log` -> `signed_url_consumed`). All wired in `index.ts` with platform job ids; the webhook is fail-closed (503 until `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`). **Not done, and exactly why:** the retention sweep does not DELETE — destroying PHI needs an M4 destruction certificate (approval workflow, privileged role) and M22 has no seam to request/auto-approve one; the `documents` eraser is patient-scoped with no batch entry point for patient-less intake. |
+| 142 / 144 | Built: `GET /billing/validation-overrides`, `POST /billing/mac-credentials/:providerEntityId/test`, `POST /admin/billing/wage-indexes/load` (migration 0450, SECURITY DEFINER bridge to the platform table) and `POST /admin/billing/platform-rules`. Limits: the MAC test is a portal health probe (no synthetic 837I / test-interchange flag exists); `platform-rules` answers 409/501 because platform rules are code and no stored-rule engine exists (not even tenant custom DSL rules are evaluated). |
+| 138 | The docling image scan now FAILS the release on fixable HIGH/CRITICAL (`ignore-unfixed: true`). The baseline could not be triaged into `.trivyignore.yaml`: that needs the built image and `trivy`, neither available offline — the first release may need a pin bump or entries. |
+| 139 | MinIO policy re-audited against every S3 call the adapter makes (HEAD/PUT bucket, HEAD/PUT/GET object, `?versions` + versioned DELETE, presign, the readiness HEAD); it uses no multipart, lifecycle, retention, legal-hold or versioning-configuration call, so the policy was tightened to exactly those actions. |
+| 149 | `openPeriod` writes the org's real CCN (via an injected M40 provider-entity read) when exactly one provider entity carries one. Still the `000000` sentinel for a multi-provider-entity org: the accrual consumers resolve a period by (org, year) alone, so per-CCN periods also need per-patient provider-entity -> CCN routing in `consumers/drizzle-store.ts` first. |
+| 146 | Opt-out production default kept; the deploy README now has an explicit OWNER DECISION section stating that production enables the Oregon gateway and how to veto it. |
+
+Migration used: **0450** (`billing_platform_load_wage_index`).

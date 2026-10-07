@@ -23,9 +23,15 @@
  *   4. LINKS      — every relative markdown link in the corpus resolves on disk.
  *   5. AUTHORITY  — every spec's first 40 lines carry the "implementation proposal" marker, so a
  *                   spec read standalone cannot be mistaken for an authoritative as-built record.
+ *   6. BANNED     — ADR-0010 D2 bans the RLS spellings `app.tenant_id` and `withTenantContext`
+ *                   (canonical: `app.org_id` / `withOrgContext`). Five specs and the module-29 task
+ *                   docs still prescribed them in ~90 code samples (GAP-180), so an implementer
+ *                   following the spec wrote a policy that keys on a GUC nothing sets. A mention is
+ *                   legal only on a line that says it is banned/removed/renamed (the changelog rows).
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { prescribesBannedRlsToken } from "./lib/banned-rls-tokens";
 import { group, groups } from "./lib/strict";
 
 const ROOT = process.cwd();
@@ -169,6 +175,15 @@ for (const { rel, abs } of allDocs) {
         i + 1,
         "ADRS",
         `cites ADR-${cited}, which has no file in ${ADR_DIR} (and no ARCH-nnn audit-era marker on the line)`,
+      );
+    }
+
+    if (prescribesBannedRlsToken(line)) {
+      fail(
+        rel,
+        i + 1,
+        "BANNED",
+        "prescribes a banned RLS spelling (`app.tenant_id` / `withTenantContext`); ADR-0010 D2 says `app.org_id` / `withOrgContext`",
       );
     }
 

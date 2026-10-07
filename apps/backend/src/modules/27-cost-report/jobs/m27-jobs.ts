@@ -207,6 +207,8 @@ export interface WageDataPullSeam {
 /** The fiscal window of a report (the M6/M8 seam reads scope to it). */
 export interface StatisticsSeamScope {
   readonly organizationId: string;
+  /** The report being refreshed — the FTE source (its wage import) is keyed by it. */
+  readonly costReportId?: string;
   readonly providerEntityId: string;
   readonly fiscalYearStartDate: string;
   readonly fiscalYearEndDate: string;
@@ -368,22 +370,22 @@ function statisticsSeamsOf(deps: M27WorkerDeps): StatisticsSeams {
       serviceMonthlyBreakdown: () =>
         unboundWorkerPort(
           "statisticsSeams.serviceMonthlyBreakdown",
-          "bind the M6 LevelOfCarePeriodReader/AdmissionCensusReader (the service-side patient-day census) via getSeam",
+          "bind `statisticsSeams` (buildM27StatisticsSeams — the M6 service census + M5 payer program ports)",
         ),
       visitCountsByDiscipline: () =>
         unboundWorkerPort(
           "statisticsSeams.visitCountsByDiscipline",
-          "bind the M8 EncounterStatisticsProvider (the S-3 Part III visits-by-discipline) via getSeam",
+          "bind `statisticsSeams` (buildM27StatisticsSeams — the M8 visit-count port)",
         ),
       fteByDiscipline: () =>
         unboundWorkerPort(
           "statisticsSeams.fteByDiscipline",
-          "bind the M8 EncounterStatisticsProvider FTE projection",
+          "bind `statisticsSeams` (buildM27StatisticsSeams — FTE from the wage import)",
         ),
       bereavementCensus: () =>
         unboundWorkerPort(
           "statisticsSeams.bereavementCensus",
-          "bind the M6 bereavement-census projection",
+          "bind `statisticsSeams` (buildM27StatisticsSeams — the M16 bereavement census port)",
         ),
     }
   );
@@ -609,7 +611,7 @@ async function runWageDataPull(
  * into the single `statistic_data` row (upsert), counting how many month×LOC cells the service census
  * spans, and emit `m27.statistics.refreshed` with the M23/M26 deny-stub SKIP flags.
  */
-async function runStatisticsRefresh(
+export async function runStatisticsRefresh(
   tx: DbClient,
   deps: M27WorkerDeps,
   job: StatisticsRefreshJob,
@@ -623,6 +625,7 @@ async function runStatisticsRefresh(
   if (!report) throw new Error(`cost_report ${job.costReportId} not found`);
   const scope: StatisticsSeamScope = {
     organizationId: job.organizationId,
+    costReportId: job.costReportId,
     providerEntityId: report.providerEntityId,
     fiscalYearStartDate: report.fiscalYearStartDate,
     fiscalYearEndDate: report.fiscalYearEndDate,
@@ -673,6 +676,8 @@ async function runStatisticsRefresh(
       totalVisits,
       capProviderSkipped: deps.capProviderBound !== true,
       claimProviderSkipped: deps.patientDaysProviderBound !== true,
+      // No completed wage import ⇒ the FTE map is empty (never fabricated); say so, so the worklist can ask for a pull.
+      fteSourceMissing: Object.keys(fteCalculations).length === 0,
     },
   });
 }
@@ -1204,9 +1209,6 @@ export function buildM27WorkerDeps(deps: {
 //     larger project. `triggerTrialBalancePull`/`triggerWageDataPull` now enqueue for real (WX-PR-013) and
 //     the worker fails closed with a typed `M27WorkerPortUnbound` + `status='failed'` + `*.pull_failed` when
 //     it runs — never silently fabricating a pull (see `m27-cost-report-workflow-slice.live.test.ts`).
-//   • the M6/M8 statistics seams (`deps.statisticsSeams`) — per research, `LevelOfCarePeriodReader`/
-//     `EncounterStatisticsProvider` do not exist as M1-registered seams at all (M6/M8 have no org-wide
-//     monthly-aggregate projection today); this is new seam surface, not just an unbind. The A→B→C
-//     allocation chain does NOT hard-depend on this (`buildM27AllocationInputs` tolerates a null
-//     `statistic_data` row), so the proven slice supplies statistics via direct `StatisticDataRepository`
-//     writes (the same shape `statistics-refresh` would persist) rather than waiting on this larger seam.
+//   • the S-3 statistics seams (`deps.statisticsSeams`) — BOUND (GAP-080): `buildM27StatisticsSeams` over M6's org-explicit
+//     service census, M5's payer program, M8's completed-visit counts, M16's bereavement census and M27's own wage import
+//     (FTE), all injected at the composition root. An unbound `statisticsSeams` still fails closed with the typed error above.

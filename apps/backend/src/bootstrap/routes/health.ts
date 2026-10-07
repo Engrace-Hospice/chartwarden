@@ -4,7 +4,36 @@
 // `/ready` reports per-dependency reachability via an injected ReadinessProbe so M1 owns no
 // direct client import; the boot default reports every dependency healthy until the real
 // db/Valkey/MinIO clients are wired. 503 when any dependency is down (degraded readiness).
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+
+// GAP-114 — the published response contracts of the three unauthenticated probes (spec §4.1–4.2). They sit
+// beside the handlers so the shape the route sends and the shape OpenAPI publishes cannot drift.
+const CheckState = Type.Union([Type.Literal("ok"), Type.Literal("fail")]);
+
+/** `GET /health` — liveness. */
+export const HealthResponseSchema = Type.Object({ status: Type.Literal("ok") });
+
+/** `GET /ready` — readiness; the same body is returned with 503 when any dependency is down. */
+export const ReadyResponseSchema = Type.Object({
+  status: Type.Union([Type.Literal("ready"), Type.Literal("not_ready")]),
+  checks: Type.Object({
+    db: CheckState,
+    valkey: CheckState,
+    minio: CheckState,
+    outbox: CheckState,
+    capabilities: Type.Optional(
+      Type.Record(Type.String(), Type.Union([Type.Literal("ready"), Type.Literal("disabled")])),
+    ),
+  }),
+});
+
+/** `GET /version` — build identity (`dev` / `unknown` when the build did not stamp them). */
+export const VersionResponseSchema = Type.Object({
+  version: Type.String(),
+  gitSha: Type.String(),
+  buildTime: Type.String(),
+});
 
 export interface ReadinessChecks {
   readonly db: "ok" | "fail";

@@ -20,7 +20,9 @@
 //                       transition (evidence about an already-`delivered` row, not a step in the machine)
 //   • ./coverage-determination  COP27 — the hospice coverage determination rules (dme/supply only; reason
 //                       required when not covered); NOT a §2.2 transition
-//   • ./errors          the §7 / §2.10 code → status catalog on the M1 `WardenXError` envelope
+//   • ./invoice         GAP-063 / D16 — the vendor-quote accrual + invoice reconciliation rules; NOT a §2.2
+//                       transition
+//   • ./errors         the §7 / §2.10 code → status catalog on the M1 `WardenXError` envelope
 export * from "./effects";
 export * from "./errors";
 export * from "./supply-request";
@@ -30,4 +32,5 @@ export * from "./return";
 export * from "./par-stock";
 export * from "./caregiver-signature";
 export * from "./coverage-determination";
+export * from "./invoice";
 export * from "./serving-location";

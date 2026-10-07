@@ -1425,12 +1425,19 @@ export function createDbEvvBackend(
     },
 
     // ── portal arrival surface (§4.1 route 25; timestamp only, no coordinates) ──────────────────────────
-    async portalArrival(orgId: string, visitId: string): Promise<ArrivalView> {
+    async portalArrival(orgId: string, visitId: string, patientId?: string): Promise<ArrivalView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const events = await tx
           .select({ kind: EVENT.kind, capturedAt: EVENT.capturedAt })
           .from(EVENT)
-          .where(and(eq(EVENT.visitId, visitId), isNull(EVENT.supersededByEventId)))
+          .where(
+            and(
+              eq(EVENT.visitId, visitId),
+              isNull(EVENT.supersededByEventId),
+              // GAP-132 — scope to the caller's patient (portal session); omitted only for non-portal callers.
+              ...(patientId === undefined ? [] : [eq(EVENT.patientId, patientId)]),
+            ),
+          )
           .orderBy(desc(EVENT.eventAt));
         return {
           visitId,

@@ -36,3 +36,35 @@ export {
   scheduleDoseSpotSyncQueueDrain,
 } from "./worker";
 export { M12_PLATFORM_JOB_ID, wireM12Tenancy } from "./wiring";
+// GAP-037 — the §4.8 catalog accounted for queue by queue (built vs. explicitly deferred, with the blocker).
+export {
+  type M12DeferredQueue,
+  type M12QueueEntry,
+  M12_DEFERRED_QUEUES,
+  M12_QUEUE_CATALOG,
+  M12_SPEC_QUEUE_NAMES,
+  describeM12AdapterPosture,
+  describeM12DeferredQueues,
+} from "./queue-catalog";
+// GAP-037 — the seven §4.8 crons (transmission, recovery drain, status sweep, refill SLA, IAL2, EPCS expiry,
+// benefit prewarm), their queue catalog, and the per-org passes a live suite drives directly.
+export {
+  type BreakerEdge,
+  type M12CronWorkerDeps,
+  buildM12CronRunners,
+  createBreakerEdgeRecorder,
+  registerM12CronWorkers,
+  scheduleM12Jobs,
+} from "./cron-workers";
+export { type M12CronDeps, runForEachActiveOrg } from "./cron-common";
+export {
+  M12_CRON_QUEUES,
+  M12_CRON_QUEUE_PARAMS,
+  M12_CRON_SCHEDULES,
+  type M12CronKey,
+} from "./queues";
+export { runRecoveryDrainForOrg, runTransmitNewRxForOrg } from "./transmit-newrx";
+export { decideSweepVerdict, runTransmissionSweepForOrg } from "./transmission-sweep";
+export { runRefillSlaForOrg } from "./refill-sla";
+export { runEpcsAttemptExpirySweepForOrg, runIal2ExpiryWarnForOrg } from "./ial2-and-epcs-sweeps";
+export { runRxBenefitPrewarmForOrg } from "./rx-benefit-prewarm";

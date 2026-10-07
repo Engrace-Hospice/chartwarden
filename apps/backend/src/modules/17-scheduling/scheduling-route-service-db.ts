@@ -78,6 +78,7 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
+import { WardenXError } from "@wardenx/types";
 import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
@@ -117,6 +118,7 @@ import {
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
 import { orgContextFor } from "./system-actor";
+import { computeVisitMetrics } from "./visit-metrics";
 
 /** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
 const UNSCOPED_LIMIT = 50_000;
@@ -2234,16 +2236,42 @@ export function createDbSchedulingBackend(
         }));
     },
 
-    async visitMetrics(orgId: string, _window: { from: string; to: string }) {
-      const visits = await backend.listVisits(orgId, {});
-      const total = visits.length || 1;
-      const noShow = visits.filter((v) => v.status === "no_show").length;
-      const rescheduled = visits.filter((v) => v.status === "rescheduled").length;
-      return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
+    async visitMetrics(orgId: string, window: { from: string; to: string }) {
+      // GAP-131 — real rates over the requested window (was a hard-coded on-time rate of 1 and an ignored window).
+      const rows = await withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) =>
+        (txRaw as DbClient)
+          .select({
+            scheduledStartedAt: V.scheduledStartedAt,
+            actualStartedAt: V.actualStartedAt,
+            status: V.status,
+          })
+          .from(V)
+          .where(
+            and(
+              eq(V.organizationId, orgId),
+              gte(V.scheduledStartedAt, new Date(window.from)),
+              lt(V.scheduledStartedAt, new Date(window.to)),
+            ),
+          ),
+      );
+      return computeVisitMetrics(
+        rows.map((r) => ({
+          scheduledStartedAt: iso(r.scheduledStartedAt),
+          actualStartedAt: r.actualStartedAt ? iso(r.actualStartedAt) : null,
+          status: r.status as string,
+        })),
+        window,
+      );
     },
 
-    routeEfficiencyMetrics(_orgId: string, membershipId: string) {
-      return { membershipId, totalProposedMiles: 0, overrideRate: 0 };
+    routeEfficiencyMetrics(_orgId: string, _membershipId: string) {
+      // GAP-131 — route optimisation is OFF (Phase 1), so there is no proposed-mileage or override data to
+      // aggregate. A fabricated zero would read as a real measurement; refuse instead.
+      throw new WardenXError(
+        "NOT_IMPLEMENTED",
+        "route-efficiency metrics are unavailable until route optimisation is enabled",
+        501,
+      );
     },
 
     /** §7.9 — route optimisation is OFF (Phase 1); emit the degraded event, return the degraded result. */

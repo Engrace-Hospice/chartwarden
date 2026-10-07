@@ -3,7 +3,7 @@ import { defineConfig } from "drizzle-kit";
 /**
  * WardenX — Drizzle Kit config.
  * The central multi-tenant PostgreSQL schema barrel lives in packages/db (M1-owned); generated
- * migrations land under packages/db/migrations/ (453 tables across 40 modules as of R2).
+ * migrations land under packages/db/migrations/ (table counts: see the generated audit reports).
  *
  * MIGRATION AUTHORITY (audit #8): `scripts/db/migrate.ts` is the SOLE authoritative migrator — it
  * applies EVERY `packages/db/migrations/*.sql` in lexical order, so it covers all SQL regardless of

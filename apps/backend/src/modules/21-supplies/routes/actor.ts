@@ -84,3 +84,20 @@ export function writeActorOf(request: FastifyRequest): M21WriteActor {
   }
   return { ...actor, membershipId: actor.membershipId };
 }
+
+/**
+ * D15 / GAP-137 — reject any `actor_kind='ai_*'` principal. Module 32 can never create, modify, witness or
+ * attest to a supply request or controlled-substance custody row. `actorKind` is server-assembled onto
+ * `request.context.attributes` (never read off the wire); mounted as a plugin-level hook on every
+ * non-GET M21 route in `mount.ts`.
+ */
+export function rejectAiActor(): PreHandler {
+  return async (request) => {
+    const kind = request.context?.attributes?.actorKind;
+    if (typeof kind === "string" && kind.startsWith("ai_")) {
+      throw new ForbiddenError(
+        "AI principals cannot create or modify supply or controlled-substance records (D15)",
+      );
+    }
+  };
+}

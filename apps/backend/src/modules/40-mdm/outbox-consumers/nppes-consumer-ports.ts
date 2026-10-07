@@ -212,7 +212,13 @@ export function buildNppesConsumerPorts(deps: M40NppesConsumerDeps): {
     async emitDeactivationAlert(orgId, canonicalId, npi) {
       await deps.alerts.emit(orgId, {
         eventType: "mdm.physician_deactivated",
-        payload: { canonicalId, npi, kind: "physician" },
+        payload: {
+          canonicalId,
+          npi,
+          kind: "physician",
+          deepLink: "/mdm",
+          message: "A physician record was deactivated by the NPPES source.",
+        },
         severity: "warn",
         correlationId: `m40-nppes-deactivation:${canonicalId}`,
       });

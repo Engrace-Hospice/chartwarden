@@ -1,10 +1,8 @@
 // apps/backend/src/modules/27-cost-report/consumers — barrel for the §4.10 / D3 upstream-event consumers.
 //
 // The PURE, port-injected inbound half of M27: the topic→effect subscription map (the single source of
-// truth for the §4.10 fan-out), one pure handler per subscribed topic, and the forward-declared register
-// surface the boot dispatcher wires once the live inbound transactional-outbox dispatcher accessor lands.
-// Mirrors the M30 `@wardenx/quality` consumers barrel. RULE 3(d): these ship pure + a subscription map —
-// NO boot-wired running subscriber here; the live inbound dispatcher is a later platform phase.
+// truth for the §4.10 fan-out), one pure handler per subscribed topic. Mirrors the M30 `@wardenx/quality`
+// consumers barrel. GAP-205: the former `registerM27Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
 export * from "./subscription-map";
 export * from "./handlers";
 
@@ -18,11 +16,7 @@ import {
   handleDocumentRendered,
   handleProviderEntityOffboarded,
 } from "./handlers";
-import {
-  type M27UpstreamSubscription,
-  M27_UPSTREAM_SUBSCRIPTIONS,
-  M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC,
-} from "./subscription-map";
+import { M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC } from "./subscription-map";
 
 /**
  * The discriminated upstream event the inbound dispatcher delivers to M27 (the topic + its structurally-
@@ -54,34 +48,4 @@ export async function dispatchM27UpstreamEvent(
     case M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC:
       return handleProviderEntityOffboarded(event.payload, ports);
   }
-}
-
-/**
- * Register the M27 §4.10 upstream consumers (the M30 register-surface mirror). The boot dispatcher calls
- * this with its `bind(eventName, consumerName, handler)` registrar and the live {@link M27ConsumerPorts};
- * each forward-declared subscription is bound to a closure over {@link dispatchM27UpstreamEvent}. Until the
- * live inbound transactional-outbox dispatcher accessor lands (RULE 3(d)) the composition root calls this
- * with NO registrar — it then merely returns the forward-declared bindings (nothing boots). Idempotent: the
- * dispatcher dedups on `(eventId, consumerName)` per the M1 outbox-consumer pattern.
- */
-export function registerM27Consumers(options?: {
-  readonly ports?: M27ConsumerPorts;
-  readonly bind?: (
-    eventName: string,
-    consumerName: string,
-    handler: (payload: unknown) => Promise<UpstreamConsumeReport>,
-  ) => void;
-}): readonly M27UpstreamSubscription[] {
-  const { ports, bind } = options ?? {};
-  if (bind && ports) {
-    for (const subscription of M27_UPSTREAM_SUBSCRIPTIONS) {
-      bind(subscription.eventName, subscription.consumerName, (payload) =>
-        dispatchM27UpstreamEvent(
-          { topic: subscription.eventName, payload } as M27UpstreamEvent,
-          ports,
-        ),
-      );
-    }
-  }
-  return M27_UPSTREAM_SUBSCRIPTIONS;
 }

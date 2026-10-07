@@ -50,6 +50,8 @@ export function buildM37AbacPredicates(): Record<
     // half is async and is re-asserted by the route service (`evaluateGipAttesterEligibility`) inside the tx.
     "m37.gip_criteria.attester_eligible": (c) => hasGipAttesterRole(c.roles),
     // §4.7 — the actor is an active IPU staff member on the unit (or a unit/medical director, org-wide).
+    // GAP-169: the fact is resolved by the service (`routes/staff-membership.ts` — on shift ± handover grace, the
+    // unit's 30-day roster, org-wide roles, or an unbuilt roster) and enforced on restraint + the bed grid.
     "m37.ipu.staff_member": (_c, t) => targetBool(t, "ipuStaffMember"),
   };
 }

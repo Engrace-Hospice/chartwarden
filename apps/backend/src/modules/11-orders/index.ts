@@ -51,6 +51,10 @@ export {
   registerM11StuckTransmissionWorker,
   runStuckTransmissionFanout,
   scheduleM11StuckTransmission,
+  // GAP-032 — verbal pre-expiry alert, lab-results-overdue sweep and completion-watcher (M11 §4.8 / §4.11).
+  M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
+  registerM11OrderSweepWorkers,
+  scheduleM11OrderSweeps,
 } from "./jobs";
 // F-201 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
 export {
@@ -198,14 +202,8 @@ export {
   eraseOrderRecord,
   registerOrderErasers,
 } from "./erasers/orders-eraser";
-// M11-T08 — the M22 order-PDF forward seam (DENY-STUB; Wave F). M11 OWNS the payload contract; M22 binds the
-// renderer at its lock. NO M1 seam-registry entry + NO `dependsOn` edge (forward seam, M9 precedent).
-export {
-  type OrderPdfRenderPayload,
-  type OrderPdfRenderer,
-  type OrderPdfResult,
-  denyStubOrderPdfRenderer,
-} from "./seams/m22-order-pdf";
+// M11-T08 — order PDFs are rendered by M22 off the outbox (`m11.order.document_requested`); the former
+// OrderPdfRenderer deny-stub was never consumed and was removed (GAP-192).
 export {
   M11_DOCUMENT_BACKREF_CONSUMER,
   buildM11DocumentBackrefConsumer,

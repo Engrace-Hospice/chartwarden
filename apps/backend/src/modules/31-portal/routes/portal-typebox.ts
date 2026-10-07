@@ -151,10 +151,22 @@ export const PortalDocumentUploadInitRequest = Type.Object({
 });
 export const PortalDocumentUploadInitResponse = Type.Object({
   uploadId: Uuid,
-  signedUploadUrl: Type.String({ format: "uri" }),
+  /** GAP-092 — the M31 content route the bytes are PUT to (same origin as the API; session-authenticated). */
+  signedUploadUrl: Type.String(),
   signedUploadUrlExpiresAt: Iso,
 });
 export const UploadCompleteResponse = Type.Object({ uploadId: Uuid, status: LayStr });
+/** GAP-092 — the content route's body IS the file: raw bytes (`application/pdf`, `image/*`), not JSON. */
+export const UploadContentBody = Type.String({
+  format: "binary",
+  description: "the raw file bytes; the Content-Type is the declared MIME from upload-init",
+});
+/** GAP-092 — the staged-bytes acknowledgement of the content route. */
+export const UploadStageResponse = Type.Object({
+  uploadId: Uuid,
+  status: LayStr,
+  byteSize: Type.Integer(),
+});
 
 // ── §4.2 amendments ─────────────────────────────────────────────────────────────────────────────────────
 export const AmendmentSubmitRequest = Type.Object({
@@ -182,7 +194,9 @@ export const MessageSendResponse = Type.Object({ messageId: Uuid });
 
 // ── §4.2 notification preferences ───────────────────────────────────────────────────────────────────────
 export const NotificationPreferencesResponse = Type.Object({
-  channels: Type.Array(Type.Object({ channel: LayStr, enabled: Type.Boolean() })),
+  channels: Type.Array(
+    Type.Object({ id: Type.Optional(Uuid), channel: LayStr, enabled: Type.Boolean() }),
+  ),
   quietHours: Type.Optional(Type.Object({ startHour: Type.Integer(), endHour: Type.Integer() })),
 });
 export const NotificationPreferenceUpdateRequest = Type.Object({
@@ -243,6 +257,19 @@ export const PortalInvitationIssueResponse = Type.Object({
   portalAccountId: Uuid,
   status: LayStr,
   expiresAt: Iso,
+  /** The single-use link, present only when no delivery channel sent it (the admin hands it over). */
+  inviteUrl: Type.Optional(Type.String()),
+});
+/** GAP-092 — the public, token-authenticated acceptance of an invitation. */
+export const PortalInvitationAcceptRequest = Type.Object({
+  token: Type.String({ minLength: 40, maxLength: 200 }),
+});
+export const PortalInvitationAcceptResponse = Type.Object({
+  portalAccountId: Uuid,
+  patientId: Uuid,
+  grantKind: LayStr,
+  status: LayStr,
+  replayed: Type.Boolean(),
 });
 export const InviteBereavedRequest = Type.Object({
   bereavedContactId: Uuid,

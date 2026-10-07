@@ -46,6 +46,10 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { M5OutboxPort } from "../deceased-db";
+import {
+  type PatientStatus,
+  transitionPatientOnAdmissionActivated,
+} from "../lifecycle/admission-activation";
 import { activationPromotesToActive } from "../patient-status-transitions";
 
 const P = schema.patients;
@@ -61,6 +65,7 @@ export const M5_ADMISSION_SITING_CONSUMER = {
 export interface AdmissionSitingDeps {
   readonly db: DbClient;
   /** Emits `m5.patient.status_changed` when the activation promotes the patient (§2.4.1). */
+  /** M5's catalog-validating transactional outbox publisher. */
   readonly outbox: M5OutboxPort;
 }
 
@@ -83,8 +88,8 @@ function factsOf(payload: unknown): AdmissionActivatedPayload {
 
 /**
  * M5's live `m6.admission.activated` binding — denormalizes the activating admission's provider
- * entity/location onto the `patient` row (§3.3, ARCH-011/M05-F04). See the file header for the
- * deliberate single-table scope and the cross-module seam-not-import boundary.
+ * entity/location and applies M5's admission-driven patient lifecycle edge in the same transaction.
+ * See the file header for the deliberate single-table scope and cross-module seam-not-import boundary.
  */
 export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
   return {
@@ -122,21 +127,40 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
           // §2.4.1 `prospective --> active : admission approved (M6)` and `discharged --> active :
           // re-admission` — the status half of the activation, applied with the siting in one tx.
           const promote = activationPromotesToActive(row.status);
+          const [patient] = await tx
+            .select({ status: P.status })
+            .from(P)
+            .where(eq(P.id, facts.patientId))
+            .limit(1)
+            .for("update");
+          if (!patient) {
+            throw new Error(
+              `${M5_ADMISSION_SITING_CONSUMER.consumerName}: patient '${facts.patientId}' not found`,
+            );
+          }
+
+          const transition = transitionPatientOnAdmissionActivated(
+            facts.patientId,
+            patient.status as PatientStatus,
+          );
           await tx
             .update(P)
             .set({
               providerEntityId: siting.providerEntityId,
               locationId: siting.locationId,
-              ...(promote ? { status: "active" as const, updatedAt: new Date() } : {}),
+              ...(transition.kind === "activate"
+                ? { status: "active", updatedAt: new Date() }
+                : {}),
             })
             .where(eq(P.id, facts.patientId));
-          if (promote) {
+
+          if (transition.kind === "activate") {
             await deps.outbox.publish(tx, {
               eventName: "m5.patient.status_changed",
               payload: {
                 patientId: facts.patientId,
                 organizationId,
-                fromStatus: row.status,
+                fromStatus: transition.fromStatus,
                 toStatus: "active",
               },
               organizationId,

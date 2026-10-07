@@ -12,7 +12,7 @@
 // detail plugins layer `requirePatientScope()` and the mutating set declares `Idempotency-Key` (§4.1.1).
 import type { FastifyInstance } from "fastify";
 
-import { registerCahpsRoutes } from "./cahps.routes";
+import { type CahpsExportFileReader, registerCahpsRoutes } from "./cahps.routes";
 import { registerCopRoutes } from "./cop.routes";
 import { registerIncidentRoutes } from "./incidents.routes";
 import { registerInfectionRoutes } from "./infection.routes";
@@ -83,6 +83,8 @@ export interface M30RouteServices {
   readonly resolveScope?: PatientScopeResolver;
   /** D19 — M5's display-label port (injected at the composition root); gates on `mortality.read_with_patient`. */
   readonly patientDisplay?: PatientDisplayPort;
+  /** GAP-087 — the sealed CAHPS export-file reader behind R-15's `downloadUrl` (needs the tenant-DEK cipher). */
+  readonly cahpsExportFile?: CahpsExportFileReader;
 }
 
 /**
@@ -93,11 +95,11 @@ export interface M30RouteServices {
  * write surfaces share no method name, so the merge is total and unambiguous).
  */
 export function mountM30Routes(app: FastifyInstance, services: M30RouteServices): void {
-  const { readService, writeService, resolveScope, patientDisplay } = services;
+  const { readService, writeService, resolveScope, patientDisplay, cahpsExportFile } = services;
   const combined: M30CombinedRouteService = { ...readService, ...writeService };
 
   registerMeasuresRoutes(app, { readService, writeService });
-  registerCahpsRoutes(app, { readService, writeService });
+  registerCahpsRoutes(app, { readService, writeService, exportFile: cahpsExportFile });
   registerRiskRegisterRoutes(app, { readService, writeService });
   registerIncidentRoutes(app, { readService, writeService, resolveScope });
   registerMortalityRoutes(app, { readService, writeService, resolveScope, patientDisplay });

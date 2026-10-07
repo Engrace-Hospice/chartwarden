@@ -5,9 +5,9 @@
 // the §2.6 idempotent replay (a replay by the SAME accepted account returns the existing binding, not a new
 // one). M2 owns the magic-link token primitive and mints the session (§2.2.4 — "M2's magic-link consumer is
 // the entry point; M31's `acceptInvitation()` runs after M2 validates the token and creates the session");
-// M31 owns the invitation LIFECYCLE decision. `portal_invitation` is NOT an M31-owned table (the manifest
-// owns three tables — [[m31-portal-telehealth]]); this evaluator drives the invitation state the route +
-// M2-collaborator-invite layer persists (M31-T07). Facts in, a decision out — the caller passes `nowMs`.
+// M31 owns the invitation LIFECYCLE decision. As of GAP-092 `portal_invitation` IS an M31-owned table
+// (migration 0424); this evaluator is the pure core `provisioning/invitations.ts` drives when it persists and consumes
+// an invitation. Facts in, a decision out — the caller passes `nowMs`.
 import type {
   PortalAccessGrantKind,
   PortalAccountRelationship,

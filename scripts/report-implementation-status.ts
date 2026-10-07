@@ -128,6 +128,7 @@ for (const r of scanRoutes(ROOT)) {
 
 // Web screens: modules whose screens.ts declares a moduleId AND is wired into main.tsx
 const mainTsx = read("apps/web/src/main.tsx");
+const portalScreenRegistry = read("apps/portal/src/screens/registry.ts");
 
 // Test corpus: backend __tests__ filenames (slug-prefix match) + live test bodies.
 // (Module package __tests__ are matched definitively by directory containment, below.)
@@ -218,11 +219,17 @@ const rows: Row[] = mods.map((m) => {
 
   const wDir = webDir(m);
   const screensRel = wDir ? `${wDir}/screens.ts` : undefined;
-  const screens =
+  const webScreens =
     !!screensRel &&
     existsSync(join(ROOT, screensRel)) &&
     /moduleId\s*:/.test(read(screensRel)) &&
     new RegExp(`${slug(wDir!)}|${m.id}\\b`).test(mainTsx);
+  // A module whose UI ships in the PORTAL app (M31) has no `apps/web/src/modules/<slug>/screens.ts`; its screens are
+  // registered in `apps/portal/src/screens/registry.ts` under its own `moduleId`.
+  const portalScreens =
+    (m.codePaths ?? []).includes("apps/portal") &&
+    new RegExp(`moduleId\\s*:\\s*${m.id}\\b`).test(portalScreenRegistry);
+  const screens = webScreens || portalScreens;
 
   // Tests (heuristic): a definitive hit if any test lives inside the module's own package
   // __tests__ dir, else a backend test filename begins with a module slug (plural OR singular).

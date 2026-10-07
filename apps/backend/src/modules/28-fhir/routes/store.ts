@@ -13,6 +13,7 @@ import {
   fhirClientTransition,
   fhirDualApprovalSatisfied,
   fhirInboundOwnerModuleFor,
+  fhirInboundSubjectPatientId,
   inboundPayloadSha256,
 } from "@wardenx/fhir";
 import {
@@ -365,6 +366,7 @@ interface MemJob {
 
 interface MemProposal {
   id: string;
+  subjectPatientId: string | null;
   organizationId: string;
   resourceType: string;
   sourceClientId: string;
@@ -836,6 +838,7 @@ export function createInMemoryFhirGatewayStore(
       const id = randomUUID();
       const p: MemProposal = {
         id,
+        subjectPatientId: fhirInboundSubjectPatientId(args.resourceType, args.payload),
         organizationId: orgId,
         resourceType: args.resourceType,
         sourceClientId: args.sourceClientId,

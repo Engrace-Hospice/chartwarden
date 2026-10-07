@@ -21,10 +21,12 @@ import { capYearForDate, capYearWindow } from "@wardenx/cap-management";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { mbiNormalizedForPatient } from "../src/modules/05-patient/seams/mbi-reader";
 import { firstElectionEffectiveDateInRangeForOrg } from "../src/modules/06-admission/seams/cap-election-context";
 import { createDrizzleCapConsumerStore } from "../src/modules/26-cap/consumers/drizzle-store";
 import { handleClaimReversed } from "../src/modules/26-cap/consumers/handlers";
+import { M26_OUTBOX_EVENTS } from "../src/modules/26-cap/events-by-m26";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -141,7 +143,12 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
+    // GAP-150 — the REAL catalog-validating publisher (never NOOP_OUTBOX), pinned to callerModule `m26`.
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M26_OUTBOX_EVENTS]));
     store = createDrizzleCapConsumerStore(handle.db, {
+      outbox: {
+        publish: (tx, event) => publisher.publish(tx as never, { ...event, callerModule: "m26" }),
+      },
       mbi: { mbiNormalizedForPatient: (org, pt) => mbiNormalizedForPatient(handle.db, org, pt) },
       firstElection: {
         firstElectionEffectiveDateInRange: (org, pt, from, to) =>
@@ -175,6 +182,42 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     expect(new Date(row.first_election_in_period).toISOString().slice(0, 10)).toBe(window.startsOn);
     expect(Number(row.paid_cents)).toBe(500_000);
     expect(await accrualLineCount(ORG_A, PATIENT_A)).toBe(1);
+  });
+
+  it("GAP-150: recording a line emits exactly one m26.cap.accrual_recorded, atomically; a replay emits none", async () => {
+    const countEvents = async () =>
+      Number(
+        (
+          await admin.query(
+            `SELECT count(*)::int AS n FROM outbox_event
+               WHERE organization_id = $1 AND event_type = 'm26.cap.accrual_recorded'`,
+            [ORG_A],
+          )
+        ).rows[0].n,
+      );
+    // The first test already recorded one line (and emitted one event); the redelivery below must add none.
+    expect(await countEvents()).toBe(1);
+    const { rows } = await admin.query(
+      `SELECT payload FROM outbox_event WHERE organization_id = $1 AND event_type = 'm26.cap.accrual_recorded'`,
+      [ORG_A],
+    );
+    expect(rows[0].payload).toMatchObject({
+      organizationId: ORG_A,
+      patientId: PATIENT_A,
+      paidAmountCents: 500_000,
+    });
+    const midYear = `${window.startsOn.slice(0, 4)}-11-15`;
+    await store.recordAccrualLine({
+      organizationId: ORG_A,
+      patientId: PATIENT_A,
+      sourceKind: "remittance",
+      sourceId: "cccccccc-0000-4000-8000-000000000001",
+      amountCents: 500_000,
+      serviceFrom: `${window.startsOn.slice(0, 4)}-11-01`,
+      serviceTo: `${window.startsOn.slice(0, 4)}-11-15`,
+      postedAt: `${midYear}T00:00:00.000Z`,
+    });
+    expect(await countEvents()).toBe(1);
   });
 
   it("a second, distinct line for the same patient increments paid_cents rather than overwriting it", async () => {

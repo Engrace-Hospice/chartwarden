@@ -17,18 +17,25 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
   DegradedError,
+  ForbiddenError,
   type Hl7InboundProposalKind,
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
 import { and, desc, eq, exists, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
-import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
+import {
+  canExternalFeedTransition,
+  decideFeedRevokeStep,
+  externalFeedCoApprovalSatisfied,
+} from "../feed/lifecycle";
+import type { InboundCipher } from "../inbound/inbound-crypto";
 import {
   type UnmatchedLabQueueItem,
   planUnmatchedBind,
   planUnmatchedDiscard,
 } from "../inbound/unmatched-lab-review";
+import { CredentialLoadError, parseCredentialBundle } from "../listener/credential-loader";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
@@ -91,6 +98,13 @@ export interface DrizzleM29StoreDeps {
    * has run. UNBOUND ⇒ the bind refuses with a 503; every other route is unaffected.
    */
   readonly patients?: M29BindPatientResolver | (() => M29BindPatientResolver);
+  /**
+   * GAP-086 — the per-tenant DEK envelope for a minted `mllp_client_cert` credential. When bound, the mint validates the
+   * mTLS bundle JSON (`{serverCertPem, serverKeyPem, expectedClientCaPem}`) and stores it SEALED, which is what lets the
+   * listener process bind a real TLS server. UNBOUND ⇒ the legacy sha256-digest behavior (the plaintext is never kept).
+   * A THUNK is accepted for the same reason as `patients` (the key provider resolves after route mount).
+   */
+  readonly credentialCipher?: InboundCipher | (() => InboundCipher);
 }
 
 /** The fail-closed stand-in when no M5 reader is bound — a bind cannot invent an agency (ARCH-011). */
@@ -254,6 +268,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     abnormalSummary: row.abnormalSummary,
     attachedDocumentId: row.attachedDocumentId,
     receivedAt: row.receivedAt.toISOString(),
+    acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
+    acknowledgedByMembershipId: row.acknowledgedByMembershipId,
   });
 
   const nppesView = (row: typeof NPPES.$inferSelect): NppesProviderView => ({
@@ -457,17 +473,44 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
         return feedDetail(row!);
       });
     },
-    async revokeFeed(orgId, membershipId, feedId, _args) {
+    async revokeFeed(orgId, membershipId, feedId, args) {
       return withOrgContext(db, ctx(orgId, membershipId), async (tx): Promise<FeedDetail> => {
         const feed = await loadFeed(tx, orgId, feedId);
         if (!canExternalFeedTransition(feed.status, "revoked")) {
           throw new ConflictError(`feed ${feedId} cannot revoke from ${feed.status}`);
         }
+        // GAP-153 / D20 — dual approval held SERVER-SIDE: the first call stores the requester; only a
+        // DIFFERENT membership completes the revoke (never a body-supplied "primary approver").
+        const step = decideFeedRevokeStep(feed.revokeRequestedByMembershipId, membershipId);
+        if (step === "self_approval") {
+          throw new ForbiddenError("a feed revoke needs a second, distinct approver");
+        }
+        const where = and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId));
+        if (step === "request") {
+          const [pending] = await tx
+            .update(FEED)
+            .set({
+              revokeRequestedByMembershipId: membershipId,
+              revokeRequestedAt: new Date(),
+              revokeReason: args.reason,
+              updatedAt: new Date(),
+            })
+            .where(where)
+            .returning();
+          return feedDetail(pending!);
+        }
         const [row] = await tx
           .update(FEED)
           .set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))
+          .where(where)
           .returning();
+        // Credential cascade: a revoked feed's channel secrets must stop working, not just its status.
+        await tx
+          .update(CRED)
+          .set({ status: "retired" })
+          .where(
+            and(eq(CRED.feedId, feedId), eq(CRED.organizationId, orgId), eq(CRED.status, "active")),
+          );
         return feedDetail(row!);
       });
     },
@@ -509,14 +552,38 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
               ),
             );
           const digest = createHash("sha256").update(args.secret).digest("hex");
+          // GAP-086 — a TLS bundle is validated and SEALED under the tenant DEK so the listener can decrypt it; any
+          // other kind (or no cipher bound) keeps the digest-only posture.
+          const cipher =
+            typeof storeDeps.credentialCipher === "function"
+              ? storeDeps.credentialCipher()
+              : storeDeps.credentialCipher;
+          let secretCipher = digest;
+          if (cipher && args.kind === "mllp_client_cert") {
+            try {
+              parseCredentialBundle(args.secret);
+            } catch (err) {
+              if (err instanceof CredentialLoadError)
+                throw new ValidationError("mTLS credential bundle rejected", [
+                  { field: "secret", code: err.code.toUpperCase(), message: err.message },
+                ]);
+              throw err;
+            }
+            secretCipher = await cipher.encrypt(
+              orgId,
+              "external_feed_credential.secret",
+              args.secret,
+            );
+          }
           const [row] = await tx
             .insert(CRED)
             .values({
               feedId,
               organizationId: orgId,
               kind: args.kind,
-              // no DEK bound (Phase 1): the NOT-NULL cipher column carries the digest, never the plaintext.
-              secretCipher: digest,
+              // fingerprint is always the plaintext's digest prefix (ops display); the cipher column is the sealed
+              // bundle when a cipher is bound, else the digest (never the plaintext).
+              secretCipher,
               fingerprint: digest.slice(0, 8),
               status: "active",
             })
@@ -936,6 +1003,45 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
             referenceRange: v.referenceRange,
             abnormalFlag: v.abnormalFlag,
           })),
+        };
+      });
+    },
+    async acknowledgeAbnormalObservation(orgId, membershipId, observationId) {
+      return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(OBS)
+          .where(and(eq(OBS.id, observationId), eq(OBS.organizationId, orgId)))
+          .limit(1);
+        if (!row) return null;
+        // Stamped ONCE: a repeat acknowledgement returns the stored one and emits nothing.
+        if (row.acknowledgedAt !== null && row.acknowledgedByMembershipId !== null) {
+          return {
+            acknowledgedAt: row.acknowledgedAt.toISOString(),
+            acknowledgedByMembershipId: row.acknowledgedByMembershipId,
+          };
+        }
+        const acknowledgedAt = new Date();
+        await tx
+          .update(OBS)
+          .set({ acknowledgedAt, acknowledgedByMembershipId: membershipId })
+          .where(and(eq(OBS.id, observationId), eq(OBS.organizationId, orgId)));
+        await storeDeps.outbox?.publish(tx as unknown as DbClient, {
+          eventName: "m29.lab_observation.abnormal_acknowledged",
+          payload: {
+            observationId,
+            organizationId: orgId,
+            patientId: row.patientId,
+            acknowledgedByMembershipId: membershipId,
+            acknowledgedAt: acknowledgedAt.toISOString(),
+          },
+          organizationId: orgId,
+          aggregateKind: "lab_observation",
+          aggregateId: observationId,
+        });
+        return {
+          acknowledgedAt: acknowledgedAt.toISOString(),
+          acknowledgedByMembershipId: membershipId,
         };
       });
     },

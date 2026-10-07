@@ -116,6 +116,10 @@ function makeServer(
       userId: string;
       patientId: string;
     }) => Promise<boolean>;
+    /** GAP-182 — the caller's caseload for the org-wide list narrowing (default: PATIENT). */
+    caseload?: readonly string[];
+    /** GAP-182 — the caseload seam rejects (the list must fail CLOSED). */
+    caseloadFails?: boolean;
   } = {},
 ) {
   const backend = createInMemoryEncounterBackend({
@@ -195,7 +199,13 @@ function makeServer(
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerEncounterRoutes(app, { service: backend.service });
+  registerEncounterRoutes(app, {
+    service: backend.service,
+    caseloadPatientIds: async () => {
+      if (options.caseloadFails) throw new Error("caseload seam unavailable");
+      return options.caseload ?? [PATIENT];
+    },
+  });
   return { app, backend, sessions };
 }
 
@@ -1263,5 +1273,42 @@ describe("GAP-028 — M8 author ABAC (is_author / is_author_or_supervisor / is_a
     expect(
       await preds.is_addendum_author?.(ctx, { encounterId: ENC_BY_RN, addendumId: "nope" }),
     ).toBe(false);
+  });
+});
+
+describe("GAP-182 — GET /encounters is narrowed to the caller's caseload", () => {
+  const list = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+    app.inject({ method: "GET", url: "/api/v1/encounters", headers });
+
+  it("returns the caseload patient's encounters to a non-org-wide role", async () => {
+    const { app } = makeServer({ caseload: [PATIENT] });
+    const res = await list(app, RN);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().encounters.length).toBeGreaterThan(0);
+    await app.close();
+  });
+
+  it("returns nothing for a patient who is not on the caller's caseload", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await list(app, RN);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().encounters).toEqual([]);
+    await app.close();
+  });
+
+  it("an org-wide scope role (clinical_supervisor is NOT one; medical_director is) sees all rows", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await list(app, { ...RN, "x-test-roles": "medical_director" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().encounters.length).toBeGreaterThan(0);
+    await app.close();
+  });
+
+  it("fails closed when the caseload cannot be resolved", async () => {
+    const { app } = makeServer({ caseloadFails: true });
+    const res = await list(app, RN);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().encounters).toEqual([]);
+    await app.close();
   });
 });

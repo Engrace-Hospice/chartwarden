@@ -39,6 +39,7 @@ export type {
   DoseSpotNewRxResponse,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
+  DoseSpotPrescriptionStatusResponse,
   DoseSpotPrescriberPayload,
   DoseSpotPrescriberResponse,
   DoseSpotRefillResponsePayload,
@@ -46,3 +47,26 @@ export type {
   DoseSpotRxBenefitResponse,
 } from "./contract";
 export { createUnboundDoseSpotClient } from "./unbound";
+export {
+  DOSESPOT_ENDPOINTS,
+  TOKEN_ENDPOINT,
+  buildPath,
+  unverifiedEndpoints,
+  type DoseSpotEndpoint,
+  type DoseSpotEndpointName,
+  type EndpointVerification,
+} from "./endpoints";
+export {
+  DOSESPOT_TENANT_CONFIGS_ENV,
+  createEnvTenantConfigResolver,
+  createUnboundTenantConfigResolver,
+  parseTenantConfig,
+  type DoseSpotTenantConfig,
+  type DoseSpotTenantConfigResolver,
+} from "./tenant-config";
+export { WIRE_FIELD_MAPPING_VERIFIED, phaseOfStatus, sigDirections } from "./mappers";
+export {
+  createHttpDoseSpotClient,
+  type DoseSpotFetch,
+  type HttpDoseSpotClientDeps,
+} from "./http";

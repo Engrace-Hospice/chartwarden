@@ -18,13 +18,13 @@ import type { StatusTone } from "@wardenx/ui";
 // per-scope No-Line cards, each a list of rows (avatar + name + meta + status + chevron) that
 // navigate straight to the record. FB-T11 (partial): the live facets are the M5 **patient** facet
 // (GET /api/v1/patients?q=) and the M2 **staff** facet (GET /api/v1/orgs/:id/members?q=). Later
-// scopes (documents/orders/visits/commands) render as honest "available when <module> ships" rows —
+// scopes (documents/orders/visits/commands) render as honest pointers to the owning module screen —
 // visible, never fabricated. The server stays the only enforcement point: patient hits are
 // RLS/caseload-scoped, the staff facet is behind member.manage (a 403 degrades to a clear note). The
 // patient list carries no SSN/MBI, so the spec's "SSN never shown / MBI masked" holds by construction.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../02-identity/auth-client";
 import { STATUS_TONE, statusLabel } from "./patient-status";
 
@@ -55,13 +55,18 @@ interface SearchRow {
   tone: StatusTone;
 }
 
-// Scopes the merged data layer can't serve yet — shown so the search's reach is honest, not fabricated.
-const FUTURE_FACETS = [
-  { label: "Documents", blocked: "M22 Documents" },
-  { label: "Orders & claims", blocked: "M16 Orders" },
-  { label: "Visits / encounters", blocked: "M19 Encounters" },
-  { label: "Navigation & commands", blocked: "the command palette" },
-] as const;
+// GAP-119 — the scopes this search does NOT cover. Documents (M22), orders (M11) and billing (M23) have all
+// shipped, so these are not "waiting for a module": the cross-module search API simply isn't built, and each
+// owning module's own list screen is the honest way in. `to` links there; a scope with no screen says so.
+const OTHER_SCOPES: readonly { label: string; detail: string; to?: string }[] = [
+  { label: "Documents", detail: "Search in Documents (M22)", to: "/documents" },
+  { label: "Orders", detail: "Search in Orders (M11)", to: "/orders" },
+  {
+    label: "Visits / encounters",
+    detail: "Open a patient chart and use its Encounters tab (M8)",
+  },
+  { label: "Navigation & commands", detail: "No command palette yet" },
+];
 const SEARCH_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 // Recent search terms carry PHI (patient names / MRNs), so they MUST NOT be persisted — no
@@ -425,10 +430,16 @@ function FutureFacets(): JSX.Element {
     <section style={futurePanelStyle}>
       <h2 style={sectionHeadStyle}>Other scopes</h2>
       <div style={futureGridStyle}>
-        {FUTURE_FACETS.map((facet) => (
-          <div key={facet.label} style={futureItemStyle}>
-            <span style={futureLabelStyle}>{facet.label}</span>
-            <span style={futureDetailStyle}>available when {facet.blocked} ships</span>
+        {OTHER_SCOPES.map((scope) => (
+          <div key={scope.label} style={futureItemStyle}>
+            <span style={futureLabelStyle}>{scope.label}</span>
+            {scope.to ? (
+              <Link to={scope.to} style={futureDetailStyle}>
+                {scope.detail}
+              </Link>
+            ) : (
+              <span style={futureDetailStyle}>{scope.detail}</span>
+            )}
           </div>
         ))}
       </div>

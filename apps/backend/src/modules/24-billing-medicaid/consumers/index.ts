@@ -1,8 +1,7 @@
 // apps/backend/src/modules/24-billing-medicaid/consumers — the M24 §4.4 upstream-consumer register surface
 // (the M25/M26 consumers/index.ts mirror). Routes each subscribed topic to its pure handler (./handlers.ts)
-// and exposes `registerM24Consumers` for the boot dispatcher. NO live inbound relay loop exists yet (the M25
-// posture); until it lands the composition root calls this with NO registrar — it then merely returns the
-// forward-declared subscriptions. The Drizzle M24ConsumerStore binding is deferred: advancing a claim to PAID
+// (`dispatchM24UpstreamEvent`). GAP-205: the former `registerM24Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
+// The Drizzle M24ConsumerStore binding is deferred: advancing a claim to PAID
 // / DENIED / resolving a held Medicare-primary claim runs the §2.2 reducer over the live claim row, which the
 // claim-lifecycle write path owns; the live store binds with that path.
 import {
@@ -12,11 +11,7 @@ import {
   handleMedicarePrimaryAck,
   handleUpstreamChange,
 } from "./handlers";
-import {
-  type M24SubscribedTopic,
-  M24_SUBSCRIPTION_MAP,
-  M24_UPSTREAM_SUBSCRIPTIONS,
-} from "./subscription-map";
+import { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 
 export { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 export type { M24ConsumerStore } from "./handlers";
@@ -61,26 +56,4 @@ export async function dispatchM24UpstreamEvent(
     default:
       return { handled: false };
   }
-}
-
-/**
- * Register the M24 §4.4 upstream consumers (the M25/M26 register-surface mirror). The boot dispatcher calls
- * this with its `bind(topic, handler)` registrar + the live store; each subscription is bound to a closure
- * over {@link dispatchM24UpstreamEvent}. Until the live inbound dispatcher lands the composition root calls
- * this with NO registrar — it then merely returns the forward-declared subscriptions.
- */
-export function registerM24Consumers(options?: {
-  readonly store?: M24ConsumerStore;
-  readonly bind?: (
-    topic: string,
-    handler: (payload: Record<string, unknown>) => Promise<M24ConsumeReport>,
-  ) => void;
-}): readonly M24SubscribedTopic[] {
-  const { store, bind } = options ?? {};
-  if (bind && store) {
-    for (const topic of M24_UPSTREAM_SUBSCRIPTIONS) {
-      bind(topic, (payload) => dispatchM24UpstreamEvent({ topic, payload }, store));
-    }
-  }
-  return M24_UPSTREAM_SUBSCRIPTIONS;
 }

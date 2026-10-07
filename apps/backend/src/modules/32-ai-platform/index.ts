@@ -112,3 +112,34 @@ export {
   composeDocLensVisionFieldPrompt,
 } from "./seams/published";
 export { createFilesystemAiPromptArtifactReader } from "./prompts/store";
+
+// GAP-161 - the same-tx outbox emitter the Drizzle stores publish the 21 `m32.*` events through.
+export { M32_EVENT_NAMES, type M32EventName } from "./event-names";
+export {
+  type M32EmitSpec,
+  type M32EventEmitter,
+  type M32OutboxPublisher,
+  capabilityIdentity,
+  createM32EventEmitter,
+} from "./events";
+
+// GAP-161 - the §4.8 `ai:hallucination-triage-followup` consumer + producer.
+export {
+  M32_TRIAGE_FOLLOWUP_QUEUE,
+  type TriageFollowUpDeps,
+  type TriageFollowUpJob,
+  buildTriageFollowUpQueue,
+  registerM32TriageFollowUpWorker,
+  runTriageFollowUp,
+} from "./jobs/triage-followup-worker";
+
+// GAP-161 - the §4.8 `ai:token-ledger-rollup` cron (cap alerts).
+export {
+  M32_TOKEN_ROLLUP_QUEUE,
+  M32_TOKEN_ROLLUP_SCHEDULE,
+  buildSpendReader,
+  registerM32TokenRollupWorker,
+  runTokenLedgerRollup,
+  scheduleM32TokenRollupJob,
+  tokenCapAlertFor,
+} from "./jobs/token-ledger-rollup";

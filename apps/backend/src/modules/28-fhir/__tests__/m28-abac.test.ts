@@ -56,6 +56,9 @@ describe("fhir_inbound_owner_module_match", () => {
         async holdsPermission(_org, _member, key) {
           return key === FHIR_OWNER_MODULE_WRITE_PERMISSION.m5;
         },
+        async inboundSubjectPatient() {
+          return { resourceType: "Patient", subjectPatientId: null }; // new-patient intake
+        },
       }),
     });
     expect(
@@ -82,6 +85,70 @@ describe("fhir_inbound_owner_module_match", () => {
       resolver: denyStubFhirGatewayAbacResolver,
     }).fhir_inbound_owner_module_match;
     expect(await p(ctx(), { proposalId: "p1" } as AbacTarget)).toBe(false);
+  });
+});
+
+describe("fhir_inbound_owner_module_match caseload_or_scope (GAP-198)", () => {
+  const PATIENT = "3f2b8c1e-5a47-4d0e-9b1a-7c6d5e4f3a21";
+  const build = (
+    subject: { resourceType: string; subjectPatientId: string | null } | null,
+    inCaseload: boolean,
+  ) =>
+    buildFhirGatewayAbacPredicates({
+      resolver: resolver({
+        async inboundOwnerModule() {
+          return "m12";
+        },
+        async holdsPermission() {
+          return true;
+        },
+        async inboundSubjectPatient() {
+          return subject;
+        },
+      }),
+      isInCaseload: async () => inCaseload,
+    }).fhir_inbound_owner_module_match;
+  const target = { proposalId: "p1" } as AbacTarget;
+
+  it("allows a reviewer whose caseload includes the subject patient", async () => {
+    const p = build({ resourceType: "MedicationStatement", subjectPatientId: PATIENT }, true);
+    expect(await p(ctx(), target)).toBe(true);
+  });
+
+  it("denies a reviewer outside the subject patient's caseload", async () => {
+    const p = build({ resourceType: "MedicationStatement", subjectPatientId: PATIENT }, false);
+    expect(await p(ctx(), target)).toBe(false);
+  });
+
+  it("lets an org-wide-scope role review outside their caseload", async () => {
+    const p = build({ resourceType: "MedicationStatement", subjectPatientId: PATIENT }, false);
+    expect(await p(ctx({ roles: ["medical_director"] }), target)).toBe(true);
+  });
+
+  it("fails closed when a patient-scoped resource has no resolvable subject", async () => {
+    const p = build({ resourceType: "MedicationStatement", subjectPatientId: null }, true);
+    expect(await p(ctx(), target)).toBe(false);
+  });
+
+  it("fails closed when the subject facts are unreadable or the caseload check throws", async () => {
+    expect(await build(null, true)(ctx(), target)).toBe(false);
+    const throwing = buildFhirGatewayAbacPredicates({
+      resolver: resolver({
+        async inboundOwnerModule() {
+          return "m12";
+        },
+        async holdsPermission() {
+          return true;
+        },
+        async inboundSubjectPatient() {
+          return { resourceType: "MedicationStatement", subjectPatientId: PATIENT };
+        },
+      }),
+      isInCaseload: async () => {
+        throw new Error("seam down");
+      },
+    }).fhir_inbound_owner_module_match;
+    expect(await throwing(ctx(), target)).toBe(false);
   });
 });
 

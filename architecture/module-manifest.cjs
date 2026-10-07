@@ -155,6 +155,7 @@ exports.MODULES = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      "auditor_magic_link",
       "membership_elevated_approval",
       "device_attestation",
     ],
@@ -279,9 +280,11 @@ exports.MODULES = [
       "facility",
       "mdm_baa_record",
       "mdm_baa_required",
+      "mdm_license_record",
       "mdm_provisional",
       "merge_request",
       "nppes_sync_coordination",
+      "external_grief_resource",
       "nppes_sync_log",
       "payer",
     ],
@@ -413,6 +416,7 @@ exports.MODULES = [
       "clinical_assessment",
       "assessment_cosignature",
       "significant_change_event",
+      "assessment_reassessment_due",
       "scale_license",
       "scale_policy",
     ],
@@ -440,6 +444,7 @@ exports.MODULES = [
       "hope_submission",
       "hope_submission_item",
       "hope_submission_result_event",
+      "hope_retention_review",
     ],
   },
   {
@@ -487,6 +492,7 @@ exports.MODULES = [
       "medication_history_pull",
       "medication_history_record",
       "medication_order_dispense",
+      "rx_benefit_cache",
     ],
   },
   {
@@ -921,6 +927,7 @@ exports.MODULES = [
     dependsOn: [1, 2, 3, 4, 10, 23, 27, 36, 38],
     ownedTables: [
       "cahps_decedent_sample",
+      "cahps_export_job",
       "cahps_result_summary",
       "cahps_vendor_binding",
       "cop_compliance_status",
@@ -945,7 +952,14 @@ exports.MODULES = [
     name: "Patient/Family Portal & Telehealth",
     codePaths: ["packages/telehealth-client", "apps/portal", "apps/backend/src/modules/31-portal"],
     dependsOn: [1, 5, 7, 8, 22, 36, 39], // +1: M31-T03 consumes the M39 ConsentEvaluator + M16 BereavedPortalScopeProvider seams OPAQUELY via the M1-owned bootstrap registry (getSeam); the seam-task precedent every consuming module carries
-    ownedTables: ["portal_account", "portal_access_grant", "telehealth_visit"],
+    ownedTables: [
+      "portal_access_grant",
+      "portal_account",
+      "portal_document_upload",
+      "portal_invitation",
+      "portal_notification_preference",
+      "telehealth_visit",
+    ],
   },
   {
     id: 32,

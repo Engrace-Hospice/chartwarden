@@ -6,6 +6,7 @@
 // validates. M31 owns no `portal_session` table (the manifest owns three tables), so these handlers read
 // the owned `portal_access_grant` for scope and hand the binding to M2 — the response is the context the
 // portal SPA renders, not a new persisted row here.
+import { createHash } from "node:crypto";
 import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -69,6 +70,24 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
         });
       }
 
+      // GAP-159 - decision-point emit: M2 mints the session, M31 binds it to this patient (the "opened" fact).
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        await deps.events?.emit(
+          actor.organizationId,
+          "m31.portal_session.opened",
+          { kind: "portal_session", id: sessionId },
+          {
+            sessionId,
+            portalAccountId,
+            patientId,
+            ipHash: createHash("sha256")
+              .update(request.ip ?? "")
+              .digest("hex")
+              .slice(0, 32),
+          },
+        );
+      }
+
       let displayName = "your family member";
       try {
         const identity = await (getSeam("PatientReader") as unknown as PatientReaderArm).findById({
@@ -117,7 +136,16 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
 
   // logout — server-side session close (M2 owns the row; the handler acknowledges).
   app.post("/api/v1/portal/sessions/logout", async (request) => {
-    actorOf(request);
+    const actor = actorOf(request);
+    const sessionId = request.context?.attributes?.sessionId;
+    if (typeof sessionId === "string" && sessionId.length > 0) {
+      await deps.events?.emit(
+        actor.organizationId,
+        "m31.portal_session.closed",
+        { kind: "portal_session", id: sessionId },
+        { sessionId, closeReason: "logout" },
+      );
+    }
     return { ok: true };
   });
 

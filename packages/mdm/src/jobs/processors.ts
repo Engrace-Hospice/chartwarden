@@ -23,7 +23,7 @@ const MS_PER_HOUR = 3_600_000;
 
 /** A recorded `nppes_sync_log` run (§4.3 / §7.5). */
 export interface NppesSyncLogEntry {
-  readonly mode: "nightly_delta";
+  readonly mode: "nightly_delta" | "weekly_full";
   readonly outcome: "success" | "skipped" | "failure";
   readonly driftCount: number;
   readonly deactivations: number;
@@ -86,7 +86,23 @@ export async function runNppesNightlyDelta(ports: NppesNightlyPorts): Promise<Np
       };
     }
   }
+  return sweepNppes(ports, "nightly_delta");
+}
 
+/**
+ * Run the §4.3 NPPES weekly FULL sweep (Sun 03:00): the same diff over ALL canonical physician NPIs, but NOT
+ * fallback-gated — its job is to reconcile drift that a delta (or M29's own sync) missed, so it runs whether or
+ * not M29 synced recently. `ports.loadKnownPhysicians` is expected to return the full set here.
+ */
+export async function runNppesWeeklyFull(ports: NppesNightlyPorts): Promise<NppesNightlyResult> {
+  return sweepNppes(ports, "weekly_full");
+}
+
+/** The shared diff-and-apply body behind the nightly delta and the weekly full sweep. */
+async function sweepNppes(
+  ports: NppesNightlyPorts,
+  mode: NppesSyncLogEntry["mode"],
+): Promise<NppesNightlyResult> {
   const known = await ports.loadKnownPhysicians();
   const freshRecords = await ports.fetchNppesDelta(known.map((k) => k.npi));
   const freshByNpi = new Map(freshRecords.map((r) => [r.npi, r]));
@@ -109,7 +125,7 @@ export async function runNppesNightlyDelta(ports: NppesNightlyPorts): Promise<Np
   }
 
   await ports.recordSyncLog({
-    mode: "nightly_delta",
+    mode,
     outcome: "success",
     driftCount: drift.length,
     deactivations,

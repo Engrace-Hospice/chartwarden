@@ -22,6 +22,7 @@ import {
   denyAiAdvisoryReader,
   outputTypeTargetsBilling,
   validateAiBlockForBilling,
+  validateBillingAiBlockAtBoot,
 } from "./ai-block";
 import { rejectAiActor } from "./routes/actor";
 
@@ -170,6 +171,36 @@ describe("denyAiAdvisoryReader — non-gating deny-stub (M32 not yet locked)", (
     for (const id of ["", "vr-2", "vr-with-😀", "00000000-0000-0000-0000-000000000000"]) {
       await expect(reader.advisoriesForResult("org-x", id)).resolves.toEqual([]);
     }
+  });
+});
+
+// ── GAP-137: the async boot validator over the REAL M32 registry (D18 table-only query) ────────────────────
+describe("validateBillingAiBlockAtBoot — real-registry boot gate", () => {
+  const targeting = (...outputs: string[]) => ({
+    getActivePromptsTargeting: async (prefix: string) =>
+      outputs
+        .filter((o) => o.startsWith(prefix))
+        .map((o) => ({ templateKey: `k.${o}`, outputEntityTargetPrefix: o })),
+  });
+
+  it("passes with no registry and with an empty registry", async () => {
+    await expect(validateBillingAiBlockAtBoot(undefined)).resolves.toBeUndefined();
+    await expect(validateBillingAiBlockAtBoot(targeting())).resolves.toBeUndefined();
+  });
+
+  it("refuses boot when an active template targets an M23 table family or bare root", async () => {
+    await expect(validateBillingAiBlockAtBoot(targeting("claim_line"))).rejects.toBeInstanceOf(
+      AiBlockViolationError,
+    );
+    await expect(validateBillingAiBlockAtBoot(targeting("noe"))).rejects.toBeInstanceOf(
+      AiBlockViolationError,
+    );
+  });
+
+  it("admits the read-only validation_ai_advisory projection", async () => {
+    await expect(
+      validateBillingAiBlockAtBoot(targeting("validation_ai_advisory")),
+    ).resolves.toBeUndefined();
   });
 });
 

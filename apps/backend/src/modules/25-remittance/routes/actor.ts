@@ -18,13 +18,24 @@ export interface M25ReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /**
+   * SERVER-DERIVED provider-entity scope (GAP-073 / GAP-148): `undefined` = unrestricted (an org-wide
+   * oversight role or the service principal); an array restricts the actor to exactly those ProviderEntities,
+   * and an EMPTY array matches nothing (fail-closed). Never read off the body/query.
+   */
+  readonly providerEntityScope?: readonly string[];
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
 export function actorOf(request: FastifyRequest): M25ReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    providerEntityScope: providerEntityScopeOf(ctx),
+  };
 }
 
 /**
@@ -39,12 +50,6 @@ export interface M25WriteActor extends M25ReadActor {
   readonly membershipId: string;
   /** True iff the session carries a recent (server-verified) step-up auth (§D15). */
   readonly stepUpRecent: boolean;
-  /**
-   * SERVER-DERIVED provider-entity scope (GAP-073): `undefined` = unrestricted (an org-wide oversight role or
-   * the service principal); an array restricts the actor to exactly those ProviderEntities, and an EMPTY array
-   * matches nothing (fail-closed). Never read off the body/query.
-   */
-  readonly providerEntityScope?: readonly string[];
 }
 
 /** Extract the write actor (org + user + roles + active membership id + step-up) from `request.context`, or 401. */

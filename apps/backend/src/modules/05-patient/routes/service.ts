@@ -42,10 +42,32 @@ export type AdmitResult =
       readonly matchedOn: string;
     };
 
-/** Census KPI counts (§4.2) — `total` patients in the org + a per-status breakdown. */
+/**
+ * The admission-owned census KPIs (GAP-119), published by M6 and injected into M5 as a port — M5 never reads
+ * M6's tables. Counts only.
+ */
+export interface AdmissionCensusSummaryView {
+  readonly admissionsToday: number;
+  readonly dischargesToday: number;
+  readonly gipActive: number;
+  readonly recertsDue: number;
+  /** The org-local calendar date the "today" figures were computed for. */
+  readonly asOfDate: string;
+}
+
+/** The org-explicit port M6's `admissionCensusSummaryForOrg` is bound to at the composition root. */
+export type AdmissionCensusSummaryPort = (
+  organizationId: string,
+) => Promise<AdmissionCensusSummaryView>;
+
+/**
+ * Census KPI counts (§4.2) — `total` patients in the org + a per-status breakdown, plus the M6 admission
+ * summary (`null` when M6's read is unavailable: the strip shows "—", never a made-up number).
+ */
 export interface CensusMetrics {
   readonly total: number;
   readonly byStatus: Record<string, number>;
+  readonly admissions?: AdmissionCensusSummaryView | null;
 }
 
 /** A minimal patient view a read returns. */
@@ -323,7 +345,11 @@ export interface PatientRouteService {
   submitAmendment(
     organizationId: string,
     patientId: string,
-    input: { scope: string; rationale: string },
+    input: {
+      scope: string;
+      rationale: string;
+      requestedChange?: { fieldPath: string; requestedValue: string | null };
+    },
     actorUserId: string,
   ): Promise<AmendmentView>;
   decideAmendment(
@@ -549,7 +575,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         total += 1;
         byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
       }
-      return { total, byStatus };
+      return { total, byStatus, admissions: null };
     },
 
     async listAddresses(organizationId, patientId) {

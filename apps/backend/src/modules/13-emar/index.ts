@@ -31,7 +31,14 @@ export function mountEmarRoutes(
   // administration is FILED under (patient / admission / drug name / route). Thunked for the same reason as
   // the case-manager reader above: seams register after the route mount. Adds no M13->M12 compile edge (the
   // seam interface is a @wardenx/types leaf) and no new manifest dependency — M13 already dependsOn 12.
-  const backend = createDbEmarBackend(
+  const backend = buildEmarBackend(db, outbox);
+  _registerM13Abac({ resolver: backend });
+  _registerM13Routes(app, { service: backend });
+}
+
+/** The production backend wired to M5 / M12 / M37's published seams (shared by the route mount and the M31 port). */
+function buildEmarBackend(db: DbClient, outbox?: EmarWriteOutboxPort) {
+  return createDbEmarBackend(
     db,
     outbox,
     () => getSeam("CareTeamProvider"),
@@ -49,8 +56,34 @@ export function mountEmarRoutes(
     // resolves per call, after M37 has registered over the deny-stub.
     () => getSeam("IpuIvSafetyOverlayProvider"),
   );
-  _registerM13Abac({ resolver: backend });
-  _registerM13Routes(app, { service: backend });
+}
+
+/**
+ * GAP-092 — M31's caregiver-attested write port. The portal calls this to land a REAL M13
+ * `administration_record` (pending_caregiver_review, RN review required) instead of a fake 202.
+ */
+export function buildPortalCaregiverAttestationPort(
+  db: DbClient,
+  outbox?: EmarWriteOutboxPort,
+): {
+  record(input: {
+    organizationId: string;
+    patientId: string;
+    medicationOrderId: string;
+    administeredAt: string;
+    caregiverSessionId: string;
+    route: string;
+    doseAmount: number;
+    doseUnit: string;
+  }): Promise<{ administrationId: string; status: string }>;
+} {
+  const backend = buildEmarBackend(db, outbox);
+  return {
+    async record({ organizationId, ...args }) {
+      const view = await backend.recordCaregiverAttested(organizationId, args);
+      return { administrationId: view.id, status: view.status };
+    },
+  };
 }
 
 export {

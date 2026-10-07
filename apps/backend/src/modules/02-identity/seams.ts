@@ -43,6 +43,7 @@ import {
 } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
+import { createDbAuditorMagicLinkIssuer } from "./auditor-magic-link-store";
 import {
   createDrizzleElevatedApprovalStore,
   createElevatedApprovalReader,
@@ -80,7 +81,13 @@ export interface IdentitySeamDeps {
 /** Register M2's published seams into the M1 registry (M2-T07; call before validateSeams()). */
 export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   const sessions = deps.sessions ?? createInMemorySessionContextStore().store;
-  const auditorLinks = deps.auditorLinks ?? createInMemoryAuditorMagicLinkIssuer().issuer;
+  // GAP-011 — with a db the one-time token is persisted (hash only, `auditor_magic_link`); the in-memory
+  // issuer stands only for db-less slices/tests.
+  const auditorLinks =
+    deps.auditorLinks ??
+    (deps.db
+      ? createDbAuditorMagicLinkIssuer(deps.db)
+      : createInMemoryAuditorMagicLinkIssuer().issuer);
   // AC-03 — the per-tenant step-up override (§4.3.2, D9) rides on the SAME seam M3's
   // `step_up_recent` predicate already resolves, so no new seam and no new dependsOn edge. Without
   // a db the store is absent and every operation resolves to the platform floor: an override may

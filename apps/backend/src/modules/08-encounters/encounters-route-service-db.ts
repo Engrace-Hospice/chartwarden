@@ -11,14 +11,13 @@
 // does, folds the declared §2.8 effects into the row UPDATE, and emits its `m8.*` event on the caller's
 // transactional outbox — no route is left at 501.
 //
-// Because the EncounterRouteService interface threads no acting membership / session / attestation, this
-// slice makes three documented compromises (mirrors M7L-T02's null-actor convention): (1) writes envelope
-// `withOrgContext` with `userId:""` so the M4 write-audit trigger fires with a NULL actor; (2) columns the
-// route never captures — a signer identity, the assigned RN cosigner, a supervisor override reason — are
-// filled from the authoring membership or a documented sentinel, backfilled when the interface threads
-// them; (3) no `encounter_signature` provenance row and no `hearthnote_selection`/Layer-2 row is written
-// (the interface carries neither the session/attestation nor the selection tree) — the encounter's
-// status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
+// The EncounterRouteService interface threads no acting membership into every call, so (mirrors M7L-T02's
+// null-actor convention): (1) writes envelope `withOrgContext` with `userId:""` so the M4 write-audit
+// trigger fires with a NULL actor; (2) columns the route never captures — the assigned RN cosigner, a
+// supervisor override reason — are filled from the authoring membership or a documented sentinel. GAP-204:
+// the former compromise (3) is retired — every primary sign / cosignature / addendum-sign now writes an
+// `encounter_signature` provenance row (see the §3.3/D13 block below) and the HearthNote selection /
+// Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import {
@@ -388,7 +387,7 @@ async function admissionSummaryFor(
 }
 
 /**
- * The production, RLS-backed EncounterRouteService. Reads are real; writes fail-closed 501.
+ * The production, RLS-backed EncounterRouteService. Reads and writes are real (Drizzle + RLS).
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbEncounterRouteService(
@@ -777,6 +776,23 @@ export function createDbEncounterRouteService(
     });
   }
 
+  /** GAP-177 — `m8.encounter.orphan_recorded`: a just-signed encounter with NO `visit_id` (ad-hoc /
+   *  retroactive) is the M17 reconciliation fact (D2). Emitted beside `.signed`, on the same tx. */
+  async function emitOrphanIfUnlinked(
+    tx: unknown,
+    org: string,
+    r: { readonly id: string; readonly patientId: string; readonly visitId: string | null },
+    signedAt: Date,
+  ): Promise<void> {
+    if (r.visitId) return;
+    await emit(tx, org, "m8.encounter.orphan_recorded", "encounter", r.id, {
+      encounterId: r.id,
+      patientId: r.patientId,
+      organizationId: org,
+      recordedAt: signedAt.toISOString(),
+    });
+  }
+
   /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
   async function loadEnc(t: DbClient, encounterId: string): Promise<typeof ENC.$inferSelect> {
     const [row] = await t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
@@ -1097,6 +1113,10 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const conditions: SQL[] = [];
         if (filters.patientId) conditions.push(eq(ENC.patientId, filters.patientId));
+        if (filters.patientIds) {
+          if (filters.patientIds.length === 0) return { encounters: [] };
+          conditions.push(inArray(ENC.patientId, [...filters.patientIds]));
+        }
         if (filters.admissionId) conditions.push(eq(ENC.admissionId, filters.admissionId));
         if (filters.status) conditions.push(eq(ENC.status, filters.status));
         if (filters.authorId) conditions.push(eq(ENC.authoredByMembershipId, filters.authorId));
@@ -1885,6 +1905,7 @@ export function createDbEncounterRouteService(
             careplanLinks,
             documentRenderPayload: { final: finalPayload, addenda: [] },
           });
+          await emitOrphanIfUnlinked(t, organizationId, r, now);
           return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
         }
 
@@ -1939,6 +1960,7 @@ export function createDbEncounterRouteService(
           careplanLinks,
           documentRenderPayload: { final: finalPayload, addenda: [] },
         });
+        await emitOrphanIfUnlinked(t, organizationId, r, now);
         if (requiresCosign) {
           // §2.4 D3 — open the cosignature request already `routed` to the assigned RN case manager,
           // resolved above through M5's CareTeamProvider. It used to route to `signedByMembershipId` —

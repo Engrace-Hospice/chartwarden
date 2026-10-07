@@ -116,6 +116,8 @@ export {
 } from "./seams/patient-display-for-org";
 // GAP-084 — the org-explicit keyset patient-id enumeration M28's bulk-export worker needs (injected as a port).
 export { PATIENT_IDS_PAGE_MAX, patientIdsPageForOrg } from "./seams/patient-ids-page-for-org";
+// GAP-115 — the deceased-status fact M2's funeral-home link needs, injected into M2 as a port.
+export { patientIsDeceasedForOrg } from "./seams/patient-deceased-for-org";
 
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {
@@ -164,6 +166,17 @@ export {
   type SnapshotRebuildSummary,
   rebuildPrivacySnapshotsForOrg,
 } from "./jobs/snapshot-rebuild";
+// GAP-118 — the daily amendment SLA scan (due-soon / overdue events for pending §164.526 requests).
+export {
+  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
+  M5_AMENDMENT_SLA_QUEUE,
+  M5_AMENDMENT_SLA_SCHEDULE,
+  SLA_WARN_DAYS,
+  registerAmendmentSlaWorker,
+  runAmendmentSlaScan,
+  scheduleAmendmentSla,
+  wireAmendmentSlaTenancy,
+} from "./jobs/amendment-sla-scan";
 export {
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   M5_SNAPSHOT_REBUILD_QUEUE,
@@ -180,7 +193,6 @@ export {
   type M39ConsentChangedPayload,
   type PrivacySnapshotPorts,
   SudConsentRequiredError,
-  M39_CONSENT_CONSUMER_DEFERRED,
   recomputePrivacyFlags,
   mergeConsentSignal,
   isSudReadAllowed,
@@ -346,13 +358,16 @@ import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db"
 import type { M5OutboxPort } from "./deceased-db";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
+import { createDbPatientLifecyclePort as _dbLifecyclePort } from "./patient-lifecycle-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
 import type { PrivacyOfficerPorts } from "./privacy/officer";
 import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } from "./routes/assignment-routes";
+import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } from "./routes/lifecycle-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
+import type { AdmissionCensusSummaryPort } from "./routes/service";
 
 /**
  * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the
@@ -370,13 +385,16 @@ export function mountPatientRoutes(
   db: DbClient,
   outbox: M5OutboxPort,
   privacy: PrivacyOfficerPorts,
+  census: { readonly admissionSummary?: AdmissionCensusSummaryPort } = {},
 ): void {
   _registerPatientRoutes(app, {
-    service: _dbPatientService(db, outbox),
+    service: _dbPatientService(db, outbox, census),
     mergePatients: (input) => _mergePatients(db, outbox, input),
   });
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
   _registerPatientAssignmentRoutes(app, { assignments: _dbAssignmentsPort(db, outbox) });
+  // GAP-018/019/012 — status, death, identifiers, caregivers, the match queue, unmerge, amendment inbox.
+  _registerPatientLifecycleRoutes(app, { lifecycle: _dbLifecyclePort(db, outbox) });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
@@ -391,3 +409,13 @@ export function mountPatientRoutes(
       }),
   });
 }
+
+// GAP-118 — the geocode consumer + the vendor port (fail-closed until a vendor is bound; see geocoder.ts).
+export { buildM5GeocodeAddressConsumer } from "./outbox-consumers/m5-geocode-address";
+export {
+  GEOCODER_VENDORS,
+  GeocoderUnconfiguredError,
+  createDeniedGeocoder,
+  resolveGeocoder,
+  type GeocoderPort,
+} from "./geocoder";

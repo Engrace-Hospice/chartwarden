@@ -29,8 +29,15 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
+import { fhirInboundIsPatientScoped } from "@wardenx/fhir";
 import type { FhirInboundOwnerModule } from "@wardenx/types";
+import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M28 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M28_FHIR_ABAC_PREDICATES = [
@@ -74,6 +81,13 @@ export interface FhirBulkExportJobAbacFacts {
   readonly initiatedByMembershipId: string | null;
 }
 
+/** What `fhir_inbound_owner_module_match` needs about the proposal's subject (GAP-198, migration 0490). */
+export interface FhirInboundSubjectFacts {
+  readonly resourceType: string;
+  /** Stamped at staging; null = no resolvable chart (a new-patient intake, or an unresolvable subject). */
+  readonly subjectPatientId: string | null;
+}
+
 /** One `fhir_client` as `fhir_client_active` reads it (§2.2/§2.3). */
 export interface FhirClientActiveFacts {
   readonly organizationId: string;
@@ -92,6 +106,8 @@ export interface FhirGatewayAbacResolver {
   clientOrgId(clientId: string): Promise<string | null>;
   /** The owner module a staged proposal resolves to, or null when absent/unreadable. */
   inboundOwnerModule(orgId: string, proposalId: string): Promise<FhirInboundOwnerModule | null>;
+  /** The proposal's resource type + staged subject patient, or null when absent/unreadable (denies). */
+  inboundSubjectPatient(orgId: string, proposalId: string): Promise<FhirInboundSubjectFacts | null>;
   /** Whether the membership holds an M3 permission key in this org. `null` ⇒ unreadable (denies). */
   holdsPermission(
     orgId: string,
@@ -120,6 +136,9 @@ export const denyStubFhirGatewayAbacResolver: FhirGatewayAbacResolver = {
   async inboundOwnerModule() {
     return null;
   },
+  async inboundSubjectPatient() {
+    return null;
+  },
   async holdsPermission() {
     return null;
   },
@@ -139,6 +158,12 @@ export const denyStubFhirGatewayAbacResolver: FhirGatewayAbacResolver = {
 
 export interface FhirGatewayAbacDeps {
   readonly resolver: FhirGatewayAbacResolver;
+  /** Caseload membership check; defaults to the boot-registered M5 `CaseloadProvider` seam. */
+  readonly isInCaseload?: (q: {
+    organizationId: string;
+    userId: string;
+    patientId: string;
+  }) => Promise<boolean>;
 }
 
 // ── target/context extraction (server-side only) ─────────────────────────────────────────────────────
@@ -172,6 +197,7 @@ export function buildFhirGatewayAbacPredicates(
   (context: AbacContext, target: AbacTarget) => Promise<boolean>
 > {
   const { resolver } = deps;
+  const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   return {
     /** §4.7 — a `fhir_client` row is visible only to a membership in the row's own org. */
@@ -184,7 +210,13 @@ export function buildFhirGatewayAbacPredicates(
       return org === context.organizationId;
     },
 
-    /** §4.7 / D8 — accept/reject a staged proposal only through the owner module's native write path. */
+    /**
+     * §4.7 / D8 — accept/reject a staged proposal only through the owner module's native write path,
+     * AND (GAP-198) only for a patient the reviewer may see: `caseload_or_scope` over the proposal's
+     * `subject_patient_id`, stamped at staging. A patient-scoped resource (MedicationStatement) with no
+     * resolvable subject DENIES; a new-patient `Patient` intake has no chart to scope and is gated by the
+     * owner's `patient.create` alone.
+     */
     fhir_inbound_owner_module_match: async (context, target) => {
       if (!context.organizationId) return false;
       const membershipId = membershipIdOf(context);
@@ -199,7 +231,25 @@ export function buildFhirGatewayAbacPredicates(
       const held = await resolver
         .holdsPermission(context.organizationId, membershipId, key)
         .catch(() => null);
-      return held === true;
+      if (held !== true) return false;
+
+      const subject = await resolver
+        .inboundSubjectPatient(context.organizationId, proposalId)
+        .catch(() => null);
+      if (subject === null) return false; // absent / unreadable
+      if (subject.subjectPatientId === null)
+        return !fhirInboundIsPatientScoped(subject.resourceType);
+      if (hasOrgWideScope(context.roles ?? [])) return true;
+      if (!context.userId) return false;
+      try {
+        return await isInCaseload({
+          organizationId: context.organizationId,
+          userId: context.userId,
+          patientId: subject.subjectPatientId,
+        });
+      } catch {
+        return false;
+      }
     },
 
     /** §4.7 — requested `_type` set ⊆ the client's granted resource types (bound at $export). */

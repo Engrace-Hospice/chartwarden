@@ -3,11 +3,8 @@
 //
 // The PURE, port-injected inbound half of M23: the topic→effect subscription map (the single source of truth
 // for the §4.4 fan-out), one pure handler per subscribed topic family, the M22 document-render handshake
-// builders/resolver (tasks 57 + 58), and the forward-declared register surface the boot dispatcher wires once
-// the live inbound transactional-outbox dispatcher accessor lands. RULE 3(d): these ship pure + a
-// subscription map — NO boot-wired running subscriber here; the live inbound dispatcher is a later platform
-// phase. `registerM23Consumers` binds only the LIVE topics (M5/M6/M8/M18/M25/M40 are locked); M26's
-// forward-seam topic stays deny-stub until that module lands.
+// builders/resolver (tasks 57 + 58). M26's forward-seam topic stays deny-stub until that module lands.
+// GAP-205: the former `registerM23Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
 export * from "./subscription-map";
 export * from "./document-render";
 export * from "./handlers";
@@ -33,13 +30,7 @@ import {
   handleRevocationCreated,
   handleTransferCreated,
 } from "./handlers";
-import {
-  type M23UpstreamSubscription,
-  M23_LIVE_SUBSCRIPTION_TOPICS,
-  M23_UPSTREAM_SUBSCRIPTIONS,
-  M26_CAP_PROJECTION_TOPIC,
-  M40_CANONICAL_UPDATED_TOPIC,
-} from "./subscription-map";
+import { M26_CAP_PROJECTION_TOPIC, M40_CANONICAL_UPDATED_TOPIC } from "./subscription-map";
 
 /**
  * The discriminated upstream event the inbound dispatcher delivers to M23 (the topic + its structurally-
@@ -114,37 +105,4 @@ export async function dispatchM23UpstreamEvent(
     case M26_CAP_PROJECTION_TOPIC:
       return handleCapProjectionChanged(event.topic, event.payload, ports);
   }
-}
-
-/**
- * Register the M23 §4.4 upstream consumers (the M27 register-surface mirror). The boot dispatcher calls this
- * with its `bind(eventName, consumerName, handler)` registrar and the live {@link M23ConsumerPorts}; each
- * LIVE forward-declared subscription is bound to a closure over {@link dispatchM23UpstreamEvent}. M26's
- * DENY-STUB topic is NOT bound today (wired conservatively — M26 has not landed). Until the live
- * inbound transactional-outbox dispatcher accessor lands (RULE 3(d)) the composition root calls this with NO
- * registrar — it then merely returns the forward-declared bindings (nothing boots). Idempotent: the
- * dispatcher dedups on `(eventId, consumerName)` per the M1 outbox-consumer pattern.
- */
-export function registerM23Consumers(options?: {
-  readonly ports?: M23ConsumerPorts;
-  readonly bind?: (
-    eventName: string,
-    consumerName: string,
-    handler: (payload: unknown) => Promise<UpstreamConsumeReport>,
-  ) => void;
-}): readonly M23UpstreamSubscription[] {
-  const { ports, bind } = options ?? {};
-  if (bind && ports) {
-    for (const subscription of M23_UPSTREAM_SUBSCRIPTIONS) {
-      // Conservative: bind only the LIVE topics (M5/M6/M8/M18/M25/M40). M26 stays deny-stub until it lands.
-      if (!M23_LIVE_SUBSCRIPTION_TOPICS.includes(subscription.eventName)) continue;
-      bind(subscription.eventName, subscription.consumerName, (payload) =>
-        dispatchM23UpstreamEvent(
-          { topic: subscription.eventName, payload } as M23UpstreamEvent,
-          ports,
-        ),
-      );
-    }
-  }
-  return M23_UPSTREAM_SUBSCRIPTIONS;
 }

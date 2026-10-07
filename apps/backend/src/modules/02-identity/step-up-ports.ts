@@ -100,6 +100,14 @@ export interface StepUpRouteDeps {
   audit: AuditExecutor;
   /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op. */
   outbox?: IdentityOutboxPort;
+  /**
+   * The resolver `GET /api/v1/me/session` reads through (GAP-115). Optional: omitted, it falls back to
+   * `sessions`. Production binds the DB-backed resolver here so the persisted `lastStepUpAt` /
+   * `lastStepUpFactor` are reported — the context resolver `sessions` uses carries them as null.
+   */
+  meSessions?: SessionResolver;
+  /** Clock for `/me/session` freshness (injectable for deterministic tests). */
+  now?: () => Date;
   /** WebAuthn relying-party id echoed in the initiate response; default from env. */
   webauthnRpId?: string;
   /** Challenge-id generator (injectable for deterministic tests). */

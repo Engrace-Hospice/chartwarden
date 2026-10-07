@@ -464,6 +464,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
         body.data,
         body.priority,
         await detailActorOf(request),
+        body.indicationText,
       );
     },
   );

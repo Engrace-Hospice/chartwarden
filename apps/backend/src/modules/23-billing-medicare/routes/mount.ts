@@ -23,6 +23,7 @@ import { registerMacCredentialRoutes } from "./mac-credentials.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
 import { registerNotrRoutes } from "./notr.routes";
+import { registerPlatformAdminRoutes } from "./platform-admin.routes";
 import { registerRateTableRoutes } from "./rate-table.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
@@ -46,6 +47,7 @@ export {
 } from "./sequestration-policy.routes";
 export { registerMacCredentialRoutes, type MacCredentialRouteDeps } from "./mac-credentials.routes";
 export { registerRateTableRoutes, type RateTableRouteDeps } from "./rate-table.routes";
+export { registerPlatformAdminRoutes, type PlatformAdminRouteDeps } from "./platform-admin.routes";
 export { registerWageIndexRoutes, type WageIndexRouteDeps } from "./wage-index.routes";
 export { registerMetricsRoutes, type MetricsRouteDeps } from "./metrics.routes";
 export {
@@ -96,6 +98,10 @@ export function mountM23Routes(
   // F-211 — the tenant-entered CMS wage index (the other pricing input claim assembly needs).
   if (services.wageIndexService) {
     registerWageIndexRoutes(app, { wageIndexService: services.wageIndexService });
+  }
+  // GAP-144 — platform-only admin (platform-rules #41, wage-index load #42).
+  if (services.platformAdminService) {
+    registerPlatformAdminRoutes(app, { platformAdminService: services.platformAdminService });
   }
   // Route group F — AR dashboard + metrics (read-only) + the system-principal internal seams (M25/M26/M27).
   registerMetricsRoutes(app, { readService });

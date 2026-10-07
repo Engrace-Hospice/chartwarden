@@ -24,6 +24,7 @@ import {
 } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { guardChromedRoute } from "./actor-session";
+import { AlertInboxProvider } from "./alert-inbox";
 import {
   getGlobalResponseSignal,
   setGlobalResponseSignal,
@@ -183,7 +184,9 @@ export function AppShell({
             <FeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
                 <ToastProvider>
-                  <RouterProvider router={router} />
+                  <AlertInboxProvider>
+                    <RouterProvider router={router} />
+                  </AlertInboxProvider>
                 </ToastProvider>
               </SystemStatusProvider>
             </FeatureFlagProvider>

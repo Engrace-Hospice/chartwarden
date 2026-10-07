@@ -9,7 +9,6 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
-  useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
@@ -18,49 +17,14 @@ import {
 // listing rows (severity glyph + summary + source chip + status pill + relative time). The REAL data
 // is the caller's alert inbox (GET /api/v1/alerts/inbox) → the Notifications tab. Tasks & Mentions are
 // honest placeholders until the Tasks/worklist module lands — present, never fabricated.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-
-interface AlertItem {
-  alertId: string;
-  eventType: string;
-  category: string;
-  severity: string;
-  summary: string;
-  createdAt: string;
-  deliveryStatus: "delivered" | "partial" | "failed" | "pending";
-  readAt: string | null;
-}
-
-type AlertReadPost = (
-  path: string,
-  options: {
-    params: {
-      path: {
-        id: string;
-      };
-    };
-  },
-) => Promise<{
-  data?: unknown;
-  error?: unknown;
-  response?: Response;
-}>;
-
-async function postAlertRead(
-  client: ReturnType<typeof useApiClient>,
-  alertId: string,
-): Promise<{ error?: unknown }> {
-  const post = client.POST as unknown as AlertReadPost;
-
-  return post("/api/v1/alerts/{id}/read", {
-    params: {
-      path: {
-        id: alertId,
-      },
-    },
-  });
-}
+import { useNavigate } from "react-router-dom";
+import {
+  type AlertInboxItem,
+  isInternalAlertDeepLink,
+  useAlertInbox,
+} from "../../shell/alert-inbox";
 
 type Tab = "notifications" | "tasks" | "mentions";
 
@@ -74,7 +38,7 @@ const SEVERITY_TONE: Record<string, StatusTone> = {
   warn: "warning",
   info: "neutral",
 };
-const DELIVERY_TONE: Record<AlertItem["deliveryStatus"], StatusTone> = {
+const DELIVERY_TONE: Record<AlertInboxItem["deliveryStatus"], StatusTone> = {
   delivered: "success",
   partial: "warning",
   failed: "error",
@@ -101,35 +65,19 @@ function relTime(iso: string): string {
 }
 
 export function NotificationsInbox(): JSX.Element {
-  const client = useApiClient();
-  const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { alerts, loadFailed, markRead, activateAlert } = useAlertInbox();
   const [tab, setTab] = useState<Tab>("notifications");
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
   >("all");
-  const [deliveryFilter, setDeliveryFilter] = useState<"all" | AlertItem["deliveryStatus"]>("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | AlertInboxItem["deliveryStatus"]>(
+    "all",
+  );
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const { data, error: err } = await client.GET("/api/v1/alerts/inbox");
-      if (!active) return;
-      if (err) {
-        setError("Could not load notifications.");
-        setAlerts([]);
-        return;
-      }
-      setAlerts((data?.alerts ?? []) as AlertItem[]);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
 
   const filteredAlerts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -174,32 +122,6 @@ export function NotificationsInbox(): JSX.Element {
     setPage(1);
   };
 
-  async function markAlertRead(alert: AlertItem): Promise<void> {
-    if (alert.readAt !== null) return;
-
-    const readAt = new Date().toISOString();
-
-    setAlerts(
-      (current) =>
-        current?.map((item) =>
-          item.alertId === alert.alertId
-            ? {
-                ...item,
-                readAt,
-              }
-            : item,
-        ) ?? [],
-    );
-
-    const { error: markError } = await postAlertRead(client, alert.alertId);
-
-    if (markError) {
-      const { data } = await client.GET("/api/v1/alerts/inbox");
-
-      setAlerts((data?.alerts ?? []) as AlertItem[]);
-    }
-  }
-
   return (
     <WorkQueueLayout
       header={
@@ -216,10 +138,10 @@ export function NotificationsInbox(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
-          {error ? (
+          {loadFailed ? (
             <div role="alert" style={errorBannerStyle}>
               <Glyph name="alert" size={16} />
-              <span>{error}</span>
+              <span>Could not load notifications.</span>
             </div>
           ) : null}
           <div style={toolbarStyle}>
@@ -338,9 +260,16 @@ export function NotificationsInbox(): JSX.Element {
               }
             />
           </div>
-        ) : alerts === null ? (
+        ) : alerts === null && !loadFailed ? (
           <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
             <LoadingSpinner />
+          </div>
+        ) : alerts === null ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="Notifications unavailable"
+              description="Notifications could not be loaded. Try opening the notification bell again."
+            />
           </div>
         ) : filteredAlerts.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
@@ -380,9 +309,31 @@ export function NotificationsInbox(): JSX.Element {
                   return (
                     <tr
                       key={alert.alertId}
+                      // biome-ignore lint/a11y/useSemanticElements: native tables cannot contain a link spanning cells; link semantics plus keyboard activation preserve a whole-row target.
+                      role={isInternalAlertDeepLink(alert.deepLink) ? "link" : undefined}
+                      tabIndex={isInternalAlertDeepLink(alert.deepLink) ? 0 : undefined}
+                      onClick={
+                        isInternalAlertDeepLink(alert.deepLink)
+                          ? () => activateAlert(alert, navigate)
+                          : undefined
+                      }
+                      onKeyDown={
+                        isInternalAlertDeepLink(alert.deepLink)
+                          ? (event) => {
+                              if (
+                                event.target === event.currentTarget &&
+                                (event.key === "Enter" || event.key === " ")
+                              ) {
+                                event.preventDefault();
+                                activateAlert(alert, navigate);
+                              }
+                            }
+                          : undefined
+                      }
                       style={{
                         ...rowStyle,
                         ...(unread ? unreadNotificationRowStyle : {}),
+                        ...(isInternalAlertDeepLink(alert.deepLink) ? interactiveRowStyle : {}),
                       }}
                     >
                       <td style={tdStyle}>
@@ -429,7 +380,10 @@ export function NotificationsInbox(): JSX.Element {
                         {unread ? (
                           <button
                             type="button"
-                            onClick={() => void markAlertRead(alert)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              markRead(alert);
+                            }}
                             style={markReadButtonStyle}
                           >
                             Mark read
@@ -482,7 +436,7 @@ function TabButton({
   );
 }
 
-function NotificationCell({ alert }: { alert: AlertItem }): JSX.Element {
+function NotificationCell({ alert }: { alert: AlertInboxItem }): JSX.Element {
   return (
     <div style={notificationCellStyle}>
       <span
@@ -598,6 +552,9 @@ const sourceChipStyle: CSSProperties = {
 };
 const unreadNotificationRowStyle: CSSProperties = {
   background: "color-mix(in srgb, var(--color-primary) 4%, transparent)",
+};
+const interactiveRowStyle: CSSProperties = {
+  cursor: "pointer",
 };
 
 const notificationWithStateStyle: CSSProperties = {

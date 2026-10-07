@@ -1260,6 +1260,14 @@ export const M10_ABAC_PREDICATES = {
 | `hope:submission` | `submit-correction-rfa` | event-driven from `hope.correction.submitted` | Queues a Correction RFA submission to iQIES referencing the original `iqies_record_id` |
 | `hope:retention` | `hope-partition-rotation` | cron, monthly | Coordinates with M1 partition-rotation: ensures `extended_for_cms` partitions are not dropped before the 10-year horizon |
 
+> **As-built decision (GAP-181) — HOPE retention.** The `hope.retention` queue now has a worker running the monthly `hope-retention-scan` (`0 4 2 * *`, the day after partition rotation). It EVALUATES and FLAGS; it never deletes.
+> - **Horizons (architecture wins; OPEN-021 and §3 retention class):** a record with a *submitted* assessment is held **10 years from the last iQIES transmission** (CMS `extended_for_cms`) and never less than the standard horizon; every other record is held **7 years from its last effective date** (the longest of HIPAA 45 CFR 164.316(b)(2)/164.530(j) six years, 42 CFR 418.104 five years after discharge, and the architecture default). A tenant/state override can only LENGTHEN either horizon.
+> - **Never eligible while:** an active M4 legal hold covers the patient (a hold with no patient selector is treated as org-wide — over-blocking is the safe error), an iQIES submission item is still `rejected`/`blocked`/`unmatched` on a live (non-superseded) assessment, or a correction draft is pending.
+> - **Output:** the M10-owned ledger `hope_retention_review` (migration 0482), one row per `(organization, patient)` once the horizon is reached — `eligible` (flagged; publishes `m10.hope.retention_eligible` once per episode, seam consumer M4), `blocked` (with the blocker list) or `cleared`.
+> - **Destruction** stays on the existing M4 pathway: a human-approved destruction certificate invokes the registered `hope_record` eraser, which re-checks the CMS 10-year rule itself and removes the review row with the subtree. The scan is fail-closed on the legal-hold port (unbound = it refuses to run).
+> - The other declared-without-worker queues (`hope.scheduling`, `hope.alerts`, `hope.validation`) and the M7 snapshot queue remain documented deferrals: their logic runs inline on the record/sign path (validation, scheduling) or via the window/SFV watchdogs (alerts).
+
+
 #### 4.8.1 Queue Parameters (M10-F10 — ARCH-262, SD-059, OPS-035)
 
 > **M10-F10 (ARCH-262, SD-059, OPS-035 — ADR-0021):** Every BullMQ queue below declares the full

@@ -9,7 +9,16 @@
 // `patient_id` / `medication_order_id` are plain uuid with no cross-module/partitioned FK (the
 // `dosespot_sync_queue` / `medication_order_transmission` precedent).
 import { sql } from "drizzle-orm";
-import { integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { dosespotWebhookEvents } from "./dosespot-webhook-events";
 
@@ -149,3 +158,34 @@ export type DosespotPatientSyncRow = typeof dosespotPatientSync.$inferSelect;
 export type MedicationHistoryPullRow = typeof medicationHistoryPulls.$inferSelect;
 export type MedicationHistoryRecordRow = typeof medicationHistoryRecords.$inferSelect;
 export type MedicationOrderDispenseRow = typeof medicationOrderDispenses.$inferSelect;
+
+// GAP-037 (migration 0411) — §2.9 the RxBenefit coverage summary the `dosespot.rx_benefit_prewarm` cron fills.
+// Written ONLY from a real RxBenefit lookup response; one row per (org, patient, RxCUI), replaced in place on
+// a re-lookup; DELETEd when the patient's demographics/payer change (`invalidate_rx_benefit_cache`).
+export const rxBenefitCache = pgTable(
+  "rx_benefit_cache",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    patientId: uuid("patient_id").notNull(), // M5 (app-validated; no cross-module FK)
+    rxnormRxcui: text("rxnorm_rxcui").notNull(),
+    covered: boolean("covered").notNull(),
+    copayTier: text("copay_tier"),
+    priorAuthRequired: boolean("prior_auth_required").notNull(),
+    lookedUpAt: timestamp("looked_up_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    patientDrugUq: uniqueIndex("rx_benefit_cache_patient_drug_uq").on(
+      t.organizationId,
+      t.patientId,
+      t.rxnormRxcui,
+    ),
+  }),
+);
+
+export type RxBenefitCacheRow = typeof rxBenefitCache.$inferSelect;

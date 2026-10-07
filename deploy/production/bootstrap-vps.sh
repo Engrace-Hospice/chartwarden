@@ -19,8 +19,8 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 77
 fi
 
-if [ ! -f "$SOURCE_DIR/compose.yml" ] || [ ! -d "$SOURCE_DIR/nginx" ]; then
-  echo "expected $SOURCE_DIR/compose.yml and $SOURCE_DIR/nginx; run from the repo root or set SOURCE_DIR" >&2
+if [ ! -f "$SOURCE_DIR/compose.yml" ] || [ ! -d "$SOURCE_DIR/nginx" ] || [ ! -f "$SOURCE_DIR/.env.production.example" ]; then
+  echo "expected $SOURCE_DIR/compose.yml, $SOURCE_DIR/nginx and $SOURCE_DIR/.env.production.example; run from the repo root or set SOURCE_DIR" >&2
   exit 66
 fi
 
@@ -39,14 +39,34 @@ install -m 0755 "$SOURCE_DIR/deploy.sh" "$DEPLOY_DIR/deploy.sh"
 if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
   tmp_env=$(mktemp "$DEPLOY_DIR/.env.production.XXXXXX")
   chmod 600 "$tmp_env"
-  sed \
-    -e "s#REPLACE_WITH_64_HEX_CHARACTERS#$(secret_hex)#g" \
-    -e "s#REPLACE_WITH_BASE64_32_BYTES#$(secret_b64)#g" \
-    -e "s#REPLACE_WITH_AT_LEAST_32_CHARACTERS#$(secret_hex)#g" \
+  # Every REPLACE_WITH_* token gets its OWN freshly generated secret (a shared value would make e.g. the
+  # tenant KEK and the pseudonym KEK identical, which their specs forbid). awk shells out to openssl
+  # once per token occurrence.
+  awk '
+    function gen(kind,   cmd, out) {
+      if (kind == "REPLACE_WITH_BASE64_32_BYTES") cmd = "openssl rand -base64 32"
+      else cmd = "openssl rand -hex 32"
+      cmd | getline out
+      close(cmd)
+      return out
+    }
+    {
+      while (match($0, /REPLACE_WITH_[A-Z0-9_]+/)) {
+        tok = substr($0, RSTART, RLENGTH)
+        if (tok != "REPLACE_WITH_64_HEX_CHARACTERS" && tok != "REPLACE_WITH_BASE64_32_BYTES" && tok != "REPLACE_WITH_AT_LEAST_32_CHARACTERS") {
+          print "unknown placeholder " tok > "/dev/stderr"; exit 65
+        }
+        $0 = substr($0, 1, RSTART - 1) gen(tok) substr($0, RSTART + RLENGTH)
+      }
+      print
+    }
+  ' "$SOURCE_DIR/.env.production.example" | sed \
     -e "s#https://wardenx.chartwarden.cloud#https://$FRONTEND_DOMAIN#g" \
     -e "s#https://be082026.wardenx.chartwarden.cloud#https://$BACKEND_DOMAIN#g" \
     -e "s#https://storage.wardenx.chartwarden.cloud#https://$STORAGE_DOMAIN#g" \
-    "$SOURCE_DIR/.env.production.example" >"$tmp_env"
+    -e "s#^PASSKEY_RP_ID=.*#PASSKEY_RP_ID=$FRONTEND_DOMAIN#" \
+    -e "s#^WEBAUTHN_RP_ID=.*#WEBAUTHN_RP_ID=$FRONTEND_DOMAIN#" \
+    >"$tmp_env"
   mv "$tmp_env" "$DEPLOY_DIR/.env.production"
   echo "created $DEPLOY_DIR/.env.production with generated secrets"
   echo "edit WARDENX_IMAGE, WARDENX_WEB_IMAGE, GHCR owner/SHA, and provider gateway URLs before full app deploy"

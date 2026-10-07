@@ -127,6 +127,8 @@ const PERMISSION_SEED = [
  * resolver (`abac-resolver-drizzle.ts`) reads them from the platform's own effective-permission table —
  * this is the test-local stand-in for that read.
  */
+const CHART_PATIENT_ID = "3f2b8c1e-5a47-4d0e-9b1a-7c6d5e4f3a21";
+
 function buildTestAbacResolver(
   store: FhirGatewayStore,
   orgId: string,
@@ -141,6 +143,16 @@ function buildTestAbacResolver(
     async inboundOwnerModule(org, proposalId) {
       const proposal = await store.getProposal(org, proposalId);
       return proposal ? proposal.ownerModule : null;
+    },
+    async inboundSubjectPatient(org, proposalId) {
+      const proposal = await store.getProposal(org, proposalId);
+      // GAP-198: a MedicationStatement resolves to a chart (caseload granted below); a Patient is a
+      // subject-less intake. The caseload arm itself is proven in m28-abac.test.ts and the live suite.
+      if (!proposal) return null;
+      return {
+        resourceType: proposal.resourceType,
+        subjectPatientId: proposal.resourceType === "MedicationStatement" ? CHART_PATIENT_ID : null,
+      };
     },
     async holdsPermission(_org, membershipId, key) {
       return membershipPermissions.get(membershipId)?.has(key) ?? false;
@@ -236,7 +248,9 @@ function makeServer(options: MakeServerOptions = {}) {
   // A FRESH predicate registry per server (the M11-T06 precedent — the shared registry would otherwise
   // persist a predicate closed over a prior test's store across the file).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildFhirGatewayAbacPredicates({ resolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildFhirGatewayAbacPredicates({ resolver, isInCaseload: async () => true }),
+  )) {
     reg.register(name, predicate);
   }
   // `step_up_recent` is M3's predicate (composed by R39 via `requireStepUp`, not owned by M28); a fresh

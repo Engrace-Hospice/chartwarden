@@ -99,10 +99,6 @@ export async function applyConsentChanged(
   return flags;
 }
 
-/** True in Phase 1 (Wave C): M39 ships in the same wave; until its consumer is wired live the
- *  snapshot is seeded by admit/admin resync, not the event. */
-export const M39_CONSENT_CONSUMER_DEFERRED = true;
-
 /**
  * Merge ONE flag's new active-state into a snapshot's CURRENT flag set (D10, F-167/#248) — the
  * signals list {@link applyConsentChanged} actually needs to recompute correctly.

@@ -47,6 +47,10 @@ export const patientAmendmentRequests = pgTable(
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     slaDueAt: timestamp("sla_due_at", { withTimezone: true }).notNull(), // received_at + 60 days
+    // GAP-118 (migration 0431) — once-only markers for the daily SLA scan: set in the same transaction as the
+    // `m5.patient.amendment_sla_due_soon` / `_overdue` event so a replayed tick never alerts twice.
+    slaDueSoonNotifiedAt: timestamp("sla_due_soon_notified_at", { withTimezone: true }),
+    slaOverdueNotifiedAt: timestamp("sla_overdue_notified_at", { withTimezone: true }),
   },
   (t) => ({
     patientIdx: index("patient_amendment_request_patient_idx").on(t.patientId),

@@ -1,4 +1,3 @@
-import { SCALE_TYPES } from "@wardenx/types";
 import {
   CeremonyModal,
   EmptyState,
@@ -18,6 +17,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
+import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
@@ -302,10 +303,20 @@ export function EncounterRead(): JSX.Element {
     manualOverrideReason: "",
   });
 
-  const [assessment, setAssessment] = useState({
-    scaleType: "pps",
-    data: "{}",
-  });
+  // GAP-123 — the instrument catalog the shared RecordAssessmentModal renders its item fields from. It was
+  // a raw-JSON textarea here with a hard-coded list of all fourteen scale types, ten of which have no
+  // scorer and 500 on capture.
+  const [scaleCatalog, setScaleCatalog] = useState<ScaleDefinition[]>([]);
+  useEffect(() => {
+    if (utilityModal !== "assessment" || scaleCatalog.length > 0) return;
+    let alive = true;
+    void loadScaleCatalog(client).then((scales) => {
+      if (alive) setScaleCatalog(scales);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [client, utilityModal, scaleCatalog.length]);
 
   const post = client.POST as unknown as (
     path: string,
@@ -927,74 +938,6 @@ export function EncounterRead(): JSX.Element {
       "Addendum opened.",
       ["reason"],
     );
-  }
-
-  async function launchAssessment(): Promise<void> {
-    if (!encounterId || !encounter) return;
-
-    let data: Record<string, unknown>;
-
-    try {
-      data = JSON.parse(assessment.data) as Record<string, unknown>;
-    } catch {
-      setActionError(null);
-      setFieldErrors((current) => ({
-        ...current,
-        data: "Assessment payload must be valid JSON.",
-      }));
-      return;
-    }
-
-    setBusy(true);
-    setActionError(null);
-    clearFieldErrors(["scaleType", "data"]);
-
-    const res = await post("/api/v1/patients/{patientId}/assessments", {
-      params: {
-        path: {
-          patientId: encounter.patientId,
-        },
-      },
-      body: {
-        admissionId: encounter.admissionId,
-        scaleType: assessment.scaleType,
-        capturedAt: new Date().toISOString(),
-        sourceEncounterId: encounter.id,
-        data,
-      },
-    });
-
-    setBusy(false);
-
-    if (res.error) {
-      const mapped = fieldErrorsFrom(res.error, ["scaleType", "data"]);
-
-      if (Object.keys(mapped).length > 0) {
-        setFieldErrors((current) => ({ ...current, ...mapped }));
-        setActionError(null);
-      } else {
-        setActionError(errorMessage(res.error, "Assessment could not be created."));
-      }
-
-      return;
-    }
-
-    const responseData = res.data as
-      | {
-          id?: string;
-          assessmentId?: string;
-        }
-      | undefined;
-
-    const id = responseData?.id ?? responseData?.assessmentId;
-
-    if (id) {
-      navigate(`/patients/${encounter.patientId}/assessments/${id}`);
-      return;
-    }
-
-    setUtilityModal(null);
-    await load();
   }
 
   const bailBanner = patient ? (
@@ -2231,9 +2174,7 @@ export function EncounterRead(): JSX.Element {
       ────────────────────────────────────────────────────────────── */}
 
       <Modal
-        open={
-          utilityModal === "void" || utilityModal === "addendum" || utilityModal === "assessment"
-        }
+        open={utilityModal === "void" || utilityModal === "addendum"}
         onClose={busy ? undefined : () => setUtilityModal(null)}
         ariaLabel="Encounter action"
         width="34rem"
@@ -2242,13 +2183,7 @@ export function EncounterRead(): JSX.Element {
           <div>
             <span style={eyebrow}>Encounter action</span>
 
-            <h2 style={modalTitle}>
-              {utilityModal === "void"
-                ? "Void draft"
-                : utilityModal === "addendum"
-                  ? "Add addendum"
-                  : "Launch assessment"}
-            </h2>
+            <h2 style={modalTitle}>{utilityModal === "void" ? "Void draft" : "Add addendum"}</h2>
           </div>
 
           {actionError ? (
@@ -2257,77 +2192,24 @@ export function EncounterRead(): JSX.Element {
             </p>
           ) : null}
 
-          {utilityModal === "assessment" ? (
-            <>
-              <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>Assessment type</span>
+          <label style={fieldStyle}>
+            <span style={fieldLabelStyle}>Reason</span>
 
-                <select
-                  value={assessment.scaleType}
-                  onChange={(event) => {
-                    setAssessment((current) => ({
-                      ...current,
-                      scaleType: event.target.value,
-                    }));
-                    clearFieldError("scaleType");
-                  }}
-                  style={{
-                    ...inputStyle,
-                    ...(fieldErrors.scaleType ? fieldControlErrorStyle : null),
-                  }}
-                  aria-invalid={Boolean(fieldErrors.scaleType)}
-                >
-                  {SCALE_TYPES.map((scale) => (
-                    <option key={scale} value={scale}>
-                      {stateLabel(scale)}
-                    </option>
-                  ))}
-                </select>
-                <FieldError message={fieldErrors.scaleType} />
-              </label>
-
-              <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>Assessment data JSON</span>
-
-                <textarea
-                  value={assessment.data}
-                  onChange={(event) => {
-                    setAssessment((current) => ({
-                      ...current,
-                      data: event.target.value,
-                    }));
-                    clearFieldError("data");
-                  }}
-                  rows={5}
-                  style={{
-                    ...textareaStyle,
-                    ...(fieldErrors.data ? fieldControlErrorStyle : null),
-                  }}
-                  aria-invalid={Boolean(fieldErrors.data)}
-                />
-                <FieldError message={fieldErrors.data} />
-              </label>
-            </>
-          ) : (
-            <label style={fieldStyle}>
-              <span style={fieldLabelStyle}>Reason</span>
-
-              <textarea
-                value={reason}
-                onChange={(event) => {
-                  setReason(event.target.value);
-                  clearFieldError("reason");
-                }}
-                rows={4}
-                style={{
-                  ...textareaStyle,
-                  ...(fieldErrors.reason ? fieldControlErrorStyle : null),
-                }}
-                aria-invalid={Boolean(fieldErrors.reason)}
-              />
-              <FieldError message={fieldErrors.reason} />
-            </label>
-          )}
+            <textarea
+              value={reason}
+              onChange={(event) => {
+                setReason(event.target.value);
+                clearFieldError("reason");
+              }}
+              rows={4}
+              style={{
+                ...textareaStyle,
+                ...(fieldErrors.reason ? fieldControlErrorStyle : null),
+              }}
+              aria-invalid={Boolean(fieldErrors.reason)}
+            />
+            <FieldError message={fieldErrors.reason} />
+          </label>
 
           <div style={modalActions}>
             <button
@@ -2345,10 +2227,8 @@ export function EncounterRead(): JSX.Element {
               onClick={() => {
                 if (utilityModal === "void") {
                   void voidDraft();
-                } else if (utilityModal === "addendum") {
-                  void createAddendum();
                 } else {
-                  void launchAssessment();
+                  void createAddendum();
                 }
               }}
               style={utilityModal === "void" ? dangerBtn : primaryBtn}
@@ -2358,6 +2238,24 @@ export function EncounterRead(): JSX.Element {
           </div>
         </div>
       </Modal>
+
+      {/* GAP-123 — the shared scale-capture form (M9): item fields rendered from the server's own scale
+          definitions, only scorable scales offered, the score computed by the server. */}
+      {encounter ? (
+        <RecordAssessmentModal
+          open={utilityModal === "assessment"}
+          patientId={encounter.patientId}
+          admissionId={encounter.admissionId}
+          scales={scaleCatalog}
+          sourceEncounterId={encounter.id}
+          onClose={() => setUtilityModal(null)}
+          onRecorded={(recorded) => {
+            const id = (recorded as { id?: string; assessmentId?: string }).id;
+            if (id) navigate(`/patients/${encounter.patientId}/assessments/${id}`);
+            else void load();
+          }}
+        />
+      ) : null}
     </PatientWorkspaceLayout>
   );
 }

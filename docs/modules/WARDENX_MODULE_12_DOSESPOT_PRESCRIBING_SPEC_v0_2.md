@@ -1381,6 +1381,8 @@ Per M3 D5 (typed predicates registered via the seam registry):
 
 Every job tagged with the M1 OpenTelemetry attributes `tenant_id, correlation_id, integration='dosespot', operation=<op>`. Per-tenant blast radius: job failures in tenant A do not block tenant B.
 
+> **Implementation note (GAP-037, 2026-10).** All ten queues are built. Three deliberate deviations from the table: (1) `transmit-queued-on-recovery` is poll-driven (every 5 minutes: reclaim crashed in-flight claims, drain the backlog) rather than subscribed to `m12.dosespot_recovered`; an open breaker defers an order without spending a retry, so an outage does not exhaust the budget; (2) `transmission-timeout-sweep` runs every 10 minutes because it is also the ack/nack POLL (DoseSpot's public v2 surface shows no verifiable push channel) and still times an unacknowledged order out at 24 h; (3) the vendor-facing queues run only for tenants with a complete `DOSESPOT_TENANT_CONFIGS` entry, otherwise the adapter is unbound and orders keep activating locally. Endpoints and field names not confirmed by the public swagger, and the operations with no endpoint at all (RxBenefit lookup, refill response, prescriber revoke, EPCS session), are listed in `docs/history/m12-dosespot-adapter.md` under "requires sandbox verification".
+
 ### 4.9 Typed M36 Alert Payloads
 
 ```typescript

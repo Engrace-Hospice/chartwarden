@@ -1052,6 +1052,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       complianceWindowId: Type.String({ minLength: 1 }),
       severity: Type.Literal("alert"),
+      // GAP-026 — the escalation scan (`jobs/window-escalation.ts`) adds the routing facts M36 pages on.
+      admissionId: Type.Optional(Type.String({ minLength: 1 })),
+      patientId: Type.Optional(Type.String({ minLength: 1 })),
+      windowKind: Type.Optional(Type.String({ minLength: 1 })),
+      dueAt: Type.Optional(Type.String({ minLength: 1 })),
     }),
     // F-145 (#248) — m14 REMOVED: M6's own spec (line 599) is decisive and names the OPPOSITE
     // consumer for this exact fact: "`compliance_window.overdue` (for any window) → M36 escalating
@@ -1059,7 +1064,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
     // above: generic across all window kinds; already satisfied by the direct `GET /api/v1/compliance-windows`
     // REST read, not a backend relationship.
-    declaredConsumers: [],
+    // GAP-026 — m36 BOUND: `m36.admission-compliance-alerts` pages the care team + compliance on every
+    // non-addendum window kind (the addendum kinds keep their dedicated `m6.election_addendum.overdue`).
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

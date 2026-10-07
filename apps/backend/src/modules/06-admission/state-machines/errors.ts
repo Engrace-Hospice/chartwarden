@@ -60,6 +60,8 @@ export const M6_ERROR_STATUS = {
   HOLD_REASON_REQUIRED: 422,
   // Level of care (§2.4.1 R-LCP-*)
   GIP_DOCUMENTATION_INSUFFICIENT: 422,
+  // D12 — a GIP level-of-care request missing any of the three required attestations (412 per the decision).
+  GIP_DOCUMENTATION_INCOMPLETE: 412,
   IPU_FACILITY_REQUIRED: 422,
   LEVEL_OF_CARE_OVERLAP: 409,
   // Revocation / transfer / discharge (§2.4.1 R-RV/XFR/DC-*)

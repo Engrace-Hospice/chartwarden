@@ -147,15 +147,46 @@ describe("lab_observation_patient_caseload_or_scope", () => {
 });
 
 describe("external_feed_compliance_co_approver_distinct", () => {
-  it("allows a co-approver distinct from the primary approver and denies self-approval", async () => {
-    const p = build({}).external_feed_compliance_co_approver_distinct;
-    expect(await p(ctx(), { primaryApproverId: "m2" } as AbacTarget)).toBe(true);
-    expect(await p(ctx(), { primaryApproverId: "m1" } as AbacTarget)).toBe(false);
+  it("reads the first approver from the STORED feed and denies self-approval", async () => {
+    const p = build({
+      async feedRevokeRequester() {
+        return { requestedBy: "m2" };
+      },
+    }).external_feed_compliance_co_approver_distinct;
+    expect(await p(ctx(), { feedId: "f1" } as AbacTarget)).toBe(true);
+
+    const self = build({
+      async feedRevokeRequester() {
+        return { requestedBy: "m1" };
+      },
+    }).external_feed_compliance_co_approver_distinct;
+    expect(await self(ctx(), { feedId: "f1" } as AbacTarget)).toBe(false);
   });
 
-  it("treats an absent primary approver as the first (distinctness trivially met)", async () => {
+  it("ignores a body-supplied primaryApproverId (GAP-153)", async () => {
+    const p = build({
+      async feedRevokeRequester() {
+        return { requestedBy: "m1" };
+      },
+    }).external_feed_compliance_co_approver_distinct;
+    expect(await p(ctx(), { feedId: "f1", primaryApproverId: "someone-else" } as AbacTarget)).toBe(
+      false,
+    );
+  });
+
+  it("treats a feed with no pending revoke as the first approval", async () => {
+    const p = build({
+      async feedRevokeRequester() {
+        return { requestedBy: null };
+      },
+    }).external_feed_compliance_co_approver_distinct;
+    expect(await p(ctx(), { feedId: "f1" } as AbacTarget)).toBe(true);
+  });
+
+  it("fails closed when the feed is unreadable or no feed id is given", async () => {
     const p = build({}).external_feed_compliance_co_approver_distinct;
-    expect(await p(ctx(), {} as AbacTarget)).toBe(true);
+    expect(await p(ctx(), { feedId: "f1" } as AbacTarget)).toBe(false);
+    expect(await p(ctx(), {} as AbacTarget)).toBe(false);
   });
 });
 

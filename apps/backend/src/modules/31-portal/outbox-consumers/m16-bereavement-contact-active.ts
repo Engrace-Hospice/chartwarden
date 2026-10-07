@@ -44,6 +44,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { type M31EventEmitter, emitGrantGranted, emitGrantsRevoked } from "../events";
 import {
   type FlipCandidateGrant,
   planBereavedFlip,
@@ -86,6 +87,8 @@ export type ContactFlipCandidateReader = (
 
 export interface BereavementContactActiveConsumerDeps {
   readonly db: DbClient;
+  /** GAP-159 - same-tx grant + bereaved-mode emits (absent in slice/tests). */
+  readonly events?: M31EventEmitter;
   readonly bereavedContactFlipCandidateForContact: ContactFlipCandidateReader;
 }
 
@@ -248,7 +251,7 @@ export function buildM31BereavementContactActiveConsumer(
 
             const now = new Date();
             for (const rev of plan.revoke) {
-              await tx
+              const revokedRows = await tx
                 .update(PAG)
                 .set({
                   revokedAt: now,
@@ -256,22 +259,56 @@ export function buildM31BereavementContactActiveConsumer(
                   version: sql`${PAG.version} + 1`,
                   updatedAt: now,
                 })
-                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
+                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)))
+                .returning({
+                  id: PAG.id,
+                  portalAccountId: PAG.portalAccountId,
+                  patientId: PAG.patientId,
+                });
+              await emitGrantsRevoked(
+                deps.events,
+                tx,
+                organizationId,
+                revokedRows,
+                rev.revokeCascadeSource,
+              );
             }
             for (const ins of plan.insert) {
-              await tx.insert(PAG).values({
-                organizationId,
-                providerEntityId: liveGrant.providerEntityId,
-                locationId: liveGrant.locationId,
-                portalAccountId: candidate.portalAccountId,
-                patientId: ins.patientId,
-                grantKind: ins.grantKind,
-                scopeSetJsonb: ins.scopeSet,
-                sourceConsentRecordId: resolvedConsentRecordId,
-                sourceConsentVersion: resolvedConsentVersion,
-                grantedAt: now,
-                grantedByMembershipId: null,
-              });
+              const [granted] = await tx
+                .insert(PAG)
+                .values({
+                  organizationId,
+                  providerEntityId: liveGrant.providerEntityId,
+                  locationId: liveGrant.locationId,
+                  portalAccountId: candidate.portalAccountId,
+                  patientId: ins.patientId,
+                  grantKind: ins.grantKind,
+                  scopeSetJsonb: ins.scopeSet,
+                  sourceConsentRecordId: resolvedConsentRecordId,
+                  sourceConsentVersion: resolvedConsentVersion,
+                  grantedAt: now,
+                  grantedByMembershipId: null,
+                })
+                .returning({
+                  id: PAG.id,
+                  portalAccountId: PAG.portalAccountId,
+                  patientId: PAG.patientId,
+                  grantKind: PAG.grantKind,
+                });
+              if (granted) {
+                await emitGrantGranted(deps.events, tx, organizationId, granted);
+                await deps.events?.emitInTx(
+                  tx,
+                  organizationId,
+                  "m31.portal_account.bereaved_mode_entered",
+                  { kind: "portal_account", id: granted.portalAccountId },
+                  {
+                    portalAccountId: granted.portalAccountId,
+                    patientId: granted.patientId,
+                    bereavementPlanId: candidate.planId,
+                  },
+                );
+              }
             }
           },
         );

@@ -69,6 +69,9 @@ export const labObservation = pgTable(
     /** SUD segments stripped at the wire boundary before persist (D15, W-XI-14). */
     sudRedactedAtIngest: boolean("sud_redacted_at_ingest").notNull().default(false),
     previousObservationId: uuid("previous_observation_id"),
+    /** GAP-152 (migration 0461) — the RN's abnormal-flag acknowledgement (D7); logical M2 membership ref. */
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedByMembershipId: uuid("acknowledged_by_membership_id"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(), // PARTITION KEY
   },
   (t) => ({

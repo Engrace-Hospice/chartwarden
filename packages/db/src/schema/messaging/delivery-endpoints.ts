@@ -23,6 +23,10 @@ export const deliveryEndpoints = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    // GAP-166 (migration 0471): the §4.2 OTP. Only a salted SHA-256 of the code is stored.
+    verificationTokenHash: text("verification_token_hash"),
+    verificationTokenExpiresAt: timestamp("verification_token_expires_at", { withTimezone: true }),
+    verificationAttempts: integer("verification_attempts").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

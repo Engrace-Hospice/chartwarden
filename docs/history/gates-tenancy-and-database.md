@@ -63,3 +63,19 @@ the prose docs in `docs/architecture/`.
   Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
   rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
   leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
+
+- **FK index coverage (GAP-178).** 526 foreign keys had no index on their referencing columns, with no
+  gate: a parent DELETE/UPDATE (and every `ON DELETE CASCADE` / `SET NULL` edge) scanned the child
+  table, including cascade edges on clinical tables and the tenant shred. Migration `0480` indexes the
+  186 that matter, chosen from the CATALOG (`pg_constraint` x `pg_index`) of a freshly migrated DB — a
+  corpus parser would have to reimplement DDL semantics (DO blocks, `DROP … CASCADE`, renames). The 340
+  it leaves are NO ACTION / RESTRICT FKs to `location`, `provider_entity`, `"user"` and `membership`
+  (the siting/actor stamps on nearly every clinical row; those parents are soft-deleted, and an index
+  per stamp would tax every INSERT on the highest-volume tables). The rule is enforced by the live
+  suite `fk-index-coverage.live.test.ts` (`test:fk-indexes:live`, own CI row), NOT a Postgres-free
+  `arch:*` gate, for the same reason: it asks the catalog.
+- **Live RLS proofs for six more PHI tables (GAP-183).** `referral_activity`, `referral_note`,
+  `admission_evidence` (M6), `hope_assessment_answer`, `hope_submission_result_event` (M10 — no RLS until
+  0233) and `care_plan_idg_proposed_change` (M7) are in the `m6`/`m10`/`m7` `*-rls-isolation.live` suites
+  as `EXTRA_COVERED` (their policies live in later migrations than the policy-shape case reads, so they
+  are proven by behaviour as `wardenx_app`).

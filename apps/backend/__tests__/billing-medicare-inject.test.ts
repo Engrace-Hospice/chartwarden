@@ -484,6 +484,18 @@ function createM23TestBackend(): {
   };
 
   const readService: M23ReadRouteService = {
+    async listValidationOverrides(_actor, filter, _cursor, _limit) {
+      const items = validationRunDetail.results
+        .filter((r) => r.override !== null)
+        .map((r) => ({
+          ...(r.override as NonNullable<typeof r.override>),
+          claimId: CLAIM,
+          ruleKey: r.ruleKey,
+          m4AuditEventId: "audit-1",
+        }))
+        .filter((o) => filter.ruleKey === undefined || o.ruleKey === filter.ruleKey);
+      return page(items);
+    },
     async listClaims(_actor, _filter: ClaimListFilter) {
       return page([...claims.values()]);
     },
@@ -725,6 +737,21 @@ function createM23TestBackend(): {
         jobId: "job-eligibility-1",
         patientId: args.patientId,
         asOfServiceDate: args.asOfServiceDate,
+      };
+    },
+    async testMacCredential(_actor, providerEntityId) {
+      const existing = macCredentials.get(providerEntityId);
+      if (!existing) throw new NotFoundError("mac credential");
+      const at = NOW;
+      macCredentials.set(providerEntityId, { ...existing, lastSandboxTestAt: at });
+      return {
+        providerEntityId,
+        macJurisdiction: existing.macJurisdiction,
+        ok: true,
+        method: "portal_health_probe" as const,
+        detail: "MAC portal reachable",
+        checkedAt: at,
+        lastSandboxTestAt: at,
       };
     },
     async upsertMacCredential(_actor, args) {
@@ -1338,6 +1365,29 @@ const ROUTE_CASES: readonly RouteCase[] = [
       clientSecret: "a-write-only-secret-value",
     },
     expectStatus: 201,
+  },
+
+  // ── GAP-144: override audit view (#17) + MAC credential sandbox test (#36) ─────────────────────────
+  {
+    label: "17 GET /billing/validation-overrides",
+    method: "GET",
+    url: `/api/v1/billing/validation-overrides?providerEntityId=${PROVIDER_ENTITY}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "17b GET /billing/validation-overrides without billing.validation.read_override is 403",
+    method: "GET",
+    url: `/api/v1/billing/validation-overrides?providerEntityId=${PROVIDER_ENTITY}`,
+    headers: NONE_HEADERS,
+    expectStatus: 403,
+  },
+  {
+    label: "36 POST /billing/mac-credentials/:providerEntityId/test",
+    method: "POST",
+    url: `/api/v1/billing/mac-credentials/${PROVIDER_ENTITY}/test`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("r36") },
+    expectStatus: 200,
   },
 
   // ── dashboards / metrics (routes #37-38) ────────────────────────────────────────────────────────────

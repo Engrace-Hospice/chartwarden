@@ -24,7 +24,9 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type CahpsAdapterRegistry,
+  type CahpsAdapterResolutionMap,
   CahpsRepository,
+  type CahpsVendorAdapterId,
   CopComplianceRepository,
   IncidentRepository,
   InfectionRepository,
@@ -53,8 +55,11 @@ import {
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ROLE_QAPI_COORDINATOR, ROLE_SECURITY_OFFICER } from "../abac-predicates";
+import { createOrGetLiveExportJob, toCahpsExportJobView } from "../cahps/export-job-store";
+import type { CahpsPhiCipher } from "../cahps/phi-cipher";
+import { CAHPS_PENDING_CONFIGURATION } from "../cahps/pipeline";
 import { selectActiveMemberRoleKeys } from "../member-roles";
 import type { M30WriteActor } from "./actor";
 import {
@@ -66,6 +71,7 @@ import {
   resolveCloseCosigners,
 } from "./close-cosign";
 import { incidentOwnedBy } from "./incident-ownership";
+import { resolveProviderEntityForSubject } from "./provider-entity-for-subject";
 import type {
   CahpsDecedentView,
   CahpsExportJobView,
@@ -88,6 +94,7 @@ import type {
   SraRemediationView,
 } from "./read-service";
 import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
+import { assertSraCycleAccess } from "./sra-ownership";
 import { assertWritePatientInScope } from "./write-scope";
 import type {
   AddInvestigationNoteArgs,
@@ -141,6 +148,8 @@ export type WriteTx = QualityDb;
  */
 export interface ProviderEntityPort {
   primaryProviderEntityId(tx: WriteTx, organizationId: string): Promise<string>;
+  /** GAP-154 - the subject's (patient's active admission) provider entity; null when none. Optional. */
+  providerEntityIdForPatient?(organizationId: string, patientId: string): Promise<string | null>;
 }
 
 /** Deps the production M30 write service binds at boot (P2c) — every cross-boundary edge is a port. */
@@ -153,6 +162,10 @@ export interface M30WriteServicePorts {
   readonly providerEntity?: ProviderEntityPort;
   /** The per-org live CAHPS adapter registry (§4.5) — supplies the vendor's minimum-cell size on ingest. */
   readonly cahps?: CahpsAdapterRegistry;
+  /** GAP-087 — the tenant-DEK cipher that seals a vendor binding's configuration on R-11. */
+  readonly cahpsCipher?: CahpsPhiCipher;
+  /** GAP-087 — `@wardenx/cahps-vendors`' factory map: R-11 validates a supplied configuration with the adapter. */
+  readonly cahpsAdapterFactories?: CahpsAdapterResolutionMap;
   /**
    * GAP-091 follow-up — the PHI patient-scope resolver the service enforces ITSELF (second layer behind the
    * route predicate). Default: org-wide roles ⇒ org, everyone else ⇒ their M5 caseload via the seam, failing
@@ -204,6 +217,17 @@ const CAHPS_VENDOR_NAMES: Readonly<Record<string, string>> = {
 };
 
 /** The 5×5 residual score → posture band (1–25; the SRA finding risk-band projection). */
+/** GAP-156 — `ownsSraCycle` for finding/remediation mutations: load the parent cycle, then owner-or-admin. */
+async function assertOwnsFindingCycle(
+  repo: SraRepository,
+  actor: M30WriteActor,
+  cycleId: string,
+): Promise<void> {
+  const cycle = await repo.findCycleById(cycleId);
+  if (!cycle || cycle.organizationId !== actor.organizationId) throw new NotFoundError("sra cycle");
+  assertSraCycleAccess(actor, cycle);
+}
+
 function riskBandOf(score: number): SraFindingView["riskBand"] {
   if (score >= 15) return "critical";
   if (score >= 10) return "high";
@@ -718,6 +742,39 @@ export function buildDrizzleM30WriteService(
 
     // ── CAHPS (R-11, R-13, R-14, R-16) ──
     async bindCahpsVendor(actor, args: BindCahpsVendorArgs): Promise<CahpsVendorBindingView> {
+      // GAP-087 — a supplied configuration is validated by the vendor adapter, then sealed under the tenant DEK
+      // (never stored in the clear, never echoed). Without one the binding opens unconfigured — fine for `manual`.
+      let configurationCipher = CAHPS_PENDING_CONFIGURATION;
+      let configurationKeyVersion = 1;
+      if (args.configuration !== undefined) {
+        const factory = ports.cahpsAdapterFactories?.[args.vendorAdapterId as CahpsVendorAdapterId];
+        if (!ports.cahpsCipher || !factory) {
+          throw new WardenXError(
+            "CAHPS_CONFIGURATION_UNAVAILABLE",
+            "this deployment cannot store a CAHPS vendor configuration (no tenant key cipher / adapter factory bound)",
+            503,
+          );
+        }
+        const verdict = await factory(args.configuration as Record<string, unknown>).validateConfig(
+          args.configuration as Record<string, unknown>,
+        );
+        if (!verdict.ok) {
+          throw new WardenXError(
+            "VALIDATION_FAILED",
+            `the CAHPS vendor configuration is invalid: ${verdict.errors
+              .map((e) => `${e.field}: ${e.reason}`)
+              .join("; ")}`,
+            422,
+          );
+        }
+        const sealed = await ports.cahpsCipher.encrypt(
+          actor.organizationId,
+          "cahps_vendor_binding.configuration_cipher",
+          JSON.stringify(args.configuration),
+        );
+        configurationCipher = sealed.envelope;
+        configurationKeyVersion = sealed.keyVersion;
+      }
       return inOrgCtx(actor, async (tx) => {
         const repo = new CahpsRepository(tx);
         const prior = await repo.findActiveBinding(actor.organizationId);
@@ -734,9 +791,8 @@ export function buildDrizzleM30WriteService(
           vendorAdapterId: args.vendorAdapterId,
           active: true,
           effectiveFrom: new Date(args.effectiveFrom),
-          // Vendor credentials are configured through a separate secure flow; the binding opens unconfigured.
-          configurationCipher: "pending_secure_configuration",
-          configurationKeyVersion: 1,
+          configurationCipher,
+          configurationKeyVersion,
         });
         return mapBinding(row);
       });
@@ -759,30 +815,72 @@ export function buildDrizzleM30WriteService(
     },
 
     async createCahpsExport(actor, args: CreateCahpsExportArgs): Promise<CahpsExportJobView> {
-      return inOrgCtx(actor, async (tx) => {
+      // GAP-087 — a real job: persist the row, then enqueue it onto `m30.cahps_export` (the worker renders the vendor
+      // file, seals + stores it on the row and pushes it). A LIVE job for the same cycle is returned instead of a
+      // second one, so a retry converges. Rows that failed a prior export are re-opened here (§4.8: the QAPI
+      // Coordinator manually re-triggers via R-14 after `export_failed`).
+      const { row, created } = await inOrgCtx(actor, async (tx) => {
         const repo = new CahpsRepository(tx);
         const binding = await repo.findActiveBinding(actor.organizationId);
         if (!binding)
           throw new ConflictError("the org has no active CAHPS vendor binding to export to");
         const cycleMonth = firstOfMonth(args.samplePeriodStart);
-        const samples = await repo.listSamplesForCycle(actor.organizationId, cycleMonth);
-        const decedentCount = samples.filter((s) => s.exclusionReason === null).length;
-        // No `cahps_export_job` table exists in the frozen 18-table schema; synthesize the queued job view
-        // (the §4.14 export worker mints the artifact + signed URL out of band, then emits export_completed).
-        return {
-          exportId: randomUUID(),
+        await tx
+          .update(schema.cahpsDecedentSample)
+          .set({ status: "pending_export" })
+          .where(
+            and(
+              eq(schema.cahpsDecedentSample.organizationId, actor.organizationId),
+              eq(schema.cahpsDecedentSample.samplingCycleMonth, cycleMonth),
+              eq(schema.cahpsDecedentSample.status, "export_failed"),
+            ),
+          );
+        const pending = await repo.listSamplesForCycle(
+          actor.organizationId,
+          cycleMonth,
+          "pending_export",
+        );
+        if (pending.length === 0) {
+          throw new ConflictError("there are no sampled decedents pending export for that cycle");
+        }
+        return createOrGetLiveExportJob(tx, {
           organizationId: actor.organizationId,
+          vendorBindingId: binding.id,
           vendorAdapterId: binding.vendorAdapterId,
-          samplePeriodStart: args.samplePeriodStart,
-          samplePeriodEnd: args.samplePeriodEnd,
-          status: "queued",
-          decedentCount,
-          downloadUrl: null,
-          createdAt: now().toISOString(),
-          completedAt: null,
-          failureReason: null,
-        };
+          samplingCycleMonth: cycleMonth,
+          samplePeriodStart: args.samplePeriodStart.slice(0, 10),
+          samplePeriodEnd: args.samplePeriodEnd.slice(0, 10),
+          decedentCount: pending.length,
+          requestedByUserId: actor.userId,
+        });
       });
+      if (created) {
+        try {
+          await recompute.enqueue("m30.cahps_export", `${actor.organizationId}:${row.id}`, {
+            jobId: row.id,
+            exportId: row.id,
+            organizationId: actor.organizationId,
+            samplingCycleMonth: row.samplingCycleMonth,
+            samplePeriodStart: row.samplePeriodStart,
+            samplePeriodEnd: row.samplePeriodEnd,
+            vendorBindingId: row.vendorBindingId,
+          });
+        } catch (cause) {
+          // The row committed but nothing will ever run it: close it out rather than leave a "queued" ghost.
+          await inOrgCtx(actor, (tx) =>
+            tx
+              .update(schema.cahpsExportJob)
+              .set({
+                status: "failed",
+                failureReason: "the export could not be enqueued (queue unavailable)",
+                completedAt: now(),
+              })
+              .where(eq(schema.cahpsExportJob.id, row.id)),
+          );
+          throw cause;
+        }
+      }
+      return toCahpsExportJobView(row);
     },
 
     async ingestCahpsResults(actor, args: IngestCahpsResultsArgs): Promise<CahpsIngestResultView> {
@@ -1176,6 +1274,7 @@ export function buildDrizzleM30WriteService(
         const cycle = await repo.findCycleById(cycleId);
         if (!cycle || cycle.organizationId !== actor.organizationId)
           throw new NotFoundError("sra cycle");
+        assertSraCycleAccess(actor, cycle);
         // Server-authoritative sequential number (the per-cycle uq_sra_finding_in_cycle surface).
         const findingNumber = (await repo.highestFindingNumber(cycleId)) + 1;
         const score = args.likelihood * args.impact;
@@ -1218,6 +1317,7 @@ export function buildDrizzleM30WriteService(
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra finding");
         }
+        await assertOwnsFindingCycle(repo, actor, existing.sraCycleId);
         const likelihood = args.likelihood;
         const impact = args.impact;
         const residual =
@@ -1245,6 +1345,7 @@ export function buildDrizzleM30WriteService(
         if (!finding || finding.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra finding");
         }
+        await assertOwnsFindingCycle(repo, actor, finding.sraCycleId);
         const remediationNumber = (await repo.highestRemediationNumber(findingId)) + 1;
         const targetDate = (
           args.dueAt ? new Date(args.dueAt) : new Date(now().getTime() + 90 * 24 * 60 * 60 * 1000)
@@ -1274,6 +1375,9 @@ export function buildDrizzleM30WriteService(
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("sra remediation");
         }
+        const parent = await repo.findFindingById(existing.sraFindingId);
+        if (!parent) throw new NotFoundError("sra finding");
+        await assertOwnsFindingCycle(repo, actor, parent.sraCycleId);
         const status = args.status ? remediationStatusToSchema(args.status) : existing.status;
         const row = await repo.updateRemediation(remediationId, {
           status,
@@ -1367,9 +1471,11 @@ export function buildDrizzleM30WriteService(
             422,
           );
         }
-        const providerEntityId = await providerEntity.primaryProviderEntityId(
+        const providerEntityId = await resolveProviderEntityForSubject(
+          providerEntity,
           tx,
           actor.organizationId,
+          args.patientId,
         );
         const row = await new IncidentRepository(tx).create({
           organizationId: actor.organizationId,
@@ -1769,9 +1875,11 @@ export function buildDrizzleM30WriteService(
       await assertWritePatientInScope(actor, args.patientId, patientScope);
       return inOrgCtx(actor, async (tx) => {
         const repo = new InfectionRepository(tx);
-        const providerEntityId = await providerEntity.primaryProviderEntityId(
+        const providerEntityId = await resolveProviderEntityForSubject(
+          providerEntity,
           tx,
           actor.organizationId,
+          args.patientId,
         );
         const pathogen = normalizePathogen(args.pathogen);
         const bodySite = normalizeBodySite(args.bodySite);

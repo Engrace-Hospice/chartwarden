@@ -57,6 +57,7 @@ type SeedIds = {
   message: string;
   messageReceipt: string;
   alert: string;
+  alertReceipt: string;
   tenantAlertRoutingOverride: string;
   tenantNotificationTemplateOverlay: string;
 };
@@ -185,6 +186,13 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
+      const alertReceipt = (
+        await db.query(
+          `INSERT INTO alert_receipt (alert_id, recipient_user_id) VALUES ($1,$2) RETURNING id`,
+          [alert, USER],
+        )
+      ).rows[0].id as string;
+
       const tenantAlertRoutingOverride = (
         await db.query(
           `INSERT INTO tenant_alert_routing_override (organization_id, payload_type, rationale,
@@ -212,6 +220,7 @@ describe.skipIf(!DB_URL)(
         message,
         messageReceipt,
         alert,
+        alertReceipt,
         tenantAlertRoutingOverride,
         tenantNotificationTemplateOverlay,
       };
@@ -312,6 +321,47 @@ describe.skipIf(!DB_URL)(
       expect(res.rowCount).toBe(0);
       const still = await db.query("SELECT body_kind FROM message WHERE id=$1", [a.message]);
       expect(still.rows[0].body_kind).toBe("plain");
+    });
+
+    // ── GAP-167 — alert_receipt (0243) shipped with NO grant and NO RLS: live 42501 on every alert-inbox
+    // request until 0247. It is a pure child of `alert` (no organization_id), so it is NOT in the loop-driven
+    // COVERED sweep above; its parent-join policy gets its own proof here, as `wardenx_app`.
+    it("alert_receipt: org A sees its receipt, org B cannot (parent-join RLS, 0247)", async () => {
+      const seenByA = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_receipt WHERE id=$1", [a.alertReceipt]),
+      );
+      expect(seenByA.rows[0].n).toBe(1);
+      const seenByB = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_receipt WHERE id=$1", [a.alertReceipt]),
+      );
+      expect(seenByB.rows[0].n).toBe(0);
+    });
+
+    it("alert_receipt: wardenx_app holds the grant (markAlertRead UPDATE reaches the row, no 42501)", async () => {
+      const res = await withOrg(ORG_A, () =>
+        db.query("UPDATE alert_receipt SET read_at = now() WHERE id=$1", [a.alertReceipt]),
+      );
+      expect(res.rowCount).toBe(1);
+    });
+
+    it("alert_receipt: org B cannot UPDATE org A's receipt, nor forge one against org A's alert", async () => {
+      const upd = await withOrg(ORG_B, () =>
+        db.query("UPDATE alert_receipt SET read_at = now() WHERE id=$1", [a.alertReceipt]),
+      );
+      expect(upd.rowCount).toBe(0);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query("INSERT INTO alert_receipt (alert_id, recipient_user_id) VALUES ($1,$2)", [
+            a.alert,
+            USER,
+          ]),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("alert_receipt: an empty-string app.org_id matches nothing instead of throwing 22P02 (NULLIF guard)", async () => {
+      const res = await withOrg("", () => db.query("SELECT count(*)::int AS n FROM alert_receipt"));
+      expect(res.rows[0].n).toBe(0);
     });
 
     it("the M4 write-audit trigger fired for the message writes (§3.9)", async () => {
