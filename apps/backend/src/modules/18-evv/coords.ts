@@ -84,6 +84,8 @@ const SCHEME = "v1";
 const ENVELOPE_PREFIX = `${SCHEME}.`;
 const DEK_BYTES = 32;
 const NONCE_BYTES = 12;
+/** GCM tag length, pinned on decrypt: without it Node accepts a truncated (4-15 byte) tag. */
+const TAG_BYTES = 16;
 const MAX_LAT = 90;
 const MAX_LNG = 180;
 
@@ -157,9 +159,13 @@ export function createEvvCoordsCipher(keys: EvvCoordsKeyProvider): EvvCoordsCiph
         throw new Error("M18 coords envelope is malformed");
       }
       const { key } = await keys.dekForOrgVersion(organizationId, version);
-      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"), {
+        authTagLength: TAG_BYTES,
+      });
       d.setAAD(aadFor(organizationId));
-      d.setAuthTag(Buffer.from(tag, "base64url"));
+      const authTag = Buffer.from(tag, "base64url");
+      if (authTag.byteLength !== TAG_BYTES) throw new Error("M18 coords envelope is malformed");
+      d.setAuthTag(authTag);
       const plaintext = Buffer.concat([
         d.update(Buffer.from(ciphertext, "base64url")),
         d.final(),
@@ -183,6 +189,48 @@ export const UNBOUND_EVV_COORDS_CIPHER: EvvCoordsCipher = {
     throw new EvvCoordsKeyUnboundError("open");
   },
 };
+
+/** One coordinate a list read could not open (unknown/destroyed DEK version, tampered or foreign blob). */
+export interface EvvCoordsFault {
+  readonly organizationId: string;
+  readonly eventId: string;
+  readonly error: unknown;
+}
+export type EvvCoordsFaultReporter = (fault: EvvCoordsFault) => void;
+
+/** Default reporter: a process warning (stderr), so an integrity fault is never silent when no logger is bound. */
+export const WARN_EVV_COORDS_FAULT: EvvCoordsFaultReporter = ({
+  organizationId,
+  eventId,
+  error,
+}) => {
+  process.emitWarning(
+    `M18 coords could not be opened (org ${organizationId}, event ${eventId}): ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+    { code: "WX_M18_COORDS_FAULT" },
+  );
+};
+
+/**
+ * Open one row of a multi-clinician list read. A single unreadable envelope must not take down every
+ * clinician's location (one bad row would otherwise 500 the agency map): it reads as unavailable (null) and is
+ * reported. Single-row reads keep calling `open` directly and fail loud.
+ */
+export async function openCoordsForList(
+  cipher: EvvCoordsCipher,
+  organizationId: string,
+  eventId: string,
+  stored: string | null | undefined,
+  report: EvvCoordsFaultReporter,
+): Promise<StoredCoordinate | null> {
+  try {
+    return await cipher.open(organizationId, stored);
+  } catch (error) {
+    report({ organizationId, eventId, error });
+    return null;
+  }
+}
 
 /** Resolves `getTenantKeyProvider()` lazily (M34 registers it during boot, after the seams are wired). */
 export function lazyEvvCoordsKeys(resolve: () => EvvCoordsKeyProvider): EvvCoordsKeyProvider {

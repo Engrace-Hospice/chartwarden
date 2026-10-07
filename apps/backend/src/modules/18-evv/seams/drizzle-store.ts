@@ -48,7 +48,13 @@ import type {
   EvvMissingResolutionDto,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
-import { type EvvCoordsCipher, UNBOUND_EVV_COORDS_CIPHER } from "../coords";
+import {
+  type EvvCoordsCipher,
+  type EvvCoordsFaultReporter,
+  UNBOUND_EVV_COORDS_CIPHER,
+  WARN_EVV_COORDS_FAULT,
+  openCoordsForList,
+} from "../coords";
 import type {
   EvvAggregatorWindowCounts,
   EvvArrival,
@@ -156,7 +162,8 @@ function classify(input: {
 /**
  * Project an event-metadata row to the D10 location DTO (GAP-032 / GAP-133). Opens the stored envelope under
  * the row's own org; an absent payload or a legacy pre-GAP-133 row yields an explicit null pair, never a
- * zeroed one — the route service's posture, now that both sides agree.
+ * zeroed one — the route service's posture, now that both sides agree. With `report`, an unreadable envelope
+ * reads as null and is reported (list reads); without it, it throws (single-row reads fail loud).
  */
 async function toLocationDto(
   coordsCipher: EvvCoordsCipher,
@@ -169,8 +176,11 @@ async function toLocationDto(
     capturedAt: Date;
     coordsCipher?: string | null;
   },
+  report?: EvvCoordsFaultReporter,
 ): Promise<EvvLocationDto> {
-  const coords = await coordsCipher.open(r.organizationId, r.coordsCipher);
+  const coords = report
+    ? await openCoordsForList(coordsCipher, r.organizationId, r.eventId, r.coordsCipher, report)
+    : await coordsCipher.open(r.organizationId, r.coordsCipher);
   return {
     membershipId: r.membershipId,
     eventId: r.eventId,
@@ -285,9 +295,12 @@ export function createDrizzleEvvSeamStore(
   options: {
     /** GAP-133 — the §D10 coordinate envelope (bound over M34 at the composition root); unbound = fail closed. */
     readonly coordsCipher?: EvvCoordsCipher;
+    /** Where a list read reports a coordinate it could not open (default: a process warning). */
+    readonly onCoordsFault?: EvvCoordsFaultReporter;
   } = {},
 ): EvvSeamStore {
   const coordsCipher = options.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
+  const onCoordsFault = options.onCoordsFault ?? WARN_EVV_COORDS_FAULT;
   /** The per-visit bracket facts (active event pair + resolution trail) the three per-visit reads share. */
   async function bracketFacts(
     tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
@@ -439,7 +452,9 @@ export function createDrizzleEvvSeamStore(
         for (const r of rows) {
           if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
         }
-        return Promise.all([...latestByMember.values()].map((r) => toLocationDto(coordsCipher, r)));
+        return Promise.all(
+          [...latestByMember.values()].map((r) => toLocationDto(coordsCipher, r, onCoordsFault)),
+        );
       });
     },
 

@@ -4027,6 +4027,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             deviceAttestationEnforced: evvDeviceAttestationEnforced,
             // GAP-133 — capture seals coords under the tenant DEK; no key bound ⇒ the capture is refused.
             coordsCipher: m18CoordsCipher(),
+            // A coordinate the location list cannot open reads as null and is logged as an integrity fault.
+            onCoordsFault: ({ organizationId, eventId, error }) =>
+              app.log.error(
+                { organizationId, eventId, err: error },
+                "M18 coords could not be opened",
+              ),
           }); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           // M22 — reads + the write lifecycle over Drizzle+RLS; the reader is the `documents.doclens` DocLens gate
           // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the

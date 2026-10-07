@@ -53,6 +53,13 @@ const FULFILLABLE_STATUSES: readonly BereavementOutreachStatus[] = [
   "missed",
 ];
 
+/**
+ * How early a signed visit may fulfil a `scheduled` touchpoint. The spec sets no early bound; without one an
+ * ad-hoc visit would complete a milestone months out (e.g. the 6-month visit), leaving the real one with no
+ * open row. Earlier than this, the encounter is ad hoc and left to route 26.
+ */
+export const SCHEDULED_EARLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 export const M16_ENCOUNTER_SIGNED_CONSUMER = {
   eventName: "m8.encounter.signed",
   consumerName: "m16.m8-encounter-signed",
@@ -75,7 +82,8 @@ export interface OutreachCandidate {
 /**
  * §7.5 — pick the in-person touchpoint a signed bereavement encounter fulfils, or null for an ad-hoc visit.
  * Pure. A `missed` row qualifies only while the signature is inside its late grace (`<=`, the 2026-10-05
- * boundary decision); terminal rows never do. Ranking: the STARTED visit first, then nearest `due_at`, then
+ * boundary decision); a `scheduled` row only from SCHEDULED_EARLY_WINDOW_MS before its `due_at`; terminal rows
+ * never do. Ranking: the STARTED visit first, then nearest `due_at`, then
  * id — so a redelivery always lands on the same row.
  */
 export function selectOutreachForSignedEncounter<T extends OutreachCandidate>(
@@ -85,7 +93,8 @@ export function selectOutreachForSignedEncounter<T extends OutreachCandidate>(
   const signedAt = Date.parse(signedAtIso);
   const open = candidates.filter((c) => {
     if (c.status === "missed") return signedAt <= c.lateGraceUntil.getTime();
-    return c.status === "in_progress" || c.status === "scheduled";
+    if (c.status === "scheduled") return signedAt >= c.dueAt.getTime() - SCHEDULED_EARLY_WINDOW_MS;
+    return c.status === "in_progress";
   });
   const rank = (c: T): readonly [number, number, string] => [
     c.status === "in_progress" ? 0 : 1,

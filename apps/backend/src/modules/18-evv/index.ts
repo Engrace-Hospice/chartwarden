@@ -16,7 +16,7 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
-import type { EvvCoordsCipher } from "./coords";
+import type { EvvCoordsCipher, EvvCoordsFaultReporter } from "./coords";
 import { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
 
@@ -36,6 +36,8 @@ export function mountEvvRoutes(
     readonly deviceAttestationEnforced?: boolean;
     /** GAP-133 — the §D10 coordinate envelope; unbound ⇒ captures are refused (fail closed). */
     readonly coordsCipher?: EvvCoordsCipher;
+    /** Where the location list reports a coordinate it could not open (default: a process warning). */
+    readonly onCoordsFault?: EvvCoordsFaultReporter;
   } = {},
 ): void {
   // GAP-055 follow-up: ONE value (from validated server config, default OFF) feeds BOTH the routes' attestation
@@ -44,6 +46,7 @@ export function mountEvvRoutes(
   const backend = createDbEvvBackend(db, outbox, {
     deviceAttestationEnforced,
     ...(options.coordsCipher ? { coordsCipher: options.coordsCipher } : {}),
+    ...(options.onCoordsFault ? { onCoordsFault: options.onCoordsFault } : {}),
   });
   _registerM18Abac({ resolver: backend });
   _registerM18Routes(app, { service: backend, deviceAttestationEnforced });
@@ -52,6 +55,8 @@ export function mountEvvRoutes(
 export { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 export {
   type EvvCoordsCipher,
+  type EvvCoordsFault,
+  type EvvCoordsFaultReporter,
   type EvvCoordsKeyProvider,
   EvvCoordsKeyUnboundError,
   LEGACY_COORDS_DEK_VERSION,

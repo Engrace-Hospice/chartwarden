@@ -15,6 +15,7 @@ import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/events-by-m8";
 import {
   M16_DOCUMENT_RENDERED_CONSUMER,
   M16_ENCOUNTER_SIGNED_CONSUMER,
+  SCHEDULED_EARLY_WINDOW_MS,
   buildM16DocumentRenderedConsumer,
   buildM16EncounterSignedConsumer,
   decideRenderedBackref,
@@ -94,6 +95,17 @@ describe("selectOutreachForSignedEncounter — which scheduled visit a signed en
       ).toBeNull();
     }
     expect(selectOutreachForSignedEncounter([], SIGNED)).toBeNull();
+  });
+
+  it("never completes a scheduled visit due more than the early window out (an ad-hoc visit stays ad hoc)", () => {
+    const sixMonth = row("month-6", "scheduled", "2026-10-01T00:00:00.000Z");
+    expect(selectOutreachForSignedEncounter([sixMonth], SIGNED)).toBeNull();
+    const edge = new Date(Date.parse(SIGNED) + SCHEDULED_EARLY_WINDOW_MS).toISOString();
+    expect(
+      selectOutreachForSignedEncounter([row("in-window", "scheduled", edge)], SIGNED)?.id,
+    ).toBe("in-window");
+    const justOut = new Date(Date.parse(SIGNED) + SCHEDULED_EARLY_WINDOW_MS + 1).toISOString();
+    expect(selectOutreachForSignedEncounter([row("out", "scheduled", justOut)], SIGNED)).toBeNull();
   });
 
   it("is deterministic on a tie (id order), so a redelivery picks the same row", () => {

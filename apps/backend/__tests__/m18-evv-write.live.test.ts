@@ -22,6 +22,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
+  type EvvCoordsFault,
   EvvCoordsKeyUnboundError,
   type EvvWriteOutboxPort,
   M18_OUTBOX_EVENTS,
@@ -54,6 +55,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEvvBackend>;
+  const coordsFaults: EvvCoordsFault[] = [];
   // Same DB, default (OFF) device-attestation flag — the production configuration.
   let svcAttestationOff: ReturnType<typeof createDbEvvBackend>;
   let svcNoBaseline: ReturnType<typeof createDbEvvBackend>;
@@ -224,6 +226,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     // GAP-054 — the geofence baseline is the patient-address coordinate (a seam in prod); pinned here.
     const addressCoordinate = async () => ADDRESS_BASELINE;
     svc = createDbEvvBackend(handle.db, outbox, {
+      onCoordsFault: (f) => coordsFaults.push(f),
       deviceAttestationEnforced: true,
       addressCoordinate,
       coordsCipher,
@@ -419,7 +422,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(mine?.accuracyM).toBe(5);
   });
 
-  it("GAP-133 — an envelope sealed for ANOTHER tenant fails loud on read (AAD binds the org)", async () => {
+  it("GAP-133 — an envelope sealed for ANOTHER tenant never opens: the list reads it as null and reports it", async () => {
     const s = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
     const device = (
@@ -451,7 +454,14 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
         device.m2_device_attestation_id,
       ],
     );
-    await expect(svc.clinicianCurrentLocation(ORG_A, s.member)).rejects.toThrow();
+    // One unreadable row must not fail every clinician's location (the agency map): it reads as
+    // unavailable and is reported as an integrity fault — never decrypted into ORG_A's record.
+    coordsFaults.length = 0;
+    const rows = await svc.clinicianCurrentLocation(ORG_A, s.member);
+    const row = rows.find((r) => r.membershipId === s.member);
+    expect(row).toMatchObject({ lat: null, lng: null });
+    expect(coordsFaults).toHaveLength(1);
+    expect(coordsFaults[0]).toMatchObject({ organizationId: ORG_A });
   });
 
   it("capture with accuracy beyond the policy (unattested) is an outside-geofence breach", async () => {

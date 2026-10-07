@@ -9,6 +9,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  type EvvCoordsFault,
   type EvvCoordsKeyProvider,
   EvvCoordsKeyUnboundError,
   LEGACY_COORDS_DEK_VERSION,
@@ -16,6 +17,7 @@ import {
   createEvvCoordsCipher,
   isLegacyStoredCoords,
   lazyEvvCoordsKeys,
+  openCoordsForList,
 } from "../coords";
 
 const ORG_A = "00000000-0000-4000-8000-00000000000a";
@@ -123,6 +125,40 @@ describe("M18 coords envelope (GAP-133)", () => {
     ct[0] = (ct[0] as number) ^ 0x01;
     const tampered = [...parts.slice(0, 4), ct.toString("base64url")].join(".");
     await expect(cipher.open(ORG_A, tampered)).rejects.toThrow();
+  });
+
+  describe("list reads (openCoordsForList)", () => {
+    it("opens a good row and reports nothing", async () => {
+      const cipher = createEvvCoordsCipher(keyRing({ [ORG_A]: "v1" }, freshKeys()));
+      const sealed = await cipher.seal(ORG_A, PORTLAND);
+      const faults: EvvCoordsFault[] = [];
+      const coords = await openCoordsForList(cipher, ORG_A, "evt-1", sealed.cipher, (f) =>
+        faults.push(f),
+      );
+      expect(coords).toEqual(PORTLAND);
+      expect(faults).toEqual([]);
+    });
+
+    it("reads an unopenable row as null and reports it, instead of failing the whole list", async () => {
+      const cipher = createEvvCoordsCipher(keyRing({ [ORG_A]: "v1", [ORG_B]: "v1" }, freshKeys()));
+      const foreign = await cipher.seal(ORG_B, PORTLAND);
+      const faults: EvvCoordsFault[] = [];
+      const coords = await openCoordsForList(cipher, ORG_A, "evt-2", foreign.cipher, (f) =>
+        faults.push(f),
+      );
+      expect(coords).toBeNull();
+      expect(faults).toHaveLength(1);
+      expect(faults[0]).toMatchObject({ organizationId: ORG_A, eventId: "evt-2" });
+    });
+  });
+
+  it("refuses a truncated GCM tag (the tag length is pinned to 16 bytes)", async () => {
+    const cipher = createEvvCoordsCipher(keyRing({ [ORG_A]: "v1" }, freshKeys()));
+    const sealed = await cipher.seal(ORG_A, PORTLAND);
+    const parts = sealed.cipher.split(".");
+    const shortTag = Buffer.from(parts[3] as string, "base64url").subarray(0, 4);
+    const truncated = [...parts.slice(0, 3), shortTag.toString("base64url"), parts[4]].join(".");
+    await expect(cipher.open(ORG_A, truncated)).rejects.toThrow("malformed");
   });
 
   it("propagates a missing tenant key on read (fail loud, never a silent null)", async () => {

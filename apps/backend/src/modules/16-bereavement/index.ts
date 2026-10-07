@@ -69,6 +69,7 @@ export {
   type OutreachCandidate,
   M16_ENCOUNTER_SIGNED_CONSUMER,
   buildM16EncounterSignedConsumer,
+  SCHEDULED_EARLY_WINDOW_MS,
   selectOutreachForSignedEncounter,
 } from "./outbox-consumers/m8-encounter-signed";
 export {

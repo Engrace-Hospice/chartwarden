@@ -78,9 +78,12 @@ interface CaptureBinding {
 import { decideCaptureGeofence } from "./capture-geofence";
 import {
   type EvvCoordsCipher,
+  type EvvCoordsFaultReporter,
   type SealedCoords,
   type StoredCoordinate,
   UNBOUND_EVV_COORDS_CIPHER,
+  WARN_EVV_COORDS_FAULT,
+  openCoordsForList,
 } from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import type { EvvSideEffect } from "./domain/effects";
@@ -208,9 +211,12 @@ export function createDbEvvBackend(
      * clear coordinates, and an encrypted coordinate cannot be read).
      */
     readonly coordsCipher?: EvvCoordsCipher;
+    /** Where the multi-clinician location read reports a coordinate it could not open (default: a warning). */
+    readonly onCoordsFault?: EvvCoordsFaultReporter;
   } = {},
 ): EvvRoutePort {
   const coordsCipher = options.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
+  const onCoordsFault = options.onCoordsFault ?? WARN_EVV_COORDS_FAULT;
   const addressCoordinate: AddressCoordinateReader =
     options.addressCoordinate ??
     ((orgId, patientId, patientAddressId) =>
@@ -1440,8 +1446,15 @@ export function createDbEvvBackend(
       });
       return Promise.all(
         latest.map(async (r) => {
-          // GAP-032 — the real stored coordinate, or an explicit null (never a fabricated (0, 0)).
-          const coords = await coordsCipher.open(orgId, r.coordsCipher);
+          // GAP-032 — the real stored coordinate, or an explicit null (never a fabricated (0, 0)). One unreadable
+          // envelope reads as null and is reported rather than failing every clinician's location.
+          const coords = await openCoordsForList(
+            coordsCipher,
+            orgId,
+            r.eventId,
+            r.coordsCipher,
+            onCoordsFault,
+          );
           return {
             membershipId: r.membershipId,
             eventId: r.eventId,
