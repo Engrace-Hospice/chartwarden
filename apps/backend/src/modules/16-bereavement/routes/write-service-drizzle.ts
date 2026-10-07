@@ -1087,8 +1087,11 @@ export function buildDrizzleM16WriteService(
           .from(CONTACT)
           .where(and(eq(CONTACT.planId, plan.id), eq(CONTACT.status, "active")));
         for (const contact of contacts) await materializeSchedule(tx, plan, contact, at);
-        await tx.update(PLAN).set({ pauseKind: null }).where(eq(PLAN.id, plan.id));
+        // The status moves BEFORE `pause_kind` is cleared: `berv_plan_pause_requires_kind` holds a
+        // `paused` row to a kind, so clearing it first violated the CHECK and made every resume a 500
+        // (GAP-136, found by the live route suite).
         await patchPlan(tx, plan, transition.to, patch, at);
+        await tx.update(PLAN).set({ pauseKind: null }).where(eq(PLAN.id, plan.id));
       });
       return planDetail(actor, planId);
     },
@@ -1098,7 +1101,7 @@ export function buildDrizzleM16WriteService(
     // outreach is cancelled and no closure row or event is written. The transition is route 9's, performed
     // by a DIFFERENT supervisor — the requesting counselor is never recorded as the cosigner.
     async closeEarly(actor, planId, input: CloseEarlyInput) {
-      return withOrgContext(db, scope(actor), async (tx) => {
+      await withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         checkVersion(input.expectedVersion, plan.version);
         assertEarlyCloseRequestable(plan.status, plan.earlyCloseRequestedAt);
@@ -1125,8 +1128,11 @@ export function buildDrizzleM16WriteService(
             updatedAt: new Date(at),
           })
           .where(eq(PLAN.id, plan.id));
-        return planDetail(actor, planId);
       });
+      // Read AFTER the commit: `planDetail` opens its own connection, so reading inside the transaction
+      // answered the pre-request row (old version, no pending request) — a client then sent a stale
+      // If-Match on its next write (GAP-136, found by the live route suite).
+      return planDetail(actor, planId);
     },
 
     // ── 9 — the D7 supervisor cosign: performs the transition (GAP-047) ─────────────────────────────
