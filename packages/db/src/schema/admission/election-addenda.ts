@@ -44,6 +44,9 @@ export interface ElectionAddendumItemRow {
   /** Where the determination came from; absent for a line a clinician typed. */
   readonly source?: "problem" | "medication" | "dme" | "supply" | "service";
   readonly sourceId?: string;
+  /** Server-owned: the source's own reason when the line was last filled from it, so a later change of the
+   *  determination's reason is told apart from a clinician's rewording of `reasonNotCovered`. Never printed. */
+  readonly sourceReason?: string;
 }
 
 /** One diagnosis line as stored in `terminal_diagnosis` / `related_diagnoses` (418.24(c)(4)). */
