@@ -10,9 +10,11 @@ RUN apt-get update \
 
 WORKDIR /srv
 COPY pyproject.toml ./
-# CPU torch wheels first, so Docling does not pull the multi-gigabyte CUDA build.
+# CPU torch wheels first, so Docling does not pull the multi-gigabyte CUDA build. Keep the packaging
+# tools present in the runtime image above Trivy's fixed versions.
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
- && pip install ".[docling]" easyocr
+ && pip install ".[docling]" easyocr \
+ && pip install --upgrade "jaraco.context>=6.1.0" "setuptools>=78.1.1" "wheel>=0.46.2"
 
 # Bake the layout / table / OCR models into the image: a worker must not download models from the
 # internet at request time (and must not need egress at all in production).
