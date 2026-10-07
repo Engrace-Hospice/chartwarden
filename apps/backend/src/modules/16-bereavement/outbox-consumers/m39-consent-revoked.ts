@@ -33,7 +33,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { BereavedContactId, ConsentId, IsoInstant } from "@wardenx/types";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { decideConsentRevocationCascade } from "../lifecycle/cascades";
 import { transitionBereavedContact } from "../lifecycle/index";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -165,6 +165,7 @@ export function buildM16ConsentRevokedConsumer(deps: ConsentRevocationDeps) {
                 status: "cancelled",
                 cancelledAt: new Date(at),
                 cancellationReasonRedacted: "contact opted out via M39 revocation cascade",
+                version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
                 updatedAt: new Date(at),
               })
               .where(

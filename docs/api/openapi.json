@@ -155339,6 +155339,7 @@
                         "requirements",
                         "transmissionAttestations",
                         "pendingRecovery",
+                        "transmissionFailureReason",
                         "allowedActions"
                       ],
                       "properties": {
@@ -155674,6 +155675,16 @@
                             }
                           ]
                         },
+                        "transmissionFailureReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "allowedActions": {
                           "type": "object",
                           "required": [
@@ -155684,7 +155695,8 @@
                             "cosign",
                             "complete",
                             "discontinue",
-                            "correct"
+                            "correct",
+                            "resend_transmission"
                           ],
                           "properties": {
                             "edit": {
@@ -155709,6 +155721,9 @@
                               "type": "boolean"
                             },
                             "correct": {
+                              "type": "boolean"
+                            },
+                            "resend_transmission": {
                               "type": "boolean"
                             }
                           }
@@ -157894,6 +157909,7 @@
                             "requirements",
                             "transmissionAttestations",
                             "pendingRecovery",
+                            "transmissionFailureReason",
                             "allowedActions"
                           ],
                           "properties": {
@@ -158229,6 +158245,16 @@
                                 }
                               ]
                             },
+                            "transmissionFailureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "allowedActions": {
                               "type": "object",
                               "required": [
@@ -158239,7 +158265,8 @@
                                 "cosign",
                                 "complete",
                                 "discontinue",
-                                "correct"
+                                "correct",
+                                "resend_transmission"
                               ],
                               "properties": {
                                 "edit": {
@@ -158264,6 +158291,9 @@
                                   "type": "boolean"
                                 },
                                 "correct": {
+                                  "type": "boolean"
+                                },
+                                "resend_transmission": {
                                   "type": "boolean"
                                 }
                               }
@@ -158887,6 +158917,7 @@
                             "requirements",
                             "transmissionAttestations",
                             "pendingRecovery",
+                            "transmissionFailureReason",
                             "allowedActions"
                           ],
                           "properties": {
@@ -159222,6 +159253,16 @@
                                 }
                               ]
                             },
+                            "transmissionFailureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "allowedActions": {
                               "type": "object",
                               "required": [
@@ -159232,7 +159273,8 @@
                                 "cosign",
                                 "complete",
                                 "discontinue",
-                                "correct"
+                                "correct",
+                                "resend_transmission"
                               ],
                               "properties": {
                                 "edit": {
@@ -159257,6 +159299,9 @@
                                   "type": "boolean"
                                 },
                                 "correct": {
+                                  "type": "boolean"
+                                },
+                                "resend_transmission": {
                                   "type": "boolean"
                                 }
                               }
@@ -159639,6 +159684,7 @@
                             "requirements",
                             "transmissionAttestations",
                             "pendingRecovery",
+                            "transmissionFailureReason",
                             "allowedActions"
                           ],
                           "properties": {
@@ -159974,6 +160020,16 @@
                                 }
                               ]
                             },
+                            "transmissionFailureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "allowedActions": {
                               "type": "object",
                               "required": [
@@ -159984,7 +160040,8 @@
                                 "cosign",
                                 "complete",
                                 "discontinue",
-                                "correct"
+                                "correct",
+                                "resend_transmission"
                               ],
                               "properties": {
                                 "edit": {
@@ -160009,6 +160066,9 @@
                                   "type": "boolean"
                                 },
                                 "correct": {
+                                  "type": "boolean"
+                                },
+                                "resend_transmission": {
                                   "type": "boolean"
                                 }
                               }
@@ -160877,6 +160937,7 @@
                             "requirements",
                             "transmissionAttestations",
                             "pendingRecovery",
+                            "transmissionFailureReason",
                             "allowedActions"
                           ],
                           "properties": {
@@ -161212,6 +161273,16 @@
                                 }
                               ]
                             },
+                            "transmissionFailureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "allowedActions": {
                               "type": "object",
                               "required": [
@@ -161222,7 +161293,8 @@
                                 "cosign",
                                 "complete",
                                 "discontinue",
-                                "correct"
+                                "correct",
+                                "resend_transmission"
                               ],
                               "properties": {
                                 "edit": {
@@ -161247,6 +161319,9 @@
                                   "type": "boolean"
                                 },
                                 "correct": {
+                                  "type": "boolean"
+                                },
+                                "resend_transmission": {
                                   "type": "boolean"
                                 }
                               }

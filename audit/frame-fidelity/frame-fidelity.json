@@ -547,7 +547,7 @@
       "frameNode": "eq20w",
       "spec": "screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md",
       "kind": "unmatched",
-      "detail": "built · `web/23-billing-medicare`"
+      "detail": "built · `web/23-billing-medicare` `admin/23-billing-medicare`"
     },
     {
       "frameNode": "fGKwq",

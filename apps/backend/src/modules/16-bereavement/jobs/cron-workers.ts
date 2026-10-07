@@ -215,6 +215,7 @@ async function closeOnePlan(
       status: "cancelled",
       cancelledAt: now,
       cancellationReasonRedacted: "plan closed at 13 months",
+      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
       updatedAt: now,
     })
     .where(
@@ -333,7 +334,8 @@ async function missOneOutreach(
   });
   const updated = await tx
     .update(OUTREACH)
-    .set({ status: transition.to, updatedAt: now })
+    // §2.5 (GAP-194) — the miss slide bumps the version, so a counselor acting on the pre-miss row gets 412.
+    .set({ status: transition.to, version: sql`${OUTREACH.version} + 1`, updatedAt: now })
     .where(and(eq(OUTREACH.id, row.id), eq(OUTREACH.status, "scheduled")))
     .returning({ id: OUTREACH.id });
   if (updated.length !== 1) throw new LostRaceError();

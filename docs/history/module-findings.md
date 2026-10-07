@@ -398,3 +398,13 @@ spoof detector open through the same cipher.
 - Proof: `coords.test.ts` (round-trip, rotation, wrong-tenant/wrong-key/tamper failure, fail-closed, legacy); the
   `m18-evv-write` live suite asserts the at-rest value is the envelope with the real DEK version, an unbound capture
   writes nothing, and a cross-tenant blob fails loud through the route read; the workers suite seals its fixtures.
+- **Rotation re-seal (§4.8 `m18.dek-rotation`), follow-up:** previously NOT built — a rotated tenant's rows stayed
+  sealed under the old DEK. Now `apps/backend/src/modules/18-evv/jobs/dek-rotation.ts`: an outbox consumer of
+  `m34.tenant.dek_rotation_completed` (on demand) + a daily M18 cron sweep (backstop) re-seal every non-legacy row
+  whose `coords_dek_version` is not current, in bounded per-org `withOrgContext` batches. The append-only trigger
+  blocked the UPDATE by design, so migration **0494** adds the sanctioned path: NOLOGIN `evv_coords_rekeyer` owning the
+  SECURITY DEFINER compare-and-swap `evv_reseal_coords` (moves the event and its geofence snapshot together; the
+  trigger exempts only that role and only the two coordinate columns; RLS on `app.org_id`). Legacy rows stay
+  unsealed. Proof: `m18-evv-dek-rotation.test.ts` (selection, batching/resume, idempotency, lost CAS, failure
+  isolation, consumer envelope check) and `test:m18:dek-rotation:live` (v1 rows readable under v2, other tenant and
+  legacy untouched, re-run no-op, direct app-role UPDATE still refused, cross-tenant id is a no-op, audit scrubbed).

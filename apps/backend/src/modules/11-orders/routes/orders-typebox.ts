@@ -389,6 +389,12 @@ export const OrderDetailResponseSchema = Type.Intersect([
     ),
     transmissionAttestations: Type.Array(TransmissionAttestationViewSchema),
     pendingRecovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
+    /**
+     * Why the lab transmission failed — a fixed producer token (`orm_refused:<r>`, `dispatch_refused:<r>`,
+     * `dlq_exhausted`, …), never free text. `null` unless `failed` and the reader holds `orders.transmission.recover`,
+     * `.view_held` or `.cosign_escalated` (an `orm_refused:sud_restricted` token discloses a 42 CFR Part 2 flag).
+     */
+    transmissionFailureReason: nullableString(),
     allowedActions: Type.Object({
       edit: Type.Boolean(),
       request_signature: Type.Boolean(),
@@ -398,6 +404,8 @@ export const OrderDetailResponseSchema = Type.Intersect([
       complete: Type.Boolean(),
       discontinue: Type.Boolean(),
       correct: Type.Boolean(),
+      /** `POST /orders/:id/resend-transmission` would act on this order and the reader holds its permission. */
+      resend_transmission: Type.Boolean(),
     }),
   }),
 ]);

@@ -180,7 +180,11 @@ const M18_PLATFORM_JOB_ID = "m18-evv-automation";
  * registers; until a platform KEK is bound, M34's stub refuses `dekForOrg` and every capture fails closed.
  */
 function m18CoordsCipher(): EvvCoordsCipher {
-  return createEvvCoordsCipher(lazyEvvCoordsKeys(getTenantKeyProvider));
+  return createEvvCoordsCipher(m18CoordsKeys());
+}
+/** The same lazily-resolved M34 key ring, for the §4.8 `m18.dek-rotation` re-seal (consumer + daily sweep). */
+function m18CoordsKeys(): EvvCoordsKeyProvider {
+  return lazyEvvCoordsKeys(getTenantKeyProvider);
 }
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
@@ -662,14 +666,17 @@ import {
 import { onTimeVisitCountsForOrg } from "./modules/17-scheduling/seams/drizzle-store";
 import {
   type EvvCoordsCipher,
+  type EvvCoordsKeyProvider,
   M18_OUTBOX_EVENTS,
   buildEvvAggregatorDeps,
+  buildM18DekRotationConsumer,
   buildM18EncounterSignedConsumer,
   buildM18SpoofDetectorConsumer,
   buildM18SubmissionPrepConsumer,
   buildM18VisitCancelledConsumer,
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
+  createDrizzleCoordsResealStore,
   createDrizzleEvvSeamStore,
   createEvvCoordsCipher,
   isEvvDeviceAttestationEnforced,
@@ -1359,6 +1366,7 @@ import {
   registerTerminologySeams,
   scheduleM38Jobs,
 } from "./modules/38-terminology/index";
+import { createBereavementOutreachConsentProbe } from "./modules/39-consent/bereavement-outreach-consent-probe";
 import {
   type M39AlertPort,
   M39_OUTBOX_EVENTS,
@@ -1369,6 +1377,7 @@ import {
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
+  getConsentEvaluator,
   getConsentPatientReader,
   mountConsentRoutes,
   recordCascadeAckForOrg,
@@ -4580,6 +4589,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               dekForOrgVersion: (orgId, version) =>
                 getTenantKeyProvider().dekForOrgVersion(orgId, version),
             }),
+            // D6 — the confirm-contact consent gate. M39 answers over its published ConsentEvaluator seam
+            // (the Drizzle store, read under withOrgContext for the caller's org): the contact's OWN
+            // `bereavement_outreach_consent` record, pinned by id, and whether a survives-death
+            // `family_caregiver_access` consent covers the decedent. Left unbound, the port fails closed
+            // and refuses every confirm.
+            bereavementConsentActive: createBereavementOutreachConsentProbe(getConsentEvaluator),
           });
           mountM16Routes(app, {
             readService: m16ReadService,
@@ -6612,7 +6627,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
         jobId: M18_PLATFORM_JOB_ID,
-        reason: "M18 EVV crons fan-out (late-check sweep + aggregator submitter/poller)",
+        reason:
+          "M18 EVV crons fan-out (late-check sweep + aggregator submitter/poller + dek-rotation re-seal)",
       });
       const m18Workers = registerM18CronWorkers({
         connection: queueConnection,
@@ -6620,6 +6636,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         outbox: m18OutboxPublisher,
         activeOrgs: m18ActiveOrgs,
         aggregator: m18AggregatorDeps,
+        coordsKeys: m18CoordsKeys(), // §4.8 m18.dek-rotation daily re-seal sweep
       });
       attachDlqAlertsToAll(m18Workers, "m18");
       app.addHook("onClose", async () => {
@@ -8590,6 +8607,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             db: dbHandle.db,
             outbox: m18OutboxPublisher,
             coordsCipher: m18CoordsCipher(), // GAP-133 — opens the §D10 coordinate envelope
+          }),
+          // §4.8 `m18.dek-rotation` — on `m34.tenant.dek_rotation_completed`, re-seal that tenant's EVV
+          // coordinates under the new DEK version through migration 0494's definer (the daily M18 cron sweep
+          // is the backstop).
+          buildM18DekRotationConsumer({
+            store: createDrizzleCoordsResealStore(dbHandle.db),
+            keys: m18CoordsKeys(),
           }),
           // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
           // void open missing-resolution rows for the cancelled visit.

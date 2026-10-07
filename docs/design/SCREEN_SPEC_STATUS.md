@@ -67,7 +67,7 @@
 | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` | built | `web/12-dosespot` `web/13-emar` |  |
 | `screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md` | built | `web/19-oncall` |  |
 | `screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md` | built | `web/19-oncall` |  |
-| `screens/clinical/WARDENX_UI_ORDERS.md` | built | `web/11-orders` | plus the held lab-transmission recovery queue (`/orders/held-transmissions`, GAP-125) |
+| `screens/clinical/WARDENX_UI_ORDERS.md` | built | `web/11-orders` | plus the held lab-transmission recovery queue (`/orders/held-transmissions`, GAP-125) and, on the order detail, the refused-transmission reason + "Resend transmission" (F-182) |
 | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | built | `web/05-patient` |  |
 | `screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md` | built | `web/09-assessments` `web/10-hope` | patient timelines |
 | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | built | `web/05-patient` |  |
@@ -92,7 +92,7 @@
 | `screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md` | built | `web/23-billing-medicare` `web/24-billing-medicaid` | eligibility |
 | `screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md` | deferred | — | No prior-authorization screen; no M23/M24 route models an authorization. |
 | `screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md` | built | `web/25-remittance` | worklist |
-| `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built | `web/23-billing-medicare` | noe, notr, transfer-notices; rate-schedule config = rate-tables + wage-indexes (GAP-125); no SIA-parameter config route exists to build on |
+| `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built | `web/23-billing-medicare` `admin/23-billing-medicare` | noe, notr, transfer-notices; rate-schedule config = rate-tables + wage-indexes (GAP-125) + the platform CMS wage-index load (admin, `/admin/billing/wage-indexes/load`); no SIA-parameter config route exists to build on |
 | `screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md` | deferred | — | No patient-statement / financial-assistance screen; no route models patient responsibility statements. |
 | `screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md` | built | `web/24-billing-medicaid` | rb-arrangements |
 | `screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md` | built | `web/24-billing-medicaid` | eligibility |

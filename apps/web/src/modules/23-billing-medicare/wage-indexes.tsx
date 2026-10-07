@@ -27,8 +27,8 @@ import {
 // The factor travels as a decimal STRING ("1.0342"), never a float — the server rejects a JSON number outright.
 // `GET /wage-indexes/effective` and `GET /wage-indexes/:id` are not called: the list (with history) already holds
 // every row the drawer shows, and which value is live is the `supersededAt === null` row.
-// The platform-shared CMS file load (`POST /api/v1/admin/billing/wage-indexes/load`) is a platform-admin action
-// with no Medicare-billing surface in apps/admin yet, so it stays API-only (see GAP-125 notes).
+// The platform-shared CMS file load (`POST /api/v1/admin/billing/wage-indexes/load`) is a platform-admin action: it
+// lives in the Platform-Ops console (apps/admin/src/modules/23-billing-medicare/wage-index-load.tsx), not here.
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { BillingTabs } from "../../shell/billing-tabs";

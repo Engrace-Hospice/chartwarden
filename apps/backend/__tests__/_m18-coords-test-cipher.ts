@@ -43,3 +43,24 @@ export function createTestEvvCoordsCipher(
 ): EvvCoordsCipher {
   return createEvvCoordsCipher(createTestCoordsKeyRing(currentVersion));
 }
+
+/** A per-tenant DEK ring whose CURRENT version can be advanced — the M34 `tenant.dek_rotate` effect, in memory. */
+export interface RotatableTestCoordsKeyRing extends EvvCoordsKeyProvider {
+  /** Make `version` the current DEK for every org (prior versions stay openable, as M34's prior list does). */
+  rotateTo(version: string): void;
+}
+
+/** A {@link createTestCoordsKeyRing} whose current version moves on `rotateTo`; keys per (org, version) persist. */
+export function createRotatableTestCoordsKeyRing(
+  initialVersion: string = TEST_COORDS_DEK_VERSION,
+): RotatableTestCoordsKeyRing {
+  const inner = createTestCoordsKeyRing(initialVersion);
+  let current = initialVersion;
+  return {
+    dekForOrg: (organizationId) => inner.dekForOrgVersion(organizationId, current),
+    dekForOrgVersion: (organizationId, version) => inner.dekForOrgVersion(organizationId, version),
+    rotateTo(version) {
+      current = version;
+    },
+  };
+}

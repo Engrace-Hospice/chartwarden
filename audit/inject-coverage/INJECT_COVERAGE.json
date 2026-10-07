@@ -498,7 +498,8 @@
         "apps/backend/__tests__/consent-surface.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
-        "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts"
+        "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
+        "apps/backend/__tests__/m16-routes.live.test.ts"
       ],
       "directRoutesReferenced": 27
     },

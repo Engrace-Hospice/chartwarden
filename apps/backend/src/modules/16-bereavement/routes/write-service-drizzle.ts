@@ -60,7 +60,7 @@ import type {
   IsoInstant,
   MembershipId,
 } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { NotImplementedError, getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher, BereavementCipherColumn } from "../bereavement-crypto";
 import {
@@ -144,15 +144,19 @@ export interface M16WriteDeps {
   readonly alerts?: AlertPort;
   readonly now?: () => IsoInstant;
   /**
-   * D6 — is an active `bereavement_outreach_consent` (or the primary caregiver's `family_caregiver_access`)
-   * on file for this contact? Unbound ⇒ FAIL-CLOSED: `confirmContact` refuses, because an unconsented
-   * condolence call to a grieving family is the exact harm the rule exists to prevent.
+   * D6 — the two M39 consent facts the §2.3 `confirmContact` guard reads: is THIS contact's own
+   * `bereavement_outreach_consent` (pinned by `consentRecordId`) in force, and does a survives-death
+   * `family_caregiver_access` consent still cover the decedent? The composition root binds M39's
+   * `createBereavementOutreachConsentProbe` over the `ConsentEvaluator` seam. Whether the contact IS the
+   * primary caregiver is M16's own read (M5 roster seam), not M39's. Unbound or throwing ⇒ FAIL-CLOSED:
+   * `confirmContact` refuses, because an unconsented condolence call to a grieving family is the exact
+   * harm the rule exists to prevent.
    */
   readonly bereavementConsentActive?: (input: {
     organizationId: string;
     patientId: string;
     consentRecordId?: string;
-  }) => Promise<{ hasOutreachConsent: boolean; isPrimaryCaregiverWithFamilyAccess: boolean }>;
+  }) => Promise<{ hasOutreachConsent: boolean; hasFamilyCaregiverAccess: boolean }>;
   /**
    * §2.3 / §2.5 — is the submitted `relationship_code` in M38's relationship-to-decedent value set? The
    * `bereaved_contact_relationship` pgEnum already mirrors that set and the column would reject anything
@@ -218,7 +222,7 @@ export function buildDrizzleM16WriteService(
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const consentProbe =
     deps.bereavementConsentActive ??
-    (async () => ({ hasOutreachConsent: false, isPrimaryCaregiverWithFamilyAccess: false }));
+    (async () => ({ hasOutreachConsent: false, hasFamilyCaregiverAccess: false }));
   const relationshipOk = deps.relationshipInValueSet ?? (async () => true);
   const sudAllowed = deps.sudDisclosureAllowed ?? (async () => false);
   const encounterReader = deps.encounterReader ?? getBereavementEncounterReader;
@@ -235,6 +239,99 @@ export function buildDrizzleM16WriteService(
     } catch (error) {
       if (error instanceof NotImplementedError) return [];
       throw error;
+    }
+  }
+
+  /**
+   * D6 — the consent record a confirm is judged on. Once a contact is linked to a record, a request may not
+   * swap in another (that is how survivor A's consent could be made to stand in for survivor B's).
+   */
+  function linkedConsentRecordId(
+    contact: ContactRow,
+    requested: string | undefined,
+  ): string | undefined {
+    const linked = contact.consentRecordId ?? undefined;
+    if (linked !== undefined && requested !== undefined && requested !== linked) {
+      throw new BereavementStateError(
+        "CONSENT_RECORD_MISMATCH",
+        "this contact is already linked to a different consent record",
+      );
+    }
+    return linked ?? requested;
+  }
+
+  /**
+   * D6 — one consent record backs at most one contact in the tenant. Checked before every write that links a
+   * record (seed, add, confirm); the `berv_contact_consent_uniq` index (migration 0495) is the backstop.
+   */
+  async function assertConsentRecordFree(
+    tx: Tx,
+    consentRecordId: string | null | undefined,
+    exceptContactId?: string,
+  ): Promise<void> {
+    if (!consentRecordId) return;
+    const [holder] = await tx
+      .select({ id: CONTACT.id })
+      .from(CONTACT)
+      .where(
+        exceptContactId === undefined
+          ? eq(CONTACT.consentRecordId, consentRecordId)
+          : and(eq(CONTACT.consentRecordId, consentRecordId), ne(CONTACT.id, exceptContactId)),
+      )
+      .limit(1);
+    if (holder) {
+      throw new BereavementStateError(
+        "CONSENT_RECORD_IN_USE",
+        "this consent record is already linked to another bereaved contact",
+      );
+    }
+  }
+
+  /**
+   * D6 / §2.3 — the `confirmContact` consent verdict. The contact's OWN `bereavement_outreach_consent` (the
+   * record already linked on the row, else the one named on this request — which `assertConsentRecordFree` has
+   * proven is linked to no other contact) qualifies it; so does being the
+   * decedent's M5 primary caregiver while a survives-death `family_caregiver_access` consent is in force.
+   * FAIL-CLOSED end to end: a probe or roster failure is "no consent", never an assumed yes.
+   */
+  async function consentVerdict(
+    organizationId: string,
+    patientId: string,
+    contact: ContactRow,
+    request: { readonly consentRecordId?: string | undefined },
+  ): Promise<{ hasOutreachConsent: boolean; isPrimaryCaregiverWithFamilyAccess: boolean }> {
+    const consentRecordId = linkedConsentRecordId(contact, request.consentRecordId);
+    const facts = await consentProbe({
+      organizationId,
+      patientId,
+      ...(consentRecordId === undefined ? {} : { consentRecordId }),
+    }).catch(() => ({ hasOutreachConsent: false, hasFamilyCaregiverAccess: false }));
+    const isPrimary =
+      facts.hasFamilyCaregiverAccess &&
+      (await isPrimaryCaregiver(organizationId, patientId, contact));
+    return {
+      hasOutreachConsent: facts.hasOutreachConsent,
+      isPrimaryCaregiverWithFamilyAccess: isPrimary,
+    };
+  }
+
+  /** Is this contact the decedent's CURRENT primary caregiver on M5's roster? Any read failure ⇒ false. */
+  async function isPrimaryCaregiver(
+    organizationId: string,
+    patientId: string,
+    contact: ContactRow,
+  ): Promise<boolean> {
+    const { patientCaregiverIdFromM5: linkId, caregiverIdFromM5: caregiverId } = contact;
+    if (linkId === null && caregiverId === null) return false;
+    try {
+      const roster = await rosterReader().caregiversForPatient(organizationId, patientId);
+      return roster.some(
+        (entry) =>
+          entry.isPrimary &&
+          (entry.patientCaregiverId === linkId || entry.caregiverId === caregiverId),
+      );
+    } catch {
+      return false;
     }
   }
 
@@ -313,6 +410,30 @@ export function buildDrizzleM16WriteService(
     return row;
   }
 
+  /**
+   * §2.5 (GAP-194) — UPDATE one outreach row only while it is still at the version this transaction read,
+   * and bump it. A row another writer moved in between (a second counselor, the miss cron, an M22 render
+   * callback) matches nothing and is refused 412 `STALE_VERSION` instead of being overwritten.
+   */
+  async function patchOutreach(
+    tx: Tx,
+    outreach: OutreachRow,
+    set: Partial<typeof OUTREACH.$inferInsert>,
+  ): Promise<OutreachRow> {
+    const [row] = await tx
+      .update(OUTREACH)
+      .set({ ...set, version: outreach.version + 1 })
+      .where(and(eq(OUTREACH.id, outreach.id), eq(OUTREACH.version, outreach.version)))
+      .returning();
+    if (!row) {
+      throw new BereavementStateError(
+        "STALE_VERSION",
+        `the outreach has moved on (read version ${outreach.version})`,
+      );
+    }
+    return row;
+  }
+
   /** The tenancy columns every child row inherits from the plan root (the M15-F05 denormalization). */
   const inherit = (plan: PlanRow) => ({
     organizationId: plan.organizationId,
@@ -346,7 +467,7 @@ export function buildDrizzleM16WriteService(
       assigneeUserId: r.assigneeUserId ?? null,
       renderedDocumentId: r.renderedDocumentId ?? null,
       sourceEncounterId,
-      version: 0,
+      version: r.version,
     }) satisfies BereavementOutreachRowView;
 
   const toContactView = (r: ContactRow): BereavedContactRowView => ({
@@ -469,6 +590,7 @@ export function buildDrizzleM16WriteService(
         status: "cancelled",
         cancelledAt: new Date(at),
         cancellationReasonRedacted: reason,
+        version: sql`${OUTREACH.version} + 1`,
         updatedAt: new Date(at),
       })
       .where(
@@ -933,7 +1055,17 @@ export function buildDrizzleM16WriteService(
             .returning();
           if (row) seeded.push(row);
         }
+        const seededConsentIds = drafts.flatMap((d) =>
+          d.consentRecordId ? [d.consentRecordId] : [],
+        );
+        if (new Set(seededConsentIds).size !== seededConsentIds.length) {
+          throw new BereavementStateError(
+            "CONSENT_RECORD_IN_USE",
+            "two seeded contacts name the same consent record",
+          );
+        }
         for (const [draftIndex, draft] of drafts.entries()) {
+          await assertConsentRecordFree(tx, draft.consentRecordId);
           if (!(await relationshipOk(draft.relationshipCode))) {
             throw new BereavementStateError(
               "RELATIONSHIP_NOT_IN_VALUE_SET",
@@ -1214,6 +1346,7 @@ export function buildDrizzleM16WriteService(
         if (isClosedPlanStatus(plan.status)) {
           throw new BereavementStateError("PLAN_CLOSED", `the bereavement plan is ${plan.status}`);
         }
+        await assertConsentRecordFree(tx, input.consentRecordId);
         if (!(await relationshipOk(input.relationshipCode))) {
           throw new BereavementStateError(
             "RELATIONSHIP_NOT_IN_VALUE_SET",
@@ -1288,21 +1421,27 @@ export function buildDrizzleM16WriteService(
 
     // ── 13 — proposed → active (D6 consent verified, fail-CLOSED) ───────────────────────────────────
     async confirmContact(actor, contactId, input: ConfirmContactInput) {
-      return withOrgContext(db, scope(actor), async (tx) => {
+      // The D6 consent facts are read BEFORE the write transaction opens: M39's store and M5's roster each
+      // take their own pooled connection, and holding ours while they do is the M21-T05 / M36 self-deadlock.
+      // The row version read here is re-checked inside the transaction, so a contact that moved in between
+      // (a different consent record linked, a status change) is refused 412 rather than confirmed on facts
+      // that described an older row.
+      const facts = await withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);
         checkVersion(input.expectedVersion, contact.version);
         const plan = await planOr404(tx, contact.planId);
+        return { contact, patientId: plan.patientId };
+      });
+      const verdict = await consentVerdict(actor.organizationId, facts.patientId, facts.contact, {
+        consentRecordId: input.consentRecordId,
+      });
+      return withOrgContext(db, scope(actor), async (tx) => {
+        const contact = await contactOr404(tx, contactId);
+        checkVersion(facts.contact.version, contact.version);
+        const consentRecordId = linkedConsentRecordId(contact, input.consentRecordId);
+        await assertConsentRecordFree(tx, consentRecordId, contact.id);
+        const plan = await planOr404(tx, contact.planId);
         const at = now();
-        const verdict = await consentProbe({
-          organizationId: actor.organizationId,
-          patientId: plan.patientId,
-          ...(input.consentRecordId === undefined
-            ? {}
-            : { consentRecordId: input.consentRecordId }),
-        }).catch(() => ({
-          hasOutreachConsent: false,
-          isPrimaryCaregiverWithFamilyAccess: false,
-        }));
 
         const transition = transitionBereavedContact(contact.status, {
           type: "confirmContact",
@@ -1326,9 +1465,7 @@ export function buildDrizzleM16WriteService(
           .set({
             status: transition.to,
             confirmedAt: patch.confirmedAt ?? new Date(at),
-            ...(input.consentRecordId === undefined
-              ? {}
-              : { consentRecordId: input.consentRecordId }),
+            ...(consentRecordId === undefined ? {} : { consentRecordId }),
             version: contact.version + 1,
             updatedAt: new Date(at),
           })
@@ -1676,19 +1813,13 @@ export function buildDrizzleM16WriteService(
               : {},
           ),
         );
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({
-            status: transition.to,
-            startedAt: new Date(at),
-            updatedAt: new Date(at),
-            ...(queuesRender ? { m22RenderRequestedAt: new Date(at) } : {}),
-          })
-          // bereavement_outreach has no version column (GAP-194): the status read above is the guard, so a
-          // concurrent transition matches no row instead of being overwritten.
-          .where(and(eq(OUTREACH.id, outreachId), eq(OUTREACH.status, outreach.status)))
-          .returning();
-        if (!row) throw new Error("m16: the outreach start returned no row");
+        // §2.5 — the version guard means a concurrent transition matches no row instead of being overwritten.
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          startedAt: new Date(at),
+          updatedAt: new Date(at),
+          ...(queuesRender ? { m22RenderRequestedAt: new Date(at) } : {}),
+        });
         return toOutreachView(row);
       });
     },
@@ -1699,6 +1830,7 @@ export function buildDrizzleM16WriteService(
       const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
+        checkVersion(input.expectedVersion, outreach.version);
         const plan = await planOr404(tx, outreach.planId);
         // GAP-049 / D15 — the kind recorded is the kind the row was scheduled as, never the client's claim;
         // and an in-person visit's encounter is resolved through M8 (signed, same patient, bereavement_contact).
@@ -1758,12 +1890,11 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({ status: transition.to, completedAt: new Date(at), updatedAt: new Date(at) })
-          .where(eq(OUTREACH.id, outreachId))
-          .returning();
-        if (!row) throw new Error("m16: the outreach complete returned no row");
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          completedAt: new Date(at),
+          updatedAt: new Date(at),
+        });
         return toOutreachView(row, log.sourceEncounterId ?? null);
       });
     },
@@ -1774,6 +1905,7 @@ export function buildDrizzleM16WriteService(
       const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
+        checkVersion(input.expectedVersion, outreach.version);
         const plan = await planOr404(tx, outreach.planId);
         const at = now();
         const transition = transitionBereavementOutreach(outreach.status, {
@@ -1804,13 +1936,11 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({ status: transition.to, completedAt: new Date(at), updatedAt: new Date(at) })
-          .where(eq(OUTREACH.id, outreachId))
-          .returning();
-        if (!row) throw new Error("m16: the outreach decline returned no row");
-        void input;
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          completedAt: new Date(at),
+          updatedAt: new Date(at),
+        });
         return toOutreachView(row);
       });
     },
@@ -1821,6 +1951,7 @@ export function buildDrizzleM16WriteService(
       const notesCipher = await sealNotes(actor.organizationId, input.notes);
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
+        checkVersion(input.expectedVersion, outreach.version);
         const plan = await planOr404(tx, outreach.planId);
         const at = now();
         await tx.insert(LOG).values({
@@ -1853,13 +1984,11 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({ status: transition.to, completedAt: new Date(at), updatedAt: new Date(at) })
-          .where(eq(OUTREACH.id, outreachId))
-          .returning();
-        if (!row) throw new Error("m16: the outreach no-response returned no row");
-        void input;
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          completedAt: new Date(at),
+          updatedAt: new Date(at),
+        });
         return toOutreachView(row);
       });
     },
@@ -1868,6 +1997,7 @@ export function buildDrizzleM16WriteService(
     async cancelOutreach(actor, outreachId, input: CancelOutreachInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
+        checkVersion(input.expectedVersion, outreach.version);
         const plan = await planOr404(tx, outreach.planId);
         const at = now();
         const transition = transitionBereavementOutreach(outreach.status, {
@@ -1876,17 +2006,12 @@ export function buildDrizzleM16WriteService(
           reason: input.reason,
         });
         await runEffects(tx, transition.effects, effectCtx(actor, plan, at, {}));
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({
-            status: transition.to,
-            cancelledAt: new Date(at),
-            cancellationReasonRedacted: input.reason,
-            updatedAt: new Date(at),
-          })
-          .where(eq(OUTREACH.id, outreachId))
-          .returning();
-        if (!row) throw new Error("m16: the outreach cancel returned no row");
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          cancelledAt: new Date(at),
+          cancellationReasonRedacted: input.reason,
+          updatedAt: new Date(at),
+        });
         return toOutreachView(row);
       });
     },
@@ -1895,6 +2020,7 @@ export function buildDrizzleM16WriteService(
     async lateAttemptOutreach(actor, outreachId, input: LateAttemptInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
+        checkVersion(input.expectedVersion, outreach.version);
         const plan = await planOr404(tx, outreach.planId);
         const at = now();
         const transition = transitionBereavementOutreach(outreach.status, {
@@ -1903,13 +2029,11 @@ export function buildDrizzleM16WriteService(
           lateGraceUntil: iso(outreach.lateGraceUntil) as IsoInstant,
         });
         await runEffects(tx, transition.effects, effectCtx(actor, plan, at, {}));
-        const [row] = await tx
-          .update(OUTREACH)
-          .set({ status: transition.to, startedAt: new Date(at), updatedAt: new Date(at) })
-          .where(eq(OUTREACH.id, outreachId))
-          .returning();
-        if (!row) throw new Error("m16: the outreach late-attempt returned no row");
-        void input;
+        const row = await patchOutreach(tx, outreach, {
+          status: transition.to,
+          startedAt: new Date(at),
+          updatedAt: new Date(at),
+        });
         return toOutreachView(row);
       });
     },

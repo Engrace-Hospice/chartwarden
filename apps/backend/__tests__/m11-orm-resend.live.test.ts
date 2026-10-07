@@ -540,6 +540,58 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     });
   });
 
+  // ── The order DETAIL read the resend UI keys on ──────────────────────────────────────────────────────────
+
+  const RECOVERER = {
+    membershipId: "",
+    roles: [],
+    disciplines: [],
+    permissions: new Set(["orders.read", "orders.transmission.recover"]),
+  };
+  const READER = { ...RECOVERER, permissions: new Set(["orders.read", "orders.amend"]) };
+
+  it("the detail read (as wardenx_app) carries the failure reason + resend_transmission for a recover holder only", async () => {
+    const { id, patientId } = await refusedOrder();
+
+    const asRecoverer = await svc.getOrder(ORG_A, id, RECOVERER);
+    expect(asRecoverer.transmissionStatus).toBe("failed");
+    expect(asRecoverer.transmissionFailureReason).toBe("orm_refused:patient_sex_unrecorded");
+    expect(asRecoverer.allowedActions.resend_transmission).toBe(true);
+
+    // A reader without a transmission-authority key sees neither the token nor the action.
+    const asReader = await svc.getOrder(ORG_A, id, READER);
+    expect(asReader.transmissionFailureReason).toBeNull();
+    expect(asReader.allowedActions.resend_transmission).toBe(false);
+
+    // Another tenant cannot read it at all (RLS), so the reason never crosses the boundary.
+    await expect(svc.getOrder(ORG_B, id, RECOVERER)).rejects.toMatchObject({ statusCode: 404 });
+
+    // After a successful resend the order is `pending`: no reason, nothing to resend.
+    await admin.query("UPDATE patient SET sex_assigned_at_birth='F' WHERE id=$1", [patientId]);
+    await resend(id);
+    const after = await svc.getOrder(ORG_A, id, RECOVERER);
+    expect(after.transmissionFailureReason).toBeNull();
+    expect(after.allowedActions.resend_transmission).toBe(false);
+  });
+
+  it("a SUD refusal shows its reason to the recover holder but is never offered for resend", async () => {
+    const patientId = randomUUID();
+    await seedPatient(patientId, ORG_A, `MRN-${patientId.slice(0, 6)}`, { sud: true });
+    const id = await signedLab({ patientId });
+    const view = await svc.getOrder(ORG_A, id, RECOVERER);
+    expect(view.transmissionFailureReason).toBe("orm_refused:sud_restricted");
+    expect(view.allowedActions.resend_transmission).toBe(false);
+    expect((await svc.getOrder(ORG_A, id, READER)).transmissionFailureReason).toBeNull();
+  });
+
+  it("the list read does not carry the failure reason (detail-only)", async () => {
+    const { id, patientId } = await refusedOrder();
+    const { orders } = await svc.listOrders(ORG_A, { patientId });
+    const listed = orders.find((o) => o.id === id) as Record<string, unknown> | undefined;
+    expect(listed).toBeDefined();
+    expect(listed).not.toHaveProperty("transmissionFailureReason");
+  });
+
   // ── Tenancy ───────────────────────────────────────────────────────────────────────────────────────────────
 
   it("another tenant's order is 404 (RLS) and is left untouched", async () => {

@@ -195,7 +195,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     assigneeUserId: r.assigneeUserId ?? null,
     renderedDocumentId: r.renderedDocumentId ?? null,
     sourceEncounterId: null,
-    version: 0,
+    version: r.version,
   });
 
   const toContactRow = (

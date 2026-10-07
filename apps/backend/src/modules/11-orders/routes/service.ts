@@ -133,6 +133,13 @@ export interface OrderDetailView extends OrderView {
   readonly transmissionAttestations: readonly TransmissionAttestationView[];
   /** F-202 — the recovery awaiting its co-signature, if any (at most one per order); `null` otherwise. */
   readonly pendingRecovery: RecoveryRequestView | null;
+  /**
+   * Why the lab transmission failed — the fixed producer token in `transmission_failure_reason` (`orm_refused:<r>`,
+   * `dispatch_refused:<r>`, `dlq_exhausted`, …; never free text). `null` unless the transmission is `failed` AND the
+   * reader holds a transmission-authority key (`TRANSMISSION_REASON_READER_PERMISSIONS`): `orm_refused:sud_restricted`
+   * discloses a 42 CFR Part 2 flag, so the token is not for every reader of the order.
+   */
+  readonly transmissionFailureReason: string | null;
 }
 
 /** F-202 — one attested recovery, as the order detail shows it. Ids only for "who", per the rest of the view. */
@@ -183,7 +190,20 @@ export interface OrderAllowedActions {
   readonly complete: boolean;
   readonly discontinue: boolean;
   readonly correct: boolean;
+  /**
+   * `POST /orders/:id/resend-transmission` would act on this order (`classifyOrmResend` — an active lab order whose
+   * transmission was REFUSED before any message was built) AND the reader holds `orders.transmission.recover`, the
+   * route's permission. The route still decides (its own scope guard + the row-locked re-check).
+   */
+  readonly resend_transmission: boolean;
 }
+
+/** The keys that may read an order's transmission failure reason (the held-list reasons readers; F-203). */
+export const TRANSMISSION_REASON_READER_PERMISSIONS: readonly string[] = [
+  "orders.transmission.recover",
+  "orders.transmission.view_held",
+  "orders.transmission.cosign_escalated",
+];
 /** A server-assembled snapshot; never accepted from an HTTP body or query. */
 export interface OrderDetailActor {
   readonly membershipId: string;
@@ -237,10 +257,14 @@ export function buildOrderWorkflowProjection(
     | "verbalDeadlineAt"
     | "drafterMembershipId"
     | "signedAt"
-  >,
+    | "transmissionStatus"
+  > & {
+    /** The raw `transmission_failure_reason`; omitted by a backend that has no outbound producer (in-memory). */
+    readonly transmissionFailureReason?: string | null;
+  },
   actor: OrderDetailActor,
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null,
-): Pick<OrderDetailView, "requirements" | "allowedActions"> {
+): Pick<OrderDetailView, "requirements" | "allowedActions" | "transmissionFailureReason"> {
   const clinical = validateOrderData(order.kind, order.kindVersion, order.data).length === 0;
   const signatureApplies = ["pending_signature", "verbal_pending"].includes(order.status);
   const verbal = order.status === "verbal_pending";
@@ -251,7 +275,20 @@ export function buildOrderWorkflowProjection(
       : lowerRoles.some((x) => x === "rn_case_manager" || x === "clinical_supervisor");
   const canSign = actor.disciplines.some((d) => signerEligible(d, order.kind));
   const has = (permission: string) => actor.permissions.has(permission);
+  const failureReason =
+    order.transmissionStatus === "failed" ? (order.transmissionFailureReason ?? null) : null;
+  const resendable =
+    failureReason !== null &&
+    classifyOrmResend({
+      kind: order.kind,
+      status: order.status,
+      transmissionStatus: order.transmissionStatus,
+      transmissionFailureReason: failureReason,
+    }).ok;
   return {
+    transmissionFailureReason: TRANSMISSION_REASON_READER_PERMISSIONS.some(has)
+      ? failureReason
+      : null,
     requirements: [
       {
         code: "clinical_details",
@@ -299,6 +336,7 @@ export function buildOrderWorkflowProjection(
         ["pending_signature", "verbal_pending", "active"].includes(order.status) &&
         has("orders.discontinue"),
       correct: order.status === "active" && has("orders.amend"),
+      resend_transmission: resendable && has("orders.transmission.recover"),
     },
   };
 }
@@ -698,7 +736,11 @@ interface OrderRecord
   extends Mutable<
     Omit<
       OrderDetailView,
-      "requirements" | "allowedActions" | "transmissionAttestations" | "pendingRecovery"
+      | "requirements"
+      | "allowedActions"
+      | "transmissionAttestations"
+      | "pendingRecovery"
+      | "transmissionFailureReason"
     >
   > {
   organizationId: string;

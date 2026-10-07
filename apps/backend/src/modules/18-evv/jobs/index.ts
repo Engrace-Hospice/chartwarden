@@ -1,5 +1,6 @@
 // apps/backend/src/modules/18-evv/jobs — M18's §4.8 workers (GAP-056): the late-check sweep, the aggregator
-// submission prep / submitter / response poller, and the GPS-spoof detector.
+// submission prep / submitter / response poller, the GPS-spoof detector, and the `m18.dek-rotation`
+// coordinate re-seal (consumer of `m34.tenant.dek_rotation_completed` + daily sweep).
 export {
   type M18ActiveOrgListPort,
   type M18CronDeps,
@@ -8,6 +9,17 @@ export {
   runForEachActiveOrg,
   scheduleM18Jobs,
 } from "./cron-workers";
+export {
+  type DekRotationDeps,
+  type DekRotationResult,
+  type EvvCoordsResealStore,
+  EvvCoordsResealError,
+  M18_DEK_ROTATION_CONSUMER,
+  buildM18DekRotationConsumer,
+  createDrizzleCoordsResealStore,
+  needsReseal,
+  resealOrgCoords,
+} from "./dek-rotation";
 export {
   type LateCheckSweepDeps,
   type LateCheckSweepResult,
