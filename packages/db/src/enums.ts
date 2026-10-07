@@ -582,6 +582,8 @@ export const patientCaregiverLrAuthority = pgEnum("patient_caregiver_lr_authorit
 /** `patient_assignment_role` — the care-team role on `patient_assignment` (§3.2). */
 export const patientAssignmentRole = pgEnum("patient_assignment_role", [
   "primary_rn",
+  // A visiting RN beside the RN case manager (migration 0399); any number may be open per patient.
+  "rn",
   "attending_clinician",
   "case_manager_msw",
   "chaplain",

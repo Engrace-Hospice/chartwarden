@@ -8,7 +8,7 @@
 **Owns:** `apps/backend/src/modules/05-patient`, the patient spine schema (16 tables + the v0.3 schema additions), the `CaseloadProvider` seam, the `PatientReader` seam, and the `PatientMutator` seam.
 **Depends on:** 1 (Platform Foundation — KEK/DEK envelope-encryption helper, outbox, Pino redaction, `SeamRegistry`, typed `OrganizationSettingsReader`, tenancy/RLS generator), 2 (Identity — `user`, `membership`, session classes), 3 (Authorization — RBAC keys + ABAC predicates + the `CaseloadProvider` seam this module *implements* + the `validateSeams` boot gate that requires `PatientReader` / `PatientMutator`), 4 (Audit — write-trigger generator, `auditRead()`, destruction-certificate workflow + per-module `eraseFn` registration + the `m5.patient.mutator_applied` audit action), 36 (Secure Messaging — privacy-flag alerts, caregiver outreach, SLO-breach operator alerts), 38 (Clinical Terminology — race/ethnicity SNOMED, language ISO‑639, SOGI value-sets, address state codes), 40 (Master Data Management — canonical `Payer`, `ExternalPhysician` for attending, `ReferralSource`)
 **Consumed by:** 6 (Admission/Election — every admission attaches to a patient), 11/12/13 (Orders / DoseSpot / eMAR — patient sync + identity), 16 (Bereavement — patient + caregiver records, decedent transition), 17 (Scheduling & Routing — caseload source + address for routing), 18 (EVV — patient address for geofence), 19 (On-Call Triage — patient lookup), 22 (Documents — patient as document subject + extraction chart-writeback target), 23 (Billing Medicare — MBI, address, payer), 24 (Billing Medicaid — state-payer per address state), 28 (FHIR Gateway — `Patient` resource projection), 29 (External Interfaces — ADT/labs/NPPES match; consumes the `PatientReader` seam for its T-29.05 patient-match cascade and publishes `m29.hl7_inbound_proposal.accepted` which this module applies through the `PatientMutator` seam), 31 (Patient/Family Portal — patient/caregiver identity + access scope), 33 (Reporting), 39 (Consent — consents attach to patients; PrivacyFlag snapshot consumer)
-**Spec status:** Re-locked v0.6 (referral-intake MBI recording on the `PatientIntakeResolver` seam; supersedes Re-locked v0.5 — Phase-2 tenancy sweep applied)
+**Spec status:** Re-locked v0.6.1 (care-team `rn` role beside the one `primary_rn`; supersedes Re-locked v0.6 — referral-intake MBI recording on the `PatientIntakeResolver` seam; supersedes Re-locked v0.5 — Phase-2 tenancy sweep applied)
 
 > **Phase-2 tenancy three-column sweep (2026-06-11; ADR-0010 D1 / ARCH-011) — M05-F04 closed.** All
 > **16 PHI tables** now carry `organization_id` (NOT NULL) + `provider_entity_id` + `location_id`
@@ -23,6 +23,7 @@
 
 ## Changelog
 
+- **v0.6.1 (Re-locked; 2026-10-07)** — **Additional RNs on the care team.** New `patient_assignment_role` value `rn` (migration `0399_m5_assignment_role_rn.sql`): a visiting/staff RN beside the RN case manager. `primary_rn` stays at most one open per patient (`patient_assignment_primary_rn_unique`); any number of `rn` assignments may be open, subject only to the per-(patient, clinician, role) open-duplicate guard (409 `ASSIGNMENT_ALREADY_OPEN`). `CareTeamProvider.findPrimaryRn` is unchanged — an `rn` is never the RN case manager. Also: the web "Assign care team member" dialog now sends the route's `clinicianUserId` (it sent an unrecognised `clinicianMembershipId`, so every assignment answered 400 `VALIDATION_ERROR`); the unused, drifted `AssignmentBodySchema`/`AssignmentParamsSchema` copies in `patient-typebox.ts` are removed.
 - **v0.6 (Re-locked; 2026-10-04)** — Documented the `PatientIntakeResolver` seam M6 consumes (§4.11) and extended it for referral-intake payer numbers: `PatientIntakeSubject.medicareNumberAtReceipt` feeds the deterministic MBI match and `createPatientFromIntake` writes it as the new patient's `mbi` identifier (`issuer='referral_intake'`); new `recordMedicareNumberIfMissing` adds a referral MBI to an existing patient only when the chart has no active MBI (returns `added` / `already_on_chart` / `different_on_chart`; never overwrites — D12). Shared validators in `@wardenx/types` (`normalizeMedicareNumber` / `isValidMedicareNumber`, the `patient_identifier_mbi_format` rule; `normalizeMedicaidNumber` / `isValidMedicaidNumber`). Medicaid IDs stay on `patient_payer` (§2 "Payers") — no identifier kind added.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Closed the M29 forward-stub gap. v0.2 established the patient spine, the deterministic-first / probabilistic-queued match pipeline, and the `CaseloadProvider` seam; v0.3 shipped the three pieces M29 needs for its inbound ADT pipeline to close end-to-end on the M5 side:
@@ -203,7 +204,7 @@ erDiagram
         uuid id PK
         uuid patient_id FK
         uuid clinician_user_id FK "M2 user"
-        enum role "primary_rn|attending_clinician|case_manager_msw|chaplain|aide|np|md|volunteer|bereavement"
+        enum role "primary_rn|rn|attending_clinician|case_manager_msw|chaplain|aide|np|md|volunteer|bereavement"
         date assigned_at
         date unassigned_at "null = current"
         text reason
@@ -471,7 +472,7 @@ export const patientCaregiverLrAuthority = pgEnum('patient_caregiver_lr_authorit
   ['dpoa_healthcare','guardian','next_of_kin','none'])
 
 export const patientAssignmentRole = pgEnum('patient_assignment_role',
-  ['primary_rn','attending_clinician','case_manager_msw','chaplain','aide','np','md','volunteer','bereavement'])
+  ['primary_rn','rn','attending_clinician','case_manager_msw','chaplain','aide','np','md','volunteer','bereavement'])
 
 export const patientMatchReviewStatus = pgEnum('patient_match_review_status',
   ['open','merged','not_a_match','cancelled'])
@@ -909,7 +910,7 @@ CREATE TYPE patient_caregiver_relationship AS ENUM (
   'spouse','child','parent','sibling','other_family','friend','guardian','paid_caregiver');
 CREATE TYPE patient_caregiver_lr_authority AS ENUM ('dpoa_healthcare','guardian','next_of_kin','none');
 CREATE TYPE patient_assignment_role AS ENUM (
-  'primary_rn','attending_clinician','case_manager_msw','chaplain','aide','np','md','volunteer','bereavement');
+  'primary_rn','rn','attending_clinician','case_manager_msw','chaplain','aide','np','md','volunteer','bereavement');
 CREATE TYPE patient_match_review_status AS ENUM ('open','merged','not_a_match','cancelled');
 CREATE TYPE patient_amendment_status AS ENUM ('pending','accepted','denied','withdrawn');
 CREATE TYPE patient_phone_kind AS ENUM ('mobile','home','work','facility');
@@ -1447,6 +1448,7 @@ Type.Object({
 // 201 -> Assignment
 // Side effects: caseload cache invalidation for clinicianUserId; patient.assignment_created audit
 // 409 PRIMARY_RN_ALREADY_ASSIGNED when role=primary_rn and an active assignment exists
+// role=rn (v0.6.1): additional RNs — any number open per patient; 409 ASSIGNMENT_ALREADY_OPEN only for the same clinician
 ```
 
 **POST /api/v1/patient-matches/:id/merge** — `patient.merge` *(step-up)*

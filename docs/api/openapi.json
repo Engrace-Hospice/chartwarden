@@ -167509,6 +167509,10 @@
                         "type": "string"
                       },
                       {
+                        "const": "rn",
+                        "type": "string"
+                      },
+                      {
                         "const": "attending_clinician",
                         "type": "string"
                       },

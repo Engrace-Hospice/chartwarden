@@ -118,10 +118,14 @@ async function loadMdm(
   };
 }
 
+/** Which id a member option carries: the org membership (default) or the member's user id. */
+type MemberIdKind = "membership" | "user";
+
 async function loadMembers(
   client: ApiClient,
   organizationId: string,
   input: EntityLookupLoadInput,
+  idKind: MemberIdKind = "membership",
 ): Promise<EntityLookupLoadResult> {
   if (!organizationId) return { options: [], nextCursor: null };
   const query = input.query ? { q: input.query } : {};
@@ -133,7 +137,7 @@ async function loadMembers(
     options: (data?.members ?? [])
       .filter((m) => m.status === "active")
       .map((m) => ({
-        id: m.membershipId,
+        id: idKind === "user" ? m.userId : m.membershipId,
         label: optionLabel(m.displayName ?? m.email ?? "Unnamed member", shortId(m.membershipId)),
         searchLabel: m.displayName ?? m.email ?? m.membershipId,
         description: m.email ?? m.status,
@@ -375,17 +379,18 @@ export function LocationLookupField(
   );
 }
 
-export function MembershipLookupField(props: LookupProps): JSX.Element {
+export function MembershipLookupField(props: LookupProps & { idKind?: MemberIdKind }): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const organizationId = session?.organizationId ?? "";
+  const { idKind = "membership", ...rest } = props;
   const loadOptions = useCallback(
-    (input: EntityLookupLoadInput) => loadMembers(client, organizationId, input),
-    [client, organizationId],
+    (input: EntityLookupLoadInput) => loadMembers(client, organizationId, input, idKind),
+    [client, organizationId, idKind],
   );
   return (
     <EntityLookupField
-      {...props}
+      {...rest}
       loadOptions={loadOptions}
       placeholder={props.placeholder ?? "Search staff by name or email..."}
     />
