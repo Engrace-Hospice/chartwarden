@@ -20,6 +20,8 @@ import {
 // looking. `sign-controlled` (the EPCS two-step) is deliberately NOT offered: §2.4/D18 ships Phase 1
 // `not_certified`, so `requestSignature` refuses a controlled order outright and the ceremony would
 // always fail — see `prescribe-modal.tsx`, which reads that status rather than assuming it.
+// GAP-125 — a `transmission_failed` order offers Retransmit (POST .../retransmit: `prescribing.sign` + the signer ABAC,
+// no step-up), which mints a replacement draft and opens it (retransmit-modal.tsx).
 // The SERVER enforces every scope incl. ABAC (ADR-0030 — out-of-scope orders 404, never 403).
 // Reads GET /api/v1/medication-orders/:id and (when transmitted) GET .../transmission.
 import { useEffect, useState } from "react";
@@ -31,9 +33,11 @@ import {
   HospiceCoverageBadge,
   HospiceCoverageSection,
 } from "../../shell/hospice-coverage";
+import { useSession } from "../../shell/session";
 import { type MedicationAction, MedicationActionModal } from "./medication-action-modal";
 import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
 import { setCoverageDetermination } from "./medications-api";
+import { RetransmitModal } from "./retransmit-modal";
 
 interface MedicationOrderView {
   id: string;
@@ -136,7 +140,10 @@ export function MedicationDetail(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [txError, setTxError] = useState(false);
   const [action, setAction] = useState<MedicationAction | null>(null);
+  const [retransmitting, setRetransmitting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // GAP-125 — the retransmit route gates `prescribing.sign` (no step-up); hiding it from a non-signer is a UX cue only.
+  const canSign = useSession()?.permissions?.includes("prescribing.sign") ?? false;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed write bumps, not read in the body.
   useEffect(() => {
@@ -237,6 +244,11 @@ export function MedicationDetail(): JSX.Element {
                     {ACTION_LABEL[a]}
                   </Button>
                 ))}
+                {row.status === "transmission_failed" && canSign ? (
+                  <Button tone="secondary" onClick={() => setRetransmitting(true)}>
+                    Retransmit
+                  </Button>
+                ) : null}
               </span>
             ) : undefined
           }
@@ -252,6 +264,16 @@ export function MedicationDetail(): JSX.Element {
           orderId={row.id}
           onClose={() => setAction(null)}
           onDone={() => setReloadKey((k) => k + 1)}
+        />
+      ) : null}
+      {row && retransmitting ? (
+        <RetransmitModal
+          orderId={row.id}
+          onClose={() => setRetransmitting(false)}
+          onCreated={(newOrderId) => {
+            setRetransmitting(false);
+            navigate(`/medication-orders/${newOrderId}${location.search}`);
+          }}
         />
       ) : null}
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>

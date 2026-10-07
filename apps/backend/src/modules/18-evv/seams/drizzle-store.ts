@@ -19,15 +19,14 @@
 // differ only for the few statements inside a correction, where the index must already treat the original
 // as gone so the replacement can insert, and these reads must not yet.
 //
-// COORDINATES (D10, GAP-032). GPS coordinates exist ONLY as `evv_event.coords_cipher`. The
-// coordinate-bearing `EvvLocationProvider` reads follow the M18L route service's posture EXACTLY
-// (`clinicianCurrentLocation`): both now recover the stored coordinate through the shared `../coords`
-// codec — the same one the capture wrote it with — and both return `lat: null`/`lng: null` when the
-// payload is absent or unparseable. They previously ZEROED both fields behind a `TODO(D10)`, which a
-// caller could not distinguish from a genuine coordinate. ⚠️ The column is NOT encrypted despite its name:
-// it holds `base64("lat,lng")` and the per-tenant DEK pipeline is still deferred (see ../coords.ts) —
-// decoding base64 is not decryption and nothing here closes that. Every other projection is
-// coordinate-free; the portal verification surface is timestamp + lay identity only (§4.6).
+// COORDINATES (D10, GAP-032, GAP-133). GPS coordinates exist ONLY as `evv_event.coords_cipher`, sealed in
+// the per-tenant DEK envelope (../coords.ts). The coordinate-bearing `EvvLocationProvider` reads follow the
+// M18L route service's posture EXACTLY (`clinicianCurrentLocation`): both open the stored envelope through
+// the injected `EvvCoordsCipher` — the same one the capture sealed it with — under the row's own
+// `organization_id` (which RLS has already pinned to the request's org). An absent payload or a legacy
+// pre-GAP-133 base64 row reads as `lat: null`/`lng: null`; a missing key or an unauthenticated blob THROWS
+// (§3.4 fail-loud). Unbound (no cipher injected) is fail-closed. Every other projection is coordinate-free;
+// the portal verification surface is timestamp + lay identity only (§4.6).
 //
 // METRICS HONESTY (UI-003). The route service's `metrics()` HARDCODES `complianceRate: 1` /
 // `lateCheckoutRate: 0` — a known audit finding this store must NOT copy. Here every tally is computed from
@@ -49,7 +48,13 @@ import type {
   EvvMissingResolutionDto,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
-import { decodeStoredCoords } from "../coords";
+import {
+  type EvvCoordsCipher,
+  type EvvCoordsFaultReporter,
+  UNBOUND_EVV_COORDS_CIPHER,
+  WARN_EVV_COORDS_FAULT,
+  openCoordsForList,
+} from "../coords";
 import type {
   EvvAggregatorWindowCounts,
   EvvArrival,
@@ -155,19 +160,27 @@ function classify(input: {
 }
 
 /**
- * Project an event-metadata row to the D10 location DTO (GAP-032). Recovers the stored coordinate through
- * the same codec the capture wrote it with; an absent or unparseable payload yields an explicit null pair,
- * never a zeroed one — the route service's posture, now that both sides agree.
+ * Project an event-metadata row to the D10 location DTO (GAP-032 / GAP-133). Opens the stored envelope under
+ * the row's own org; an absent payload or a legacy pre-GAP-133 row yields an explicit null pair, never a
+ * zeroed one — the route service's posture, now that both sides agree. With `report`, an unreadable envelope
+ * reads as null and is reported (list reads); without it, it throws (single-row reads fail loud).
  */
-function toLocationDto(r: {
-  membershipId: string;
-  eventId: string;
-  visitId: string;
-  accuracyM: number;
-  capturedAt: Date;
-  coordsCipher?: string | null;
-}): EvvLocationDto {
-  const coords = decodeStoredCoords(r.coordsCipher);
+async function toLocationDto(
+  coordsCipher: EvvCoordsCipher,
+  r: {
+    organizationId: string;
+    membershipId: string;
+    eventId: string;
+    visitId: string;
+    accuracyM: number;
+    capturedAt: Date;
+    coordsCipher?: string | null;
+  },
+  report?: EvvCoordsFaultReporter,
+): Promise<EvvLocationDto> {
+  const coords = report
+    ? await openCoordsForList(coordsCipher, r.organizationId, r.eventId, r.coordsCipher, report)
+    : await coordsCipher.open(r.organizationId, r.coordsCipher);
   return {
     membershipId: r.membershipId,
     eventId: r.eventId,
@@ -277,7 +290,17 @@ export async function evvComplianceCountsForOrg(
 }
 
 /** Build the Drizzle-backed §4.3 EVV seam store (production; injected via `registerEvvSeams`). */
-export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
+export function createDrizzleEvvSeamStore(
+  db: DbClient,
+  options: {
+    /** GAP-133 — the §D10 coordinate envelope (bound over M34 at the composition root); unbound = fail closed. */
+    readonly coordsCipher?: EvvCoordsCipher;
+    /** Where a list read reports a coordinate it could not open (default: a process warning). */
+    readonly onCoordsFault?: EvvCoordsFaultReporter;
+  } = {},
+): EvvSeamStore {
+  const coordsCipher = options.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
+  const onCoordsFault = options.onCoordsFault ?? WARN_EVV_COORDS_FAULT;
   /** The per-visit bracket facts (active event pair + resolution trail) the three per-visit reads share. */
   async function bracketFacts(
     tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
@@ -392,18 +415,19 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
         const cutoff = new Date(Date.now() - LOCATION_RECENCY_MS);
         const [row] = await tx
           .select({
+            organizationId: EVENT.organizationId,
             membershipId: EVENT.postingMembershipId,
             eventId: EVENT.id,
             visitId: EVENT.visitId,
             accuracyM: EVENT.accuracyM,
             capturedAt: EVENT.capturedAt,
-            coordsCipher: EVENT.coordsCipher, // GAP-032 — decoded by toLocationDto
+            coordsCipher: EVENT.coordsCipher, // GAP-133 — opened by toLocationDto
           })
           .from(EVENT)
           .where(and(eq(EVENT.postingMembershipId, membershipId), gte(EVENT.eventAt, cutoff)))
           .orderBy(desc(EVENT.eventAt))
           .limit(1);
-        return row ? toLocationDto(row) : null;
+        return row ? toLocationDto(coordsCipher, row) : null;
       });
     },
 
@@ -412,12 +436,13 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
         const cutoff = new Date(Date.now() - LOCATION_RECENCY_MS);
         const rows = await tx
           .select({
+            organizationId: EVENT.organizationId,
             membershipId: EVENT.postingMembershipId,
             eventId: EVENT.id,
             visitId: EVENT.visitId,
             accuracyM: EVENT.accuracyM,
             capturedAt: EVENT.capturedAt,
-            coordsCipher: EVENT.coordsCipher, // GAP-032 — decoded by toLocationDto
+            coordsCipher: EVENT.coordsCipher, // GAP-133 — opened by toLocationDto
           })
           .from(EVENT)
           .where(gte(EVENT.eventAt, cutoff))
@@ -427,7 +452,9 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
         for (const r of rows) {
           if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
         }
-        return [...latestByMember.values()].map(toLocationDto);
+        return Promise.all(
+          [...latestByMember.values()].map((r) => toLocationDto(coordsCipher, r, onCoordsFault)),
+        );
       });
     },
 

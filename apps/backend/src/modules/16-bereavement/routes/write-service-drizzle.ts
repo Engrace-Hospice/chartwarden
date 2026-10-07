@@ -128,6 +128,10 @@ import type {
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
+/** GAP-130 / D14 — M22's published bereavement-letter template key (`22-documents/seams/renderer.ts`). One
+ *  template for every per-outreach artifact; the outreach kind rides the content blob, not the key. */
+const BEREAVEMENT_LETTER_TEMPLATE_KEY = "bereavement_letter";
+
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const isoN = (d: Date | string | null): string | null => (d === null ? null : iso(d));
@@ -434,7 +438,6 @@ export function buildDrizzleM16WriteService(
         ...(patch.externalSourceMetadata !== undefined
           ? { externalSourceMetadata: patch.externalSourceMetadata }
           : {}),
-        ...(patch.legalHoldId !== undefined ? { legalHoldId: patch.legalHoldId } : {}),
       })
       .where(eq(PLAN.id, plan.id));
   }
@@ -1087,8 +1090,11 @@ export function buildDrizzleM16WriteService(
           .from(CONTACT)
           .where(and(eq(CONTACT.planId, plan.id), eq(CONTACT.status, "active")));
         for (const contact of contacts) await materializeSchedule(tx, plan, contact, at);
-        await tx.update(PLAN).set({ pauseKind: null }).where(eq(PLAN.id, plan.id));
+        // The status moves BEFORE `pause_kind` is cleared: `berv_plan_pause_requires_kind` holds a
+        // `paused` row to a kind, so clearing it first violated the CHECK and made every resume a 500
+        // (GAP-136, found by the live route suite).
         await patchPlan(tx, plan, transition.to, patch, at);
+        await tx.update(PLAN).set({ pauseKind: null }).where(eq(PLAN.id, plan.id));
       });
       return planDetail(actor, planId);
     },
@@ -1098,7 +1104,7 @@ export function buildDrizzleM16WriteService(
     // outreach is cancelled and no closure row or event is written. The transition is route 9's, performed
     // by a DIFFERENT supervisor — the requesting counselor is never recorded as the cosigner.
     async closeEarly(actor, planId, input: CloseEarlyInput) {
-      return withOrgContext(db, scope(actor), async (tx) => {
+      await withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         checkVersion(input.expectedVersion, plan.version);
         assertEarlyCloseRequestable(plan.status, plan.earlyCloseRequestedAt);
@@ -1125,8 +1131,11 @@ export function buildDrizzleM16WriteService(
             updatedAt: new Date(at),
           })
           .where(eq(PLAN.id, plan.id));
-        return planDetail(actor, planId);
       });
+      // Read AFTER the commit: `planDetail` opens its own connection, so reading inside the transaction
+      // answered the pre-request row (old version, no pending request) — a client then sent a stale
+      // If-Match on its next write (GAP-136, found by the live route suite).
+      return planDetail(actor, planId);
     },
 
     // ── 9 — the D7 supervisor cosign: performs the transition (GAP-047) ─────────────────────────────
@@ -1633,11 +1642,48 @@ export function buildDrizzleM16WriteService(
         const transition = transitionBereavementOutreach(outreach.status, {
           type: "startContact",
           at: at as IsoInstant,
+          kind: outreach.kind,
         });
-        await runEffects(tx, transition.effects, effectCtx(actor, plan, at, {}));
+        // GAP-130 / D14 — a rendering kind queues its M22 render here. `outreachId` is the identity M22
+        // files the document against (so each letter is its own document, not the plan's welcome packet),
+        // and the identity M16's `m22.document.rendered` consumer stamps the back-ref onto.
+        const queuesRender = transition.effects.some(
+          (e) => e.kind === "outbox" && e.event === "m16.bereavement.outreach_artifact_requested",
+        );
+        await runEffects(
+          tx,
+          transition.effects,
+          effectCtx(
+            actor,
+            plan,
+            at,
+            queuesRender
+              ? {
+                  "m16.bereavement.outreach_artifact_requested": {
+                    planId: plan.id,
+                    patientId: plan.patientId,
+                    contactId: outreach.bereavedContactId,
+                    outreachId: outreach.id,
+                    templateKey: BEREAVEMENT_LETTER_TEMPLATE_KEY,
+                    payloadJsonb: {
+                      outreachKind: outreach.kind,
+                      anniversaryMark: outreach.anniversaryMark ?? null,
+                      deathDate: localDate(plan.deathDate),
+                      dueAt: outreach.dueAt.toISOString(),
+                    },
+                  },
+                }
+              : {},
+          ),
+        );
         const [row] = await tx
           .update(OUTREACH)
-          .set({ status: transition.to, startedAt: new Date(at), updatedAt: new Date(at) })
+          .set({
+            status: transition.to,
+            startedAt: new Date(at),
+            updatedAt: new Date(at),
+            ...(queuesRender ? { m22RenderRequestedAt: new Date(at) } : {}),
+          })
           // bereavement_outreach has no version column (GAP-194): the status read above is the guard, so a
           // concurrent transition matches no row instead of being overwritten.
           .where(and(eq(OUTREACH.id, outreachId), eq(OUTREACH.status, outreach.status)))

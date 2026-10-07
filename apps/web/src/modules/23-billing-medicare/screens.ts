@@ -54,6 +54,7 @@ const SubmissionsTimeline = lazy(() =>
 const SurveyorReadView = lazy(() =>
   import("./surveyor-read-view").then((m) => ({ default: m.SurveyorReadView })),
 );
+const WageIndexes = lazy(() => import("./wage-indexes").then((m) => ({ default: m.WageIndexes })));
 const ValidationWorklist = lazy(() =>
   import("./validation-worklist").then((m) => ({ default: m.ValidationWorklist })),
 );
@@ -203,6 +204,15 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.rate_table.read",
       screen: RateTables,
+    },
+    // --- tenant-entered CMS hospice wage index per CCN + fiscal year (F-211; GAP-125) ---
+    {
+      id: "billing.wage-indexes",
+      path: "/billing/wage-indexes",
+      title: "Wage Index",
+      navGroup: "Billing",
+      requiredPermission: "billing.wage_index.read",
+      screen: WageIndexes,
     },
     // --- sequestration policy (§5.1 #14) ---
     {

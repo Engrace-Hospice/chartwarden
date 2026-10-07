@@ -363,6 +363,30 @@ export async function completeOrder(
   return ok(data as MedicationOrderView);
 }
 
+/**
+ * §2.6 route 14 (GAP-125) — retransmit a `transmission_failed` order. Mints a REPLACEMENT draft
+ * (`replacesMedicationOrderId` = this order) rather than resending in place; the prescriber sends it for
+ * signature and signs it, and the GAP-037 DoseSpot worker transmits it. `prescribing.sign` + the signer
+ * ABAC, and the service applies the sign standing rule (the authoring prescriber or the named physician).
+ * No step-up — the route mounts none. A 404 also means "this order is not transmission_failed".
+ */
+export async function retransmitOrder(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<{ newOrderId: string }>> {
+  const { data, error, response } = await client.POST("/api/v1/medication-orders/{id}/retransmit", {
+    params: { path: { id } },
+  });
+  if (error || !data) {
+    const res = failure(response?.status, error);
+    const detail = (error as { error?: { message?: unknown } } | undefined)?.error?.message;
+    return res.ok === false && res.status === 404 && typeof detail === "string"
+      ? { ...res, message: detail }
+      : res;
+  }
+  return ok({ newOrderId: data.newOrderId });
+}
+
 // ── §2.7 refills ───────────────────────────────────────────────────────────────────────────────────────
 
 /** §2.7 — approve a refill request. `refillsAuthorized` is capped per DEA schedule by policy. */

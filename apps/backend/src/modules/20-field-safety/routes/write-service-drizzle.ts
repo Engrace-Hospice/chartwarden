@@ -522,6 +522,20 @@ export function buildDrizzleM20WriteService(
     });
   }
 
+  /**
+   * §3.3's `m20_shra_window` (`effective_to > effective_from`), restated so a retire-before-start is a
+   * 422 naming the field rather than a 500 constraint violation (GAP-136, found by the live route suite).
+   */
+  function assertAreaWindow(effectiveFrom: Date, effectiveTo: Date): void {
+    if (effectiveTo.getTime() <= effectiveFrom.getTime()) {
+      throw new WardenXError(
+        "AREA_WINDOW_INVALID",
+        `effectiveTo must be after the area's effectiveFrom (${effectiveFrom.toISOString()})`,
+        422,
+      );
+    }
+  }
+
   return {
     // ── §4.1 row 1 — record a check-in ──────────────────────────────────────────────────────────────
     async recordCheckIn(actor, input: RecordCheckInInput) {
@@ -1703,17 +1717,14 @@ export function buildDrizzleM20WriteService(
           );
         }
 
-        // Decision 6 — close the current version and write a NEW one. Never an UPDATE.
-        await tx
-          .update(POLICY_VERSION)
-          .set({ effectiveTo: at })
-          .where(
-            and(
-              eq(POLICY_VERSION.organizationId, actor.organizationId),
-              isNull(POLICY_VERSION.effectiveTo),
-            ),
-          );
-
+        // Decision 6 — write a NEW version; never touch the old one. `safety_policy_version` is
+        // append-only at the GRANT level (migration 0111: wardenx_app holds SELECT/INSERT only, so a past
+        // cadence cannot be rewritten), which means the old row's `effective_to` cannot be stamped either:
+        // the UPDATE that used to close it failed with 42501 and made this route a guaranteed 500 (GAP-136,
+        // found by the live route suite). Nothing needs the stamp — every reader (read-service
+        // `effectivePolicy`, the seam store's `policyVersionAt`, `ensurePolicyVersion`, the schedule store)
+        // resolves the version in force as the LATEST `effective_from` ≤ the instant, so the new row
+        // supersedes the old one by its start alone.
         const [created] = await tx
           .insert(POLICY_VERSION)
           .values({
@@ -1941,6 +1952,10 @@ export function buildDrizzleM20WriteService(
     async createHighRiskArea(actor, input: CreateHighRiskAreaInput) {
       const at = now();
       assertPolygonValid(input.polygon);
+      const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : at;
+      if (input.effectiveTo !== undefined) {
+        assertAreaWindow(effectiveFrom, new Date(input.effectiveTo));
+      }
       const areaId = await withOrgContext(db, ctx(actor), async (tx) => {
         const [created] = await tx
           .insert(AREA)
@@ -1950,7 +1965,7 @@ export function buildDrizzleM20WriteService(
             advisoryMessage: input.advisoryMessage,
             polygon: input.polygon as never,
             policyForVisitsToArea: input.policyForVisitsToArea ?? "advisory_only",
-            effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : at,
+            effectiveFrom,
             effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
             createdByMembershipId: actor.membershipId,
           })
@@ -1968,6 +1983,15 @@ export function buildDrizzleM20WriteService(
       const at = now();
       if (input.polygon !== undefined) assertPolygonValid(input.polygon);
       await withOrgContext(db, ctx(actor), async (tx) => {
+        if (input.effectiveTo !== undefined) {
+          const [current] = await tx
+            .select({ effectiveFrom: AREA.effectiveFrom })
+            .from(AREA)
+            .where(and(eq(AREA.id, areaId), eq(AREA.organizationId, actor.organizationId)))
+            .limit(1);
+          if (!current) throw new NotFoundError("safety high-risk area");
+          assertAreaWindow(current.effectiveFrom, new Date(input.effectiveTo));
+        }
         const updated = await tx
           .update(AREA)
           .set({

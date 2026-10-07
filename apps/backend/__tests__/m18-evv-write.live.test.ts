@@ -17,15 +17,19 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
+  type EvvCoordsFault,
+  EvvCoordsKeyUnboundError,
   type EvvWriteOutboxPort,
   M18_OUTBOX_EVENTS,
   buildM18VisitPublishedConsumer,
   clinicianCapture,
   createDbEvvBackend,
+  createDrizzleEvvSeamStore,
   systemCapture,
 } from "../src/modules/18-evv/index";
 
@@ -33,6 +37,7 @@ import {
 // evv-capture-guards.test.ts / evv-inject.test.ts); the explicit typed system marker says so.
 const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { TEST_COORDS_DEK_VERSION, createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -50,9 +55,14 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEvvBackend>;
+  const coordsFaults: EvvCoordsFault[] = [];
   // Same DB, default (OFF) device-attestation flag — the production configuration.
   let svcAttestationOff: ReturnType<typeof createDbEvvBackend>;
   let svcNoBaseline: ReturnType<typeof createDbEvvBackend>;
+  // GAP-133 — no coordinate cipher bound: the production fail-closed default.
+  let svcUnbound: ReturnType<typeof createDbEvvBackend>;
+  // GAP-133 — the §D10 envelope (production code) over an in-memory per-tenant DEK ring.
+  const coordsCipher = createTestEvvCoordsCipher();
   const seeded: Record<string, Seed> = {};
 
   async function resetSchema() {
@@ -216,11 +226,17 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     // GAP-054 — the geofence baseline is the patient-address coordinate (a seam in prod); pinned here.
     const addressCoordinate = async () => ADDRESS_BASELINE;
     svc = createDbEvvBackend(handle.db, outbox, {
+      onCoordsFault: (f) => coordsFaults.push(f),
       deviceAttestationEnforced: true,
       addressCoordinate,
+      coordsCipher,
     });
-    svcAttestationOff = createDbEvvBackend(handle.db, outbox, { addressCoordinate });
-    svcNoBaseline = createDbEvvBackend(handle.db, outbox, { addressCoordinate: async () => null });
+    svcAttestationOff = createDbEvvBackend(handle.db, outbox, { addressCoordinate, coordsCipher });
+    svcNoBaseline = createDbEvvBackend(handle.db, outbox, {
+      addressCoordinate: async () => null,
+      coordsCipher,
+    });
+    svcUnbound = createDbEvvBackend(handle.db, outbox, { addressCoordinate });
   }, 180_000);
 
   afterAll(async () => {
@@ -291,12 +307,75 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(mine?.lat).toBeCloseTo(45.523, 6);
     expect(mine?.lng).toBeCloseTo(-122.6789, 6);
     expect(mine?.eventId).toBe(co.eventId);
+
+    // GAP-133 — and what it stored is CIPHERTEXT: the §D10 envelope, not `base64("lat,lng")`; the stamped
+    // DEK version is the key ring's, not a constant `1`; the geofence snapshot carries the same envelope.
+    const atRest = (
+      await admin.query(
+        `SELECT e.coords_cipher, e.coords_dek_version, g.device_coords_cipher
+           FROM evv_event e JOIN evv_geofence_evaluation g ON g.evv_event_id = e.id
+          WHERE e.id = $1`,
+        [ci.eventId],
+      )
+    ).rows[0];
+    expect(atRest.coords_cipher).toMatch(/^v1\./);
+    expect(atRest.coords_cipher).not.toContain("45.523");
+    expect(atRest.coords_cipher).not.toBe(Buffer.from("45.523,-122.6789").toString("base64"));
+    expect(Buffer.from(atRest.coords_cipher, "base64").toString("utf8")).not.toContain("45.523");
+    expect(atRest.coords_dek_version).toBe(TEST_COORDS_DEK_VERSION);
+    expect(atRest.device_coords_cipher).toBe(atRest.coords_cipher);
+    expect(await coordsCipher.open(ORG_A, atRest.coords_cipher)).toEqual({
+      lat: 45.523,
+      lng: -122.6789,
+    });
+    // AAD binds the tenant: the same blob does not open as ORG_B's.
+    await expect(coordsCipher.open(ORG_B, atRest.coords_cipher)).rejects.toThrow();
+
+    // The M20-facing `EvvLocationProvider` seam store opens the same envelope (request-scoped org).
+    const store = createDrizzleEvvSeamStore(handle.db, { coordsCipher });
+    const seen = await runWithRequestContext({ organizationId: ORG_A, userId: member }, () =>
+      store.lastKnownLocationForClinician(member),
+    );
+    expect(seen?.eventId).toBe(co.eventId);
+    expect(seen?.lat).toBeCloseTo(45.523, 6);
+    expect(seen?.lng).toBeCloseTo(-122.6789, 6);
+    // …and with no key bound it refuses rather than answering a coordinate it cannot authenticate.
+    await expect(
+      runWithRequestContext({ organizationId: ORG_A, userId: member }, () =>
+        createDrizzleEvvSeamStore(handle.db).lastKnownLocationForClinician(member),
+      ),
+    ).rejects.toBeInstanceOf(EvvCoordsKeyUnboundError);
+  });
+
+  it("GAP-133 — with no coordinate key bound the capture is REFUSED and nothing is written", async () => {
+    const { member } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    await expect(
+      svcUnbound.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      ),
+    ).rejects.toBeInstanceOf(EvvCoordsKeyUnboundError);
+    const written = await admin.query(
+      "SELECT count(*)::int AS n FROM evv_event WHERE visit_id = $1",
+      [visit],
+    );
+    expect(written.rows[0].n).toBe(0);
   });
 
   it("clinician-current-location reports lat/lng NULL when the stored coordinate is unreadable", async () => {
     const s = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    // A row this deploy cannot decode — an older/newer encoding, a restore, a future format change.
+    // GAP-133 — a LEGACY row: not a §D10 envelope (pre-GAP-133 base64 or any other non-envelope payload),
+    // stamped with the sentinel migration 0491 gives such rows. It reads as "unavailable", never decoded.
     // INSERTED raw rather than UPDATEd over a captured row: `evv_event` carries an append-only
     // immutability trigger (EVV_EVENT_APPEND_ONLY_IMMUTABLE_COLUMN) that refuses to let `coords_cipher`
     // change in place, which is a guard worth leaving intact — so the bad payload arrives at INSERT.
@@ -314,7 +393,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
            coords_dek_version, accuracy_m, gps_quality, device_attestation_id_at_record)
          VALUES ($1,$2,$3,$4,$5,$6,'check_in','',$7,'',$8,
                  now() + interval '1 hour', now() + interval '1 hour',
-                 'not-decodable',1,5,'high',$9)
+                 'not-decodable','legacy-unencrypted',5,'high',$9)
          RETURNING id`,
         [
           ORG_A,
@@ -341,6 +420,48 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(mine?.lng).toBeNull();
     // The rest of the row still reports — an unreadable coordinate does not erase the sighting.
     expect(mine?.accuracyM).toBe(5);
+  });
+
+  it("GAP-133 — an envelope sealed for ANOTHER tenant never opens: the list reads it as null and reports it", async () => {
+    const s = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const device = (
+      await admin.query(
+        "SELECT id, m2_device_attestation_id FROM evv_device WHERE membership_id = $1 AND status = 'approved' LIMIT 1",
+        [s.member],
+      )
+    ).rows[0];
+    // A ciphertext lifted from ORG_B's row into ORG_A's (a restore, a privileged write): it must never
+    // decrypt into ORG_A's record. Stamped two hours ahead so it is this member's newest sighting.
+    const lifted = await coordsCipher.seal(ORG_B, { lat: 47.6062, lng: -122.3321 });
+    await admin.query(
+      `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id,
+         patient_address_id, kind, service_type_code, posting_membership_id,
+         posting_discipline_at_recording, evv_device_id, captured_at, event_at, coords_cipher,
+         coords_dek_version, accuracy_m, gps_quality, device_attestation_id_at_record)
+       VALUES ($1,$2,$3,$4,$5,NULL,'check_in','',$6,'',$7,
+               now() + interval '2 hours', now() + interval '2 hours', $8, $9, 5, 'high', $10)`,
+      [
+        ORG_A,
+        s.pe,
+        s.location,
+        visit,
+        PATIENT,
+        s.member,
+        device.id,
+        lifted.cipher,
+        lifted.dekVersion,
+        device.m2_device_attestation_id,
+      ],
+    );
+    // One unreadable row must not fail every clinician's location (the agency map): it reads as
+    // unavailable and is reported as an integrity fault — never decrypted into ORG_A's record.
+    coordsFaults.length = 0;
+    const rows = await svc.clinicianCurrentLocation(ORG_A, s.member);
+    const row = rows.find((r) => r.membershipId === s.member);
+    expect(row).toMatchObject({ lat: null, lng: null });
+    expect(coordsFaults).toHaveLength(1);
+    expect(coordsFaults[0]).toMatchObject({ organizationId: ORG_A });
   });
 
   it("capture with accuracy beyond the policy (unattested) is an outside-geofence breach", async () => {

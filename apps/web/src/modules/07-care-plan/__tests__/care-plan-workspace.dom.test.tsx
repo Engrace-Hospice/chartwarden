@@ -388,6 +388,11 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await screen.findByRole("heading", { name: "Plan of Care" });
+    // The header names the open revision alongside the active plan, and the next-action copy
+    // agrees with its button (finalize sends the draft to the physician, not to a manager).
+    expect(screen.getByText("Interim Revision v2 in draft")).toBeTruthy();
+    expect(screen.getAllByText("Ready for physician review").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/manager review/i)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
     expect(screen.getAllByText(/Nurse Practitioner/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Send to hospice physician" }));

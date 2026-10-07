@@ -375,6 +375,10 @@ jobs:
           # detector) + `m20.coverage-gap-watchdog.cron`. Live because the per-row `FOR UPDATE` decision,
           # the overdue/escalated stamp CHECKs and the real catalog-validating outbox publish are Postgres.
           - { name: "M20 Overdue detector", scripts: "test:m20:overdue-detector:live" }
+          # GAP-136: the §4.1 route plugins over the Drizzle READ + WRITE services end to end (check-ins,
+          # SOS spine, incidents + OSHA sign-off, policy/subscriptions/areas, board, consent) as the
+          # NOBYPASSRLS wardenx_app role with the real catalog-validating publisher.
+          - { name: "M20 routes", scripts: "test:m20:routes:live" }
           - {
               name: "M22 Documents",
               scripts:
@@ -916,6 +920,9 @@ jobs:
           - { name: "M16 early close + source encounter", scripts: "test:m16:early-close:live" }
           # GAP-048 — the §4.9 crons: 13-month auto-close, miss-deadline, anniversary lookahead.
           - { name: "M16 cron workers", scripts: "test:m16:cron-workers:live" }
+          # GAP-136 — the §4.1 plan / contact / outreach / dashboard routes over the Drizzle services,
+          # one plan from eligible to cosigned early close, as the NOBYPASSRLS wardenx_app role.
+          - { name: "M16 routes", scripts: "test:m16:routes:live" }
           - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31
@@ -927,6 +934,10 @@ jobs:
           - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
           # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
           - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
+          # GAP-130 — the §4.5 in-person visit completion (m8.encounter.signed) and the D14 outreach
+          # artifact back-ref (m22.document.rendered), both through the real catalog-validating publisher.
+          - { name: "M16 encounter-signed", scripts: "test:m16:encounter-signed:live" }
+          - { name: "M16 document-rendered", scripts: "test:m16:document-rendered:live" }
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }

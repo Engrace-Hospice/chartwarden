@@ -85,6 +85,7 @@ describe("m22.document.rendered — the event that did not exist", () => {
       "m12",
       "m13",
       "m14",
+      "m16", // GAP-130 — on the commit that bound `m16.document-backref`
       "m21",
       "m27",
       "m33",

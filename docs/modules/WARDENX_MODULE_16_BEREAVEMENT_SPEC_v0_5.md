@@ -174,6 +174,8 @@ stateDiagram-v2
     closed_early --> [*]
 ```
 
+> **As-built (GAP-130, 2026-10): the `legalHoldApplied` / `legalHoldReleased` edges are intentionally not modelled.** Architecture §24.3 and M4 treat a legal hold as a check made at the moment of deletion (`legalHoldFor`, M34's shred preflight) propagated through M4's `HoldApplier` seam, not an outbox subscription, and the `m4.legal_hold.*` payload carries no criteria to match a plan. The unused transitions and their effects were removed; `closed_legal_hold_extended` and `legal_hold_id` remain in the schema but are not written. See `scripts/outbox-subscription-exceptions.ts`.
+
 | From | Event | To | Guards | Side effects (same tx) |
 |---|---|---|---|---|
 | (none) | `bereavement.eligible` (M6 outbox) | `eligible` | event idempotency-key not previously processed; M5 `patient.bereavement_opt_out` checked **after** insertion to avoid TOCTOU | insert `bereavement_plan` row with `status=eligible`, `death_date` from event, `admission_id` from event; when the event carries `source='hl7_external'`, also set `external_source_metadata` with `cosignStatus='pending'` (D16); audit; **no** outbox emit yet (plan_opened fires at `active`) |

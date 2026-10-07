@@ -67,7 +67,7 @@
 | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` | built | `web/12-dosespot` `web/13-emar` |  |
 | `screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md` | built | `web/19-oncall` |  |
 | `screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md` | built | `web/19-oncall` |  |
-| `screens/clinical/WARDENX_UI_ORDERS.md` | built | `web/11-orders` |  |
+| `screens/clinical/WARDENX_UI_ORDERS.md` | built | `web/11-orders` | plus the held lab-transmission recovery queue (`/orders/held-transmissions`, GAP-125) |
 | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | built | `web/05-patient` |  |
 | `screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md` | built | `web/09-assessments` `web/10-hope` | patient timelines |
 | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | built | `web/05-patient` |  |
@@ -92,7 +92,7 @@
 | `screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md` | built | `web/23-billing-medicare` `web/24-billing-medicaid` | eligibility |
 | `screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md` | deferred | — | No prior-authorization screen; no M23/M24 route models an authorization. |
 | `screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md` | built | `web/25-remittance` | worklist |
-| `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built | `web/23-billing-medicare` | noe, notr, transfer-notices |
+| `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built | `web/23-billing-medicare` | noe, notr, transfer-notices; rate-schedule config = rate-tables + wage-indexes (GAP-125); no SIA-parameter config route exists to build on |
 | `screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md` | deferred | — | No patient-statement / financial-assistance screen; no route models patient responsibility statements. |
 | `screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md` | built | `web/24-billing-medicaid` | rb-arrangements |
 | `screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md` | built | `web/24-billing-medicaid` | eligibility |
@@ -127,7 +127,7 @@
 | `screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md` | deferred | — | No surveyor portal app; M23/M24 expose surveyor read-only views inside the staff app. |
 | `screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md` | built | `web/12-dosespot` | prescriber-roster |
 | `screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md` | built | `web/12-dosespot` | refill-inbox |
-| `screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md` | partial | `web/12-dosespot` | Sign inbox and refill inbox exist; there is no separate transmit-queue screen. |
+| `screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md` | partial | `web/12-dosespot` | Sign inbox and refill inbox exist; the "Retry a transmission_failed order" action is the Retransmit button on the medication-order detail (GAP-125, mints a replacement order). There is no separate transmit-queue status board (no list-by-transmission-state read). |
 | `screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md` | built | `web/39-consent` |  |
 | `screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md` | built | `web/39-consent` | recipients-dpoa |
 | `screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md` | built | `web/39-consent` |  |

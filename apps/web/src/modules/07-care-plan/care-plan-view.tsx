@@ -709,9 +709,9 @@ function WorkflowGuide({
         </button>
       );
   } else if (hasOpenDraft && readiness?.canFinalize) {
-    heading = "Ready for manager review";
+    heading = "Ready for physician review";
     description =
-      "The clinical plan is complete and can now be reviewed before physician signature.";
+      "The clinical plan is complete. Sending it freezes this version for hospice physician review and signature.";
     state = "success";
     action = canFinalize ? (
       <button type="button" style={primaryBtn} disabled={busy} onClick={onFinalize}>
@@ -826,7 +826,7 @@ function WorkflowGuide({
 }
 
 function WorkflowSteps({ current }: { current: 0 | 1 | 2 | 3 }): JSX.Element {
-  const steps = ["Build plan", "Manager review", "Physician signature", "Active"] as const;
+  const steps = ["Build plan", "Send for review", "Physician signature", "Active"] as const;
   return (
     <ol style={stepper} aria-label="Care Plan workflow">
       {steps.map((label, index) => {
@@ -1217,7 +1217,7 @@ function RevisionPanel({
                 {idgProposalRequired
                   ? "Record IDG proposed changes"
                   : readiness?.canFinalize
-                    ? "Ready for manager review"
+                    ? "Ready for physician review"
                     : "Before you can send this version"}
               </h3>
               <p style={muted}>
@@ -1267,7 +1267,7 @@ function RevisionPanel({
             <div>
               <h3 style={smallTitle}>Hospice physician review & signature</h3>
               <p style={muted}>
-                Candidate content is frozen after care-plan manager review. Return to draft only
+                Candidate content is frozen while the hospice physician reviews it. Return to draft only
                 when clinical edits are required before physician signature.
               </p>
             </div>

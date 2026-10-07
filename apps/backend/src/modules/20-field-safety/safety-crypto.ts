@@ -26,6 +26,8 @@ export interface SafetyTenantKeyProvider {
 const SCHEME = "v1";
 const DEK_BYTES = 32;
 const NONCE_BYTES = 12;
+/** GCM tag length, pinned on decrypt: without it Node accepts a truncated (4-15 byte) tag. */
+const TAG_BYTES = 16;
 
 const aadFor = (organizationId: string): Buffer =>
   Buffer.from(`m20:field_safety:cipher:${organizationId}`, "utf8");
@@ -63,9 +65,13 @@ export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
         throw new Error("M20 cipher envelope is malformed");
       }
       const { key } = await keys.dekForOrgVersion(organizationId, version);
-      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+      const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"), {
+        authTagLength: TAG_BYTES,
+      });
       d.setAAD(aadFor(organizationId));
-      d.setAuthTag(Buffer.from(tag, "base64url"));
+      const authTag = Buffer.from(tag, "base64url");
+      if (authTag.byteLength !== TAG_BYTES) throw new Error("M20 cipher envelope is malformed");
+      d.setAuthTag(authTag);
       return Buffer.concat([d.update(Buffer.from(ciphertext, "base64url")), d.final()]).toString(
         "utf8",
       );
