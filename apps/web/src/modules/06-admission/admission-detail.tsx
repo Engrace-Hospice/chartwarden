@@ -406,7 +406,10 @@ export function AdmissionDetail(): JSX.Element {
       else if (status === 422 && code === "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY")
         setActionError("That location does not belong to this admission's hospice.");
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
-      else setActionError(fallback);
+      else if (status === 409 && code === "ELECTION_STATEMENT_CONFLICT") {
+        setActionError("This benefit period already has an election statement.");
+        void load();
+      } else setActionError(fallback);
       return false;
     },
     [load, navigate],

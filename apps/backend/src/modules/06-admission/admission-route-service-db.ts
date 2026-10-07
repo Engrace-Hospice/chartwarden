@@ -86,6 +86,7 @@ import {
 import {
   type TransferInInput,
   planTransferIn,
+  transferInPeriodConflict,
   transferInSourceRefusal,
 } from "./discharge/transfer-in";
 import { addendumRequiredForElection } from "./election-addendum/due-dates";
@@ -97,6 +98,12 @@ import {
   openInitialAddendumInTx,
   settleAddendumOnLeavingCareInTx,
 } from "./election-addendum/store";
+import {
+  CTI_STATUS_RANK,
+  ELECTION_STATEMENT_STATUS_RANK,
+  F2F_STATUS_RANK,
+  pickOnePerPeriod,
+} from "./election-cert-picks";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -165,10 +172,11 @@ import {
   electionPeriodScheduledEnd,
   transitionElectionPeriod,
 } from "./state-machines/election-period";
-import { AdmissionStateError } from "./state-machines/errors";
+import { AdmissionStateError, ELECTION_STATEMENT_CONFLICT_MESSAGE } from "./state-machines/errors";
 import type { SignedNoteFacts } from "./state-machines/f2f-attestation-rules";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
+import { mapUniqueViolation } from "./unique-violation";
 
 /**
  * The transactional-outbox port (§4.4): the composition root binds M1's catalog-validating publisher
@@ -2390,6 +2398,8 @@ export function createDbAdmissionRouteService(
                 status: ES.status,
                 signerKind: ES.signerKind,
                 signedAt: ES.signedAt,
+                createdAt: ES.createdAt,
+                version: ES.version,
               })
               .from(ES)
               .where(inArray(ES.electionPeriodId, periodIds))
@@ -2406,6 +2416,7 @@ export function createDbAdmissionRouteService(
                 signedLate: CTI.signedLate,
                 periodStart: CTI.periodStart,
                 periodEnd: CTI.periodEnd,
+                createdAt: CTI.createdAt,
               })
               .from(CTI)
               .where(inArray(CTI.electionPeriodId, periodIds))
@@ -2440,13 +2451,18 @@ export function createDbAdmissionRouteService(
                 withinWindow: F2F.withinWindow,
                 windowOverride: F2F.windowOverride,
                 attestationSignedAt: F2F.attestationSignedAt,
+                createdAt: F2F.createdAt,
+                version: F2F.version,
               })
               .from(F2F)
               .where(inArray(F2F.electionPeriodId, periodIds))
           : [];
-        const esBy = new Map(esRows.map((r) => [r.electionPeriodId, r]));
-        const ctiBy = new Map(ctiRows.map((r) => [r.electionPeriodId, r]));
-        const f2fBy = new Map(f2fRows.map((r) => [r.electionPeriodId, r]));
+        // One row per period, deterministically: a period can hold voided CTIs beside the live one
+        // (`cti_period_active_idx` is partial) and scheduled/completed F2Fs beside the attested one, and
+        // the rows come back unordered — the pick prefers the most-live status, then the newest.
+        const esBy = pickOnePerPeriod(esRows, ELECTION_STATEMENT_STATUS_RANK);
+        const ctiBy = pickOnePerPeriod(ctiRows, CTI_STATUS_RANK);
+        const f2fBy = pickOnePerPeriod(f2fRows, F2F_STATUS_RANK);
 
         const periods = periodRows.map((p) => {
           const es = esBy.get(p.id);
@@ -4261,6 +4277,8 @@ export function createDbAdmissionRouteService(
       electionPeriodId,
       input,
     ): Promise<MutationResult> {
+      const electionStatementConflict = () =>
+        new AdmissionStateError("ELECTION_STATEMENT_CONFLICT", ELECTION_STATEMENT_CONFLICT_MESSAGE);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
           .select({ patientId: ADM.patientId })
@@ -4280,6 +4298,14 @@ export function createDbAdmissionRouteService(
           .where(and(eq(EP.id, electionPeriodId), eq(EP.admissionId, admissionId)))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        // `election_statement_period_idx` — one statement per period (any status). Refused here with a
+        // precise code; the unique-violation mapping below is the backstop for a concurrent draft.
+        const [existingStatement] = await tx
+          .select({ id: ES.id })
+          .from(ES)
+          .where(eq(ES.electionPeriodId, electionPeriodId))
+          .limit(1);
+        if (existingStatement) throw electionStatementConflict();
         // The elected hospice must belong to THIS org before it is written to two tables — the FK
         // carries no organization, so nothing below the app stops a cross-tenant election.
         if (!providerEntityOrgCheck) {
@@ -4361,6 +4387,10 @@ export function createDbAdmissionRouteService(
           aggregateId: es.id,
         });
         return { id: es.id, state: es.status, version: Number(es.version) };
+      }).catch((err: unknown) => {
+        throw mapUniqueViolation(err, {
+          election_statement_period_idx: electionStatementConflict,
+        });
       });
     },
     async signElection(organizationId, id, ifVersion, actorUserId, input): Promise<MutationResult> {
@@ -5673,6 +5703,20 @@ export function createDbAdmissionRouteService(
           transferAlreadyRecordedInPeriod: !!priorTransferInPeriod,
         });
         if (refusal) throw new AdmissionStateError(refusal.code, refusal.message);
+        // The carried sequence must follow every period already on this admission (e.g. a referral
+        // acceptance seeds period 1): refused here with a precise code before any write; the
+        // `election_period_admission_seq_idx` mapping below is the backstop for a concurrent insert.
+        const existingPeriods = await tx
+          .select({ sequenceNumber: EP.sequenceNumber })
+          .from(EP)
+          .where(eq(EP.admissionId, admissionId));
+        const periodConflict = transferInPeriodConflict(
+          existingPeriods.map((p) => Number(p.sequenceNumber)),
+          input.priorBenefitPeriodSequence,
+        );
+        if (periodConflict) {
+          throw new AdmissionStateError(periodConflict.code, periodConflict.message);
+        }
         const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
         if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
           throw new WardenXError(
@@ -5842,6 +5886,15 @@ export function createDbAdmissionRouteService(
           version: Number(xfer.version),
           currentElectionPeriodSequence: plan.inherited.sequence,
         };
+      }).catch((err: unknown) => {
+        throw mapUniqueViolation(err, {
+          election_period_admission_seq_idx: () =>
+            new AdmissionStateError(
+              "TRANSFER_IN_PERIOD_CONFLICT",
+              "Another benefit period with the carried sequence was recorded on this admission at the " +
+                "same time. Reload the admission and review its benefit periods before retrying.",
+            ),
+        });
       });
     },
     async discharge(

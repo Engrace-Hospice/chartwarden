@@ -5,12 +5,21 @@
 // app-validated; the admission FK is intra-M6. One acknowledgment per admission (unique). RLS + the
 // M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { bigint, date, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { electionSignerKind, norAcknowledgmentMethod } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { users } from "../users";
 import { admissions } from "./admissions";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const NOR_ADMISSION_IDX = businessRule(
+  "nor_admission_idx",
+  "The notice of rights has already been acknowledged for this admission.",
+);
 
 export const noticeOfRightsAcknowledgments = pgTable(
   "notice_of_rights_acknowledgment",
@@ -38,7 +47,7 @@ export const noticeOfRightsAcknowledgments = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    admUnique: uniqueIndex("nor_admission_idx").on(t.admissionId),
+    admUnique: uniqueIndex(NOR_ADMISSION_IDX).on(t.admissionId),
   }),
 );
 

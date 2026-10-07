@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import {
   electionPeriodCompletionCause,
   electionPeriodKind,
@@ -22,6 +23,14 @@ import {
 } from "../../enums";
 import { organizations } from "../organizations";
 import { admissions } from "./admissions";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const ELECTION_PERIOD_ADMISSION_SEQ_IDX = businessRule(
+  "election_period_admission_seq_idx",
+  "This admission already has a benefit period with that sequence number. Reload the admission and review its benefit periods.",
+);
 
 export const electionPeriods = pgTable(
   "election_period",
@@ -74,7 +83,7 @@ export const electionPeriods = pgTable(
     f2fExceptionDocumentedAt: timestamp("f2f_exception_documented_at", { withTimezone: true }),
   },
   (t) => ({
-    admSeqUnique: uniqueIndex("election_period_admission_seq_idx").on(
+    admSeqUnique: uniqueIndex(ELECTION_PERIOD_ADMISSION_SEQ_IDX).on(
       t.admissionId,
       t.sequenceNumber,
     ),
