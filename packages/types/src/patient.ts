@@ -540,6 +540,31 @@ export interface MbiUnlockReader {
  * this question — it would have to guess or over-claim. The predicate's own fail-closed default
  * (§8.2: an unreadable seam denies) is the correct behavior until that link is added.
  */
+/** One current caregiver on a patient's roster (GAP-129). Contact channels are PHI; the consumer seals them at rest. */
+export interface PatientCaregiverRosterEntry {
+  readonly caregiverId: string;
+  /** The `patient_caregiver` link row — what `bereaved_contact.patient_caregiver_id_from_m5` points at. */
+  readonly patientCaregiverId: string;
+  readonly displayName: string;
+  /** M5 `patient_caregiver.relationship` (spouse | child | parent | sibling | other_family | friend | guardian | paid_caregiver). */
+  readonly relationship: string;
+  readonly isPrimary: boolean;
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly preferredLanguageCode: string | null;
+}
+
+/**
+ * M5's caregiver ROSTER read (GAP-129) — the rows M16 seeds a bereavement plan's contact list from
+ * (`seedFromCaregivers`, spec §4.2). Current links only (`involvement_to IS NULL`), primary first.
+ */
+export interface PatientCaregiverRosterReader {
+  caregiversForPatient(
+    organizationId: string,
+    patientId: string,
+  ): Promise<readonly PatientCaregiverRosterEntry[]>;
+}
+
 export interface PatientCaregiverReader {
   /** The M2 userId of the patient's PRIMARY caregiver, or null (none on file, or no user link). */
   primaryCaregiverUserId(organizationId: string, patientId: string): Promise<string | null>;

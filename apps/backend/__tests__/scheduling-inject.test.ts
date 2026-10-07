@@ -42,6 +42,9 @@ import {
   registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
+/** GAP-132 — flips the stubbed grant+consent predicate; reset after every use. */
+const portalConsentLive = { value: true };
+
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -142,6 +145,14 @@ function makeServer() {
   )) {
     reg.register(name, predicate);
   }
+
+  // GAP-132 — the M31-owned `portal_grant_active_for_patient` (active grant + live M39 consent), stubbed over a
+  // switch the test flips; the real predicate's rules are covered in the M31 suites.
+  reg.register("portal_grant_active_for_patient", async (_context, target) => {
+    return (
+      portalConsentLive.value && typeof target.patientId === "string" && target.patientId.length > 0
+    );
+  });
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -675,7 +686,20 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
       url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
       headers: SCHED,
     });
-    expect(unpinned.statusCode).toBe(404);
+    expect(unpinned.statusCode).toBe(403); // no pinned patient: the grant predicate refuses first
+
+    // GAP-132 — a withdrawn M39 consent (or lapsed grant) refuses the read before the handler runs.
+    portalConsentLive.value = false;
+    try {
+      const withdrawn = await app.inject({
+        method: "GET",
+        url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+        headers: { ...SCHED, "x-test-session-patient": PATIENT },
+      });
+      expect(withdrawn.statusCode).toBe(403);
+    } finally {
+      portalConsentLive.value = true;
+    }
     await app.close();
   });
 });

@@ -206,6 +206,22 @@ async function authorityOf(request: FastifyRequest): Promise<CallerAuthority> {
 const OPTIMIZE = P("route.optimize_on_demand");
 const ROUTE_METRICS = P("route.read_metrics");
 const PORTAL_READ = P("portal.visit.read_upcoming");
+// GAP-132 — the portal session is paired with its pinned patient by an ACTIVE M31 grant AND a live M39 consent
+// (`portal_grant_active_for_patient`, resolved by name from the shared ABAC registry — no M31 import). Account and
+// patient come from the SESSION, never the request; a withdrawn consent refuses the read before any byte crosses.
+const sessionAttrOf = (request: FastifyRequest, key: string): string => {
+  const value = request.context?.attributes?.[key];
+  return typeof value === "string" ? value : "";
+};
+const ABAC_PORTAL_GRANT = (action: string): PreHandler =>
+  requireAbac(action, "portal_grant_active_for_patient", {
+    getTarget: ((r: FastifyRequest) => ({
+      portalAccountId: sessionAttrOf(r, "portalAccountId"),
+      patientId: sessionAttrOf(r, "sessionPatientId"),
+    })) as never,
+    notFoundOnDeny: false,
+  }) as PreHandler;
+const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.visit.read_upcoming");
 const CREDENTIAL_READ = P("membership_credential.read");
 const CREDENTIAL_GRANT = P("membership_credential.grant");
 const CREDENTIAL_REVOKE = P("membership_credential.revoke");
@@ -706,7 +722,10 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   // 27 — portal upcoming visits (portal session class; lay-language; scrubbed).
   app.get(
     "/api/v1/portal/upcoming",
-    { preHandler: [PORTAL_READ], config: { auditRead: { resourceKind: "visit", list: true } } },
+    {
+      preHandler: [PORTAL_READ, PORTAL_GRANT],
+      config: { auditRead: { resourceKind: "visit", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(PortalUpcomingQuerySchema, request.query);

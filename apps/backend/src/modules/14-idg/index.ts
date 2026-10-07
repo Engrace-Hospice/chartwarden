@@ -4,6 +4,7 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
 import { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
+import type { IdgCaseloadResolver } from "./routes/caseload-scope";
 import type { IdgRouteEnrichmentPorts } from "./routes/idg-enrichment";
 import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
 
@@ -19,6 +20,8 @@ export function mountIdgRoutes(
   db: DbClient,
   outbox?: IdgWriteOutboxPort,
   enrichment?: IdgRouteEnrichmentPorts,
+  /** GAP-128 — the per-patient caseload resolver, bound at the composition root to M5's real `CaseloadProvider`. */
+  caseload?: IdgCaseloadResolver,
 ): void {
   const backend = createDbIdgBackend(
     db,
@@ -27,7 +30,7 @@ export function mountIdgRoutes(
     enrichment?.siteDisplay,
   );
   _registerM14Abac({ resolver: backend });
-  _registerM14Routes(app, { service: backend, enrichment });
+  _registerM14Routes(app, { service: backend, enrichment, ...(caseload ? { caseload } : {}) });
 }
 
 export { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";

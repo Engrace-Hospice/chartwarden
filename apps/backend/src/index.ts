@@ -235,6 +235,7 @@ import {
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
   dosespotSyncDemographicsForOrg,
+  getCaseloadProvider,
   getPatientCoverageReader,
   getPatientReader,
   hl7OrmDemographicsInTx,
@@ -536,6 +537,7 @@ import {
   buildM16IdgDecisionConsumer,
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
+  createBereavementCipher,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
@@ -3724,35 +3726,41 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             cipher: createWebhookBodyCipher(getTenantKeyProvider()),
           });
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
-          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher, {
-            // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
-            // M5 "First L." + MRN last-4 for the agenda/packet/decision/action-item reads, and M6's per-patient recert/F2F
-            // window (M6's own window math) for GET /idg/meetings/:id/recert-windows.
-            patientDisplay: {
-              displayForPatients: (organizationId, patientIds) =>
-                patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+          mountIdgRoutes(
+            app,
+            dbHandle.db,
+            m14OutboxPublisher,
+            {
+              // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
+              // M5 "First L." + MRN last-4 for the agenda/packet/decision/action-item reads, and M6's per-patient recert/F2F
+              // window (M6's own window math) for GET /idg/meetings/:id/recert-windows.
+              patientDisplay: {
+                displayForPatients: (organizationId, patientIds) =>
+                  patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+              },
+              recertWindows: {
+                recertWindowsForPatients: (organizationId, patientIds) =>
+                  idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds),
+              },
+              // M2's identity-owned batched staff display read (name only) — the minutes "Finalized by".
+              membershipDisplay: {
+                displayForMemberships: (organizationId, membershipIds) =>
+                  membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
+              },
+              // M1's org-explicit site display read (organization + location NAMES only) — the minutes PDF header.
+              siteDisplay: {
+                displayForSite: (organizationId, locationIds) =>
+                  siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
+              },
+              // M3's authorization-owned batched role-key read (keys only) — the authoritative basis M14 validates an
+              // attendance row's discipline against when a coordinator records SOMEONE ELSE (attendance trust, 0286).
+              membershipRoles: {
+                roleKeysForMemberships: (organizationId, membershipIds) =>
+                  membershipRoleKeysForOrg(dbHandle.db, organizationId, membershipIds),
+              },
             },
-            recertWindows: {
-              recertWindowsForPatients: (organizationId, patientIds) =>
-                idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds),
-            },
-            // M2's identity-owned batched staff display read (name only) — the minutes "Finalized by".
-            membershipDisplay: {
-              displayForMemberships: (organizationId, membershipIds) =>
-                membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
-            },
-            // M1's org-explicit site display read (organization + location NAMES only) — the minutes PDF header.
-            siteDisplay: {
-              displayForSite: (organizationId, locationIds) =>
-                siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
-            },
-            // M3's authorization-owned batched role-key read (keys only) — the authoritative basis M14 validates an
-            // attendance row's discipline against when a coordinator records SOMEONE ELSE (attendance trust, 0286).
-            membershipRoles: {
-              roleKeysForMemberships: (organizationId, membershipIds) =>
-                membershipRoleKeysForOrg(dbHandle.db, organizationId, membershipIds),
-            },
-          }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
+            (q) => getCaseloadProvider().caseloadPatientIds(q),
+          ); // GAP-128 — M14 packet/idg-history per-patient scope over M5's registered CaseloadProvider; M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           // GAP-055 follow-up (ADR-0035): the device-attestation requirement + session-device binding are behind
           // `EVV_DEVICE_ATTESTATION_ENFORCED` (default OFF — no attested client exists yet). Read ONCE here from the
@@ -4232,6 +4240,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             readService: m16ReadService,
             writeService: buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
               outbox: m16OutboxPublisher,
+              // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
+              // a contact's email / phone / mailing address and a counselor's notes.
+              cipher: createBereavementCipher({
+                dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                dekForOrgVersion: (orgId, version) =>
+                  getTenantKeyProvider().dekForOrgVersion(orgId, version),
+              }),
             }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +

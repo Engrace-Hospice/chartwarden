@@ -796,7 +796,7 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const policyPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/recurring-policies/${policyId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-1" },
+      headers: { ...SUPER, "idempotency-key": "idem-1", "if-match": "0" },
       payload: { locationId: LOC, cadenceDays: 7 },
     });
     expect(policyPatch.statusCode).toBe(422);
@@ -833,14 +833,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const attPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/attendance/${attendanceId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-2" },
+      headers: { ...SUPER, "idempotency-key": "idem-2", "if-match": "0" },
       payload: { status: "tardy" },
     });
     expect(attPatch.statusCode).toBe(422);
     const attDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/attendance/${attendanceId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-3" },
+      headers: { ...SUPER, "idempotency-key": "idem-3", "if-match": "0" },
     });
     expect(attDelete.statusCode).toBe(422);
 
@@ -855,14 +855,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const agendaPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/agenda/${agendaId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-4" },
+      headers: { ...SUPER, "idempotency-key": "idem-4", "if-match": "0" },
       payload: { noteText: "revised" },
     });
     expect(agendaPatch.statusCode).toBe(422);
     const agendaDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/agenda/${agendaId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-5" },
+      headers: { ...SUPER, "idempotency-key": "idem-5", "if-match": "0" },
     });
     expect(agendaDelete.statusCode).toBe(422);
 
@@ -927,14 +927,14 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const actionItemPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/action-items/${actionItemId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-7" },
+      headers: { ...SUPER, "idempotency-key": "idem-7", "if-match": "0" },
       payload: { status: "in_progress" },
     });
     expect(actionItemPatch.statusCode).toBe(422);
     const actionItemDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/idg/action-items/${actionItemId}`,
-      headers: { ...SUPER, "idempotency-key": "idem-8" },
+      headers: { ...SUPER, "idempotency-key": "idem-8", "if-match": "0" },
     });
     expect(actionItemDelete.statusCode).toBe(422);
 

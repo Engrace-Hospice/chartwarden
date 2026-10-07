@@ -261,12 +261,18 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 3 — update a recurring policy.
   app.patch(
     "/api/v1/idg/recurring-policies/:id",
-    { preHandler: [SCHEDULE, IDEMPOTENCY_KEY] },
+    { preHandler: [SCHEDULE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecurringPolicyRequest, request.body);
-      return service.updateRecurringPolicy(organizationId, userId, id, b);
+      return service.updateRecurringPolicy(
+        organizationId,
+        userId,
+        id,
+        b,
+        ifMatchVersionOf(request),
+      );
     },
   );
 
@@ -483,23 +489,29 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 11 — coordinator amends an attendance row.
   app.patch(
     "/api/v1/idg/attendance/:id",
-    { preHandler: [COORDINATE, IDEMPOTENCY_KEY] },
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateAttendanceRequest, request.body);
-      return service.updateAttendance(organizationId, userId, id, b.status as IdgAttendanceStatus);
+      return service.updateAttendance(
+        organizationId,
+        userId,
+        id,
+        b.status as IdgAttendanceStatus,
+        ifMatchVersionOf(request),
+      );
     },
   );
 
   // 12 — coordinator removes an erroneous attendance row (pre-start only; enforced in service).
   app.delete(
     "/api/v1/idg/attendance/:id",
-    { preHandler: [COORDINATE, IDEMPOTENCY_KEY] },
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.removeAttendance(organizationId, userId, id);
+      return service.removeAttendance(organizationId, userId, id, ifMatchVersionOf(request));
     },
   );
 
@@ -631,23 +643,23 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 16 — update an agenda item.
   app.patch(
     "/api/v1/idg/agenda/:id",
-    { preHandler: [COORDINATE, IDEMPOTENCY_KEY] },
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(UpdateAgendaItemRequest, request.body);
-      return service.updateAgendaItem(organizationId, userId, id);
+      return service.updateAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
     },
   );
 
   // 17 — delete an agenda item.
   app.delete(
     "/api/v1/idg/agenda/:id",
-    { preHandler: [COORDINATE, IDEMPOTENCY_KEY] },
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.removeAgendaItem(organizationId, userId, id);
+      return service.removeAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
     },
   );
 
@@ -796,24 +808,31 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 22 — update an action item (assignee self-service via idg.act, or coordinator).
   app.patch(
     "/api/v1/idg/action-items/:id",
-    { preHandler: [ACT, IDEMPOTENCY_KEY] },
+    { preHandler: [ACT, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateActionItemRequest, request.body);
       const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
-      return service.updateActionItem(organizationId, userId, id, b.status, isCoordinator);
+      return service.updateActionItem(
+        organizationId,
+        userId,
+        id,
+        b.status,
+        isCoordinator,
+        ifMatchVersionOf(request),
+      );
     },
   );
 
   // 23 — delete an action item (pre-adjourn only; enforced in service).
   app.delete(
     "/api/v1/idg/action-items/:id",
-    { preHandler: [COORDINATE, IDEMPOTENCY_KEY] },
+    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.removeActionItem(organizationId, userId, id);
+      return service.removeActionItem(organizationId, userId, id, ifMatchVersionOf(request));
     },
   );
 

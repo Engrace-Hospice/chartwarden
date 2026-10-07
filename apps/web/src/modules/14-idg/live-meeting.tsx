@@ -462,7 +462,8 @@ export function LiveMeeting(): JSX.Element {
   const who = (membershipId: string): string => names.get(membershipId) ?? short(membershipId);
 
   async function onExcuse(rowId: string): Promise<void> {
-    const res = await excuseAttendance(client, rowId);
+    const version = roster.find((r) => r.id === rowId)?.version ?? 0;
+    const res = await excuseAttendance(client, rowId, version);
     setNotice(
       res.ok ? "Attendance excused — the row is kept, out of the quorum present-set." : res.message,
     );
@@ -470,7 +471,8 @@ export function LiveMeeting(): JSX.Element {
   }
 
   async function onStatus(rowId: string, status: AttendanceStatus): Promise<void> {
-    const res = await updateAttendance(client, rowId, status);
+    const version = roster.find((r) => r.id === rowId)?.version ?? 0;
+    const res = await updateAttendance(client, rowId, status, version);
     setNotice(res.ok ? `Attendance updated to ${humanize(status)}.` : res.message);
     if (res.ok) await load();
   }

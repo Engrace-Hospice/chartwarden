@@ -65,12 +65,16 @@ export interface AttendanceView {
   readonly disciplineAttested: boolean;
   /** Who wrote the row; null for a legacy (pre-0286) row. */
   readonly recordedByMembershipId: string | null;
+  /** GAP-127 — the row version a PATCH/DELETE echoes back as `If-Match`. */
+  readonly version: number;
 }
 export interface AgendaItemView {
   readonly id: string;
   readonly meetingId: string;
   readonly kind: IdgAgendaItemKind;
   readonly patientId: string | null;
+  /** GAP-127 — the row version a PATCH/DELETE echoes back as `If-Match`. */
+  readonly version: number;
 }
 /**
  * F-234 — a downstream module's acknowledgement that it APPLIED an emitted decision (`idg_decision_application_ack`).
@@ -111,6 +115,8 @@ export interface ActionItemView {
   readonly linkedArtifactKind: IdgActionItemLinkedKind | null;
   /** F-104 — the D8 auto-close key, previously absent from the view as well as from the write path. */
   readonly linkedArtifactId: string | null;
+  /** GAP-127 — the row version a PATCH/DELETE echoes back as `If-Match`. */
+  readonly version: number;
 }
 /**
  * A meeting's minutes (GET /idg/meetings/:id/minutes).
@@ -453,6 +459,15 @@ export function assertNoteVersion(expected: number, current: number): void {
   }
 }
 
+/** 412 STALE_VERSION when the row moved between the version check and the guarded write (a lost race). */
+export function staleRowError(readVersion: number): WardenXError {
+  return new WardenXError(
+    "STALE_VERSION",
+    `stale write: the row changed after version ${readVersion} was read; re-read and retry`,
+    412,
+  );
+}
+
 export interface PacketDigestView {
   readonly packetId: string;
   readonly meetingId: string;
@@ -487,6 +502,8 @@ export interface RecurringPolicyView {
   readonly locationId: string;
   readonly cadenceDays: number;
   readonly active: boolean;
+  /** GAP-127 — the row version a PATCH echoes back as `If-Match`. */
+  readonly version: number;
 }
 export interface MeetingScheduleView {
   readonly id: string;
@@ -638,6 +655,7 @@ export interface IdgRouteService {
     userId: string,
     id: string,
     args: RecurringPolicyArgs,
+    expectedVersion?: number,
   ): Promise<RecurringPolicyView>;
   // meeting lifecycle
   /** Schedule ONE ad-hoc meeting (`status: 'scheduled'`, no recurring policy). Emits `m14.meeting.scheduled`.
@@ -681,11 +699,13 @@ export interface IdgRouteService {
     userId: string,
     id: string,
     status: IdgAttendanceStatus,
+    expectedVersion?: number,
   ): Promise<AttendanceView>;
   removeAttendance(
     orgId: string,
     userId: string,
     id: string,
+    expectedVersion?: number,
   ): Promise<{ id: string; removed: true }>;
   /**
    * The meeting's attendance roster — the §2.7 participation the `quorate_decision` predicate reads.
@@ -713,11 +733,17 @@ export interface IdgRouteService {
     meetingId: string,
     args: AddAgendaItemArgs,
   ): Promise<AgendaItemView>;
-  updateAgendaItem(orgId: string, userId: string, id: string): Promise<AgendaItemView>;
+  updateAgendaItem(
+    orgId: string,
+    userId: string,
+    id: string,
+    expectedVersion?: number,
+  ): Promise<AgendaItemView>;
   removeAgendaItem(
     orgId: string,
     userId: string,
     id: string,
+    expectedVersion?: number,
   ): Promise<{ id: string; removed: true }>;
   /** The meeting's ordered agenda (F-062 — add/update/remove existed; nothing listed them). */
   listAgenda(orgId: string, meetingId: string): Promise<AgendaItemView[]>;
@@ -772,11 +798,13 @@ export interface IdgRouteService {
     status: ActionItemPatchStatus,
     /** GAP-127 — the caller holds `idg.coordinate`; without it the caller must be the assignee. */
     isCoordinator?: boolean,
+    expectedVersion?: number,
   ): Promise<ActionItemView>;
   removeActionItem(
     orgId: string,
     userId: string,
     id: string,
+    expectedVersion?: number,
   ): Promise<{ id: string; removed: true }>;
   listActionItems(
     orgId: string,
@@ -878,12 +906,14 @@ interface AttendanceRow {
   checkedInAt: string;
   disciplineAttested: boolean;
   recordedByMembershipId: string | null;
+  version: number;
 }
 interface AgendaRow {
   id: string;
   meetingId: string;
   kind: IdgAgendaItemKind;
   patientId: string | null;
+  version: number;
 }
 interface DecisionRow {
   id: string;
@@ -910,6 +940,7 @@ interface ActionItemRow {
   dueDate: string;
   linkedArtifactKind: IdgActionItemLinkedKind | null;
   linkedArtifactId: string | null;
+  version: number;
 }
 interface NoteRow {
   id: string;
@@ -942,6 +973,7 @@ interface RecurringPolicyRow {
   locationId: string;
   cadenceDays: number;
   active: boolean;
+  version: number;
 }
 
 let _seq = 0;
@@ -1110,16 +1142,19 @@ export function createInMemoryIdgBackend(
         locationId: args.locationId,
         cadenceDays: args.cadenceDays,
         active: args.active ?? true,
+        version: 0,
       };
       policies.set(id, row);
       emit("m14.schedule.materialised", { recurringPolicyId: id, locationId: args.locationId });
       return { ...row };
     },
-    async updateRecurringPolicy(_orgId, _userId, id, args) {
+    async updateRecurringPolicy(_orgId, _userId, id, args, expectedVersion) {
       const row = policies.get(id);
       if (!row) throw new NotFoundError("idg_recurring_policy");
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       row.cadenceDays = args.cadenceDays;
       row.active = args.active ?? row.active;
+      row.version += 1;
       return { ...row };
     },
 
@@ -1310,6 +1345,7 @@ export function createInMemoryIdgBackend(
         checkedInAt: args.checkedInAt ?? now(),
         disciplineAttested: args.disciplineAttested ?? false,
         recordedByMembershipId: args.recordedByMembershipId ?? null,
+        version: 0,
       };
       attendance.set(id, row);
       emit("m14.attendance.checked_in", {
@@ -1320,17 +1356,20 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async updateAttendance(orgId, _userId, id, status) {
+    async updateAttendance(orgId, _userId, id, status, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
       meetingOf(orgId, row.meetingId);
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       row.status = status;
+      row.version += 1;
       return { ...row };
     },
-    async removeAttendance(orgId, _userId, id) {
+    async removeAttendance(orgId, _userId, id, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
       meetingOf(orgId, row.meetingId);
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       attendance.delete(id);
       return { id, removed: true };
     },
@@ -1418,20 +1457,28 @@ export function createInMemoryIdgBackend(
     async addAgendaItem(orgId, _userId, meetingId, args) {
       meetingOf(orgId, meetingId);
       const id = nextId("idg-agd");
-      const row: AgendaRow = { id, meetingId, kind: args.kind, patientId: args.patientId ?? null };
+      const row: AgendaRow = {
+        id,
+        meetingId,
+        kind: args.kind,
+        patientId: args.patientId ?? null,
+        version: 0,
+      };
       agenda.set(id, row);
       return { ...row };
     },
-    async updateAgendaItem(orgId, _userId, id) {
+    async updateAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
       meetingOf(orgId, row.meetingId);
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       return { ...row };
     },
-    async removeAgendaItem(orgId, _userId, id) {
+    async removeAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
       meetingOf(orgId, row.meetingId);
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       agenda.delete(id);
       return { id, removed: true };
     },
@@ -1566,6 +1613,7 @@ export function createInMemoryIdgBackend(
         dueDate: args.dueDate,
         linkedArtifactKind: args.linkedArtifactKind ?? null,
         linkedArtifactId: args.linkedArtifactId ?? null,
+        version: 0,
       };
       actionItems.set(id, row);
       emit("m14.action_item.created", {
@@ -1578,15 +1626,24 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async updateActionItem(orgId, userId, id, status, isCoordinator = false) {
+    async updateActionItem(
+      orgId,
+      userId,
+      id,
+      status,
+      isCoordinator = false,
+      expectedVersion?: number,
+    ) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
       meetingOf(orgId, row.meetingId);
       if (!isCoordinator && row.assignedToMembershipId !== userId)
         throw actionItemNotAssigneeError();
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       const t = transitionActionItem(row.status, { type: PATCH_STATUS_EVENT[status] });
       const from = row.status;
       row.status = t.to;
+      row.version += 1;
       emit("m14.action_item.status_changed", {
         actionItemId: id,
         fromStatus: from,
@@ -1594,11 +1651,12 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async removeActionItem(orgId, _userId, id) {
+    async removeActionItem(orgId, _userId, id, expectedVersion) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
       if (meetingOf(orgId, row.meetingId).status === "adjourned")
         throw actionItemMeetingAdjournedError();
+      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       actionItems.delete(id);
       return { id, removed: true };
     },

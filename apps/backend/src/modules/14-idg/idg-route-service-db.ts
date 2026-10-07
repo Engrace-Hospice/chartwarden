@@ -104,6 +104,7 @@ import {
   noteFrozenError,
   noteInclusionError,
   planDisciplineNoteCreate,
+  staleRowError,
   validateMeetingWindow,
 } from "./routes/service";
 import { getCarePlanReader } from "./seams/index";
@@ -633,6 +634,7 @@ export function createDbIdgBackend(
     dueDate: iso(r.dueDate) ?? "",
     linkedArtifactKind: r.linkedArtifactKind,
     linkedArtifactId: r.linkedArtifactId,
+    version: r.version,
   });
   /**
    * The decision METADATA projection. `payload` and `quorumSnapshot` are deliberately absent: the
@@ -662,12 +664,14 @@ export function createDbIdgBackend(
     checkedInAt: iso(r.checkInAt) ?? "",
     disciplineAttested: r.disciplineAttested,
     recordedByMembershipId: r.recordedByMembershipId,
+    version: r.version,
   });
   const toAgendaItemView = (r: typeof AGD.$inferSelect): AgendaItemView => ({
     id: r.id,
     meetingId: r.idgMeetingId,
     kind: r.kind,
     patientId: r.patientId,
+    version: r.version,
   });
 
   return {
@@ -1136,27 +1140,38 @@ export function createDbIdgBackend(
           locationId: row!.locationId,
           cadenceDays: row!.cadenceDays,
           active: row!.active,
+          version: row!.version,
         };
       });
     },
-    async updateRecurringPolicy(orgId, _userId, id, args): Promise<RecurringPolicyView> {
+    async updateRecurringPolicy(
+      orgId,
+      _userId,
+      id,
+      args,
+      expectedVersion?: number,
+    ): Promise<RecurringPolicyView> {
       return withOrg(orgId, async (tx) => {
         const [existing] = await tx.select().from(POL).where(eq(POL.id, id)).limit(1);
         if (!existing) throw new NotFoundError("idg_recurring_policy");
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, existing.version);
         const [row] = await tx
           .update(POL)
           .set({
             cadenceDays: args.cadenceDays,
             active: args.active ?? existing.active,
+            version: existing.version + 1,
             updatedAt: new Date(),
           })
-          .where(eq(POL.id, id))
+          .where(and(eq(POL.id, id), eq(POL.version, existing.version)))
           .returning();
+        if (!row) throw staleRowError(existing.version);
         return {
-          id: row!.id,
-          locationId: row!.locationId,
-          cadenceDays: row!.cadenceDays,
-          active: row!.active,
+          id: row.id,
+          locationId: row.locationId,
+          cadenceDays: row.cadenceDays,
+          active: row.active,
+          version: row.version,
         };
       });
     },
@@ -1523,14 +1538,21 @@ export function createDbIdgBackend(
           checkedInAt: checkInAt.toISOString(),
           disciplineAttested: args.disciplineAttested ?? false,
           recordedByMembershipId: args.recordedByMembershipId ?? null,
+          version: 0,
         };
       });
     },
-    async updateAttendance(orgId, _userId, id, status): Promise<AttendanceView> {
+    async updateAttendance(orgId, _userId, id, status, expectedVersion): Promise<AttendanceView> {
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ATT).where(eq(ATT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
-        await tx.update(ATT).set({ status, updatedAt: new Date() }).where(eq(ATT.id, id));
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
+        const bumped = await tx
+          .update(ATT)
+          .set({ status, version: row.version + 1, updatedAt: new Date() })
+          .where(and(eq(ATT.id, id), eq(ATT.version, row.version)))
+          .returning({ id: ATT.id });
+        if (bumped.length === 0) throw staleRowError(row.version);
         return {
           id: row.id,
           meetingId: row.idgMeetingId,
@@ -1540,18 +1562,31 @@ export function createDbIdgBackend(
           checkedInAt: iso(row.checkInAt) ?? "",
           disciplineAttested: row.disciplineAttested,
           recordedByMembershipId: row.recordedByMembershipId,
+          version: row.version + 1,
         };
       });
     },
-    async removeAttendance(orgId, _userId, id): Promise<{ id: string; removed: true }> {
+    async removeAttendance(
+      orgId,
+      _userId,
+      id,
+      expectedVersion?: number,
+    ): Promise<{ id: string; removed: true }> {
       // No DELETE grant (compromise #2) → soft-remove to `excused` (out of the quorum present-set).
       return withOrg(orgId, async (tx) => {
-        const [row] = await tx.select({ id: ATT.id }).from(ATT).where(eq(ATT.id, id)).limit(1);
+        const [row] = await tx
+          .select({ id: ATT.id, version: ATT.version })
+          .from(ATT)
+          .where(eq(ATT.id, id))
+          .limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
-        await tx
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
+        const bumped = await tx
           .update(ATT)
-          .set({ status: "excused", updatedAt: new Date() })
-          .where(eq(ATT.id, id));
+          .set({ status: "excused", version: row.version + 1, updatedAt: new Date() })
+          .where(and(eq(ATT.id, id), eq(ATT.version, row.version)))
+          .returning({ id: ATT.id });
+        if (bumped.length === 0) throw staleRowError(row.version);
         return { id, removed: true };
       });
     },
@@ -1576,26 +1611,44 @@ export function createDbIdgBackend(
             addedByMembershipId: userId,
           })
           .returning({ id: AGD.id });
-        return { id: row!.id, meetingId, kind: args.kind, patientId: args.patientId ?? null };
+        return {
+          id: row!.id,
+          meetingId,
+          kind: args.kind,
+          patientId: args.patientId ?? null,
+          version: 0,
+        };
       });
     },
-    async updateAgendaItem(orgId, _userId, id): Promise<AgendaItemView> {
+    async updateAgendaItem(orgId, _userId, id, expectedVersion): Promise<AgendaItemView> {
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(AGD).where(eq(AGD.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         return {
           id: row.id,
           meetingId: row.idgMeetingId,
           kind: row.kind,
           patientId: row.patientId,
+          version: row.version,
         };
       });
     },
-    async removeAgendaItem(orgId, _userId, id): Promise<{ id: string; removed: true }> {
+    async removeAgendaItem(
+      orgId,
+      _userId,
+      id,
+      expectedVersion?: number,
+    ): Promise<{ id: string; removed: true }> {
       // No DELETE grant + no tombstone column on the append-only agenda (compromise #2) → tenant-checked no-op.
       return withOrg(orgId, async (tx) => {
-        const [row] = await tx.select({ id: AGD.id }).from(AGD).where(eq(AGD.id, id)).limit(1);
+        const [row] = await tx
+          .select({ id: AGD.id, version: AGD.version })
+          .from(AGD)
+          .where(eq(AGD.id, id))
+          .limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         return { id, removed: true };
       });
     },
@@ -1986,12 +2039,14 @@ export function createDbIdgBackend(
       id,
       status: ActionItemPatchStatus,
       isCoordinator = false,
+      expectedVersion?: number,
     ): Promise<ActionItemView> {
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ACT).where(eq(ACT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
         if (!isCoordinator && row.assignedToMembershipId !== userId)
           throw actionItemNotAssigneeError();
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         const t = transitionActionItem(row.status, { type: PATCH_STATUS_EVENT[status] });
         const at = new Date();
         const closed = t.to === "completed" || t.to === "cancelled";
@@ -2000,10 +2055,12 @@ export function createDbIdgBackend(
           .set({
             status: t.to as IdgActionItemStatus,
             closedAt: closed ? at : row.closedAt,
+            version: row.version + 1,
             updatedAt: at,
           })
-          .where(eq(ACT.id, id))
+          .where(and(eq(ACT.id, id), eq(ACT.version, row.version)))
           .returning();
+        if (!updated) throw staleRowError(row.version);
         await emit(tx, orgId, "m14.action_item.status_changed", "idg_action_item", id, {
           actionItemId: id,
           fromStatus: row.status,
@@ -2013,11 +2070,21 @@ export function createDbIdgBackend(
         return toActionItemView(updated!);
       });
     },
-    async removeActionItem(orgId, _userId, id): Promise<{ id: string; removed: true }> {
+    async removeActionItem(
+      orgId,
+      _userId,
+      id,
+      expectedVersion?: number,
+    ): Promise<{ id: string; removed: true }> {
       // No DELETE grant (compromise #2) → soft-remove by transitioning to `cancelled`.
       return withOrg(orgId, async (tx) => {
         const [row] = await tx
-          .select({ id: ACT.id, status: ACT.status, meetingId: ACT.idgMeetingId })
+          .select({
+            id: ACT.id,
+            status: ACT.status,
+            meetingId: ACT.idgMeetingId,
+            version: ACT.version,
+          })
           .from(ACT)
           .where(eq(ACT.id, id))
           .limit(1);
@@ -2028,11 +2095,19 @@ export function createDbIdgBackend(
           .where(eq(MTG.id, row.meetingId))
           .limit(1);
         if (meeting?.status === "adjourned") throw actionItemMeetingAdjournedError();
+        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         transitionActionItem(row.status, { type: "cancel" });
-        await tx
+        const cancelled = await tx
           .update(ACT)
-          .set({ status: "cancelled", closedAt: new Date(), updatedAt: new Date() })
-          .where(eq(ACT.id, id));
+          .set({
+            status: "cancelled",
+            closedAt: new Date(),
+            version: row.version + 1,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(ACT.id, id), eq(ACT.version, row.version)))
+          .returning({ id: ACT.id });
+        if (cancelled.length === 0) throw staleRowError(row.version);
         return { id, removed: true };
       });
     },

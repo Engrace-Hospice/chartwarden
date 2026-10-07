@@ -104,6 +104,70 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
     });
   });
 
+  it("enforces If-Match on action-item update/remove (412 on a stale version, version bumps on write)", async () => {
+    const svc = seed("live");
+    const item = await newItem(svc);
+    expect(item.version).toBe(0);
+    await expect(
+      svc.updateActionItem(ORG, ASSIGNEE, item.id, "in_progress", false, 7),
+    ).rejects.toMatchObject({ statusCode: 412, code: "STALE_VERSION" });
+    const moved = await svc.updateActionItem(ORG, ASSIGNEE, item.id, "in_progress", false, 0);
+    expect(moved.version).toBe(1);
+    await expect(svc.removeActionItem(ORG, "m_coord", item.id, 0)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    await expect(svc.removeActionItem(ORG, "m_coord", item.id, 1)).resolves.toMatchObject({
+      removed: true,
+    });
+  });
+
+  it("enforces If-Match on attendance, agenda and recurring-policy writes", async () => {
+    const svc = seed("live");
+    const att = await svc.recordAttendance(ORG, "m_coord", MEETING, {
+      membershipId: "m_x",
+      discipline: "rn",
+    } as never);
+    await expect(svc.updateAttendance(ORG, "m_coord", att.id, "tardy", 3)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    expect((await svc.updateAttendance(ORG, "m_coord", att.id, "tardy", 0)).version).toBe(1);
+    await expect(svc.removeAttendance(ORG, "m_coord", att.id, 0)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+
+    const agd = await svc.addAgendaItem(ORG, "m_coord", MEETING, {
+      kind: "carry_forward",
+    } as never);
+    await expect(svc.updateAgendaItem(ORG, "m_coord", agd.id, 9)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    await expect(svc.removeAgendaItem(ORG, "m_coord", agd.id, 9)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+
+    const pol = await svc.createRecurringPolicy(ORG, "m_coord", {
+      locationId: "loc_1",
+      cadenceDays: 7,
+    } as never);
+    await expect(
+      svc.updateRecurringPolicy(
+        ORG,
+        "m_coord",
+        pol.id,
+        { locationId: "loc_1", cadenceDays: 14 } as never,
+        5,
+      ),
+    ).rejects.toMatchObject({ statusCode: 412 });
+    const updated = await svc.updateRecurringPolicy(
+      ORG,
+      "m_coord",
+      pol.id,
+      { locationId: "loc_1", cadenceDays: 14 } as never,
+      0,
+    );
+    expect(updated.version).toBe(1);
+  });
+
   it("removes an action item while the meeting is still live", async () => {
     const svc = seed("live");
     const item = await newItem(svc);

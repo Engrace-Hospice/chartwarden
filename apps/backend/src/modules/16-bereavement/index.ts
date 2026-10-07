@@ -112,6 +112,16 @@ export {
 } from "./routes/index";
 export { mountM16Routes } from "./routes/mount";
 
+// GAP-129 — the per-tenant DEK envelope for the four `*_cipher` columns, the contact-channel reader and the roster seed.
+export {
+  type BereavementCipher,
+  type BereavementCipherColumn,
+  type BereavementKeyProvider,
+  createBereavementCipher,
+} from "./bereavement-crypto";
+export { type BereavedContactChannels, openBereavedContactChannels } from "./contact-channels";
+export { planCaregiverSeeds } from "./roster-seed";
+
 // §8.5 — the M4 destruction-registry `bereavement_record` eraser.
 export {
   type BereavementEraseCounts,

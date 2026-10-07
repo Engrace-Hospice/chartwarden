@@ -64,6 +64,7 @@ interface ActionItemRow {
   status: string;
   dueDate: string;
   linkedArtifactKind: string | null;
+  version: number;
 }
 
 export function MyActionItems(): JSX.Element {
@@ -105,7 +106,8 @@ export function MyActionItems(): JSX.Element {
   async function advance(itemId: string, status: ActionItemPatchStatus): Promise<void> {
     setBusyId(itemId);
     setNotice(null);
-    const res = await updateActionItem(client, itemId, status);
+    const version = items.find((i) => i.id === itemId)?.version ?? 0;
+    const res = await updateActionItem(client, itemId, status, version);
     setBusyId(null);
     setNotice(res.ok ? `Action item ${shortId(itemId)} → ${stateLabel(status)}.` : res.message);
     if (res.ok) await load();
