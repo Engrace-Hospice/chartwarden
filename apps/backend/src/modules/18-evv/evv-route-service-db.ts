@@ -22,10 +22,11 @@
 //   (2) capture siting (provider_entity_id + location_id, both NOT NULL) + patient_id are resolved from the M17
 //       `visit`; the posting device is the caller membership's most-recent APPROVED `evv_device` (FK NOT NULL);
 //       `service_type_code` / `posting_discipline_at_recording` are captured `""` (the M38/M2 lookups are not
-//       threaded), `device_attestation_id_at_record` reuses the device's `m2_device_attestation_id`, and the GPS
-//       coordinate is stored as base64(`lat,lng`) in `coords_cipher` (the real DEK pipeline is D10-deferred).
-//       GAP-032: ./coords.ts now owns BOTH halves of that format, so `clinicianCurrentLocation` recovers what
-//       the capture wrote — it used to answer a hardcoded (0, 0) for every clinician in every tenant;
+//       threaded), and `device_attestation_id_at_record` reuses the device's `m2_device_attestation_id`. The GPS
+//       coordinate is RESOLVED (GAP-133): it is sealed in the §D10 per-tenant DEK envelope (./coords.ts, over
+//       the injected M34 key provider) BEFORE the capture tx opens, `coords_dek_version` is the version the key
+//       ring sealed it under, and with no key bound the capture is REFUSED rather than written in the clear.
+//       (GAP-032 before it: `clinicianCurrentLocation` used to answer a hardcoded (0, 0) for everyone);
 //   (3) RESOLVED (GAP-054). The gps-quality / geofence decision is computed in `./capture-geofence.ts` from the
 //       haversine distance to the patient-address coordinate (M5 `PatientAddressReader.serviceAddressCoordinate`,
 //       resolved before the capture tx opens) against the effective policy; `computed_distance_m` is the real
@@ -75,7 +76,12 @@ interface CaptureBinding {
   readonly claimedDeviceId: string | undefined;
 }
 import { decideCaptureGeofence } from "./capture-geofence";
-import { decodeStoredCoords, encodeStoredCoords } from "./coords";
+import {
+  type EvvCoordsCipher,
+  type SealedCoords,
+  type StoredCoordinate,
+  UNBOUND_EVV_COORDS_CIPHER,
+} from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import type { EvvSideEffect } from "./domain/effects";
 import { correctEvent } from "./domain/event-lifecycle";
@@ -196,8 +202,15 @@ export function createDbEvvBackend(
      * `PatientAddressReader` seam (resolved lazily per call); injectable so a suite can bind a fixed baseline.
      */
     readonly addressCoordinate?: AddressCoordinateReader;
+    /**
+     * GAP-133 — the §D10 per-tenant DEK envelope over `coords_cipher`. The composition root binds it over M34's
+     * `getTenantKeyProvider()`; the default is FAIL-CLOSED (every capture is refused rather than written with
+     * clear coordinates, and an encrypted coordinate cannot be read).
+     */
+    readonly coordsCipher?: EvvCoordsCipher;
   } = {},
 ): EvvRoutePort {
+  const coordsCipher = options.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
   const addressCoordinate: AddressCoordinateReader =
     options.addressCoordinate ??
     ((orgId, patientId, patientAddressId) =>
@@ -390,6 +403,15 @@ export function createDbEvvBackend(
   }
 
   /**
+   * GAP-133 — seal the captured coordinate under the tenant's current DEK, BEFORE the capture tx opens (the key
+   * ring is read on its own M34 connection, the `loadGeofenceBaseline` rule). Throws — and so refuses the
+   * capture — when no key is bound; there is no clear-text fallback.
+   */
+  function sealCoords(orgId: string, coords: StoredCoordinate): Promise<SealedCoords> {
+    return coordsCipher.seal(orgId, coords);
+  }
+
+  /**
    * The capture write, WITHIN a caller-provided transaction.
    *
    * Extracted from `recordCapture` so `correctEvent` can insert the corrected event, supersede the
@@ -410,6 +432,8 @@ export function createDbEvvBackend(
       gpsQualityAttested?: "degraded_attested";
       /** GAP-054 — the patient-address coordinate (`loadGeofenceBaseline`); null = no baseline. */
       geofenceBaseline: Coordinate | null;
+      /** GAP-133 — `input.coords` sealed under the tenant DEK before the tx opened (`sealCoords`). */
+      sealedCoords: SealedCoords;
       /** §7.7 — the event this capture supersedes, and why, when it is a correction-of-record. */
       replacesEventId?: string;
       correctionReason?: string;
@@ -428,8 +452,9 @@ export function createDbEvvBackend(
       baseline: input.geofenceBaseline,
       policy,
     });
-    // GAP-032 — through the shared codec, so the read path recovers exactly what this wrote.
-    const coordsCipher = encodeStoredCoords(input.coords);
+    // GAP-133 — the D10 envelope sealed before the tx opened; the SAME ciphertext lands in both `_cipher`
+    // columns, and the stamped DEK version is the one the key ring sealed it under.
+    const coordsCipher = input.sealedCoords.cipher;
     const capturedAt = new Date(input.capturedAt);
 
     const [ins] = await tx
@@ -449,7 +474,7 @@ export function createDbEvvBackend(
         capturedAt,
         eventAt: capturedAt,
         coordsCipher,
-        coordsDekVersion: 1,
+        coordsDekVersion: input.sealedCoords.dekVersion,
         accuracyM: input.accuracyM,
         gpsQuality,
         deviceAttestationIdAtRecord: device.attestation,
@@ -662,13 +687,14 @@ export function createDbEvvBackend(
         deviceAttestationEnforced,
       );
       const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
+      const sealedCoords = await sealCoords(orgId, input.coords);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, (txRaw) =>
         captureInTx(
           txRaw as DbClient,
           orgId,
           userId,
           kind,
-          { ...input, geofenceBaseline },
+          { ...input, geofenceBaseline, sealedCoords },
           { authority, claimedDeviceId: input.claimedDeviceId },
         ),
       );
@@ -725,6 +751,7 @@ export function createDbEvvBackend(
       },
     ): Promise<CheckResultView> {
       const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
+      const sealedCoords = await sealCoords(orgId, input.coords);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [original] = await tx
@@ -783,6 +810,7 @@ export function createDbEvvBackend(
           capturedAt: input.capturedAt,
           gpsQualityAttested: input.gpsQualityAttested,
           geofenceBaseline,
+          sealedCoords,
           replacesEventId: supersede.originalEventId,
           correctionReason: reason?.value ?? input.correctionReason,
         });
@@ -1388,10 +1416,11 @@ export function createDbEvvBackend(
     },
 
     // ── clinician last-known location (§4.1 route 24; D10 coordinate-bearing) ────────────────────────────
-    // Coordinates live only in `evv_event.coords_cipher` (field-encrypted). This returns the last-known event
-    // metadata per membership with coordinates ZEROED until the decrypt pipeline is wired.
+    // Coordinates live only in `evv_event.coords_cipher`, sealed in the §D10 per-tenant DEK envelope (GAP-133).
+    // This returns the last-known event per membership with the coordinate DECRYPTED after the tx closes; a
+    // legacy pre-GAP-133 row reads as an explicit null pair, and a missing key / unauthenticated blob throws.
     async clinicianCurrentLocation(orgId: string, membership?: string): Promise<LocationView[]> {
-      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      const latest = await withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const rows = await tx
           .select({
             membershipId: EVENT.postingMembershipId,
@@ -1407,10 +1436,12 @@ export function createDbEvvBackend(
         const latestByMember = new Map<string, (typeof rows)[number]>();
         for (const r of rows)
           if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
-        return [...latestByMember.values()].map((r) => {
-          // GAP-032 — the real stored coordinate, or an explicit null. Previously a hardcoded (0, 0),
-          // which a caller could not distinguish from a genuine coordinate in the Gulf of Guinea.
-          const coords = decodeStoredCoords(r.coordsCipher);
+        return [...latestByMember.values()];
+      });
+      return Promise.all(
+        latest.map(async (r) => {
+          // GAP-032 — the real stored coordinate, or an explicit null (never a fabricated (0, 0)).
+          const coords = await coordsCipher.open(orgId, r.coordsCipher);
           return {
             membershipId: r.membershipId,
             eventId: r.eventId,
@@ -1420,8 +1451,8 @@ export function createDbEvvBackend(
             accuracyM: r.accuracyM,
             capturedAt: toIso(r.capturedAt),
           };
-        });
-      });
+        }),
+      );
     },
 
     // ── portal arrival surface (§4.1 route 25; timestamp only, no coordinates) ──────────────────────────

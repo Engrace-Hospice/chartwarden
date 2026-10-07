@@ -22,7 +22,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, lte } from "drizzle-orm";
-import { decodeStoredCoords } from "../coords";
+import { type EvvCoordsCipher, UNBOUND_EVV_COORDS_CIPHER } from "../coords";
 import { type Coordinate, haversineMeters } from "../domain/geofence";
 import type { EvvWriteOutboxPort } from "../evv-route-service-db";
 
@@ -88,12 +88,20 @@ export const M18_SPOOF_DETECTOR_CONSUMER = {
 
 export type SpoofDetectOutcome = "flagged" | "clean" | "already_flagged" | "event_not_found";
 
+/** What the detector needs. `coordsCipher` opens the §D10 envelope (GAP-133); unbound = fail closed. */
+export interface SpoofDetectorDeps {
+  readonly db: DbClient;
+  readonly outbox: EvvWriteOutboxPort;
+  readonly coordsCipher?: EvvCoordsCipher;
+}
+
 /** Score one event and flag it when the verdict crosses the threshold. Org-explicit; exported for the live suite. */
 export async function detectSpoofForEvent(
-  deps: { readonly db: DbClient; readonly outbox: EvvWriteOutboxPort },
+  deps: SpoofDetectorDeps,
   organizationId: string,
   eventId: string,
 ): Promise<SpoofDetectOutcome> {
+  const coordsCipher = deps.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
   return withOrgContext(deps.db, { organizationId, userId: "" }, async (raw) => {
     const tx = raw as DbClient;
     const [event] = await tx
@@ -122,15 +130,17 @@ export async function detectSpoofForEvent(
       .orderBy(desc(EVENT.eventAt))
       .limit(SPOOF_ACCURACY_PATTERN_WINDOW);
     const prior = history.find((h) => h.id !== event.id) ?? null;
+    // GAP-133 — the coordinates are the §D10 envelope; a legacy pre-GAP-133 row opens as null (the speed
+    // signal then simply does not fire), a missing key throws and the job retries/DLQs (fail loud).
     const verdict = scoreSpoofSignals({
       event: {
         capturedAt: event.capturedAt,
-        coords: decodeStoredCoords(event.coordsCipher),
+        coords: await coordsCipher.open(organizationId, event.coordsCipher),
         accuracyM: event.accuracyM,
       },
       prior: prior && {
         capturedAt: prior.capturedAt,
-        coords: decodeStoredCoords(prior.coordsCipher),
+        coords: await coordsCipher.open(organizationId, prior.coordsCipher),
         accuracyM: prior.accuracyM,
       },
       recentAccuracies: history.map((h) => h.accuracyM),
@@ -160,10 +170,7 @@ export async function detectSpoofForEvent(
 }
 
 /** The live consumer. The tenant is `event.organizationId` (the envelope), never the payload. */
-export function buildM18SpoofDetectorConsumer(deps: {
-  readonly db: DbClient;
-  readonly outbox: EvvWriteOutboxPort;
-}) {
+export function buildM18SpoofDetectorConsumer(deps: SpoofDetectorDeps) {
   return {
     consumerName: M18_SPOOF_DETECTOR_CONSUMER.consumerName,
     consumerModule: "m18" as const,

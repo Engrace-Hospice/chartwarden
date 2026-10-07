@@ -172,6 +172,16 @@ const M34_SHRED_SOLE_TENANT_JOB_ID = "m34-shred-sole-tenant-resolver";
 const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
 const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
 const M18_PLATFORM_JOB_ID = "m18-evv-automation";
+
+/**
+ * GAP-133 — M18's §D10 GPS-coordinate envelope over M34's per-tenant key ring (the M20 `safety-crypto`
+ * precedent). One factory so the capture (seal), the location reads and the spoof detector (open) all agree on
+ * the format and the AAD. `getTenantKeyProvider()` is resolved per call, so this is safe to build before M34
+ * registers; until a platform KEK is bound, M34's stub refuses `dekForOrg` and every capture fails closed.
+ */
+function m18CoordsCipher(): EvvCoordsCipher {
+  return createEvvCoordsCipher(lazyEvvCoordsKeys(getTenantKeyProvider));
+}
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
 // GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
@@ -649,6 +659,7 @@ import {
 } from "./modules/17-scheduling/index";
 import { onTimeVisitCountsForOrg } from "./modules/17-scheduling/seams/drizzle-store";
 import {
+  type EvvCoordsCipher,
   M18_OUTBOX_EVENTS,
   buildEvvAggregatorDeps,
   buildM18EncounterSignedConsumer,
@@ -658,7 +669,9 @@ import {
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
+  createEvvCoordsCipher,
   isEvvDeviceAttestationEnforced,
+  lazyEvvCoordsKeys,
   mountEvvRoutes,
   registerEvvAbacPredicates,
   registerEvvRoutes,
@@ -1879,9 +1892,14 @@ export function wireModuleSeams(
   // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
   // store lands with M18's routes/repos (M18-T06+).
   // TASK-002 — the six M18 EVV seams bind the Drizzle store on a db boot (real classified
-  // compliance breakdowns — the route service's UI-003 hardcode was NOT copied; coordinate-bearing
-  // reads keep the route surface's zeroed-coords D10 posture pending the decrypt pipeline).
-  registerEvvSeams(deps.db ? { store: createDrizzleEvvSeamStore(deps.db) } : {});
+  // compliance breakdowns — the route service's UI-003 hardcode was NOT copied).
+  // GAP-133 — the coordinate-bearing `EvvLocationProvider` reads open the §D10 per-tenant DEK envelope over
+  // M34's key ring (resolved lazily: M34 binds it after the seams are wired).
+  registerEvvSeams(
+    deps.db
+      ? { store: createDrizzleEvvSeamStore(deps.db, { coordsCipher: m18CoordsCipher() }) }
+      : {},
+  );
   // M22 — the two §4.3 published seams: `DocumentRenderer` (the §7.2 W2 render-from-typed-payload handshake
   // M5/M6/M8/M11/M12/M13/M14/M16/M17/M18/M23/M39 consume to materialize their PDFs) + `DocumentStorageProvider`
   // (the §11 D1 per-tenant object store: presign-download + version-aware destroy). Registering the renderer
@@ -4005,6 +4023,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           );
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher, {
             deviceAttestationEnforced: evvDeviceAttestationEnforced,
+            // GAP-133 — capture seals coords under the tenant DEK; no key bound ⇒ the capture is refused.
+            coordsCipher: m18CoordsCipher(),
           }); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           // M22 — reads + the write lifecycle over Drizzle+RLS; the reader is the `documents.doclens` DocLens gate
           // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the
@@ -8546,7 +8566,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 }),
               ]
             : []),
-          buildM18SpoofDetectorConsumer({ db: dbHandle.db, outbox: m18OutboxPublisher }),
+          buildM18SpoofDetectorConsumer({
+            db: dbHandle.db,
+            outbox: m18OutboxPublisher,
+            coordsCipher: m18CoordsCipher(), // GAP-133 — opens the §D10 coordinate envelope
+          }),
           // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
           // void open missing-resolution rows for the cancelled visit.
           buildM18VisitCancelledConsumer({

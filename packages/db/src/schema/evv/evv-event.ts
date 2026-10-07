@@ -20,7 +20,6 @@
 import {
   boolean,
   index,
-  integer,
   pgTable,
   primaryKey,
   real,
@@ -70,14 +69,14 @@ export const evvEvent = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(), // server clock
     eventAt: timestamp("event_at", { withTimezone: true }).notNull(), // = capturedAt; the partition key
 
-    // GPS coordinate, encrypted at rest (D10):
-    // ⚠️ NOT CIPHERTEXT YET, despite the column name and the `coords_dek_version` beside it: today this
-    // holds plain `base64("lat,lng")` and the §D10 per-tenant DEK envelope pipeline is still deferred. The
-    // name reads as "encrypted at rest" to anyone auditing the schema, which it is not — flagged here so
-    // the next reader does not mistake the format for a control. Encoded/decoded ONLY through
-    // `apps/backend/src/modules/18-evv/coords.ts` (GAP-032). DENYLISTED from the audit trail (§3.6).
+    // GPS coordinate, encrypted at rest (D10, GAP-133): AES-256-GCM under the tenant's M34 DEK, AAD-bound to
+    // the org — `v1.<dekVersion>.<nonce>.<tag>.<ciphertext>`. Sealed/opened ONLY through
+    // `apps/backend/src/modules/18-evv/coords.ts`. DENYLISTED from the audit trail (§3.6).
+    // `coords_dek_version` is the M34 `tenant_key_ring` DEK version the row was sealed under (text since
+    // migration 0491, matching `current_dek_version`); pre-GAP-133 rows hold base64 and carry
+    // 'legacy-unencrypted', and read as "coordinate unavailable".
     coordsCipher: text("coords_cipher").notNull(),
-    coordsDekVersion: integer("coords_dek_version").notNull(),
+    coordsDekVersion: text("coords_dek_version").notNull(),
     accuracyM: real("accuracy_m").notNull(), // device-reported accuracy (m); DENYLISTED (§3.6)
     gpsQuality: evvEventGpsQuality("gps_quality").notNull(),
 
