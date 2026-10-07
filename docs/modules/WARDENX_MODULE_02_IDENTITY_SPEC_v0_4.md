@@ -756,6 +756,14 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | GET/POST/PATCH | `/api/v1/locations[...]` | admin | `org_admin` | yes | Location management |
 | GET/POST | `/api/v1/orgs/:id/step-up-overrides[...]` | admin | `org_admin`/`compliance_officer` | yes | configure per-operation tenant step-up tightening |
 
+> **Implementation status (GAP-115 — recorded deferrals, reconcile with M34).** Not yet built: `GET /api/v1/me/session`
+> (the `stepUpStatus` read), the step-up-override WRITE routes (the override store has `find` only, so W-M2-10 is
+> configurable only by SQL), `/api/v1/orgs` CRUD (tenant onboarding writes are M34's `tenant_lifecycle` surface;
+> this row's org CRUD is superseded by it for create/provision and remains M2's only for the HearthNote opt-in
+> flag), the funeral-home invite, and writes on `/provider-entities` / `/locations` (GET only today). Session
+> list/revoke and screen-unlock are path drift: they are Better Auth's default endpoints plus a client-side
+> re-sign-in, not `/me/session[...]` routes. Each is tracked in the gap analysis; none changes an existing contract.
+
 ### 4.2 Representative Per-Route Specs
 
 #### POST /api/v1/auth/select-organization

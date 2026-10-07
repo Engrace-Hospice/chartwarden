@@ -88,6 +88,12 @@ import {
   summarizeRotation,
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
+import {
+  IDEMPOTENCY_CLEANUP_JOB_ID,
+  registerIdempotencyCleanupWorker,
+  scheduleIdempotencyCleanup,
+  wireIdempotencyCleanupTenancy,
+} from "./bootstrap/jobs/idempotency-cleanup";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
@@ -193,6 +199,7 @@ import {
   type ActorPermissionResolver,
   type M3OutboxPublisher,
   M3_OUTBOX_EVENTS,
+  M3_PLATFORM_JOB_ID,
   createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
@@ -203,6 +210,9 @@ import {
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
   registerAuthorizationSeams,
+  registerM3CronWorkers,
+  scheduleM3Jobs,
+  wireM3ReaperTenancy,
 } from "./modules/03-authorization/index";
 import {
   M4_OUTBOX_EVENTS,
@@ -1899,6 +1909,10 @@ export function wireModuleSeams(
   // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
   // module can see the others', so it is registered here with them rather than from a module wiring file.
   wirePartitionRotationTenancy();
+  // GAP-113 / GAP-117 — the M1 idempotency.cleanup sweeper and the M3 reap_breakglass cron fan out over the
+  // active orgs through the audited platform pool, so both job ids must be allowlisted.
+  wireIdempotencyCleanupTenancy();
+  wireM3ReaperTenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). GAP-098: on a DB boot the grant/session/flag/onboarding-task facts resolve through the
@@ -5855,6 +5869,46 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
 
     app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
+
+    // ── M1 idempotency.cleanup (GAP-113) + M3 reap_breakglass (GAP-117) ──────────────────────────────────
+    const m1m3ActiveOrgs = (jobId: string, reason: string) =>
+      buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId,
+        reason,
+      });
+    const m3ReaperWorkers = registerM3CronWorkers(queueConnection, {
+      db: dbHandle.db,
+      outbox: m3OutboxPublisher as M3OutboxPublisher,
+      activeOrgs: m1m3ActiveOrgs(
+        M3_PLATFORM_JOB_ID,
+        "M3 reap_breakglass cron (active-org enumeration)",
+      ),
+    });
+    const idempotencyCleanupWorker = registerIdempotencyCleanupWorker(queueConnection, {
+      db: dbHandle.db,
+      activeOrgs: m1m3ActiveOrgs(
+        IDEMPOTENCY_CLEANUP_JOB_ID,
+        "M1 idempotency.cleanup cron (active-org enumeration)",
+      ),
+    });
+    attachDlqAlertsToAll([...m3ReaperWorkers, idempotencyCleanupWorker], "m1m3");
+    app.addHook("onClose", async () => {
+      await Promise.all([...m3ReaperWorkers, idempotencyCleanupWorker].map((w) => w.close()));
+    });
+    try {
+      const m1m3ScheduleQueues = [
+        ...(await scheduleM3Jobs(queueConnection)),
+        await scheduleIdempotencyCleanup(queueConnection),
+      ];
+      app.addHook("onClose", async () => {
+        await Promise.all(m1m3ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M1/M3 cleanup cron-schedule registration failed");
+    }
+    app.log.info("M1 idempotency.cleanup and M3 reap_breakglass crons constructed");
 
     // ── M21 §4.6 crons (GAP-062) ─────────────────────────────────────────────────────────────────────────
     // par-monitor (`m21.par.below_threshold` / `stockout_imminent`), unreturned-kit-monitor (the automatic

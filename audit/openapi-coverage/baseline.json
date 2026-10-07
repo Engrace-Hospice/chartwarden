@@ -22,7 +22,7 @@
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 84,
+      "routes": 85,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -182,7 +182,7 @@
       "mutatingNoBody": 0
     },
     "38-terminology": {
-      "routes": 14,
+      "routes": 19,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -198,7 +198,7 @@
     },
     "bootstrap": {
       "routes": 11,
-      "deficit": 5,
+      "deficit": 0,
       "mutatingNoBody": 0
     }
   }

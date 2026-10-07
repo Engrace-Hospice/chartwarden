@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
-// Read-only by design: this screen refines presentation and local discovery only. M3 remains
+// Read-only by design (the role/permission WRITES are a recorded deferral, GAP-116): this screen refines presentation and local discovery only. M3 remains
 // authoritative for the existing GET /roles and GET /permissions data sources.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";

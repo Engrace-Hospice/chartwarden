@@ -7077,6 +7077,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discharges/{id}/decline-for-cause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides) */
+        post: operations["postApiV1DischargesByIdDeclineforcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discharges/{id}/place-of-death": {
         parameters: {
             query?: never;
@@ -19218,6 +19235,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** This org's resolved feature flags */
         get: operations["getApiV1SystemFeatureflags"];
         put?: never;
         post?: never;
@@ -20980,6 +20998,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Liveness probe (unauthenticated) */
         get: operations["getHealth"];
         put?: never;
         post?: never;
@@ -21064,6 +21083,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Prometheus text-format metrics for internal scraping (unauthenticated, not a public route) */
         get: operations["getMetrics"];
         put?: never;
         post?: never;
@@ -21080,6 +21100,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down */
         get: operations["getReady"];
         put?: never;
         post?: never;
@@ -21096,6 +21117,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Build identity: version, git SHA and build time (unauthenticated) */
         get: operations["getVersion"];
         put?: never;
         post?: never;
@@ -27825,6 +27847,11 @@ export interface operations {
                     reason: string;
                     /** Format: uuid */
                     facilityId?: string;
+                    gipAttestations?: {
+                        symptomsNotManageableElsewhere?: boolean;
+                        intensityWarrantsGip?: boolean;
+                        inpatientSettingIdentified?: boolean;
+                    };
                 };
             };
         };
@@ -41738,6 +41765,35 @@ export interface operations {
                     capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
                     orderText?: string;
                     orderReference?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DischargesByIdDeclineforcause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    declineReason: string;
                     ifVersion: number;
                 };
             };
@@ -77572,7 +77628,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        flags: {
+                            [key: string]: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83337,7 +83399,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83547,7 +83614,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "ready" | "not_ready";
+                        checks: {
+                            db: "ok" | "fail";
+                            valkey: "ok" | "fail";
+                            minio: "ok" | "fail";
+                            outbox: "ok" | "fail";
+                            capabilities?: {
+                                [key: string]: "ready" | "disabled";
+                            };
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -83567,7 +83647,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        version: string;
+                        gitSha: string;
+                        buildTime: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

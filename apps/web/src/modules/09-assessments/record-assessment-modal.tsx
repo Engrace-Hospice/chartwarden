@@ -44,6 +44,8 @@ export interface RecordAssessmentModalProps {
   readonly scales: readonly ScaleDefinition[];
   /** Preselect a scale (the timeline's "record another" path); otherwise the first recordable one. */
   readonly initialScaleType?: string;
+  /** GAP-123 — the encounter the capture is launched from (the encounter screen); filed on the assessment. */
+  readonly sourceEncounterId?: string;
   readonly onClose: () => void;
   readonly onRecorded: (assessment: AssessmentView) => void;
 }
@@ -54,6 +56,7 @@ export function RecordAssessmentModal({
   admissionId,
   scales,
   initialScaleType,
+  sourceEncounterId,
   onClose,
   onRecorded,
 }: RecordAssessmentModalProps): JSX.Element | null {
@@ -104,6 +107,7 @@ export function RecordAssessmentModal({
       admissionId,
       scaleType: selected.scaleType,
       capturedAt: nowIso(),
+      ...(sourceEncounterId ? { sourceEncounterId } : {}),
       data: dataPayload(),
     } as Parameters<typeof recordAssessment>[2]);
     setBusy(false);

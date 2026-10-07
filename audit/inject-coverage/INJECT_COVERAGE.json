@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1402,
-    "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "routes": 1403,
+    "coveredRoutes": 1403,
+    "directRoutesReferenced": 1351
   },
   "modules": [
     {
@@ -74,7 +74,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 84,
+      "routes": 85,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -89,7 +89,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 84
+      "directRoutesReferenced": 85
     },
     {
       "module": "07-care-plan",
@@ -152,7 +152,7 @@
         "apps/backend/__tests__/hope-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 28
     },
     {
       "module": "11-orders",

@@ -2534,6 +2534,14 @@ Module 1 creates and consumes:
 | `idempotency.cleanup` | `purge_expired` | Delete expired idempotency keys from PG (Valkey TTL handles its own) | Hourly cron |
 | `outbox.cleanup` | `purge_dispatched` | Delete `outbox_event` rows 30 days post-dispatch (§24.1) | Daily cron |
 
+> **Implementation status (GAP-113).** `idempotency.cleanup` is implemented (`apps/backend/src/bootstrap/jobs/idempotency-cleanup.ts`):
+> hourly, per active org under RLS, batched DELETE of rows past `expires_at`; a failing org does not stop the
+> others and the pass rejects so BullMQ retries (purge is reentrant, §4.8.1). **`audit.archive` is a recorded
+> deferral**: the MinIO cold-tier archive of detached audit partitions is not built, and the M4 retention policy
+> (`audit.retention_scan` / `audit.execute_destruction`) that would drive it never drops a partition whose archive
+> has not been verified (§4.8.1 "never drop a partition whose archive failed"). Until it lands, closed audit
+> partitions stay in the hot tier.
+
 #### 4.8.1 Queue parameters (M01-F09 / SD-059 / OPS-035)
 
 Every queue declares explicit retry/backoff/concurrency/DLQ parameters — the v0.4 spec declared

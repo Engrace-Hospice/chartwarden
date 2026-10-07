@@ -2174,7 +2174,7 @@
       "moduleId": 38,
       "id": "terminology.admin",
       "path": "/terminology",
-      "permission": "(none)"
+      "permission": "terminology.read"
     },
     {
       "app": "web",
@@ -2222,7 +2222,7 @@
       "moduleId": 40,
       "id": "mdm.console",
       "path": "/mdm",
-      "permission": "(none)"
+      "permission": "mdm.physician.read"
     },
     {
       "app": "admin",

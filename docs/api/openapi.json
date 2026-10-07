@@ -27272,6 +27272,20 @@
                   "facilityId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "gipAttestations": {
+                    "type": "object",
+                    "properties": {
+                      "symptomsNotManageableElsewhere": {
+                        "type": "boolean"
+                      },
+                      "intensityWarrantsGip": {
+                        "type": "boolean"
+                      },
+                      "inpatientSettingIdentified": {
+                        "type": "boolean"
+                      }
+                    }
                   }
                 }
               }
@@ -86076,6 +86090,61 @@
                   "orderReference": {
                     "minLength": 1,
                     "maxLength": 200,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/discharges/{id}/decline-for-cause": {
+      "post": {
+        "operationId": "postApiV1DischargesByIdDeclineforcause",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "declineReason",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "declineReason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
                     "type": "string"
                   },
                   "ifVersion": {
@@ -231483,10 +231552,31 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "This org's resolved feature flags",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "flags"
+                  ],
+                  "properties": {
+                    "flags": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -261917,10 +262007,27 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Liveness probe (unauthenticated)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -262571,6 +262678,7 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Prometheus text-format metrics for internal scraping (unauthenticated, not a public route)",
         "parameters": [],
         "responses": {
           "200": {
@@ -262591,10 +262699,112 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_ready",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "checks": {
+                      "type": "object",
+                      "required": [
+                        "db",
+                        "valkey",
+                        "minio",
+                        "outbox"
+                      ],
+                      "properties": {
+                        "db": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "valkey": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "minio": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "outbox": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fail",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "capabilities": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "anyOf": [
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "disabled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -262611,10 +262821,34 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Build identity: version, git SHA and build time (unauthenticated)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "gitSha",
+                    "buildTime"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "gitSha": {
+                      "type": "string"
+                    },
+                    "buildTime": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

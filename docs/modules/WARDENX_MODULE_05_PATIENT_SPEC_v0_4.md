@@ -13,8 +13,9 @@
 > **Phase-2 tenancy three-column sweep (2026-06-11; ADR-0010 D1 / ARCH-011) — M05-F04 closed.** All
 > **16 PHI tables** now carry `organization_id` (NOT NULL) + `provider_entity_id` + `location_id`
 > (nullable — the patient spine is org-level until admission, then PE/location are denormalized from
-> the admission/primary address). The `location_scope` ABAC predicate on `patient.create` now
-> evaluates against `patient.location_id` (it previously had no column). See the §3.3 tenancy note for
+> the admission/primary address). The `location_scope` ABAC predicate on patient **reads** evaluates
+> against `patient.location_id`; `patient.create` is **org-wide** (GAP-120 — a patient being created has no
+> location yet, so there is nothing to scope against; see §3.3). See the §3.3 tenancy note for
 > the nullability rationale, SD-028 composite indexes, and the M1 `providerEntities`/`locations`
 > imports. This satisfies `check-tenancy` (fitness #10). *(M05's other audited items — F01 SOGI/SSN
 > field-gating, F02 the M1 `dependsOn` + the org-table collision-guard trigger, §164.526 amendment
@@ -495,8 +496,13 @@ The `partner_mrn` value on `patient_identifier_kind` is added by migration `0035
 > admission** — a `prospective`/`referral` patient has no ProviderEntity or service Location yet; they
 > are populated (and denormalized onto every patient-scoped child table) when the admission activates,
 > from the admission's ProviderEntity and the primary-address-derived Location. Concretely:
-> - The `location_scope` ABAC predicate on `patient.create`/reads now evaluates against
+> - The `location_scope` ABAC predicate on patient **reads** evaluates against
 >   **`patient.location_id`** (previously it had no column to evaluate against — M05-F04).
+> - **`patient.create` is org-wide — no `location_scope` (GAP-120).** `POST /patients` carries no `locationId`
+>   and `patient.location_id` is NULL until the admission activates, so the predicate has no target to
+>   evaluate; binding it would either deny everyone or (as an absent-target fallback) look like a guard while
+>   allowing everyone. The control on creation is the RBAC key `patient.create` (§4.7) plus the §2.3 match
+>   pipeline; location scoping begins when the admission sites the patient (M6).
 > - Every table gets the **SD-028 composite index** `(organization_id, location_id, <natural_key>)`
 >   for partition/plan locality; PE-scoped surfaces (admissions, claims) index `(organization_id,
 >   provider_entity_id, …)`.
@@ -1232,7 +1238,7 @@ Like Modules 3 and 4, this module ships obligations every consuming module must 
 |---|---|---|---|---|
 | GET | `/api/v1/patients` | `patient.read` | `caseload_or_scope` (narrows list) | search: name/MRN/MBI/DOB; cursor-paginated; returns canonical only (excludes `merged`) |
 | GET | `/api/v1/patients/:id` | `patient.read` | `caseload_or_scope` | follows `merged_into_id` and returns 301-like in body for merged |
-| POST | `/api/v1/patients` | `patient.create` | `location_scope` (creator's location) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
+| POST | `/api/v1/patients` | `patient.create` | none — org-wide (GAP-120; no location exists until admission) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
 | PATCH | `/api/v1/patients/:id` | `patient.edit` | `caseload_or_scope` | MRN immutable; SSN write requires `phi.write_ssn` (step-up); `status` transitions per §2.4 |
 | POST | `/api/v1/patients/:id/status` | `patient.transition_status` | `caseload_or_scope` | enforces state-machine transitions |
 | POST | `/api/v1/patients/:id/deceased` | `patient.record_death` | `caseload_or_scope` | sets `status='deceased'`, `deceased_date`; emits cascade |
@@ -1539,7 +1545,7 @@ Module 5 contributes these to Module 3's permission catalog (§3.3 of M3 spec). 
 | Key | Default roles | ABAC | Notes |
 |---|---|---|---|
 | `patient.read` | all internal clinical roles (RN, LPN, Aide, MSW, Chaplain, NP, MD, Pharmacist, Bereavement), org_admin, Compliance/Privacy Officer | `caseload_or_scope` for clinical; `none` for org_admin/Compliance | most-used permission in the system |
-| `patient.create` | RN-Case-Manager, Admissions Nurse, MD, NP, org_admin | `location_scope` | runs match pipeline |
+| `patient.create` | RN-Case-Manager, Admissions Nurse, MD, NP, org_admin | none (org-wide, GAP-120) | runs match pipeline |
 | `patient.create_bypass_match` | (assigned to none by default) | none | step-up + `critical` audit |
 | `patient.edit` | RN-Case-Manager, MSW, NP, MD, org_admin | `caseload_or_scope` | demographics, addresses, caregivers |
 | `patient.edit_identifiers` | Admissions Nurse, Billing roles, org_admin | `caseload_or_scope` | MRN immutable; SSN requires `phi.write_ssn` |

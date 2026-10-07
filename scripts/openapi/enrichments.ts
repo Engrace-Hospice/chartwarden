@@ -30,6 +30,12 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  HealthResponseSchema as M1HealthResponseSchema,
+  ReadyResponseSchema as M1ReadyResponseSchema,
+  VersionResponseSchema as M1VersionResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/health";
+import {
+  FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
@@ -86,6 +92,7 @@ import {
   CtiSignSchema,
   CtiVoidSchema,
   DischargeCosignSchema,
+  DischargeDeclineSchema,
   DischargeCreateSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
@@ -3925,6 +3932,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
+  },
+  "POST /api/v1/discharges/:id/decline-for-cause": {
+    summary:
+      "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
+    body: DischargeDeclineSchema,
   },
   "GET /api/v1/admissions/:id/discharge-order": {
     summary:
@@ -11364,6 +11376,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // typed that body as `never` — the generated client could not express the call. The schemas live beside
 // the route's own runtime validator so the two cannot drift.
 Object.assign(ROUTE_ENRICHMENTS, {
+  // GAP-114 — the unauthenticated probes and the feature-flag read carried no published contract.
+  "GET /health": {
+    summary: "Liveness probe (unauthenticated)",
+    response: M1HealthResponseSchema,
+  },
+  "GET /ready": {
+    summary:
+      "Readiness probe (unauthenticated): per-dependency reachability; 503 with the same body when any dependency is down",
+    response: M1ReadyResponseSchema,
+  },
+  // Prometheus text exposition (not JSON), so no JSON response schema — the entry documents the route.
+  "GET /metrics": {
+    summary:
+      "Prometheus text-format metrics for internal scraping (unauthenticated, not a public route)",
+  },
+  "GET /version": {
+    summary: "Build identity: version, git SHA and build time (unauthenticated)",
+    response: M1VersionResponseSchema,
+  },
+  "GET /api/v1/system/feature-flags": {
+    summary: "This org's resolved feature flags",
+    response: M1FeatureFlagsResponseSchema,
+  },
   "GET /api/v1/system/status": {
     summary: "Read this org's system-status components",
     response: M1SystemStatusResponseSchema,

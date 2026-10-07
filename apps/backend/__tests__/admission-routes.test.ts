@@ -105,6 +105,12 @@ const PERMISSION_SEED = [
     userId: "md_1",
     permissions: ["f2f.attest", "discharge.for_cause", "discharge.cosign_for_cause"],
   },
+  {
+    userId: "md_2",
+    permissions: ["f2f.attest", "discharge.for_cause", "discharge.cosign_for_cause"],
+  },
+  // GAP-121 — a clinician (no org-wide / unsited-admission escape) who may record a death discharge.
+  { userId: "dis_rn", permissions: ["discharge.death"] },
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
   // GAP-022 — a scheduler (intake side): may schedule an F2F but is not the performer.
   { userId: "sched_1", permissions: ["f2f.schedule", "admission.read"] },
@@ -320,6 +326,11 @@ const RN_AS_NP = {
 };
 const MD = {
   "x-test-user": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "medical_director",
+};
+const MD_2 = {
+  "x-test-user": "md_2",
   "x-test-org": ORG,
   "x-test-roles": "medical_director",
 };
@@ -1133,6 +1144,92 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await allowed.app.close();
   });
 
+  describe("GAP-121 for-cause discharge governance", () => {
+    const fileForCause = (app: ReturnType<typeof makeServer>["app"], headers: typeof MD) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/discharge`,
+        headers,
+        payload: {
+          reason: "for_cause",
+          dischargeDate: "2026-06-20",
+          narrative: " x".repeat(30),
+          forCauseReason: "y".repeat(30),
+        },
+      });
+    const cosignBody = { cosignerName: "Dr. House", cosignerNpi: "1234567893", ifVersion: 1 };
+
+    it("the filer cannot cosign their own for-cause discharge (409), a different director can", async () => {
+      const { app } = makeServer();
+      const filed = await fileForCause(app, MD);
+      expect(filed.statusCode).toBe(201);
+      const id = filed.json().id;
+      const url = `/api/v1/discharges/${id}/cosign-for-cause`;
+
+      const self = await app.inject({ method: "POST", url, headers: MD, payload: cosignBody });
+      expect(self.statusCode).toBe(409);
+      expect(self.json().error.code).toBe("DISCHARGE_COSIGNER_IS_FILER");
+
+      const other = await app.inject({ method: "POST", url, headers: MD_2, payload: cosignBody });
+      expect(other.statusCode).toBe(200);
+      expect(other.json().state).toBe("completed");
+      await app.close();
+    });
+
+    it("a director can decline: the discharge is voided and the admission stays active", async () => {
+      const { app } = makeServer();
+      const filed = await fileForCause(app, MD);
+      const id = filed.json().id;
+      const declined = await app.inject({
+        method: "POST",
+        url: `/api/v1/discharges/${id}/decline-for-cause`,
+        headers: MD_2,
+        payload: { declineReason: "Insufficient documentation of cause", ifVersion: 1 },
+      });
+      expect(declined.statusCode).toBe(200);
+      expect(declined.json().state).toBe("voided");
+      // a voided discharge cannot then be cosigned or declined again
+      const again = await app.inject({
+        method: "POST",
+        url: `/api/v1/discharges/${id}/decline-for-cause`,
+        headers: MD_2,
+        payload: { declineReason: "Insufficient documentation of cause", ifVersion: 2 },
+      });
+      expect(again.statusCode).toBe(409);
+      await app.close();
+    });
+
+    it("decline needs discharge.cosign_for_cause (403 without)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/discharges/${DISCHARGE}/decline-for-cause`,
+        headers: MD_NO_ROLE,
+        payload: { declineReason: "Insufficient documentation of cause", ifVersion: 1 },
+      });
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    });
+
+    it("discharge is chart-scoped: a clinician outside the caseload gets 404", async () => {
+      const { app } = makeServer({ isInCaseload: async () => false });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/discharge`,
+        headers: { "x-test-user": "dis_rn", "x-test-org": ORG, "x-test-roles": "clinical_rn" },
+        payload: {
+          reason: "death",
+          dischargeDate: "2026-06-20",
+          narrative: "patient expired at home",
+          deathCertifierId: "55555555-5555-4555-8555-555555555555",
+          placeOfDeath: "home",
+        },
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+  });
+
   it("§4.6 compliance override — ABAC requires compliance_officer role (403 without, 200 with)", async () => {
     const a = makeServer();
     const noRole = await a.app.inject({
@@ -1203,6 +1300,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         newLevel: "general_inpatient_care",
         effectiveStart: "2026-06-20",
         reason: "uncontrolled symptoms requiring inpatient management now",
+        gipAttestations: {
+          symptomsNotManageableElsewhere: true,
+          intensityWarrantsGip: true,
+          inpatientSettingIdentified: true,
+        },
       },
     });
     expect(res.statusCode).toBe(422);
@@ -1221,6 +1323,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         effectiveStart: "2026-06-20",
         reason: "uncontrolled symptoms requiring inpatient management now",
         facilityId: "99999999-9999-4999-8999-999999999999",
+        gipAttestations: {
+          symptomsNotManageableElsewhere: true,
+          intensityWarrantsGip: true,
+          inpatientSettingIdentified: true,
+        },
       },
     });
     expect(assigning.statusCode).toBe(201);
@@ -1235,6 +1342,52 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     });
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json().state).toBe("active");
+    await app.close();
+  });
+
+  // GAP-122 / D12 — the three attestations are enforced server-side (412), on top of R-LCP-01's reason floor.
+  it.each([
+    ["none supplied", undefined],
+    [
+      "one unchecked",
+      {
+        symptomsNotManageableElsewhere: true,
+        intensityWarrantsGip: false,
+        inpatientSettingIdentified: true,
+      },
+    ],
+  ])("GIP without all three D12 attestations (%s) -> 412 GIP_DOCUMENTATION_INCOMPLETE", async (_label, attestations) => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: RN,
+      payload: {
+        newLevel: "general_inpatient_care",
+        effectiveStart: "2026-06-20",
+        reason: "uncontrolled symptoms requiring inpatient management now",
+        facilityId: "99999999-9999-4999-8999-999999999999",
+        ...(attestations ? { gipAttestations: attestations } : {}),
+      },
+    });
+    expect(res.statusCode).toBe(412);
+    expect(res.json().error.code).toBe("GIP_DOCUMENTATION_INCOMPLETE");
+    await app.close();
+  });
+
+  it("a non-GIP level change needs no attestations", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: RN,
+      payload: {
+        newLevel: "continuous_home_care",
+        effectiveStart: "2026-06-20",
+        reason: "crisis symptoms needing continuous nursing at home",
+      },
+    });
+    expect(res.statusCode).toBe(201);
     await app.close();
   });
 });

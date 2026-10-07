@@ -152,6 +152,14 @@ const SCOPE_QUERY_PE = (action: string): PreHandler =>
       providerEntityId: (request.query as { providerEntityId?: unknown } | null)?.providerEntityId,
     }),
   }) as PreHandler;
+// GAP-124 — the regenerate-schedules body names the admission; scope it like the other admissionId routes.
+const SCOPE_BODY_ADMISSION = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      admissionId: (request.body as { admissionId?: unknown } | null)?.admissionId,
+    }),
+  }) as PreHandler;
 const SCOPE_BODY_PE = (action: string): PreHandler =>
   requireAbac(action, "hope.scope", {
     notFoundOnDeny: true,
@@ -268,7 +276,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 6 — update a draft assessment.
   app.put(
     "/api/v1/hope/assessments/:id",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -374,7 +382,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 9D — canonical answer patch. Public API supports only set/clear; skipped remains internal.
   app.patch(
     "/api/v1/hope/assessments/:id/answers",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -600,7 +608,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 20 — admin: recompute schedules for an admission (post-hoc date correction).
   app.post(
     "/api/v1/hope/admin/regenerate-schedules",
-    { preHandler: [ADMIN_REGEN] },
+    { preHandler: [ADMIN_REGEN, SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(RegenerateSchedulesSchema, request.body);

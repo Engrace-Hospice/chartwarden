@@ -293,13 +293,13 @@
 | web | 37-ipu | `ipu.bedside` | `/ipu/admissions/:id` | `m37.ipu_admission.read` | ✅ |
 | web | 37-ipu | `ipu.census` | `/ipu/census` | `m37.census.read` | ✅ |
 | web | 37-ipu | `ipu.equipment` | `/ipu/equipment` | `m37.equipment.read` | ✅ |
-| web | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |
+| web | 38-terminology | `terminology.admin` | `/terminology` | `terminology.read` | ✅ |
 | web | 39-consent | `consent.record-manager` | `/patients/:patientId/consents` | `consent.read` | ✅ |
 | web | 39-consent | `consent.capture` | `/patients/:patientId/consents/new` | `consent.author` | ✅ |
 | web | 39-consent | `consent.detail` | `/patients/:patientId/consents/:consentId` | `consent.read` | ✅ |
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
-| web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
+| web | 40-mdm | `mdm.console` | `/mdm` | `mdm.physician.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |

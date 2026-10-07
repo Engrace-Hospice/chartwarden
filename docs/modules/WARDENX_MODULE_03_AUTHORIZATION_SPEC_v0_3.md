@@ -255,7 +255,7 @@ stateDiagram-v2
 | Break-glass co-sign | policy | per-tenant: non-emergency requires Compliance Officer co-sign before access |
 | Cross-tenant break-glass | policy | WardenX support PHI access requires break-glass **and** tenant consent record; double-audited (on the audit itself) |
 | Engagement window | sync | `start_at < end_at`; session creation rejected outside window (enforced with Module 2) |
-| Last-required-role guard | sync | cannot remove the last holder of a CoP-required role for a ProviderEntity without explicit override |
+| Last-required-role guard | sync | cannot remove the last holder of a CoP-required role for a ProviderEntity without explicit override. **Implemented (GAP-117):** `DELETE /memberships/:id/roles/:rid` refuses with `409 LAST_REQUIRED_ROLE` when the grant is the last unexpired holder of a `system_locked` role in the org (org-wide today; the per-ProviderEntity partition and the explicit-override path are not built) |
 
 ### 2.5 Side Effects
 

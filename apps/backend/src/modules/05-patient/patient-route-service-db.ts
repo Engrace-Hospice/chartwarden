@@ -930,22 +930,46 @@ export function createDbPatientRouteService(
     actorUserId: string,
   ) =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-      if (!decision.accept && !decision.denialReason) throw new Error("denial requires a reason");
+      // GAP-118 — typed errors (a plain `Error` surfaced as a 500) and a status guard: a decided request
+      // cannot be re-decided (an accepted amendment flipped to denied would rewrite the HIPAA §164.526 record).
+      if (!decision.accept && !decision.denialReason)
+        throw new WardenXError("DENIAL_REASON_REQUIRED", "A denial requires a reason.", 422);
       const rows = (await tx
         .select({
           patientId: schema.patientAmendmentRequests.patientId,
+          status: schema.patientAmendmentRequests.status,
           slaDueAt: schema.patientAmendmentRequests.slaDueAt,
         })
         .from(schema.patientAmendmentRequests)
         .where(eq(schema.patientAmendmentRequests.id, amendmentId))
-        .limit(1)) as Array<{ patientId: string; slaDueAt: Date }>;
+        .limit(1)) as Array<{ patientId: string; status: string; slaDueAt: Date }>;
       const row = rows[0];
-      if (!row) throw new Error(`amendment ${amendmentId} not found`);
+      if (!row) throw new WardenXError("NOT_FOUND", "amendment request not found", 404);
+      const notPending = () =>
+        new WardenXError(
+          "AMENDMENT_NOT_PENDING",
+          "This amendment request has already been decided.",
+          409,
+        );
+      if (row.status !== "pending") throw notPending();
       const status = decision.accept ? ("accepted" as const) : ("denied" as const);
-      await tx
+      // The guard is repeated in the WHERE so two reviewers racing the same request cannot both win.
+      const decided = (await tx
         .update(schema.patientAmendmentRequests)
-        .set({ status, denialReason: decision.denialReason ?? null })
-        .where(eq(schema.patientAmendmentRequests.id, amendmentId));
+        .set({
+          status,
+          denialReason: decision.denialReason ?? null,
+          reviewerUserId: actorUserId,
+          decidedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.patientAmendmentRequests.id, amendmentId),
+            eq(schema.patientAmendmentRequests.status, "pending"),
+          ),
+        )
+        .returning({ id: schema.patientAmendmentRequests.id })) as Array<{ id: string }>;
+      if (decided.length === 0) throw notPending();
       await emitPatientEvent(tx, organizationId, row.patientId, "m5.patient.amendment_decided", {
         amendmentId,
         decision: status,

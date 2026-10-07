@@ -471,6 +471,67 @@ describe("M3-T08 authorization route inventory", () => {
       expect(revoke.json().status).toBe("revoked");
       await app.close();
     });
+
+    it("GAP-117 revoking an already-revoked event → 409 BREAKGLASS_NOT_REVOCABLE (status guard)", async () => {
+      const { app } = makeServer();
+      const invoke = await app.inject({
+        method: "POST",
+        url: "/api/v1/breakglass",
+        headers: CLINICIAN,
+        payload: {
+          targetPatientId: TARGET_PATIENT,
+          reason: "covering nurse, chest pain emergency",
+        },
+      });
+      const eventId = invoke.json().breakGlassId;
+      const url = `/api/v1/breakglass/${eventId}/revoke`;
+      const first = await app.inject({ method: "POST", url, headers: COMPLIANCE });
+      expect(first.statusCode).toBe(200);
+      const second = await app.inject({ method: "POST", url, headers: COMPLIANCE });
+      expect(second.statusCode).toBe(409);
+      expect(second.json().error.code).toBe("BREAKGLASS_NOT_REVOCABLE");
+      await app.close();
+    });
+  });
+
+  describe("GAP-117 last-required-role guard", () => {
+    const OTHER_MEMBERSHIP = "44444444-4444-4444-8444-444444444444";
+    const DON = roleView({
+      roleId: "role_don",
+      organizationId: "org_a",
+      key: "director_of_nursing",
+    });
+    const assign = (app: Awaited<ReturnType<typeof makeServer>>["app"], membership: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/memberships/${membership}/roles`,
+        headers: ADMIN,
+        payload: { roleId: "role_don" },
+      });
+    const remove = (app: Awaited<ReturnType<typeof makeServer>>["app"], membership: string) =>
+      app.inject({
+        method: "DELETE",
+        url: `/api/v1/memberships/${membership}/roles/role_don`,
+        headers: ADMIN,
+      });
+
+    it("refuses to remove the only holder of a CoP-required role → 409 LAST_REQUIRED_ROLE", async () => {
+      const { app, membershipRoles } = makeServer({ extraRoles: [DON] });
+      expect((await assign(app, MEMBERSHIP)).statusCode).toBe(201);
+      const res = await remove(app, MEMBERSHIP);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("LAST_REQUIRED_ROLE");
+      expect(await membershipRoles.store.listForMembership(MEMBERSHIP)).toHaveLength(1);
+      await app.close();
+    });
+
+    it("allows the removal once another member holds the role", async () => {
+      const { app } = makeServer({ extraRoles: [DON] });
+      await assign(app, MEMBERSHIP);
+      await assign(app, OTHER_MEMBERSHIP);
+      expect((await remove(app, MEMBERSHIP)).statusCode).toBe(200);
+      await app.close();
+    });
   });
 
   // ── §7.4 two-person control (AC-01) ────────────────────────────────────────────────────────
