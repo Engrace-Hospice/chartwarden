@@ -44,6 +44,7 @@ import {
   ComplianceListQuerySchema,
   ComplianceOverrideSchema,
   CtiDraftSchema,
+  CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
   CtiSignSchema,
   CtiVoidSchema,
@@ -1144,8 +1145,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [CTI_SIGN_HOSPICE_MD, ABAC_CTI_HOSPICE_MD] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
-      const body = parse(CtiSignSchema, request.body);
-      return service.signCtiHospiceMd(organizationId, idOf(request), body.ifVersion, userId);
+      const body = parse(CtiHospiceMdSignSchema, request.body);
+      return service.signCtiHospiceMd(organizationId, idOf(request), body.ifVersion, userId, {
+        ...(body.narrative !== undefined ? { narrative: body.narrative } : {}),
+      });
     },
   );
 

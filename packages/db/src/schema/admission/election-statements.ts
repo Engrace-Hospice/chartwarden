@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `election_statement` (M6 §3.3). The signed hospice-benefit election for a period.
 // PHI-bearing (carries a patient reference) → the three-column tenancy rule (org NOT NULL + nullable
 // provider_entity_id / location_id). Cross-module refs (M5 patient, M39 representative consent, M40
@@ -14,11 +15,20 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { electionSignatureMethod, electionSignerKind, electionStatementStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { electionPeriods } from "./election-periods";
+
+// Registered business rules (Bug 4): a `23505` on these indexes — two writers racing past the service's
+// own pre-check — answers 409 with this sentence instead of a bare 500 (the F-022 / #55 convention).
+// Declared outside `pgTable`'s lazily-invoked config callback so the error handler can see them.
+const ELECTION_STATEMENT_PERIOD_IDX = businessRule(
+  "election_statement_period_idx",
+  "This benefit period already has an election statement. Open the existing statement instead of drafting a second one.",
+);
 
 export const electionStatements = pgTable(
   "election_statement",
@@ -54,7 +64,10 @@ export const electionStatements = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    periodUnique: uniqueIndex("election_statement_period_idx").on(t.electionPeriodId),
+    // One LIVE statement per period: a voided draft never blocks re-drafting (migration 0398).
+    periodUnique: uniqueIndex(ELECTION_STATEMENT_PERIOD_IDX)
+      .on(t.electionPeriodId)
+      .where(sql`status <> 'voided'`),
   }),
 );
 

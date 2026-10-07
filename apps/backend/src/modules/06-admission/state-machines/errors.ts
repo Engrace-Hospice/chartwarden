@@ -23,6 +23,9 @@ export const M6_ERROR_STATUS = {
   BENEFIT_PERIOD_CONFIRMATION_DATE_INVALID: 422,
   // A readmission must start from a live-discharged earlier admission of the same patient (409).
   READMISSION_SOURCE_INVALID: 409,
+  // A period holds one LIVE election statement (`election_statement_period_idx`, partial — voided rows
+  // excluded): a second draft beside a live one is a conflict, never a raw unique_violation (42 CFR 418.24 — one election per period).
+  ELECTION_STATEMENT_CONFLICT: 409,
   // CTI (§2.4.1 R-CTI-*)
   TERMINAL_DX_NOT_ALLOWABLE: 422,
   ATTENDING_SIGNATURE_REQUIRED: 409,
@@ -70,6 +73,9 @@ export const M6_ERROR_STATUS = {
   TRANSFER_IN_SOURCE_INVALID: 422,
   // CMS Pub. 100-04 ch. 11 §20.1.3: transfers are not allowed from the same provider (same CCN).
   TRANSFER_SAME_PROVIDER: 422,
+  // The carried sequence must follow every period already on the admission (42 CFR 418.28 — the counter
+  // never restarts); a transfer-in whose inherited/next period collides with an existing one is a conflict.
+  TRANSFER_IN_PERIOD_CONFLICT: 409,
   DEATH_CERTIFIER_INVALID: 422,
   DISCHARGE_BEFORE_ADMISSION: 422,
   // Discharge reason-specific capture gates (§6.3 / D11)
@@ -101,6 +107,12 @@ export const M6_ERROR_STATUS = {
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;
+
+/** The caller-facing sentence for `ELECTION_STATEMENT_CONFLICT` (shared by the pre-check and the
+ *  `election_statement_period_idx` unique-violation backstop, in both service backends). */
+export const ELECTION_STATEMENT_CONFLICT_MESSAGE =
+  "This benefit period already has an election statement. Open the existing statement instead of " +
+  "drafting a second one.";
 
 /** A machine-readable M6 domain failure code (§2.4 / §2.3). */
 export type M6ErrorCode = keyof typeof M6_ERROR_STATUS;

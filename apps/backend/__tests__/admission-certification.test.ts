@@ -40,7 +40,7 @@ const CTI_CLINICAL = {
   prognosisStatement:
     "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative:
-    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
@@ -195,8 +195,31 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
     );
   });
 
-  it("W-CTI-03: signing a recert CTI moves it to signed, advances the period, emits both events", async () => {
-    const { service, events } = seedBackend({ sequence: 2, periodStartDate: "2026-08-01" });
+  it("W-CTI-03: a recert signed BEFORE its period starts is signed but the period stays pending (no overlap)", async () => {
+    // 42 CFR 418.22(a)(3) lets the recert be signed up to 15 days early; the period (contiguous, 42 CFR
+    // 418.21(a)) must not start until its own start date. The slice clock is 2026-06-20.
+    const { service, events } = seedBackend({ sequence: 2, periodStartDate: "2026-07-01" });
+    const cti = await service.draftCti(
+      ORG,
+      {
+        electionPeriodId: PERIOD,
+        hospiceMedicalDirectorId: MD_ID,
+        ...CTI_CLINICAL,
+        isRecert: true,
+      },
+      "u1",
+    );
+    const signed = await service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1");
+    expect(signed.state).toBe("signed");
+    expect(events).toContain("m6.cti.signed");
+    expect(events).not.toContain("m6.election.period_started");
+    const periods = await service.listElectionPeriods(ORG, ADMISSION);
+    expect(periods?.find((p) => p.id === PERIOD)?.state).toBe("pending");
+  });
+
+  it("W-CTI-03: a recert signed on/after its start date advances the period and emits both events", async () => {
+    // The slice clock (2026-06-20T00:00Z) is 2026-06-19 in the org timezone (America/Los_Angeles).
+    const { service, events } = seedBackend({ sequence: 2, periodStartDate: "2026-06-19" });
     const cti = await service.draftCti(
       ORG,
       {
@@ -213,6 +236,29 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
     expect(events).toContain("m6.election.period_started");
     const periods = await service.listElectionPeriods(ORG, ADMISSION);
     expect(periods?.find((p) => p.id === PERIOD)?.state).toBe("active");
+  });
+
+  it("a recert CTI with a short narrative is refused 422 CTI_NARRATIVE_REQUIRED; a narrative at signature signs it", async () => {
+    const { service } = seedBackend({ sequence: 2, periodStartDate: "2026-07-01" });
+    const cti = await service.draftCti(
+      ORG,
+      {
+        electionPeriodId: PERIOD,
+        hospiceMedicalDirectorId: MD_ID,
+        ...CTI_CLINICAL,
+        narrative: "too short",
+        isRecert: true,
+      },
+      "u1",
+    );
+    await expect(service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1")).rejects.toMatchObject({
+      code: "CTI_NARRATIVE_REQUIRED",
+      statusCode: 422,
+    });
+    const signed = await service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1", {
+      narrative: CTI_CLINICAL.narrative,
+    });
+    expect(signed.state).toBe("signed");
   });
 
   it("W-CTI-04: a period-1 CTI with an attending awaits the co-sign and does NOT advance the period", async () => {

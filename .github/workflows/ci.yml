@@ -847,6 +847,8 @@ jobs:
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
           - { name: "M6 F2F/CTI adequacy gate", scripts: "test:m6:adequacy-gate:live" }
+          # Recert periods start on their own start date (42 CFR 418.21(a)), never on an early CTI signature.
+          - { name: "M6 recert period start", scripts: "test:m6:recert-period-start:live" }
           # F-226 (#248) — the F2F window from the REAL encounter date vs the period's expected start.
           - { name: "M6 F2F real dates", scripts: "test:m6:f2f-real-dates:live" }
           # FY2027 CoP — telehealth F2F modality (R-F2F-05), signed-note attestation (R-F2F-06), and the
@@ -855,6 +857,9 @@ jobs:
           # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
           - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           - { name: "M6 election addendum", scripts: "test:m6:election-addendum:live" }
+          # Bug 2/4 — the Election & Certification view's per-period CTI/F2F pick (a voided CTI never hides the
+          # live one) and the two 409s (duplicate election statement, colliding transfer-in period).
+          - { name: "M6 election-cert view + conflicts", scripts: "test:m6:election-cert-view:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }

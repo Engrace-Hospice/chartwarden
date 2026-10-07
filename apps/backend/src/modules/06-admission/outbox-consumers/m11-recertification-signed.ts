@@ -148,8 +148,9 @@ export async function applyRecertificationSigned(
         .limit(1);
       if (later) return { kind: "settled", reason: "next_period_exists" };
 
-      // (c) the shared, route-identical insert + `m6.election.period_started` on this same tx.
-      const opened = await openNextElectionPeriodInTx(tx, deps.outbox, {
+      // (c) the shared, route-identical PENDING insert on this same tx (`m6.election.period_started` fires
+      //     later, when the period actually starts on its start date — recert-period-activation.ts).
+      const opened = await openNextElectionPeriodInTx(tx, {
         organizationId,
         admissionId,
         sourceOrderId: orderId,

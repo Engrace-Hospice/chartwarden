@@ -393,6 +393,14 @@ export const CtiDraftSchema = Type.Object({
 
 export const CtiSignSchema = Type.Object({ ifVersion: Version() });
 
+export const CtiHospiceMdSignSchema = Type.Object({
+  ifVersion: Version(),
+  // The signing physician's § 418.22(b)(3) narrative, supplied at signature when the draft has none (a
+  // transfer-in drafts our CTI without one) or to replace the draft's. A recert needs >= 200 characters;
+  // the service answers 422 `CTI_NARRATIVE_REQUIRED` otherwise.
+  narrative: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+});
+
 export const CtiVoidSchema = Type.Object({ reason: Reason(10, 500), ifVersion: Version() });
 
 export const CtiMarkLateSchema = Type.Object({
