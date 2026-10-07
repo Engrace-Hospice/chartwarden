@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1402/1402 route defs sit behind a covered module · 1349/1402 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1402/1402 route defs sit behind a covered module · 1350/1402 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -46,4 +46,4 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 37-ipu | 52 | ✅ | 52/52 | apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts, apps/backend/__tests__/ipu-inject.test.ts, apps/backend/__tests__/ipu-step-up-assertion.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
 | 38-terminology | 19 | ✅ | 19/19 | apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-abac.test.ts, apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts |
-| 40-mdm | 14 | ✅ | 10/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |
+| 40-mdm | 14 | ✅ | 11/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

@@ -18,6 +18,17 @@ export {
 } from "./drift";
 
 export {
+  BAA_SCAN_LOOKAHEAD_DAYS,
+  daysUntil,
+  planBaaExpiryAlerts,
+  windowFor,
+  type BaaExpiryAlertPlan,
+  type BaaExpirySeverity,
+  type BaaExpiryWindow,
+  type BaaScanRecord,
+} from "./baa-scan";
+
+export {
   runNppesNightlyDelta,
   type NppesNightlyPorts,
   type NppesNightlyResult,

@@ -42,6 +42,15 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
+/** Rows the platform-ops NPPES console shows (the DB function clamps it again at 200). */
+const NPPES_SYNC_LOG_LIMIT = 50;
+
+interface NppesSyncLogRow {
+  readonly id: string;
+  readonly mode: string;
+  readonly outcome: string;
+}
+
 const PH = schema.externalPhysicians;
 const FAC = schema.facilities;
 const PAY = schema.payers;
@@ -51,7 +60,6 @@ const REL = schema.entityRelationships;
 const BAA = schema.mdmBaaRecords;
 const BAA_REQ = schema.mdmBaaRequired;
 const MERGE = schema.mergeRequests;
-const SYNC = schema.nppesSyncLog;
 
 const SEARCH_DEFAULT_LIMIT = 25;
 const SEARCH_MAX_LIMIT = 100;
@@ -517,14 +525,19 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     },
 
     async nppesSyncLog(): Promise<readonly NppesSyncRun[]> {
-      const rows = await db
-        .select({ id: SYNC.id, mode: SYNC.mode, outcome: SYNC.outcome })
-        .from(SYNC)
-        .orderBy(desc(SYNC.runAt))
-        .limit(50);
+      // GAP-174 — through the migration-0470 SECURITY DEFINER reader. This USED to be a direct
+      // `db.select().from(SYNC)`, a hard `permission denied` (500) on the app pool: migration 0019 §6 gave
+      // `nppes_sync_log` GRANT ALL to `wardenx_admin` and NO `wardenx_app` grant. Same defect GAP-060 fixed
+      // for `merge_request`, same remedy.
+      const result = await db.execute(
+        sql`SELECT * FROM mdm_canonical_writer_list_nppes_sync_log(${NPPES_SYNC_LOG_LIMIT})`,
+      );
+      const rows =
+        (result as unknown as { rows?: readonly NppesSyncLogRow[] }).rows ??
+        ([] as NppesSyncLogRow[]);
       return rows.map((r) => ({
         id: r.id,
-        mode: r.mode,
+        mode: r.mode as NppesSyncRun["mode"],
         outcome: r.outcome as NppesSyncRun["outcome"],
       }));
     },

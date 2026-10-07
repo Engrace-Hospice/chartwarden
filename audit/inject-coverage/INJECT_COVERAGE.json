@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1402,
     "coveredRoutes": 1402,
-    "directRoutesReferenced": 1349
+    "directRoutesReferenced": 1350
   },
   "modules": [
     {
@@ -499,7 +499,7 @@
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],
-      "directRoutesReferenced": 10
+      "directRoutesReferenced": 11
     }
   ]
 }

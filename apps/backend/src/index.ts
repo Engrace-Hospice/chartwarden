@@ -1208,6 +1208,7 @@ import {
   scheduleM38Jobs,
 } from "./modules/38-terminology/index";
 import {
+  type M39AlertPort,
   M39_OUTBOX_EVENTS,
   M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
@@ -1218,6 +1219,7 @@ import {
   createDrizzleConsentEraseStore,
   getConsentPatientReader,
   mountConsentRoutes,
+  recordCascadeAckForOrg,
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
@@ -1227,7 +1229,9 @@ import {
 } from "./modules/39-consent/index";
 import { buildPart2ConsentStateReader } from "./modules/39-consent/part2-consent-state-reader";
 import {
+  type M40AlertPort,
   M40_OUTBOX_EVENTS,
+  M40_PLATFORM_JOB_ID,
   buildM29NppesPlatformConsumers,
   createDbBaaStore,
   createDbMdmStore,
@@ -1236,8 +1240,12 @@ import {
   facilityKindsForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
+  registerM40CronWorkers,
+  registerMdmAbacPredicates,
   registerMdmErasers,
   registerMdmSeams,
+  scheduleM40Jobs,
+  wireM40Tenancy,
 } from "./modules/40-mdm/index";
 
 export { buildServer };
@@ -1854,6 +1862,9 @@ export function wireModuleSeams(
   // tenant. Registered under M38's OWN name rather than borrowing M34's identical-today
   // `tenant_lifecycle_platform_ops`, because the registry is single-owner per name (GAP-063).
   registerTerminologyAbacPredicates();
+  // M40 — the platform-only ABAC conjunct (`mdm_admin_platform_ops`) on `/api/v1/admin/mdm/*` (GAP-172):
+  // role-only, no DB handle; M40's OWN name because the registry is single-owner per name.
+  registerMdmAbacPredicates();
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -1883,6 +1894,7 @@ export function wireModuleSeams(
   wireM28Tenancy(); // GAP-084 — allowlist the cron job id so the M28 §4.8 sweepers may enter withPlatformContext
   registerPlatformJob(M38_PLATFORM_JOB_ID); // GAP-108 — the M38 tenant_deprecation_scan fan-out's active-org enumeration
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
+  wireM40Tenancy(); // GAP-173 — allowlist the M40 scan job id so the §4.3 BAA-expiration cron may enter withPlatformContext
   wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
@@ -3798,6 +3810,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m39OutboxPublisher,
             cipher: createConsentInternalNotesCipher(getTenantKeyProvider()),
             patientReader: getConsentPatientReader(),
+            // GAP-171 — the manual cascade retry raises the CRITICAL cascade-failed alert on exhaustion too.
+            alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
@@ -6451,6 +6465,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m39OutboxPublisher,
       activeOrgs: m39ActiveOrgs,
+      // GAP-171 — the live M36 seam: the CRITICAL `m39.consent.revoked_cascade_failed` alert.
+      alerts: getSeam("AlertEmitter") as M39AlertPort,
     });
     const m39Workers = registerM39CronWorkers(m39WorkerDeps);
     attachDlqAlertsToAll(m39Workers, "m39");
@@ -6467,8 +6483,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info(
       { queues: m39Workers.length },
-      "M39 §4.9 BullMQ consent-expiration + expiration-reminder crons constructed",
+      "M39 §4.9 BullMQ consent-expiration + expiration-reminder + revocation-cascade-retry crons constructed",
     );
+
+    // ── M40 §4.3 `mdm.baa_expiration_scan` (GAP-173): daily, per-org, org-explicit. Warns (90/30/0 days) before
+    // a facility/payer BAA lapses and the §7.7 gate starts denying disclosure to it. Alerts go through the live
+    // M36 AlertEmitter (idempotent on `(org, correlationId)`), so a daily re-scan never re-raises a window.
+    const m40Workers = registerM40CronWorkers({
+      connection: queueConnection,
+      db: dbHandle.db,
+      orgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M40_PLATFORM_JOB_ID,
+        reason: "M40 §4.3 BAA-expiration scan fan-out (active-org enumeration)",
+      }),
+      alerts: getSeam("AlertEmitter") as M40AlertPort,
+    });
+    attachDlqAlertsToAll(m40Workers, "m40");
+    app.addHook("onClose", async () => {
+      await Promise.all(m40Workers.map((w) => w.close()));
+    });
+    try {
+      const m40ScheduleQueues = await scheduleM40Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m40ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M40 cron-schedule registration failed");
+    }
 
     // ── M36 §4.4 out-of-band delivery workers (GAP-101): `messaging.send_push|sms|voice|email`. A repeatable
     // tick per queue sweeps the pending `notification_delivery` rows of every active org (bounded batch, leased
@@ -7124,7 +7167,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-164 (#248) — 2 more of M31's confirmed-genuine F-139 pairs: the bereavement-window
           // plan-closure grant revocation and the broad m39.consent.revoked grant cascade.
           buildM31BereavementPlanClosedConsumer({ db: dbHandle.db }),
-          buildM31ConsentRevokedGrantCascadeConsumer({ db: dbHandle.db }),
+          buildM31ConsentRevokedGrantCascadeConsumer({
+            db: dbHandle.db,
+            // GAP-171 — M31 ACKs its leg of the §2.2.3 revocation cascade so it can reach `completed`.
+            ackCascade: ({ organizationId, consentRecordId }) =>
+              recordCascadeAckForOrg(dbHandle.db, {
+                organizationId,
+                consentRecordId,
+                consumer: "m31_portal",
+              }),
+          }),
           // F-165 (#248) — the D6 bereaved-mode lateral flip's INSERT half, re-checked past F-164's
           // BLOCKED verdict: migration 0257 nullable-widens granted_by_membership_id, and the consent
           // version resolves via bereaved_contact.status + M39's ConsentEvaluator. The candidate read
