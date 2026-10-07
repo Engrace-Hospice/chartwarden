@@ -12,15 +12,14 @@ import {
 // mockup "Scheduling"). The org calendar: a Day / Week / Month / List view of the visits in range
 // (GET /visits from–to), a staff legend that filters the grid, the selected visit's details below it,
 // and a right rail with a month picker, filters, the pending visit proposals ("unscheduled visits")
-// and staff availability. Staff names come from the org member roster, disciplines from each
-// clinician's credentials, and availability from their weekly hours and approved time off — every one
-// of those reads is permission-gated, so a missing read degrades to a short id or "not set" rather
-// than an error. Visit objectives, visit notes and visit priority are not modeled on the visit, so
+// and staff availability. Staff names and disciplines come from M17's minimal scheduling directory,
+// so calendar readers never need organization membership-management access to understand a visit.
+// Visit objectives, visit notes and visit priority are not modeled on the visit, so
 // they are not drawn; the notes live on the linked encounter. The server enforces every scope
 // (ADR-0030 — no authz on the frontend; an out-of-scope visit is simply absent).
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
@@ -43,12 +42,8 @@ interface PatientSummary {
 }
 interface Member {
   membershipId: string;
-  displayName: string | null;
-  email: string | null;
-}
-interface Credential {
-  credentialType: string;
-  status: string;
+  displayName: string;
+  discipline: string | null;
 }
 interface Availability {
   slots: { weekday: number; startTime: string; endTime: string }[];
@@ -139,7 +134,12 @@ function rangeOf(view: CalendarView, date: Date): { start: Date; days: number } 
 
 function rangeLabel(view: CalendarView, date: Date): string {
   if (view === "day")
-    return fmt(date, { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+    return fmt(date, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   if (view === "month") return fmt(date, { month: "long", year: "numeric" });
   const s = mondayOf(date);
   const e = addDays(s, 6);
@@ -172,12 +172,23 @@ const minutesOf = (hhmm: string): number => {
   return Number(h) * 60 + Number(m ?? 0);
 };
 
+/** Apply a focused calendar-state change without discarding shareable context such as patient/view/date. */
+export function withCalendarParams(
+  params: URLSearchParams,
+  changes: Record<string, string | null>,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+  }
+  return next;
+}
+
 export function CalendarPage(): JSX.Element {
   const client = useApiClient();
-  const navigate = useNavigate();
   const session = useSession();
   const permissions = session?.permissions;
-  const orgId = session?.organizationId;
   const [params, setParams] = useSearchParams();
   const view: CalendarView =
     (["day", "month", "list"] as const).find((v) => v === params.get("view")) ?? "week";
@@ -190,11 +201,13 @@ export function CalendarPage(): JSX.Element {
   const [retryKey, setRetryKey] = useState(0);
   const [patients, setPatients] = useState<Map<string, PatientSummary>>(new Map());
   const [members, setMembers] = useState<Map<string, Member>>(new Map());
-  const [disciplines, setDisciplines] = useState<Map<string, string | null>>(new Map());
   const [availability, setAvailability] = useState<Map<string, Availability | null>>(new Map());
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
   const [proposals, setProposals] = useState<Proposal[] | null | "denied">(null);
-  const requested = useRef({ patients: new Set<string>(), staff: new Set<string>() });
+  const requested = useRef({
+    patients: new Set<string>(),
+    staff: new Set<string>(),
+  });
 
   const [hiddenStaff, setHiddenStaff] = useState<Set<string>>(new Set());
   const [staffFilter, setStaffFilter] = useState("");
@@ -202,15 +215,49 @@ export function CalendarPage(): JSX.Element {
   const [settingFilter, setSettingFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const selectedId = params.get("visit");
+  const creating = params.get("newVisit") === "1";
+  const contextPatientId = params.get("patient");
+  const [contextPatient, setContextPatient] = useState<PatientSummary | null>(null);
+  const [contextPatientError, setContextPatientError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!contextPatientId) {
+      setContextPatient(null);
+      setContextPatientError(false);
+      return;
+    }
+    void client
+      .GET("/api/v1/patients/{id}", {
+        params: { path: { id: contextPatientId } },
+      })
+      .then((result) => {
+        if (!active) return;
+        if (result.error || !result.data) {
+          setContextPatient(null);
+          setContextPatientError(true);
+          return;
+        }
+        setContextPatient({
+          ...(result.data as object),
+          id: contextPatientId,
+        } as PatientSummary);
+        setContextPatientError(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, contextPatientId]);
 
   function go(next: { view?: CalendarView; date?: Date }): void {
     const p = new URLSearchParams(params);
     p.set("view", next.view ?? view);
     p.set("date", dayKey(next.date ?? date));
     setParams(p);
+  }
+  function updateCalendarParams(changes: Record<string, string | null>): void {
+    setParams(withCalendarParams(params, changes));
   }
   function step(dir: 1 | -1): void {
     if (view === "month") go({ date: new Date(date.getFullYear(), date.getMonth() + dir, 1) });
@@ -229,7 +276,10 @@ export function CalendarPage(): JSX.Element {
     void client
       .GET("/api/v1/visits", {
         params: {
-          query: { from: from.toISOString(), to: new Date(to.getTime() - 1).toISOString() },
+          query: {
+            from: from.toISOString(),
+            to: new Date(to.getTime() - 1).toISOString(),
+          },
         },
       })
       .then((r) => {
@@ -271,19 +321,22 @@ export function CalendarPage(): JSX.Element {
   }, [client, permissions]);
 
   useEffect(() => {
-    if (!orgId) return;
     let active = true;
-    void client
-      .GET("/api/v1/orgs/{id}/members", { params: { path: { id: orgId }, query: {} } })
+    void (
+      client as unknown as {
+        GET: (path: string) => Promise<{ data?: unknown; error?: unknown }>;
+      }
+    )
+      .GET("/api/v1/scheduling/staff")
       .then((r) => {
         if (!active || r.error) return;
-        setMembers(new Map(((r.data?.members ?? []) as Member[]).map((m) => [m.membershipId, m])));
+        setMembers(new Map(((r.data ?? []) as Member[]).map((m) => [m.membershipId, m])));
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [client, orgId]);
+  }, [client]);
 
   // Patients behind the loaded visits and proposals.
   useEffect(() => {
@@ -311,43 +364,33 @@ export function CalendarPage(): JSX.Element {
     );
   }, [client, visits, proposals]);
 
-  // Each assignee's discipline (credentials) and weekly hours (availability).
+  // Each assignee's weekly hours (availability). Disciplines are supplied by
+  // the scheduling-safe staff projection above rather than credential reads.
   useEffect(() => {
     const ids = [...new Set((visits ?? []).map((v) => v.assignedMembershipId))]
       .filter((id) => !requested.current.staff.has(id))
       .slice(0, FETCH_CAP);
     if (ids.length === 0) return;
     for (const id of ids) requested.current.staff.add(id);
-    const canCred = hasPermission(permissions, "membership_credential.read");
     const canAvail = hasPermission(permissions, "availability.read");
     void Promise.all(
       ids.map(async (id) => {
-        const [cred, avail] = await Promise.all([
-          canCred
-            ? client
-                .GET("/api/v1/memberships/{membershipId}/credentials", {
-                  params: { path: { membershipId: id } },
-                })
-                .then((r) => (r.data ?? []) as Credential[])
-                .catch(() => [] as Credential[])
-            : Promise.resolve([] as Credential[]),
+        const [avail] = await Promise.all([
           canAvail
             ? client
-                .GET("/api/v1/availability", { params: { query: { membership: id } } })
+                .GET("/api/v1/availability", {
+                  params: { query: { membership: id } },
+                })
                 .then((r) => (r.error ? undefined : ((r.data ?? null) as Availability | null)))
                 .catch(() => undefined)
             : Promise.resolve(undefined),
         ]);
         return {
           id,
-          discipline: cred.find((c) => c.status === "active")?.credentialType ?? null,
           avail,
         };
       }),
     ).then((rows) => {
-      setDisciplines(
-        (prev) => new Map([...prev, ...rows.map((r) => [r.id, r.discipline] as const)]),
-      );
       setAvailability((prev) => {
         const next = new Map(prev);
         for (const r of rows) if (r.avail !== undefined) next.set(r.id, r.avail);
@@ -358,10 +401,10 @@ export function CalendarPage(): JSX.Element {
 
   const staffName = (id: string): string => {
     const m = members.get(id);
-    return m?.displayName ?? m?.email ?? `Clinician ${id.slice(0, 8)}`;
+    return m?.displayName ?? "Clinician details unavailable";
   };
   const disciplineOf = (id: string, purpose?: string): string | null =>
-    disciplines.get(id) ?? (purpose ? (PURPOSES[purpose]?.discipline ?? null) : null);
+    members.get(id)?.discipline ?? (purpose ? (PURPOSES[purpose]?.discipline ?? null) : null);
   const colorOf = (v: VisitView): string =>
     DISCIPLINES[disciplineOf(v.assignedMembershipId, v.visitPurpose) ?? ""]?.color ?? t.primary;
   const patientLabel = (id: string): string => patientName(patients.get(id)) ?? "Patient";
@@ -371,11 +414,11 @@ export function CalendarPage(): JSX.Element {
     return ids
       .map((id) => {
         const m = members.get(id);
-        const name = m?.displayName ?? m?.email ?? `Clinician ${id.slice(0, 8)}`;
-        return { id, name, discipline: disciplines.get(id) ?? null };
+        const name = m?.displayName ?? "Clinician details unavailable";
+        return { id, name, discipline: m?.discipline ?? null };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [visits, members, disciplines]);
+  }, [visits, members]);
 
   const shown = useMemo(
     () =>
@@ -390,13 +433,6 @@ export function CalendarPage(): JSX.Element {
     [visits, showInactive, hiddenStaff, staffFilter, purposeFilter, settingFilter, statusFilter],
   );
 
-  // Default selection: the next visit from now in the range, else the first.
-  useEffect(() => {
-    if (shown.length === 0) return;
-    if (selectedId && shown.some((v) => v.id === selectedId)) return;
-    const now = Date.now();
-    setSelectedId((shown.find((v) => Date.parse(v.scheduledEndedAt) >= now) ?? shown[0]!).id);
-  }, [shown, selectedId]);
   const selected = shown.find((v) => v.id === selectedId) ?? null;
 
   const filtersActive = Boolean(staffFilter || purposeFilter || settingFilter || statusFilter);
@@ -430,7 +466,11 @@ export function CalendarPage(): JSX.Element {
               </div>
             </details>
             {canCreate ? (
-              <button type="button" className="wx-btn-primary" onClick={() => setCreating(true)}>
+              <button
+                type="button"
+                className="wx-btn-primary"
+                onClick={() => updateCalendarParams({ newVisit: "1" })}
+              >
                 <Glyph name="plus" size={16} /> New Visit
               </button>
             ) : null}
@@ -450,6 +490,39 @@ export function CalendarPage(): JSX.Element {
             </details>
           </div>
         </header>
+        {contextPatientId ? (
+          <div
+            style={{
+              marginBottom: "1rem",
+              padding: ".75rem 1rem",
+              borderRadius: ".5rem",
+              background: "var(--color-surface-container)",
+            }}
+          >
+            {contextPatientError ? (
+              <span>Patient context is unavailable. </span>
+            ) : (
+              <>
+                <strong>Scheduling for </strong>
+                {contextPatient
+                  ? `${patientName(contextPatient) ?? "Patient"}${contextPatient.mrn ? ` · ${contextPatient.mrn}` : ""}`
+                  : "Loading patient…"}
+              </>
+            )}
+            <span style={{ marginLeft: ".75rem" }}>
+              {contextPatient ? (
+                <Link to={`/patients/${contextPatientId}`}>Back to patient chart</Link>
+              ) : null}{" "}
+              <button
+                type="button"
+                className="wx-btn-link"
+                onClick={() => updateCalendarParams({ patient: null, newVisit: null })}
+              >
+                Clear patient context
+              </button>
+            </span>
+          </div>
+        ) : null}
 
         <nav className="wx-subtabs" aria-label="Scheduling views">
           <Link to="/calendar" aria-current="page" className="is-current">
@@ -551,7 +624,7 @@ export function CalendarPage(): JSX.Element {
                 colorOf={colorOf}
                 patientLabel={patientLabel}
                 onDay={(d) => go({ view: "day", date: d })}
-                onSelect={setSelectedId}
+                onSelect={(id) => updateCalendarParams({ visit: id })}
               />
             ) : view === "list" ? (
               <VisitList
@@ -560,10 +633,7 @@ export function CalendarPage(): JSX.Element {
                 patientLabel={patientLabel}
                 staffName={staffName}
                 selectedId={selectedId}
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setPanelOpen(true);
-                }}
+                onSelect={(id) => updateCalendarParams({ visit: id })}
               />
             ) : (
               <TimeGrid
@@ -571,11 +641,8 @@ export function CalendarPage(): JSX.Element {
                 visits={shown}
                 colorOf={colorOf}
                 patientLabel={patientLabel}
-                selectedId={panelOpen ? selectedId : null}
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setPanelOpen(true);
-                }}
+                selectedId={selectedId}
+                onSelect={(id) => updateCalendarParams({ visit: id })}
               />
             )}
             {visits !== null && !error && shown.length === 0 ? (
@@ -588,15 +655,21 @@ export function CalendarPage(): JSX.Element {
           </div>
         </section>
 
-        {selected && panelOpen ? (
+        {selected ? (
           <VisitPanel
             visit={selected}
             patient={patients.get(selected.patientId)}
             staffName={staffName(selected.assignedMembershipId)}
             discipline={disciplineOf(selected.assignedMembershipId)}
             color={colorOf(selected)}
-            onClose={() => setPanelOpen(false)}
+            onClose={() => updateCalendarParams({ visit: null })}
           />
+        ) : null}
+        {selectedId && visits !== null && !selected ? (
+          <p className="wx-cal-empty">
+            The selected visit is not in this calendar period. Change the date or clear the selected
+            visit.
+          </p>
         ) : null}
       </div>
 
@@ -631,7 +704,7 @@ export function CalendarPage(): JSX.Element {
         >
           <div className="wx-rail-filters">
             <RailSelect label="Staff" value={staffFilter} onChange={setStaffFilter}>
-              <option value="">All</option>
+              <option value="">All staff</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -639,7 +712,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Visit type" value={purposeFilter} onChange={setPurposeFilter}>
-              <option value="">All</option>
+              <option value="">All visit types</option>
               {Object.entries(PURPOSES).map(([k, p]) => (
                 <option key={k} value={k}>
                   {p.label}
@@ -647,7 +720,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Location" value={settingFilter} onChange={setSettingFilter}>
-              <option value="">All</option>
+              <option value="">All locations</option>
               {Object.entries(SETTINGS).map(([k, s]) => (
                 <option key={k} value={k}>
                   {s.label}
@@ -655,7 +728,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Status" value={statusFilter} onChange={setStatusFilter}>
-              <option value="">All</option>
+              <option value="">All statuses</option>
               {Object.keys(VISIT_TONE).map((s) => (
                 <option key={s} value={s}>
                   {stateLabel(s)}
@@ -720,10 +793,24 @@ export function CalendarPage(): JSX.Element {
 
       <NewVisitModal
         open={creating}
-        onClose={() => setCreating(false)}
+        initialPatient={
+          contextPatient
+            ? {
+                id: contextPatient.id,
+                label: patientName(contextPatient) ?? "Patient",
+              }
+            : null
+        }
+        onClose={() => {
+          updateCalendarParams({ newVisit: null });
+        }}
         onCreated={(visit) => {
-          setCreating(false);
-          navigate(`/scheduling/visits/${visit.id}`);
+          updateCalendarParams({
+            newVisit: null,
+            visit: visit.id,
+            date: visit.serviceDate,
+          });
+          setRetryKey((key) => key + 1);
         }}
       />
     </div>
@@ -822,7 +909,12 @@ function TimeGrid({
           <div
             key={dayKey(d)}
             className={`wx-cal-col${sameDay(d, today) ? " is-today" : ""}`}
-            style={{ height: hours.length * HOUR_PX, "--hour": `${HOUR_PX}px` } as CSSProperties}
+            style={
+              {
+                height: hours.length * HOUR_PX,
+                "--hour": `${HOUR_PX}px`,
+              } as CSSProperties
+            }
           >
             {layoutDay(visits.filter((v) => sameDay(new Date(v.scheduledStartedAt), d))).map(
               ({ visit: v, lane, lanes }) => {
@@ -994,7 +1086,12 @@ function VisitList({
               <tr key={v.id} aria-selected={v.id === selectedId}>
                 <td className="wx-nums">
                   <button type="button" className="wx-link-button" onClick={() => onSelect(v.id)}>
-                    {fmt(s, { weekday: "short", month: "short", day: "numeric" })} · {time(s)}
+                    {fmt(s, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}{" "}
+                    · {time(s)}
                   </button>
                 </td>
                 <td>
@@ -1058,25 +1155,46 @@ function VisitPanel({
   const e = new Date(visit.scheduledEndedAt);
   const setting = SETTINGS[visit.visitSetting];
   const at = PROGRESS.indexOf(visit.status as (typeof PROGRESS)[number]);
-  const primary =
-    visit.status === "published"
-      ? "Start Visit"
-      : visit.status === "en_route"
-        ? "Check In"
-        : "Open Visit";
+  const drawerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    drawerRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
 
   return (
-    <section className="wx-visit-panel" aria-label={`Visit for ${name}`}>
+    <section
+      ref={drawerRef}
+      // biome-ignore lint/a11y/useSemanticElements: non-modal side drawer; <dialog> adds top-layer/backdrop semantics.
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="false"
+      className="wx-visit-drawer"
+      aria-label={`Quick visit details for ${name}`}
+    >
       <header className="wx-visit-panel-head">
         <span
           className="wx-home-avatar wx-avatar-lg"
           aria-hidden
-          style={{ color, background: `color-mix(in srgb, ${color} 14%, ${t.surfaceLowest})` }}
+          style={{
+            color,
+            background: `color-mix(in srgb, ${color} 14%, ${t.surfaceLowest})`,
+          }}
         >
           {initials(name)}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flexWrap: "wrap",
+            }}
+          >
             <h2>{name}</h2>
             {patient?.status ? (
               <StatusPill label={stateLabel(patient.status)} tone="progress" />
@@ -1094,8 +1212,8 @@ function VisitPanel({
           </div>
         </div>
         <Link to={`/scheduling/visits/${visit.id}`} className="wx-btn-primary">
-          <Glyph name={visit.status === "en_route" ? "check-circle" : "clock"} size={16} />{" "}
-          {primary}
+          <Glyph name={visit.status === "en_route" ? "check-circle" : "clock"} size={16} /> Open
+          Visit
         </Link>
         {encounter ? (
           <Link
@@ -1114,18 +1232,17 @@ function VisitPanel({
           <Glyph name="close" size={18} />
         </button>
       </header>
-      <nav className="wx-detail-tabs" aria-label="Visit views">
-        <span aria-current="page">Visit Details</span>
-        <Link to={`/patients/${visit.patientId}`}>Patient Info</Link>
-        <Link to={`/patients/${visit.patientId}/care-plan`}>Care Plan</Link>
-        <Link to={`/patients/${visit.patientId}/medications`}>Medications</Link>
-      </nav>
       <div className="wx-visit-panel-body">
         <section className="wx-drawer-card">
           <dl className="wx-kv-icons">
             <Fact icon="calendar" label="Date & Time">
               <span className="wx-nums">
-                {fmt(s, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                {fmt(s, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
                 <br />
                 {time(s)} – {time(e)}
               </span>
@@ -1134,7 +1251,13 @@ function VisitPanel({
               {purposeLabel(visit.visitPurpose)}
             </Fact>
             <Fact icon="user" label="Staff">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
                 <span
                   className="wx-home-avatar"
                   aria-hidden
@@ -1155,6 +1278,17 @@ function VisitPanel({
               {setting?.label ?? stateLabel(visit.visitSetting)}
             </Fact>
           </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Patient</h3>
+          </div>
+          <p className="wx-row-sub">{name}</p>
+          <div style={{ display: "grid", gap: ".5rem" }}>
+            <Link to={`/patients/${visit.patientId}`}>Open patient chart</Link>
+            <Link to={`/patients/${visit.patientId}/care-plan`}>Open care plan</Link>
+            <Link to={`/patients/${visit.patientId}/medications`}>Open medications</Link>
+          </div>
         </section>
 
         <section className="wx-drawer-card">
@@ -1222,7 +1356,10 @@ function VisitPanel({
               <dt>Signed</dt>
               <dd className="wx-nums">
                 {encounter.signedAt
-                  ? fmt(new Date(encounter.signedAt), { month: "short", day: "numeric" })
+                  ? fmt(new Date(encounter.signedAt), {
+                      month: "short",
+                      day: "numeric",
+                    })
                   : "Not yet"}
               </dd>
             </dl>
@@ -1242,7 +1379,11 @@ function Fact({
   icon,
   label,
   children,
-}: { icon: GlyphName; label: string; children: ReactNode }): JSX.Element {
+}: {
+  icon: GlyphName;
+  label: string;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <>
       <dt>

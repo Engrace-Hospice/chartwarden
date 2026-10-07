@@ -1094,6 +1094,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         dischargeDate: "2026-06-20",
         narrative: "patient expired at home",
         deathCertifierId: "55555555-5555-4555-8555-555555555555",
+        placeOfDeath: "home",
       },
     });
     expect(death.statusCode).toBe(201);

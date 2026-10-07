@@ -21,16 +21,9 @@
 // it `idg_meeting` never gets a `scheduled` row for the packet-build cron to find) and the §7.2/§4.9.1
 // `tminus-24h-build` T-24h packet-build worker (the real "does the worker exist" answer to the m14
 // `handlers-unbound` group's standing F-129/F-164/F-167/F-169 finding).
-/** The system actor id every M14 cron stamps on its per-org `withOrgContext` tx (audit attribution).
- * Grepped the repo for every `00000000-0000-0000-0000-0000000000xx` constant first: M7 uses `...07`, M9
- * uses `...09`, M25 uses `...e5`, M26 uses `...e6` — `...14` (M14's own module number) is unused. Lives
- * here (not `cron-workers.ts`, which imports `packet-build.ts`/`schedule-materialise.ts`) so those two
- * files can import it without a `cron-workers.ts` → them → `cron-workers.ts` circular import
- * (`arch:boundaries` no-circular, caught live). */
-export const M14_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000014";
-
 /** The M2 active-org enumerator every M14 cron's fan-out reads (runs under withPlatformContext when
- * bound) — the same `cron-workers.ts`-avoiding-circularity reason as {@link M14_WORKER_SYSTEM_USER_ID}. */
+ * bound) — lives here (not `cron-workers.ts`) so `packet-build.ts`/`schedule-materialise.ts` can import it
+ * without a circular import. */
 export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
 }

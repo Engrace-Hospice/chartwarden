@@ -344,6 +344,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m13",
       // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       "m7",
+      // M5 §2.4.1 `active/on_hold → discharged` ("revoke / discharge for cause / transfer (M6)"): the
+      // live-discharge edge (`05-patient/outbox-consumers/m6-admission-discharged.ts`). A `reason: death`
+      // delivery is skipped there — `m6.discharge.death` owns `→ deceased`.
+      "m5",
       "m16",
       "m17",
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
@@ -948,6 +952,27 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
     // gate-release decider for exactly this topic, and the catalog named only m22.
     declaredConsumers: ["m16", "m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.discharge.details_recorded",
+    moduleOwner: "m6",
+    description:
+      "A claim-relevant detail was recorded after the fact (discharge-details routes): the place of death on " +
+      "a completed death discharge or the receiving care setting on a transfer-out. They set the Medicare " +
+      "claim's patient discharge status (40/41/42, 50/51), so M23 re-validates the admission's open claims.",
+    payloadSchema: Type.Object({
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      detail: Type.Union([Type.Literal("place_of_death"), Type.Literal("receiving_care_setting")]),
+      dischargeEventId: Type.Optional(Type.String({ minLength: 1 })),
+      transferEventId: Type.Optional(Type.String({ minLength: 1 })),
+      value: Type.String({ minLength: 1 }),
+      previousValue: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      corrected: Type.Boolean(),
+    }),
+    // M23 is the only consumer: its `revalidate` effect re-runs the discharge rule against the new value.
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   // ── notice of rights ────────────────────────────────────────────────────────────────────────────

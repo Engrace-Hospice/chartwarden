@@ -306,6 +306,16 @@ export function PatientElectionCert(): JSX.Element {
                       label={stateLabel(admission.state)}
                       tone={ADMISSION_TONE[admission.state] ?? "neutral"}
                     />
+                    {(admission.state === "discharged" || admission.state === "closed") &&
+                    session?.permissions?.includes("admission.create") ? (
+                      <Link
+                        to={`/admissions/${admission.id}/readmit`}
+                        className="wx-btn-secondary"
+                        style={{ marginLeft: "auto" }}
+                      >
+                        Readmit patient
+                      </Link>
+                    ) : null}
                   </div>
                   <dl style={detailGrid}>
                     <dt style={dtStyle}>Admitted</dt>

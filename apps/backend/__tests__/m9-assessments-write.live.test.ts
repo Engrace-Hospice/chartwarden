@@ -26,6 +26,7 @@ import {
   M9_OUTBOX_EVENTS,
   createDbAssessmentRouteService,
 } from "../src/modules/09-assessments/index";
+import { runChangeEscalationCron } from "../src/modules/09-assessments/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -353,6 +354,44 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     ).rows[0]?.id as string;
     const ack = await svc.acknowledgeChange(ORG_A, eventId);
     expect(ack.status).toBe("acknowledged");
+  });
+
+  it("change-escalation cron escalates a 24h-unacknowledged CRITICAL change under the NULL (system) audit actor", async () => {
+    // Before the fix the cron stamped the sentinel `00000000-…-000000000009` into `app.user_id`; the M4
+    // write-audit trigger copied it into `audit_event.actor_user_id` (FK to `user`), and every hourly tick
+    // died on 23503 `audit_event_actor_user_id_user_id_fk` (worker log: DLQ [m9:assessment.changes]).
+    const rec = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    const eventId = (
+      await admin.query(
+        `INSERT INTO significant_change_event
+           (organization_id, provider_entity_id, location_id, clinical_assessment_id, rule_id, status, detected_at)
+         VALUES ($1, $2, $3, $4, 'braden_le_12', 'open', now() - interval '25 hours') RETURNING id`,
+        [ORG_A, providerA, locationA, rec.id],
+      )
+    ).rows[0]?.id as string;
+
+    await runChangeEscalationCron({
+      connection: {} as never,
+      db: handle.db,
+      outbox,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      now: () => new Date(),
+    });
+
+    const row = (
+      await admin.query("SELECT status, escalated_at FROM significant_change_event WHERE id=$1", [
+        eventId,
+      ])
+    ).rows[0];
+    expect(row.status).toBe("escalated");
+    expect(row.escalated_at).not.toBeNull();
+    expect(await eventsFor(eventId)).toContain("m9.assessment.significant_change_escalated");
+    const audit = await admin.query(
+      "SELECT actor_user_id FROM audit_event WHERE resource_id = $1 AND event_type = 'significant_change_event.update'",
+      [eventId],
+    );
+    expect(audit.rows.length).toBeGreaterThan(0);
+    expect(audit.rows.every((r) => r.actor_user_id === null)).toBe(true);
   });
 
   // ── GAP-016: the §10 admission-anchor + DPOA gates, in the PRODUCTION service ────────────────────

@@ -42,9 +42,9 @@ export const PatientIdParamsSchema = Type.Object({
   patientId: Type.String({ minLength: 1, maxLength: 64 }),
 });
 
-const Uuid = () => Type.String({ format: "uuid" });
+export const Uuid = () => Type.String({ format: "uuid" });
 const Reason = (min = 10, max = 4000) => Type.String({ minLength: min, maxLength: max });
-const Version = () => Type.Integer({ minimum: 0 });
+export const Version = () => Type.Integer({ minimum: 0 });
 const Icd10 = () => Type.String({ pattern: "^[A-Z][0-9A-Z.]{1,7}$" });
 const Npi = () => Type.String({ pattern: "^[0-9]{10}$" });
 
@@ -70,6 +70,9 @@ export const ReferralCreateSchema = Type.Object({
   medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength: 20 })),
   // The patient's Medicaid number from the referrer (1-14 letters/digits once dashes/spaces are removed).
   medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength: 24 })),
+  sexAssignedAtBirth: Type.Optional(
+    Type.Union([Type.Literal("F"), Type.Literal("M"), Type.Literal("O"), Type.Literal("U")]),
+  ),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),
@@ -96,10 +99,69 @@ export const ReferralTriageSchema = Type.Object({
   ifVersion: Version(),
 });
 
+// ── The first benefit period of a NEW admission (intake/benefit-period.ts) ──────────────────────────
+// Shared by direct intake, referral conversion and readmission. Absent = our own history's suggestion.
+export const BenefitPeriodEntrySchema = Type.Object(
+  {
+    sequence: Type.Integer({
+      minimum: 1,
+      maximum: 200,
+      description:
+        "The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods " +
+        "per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH.",
+    }),
+    source: Type.Union(
+      [
+        Type.Literal("hets_confirmed"),
+        Type.Literal("staff_entered_unverified"),
+        Type.Literal("internal_history"),
+      ],
+      {
+        description:
+          '"hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": ' +
+          'entered without that check. "internal_history": our own history\'s suggestion, accepted as is.',
+      },
+    ),
+    confirmedOn: Type.Optional(
+      Type.String({
+        format: "date",
+        description: "The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const FirstBenefitPeriodFields = {
+  benefitPeriod: Type.Optional(BenefitPeriodEntrySchema),
+  f2fException: Type.Optional(
+    Type.Object(
+      {
+        reason: Type.String({
+          minLength: 20,
+          maxLength: 2000,
+          description:
+            "Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the " +
+            "period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)).",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+  ),
+  admissionDate: Type.Optional(
+    Type.String({
+      format: "date",
+      description:
+        "The planned admission / election date; anchors the period-3+ face-to-face window.",
+    }),
+  ),
+};
+
 export const ReferralAcceptSchema = Type.Object({
   patientId: Type.Optional(Uuid()),
   primaryDiagnosisIcd10: Icd10(),
   attendingPhysicianId: Type.Optional(Uuid()),
+  ...FirstBenefitPeriodFields,
   ifVersion: Version(),
 });
 
@@ -183,6 +245,9 @@ export const ReferralUpdateSchema = Type.Object({
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),
   referrerPhone: Type.Optional(Type.String({ maxLength: 32 })),
+  sexAssignedAtBirth: Type.Optional(
+    Type.Union([Type.Literal("F"), Type.Literal("M"), Type.Literal("O"), Type.Literal("U")]),
+  ),
   ifVersion: Version(),
 });
 
@@ -195,6 +260,15 @@ export const AdmissionCreateSchema = Type.Object({
   intakeMethod: Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m))),
   attendingPhysicianId: Type.Optional(Uuid()),
   hospiceMedicalDirectorId: Uuid(),
+  readmittedFromAdmissionId: Type.Optional(
+    Type.String({
+      minLength: 1,
+      maxLength: 64,
+      description:
+        "A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context).",
+    }),
+  ),
+  ...FirstBenefitPeriodFields,
 });
 
 export const AdmissionListQuerySchema = Type.Object({
@@ -421,14 +495,46 @@ export const TransferOutSchema = Type.Object({
   effectiveDate: Type.String({ format: "date" }),
   otherHospiceName: Type.String({ minLength: 1, maxLength: 200 }),
   otherHospiceCcn: Type.Optional(Type.String({ pattern: "^[0-9A-Z]{6}$" })),
+  // Where the RECEIVING hospice cares for the patient — the claim's patient discharge status 50 (hospice,
+  // home) vs 51 (hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Persisted on
+  // `transfer_event.receiving_care_setting` (migration 0370).
+  receivingCareSetting: Type.Union([Type.Literal("home"), Type.Literal("facility")], {
+    description:
+      'REQUIRED. Where the RECEIVING hospice will care for the patient: "home" or "facility". Sets the ' +
+      "Medicare claim's patient discharge status — 50 (discharged to hospice, home) or 51 (discharged to " +
+      "hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid → 422 " +
+      "RECEIVING_CARE_SETTING_REQUIRED. A transfer recorded without it can be completed later with " +
+      "POST /api/v1/transfers/{id}/receiving-care-setting.",
+  }),
   narrative: Reason(10, 4000),
 });
 
 export const TransferInSchema = Type.Object({
   direction: Type.Literal("in"),
-  effectiveDate: Type.String({ format: "date" }),
+  effectiveDate: Type.String({
+    format: "date",
+    description:
+      "The date the change of hospice is effective. The transferring hospice bills through and including " +
+      "this date and the receiving hospice's transfer notice (TOB 8xC) reports it as the Statement From " +
+      "date (CMS Pub. 100-04 ch. 11 §20.1.3).",
+  }),
   otherHospiceName: Type.String({ minLength: 1, maxLength: 200 }),
-  otherHospiceCcn: Type.Optional(Type.String({ pattern: "^[0-9A-Z]{6}$" })),
+  otherHospiceCcn: Type.Optional(
+    Type.String({
+      pattern: "^[0-9A-Z]{6}$",
+      description:
+        "The transferring hospice's CMS Certification Number. Our own CCN is refused (422 " +
+        "TRANSFER_SAME_PROVIDER): a move between locations of one hospice is not a transfer (§20.1.3). " +
+        "The 8xC transfer notice cannot be filed until it is known.",
+    }),
+  ),
+  otherHospiceNpi: Type.Optional(
+    Type.String({
+      pattern: "^[0-9]{10}$",
+      description:
+        "The transferring hospice's NPI (10 digits, check digit validated → 422 TRANSFER_IN_SOURCE_INVALID).",
+    }),
+  ),
   priorBenefitPeriodSequence: Type.Integer({ minimum: 1 }),
   priorElectionStartDate: Type.String({ format: "date" }),
   // D9 — the receiving hospice's own CTI for the `next` pending period (the inherited period runs on
@@ -472,6 +578,19 @@ export const DischargeCreateSchema = Type.Object({
   // who certified the death (M40 external_physician or M2 user; app-validated, not a DB FK).
   deathCertifierId: Type.Optional(Uuid()),
   dischargeOrder: Type.Optional(DischargeOrderSchema),
+  // Required (service-enforced, `checkPlaceOfDeath`) when reason='death', refused otherwise: where the
+  // patient died — the claim's patient discharge status 40 / 41 / 42 (CMS Pub. 100-04 Ch. 11 §30.3).
+  placeOfDeath: Type.Optional(
+    Type.Union([Type.Literal("home"), Type.Literal("facility"), Type.Literal("unknown")], {
+      description:
+        'REQUIRED when reason is "death", refused otherwise. Where the patient died: "home", "facility" ' +
+        'or "unknown". Sets the Medicare claim\'s patient discharge status — 40 (expired at home), 41 ' +
+        "(expired in a medical facility) or 42 (expired, place unknown), CMS Pub. 100-04 Ch. 11 §30.3. " +
+        "Missing or invalid on a death → 422 PLACE_OF_DEATH_REQUIRED; sent on another reason → 422 " +
+        "PLACE_OF_DEATH_NOT_ALLOWED. A death recorded without it can be completed later with " +
+        "POST /api/v1/discharges/{id}/place-of-death.",
+    }),
+  ),
 });
 
 /** Route 40 — the cosigning physician IS the discharge-order signer (418.26(b)); name/NPI are persisted. */

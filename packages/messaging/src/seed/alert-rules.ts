@@ -426,6 +426,26 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // M23 — the MAC rejected a Notice of Election / Notice of Termination-Revocation (999 syntax or 277CA content
+  // reject), raised by the ack-pull crons with the PHI-free reason codes. A rejected NOE leaves the election
+  // unfiled (the claim cannot bill) and a rejected NOTR leaves the prior election open (a readmission's NOE is
+  // rejected), so it pages the billers of the notice's provider entity; org-wide billing_manager is the fallback.
+  ...(["m23.noe.rejected", "m23.notr.rejected"] as const).map(
+    (eventType): PlatformAlertRuleSeed => ({
+      eventType,
+      category: "administrative",
+      severityFloor: "critical",
+      recipientResolver: "role_set",
+      resolverArgs: {
+        providerEntityIdPath: "providerEntityId",
+        providerEntityScopedRoleKeys: ["billing_manager", "biller"],
+        providerEntityFallbackRoleKeys: ["billing_manager"],
+      },
+      channelsOverride: null,
+      systemLocked: false,
+      enabled: true,
+    }),
+  ),
   {
     eventType: "cap.approaching",
     category: "administrative",

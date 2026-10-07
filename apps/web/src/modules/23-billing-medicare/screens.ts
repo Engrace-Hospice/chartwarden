@@ -32,6 +32,9 @@ const NoeDetail = lazy(() => import("./noe-detail").then((m) => ({ default: m.No
 const NoeQueue = lazy(() => import("./noe-queue").then((m) => ({ default: m.NoeQueue })));
 const NotrDetail = lazy(() => import("./notr-detail").then((m) => ({ default: m.NotrDetail })));
 const NotrQueue = lazy(() => import("./notr-queue").then((m) => ({ default: m.NotrQueue })));
+const TransferNotices = lazy(() =>
+  import("./transfer-notices").then((m) => ({ default: m.TransferNotices })),
+);
 const PatientClaims = lazy(() =>
   import("./patient-claims").then((m) => ({ default: m.PatientClaims })),
 );
@@ -163,6 +166,16 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.notr.read",
       screen: NotrDetail,
+    },
+    // --- Medicare transfer notices (TOB 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4) — the receiving
+    // hospice's change-of-hospice notice; rides the NOE keys (CMS calls it a "transfer Notice of Election").
+    {
+      id: "billing.transfer-notices",
+      path: "/billing/transfer-notices",
+      title: "Transfer Notices",
+      navGroup: "Billing",
+      requiredPermission: "billing.noe.read",
+      screen: TransferNotices,
     },
     // --- validation rule config (§5.1 #12) ---
     {

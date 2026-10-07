@@ -77,3 +77,77 @@ export { createPalmettoJjPortalClient, PalmettoJjPortalClient } from "./mac-port
 export { createPalmettoJmPortalClient, PalmettoJmPortalClient } from "./mac-portal/palmetto-jm";
 export { createNoridianJfPortalClient, NoridianJfPortalClient } from "./mac-portal/noridian-jf";
 export { createNoridianJePortalClient, NoridianJePortalClient } from "./mac-portal/noridian-je";
+
+// ─── HETS 270/271 eligibility codec + transport (ADR-0037: TypeScript, not the sidecar) ─────────────
+// Pure 270 builder / 271 parser / hospice-history derivation, the CORE MIME transport port, and the
+// fixture-backed sandbox transport (dev/test only). Each module imports only its eligibility siblings.
+export {
+  build270,
+  Hets270BuildError,
+  HETS_DEFAULT_SERVICE_TYPES,
+  MBI_PATTERN,
+} from "./eligibility/build-270";
+export type { Hets270Request } from "./eligibility/build-270";
+export {
+  assertNoMbi,
+  HETS_271_MAX_CHARS,
+  HETS_271_MAX_HOSPICE_RECORDS,
+  MbiLeakError,
+  parse271,
+} from "./eligibility/parse-271";
+export type {
+  Hets271Outcome,
+  Hets271Rejection,
+  HospiceRecord,
+  HospiceRevocationCode,
+  PartAEntitlement,
+  Parsed271,
+} from "./eligibility/parse-271";
+export {
+  deriveHospiceHistory,
+  HETS_HOSPICE_PERIOD_RETURN_CAP,
+} from "./eligibility/hospice-history";
+export type {
+  HospiceHistory,
+  HospicePeriod,
+  NextPeriodBasis,
+} from "./eligibility/hospice-history";
+export {
+  buildCoreMimeForm,
+  coreSenderId,
+  createCoreMimeHetsTransport,
+  HetsTransportError,
+} from "./eligibility/transport";
+export type {
+  CoreMimeHetsTransportConfig,
+  HetsFetch,
+  HetsTransport,
+  HetsTransportRequest,
+  HetsTransportResponse,
+} from "./eligibility/transport";
+export { createSandboxHetsTransport } from "./eligibility/sandbox-transport";
+export type { SandboxHetsTransportOptions } from "./eligibility/sandbox-transport";
+export { HETS_271_SCENARIOS, synthetic271 } from "./eligibility/fixtures";
+export type {
+  Hets271Scenario,
+  Synthetic271Context,
+  SyntheticHospicePeriod,
+} from "./eligibility/fixtures";
+export { X12FormatError } from "./eligibility/x12-envelope";
+
+// ─── Medicare hospice transfer notice 837I (TOB 81C/82C, correction, 8xD void) — ADR-0037 TypeScript ─────────
+export {
+  build837iTransferNotice,
+  TransferNotice837iBuildError,
+} from "./notices/build-837i-transfer-notice";
+export type {
+  TransferNotice837iInput,
+  TransferNoticeDocumentInput,
+  X12Address,
+  X12PersonName,
+  X12Physician,
+} from "./notices/build-837i-transfer-notice";
+
+// ─── 999 / 277CA payer dates (STC02, GS04, ISA09) — the NOE/NOTR payer status date, ADR-0037 TypeScript ──────
+export { read277caStatusDates, read999EnvelopeDates } from "./acks/ack-dates";
+export type { Ack999EnvelopeDates, ClaimStatusDate } from "./acks/ack-dates";

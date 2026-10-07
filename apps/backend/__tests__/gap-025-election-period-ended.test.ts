@@ -146,7 +146,8 @@ describe("runElectionPeriodAutoEndCron", () => {
         ctx: { organizationId: string; userId: string },
         fn: (t: unknown) => unknown,
       ) => {
-        expect(ctx).toEqual({ organizationId: ORG, userId: "" });
+        // The NULL (system) audit actor — never a sentinel uuid (audit_event.actor_user_id FK).
+        expect(ctx).toEqual({ organizationId: ORG, userId: "", systemActor: true });
         return fn(tx);
       },
     );
@@ -159,7 +160,10 @@ describe("runElectionPeriodAutoEndCron", () => {
         scheduledEndAt: "2026-10-03",
       },
     ]);
-    vi.doMock("@wardenx/tenancy", () => ({ withOrgContext }));
+    vi.doMock("@wardenx/tenancy", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@wardenx/tenancy")>()),
+      withOrgContext,
+    }));
     vi.doMock("@wardenx/db", async (importOriginal) => ({
       ...(await importOriginal<Record<string, unknown>>()),
       organizationTimezone: async () => "UTC",

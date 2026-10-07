@@ -38,7 +38,7 @@ describe("F-226 checkF2fWindow — boundaries against a real start", () => {
     ["start-29", "2026-06-02", true],
     ["start-2", "2026-06-29", true],
     ["start-1", "2026-06-30", true],
-    ["start (same day)", "2026-07-01", false],
+    ["start (same day = the period's first day, MBPM ch. 9 §20.1(5)(a))", "2026-07-01", true],
     ["start+1", "2026-07-02", false],
   ])("%s", (_label, encounterDate, within) => {
     if (within) {
@@ -161,16 +161,21 @@ describe("F-226 expected start = previous period end + 1 (90/90/60 contiguity)",
     expect(e3).toBe("2026-08-28");
     const s4 = expectedStartFromPriorEnd(e3);
     expect(s4).toBe("2026-08-29");
-    // the F2F window for period 3 is [2026-05-31, 2026-06-29]: the LAST day of period 2 is in, its first day of 3 is out
+    // the F2F window for period 3 is [2026-05-31, 2026-06-30]: the last day of period 2 and the first day of 3
+    // are in, the second day of 3 is out
     expect(
       checkF2fWindow({ periodStart: s3 as string, encounterDate: "2026-06-29", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      checkF2fWindow({ periodStart: s3 as string, encounterDate: "2026-06-30", hasOverride: false })
         .withinWindow,
     ).toBe(true);
     expect(
       code(() =>
         checkF2fWindow({
           periodStart: s3 as string,
-          encounterDate: "2026-06-30",
+          encounterDate: "2026-07-01",
           hasOverride: false,
         }),
       ),
@@ -276,16 +281,24 @@ describe("F-226 F2F state machine", () => {
         hasOverride,
       }).effects.find((e) => e.kind === "set_flag");
     expect(flag("2026-07-01", "2026-06-15", false)).toMatchObject({ field: "within_window_true" });
-    expect(flag("2026-07-01", "2026-07-01", true)).toMatchObject({ field: "within_window_false" });
+    expect(flag("2026-07-01", "2026-07-02", true)).toMatchObject({ field: "within_window_false" });
     expect(flag(null, "2026-06-15", true)).toMatchObject({ field: "within_window_unknown" });
   });
-  it("same-day completion without override is refused (R-F2F-02)", () => {
+  it("a completion on the period's first day is timely; the day after is refused without override (R-F2F-02)", () => {
+    expect(
+      transitionFaceToFace("scheduled", {
+        ...base,
+        periodStart: "2026-07-01",
+        encounterDate: "2026-07-01",
+        hasOverride: false,
+      }).effects.find((e) => e.kind === "set_flag"),
+    ).toMatchObject({ field: "within_window_true" });
     expect(
       code(() =>
         transitionFaceToFace("scheduled", {
           ...base,
           periodStart: "2026-07-01",
-          encounterDate: "2026-07-01",
+          encounterDate: "2026-07-02",
           hasOverride: false,
         }),
       ),
@@ -386,7 +399,7 @@ describe("F-226 adequacy — the `strict` basis (what the activation gate uses)"
     ["start-31", "2026-05-31", ["F2F_OUTSIDE_WINDOW"]],
     ["start-30", "2026-06-01", []],
     ["start-1", "2026-06-30", []],
-    ["start", "2026-07-01", ["F2F_OUTSIDE_WINDOW"]],
+    ["start", "2026-07-01", []],
     ["start+1", "2026-07-02", ["F2F_OUTSIDE_WINDOW"]],
   ])(
     "encounter at %s (persisted flag true - the F-217 bug shape)",
@@ -460,6 +473,7 @@ describe("F-226 adequacy — the `strict` basis (what the activation gate uses)"
     expect(mk("recorded", { withinWindow: true, encounterDate: "2020-01-01" })).toEqual([]);
     expect(mk("recorded", { withinWindow: null })).toEqual(["F2F_WINDOW_UNVERIFIED"]);
     expect(mk("dates", { withinWindow: null })).toEqual([]);
-    expect(mk("dates", { encounterDate: "2026-07-01" })).toEqual(["F2F_OUTSIDE_WINDOW"]);
+    expect(mk("dates", { encounterDate: "2026-07-01" })).toEqual([]);
+    expect(mk("dates", { encounterDate: "2026-07-02" })).toEqual(["F2F_OUTSIDE_WINDOW"]);
   });
 });

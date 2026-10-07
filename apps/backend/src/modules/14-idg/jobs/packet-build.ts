@@ -645,7 +645,7 @@ function layer1CoverSummary(snapshot: PacketSnapshot): string {
   );
 }
 
-// Every `withOrgContext` call below stamps `userId: ""`, not `M14_WORKER_SYSTEM_USER_ID` — the F-102
+// Every `withOrgContext` call below stamps `userId: ""`, never a synthetic worker uuid — the F-102
 // `CONSUMER_USER_ID` convention (also `idg-route-service-db.ts`'s own `withOrg` helper): `idg_meeting`/
 // `idg_patient_packet` carry the M4 write-audit trigger, which resolves `app.user_id` to `actor_user_id`
 // through a real FK into `"user"` — a fabricated-looking sentinel UUID with no matching row throws 23503

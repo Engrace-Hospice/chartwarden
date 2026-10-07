@@ -8,7 +8,7 @@ import {
 } from "@wardenx/billing";
 // @wardenx/billing — M23 §4.5 the validation RULE REGISTRY pure-domain unit tests (D1). Covers the
 // freeze-at-boot invariant (registration is rejected after `freeze()`, duplicate keys throw), the
-// platform-default registry factory (21 rules, 19 regulatory), `runRules` producing exactly one result per
+// platform-default registry factory (22 rules, 19 regulatory), `runRules` producing exactly one result per
 // registered rule in registration order, the determinism that underpins the §2.6 `run_input_hash`
 // idempotency, and `summarizeRuleRun`'s §2.3 blocking-failure roll-up (regulatory error ⇒ blocking; an
 // overridden failure leaves the blocking set but stays counted; a warn failure never blocks).
@@ -69,16 +69,16 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(DEFAULT_RULE_SET_VERSION).toBe(1);
   });
 
-  it("DEFAULT_BILLING_RULES holds 21 rules with unique keys", () => {
-    expect(DEFAULT_BILLING_RULES).toHaveLength(21);
+  it("DEFAULT_BILLING_RULES holds 22 rules with unique keys", () => {
+    expect(DEFAULT_BILLING_RULES).toHaveLength(22);
     const keys = DEFAULT_BILLING_RULES.map((r) => r.key);
-    expect(new Set(keys).size).toBe(21);
+    expect(new Set(keys).size).toBe(22);
   });
 
-  it("builds a fresh, UN-frozen registry pre-loaded with the 21 defaults", () => {
+  it("builds a fresh, UN-frozen registry pre-loaded with the 22 defaults", () => {
     const reg = createDefaultBillingRegistry();
     expect(reg.isFrozen).toBe(false);
-    expect(reg.getRules()).toHaveLength(21);
+    expect(reg.getRules()).toHaveLength(22);
     // a fresh instance each call (no shared singleton)
     expect(createDefaultBillingRegistry()).not.toBe(reg);
   });
@@ -91,6 +91,7 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(regKeys).toContain("f2f_telehealth_g0679"); // FY2027, CR 14495
     expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // non-regulatory (warn)
     expect(regKeys).not.toContain("evv_bracket_coherence"); // ADR-0008: operational, never a Medicare regulatory floor
+    expect(regKeys).not.toContain("rhc_carry_over_hets_fresh"); // a pricing-accuracy warning, not a floor
   });
 });
 
@@ -98,7 +99,7 @@ describe("runRules — one result per rule, in registration order", () => {
   it("returns exactly one RuleResult per registered rule, key-aligned to the registry order", () => {
     const reg = createDefaultBillingRegistry();
     const results = reg.runRules(passingContext());
-    expect(results).toHaveLength(21);
+    expect(results).toHaveLength(22);
     expect(results.map((r) => r.ruleKey)).toEqual(DEFAULT_BILLING_RULES.map((r) => r.key));
   });
 

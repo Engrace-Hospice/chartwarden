@@ -21,6 +21,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -73,6 +74,23 @@ export const claim = pgTable(
     // Latest validation/submission pointers:
     latestValidationRunId: uuid("latest_validation_run_id"),
     latestSubmissionId: uuid("latest_submission_id"),
+
+    // Discharge claim codes (CMS Pub. 100-04 Ch. 11 §30.3; migration 0371), derived at assembly and refreshed
+    // on every re-validation by `deriveDischargeClaimCodes`. `patient_status_code` is UB-04 FL 17 / 837I CL103
+    // (NULL = could not be derived; the discharge rule blocks the claim); `condition_codes` FL 18-28 / HI*BG;
+    // `occurrence_codes` FL 31-34 / HI*BH as `[{code, date}]`.
+    patientStatusCode: text("patient_status_code"),
+    conditionCodes: jsonb("condition_codes").$type<string[]>().notNull().default([]),
+    occurrenceCodes: jsonb("occurrence_codes")
+      .$type<{ code: string; date: string }[]>()
+      .notNull()
+      .default([]),
+    // Occurrence spans (migration 0378) FL 35-36 / HI*BI as `[{code, from, through}]` — today the late-NOE
+    // provider-liable span 77 (CMS Pub. 100-04 ch. 11 §20.1.1), derived on every validation.
+    occurrenceSpans: jsonb("occurrence_spans")
+      .$type<{ code: string; from: string; through: string }[]>()
+      .notNull()
+      .default([]),
 
     // Document back-ref (populated by m22.document.rendered consumer):
     acknowledgmentDocumentId: uuid("acknowledgment_document_id"), // M22 — set after ACK_ACCEPTED + render

@@ -95,12 +95,14 @@ import {
   type CreateRecurringInput,
   type CreateVisitInput,
   type EditVisitInput,
+  type EligibleClinicianView,
   type OptimizeDayInput,
   type ProposalView,
   type RecurringView,
   type RequestTimeOffInput,
   type RescheduleVisitInput,
   type SchedulingRouteService,
+  type SchedulingStaffView,
   type TimeOffView,
   type UpsertAvailabilityInput,
   VISIT_LIST_LIMIT,
@@ -108,6 +110,7 @@ import {
   type VisitView,
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
+import { orgContextFor } from "./system-actor";
 
 /** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
 const UNSCOPED_LIMIT = 50_000;
@@ -122,6 +125,7 @@ const MEM = schema.memberships;
 const MEM_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const ORG = schema.organizations;
+const USER = schema.users;
 
 /** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
  *  derived from the policy map rather than duplicated as a literal list. */
@@ -754,7 +758,7 @@ export function createDbSchedulingBackend(
     cutoff: Date,
     reason: string,
   ): Promise<number> {
-    return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+    return withOrgContext(db, orgContextFor(orgId, userId), async (txRaw) => {
       const tx = txRaw as DbClient;
       const rows = await tx
         .select(VISIT_WRITE_COLS)
@@ -1619,7 +1623,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date; horizonDays?: number } = {},
     ) {
       const now = options.now ?? new Date();
-      const policies = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+      const policies = await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
         tx
           .select()
           .from(RV)
@@ -1653,7 +1657,7 @@ export function createDbSchedulingBackend(
             policy.patientId,
             occurrence.scheduledStartedAt,
           );
-          await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+          await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
             await insertAndPublish(
               tx as DbClient,
               orgId,
@@ -1748,43 +1752,40 @@ export function createDbSchedulingBackend(
               throw err;
             }
             for (const p of planned) {
-              const inserted = await withOrgContext(
-                db,
-                { organizationId: orgId, userId },
-                async (tx) =>
-                  tx
-                    .insert(VP)
-                    .values({
-                      organizationId: orgId,
-                      providerEntityId: p.providerEntityId,
-                      locationId: p.locationId,
-                      patientId: p.patientId,
-                      admissionId: p.admissionId,
-                      source: p.source,
-                      sourcePayload: {
-                        ...p.sourcePayload,
-                        planId: input.planId,
-                        versionId: input.versionId,
-                      },
-                      sourceIdempotencyKey: `${input.planId}:${input.versionId}:${p.sourceIdempotencyKey}`,
-                      proposedForDate: p.proposedForDate,
-                      proposedVisitPurpose: p.proposedVisitPurpose,
-                      proposedDiscipline: p.proposedDiscipline,
-                      proposedDurationMinutes: p.proposedDurationMinutes,
-                      suggestedMembershipId: p.suggestedMembershipId,
-                      status: "pending",
-                    })
-                    .onConflictDoNothing({
-                      target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
-                    })
-                    .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
+              const inserted = await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
+                tx
+                  .insert(VP)
+                  .values({
+                    organizationId: orgId,
+                    providerEntityId: p.providerEntityId,
+                    locationId: p.locationId,
+                    patientId: p.patientId,
+                    admissionId: p.admissionId,
+                    source: p.source,
+                    sourcePayload: {
+                      ...p.sourcePayload,
+                      planId: input.planId,
+                      versionId: input.versionId,
+                    },
+                    sourceIdempotencyKey: `${input.planId}:${input.versionId}:${p.sourceIdempotencyKey}`,
+                    proposedForDate: p.proposedForDate,
+                    proposedVisitPurpose: p.proposedVisitPurpose,
+                    proposedDiscipline: p.proposedDiscipline,
+                    proposedDurationMinutes: p.proposedDurationMinutes,
+                    suggestedMembershipId: p.suggestedMembershipId,
+                    status: "pending",
+                  })
+                  .onConflictDoNothing({
+                    target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
+                  })
+                  .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
               );
               const proposal = inserted[0];
               if (!proposal) {
                 skipped += 1;
                 continue;
               }
-              await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+              await withOrgContext(db, orgContextFor(orgId, userId), async (tx) =>
                 emit(tx, orgId, "m17.visit.proposed", "visit_proposal", proposal.id, {
                   proposalId: proposal.id,
                   patientId: input.patientId,
@@ -1841,7 +1842,7 @@ export function createDbSchedulingBackend(
 
     async scanVisitAttentionForOrg(orgId: string, userId: string, options: { now?: Date } = {}) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+      return withOrgContext(db, orgContextFor(orgId, userId), async (txRaw) => {
         const tx = txRaw as DbClient;
         const staleCutoff = new Date(now.getTime() - 48 * 3_600_000);
         const possibleMissedCutoff = new Date(now.getTime() - 2 * 3_600_000);
@@ -2267,6 +2268,128 @@ export function createDbSchedulingBackend(
         membershipUserIdTx(tx, orgId, membershipId),
       );
       return inCaseload(orgId, userId, patientId);
+    },
+
+    /** UI projection of the create gate. It deliberately calls the same seam helpers as the write
+     * paths; this is a convenience/read model, never an authorization bypass. */
+    async eligibleClinicians(
+      orgId: string,
+      input: {
+        patientId: string;
+        visitPurpose: VisitPurpose;
+        scheduledStartedAt: string;
+        scheduledEndedAt: string;
+      },
+    ): Promise<EligibleClinicianView[]> {
+      const candidates = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: "" },
+        async (txRaw) => {
+          const tx = txRaw as DbClient;
+          return tx
+            .select({ membershipId: MEM.id, displayName: USER.name })
+            .from(MEM)
+            .innerJoin(USER, eq(USER.id, MEM.userId))
+            .where(and(eq(MEM.organizationId, orgId), eq(MEM.status, "active")));
+        },
+      );
+      return Promise.all(
+        candidates.map(async (candidate) => {
+          const facts = await resolvePreScheduleSeamFacts(
+            orgId,
+            candidate.membershipId,
+            input.visitPurpose,
+            input.patientId,
+            input.scheduledStartedAt,
+          );
+          const { disciplines, pto, pool } = await withOrgContext(
+            db,
+            { organizationId: orgId, userId: "" },
+            async (txRaw) => {
+              const tx = txRaw as DbClient;
+              const disciplines = await resolveDisciplinesTx(tx, orgId, candidate.membershipId);
+              const [pto] = await tx
+                .select({ id: TO.id })
+                .from(TO)
+                .where(
+                  and(
+                    eq(TO.membershipId, candidate.membershipId),
+                    eq(TO.approvalState, "approved" as TimeOffState),
+                    lte(TO.startsAt, new Date(input.scheduledEndedAt)),
+                    gte(TO.endsAt, new Date(input.scheduledStartedAt)),
+                  ),
+                )
+                .limit(1);
+              return {
+                disciplines,
+                pto: Boolean(pto),
+                pool: await allowsUnassignedPoolTx(tx, orgId),
+              };
+            },
+          );
+          const qualifying = disciplines.filter((discipline) =>
+            VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
+          );
+          const reasonCodes: string[] = [];
+          if (!qualifying.length) reasonCodes.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
+          else if (!facts.credentialsActive) reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
+          if (pto) reasonCodes.push("CLINICIAN_ON_PTO");
+          if (!pool && !facts.inCaseload) reasonCodes.push("CLINICIAN_NOT_IN_CASELOAD");
+          return {
+            membershipId: candidate.membershipId,
+            displayName: candidate.displayName ?? "Clinician",
+            disciplines,
+            eligible: reasonCodes.length === 0,
+            reasonCodes,
+          };
+        }),
+      );
+    },
+
+    /** Scheduling-safe staff directory.  It intentionally exposes only the
+     * values needed to render an assigned clinician; membership management
+     * permissions are neither required nor implied by this projection. */
+    async schedulingStaff(orgId: string): Promise<SchedulingStaffView[]> {
+      const candidates = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: "" },
+        async (txRaw) => {
+          const tx = txRaw as DbClient;
+          return tx
+            .select({
+              membershipId: MEM.id,
+              displayName: USER.name,
+              roleKey: ROLE.key,
+            })
+            .from(MEM)
+            .innerJoin(USER, eq(USER.id, MEM.userId))
+            .leftJoin(
+              MEM_ROLE,
+              and(
+                eq(MEM_ROLE.organizationId, orgId),
+                eq(MEM_ROLE.membershipId, MEM.id),
+                or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
+              ),
+            )
+            .leftJoin(ROLE, eq(MEM_ROLE.roleId, ROLE.id))
+            .where(and(eq(MEM.organizationId, orgId), eq(MEM.status, "active")));
+        },
+      );
+      const byMembership = new Map<string, SchedulingStaffView>();
+      for (const candidate of candidates) {
+        const discipline = ALL_SCHEDULING_DISCIPLINES.has(candidate.roleKey ?? "")
+          ? (candidate.roleKey as SchedulingDiscipline)
+          : null;
+        const current = byMembership.get(candidate.membershipId);
+        if (!current || (current.discipline === null && discipline !== null)) {
+          byMembership.set(candidate.membershipId, {
+            membershipId: candidate.membershipId,
+            displayName: candidate.displayName ?? "Clinician",
+            discipline,
+          });
+        }
+      }
+      return [...byMembership.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
     },
 
     // ── GAP-093 — membership_credential grant/revoke/list (the management surface a real D8 gate

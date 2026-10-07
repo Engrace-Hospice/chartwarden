@@ -4,7 +4,8 @@
 // (23:59:59.999 org-TZ for "end of day"; D8). This is the single source of truth for the two §7.3/§7.4
 // deadlines the slice and the screens key off:
 //   • D4  — late-CTI written-cert deadline = period_start + 2 calendar days at 23:59 org-TZ (§7.3).
-//   • CMS 418.22 — the F2F prior-to window = [period_start − 30, period_start − 1] (§7.4 W-F2F-01).
+//   • CMS 418.22 — the F2F window = [period_start − 30, period_start] (§7.4 W-F2F-01; the period's first day is
+//     timely per MBPM ch. 9 §20.1(5)(a)).
 // No IO and no `Date.now()`: every fact (the period start date, the org timezone, the "as of" instant
 // for an overdue check) is passed in, so the math is deterministic across timezones and DST boundaries.
 import type { LocalDate } from "@wardenx/types";
@@ -12,10 +13,11 @@ import type { LocalDate } from "@wardenx/types";
 /** Org timezone default when M2 `organization.timezone` is unset (D8). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";
 
-/** Whole calendar days CMS 418.22 spans the F2F prior-to window over (§7.4 / R-F2F-02). */
+/** Whole calendar days CMS 418.22 spans the F2F window over (§7.4 / R-F2F-02): 30 days before through the
+ *  period's first day (MBPM ch. 9 §20.1(5)(a) — an encounter on the first day "is still considered timely"). */
 export const F2F_PRIOR_WINDOW = {
   earliestDaysBefore: 30,
-  latestDaysBefore: 1,
+  latestDaysBefore: 0,
 } as const;
 
 /** Calendar days the oral-then-written CTI path allows before the written cert is overdue (D4). */
@@ -125,7 +127,7 @@ export interface F2fWindow {
   readonly windowEndInstant: string;
 }
 
-/** Compute the F2F window `[period_start − 30, period_start − 1]` in org-local calendar days (§7.4). */
+/** Compute the F2F window `[period_start − 30, period_start]` in org-local calendar days (§7.4). */
 export function computeF2fWindow(periodStartDate: LocalDate, timeZone: string): F2fWindow {
   const windowStart = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.earliestDaysBefore);
   const windowEnd = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.latestDaysBefore);
@@ -155,4 +157,47 @@ export function decideF2fWindowStatus(input: {
 }): F2fWindowStatus {
   if (input.attested) return "attested";
   return input.today > input.window.windowEnd ? "missed" : "open";
+}
+
+// ── 42 CFR 418.54 assessment clocks ──────────────────────────────────────────────────────────────────
+
+/** 42 CFR 418.54(a) — the RN initial assessment is due "within 48 hours after the election". */
+export const INITIAL_ASSESSMENT_HOURS = 48;
+/** The initial assessment's 48 hours as a calendar-date bound (the latest DATE 48 hours can reach). */
+export const INITIAL_ASSESSMENT_DAYS = 2;
+/**
+ * 42 CFR 418.54(b) — the IDG completes the comprehensive assessment "no later than 5 calendar days after the
+ * election". CMS SOM Appendix M (L523) counts the election date as DAY 0: elected Wednesday ⇒ Monday is day 5,
+ * the last timely day. So the due DATE is `election + 5`, not `election + 4`.
+ */
+export const COMPREHENSIVE_ASSESSMENT_DAYS = 5;
+
+/** The two §418.54 window kinds whose deadline is anchored on the election. */
+export type AssessmentWindowKind = "initial_assessment_48h" | "comprehensive_assessment_5d";
+
+export function isAssessmentWindowKind(kind: string): kind is AssessmentWindowKind {
+  return kind === "initial_assessment_48h" || kind === "comprehensive_assessment_5d";
+}
+
+/** The comprehensive assessment's last timely org-local DATE: election date (day 0) + 5 calendar days. */
+export function comprehensiveAssessmentDueOn(electionDate: LocalDate): LocalDate {
+  return addCalendarDays(electionDate, COMPREHENSIVE_ASSESSMENT_DAYS);
+}
+
+/**
+ * The `compliance_window.must_complete_by` instant of a §418.54 assessment window anchored at the election
+ * instant `electedAt`:
+ *   • `initial_assessment_48h` — exactly 48 hours after the election (418.54(a) is an hour clock);
+ *   • `comprehensive_assessment_5d` — 23:59:59.999 org-local on election date + 5 (418.54(b) is a calendar-day
+ *     clock with the election date as day 0, so the whole of day 5 is on time and day 6 is late).
+ */
+export function computeAssessmentWindowDeadline(
+  kind: AssessmentWindowKind,
+  electedAt: Date,
+  timeZone: string,
+): Date {
+  if (kind === "initial_assessment_48h")
+    return new Date(electedAt.getTime() + INITIAL_ASSESSMENT_HOURS * 3_600_000);
+  const electionDate = localDateOfInstant(electedAt.toISOString(), timeZone);
+  return new Date(endOfOrgDayInstant(comprehensiveAssessmentDueOn(electionDate), timeZone));
 }

@@ -30,6 +30,7 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
+import type { ClaimAttention } from "./discharge-attention";
 import { authFailureRedirect } from "./write-workflow";
 
 interface ClaimSummary {
@@ -46,6 +47,7 @@ interface ClaimSummary {
   totalChargeCents: number;
   totalExpectedPaymentCents: number;
   version: number;
+  attention?: ClaimAttention | null;
 }
 
 interface ClaimPage {
@@ -58,7 +60,16 @@ interface ClaimFilters {
   state: string;
   providerEntityId: string;
   patientId: string;
+  /** `missing_discharge_details` / `tob_changed` — the server-side "needs attention" filter. */
+  attention: string;
 }
+
+const NO_FILTERS: ClaimFilters = { state: "", providerEntityId: "", patientId: "", attention: "" };
+
+const ATTENTION_FILTERS = [
+  { value: "missing_discharge_details", label: "Missing discharge details" },
+  { value: "tob_changed", label: "Type of bill changed" },
+] as const;
 
 const CLAIM_STATES = [
   "draft",
@@ -82,17 +93,14 @@ function listInit(filters: ClaimFilters, cursor: string | null): unknown {
   if (filters.state) query.state = filters.state;
   if (filters.providerEntityId) query.providerEntityId = filters.providerEntityId;
   if (filters.patientId) query.patientId = filters.patientId;
+  if (filters.attention) query.attention = filters.attention;
   if (cursor) query.cursor = cursor;
   return { params: { query } };
 }
 
 export function ClaimWorkbench(): JSX.Element {
   const client = useApiClient();
-  const [filters, setFilters] = useState<ClaimFilters>({
-    state: "",
-    providerEntityId: "",
-    patientId: "",
-  });
+  const [filters, setFilters] = useState<ClaimFilters>(NO_FILTERS);
   const [claims, setClaims] = useState<ClaimSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -174,9 +182,11 @@ export function ClaimWorkbench(): JSX.Element {
       filters={
         <FilterBar
           activeFilterCount={
-            [filters.state, filters.providerEntityId, filters.patientId].filter(Boolean).length
+            [filters.state, filters.providerEntityId, filters.patientId, filters.attention].filter(
+              Boolean,
+            ).length
           }
-          onClear={() => setFilters({ state: "", providerEntityId: "", patientId: "" })}
+          onClear={() => setFilters(NO_FILTERS)}
           actions={
             <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
               {claims.length} claims loaded
@@ -196,6 +206,23 @@ export function ClaimWorkbench(): JSX.Element {
               {CLAIM_STATES.map((s) => (
                 <option key={s} value={s}>
                   {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wx-filter-field">
+            <span>Needs attention</span>
+            <select
+              className="wx-select"
+              aria-label="Needs attention"
+              value={filters.attention}
+              onChange={(e) => setFilters((f) => ({ ...f, attention: e.target.value }))}
+              style={selectStyle}
+            >
+              <option value="">Any</option>
+              {ATTENTION_FILTERS.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
                 </option>
               ))}
             </select>
@@ -231,11 +258,7 @@ export function ClaimWorkbench(): JSX.Element {
               title="No claims"
               description="No claims match the current filters in your scope."
               action={
-                <Button
-                  tone="secondary"
-                  size="sm"
-                  onClick={() => setFilters({ state: "", providerEntityId: "", patientId: "" })}
-                >
+                <Button tone="secondary" size="sm" onClick={() => setFilters(NO_FILTERS)}>
                   Clear filters
                 </Button>
               }
@@ -340,7 +363,12 @@ function ClaimTable({
             <td style={tdStyle}>
               <StatusPill label={statusLabel(c.state)} tone={claimStateTone(c.state)} />
             </td>
-            <td style={tdStyle}>{tobLabel(c.tob)}</td>
+            <td style={tdStyle}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                <span>{tobLabel(c.tob)}</span>
+                <AttentionChips attention={c.attention} />
+              </div>
+            </td>
             <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
               {c.serviceFrom} → {c.serviceTo}
             </td>
@@ -541,3 +569,20 @@ const disabledButtonStyle = {
   cursor: "not-allowed",
   opacity: 0.5,
 };
+
+/** The row's "needs attention" chips (missing discharge details / TOB changed), from the list read. */
+function AttentionChips({
+  attention,
+}: { attention: ClaimAttention | null | undefined }): JSX.Element | null {
+  if (!attention || attention.flags.length === 0) return null;
+  return (
+    <span style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+      {attention.flags.includes("missing_discharge_details") ? (
+        <StatusPill label="Missing discharge details" tone="warning" />
+      ) : null}
+      {attention.flags.includes("tob_changed") && attention.typeOfBill.derived ? (
+        <StatusPill label={`TOB now ${attention.typeOfBill.derived}`} tone="warning" />
+      ) : null}
+    </span>
+  );
+}

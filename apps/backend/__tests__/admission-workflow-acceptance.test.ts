@@ -363,6 +363,7 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
         dischargeDate: "2026-03-15",
         narrative: "patient passed at home",
         deathCertifierId: "md_1",
+        placeOfDeath: "home",
       },
       U,
     );
@@ -408,6 +409,7 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
         dischargeDate: "2026-03-15",
         narrative: "patient passed at home",
         deathCertifierId: "md_1",
+        placeOfDeath: "home",
       },
       U,
     );

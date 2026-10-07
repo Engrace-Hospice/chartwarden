@@ -19,6 +19,7 @@ import {
   type GuardRequest,
   composeGuards,
   requireAbac,
+  requireAnyAbac,
   requirePermission,
   requireRole,
   requireSession,
@@ -160,6 +161,62 @@ describe("requireAbac — deny by default + break-glass branch (§2.2)", () => {
     expect(evaluator).toHaveBeenCalledWith("step_up_recent", expect.any(Object), {
       operationKey: "step_up.override.manage",
     });
+  });
+});
+
+describe("requireAnyAbac — OR over named predicates, same deny + break-glass semantics", () => {
+  it("allows when the FIRST predicate is true, without evaluating the second", async () => {
+    const evaluator = vi.fn((predicate: string) => predicate === "caseload_or_scope");
+    setAbacEvaluator(evaluator);
+    await expect(
+      requireAnyAbac("admission.read", ["caseload_or_scope", "admission_intake_scope"])(
+        makeRequest(),
+      ),
+    ).resolves.toBeUndefined();
+    expect(evaluator).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows when only a LATER predicate is true, over the same target", async () => {
+    const evaluator = vi.fn((predicate: string) => predicate === "admission_intake_scope");
+    setAbacEvaluator(evaluator);
+    await expect(
+      requireAnyAbac("admission.read", ["caseload_or_scope", "admission_intake_scope"], {
+        getTarget: () => ({ patientId: "p-1" }),
+      })(makeRequest()),
+    ).resolves.toBeUndefined();
+    expect(evaluator).toHaveBeenNthCalledWith(1, "caseload_or_scope", expect.any(Object), {
+      patientId: "p-1",
+    });
+    expect(evaluator).toHaveBeenNthCalledWith(2, "admission_intake_scope", expect.any(Object), {
+      patientId: "p-1",
+    });
+  });
+
+  it("denies 404 under notFoundOnDeny / 403 otherwise when every predicate is false", async () => {
+    setAbacEvaluator(() => false);
+    const names = ["caseload_or_scope", "admission_intake_scope"];
+    await expect(
+      requireAnyAbac("admission.read", names, { notFoundOnDeny: true })(makeRequest()),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(requireAnyAbac("admission.read", names)(makeRequest())).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+  });
+
+  it("consults break-glass once, only after every predicate denied", async () => {
+    setAbacEvaluator(() => false);
+    const checker = vi.fn(() => ({ eventId: "bg-7" }));
+    setBreakGlassChecker(checker);
+    const request = makeRequest();
+    await expect(
+      requireAnyAbac("admission.read", ["caseload_or_scope", "admission_intake_scope"])(request),
+    ).resolves.toBeUndefined();
+    expect(checker).toHaveBeenCalledTimes(1);
+    expect(request.context.attributes[BREAK_GLASS_ATTRIBUTE]).toBe("bg-7");
+  });
+
+  it("refuses an empty predicate list at definition time", () => {
+    expect(() => requireAnyAbac("admission.read", [])).toThrow();
   });
 });
 

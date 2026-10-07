@@ -22,6 +22,8 @@ export interface FakeStore {
   readonly overrides: Map<string, any>;
   readonly history: any[];
   readonly emitted: any[];
+  /** Resolved HETS eligibility checks (newest last) the RHC carry-over reads. */
+  readonly eligibilityChecks: any[];
   reset(): void;
 }
 
@@ -43,6 +45,7 @@ export function buildFakeRepositories(): {
     overrides: new Map<string, any>(),
     history: [],
     emitted: [],
+    eligibilityChecks: [],
     reset(): void {
       this.claims.clear();
       this.lines.length = 0;
@@ -53,6 +56,7 @@ export function buildFakeRepositories(): {
       this.overrides.clear();
       this.history.length = 0;
       this.emitted.length = 0;
+      this.eligibilityChecks.length = 0;
       seq = 0;
     },
   };
@@ -106,6 +110,30 @@ export function buildFakeRepositories(): {
       };
       store.claims.set(id, row);
       return { ok: true, row, currentVersion: row.version };
+    }
+    /** Mirrors the real repo: refresh the derived discharge codes without bumping `version`. */
+    async refreshDischargeCodes(
+      id: string,
+      codes: { patientStatusCode: string | null; conditionCodes: string[]; occurrenceCodes: any[] },
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, ...codes, updatedAt: new Date() });
+      return true;
+    }
+    /** Mirrors the real repo: refresh the derived occurrence spans (late-NOE OSC 77) without bumping `version`. */
+    async refreshOccurrenceSpans(id: string, spans: readonly any[]): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, occurrenceSpans: [...spans], updatedAt: new Date() });
+      return true;
+    }
+    /** Mirrors the real repo: re-type a claim guarded on its stored TOB, without bumping `version`. */
+    async refreshTypeOfBill(id: string, fromTob: string, toTob: string): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c || c.tob !== fromTob) return false;
+      store.claims.set(id, { ...c, tob: toTob, updatedAt: new Date() });
+      return true;
     }
   }
 
@@ -220,8 +248,19 @@ export function buildFakeRepositories(): {
     }
   }
 
+  class EligibilityCheckRepository {
+    async findLatestResolvedForPatient(orgId: string, patientId: string): Promise<any> {
+      return (
+        [...store.eligibilityChecks]
+          .reverse()
+          .find((c) => c.organizationId === orgId && c.patientId === patientId) ?? null
+      );
+    }
+  }
+
   const repos: Record<string, unknown> = {
     ClaimRepository,
+    EligibilityCheckRepository,
     ClaimLineRepository,
     HippsCalculationRepository,
     SiaCalculationRepository,

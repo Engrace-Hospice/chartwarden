@@ -254,19 +254,24 @@ function collectComposed(
         if (text === null) continue;
         const nameArg = splitArgs(text)[argIndex];
         if (nameArg === undefined || /^\w+\s*:\s*\w/.test(nameArg)) continue;
-        const name =
-          literal(nameArg) ??
-          (/^\w+$/.test(nameArg)
-            ? (localConsts.get(file)?.get(nameArg) ?? stringConsts.get(nameArg))
-            : undefined) ??
-          memberConsts.get(nameArg);
-        if (name === undefined) continue;
+        // `requireAnyAbac(action, ["a", "b"], …)` composes EVERY predicate it lists.
+        const nameArgs = nameArg.startsWith("[") ? splitArgs(nameArg.slice(1, -1)) : [nameArg];
         const line = src.slice(0, index).split("\n").length;
-        composed.set(name, [...(composed.get(name) ?? []), `${relative(root, file)}:${line}`]);
+        for (const one of nameArgs) {
+          const name =
+            literal(one) ??
+            (/^\w+$/.test(one)
+              ? (localConsts.get(file)?.get(one) ?? stringConsts.get(one))
+              : undefined) ??
+            memberConsts.get(one);
+          if (name === undefined) continue;
+          composed.set(name, [...(composed.get(name) ?? []), `${relative(root, file)}:${line}`]);
+        }
       }
     }
   };
   collect("requireAbac", 1);
+  collect("requireAnyAbac", 1);
   for (const [wrapper, index] of wrapperArgIndex) collect(wrapper, index);
   return composed;
 }

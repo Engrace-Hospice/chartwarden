@@ -28,6 +28,7 @@ wins until the spec is re-locked.
 | Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
 | Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
+| API contract & integrator changes | [`api/`](./api/) | [`api/CHANGES.md`](./api/CHANGES.md) |
 | Governance & history | audit + remediation pointers | [below](#governance--history) |
 
 ---
@@ -180,6 +181,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | Document | Scope |
 |---|---|
 | [`reference/cms/README.md`](./reference/cms/README.md) | CMS primary sources — Form CMS-1984-14 (hospice cost report). |
+| [`api/CHANGES.md`](./api/CHANGES.md) | Dated API changes integrators must act on (request fields, error codes, new routes), with example bodies. The contract itself is [`api/openapi.json`](./api/openapi.json). |
 
 ---
 

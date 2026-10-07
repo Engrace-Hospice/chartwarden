@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1378,
-    "coveredRoutes": 1378,
-    "directRoutesReferenced": 1335
+    "routes": 1384,
+    "coveredRoutes": 1384,
+    "directRoutesReferenced": 1331
   },
   "modules": [
     {
@@ -67,28 +67,36 @@
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 26
     },
     {
       "module": "06-admission",
-      "routes": 78,
+      "routes": 74,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
+        "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-discharge.test.ts",
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
-        "apps/backend/__tests__/m6-physician-authority.test.ts"
+        "apps/backend/__tests__/discharge-details-routes.test.ts",
+        "apps/backend/__tests__/discharge-worklist-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 78
+      "directRoutesReferenced": 74
     },
     {
       "module": "07-care-plan",
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
@@ -101,12 +109,14 @@
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts",
+        "apps/backend/__tests__/readmission-routes.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
@@ -138,7 +148,8 @@
       "routes": 29,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/hope-routes.test.ts"
+        "apps/backend/__tests__/hope-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 27
     },
@@ -147,6 +158,7 @@
       "routes": 34,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-discipline-held.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
@@ -158,16 +170,16 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
-        "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
+        "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 26
     },
     {
       "module": "13-emar",
@@ -175,7 +187,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
-        "apps/backend/__tests__/emar-routes.test.ts"
+        "apps/backend/__tests__/emar-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 22
     },
@@ -190,7 +203,8 @@
         "apps/backend/__tests__/idg-packet-content.test.ts",
         "apps/backend/__tests__/idg-routes.test.ts",
         "apps/backend/__tests__/idg-schedule-meeting.test.ts",
-        "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts"
+        "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 36
     },
@@ -200,7 +214,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
-        "apps/backend/__tests__/discipline-plans-inject.test.ts"
+        "apps/backend/__tests__/discipline-plans-inject.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 28
     },
@@ -209,13 +224,14 @@
       "routes": 34,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/bereavement-inject.test.ts"
+        "apps/backend/__tests__/bereavement-inject.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 34
     },
     {
       "module": "17-scheduling",
-      "routes": 33,
+      "routes": 35,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
@@ -250,19 +266,20 @@
       "routes": 30,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/field-safety-inject.test.ts"
+        "apps/backend/__tests__/field-safety-inject.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 30
     },
     {
       "module": "21-supplies",
-      "routes": 39,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 39
+      "directRoutesReferenced": 38
     },
     {
       "module": "22-documents",
@@ -278,21 +295,25 @@
         "apps/backend/__tests__/f238-prospect-summary.test.ts",
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
-        "apps/backend/__tests__/m22-doclens-sud-gate.test.ts"
+        "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54
     },
     {
       "module": "23-billing-medicare",
-      "routes": 57,
+      "routes": 67,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
+        "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
-        "apps/backend/__tests__/m23-wage-index-routes.test.ts"
+        "apps/backend/__tests__/m23-wage-index-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 56
+      "directRoutesReferenced": 58
     },
     {
       "module": "24-billing-medicaid",
@@ -309,6 +330,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
       "directRoutesReferenced": 31
@@ -329,7 +351,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cost-report-inject.test.ts",
-        "apps/backend/__tests__/m27-two-person-control-routes.test.ts"
+        "apps/backend/__tests__/m27-two-person-control-routes.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 45
     },
@@ -391,6 +414,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/reporting-inject.test.ts"
       ],
       "directRoutesReferenced": 42
@@ -432,7 +456,8 @@
       "suiteFiles": [
         "apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts",
         "apps/backend/__tests__/ipu-inject.test.ts",
-        "apps/backend/__tests__/ipu-step-up-assertion.test.ts"
+        "apps/backend/__tests__/ipu-step-up-assertion.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 52
     },

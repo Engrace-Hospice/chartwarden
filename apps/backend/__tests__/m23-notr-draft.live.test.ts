@@ -37,7 +37,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
+import {
+  buildProviderEntityLocationLister,
+  buildRequiredProviderEntityCcnResolver,
+} from "../src/bootstrap/provider-entity-resolver";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import {
   M6_OUTBOX_EVENTS,
@@ -266,14 +269,9 @@ describe.skipIf(!DB_URL)(
             // a relay tick is not a request.
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(handle.db, organizationId, admissionId),
-            resolveCcn: async (organizationId, providerEntityId) => {
-              const { rows } = await admin.query(
-                "SELECT ccn FROM provider_entity WHERE id=$1 AND organization_id=$2",
-                [providerEntityId, organizationId],
-              );
-              if (!rows[0]) throw new Error("provider CCN unavailable");
-              return rows[0].ccn as string;
-            },
+            // The PRODUCTION binding (index.ts), as the NOBYPASSRLS app role: it was a bare pooled
+            // select with no app.org_id — 22P02 on a pooled connection, which stranded transfer-outs.
+            resolveCcn: buildRequiredProviderEntityCcnResolver(handle.db),
             onSkipped: (info) => skips.push(info),
           }),
         ],
@@ -374,6 +372,7 @@ describe.skipIf(!DB_URL)(
         {
           effectiveDate: "2026-05-04",
           otherHospiceName: "Receiving Hospice",
+          receivingCareSetting: "home",
           narrative: "Beneficiary transferred at family request.",
         } as never,
         USER,

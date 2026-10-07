@@ -190,6 +190,7 @@ function createM23TestBackend(): {
       claimId: CLAIM,
       noeId: null,
       notrId: null,
+      transferNoticeId: null,
       claimControlNumber: "CCN0000001",
       attemptIndex: 1,
       outcome: "queued",
@@ -243,6 +244,7 @@ function createM23TestBackend(): {
     acknowledgmentDocumentId: null,
     latestValidation: null,
     pricing: { hipps: null, sia: null },
+    dischargeCodes: { patientStatusCode: "30", conditionCodes: [], occurrenceCodes: [] },
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -292,6 +294,15 @@ function createM23TestBackend(): {
         windowBreachedAt: null,
         noeControlNumber: "NOE0000001",
         payerNoeControlNumber: null,
+        acceptedAt: null,
+        rejectedAt: null,
+        rejectionStage: null,
+        rejectionCodes: [],
+        payerStatusDate: null,
+        payerStatusDateSource: null,
+        correctsNoticeId: null,
+        correctionReason: null,
+        correctedBy: null,
         latestSubmissionId: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
@@ -321,6 +332,15 @@ function createM23TestBackend(): {
         state: "ready",
         notrControlNumber: "NOTR0000001",
         payerNotrControlNumber: null,
+        acceptedAt: null,
+        rejectedAt: null,
+        rejectionStage: null,
+        rejectionCodes: [],
+        payerStatusDate: null,
+        payerStatusDateSource: null,
+        correctsNoticeId: null,
+        correctionReason: null,
+        correctedBy: null,
         latestSubmissionId: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
@@ -515,6 +535,28 @@ function createM23TestBackend(): {
       const rows = eligibilityByPatient.get(patientId) ?? [];
       return rows[0] ?? null;
     },
+    async getHospicePeriods(_actor, patientId) {
+      return {
+        status: "hets_not_configured",
+        hetsConfigured: false,
+        patientId,
+        checkId: null,
+        asOfServiceDate: null,
+        outcome: null,
+        checkedAt: null,
+        staleAt: null,
+        stale: null,
+        synthetic: false,
+        hospiceHistoryReturned: false,
+        hospiceElectionOpen: null,
+        hospiceHistoryTruncated: null,
+        hospicePeriods: [],
+        nextPeriodNumber: null,
+        nextPeriodBasis: null,
+        lastAttempt: null,
+        rhcCarryOver: null,
+      };
+    },
     async listRuleConfigs(_actor, _filter: RuleConfigListFilter) {
       return page([...ruleConfigs.values()]);
     },
@@ -652,6 +694,14 @@ function createM23TestBackend(): {
       noes.set(noeId, updated);
       return updated;
     },
+    async correctNoe(_actor, noeId, args) {
+      const row = noes.get(noeId);
+      if (!row) throw new NotFoundError("noe_record", noeId);
+      return {
+        created: true,
+        notice: { ...row, state: "draft", correctsNoticeId: noeId, correctionReason: args.reason },
+      };
+    },
     async submitNotr() {
       return { submissionId: "notr-submission-1", jobId: "job-notr-1", kind: "notr" };
     },
@@ -661,6 +711,14 @@ function createM23TestBackend(): {
       const updated: NotrView = { ...row, state: "cancelled", version: row.version + 1 };
       notrs.set(notrId, updated);
       return updated;
+    },
+    async correctNotr(_actor, notrId, args) {
+      const row = notrs.get(notrId);
+      if (!row) throw new NotFoundError("notr_record", notrId);
+      return {
+        created: true,
+        notice: { ...row, state: "draft", correctsNoticeId: notrId, correctionReason: args.reason },
+      };
     },
     async checkEligibility(_actor, args) {
       return {
@@ -1135,6 +1193,14 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { electionReversed: true },
     expectStatus: 200,
   },
+  {
+    label: "26a POST /noe-records/:id/correct",
+    method: "POST",
+    url: `/api/v1/noe-records/${NOE}/correct`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("r26a") },
+    payload: { reason: "MAC rejected the NOE: MBI corrected from HETS, refiling." },
+    expectStatus: 201,
+  },
 
   // ── NOTR fast path (routes #28-31) ──────────────────────────────────────────────────────────────────
   {
@@ -1167,6 +1233,17 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { terminatingEventReversed: true },
     expectStatus: 200,
   },
+  {
+    label: "30a POST /notr-records/:id/correct",
+    method: "POST",
+    url: `/api/v1/notr-records/${NOTR}/correct`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("r30a") },
+    payload: {
+      reason: "The 999 rejected the NOTR file; refiling with the corrected date.",
+      correctedDate: "2026-01-31",
+    },
+    expectStatus: 201,
+  },
 
   // ── eligibility plane (routes #22-23 per the module header + the latest-read convenience) ─────────────
   {
@@ -1185,6 +1262,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     label: "32 GET /billing/eligibility",
     method: "GET",
     url: `/api/v1/billing/eligibility?patientId=${PATIENT}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "33b GET /billing/eligibility/hospice-periods",
+    method: "GET",
+    url: `/api/v1/billing/eligibility/hospice-periods?patientId=${PATIENT}`,
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },

@@ -47,6 +47,19 @@ export interface OrgContext {
   readonly systemActor?: boolean;
 }
 
+/**
+ * The `withOrgContext` scope for a cron tick / outbox consumer / relay write that has no acting user:
+ * the empty actor (the M4 write-audit trigger records it as a NULL `audit_event.actor_user_id`) with
+ * `systemActor: true`, so it never inherits an ambient request actor either.
+ *
+ * Never pass a synthetic "system user" uuid (`00000000-…-0000000000NN`) as `userId` instead: it has no
+ * `user` row, and the trigger copies `app.user_id` into `audit_event.actor_user_id` — a real FK to
+ * `user(id)` — so every audited write under it fails with 23503 `audit_event_actor_user_id_user_id_fk`.
+ */
+export function systemOrgContext(organizationId: string): OrgContext {
+  return { organizationId, userId: "", systemActor: true };
+}
+
 /** A pre-org session identity. It may read only rows whose RLS policy explicitly keys on app.user_id. */
 export interface UserContext {
   readonly userId: string;

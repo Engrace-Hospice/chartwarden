@@ -71,13 +71,17 @@ describe.skipIf(!DB_URL)(
       withBlockingFailure: boolean;
     }): Promise<{ claimId: string; submissionId: string; ccn: string }> {
       const placeholderCcn = `pending-${opts.patient}`;
+      // `patient_status_code` (migration 0371): a validated claim always carries its derived discharge
+      // status, and the 837I claim document refuses to send one without it.
       const claimId = (
         await admin.query(
           `INSERT INTO claim (organization_id, provider_entity_id, patient_id, admission_id,
            election_period_id_from, election_period_id_to, patient_payer_id, tob, service_from, service_to,
            state, claim_control_number, mac_jurisdiction, total_expected_payment_cents,
-           sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
-         VALUES ($1,$2,$3,$2,$2,$2,$2,'811','2026-01-01','2026-01-31','READY',$4,'ngs_j6',100000,'2.00',$2,$2)
+           sequestration_applied_pct, sequestration_policy_id, created_by_membership_id,
+           patient_status_code)
+         VALUES ($1,$2,$3,$2,$2,$2,$2,'811','2026-01-01','2026-01-31','READY',$4,'ngs_j6',100000,'2.00',$2,$2,
+           '01')
          RETURNING id`,
           [ORG, PE, opts.patient, placeholderCcn],
         )
@@ -184,13 +188,23 @@ describe.skipIf(!DB_URL)(
         attemptIndex: 0,
         withBlockingFailure: false,
       });
+      // A late NOE's provider-liable days (OSC 77, ch. 11 §20.1.1), as the validation run derives them.
+      await admin.query(
+        `UPDATE claim SET occurrence_spans = '[{"code":"77","from":"2026-01-01","through":"2026-01-06"}]'::jsonb
+          WHERE id = $1`,
+        [claimId],
+      );
       let uploaded = false;
+      const documents: unknown[] = [];
       const deps: M23WorkerDeps = {
         connection: {} as never,
         db: handle.db as unknown as repositories.BillingDb,
         outbox: { publish: async () => {} },
         x12: {
-          generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-1" }),
+          generate837i: async (input) => {
+            documents.push(input.claimDocument);
+            return { x12: "ISA*00*...", correlationId: "corr-1" };
+          },
           generateNoe: async () => ({ x12: "", correlationId: "" }),
           generateNotr: async () => ({ x12: "", correlationId: "" }),
           parse999: async () => [],
@@ -219,6 +233,12 @@ describe.skipIf(!DB_URL)(
       expect(uploaded).toBe(true);
       const claim = await claimRow(claimId);
       expect(claim.state).toBe("SUBMITTED");
+      // The stored occurrence span reaches the X12 gateway's claim document (837I HI*BI:77:RD8).
+      expect(documents).toEqual([
+        expect.objectContaining({
+          occurrenceSpans: [{ code: "77", from: "2026-01-01", through: "2026-01-06" }],
+        }),
+      ]);
       const sub = await submissionRow(submissionId);
       expect(sub.outcome).toBe("submitted");
     });

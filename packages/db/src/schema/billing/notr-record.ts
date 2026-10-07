@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 // latest_*/*_document_id pointers are LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27
 // cost-report precedent). No MBI is ever stored here (D13, §8.7).
 import {
+  type AnyPgColumn,
   date,
   index,
   integer,
@@ -50,6 +51,24 @@ export const notrRecord = pgTable(
     notrControlNumber: text("notr_control_number").notNull(),
     payerNotrControlNumber: text("payer_notr_control_number"),
 
+    // The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection with its PHI-free
+    // reason codes. The raw acknowledgment is never stored here (it stays behind `claim_acknowledgment.ack_file_uri`).
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectionStage: text("rejection_stage").$type<"999" | "277ca">(),
+    rejectionCodes: text("rejection_codes").array(),
+    // Migration 0378 — the MAC's own date for that answer (277CA STC02; a 999's GS04, else ISA09; else our
+    // receipt date) and which of those it is. Timeliness is judged on it, not on `accepted_at` (our receipt time).
+    payerStatusDate: date("payer_status_date"),
+    payerStatusDateSource: text("payer_status_date_source").$type<
+      "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt"
+    >(),
+
+    // Migration 0378 — a corrected notice filed after a rejection is its own row pointing back at the rejected
+    // one (M23 §2.2); the biller's reason stays here and never reaches an event.
+    correctsNoticeId: uuid("corrects_notice_id").references((): AnyPgColumn => notrRecord.id),
+    correctionReason: text("correction_reason"),
+
     latestSubmissionId: uuid("latest_submission_id"),
     latestAcknowledgmentId: uuid("latest_acknowledgment_id"),
     confirmationDocumentId: uuid("confirmation_document_id"),
@@ -69,6 +88,10 @@ export const notrRecord = pgTable(
     (trigger_kind = 'transfer_out' AND transfer_event_id IS NOT NULL) OR
     (trigger_kind = 'discharge' AND discharge_event_id IS NOT NULL)
   )`,
+    // One correction in progress (or accepted) per rejected notice (migration 0378).
+    openCorrectionUq: uniqueIndex("notr_record_open_correction_uq")
+      .on(t.correctsNoticeId)
+      .where(sql`corrects_notice_id IS NOT NULL AND state NOT IN ('CANCELLED','ACK_REJECTED')`),
     controlNumberUq: uniqueIndex("notr_control_number_uq").on(
       t.providerEntityId,
       t.notrControlNumber,

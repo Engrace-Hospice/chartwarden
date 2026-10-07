@@ -23,6 +23,9 @@ export {
   type ClaimValidationRunnerPort,
   type EligibilityRefreshJob,
   type HetsEligibilityPort,
+  type HetsEligibilityResult,
+  type HetsHospiceHistory,
+  eligibilityParsedPayload,
   type JobEnqueuePort,
   type M23WorkerDeps,
   type MacJurisdictionListPort,
@@ -60,3 +63,12 @@ export {
   buildNoticeWindowPort,
   m23WorkerActor,
 } from "./m23-worker-ports";
+export {
+  ELIGIBILITY_FRESHNESS_DAYS,
+  type HetsEligibilityPortDeps,
+  type HetsProviderPort,
+  type M23HetsConfig,
+  buildHetsEligibilityPort,
+  createM23HetsTransport,
+  m23HetsConfigFromEnv,
+} from "./hets-eligibility";

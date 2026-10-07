@@ -121,6 +121,22 @@ export interface TimeOffView {
   readonly endsAt: string;
   readonly state: TimeOffState;
 }
+export interface EligibleClinicianView {
+  readonly membershipId: string;
+  readonly displayName: string;
+  readonly disciplines: readonly SchedulingDiscipline[];
+  readonly eligible: boolean;
+  readonly reasonCodes: readonly string[];
+}
+
+/** Minimal staff directory used by scheduling read surfaces.  This is deliberately
+ * not the organization-members endpoint: calendar readers need names and clinical
+ * discipline, not membership administration data. */
+export interface SchedulingStaffView {
+  readonly membershipId: string;
+  readonly displayName: string;
+  readonly discipline: SchedulingDiscipline | null;
+}
 
 // ── command shapes ────────────────────────────────────────────────────────────────────────────────────────
 export interface CreateVisitInput {
@@ -266,6 +282,48 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   // `serviceDateOf` already assumes throughout.
   orgTimezone(_orgId: string): Promise<string> {
     return Promise.resolve("UTC");
+  }
+
+  /** Reference-slice projection of the same D8 facts used by create. Production additionally resolves
+   * real membership identities through Drizzle; this keeps route tests deterministic. */
+  async eligibleClinicians(
+    orgId: string,
+    input: {
+      patientId: string;
+      visitPurpose: VisitPurpose;
+      scheduledStartedAt: string;
+      scheduledEndedAt: string;
+    },
+  ): Promise<EligibleClinicianView[]> {
+    const pool = this.unassignedPoolOrgs.has(orgId);
+    return [...this.disciplines.entries()].map(([membershipId, disciplines]) => {
+      const qualifying = disciplines.filter((d) =>
+        VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(d),
+      );
+      const reasons: string[] = [];
+      if (!qualifying.length) reasons.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
+      if (qualifying.length && !this.credentialed.has(membershipId))
+        reasons.push("CLINICIAN_CREDENTIAL_MISSING");
+      if (!pool && !this.caseload.has(caseloadKey(membershipId, input.patientId)))
+        reasons.push("CLINICIAN_NOT_IN_CASELOAD");
+      return {
+        membershipId,
+        displayName: membershipId,
+        disciplines,
+        eligible: reasons.length === 0,
+        reasonCodes: reasons,
+      };
+    });
+  }
+
+  async schedulingStaff(_orgId: string): Promise<SchedulingStaffView[]> {
+    return [...this.disciplines.entries()]
+      .map(([membershipId, disciplines]) => ({
+        membershipId,
+        displayName: membershipId,
+        discipline: disciplines[0] ?? null,
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   // ── visits ──────────────────────────────────────────────────────────────────────────────────────────

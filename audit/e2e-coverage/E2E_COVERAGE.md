@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 161 statically-routable `web` screen(s) — 19/161 E2E-reached, 155/161 axe-reached.
+**Coverage:** 164 statically-routable `web` screen(s) — 19/164 E2E-reached, 158/164 axe-reached.
 
 ## Zero E2E coverage
 
@@ -23,6 +23,8 @@
 | `volunteer.compliance` | 15-discipline-care-plans | `/admin/volunteer-compliance` | volunteer_compliance.read |
 | `volunteer.ratio` | 15-discipline-care-plans | `/admin/volunteer-ratio` | volunteer_compliance.read_ratio |
 | `admission.census` | 06-admission | `/admissions` | admission.read |
+| `admission.discharges` | 06-admission | `/admissions/discharges` | discharge.create |
+| `admission.readmit-list` | 06-admission | `/admissions/readmit` | admission.create |
 | `audit.log-viewer` | 04-audit | `/audit` | audit.read |
 | `bereavement.caseload` | 16-bereavement | `/bereavement` | bereavement.dashboard.counselor |
 | `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |
@@ -34,9 +36,9 @@
 | `billing.noe` | 23-billing-medicare | `/billing/noe` | billing.noe.read |
 | `billing.notr` | 23-billing-medicare | `/billing/notr` | billing.notr.read |
 | `billing.overrides` | 23-billing-medicare | `/billing/overrides` | billing.validation.read_override |
-| `billing.rate-tables` | 23-billing-medicare | `/billing/rate-tables` | billing.rate_table.read |
 | `billing.rule-config` | 23-billing-medicare | `/billing/rule-config` | billing.rule_config.read |
 | `billing.sequestration` | 23-billing-medicare | `/billing/sequestration-policy` | billing.sequestration_policy.read |
+| `billing.transfer-notices` | 23-billing-medicare | `/billing/transfer-notices` | billing.noe.read |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `cap.dashboard` | 26-cap | `/cap` | cap.projection.read |
 | `cap.events` | 26-cap | `/cap/events` | cap.event.read |
@@ -119,6 +121,7 @@
 | `safety.policy` | 20-field-safety | `/safety/policy` | safety_policy.read |
 | `safety.sos.active` | 20-field-safety | `/safety/sos` | safety.sos.read |
 | `safety.subscriptions` | 20-field-safety | `/safety/supervisor-subscriptions` | safety_supervisor.read |
+| `scheduling.clinician-credentials` | 17-scheduling | `/scheduling/clinician-credentials` | membership_credential.read |
 | `scheduling.proposals` | 17-scheduling | `/scheduling/proposals` | visit.proposal.read |
 | `scheduling.recurring` | 17-scheduling | `/scheduling/recurring` | recurring_visit.read |
 | `scheduling.time-off` | 17-scheduling | `/scheduling/time-off` | time_off.read_team |

@@ -121,6 +121,14 @@ export {
   buildM5AdmissionSitingConsumer,
   type AdmissionSitingDeps,
 } from "./outbox-consumers/m6-admission-activated";
+// §2.4.1 — the live-discharge `active/on_hold → discharged` edges off `m6.admission.discharged`.
+export {
+  M5_ADMISSION_DISCHARGED_CONSUMER,
+  applyAdmissionDischarged,
+  buildM5AdmissionDischargedConsumer,
+  type AdmissionDischargedDeps,
+  type AdmissionDischargedOutcome,
+} from "./outbox-consumers/m6-admission-discharged";
 // F-165 (#248) — the M17 shift-assignment caseload cache write path.
 export {
   type VisitAssignmentDeps,

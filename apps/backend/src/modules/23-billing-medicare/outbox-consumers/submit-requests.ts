@@ -9,6 +9,7 @@ export const M23_SUBMISSION_REQUEST_EVENTS = [
   "m23.claim.submit_requested",
   "m23.noe.submit_requested",
   "m23.notr.submit_requested",
+  "m23.transfer_notice.submit_requested",
   "m23.claim.submission_failed",
 ] as const;
 
@@ -27,6 +28,7 @@ type M23QueueName =
   | "claim.submit.retry"
   | "noe.submit"
   | "notr.submit"
+  | "transfer_notice.submit"
   | "validation-run"
   | "eligibility.refresh";
 
@@ -96,6 +98,15 @@ function queueRequest(event: DispatchableOutboxEvent): {
     const notrId = requiredString(event.payload.notrId, "notrId");
     const submissionId = requiredString(event.payload.submissionId, "submissionId");
     return { queue: "notr.submit", key: submissionId, payload: { notrId } };
+  }
+  if (event.eventType === "m23.transfer_notice.submit_requested") {
+    const transferNoticeId = requiredString(event.payload.transferNoticeId, "transferNoticeId");
+    const submissionId = requiredString(event.payload.submissionId, "submissionId");
+    return {
+      queue: "transfer_notice.submit",
+      key: submissionId,
+      payload: { transferNoticeId, submissionId },
+    };
   }
   if (event.eventType === "m23.claim.validation_started") {
     const trigger = requiredString(event.payload.trigger, "trigger");

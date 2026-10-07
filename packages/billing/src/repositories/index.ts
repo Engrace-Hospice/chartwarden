@@ -82,6 +82,14 @@ export {
   type NotrTriggerKind,
   type NewNotrInput,
 } from "./notr-record";
+export {
+  TransferNoticeRepository,
+  type NewTransferNoticeInput,
+  type TransferNoticeAction,
+  type TransferNoticeListFilter,
+  type TransferNoticePatch,
+  type TransferNoticeRecord,
+} from "./transfer-notice-record";
 export { ValidationResultRepository } from "./validation-result";
 export { ValidationOverrideRepository } from "./validation-override";
 export {

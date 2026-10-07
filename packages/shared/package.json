@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./money": "./src/money/kernel.ts",
-    "./dates": "./src/dates/org-local-date.ts"
+    "./dates": "./src/dates/org-local-date.ts",
+    "./rhc": "./src/rhc/carry-chain.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {

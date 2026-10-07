@@ -175,7 +175,32 @@ export function requireAbac(
   predicate: string,
   options: RequireAbacOptions = {},
 ): GuardHandler {
+  return abacGuard(action, [predicate], options);
+}
+
+/**
+ * OR-composed ABAC gate: allows when ANY of the named `predicates` is true for the same target, evaluated in
+ * order (the first true one short-circuits). Everything else is `requireAbac`'s: the break-glass branch is
+ * consulted ONCE, only after every predicate denied, and the deny is the same 403 / 404 (`notFoundOnDeny`).
+ * For a route a second, independent scope rule may also open (e.g. M6's `admission_intake_scope` beside the
+ * caseload predicate) — two `requireAbac` preHandlers would AND them, which is the opposite.
+ */
+export function requireAnyAbac(
+  action: string,
+  predicates: readonly string[],
+  options: RequireAbacOptions = {},
+): GuardHandler {
+  if (predicates.length === 0) throw new Error("requireAnyAbac needs at least one predicate");
+  return abacGuard(action, predicates, options);
+}
+
+function abacGuard(
+  action: string,
+  predicates: readonly string[],
+  options: RequireAbacOptions,
+): GuardHandler {
   const getTarget = options.getTarget ?? defaultTarget;
+  const predicateLabel = predicates.join("' | '");
   return async (request) => {
     const ctx = request.context;
     if (!ctx?.organizationId) throw new UnauthorizedError();
@@ -183,7 +208,9 @@ export function requireAbac(
     const abacContext = abacContextFrom(ctx);
     const target = getTarget(request);
 
-    if (await abacEvaluator(predicate, abacContext, target)) return; // predicate true → allow
+    for (const predicate of predicates) {
+      if (await abacEvaluator(predicate, abacContext, target)) return; // predicate true → allow
+    }
 
     // predicate false → break-glass branch (§2.2): allow + flag + audit critical if active.
     // audit C2 — unless the guard opts out. Break-glass is proof of EMERGENCY; it is not proof of
@@ -207,7 +234,7 @@ export function requireAbac(
       // keeps the diagnostic text — those are read by whoever is debugging a guard.
       throw new StepUpRequiredError();
     }
-    throw new ForbiddenError(`abac predicate '${predicate}' denied for '${action}'`);
+    throw new ForbiddenError(`abac predicate '${predicateLabel}' denied for '${action}'`);
   };
 }
 

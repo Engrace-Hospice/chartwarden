@@ -44,7 +44,7 @@
 // admission-plus-body-release write happens in ONE transaction per admission (all-or-nothing).
 //
 // SYSTEM ACTOR: reuses the same fixed M37 sentinel `m6-admission-discharged.ts` established
-// (`M37_WORKER_SYSTEM_USER_ID` in `jobs/cron-workers.ts`, restated here for the same reason that file
+// (`M37_SYSTEM_MEMBERSHIP_ID` in `routes/system-actor.ts`, restated here for the same reason that file
 // restates it rather than importing across an unrelated module) — `ipu_admission_state_history
 // .by_membership_id` is `uuid NOT NULL` with no FK (D17), so the F-102 empty-string `CONSUMER_USER_ID`
 // convention (valid for the `withOrgContext` text GUC, not this column) does not apply to it.
@@ -67,7 +67,7 @@ const A = schema.ipuAdmission;
 const H = schema.ipuAdmissionStateHistory;
 const BR = schema.ipuBodyRelease;
 
-/** Mirrors `M37_WORKER_SYSTEM_USER_ID` (`../jobs/cron-workers.ts`) and
+/** Mirrors `M37_SYSTEM_MEMBERSHIP_ID` (`../routes/system-actor.ts`) and
  *  `m6-admission-discharged.ts`'s own identical constant — see file header. */
 const M37_SYSTEM_MEMBERSHIP_ID = "00000000-0000-0000-0000-000000000037";
 /** The `withOrgContext` session-GUC actor for a consumer-driven write (F-102's `CONSUMER_USER_ID`

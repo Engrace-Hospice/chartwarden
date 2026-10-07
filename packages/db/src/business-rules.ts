@@ -70,10 +70,15 @@ export interface BusinessRuleViolation {
   readonly constraint: string;
   /** Its registered, caller-facing meaning. */
   readonly meaning: string;
+  /** Optional stable domain signal for API consumers. */
+  readonly reason?: string;
 }
 
 /** Postgres `unique_violation`. */
 const UNIQUE_VIOLATION = "23505";
+/** PostgreSQL EXCLUDE violation. M17's partition-local visit overlap constraints carry a generated
+ * partition prefix, so they cannot be registered as one exact static constraint name. */
+const EXCLUSION_VIOLATION = "23P01";
 /** How far down a `.cause` chain to look. Drizzle wraps once; a repository may wrap once more. */
 const MAX_CAUSE_DEPTH = 5;
 
@@ -99,6 +104,18 @@ export function classifyDatabaseError(err: unknown): BusinessRuleViolation | nul
         return { kind: "business-rule-violation", constraint, meaning };
       }
       return null;
+    }
+    if (
+      code === EXCLUSION_VIOLATION &&
+      typeof constraint === "string" &&
+      /^visit(?:_|$).*_no_overlap$/.test(constraint)
+    ) {
+      return {
+        kind: "business-rule-violation",
+        constraint,
+        meaning: "This clinician already has another visit during this time.",
+        reason: "CLINICIAN_SCHEDULE_CONFLICT",
+      };
     }
     cursor = (cursor as { cause?: unknown }).cause;
   }

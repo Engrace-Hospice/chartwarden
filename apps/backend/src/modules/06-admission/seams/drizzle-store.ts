@@ -33,9 +33,17 @@ import type {
   LevelOfCare,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
+
+import { rhcCarryOver } from "../intake/benefit-period";
+import {
+  type RhcPriorStayFact,
+  loadPriorEpisodes,
+  loadTransferInSources,
+  rhcPriorStayFacts,
+} from "./prior-episodes";
 
 const ADM = schema.admissions;
 const REF = schema.referrals;
@@ -45,6 +53,7 @@ const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
 const DE = schema.dischargeEvents;
 const ES = schema.electionStatements;
+const TE = schema.transferEvents;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -161,6 +170,13 @@ export interface ElectionPeriodContext {
   /** Org-local `yyyy-mm-dd`. NULL until the period is activated — see the interface note. */
   readonly effectiveAt: string | null;
   readonly scheduledEndAt: string | null;
+  /**
+   * The period STARTS the admission's election: its first period (lowest sequence) on an admission that was not a
+   * transfer-in. Period 1 for a first election, the continuing number for a re-election (readmission, 42 CFR
+   * 418.24) — either way a new NOE (8xA) is owed. A transfer-in's inherited period continues an election begun at
+   * the sending hospice (8xC, not 8xA); a recert continues this admission's own election.
+   */
+  readonly isElectionStart: boolean;
 }
 
 /** One election period's identity + window, org-explicit and worker-callable. `null` when the id is
@@ -193,6 +209,29 @@ export function electionPeriodContextForOrg(
         .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
         .limit(1);
       if (!row) return null;
+      const [earlier] = await tx
+        .select({ id: EP.id })
+        .from(EP)
+        .where(
+          and(
+            eq(EP.admissionId, row.admissionId),
+            lt(EP.sequenceNumber, Number(row.sequenceNumber)),
+          ),
+        )
+        .limit(1);
+      // D9 — a transfer-in's inherited period (`activationPeriodFor`'s rule: a direction-in transfer_event carrying
+      // this sequence; `admission.transferred_in` is not maintained).
+      const [inherited] = await tx
+        .select({ id: TE.id })
+        .from(TE)
+        .where(
+          and(
+            eq(TE.admissionId, row.admissionId),
+            eq(TE.direction, "in"),
+            eq(TE.periodSequenceAtTransfer, Number(row.sequenceNumber)),
+          ),
+        )
+        .limit(1);
       return {
         electionPeriodId: row.id,
         admissionId: row.admissionId,
@@ -203,6 +242,7 @@ export function electionPeriodContextForOrg(
         status: String(row.status),
         effectiveAt: localDateN(row.effectiveAt),
         scheduledEndAt: localDateN(row.scheduledEndAt),
+        isElectionStart: !inherited && !earlier,
       };
     },
   );
@@ -220,14 +260,38 @@ export function electionPeriodContextForOrg(
  */
 export interface ClaimRangeAdmission {
   readonly admissionId: string;
-  /** `admission_at` coalesced to `activated_at` — the CURRENT election's admission date the HIPPS day
-   *  counter anchors on (`packages/billing/src/hipps/calculator.ts`'s own doc: it does not (yet) count
-   *  cumulative days across sequential elections, so this admission's own start is the right anchor). */
+  /** `admission_at` coalesced to `activated_at` — day 1 of THIS stay in the HIPPS day counter; earlier stays a
+   *  readmission continues are carried separately in `rhcPriorHospiceDays` (this date also anchors the NOE
+   *  admission day, so it is never shifted). */
   readonly hospiceAdmissionDate: string;
+  /** Hospice days of this patient's earlier stays with us — plus a transfer-in's sending-hospice span — that
+   *  carry into this stay's two-tier RHC day count (a readmission within 60 days of a discharge; Claims
+   *  Processing Manual ch. 11), capped at 60 — 0 when the count starts here. The same rule as M23's
+   *  `computeRhcCarryOver` over `rhcPriorStays` (shared core); other hospices' days known only to HETS are not
+   *  in it (M23 merges them in). */
+  readonly rhcPriorHospiceDays: number;
+  /** This patient's earlier stays with us (start / ending date, both inclusive hospice days), the facts behind
+   *  `rhcPriorHospiceDays`: M23 merges them with the HETS cross-hospice history (`computeRhcCarryOver`). A
+   *  transfer-in (this stay's or an earlier one's) adds the sending hospice's span, flagged `otherHospice`. */
+  readonly rhcPriorStays: readonly RhcPriorStayFact[];
   /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
-   *  is the FILING timestamp, not the CMS-relevant effective date. */
+   *  is the FILING timestamp, not the CMS-relevant effective date. Only a `completed` discharge counts: a
+   *  `voided` one never happened and a `pending_cosign` for-cause filing leaves the admission active (D11). */
   readonly dischargeDate: string | null;
   readonly dischargeReason: string | null;
+  /** `discharge_event.place_of_death` (`home` / `facility` / `unknown`) on a completed death; `null` when not
+   *  a death or not recorded (historic rows). Drives claim patient status 40/41/42. */
+  readonly placeOfDeath: string | null;
+  /** The completed `discharge_event.id` (`null` when none) — lets a blocked claim address the record to fix. */
+  readonly dischargeEventId: string | null;
+  /** The admission's transfer-OUT (`transfer_event`, direction `out`), which ends the stay without a
+   *  `discharge_event` row. `receivingCareSetting` (`home` / `facility`, `null` on historic rows) drives
+   *  claim patient status 50/51. */
+  readonly transferOut: {
+    readonly transferEventId: string;
+    readonly effectiveDate: string;
+    readonly receivingCareSetting: string | null;
+  } | null;
   /** `discharge_event.death_at`, read as a plain UTC calendar date (F-105: M6 models no time of death —
    *  every value in that column is midnight UTC of a typed `LocalDate`, never a real instant). */
   readonly deceasedDate: string | null;
@@ -249,6 +313,10 @@ export interface ClaimRangeElectionPeriod {
    *  attending is not yet a legal election and `voided` carries no live claim (F-127, #251). `null` when
    *  no signed statement names one. */
   readonly attendingPhysicianId: string | null;
+  /** `election_period.f2f_exception_reason` is on file: a NEW admission's first period (3+) admitted with
+   *  documented exceptional circumstances (MBPM ch. 9 §20.1(5)(d)) — a death within 2 days of the start then
+   *  deems the F2F complete (M23 `f2f_attested_for_recert`). */
+  readonly f2fExceptionDocumented: boolean;
 }
 
 export interface ClaimRangeCertification {
@@ -356,22 +424,66 @@ export async function claimAssemblyRangeContextForOrg(
       if (!candidate) return null;
       const admissionId = candidate.id;
 
+      // Only a COMPLETED discharge ends the stay: a voided row never happened, and a for-cause filing that is
+      // still `pending_cosign` leaves the admission active until the medical director cosigns (D11).
       const [dischargeRow] = await tx
         .select({
+          id: DE.id,
           effectiveAt: DE.effectiveAt,
           dischargeType: DE.dischargeType,
           deathAt: DE.deathAt,
+          placeOfDeath: DE.placeOfDeath,
         })
         .from(DE)
-        .where(eq(DE.admissionId, admissionId))
+        .where(and(eq(DE.admissionId, admissionId), eq(DE.status, "completed")))
         .limit(1);
 
+      // A transfer-out discharges the admission without a discharge_event row (§2.3.1); R-XFR-01 allows one
+      // per benefit period, so take the latest.
+      const [transferOutRow] = await tx
+        .select({
+          id: TE.id,
+          effectiveAt: TE.effectiveAt,
+          receivingCareSetting: TE.receivingCareSetting,
+        })
+        .from(TE)
+        .where(and(eq(TE.admissionId, admissionId), eq(TE.direction, "out")))
+        .orderBy(desc(TE.effectiveAt))
+        .limit(1);
+
+      const priorEpisodes = await loadPriorEpisodes(
+        tx as DbClient,
+        organizationId,
+        patientId,
+        admissionId,
+      );
+      const currentTransferIn = await loadTransferInSources(tx as DbClient, organizationId, [
+        admissionId,
+      ]);
+      // A transfer-in's sending-hospice days of the inherited period carry into this stay's RHC count too —
+      // in the stays list M23 merges with HETS AND in M6's own fallback count over the same facts.
+      const rhcPriorStays = rhcPriorStayFacts(priorEpisodes, {
+        admissionId,
+        transferredIn: currentTransferIn.get(admissionId) ?? null,
+      });
+      const rhc = rhcCarryOver(rhcPriorStays, localDate(candidate.start));
       const admission: ClaimRangeAdmission = {
         admissionId,
         hospiceAdmissionDate: localDate(candidate.start),
+        rhcPriorHospiceDays: rhc.priorHospiceDays,
+        rhcPriorStays,
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
+        placeOfDeath: dischargeRow?.placeOfDeath ?? null,
+        dischargeEventId: dischargeRow?.id ?? null,
+        transferOut: transferOutRow
+          ? {
+              transferEventId: transferOutRow.id,
+              effectiveDate: localDate(transferOutRow.effectiveAt),
+              receivingCareSetting: transferOutRow.receivingCareSetting ?? null,
+            }
+          : null,
         hospicePhysicianId: candidate.hospicePhysicianId,
       };
 
@@ -383,6 +495,7 @@ export async function claimAssemblyRangeContextForOrg(
           scheduledEndAt: EP.scheduledEndAt,
           actualEndAt: EP.actualEndAt,
           completedByCause: EP.completedByCause,
+          f2fExceptionReason: EP.f2fExceptionReason,
         })
         .from(EP)
         .where(and(eq(EP.admissionId, admissionId), isNotNull(EP.effectiveAt)))
@@ -420,6 +533,7 @@ export async function claimAssemblyRangeContextForOrg(
         revoked: p.completedByCause === "revocation",
         revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
         attendingPhysicianId: attendingByPeriod.get(p.id) ?? null,
+        f2fExceptionDocumented: !!p.f2fExceptionReason?.trim(),
       }));
       const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
 
@@ -913,6 +1027,40 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         ];
         return summaryOf(row, periodBy.get(row.id) ?? null, locBy.get(row.id) ?? null);
       });
+    },
+
+    async admissionPatientCare(organizationId, admissionId) {
+      // Org-explicit (relay-tick-safe): its own `withOrgContext`, explicit organization_id predicate.
+      return withOrgContext(
+        db,
+        { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({ admissionId: ADM.id, patientId: ADM.patientId, status: ADM.status })
+            .from(ADM)
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+            .limit(1);
+          if (!row) return null; // unknown id / not visible under RLS
+          const [other] = await tx
+            .select({ id: ADM.id })
+            .from(ADM)
+            .where(
+              and(
+                eq(ADM.organizationId, organizationId),
+                eq(ADM.patientId, row.patientId),
+                ne(ADM.id, admissionId),
+                inArray(ADM.status, ["active", "on_hold"]),
+              ),
+            )
+            .limit(1);
+          return {
+            admissionId: row.admissionId,
+            patientId: row.patientId,
+            status: row.status,
+            otherAdmissionUnderCare: other !== undefined,
+          };
+        },
+      );
     },
 
     async admissionSiting(organizationId, admissionId) {

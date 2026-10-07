@@ -6,6 +6,11 @@
 // §6.3 table, as PURE data + functions (no I/O, no throw; the slice maps a verdict to a thrown
 // AdmissionStateError so the §2.4 code catalog stays the one place codes→status are bound).
 
+import {
+  PLACE_OF_DEATH_NOT_ALLOWED_MESSAGE,
+  PLACE_OF_DEATH_REQUIRED_MESSAGE,
+} from "./discharge-details";
+
 /** The §4.2.7 discharge reasons (canonical list; the TypeBox schema's union is built from this). */
 export const DISCHARGE_REASONS = [
   "death",
@@ -98,8 +103,62 @@ export interface DischargeNarrativeIssue {
   readonly code:
     | "NARRATIVE_REQUIRED_FOR_CAUSE"
     | "DISCHARGE_NARRATIVE_TOO_SHORT"
-    | "DEATH_CERTIFIER_INVALID";
+    | "DEATH_CERTIFIER_INVALID"
+    | "PLACE_OF_DEATH_REQUIRED"
+    | "PLACE_OF_DEATH_NOT_ALLOWED";
   readonly message: string;
+  /** The request field the issue is about, when it is one field (rendered as the error's `details[]`). */
+  readonly field?: string;
+}
+
+/** Where the patient died (`discharge_event.place_of_death`) — drives claim patient status 40/41/42. */
+export const PLACES_OF_DEATH = ["home", "facility", "unknown"] as const;
+export type PlaceOfDeath = (typeof PLACES_OF_DEATH)[number];
+
+/**
+ * A death discharge must say where the patient died: the Medicare claim's patient discharge status is
+ * 40 (home), 41 (medical facility) or 42 (place unknown) — CMS Pub. 100-04 Ch. 11 §30.3. `unknown` is a
+ * valid answer (42); silence is not. Any other reason must NOT carry a place of death.
+ */
+export function checkPlaceOfDeath(
+  reason: DischargeReason,
+  placeOfDeath: string | undefined,
+): DischargeNarrativeIssue | null {
+  if (reason === "death") {
+    if (
+      placeOfDeath === undefined ||
+      !(PLACES_OF_DEATH as readonly string[]).includes(placeOfDeath)
+    ) {
+      return {
+        code: "PLACE_OF_DEATH_REQUIRED",
+        message: PLACE_OF_DEATH_REQUIRED_MESSAGE,
+        field: "placeOfDeath",
+      };
+    }
+    return null;
+  }
+  if (placeOfDeath !== undefined) {
+    return {
+      code: "PLACE_OF_DEATH_NOT_ALLOWED",
+      message: PLACE_OF_DEATH_NOT_ALLOWED_MESSAGE,
+      field: "placeOfDeath",
+    };
+  }
+  return null;
+}
+
+/**
+ * The place of death a discharge records. An external (HL7, W-M6-31) death that does not carry it records
+ * `unknown` (status 42) rather than blocking the intake; every other path keeps what the caller sent so
+ * `checkPlaceOfDeath` can refuse a missing value.
+ */
+export function resolvePlaceOfDeath(
+  reason: DischargeReason,
+  placeOfDeath: PlaceOfDeath | undefined,
+  isExternalSource: boolean,
+): PlaceOfDeath | undefined {
+  if (reason === "death" && isExternalSource) return placeOfDeath ?? "unknown";
+  return placeOfDeath;
 }
 
 /**
@@ -136,4 +195,13 @@ export function checkDischargeNarrative(
     };
   }
   return null;
+}
+
+/** The `details[]` entry an issue renders as (one per field-scoped issue), for `AdmissionStateError`. */
+export function issueDetails(
+  issue: DischargeNarrativeIssue,
+): { field: string; code: string; message: string }[] | undefined {
+  return issue.field
+    ? [{ field: issue.field, code: issue.code, message: issue.message }]
+    : undefined;
 }

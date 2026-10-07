@@ -126,9 +126,11 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEligibilityIdentityReader,
   buildProviderEntityCcnResolver,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
+  buildRequiredProviderEntityCcnResolver,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
@@ -208,6 +210,7 @@ import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction
 import {
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+  buildM5AdmissionDischargedConsumer,
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
@@ -259,6 +262,7 @@ import {
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
   composeNonCoveredItemsReaders,
+  claimStayEndFactsForOrg,
   createAdmissionLocPeriodsReader,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -269,14 +273,18 @@ import {
   idgHospitalEventsForOrg,
   idgPacketInclusionForOrg,
   idgRecertWindowsForOrg,
+  latestLiveEndedEpisode,
   mountAdmissionRoutes,
   portalDischargedPastGraceForOrg,
+  priorEpisodesForOrg,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
   registerAdmissionSeams,
   registerM6CronWorkers,
+  rhcPriorStayFacts,
   scheduleM6Jobs,
+  transferInNoticeContextForOrg,
   wireM6Tenancy,
 } from "./modules/06-admission/index";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
@@ -703,6 +711,7 @@ import {
 // reader seams + the live MAC/X12 binds are follow-ups.
 import {
   type M23BootAssemblyPorts,
+  type M23HetsConfig,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
   type ProviderCcnPort,
@@ -716,6 +725,7 @@ import {
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
+  buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
@@ -728,15 +738,20 @@ import {
   buildM23SubmissionQueuePort,
   buildM23SubmissionRequestConsumer,
   buildM23TaxonomyUnmappedCodeObservedConsumer,
+  buildM23TransferNoticeDraftConsumer,
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
   buildNoticeWindowPort,
+  buildTransferNoticeService,
   createDrizzleBillingEraseStore,
+  createM23HetsTransport,
   createM23LaunchGateway,
+  m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
+  priorElectionClosureForOrg,
   registerBillingErasers,
   registerM23AbacPredicates,
   registerM23DomainWorkers,
@@ -2497,6 +2512,21 @@ function buildFirstAdminAcceptanceService(deps: {
 }
 
 /**
+ * The bound M23 HETS 270/271 port (§4.4). `provider_entity` is M1-owned (arch:tables), so the 2100B NPI +
+ * organization-name read is the M1 bootstrap reader; the MBI comes from M5's `MbiUnlockReader` seam
+ * (resolved lazily per check, so boot registration order never matters).
+ */
+function buildM23HetsPort(db: DbClient, config: M23HetsConfig) {
+  return buildHetsEligibilityPort({
+    transport: createM23HetsTransport(config),
+    submitterId: config.submitterId,
+    usage: config.usage,
+    mbiUnlock: () => getSeam("MbiUnlockReader"),
+    providers: buildProviderEligibilityIdentityReader(db),
+  });
+}
+
+/**
  * The M23 reader ports the claim assembly (route) AND the validation-run worker (GAP-070) both read through.
  * One builder so the route and the worker see the same facts. `provider_entity` is M1-owned (arch:tables), so
  * the CCN reader lives here in the composition root and is shared by the write-service's control-number
@@ -2677,6 +2707,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     ? m23LaunchGatewayConfigFromEnv(process.env)
     : null;
   const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
+  // M23 §4.4 HETS 270/271 — bound ONLY when `M23_HETS_TRANSPORT` is set (`core_mime` to CMS / a clearinghouse,
+  // or the dev/test `sandbox`, refused in production). Unset → the eligibility.refresh worker stays unbound and
+  // POST /billing/eligibility/check keeps answering 503: never a fabricated eligibility result. A present but
+  // invalid configuration throws here, so a typo fails the boot instead of silently disabling eligibility.
+  const m23HetsConfig = m23HetsConfigFromEnv(process.env);
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
   // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
@@ -3500,6 +3535,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
             // FY2027 — the election statement addendum routes (42 CFR 418.24(c)/(d)).
             m6ElectionAddendum ?? undefined,
+            // Readmission workflow — whether the prior election's NOTR / final claim is on file (M23's own query;
+            // M6 may not import M23, so the fact crosses here).
+            {
+              closureFor: (organizationId, q) =>
+                priorElectionClosureForOrg(dbHandle.db, organizationId, q),
+            },
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
@@ -3865,18 +3906,54 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
-            readService: buildDrizzleM23ReadService(dbHandle.db),
+            readService: buildDrizzleM23ReadService(dbHandle.db, {
+              // How each claim's stay ended, from M6's live facts (org-explicit, batched): the claim list /
+              // detail "needs attention" block — missing place of death / receiving care setting, and a Type
+              // of Bill the resolver now derives differently (812/813 → 811/814).
+              stayEndFacts: {
+                forAdmissions: (orgId, admissionIds) =>
+                  claimStayEndFactsForOrg(dbHandle.db, orgId, admissionIds),
+              },
+              // The hospice-periods read reports `hets_not_configured` when no transport is bound.
+              hetsConfigured: m23HetsConfig !== null,
+              // Two-tier RHC carry-over on the readmission screen: M6's earlier stays, merged with HETS.
+              priorStays: {
+                async forPatient(organizationId, patientId) {
+                  const episodes = await priorEpisodesForOrg(
+                    dbHandle.db,
+                    organizationId,
+                    patientId,
+                  );
+                  // Incl. a transfer-in's sending-hospice span (same election, carries into the count).
+                  return rhcPriorStayFacts(episodes);
+                },
+              },
+            }),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
+              // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
+              priorLiveEndedStay: {
+                async latestPriorLiveEndedAdmission(organizationId, q) {
+                  const prior = latestLiveEndedEpisode(
+                    await priorEpisodesForOrg(
+                      dbHandle.db,
+                      organizationId,
+                      q.patientId,
+                      q.currentAdmissionId,
+                    ),
+                  );
+                  return prior ? { admissionId: prior.admissionId } : null;
+                },
+              },
               jobs: buildM23OutboxBackedSubmissionGate({
                 "claim.submit": m23SubmissionQueues !== null,
                 "noe.submit": m23SubmissionQueues !== null,
                 "notr.submit": m23SubmissionQueues !== null,
                 // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
                 "validation-run": m23WorkQueues !== null,
-                // HETS 270/271 is unbound (no clearinghouse client / M5 MBI-unlock seam): refuse rather
-                // than accept an eligibility request no worker can complete.
-                "eligibility.refresh": false,
+                // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
+                // queue; otherwise refuse (503) rather than accept a request no worker can complete.
+                "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
             }),
@@ -3884,6 +3961,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               outbox: m23OutboxPublisher,
               providerCcn: m23ProviderCcn,
               ...m23AssemblyPorts,
+            }),
+            // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
+            // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
+            // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
+            transferNoticeService: buildTransferNoticeService(dbHandle.db, {
+              outbox: m23OutboxPublisher,
+              jobs: buildM23OutboxBackedSubmissionGate({
+                "transfer_notice.submit": m23SubmissionQueues !== null,
+              }),
+              transferInFacts: (organizationId, transferEventId) =>
+                transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
             }),
           });
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -5015,9 +5103,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     //      (registerM23Workers had no caller), so revalidation jobs piled up unconsumed and every watch tick threw
     //      `unboundWorkerPort`.
     //   2. + the launch gateway: claim/NOE/NOTR submit[.retry], the 999/277CA ack pulls and MAC-portal health.
-    //   3. HETS 270/271 (`hets`) stays UNBOUND: there is no clearinghouse client and no M5 MBI-unlock seam in
-    //      this codebase yet, so the `eligibility.refresh` job fails closed when it runs and the route-side gate
-    //      below keeps refusing eligibility checks (503) rather than accepting work that cannot complete.
+    //   3. HETS 270/271 (`hets`) is bound only when `M23_HETS_TRANSPORT` is configured (M5's MbiUnlockReader
+    //      supplies the transient MBI). Unconfigured, the `eligibility.refresh` job fails closed when it runs
+    //      and the route-side gate keeps refusing eligibility checks (503).
     const m23AlertEmitter = getSeam("AlertEmitter") as {
       emit(
         orgId: string,
@@ -5044,8 +5132,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         providerCcn: m23ClaimSeamPorts.providerCcn,
         ...m23ClaimSeamPorts.assemblyPorts,
       }),
-      eligibilityBound: false,
+      // The §11.A eligibility rules read eligibility_check only when HETS can actually refresh it.
+      eligibilityBound: m23HetsConfig !== null,
     });
+    const m23Hets = m23HetsConfig ? buildM23HetsPort(dbHandle.db, m23HetsConfig) : undefined;
+    app.log.info(
+      { hetsTransport: m23HetsConfig?.transport ?? "unbound" },
+      "M23 HETS 270/271 eligibility transport",
+    );
     const m23CoreWorkerDeps = buildM23WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -5069,6 +5163,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       // The revalidate consumer's `validation-run` fan-out producer (GAP-070).
       enqueue: m23WorkQueues?.port,
+      // §4.4 HETS 270/271 — bound only when configured (see `m23HetsConfig` above).
+      hets: m23Hets,
     });
     let m23Workers: Worker[] = [
       ...registerM23DomainWorkers(m23CoreWorkerDeps),
@@ -6875,7 +6971,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
-          buildM5AdmissionSitingConsumer({ db: dbHandle.db }),
+          buildM5AdmissionSitingConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // §2.4.1 — a LIVE discharge (revocation, transfer out, moved, no longer terminal, for cause,
+          // other) moves the chart `active/on_hold → discharged`; a death is the death cascade's.
+          buildM5AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-165 (#248, m24 group) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
           // M17's shift-assignment Valkey cache, unioned additively into `CaseloadProvider`'s read
           // (see `wireModuleSeams`'s `caseloadShiftCacheRedis` wiring above). Gated on the dedicated
@@ -7446,20 +7545,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m23OutboxPublisher,
             resolveElectionPeriod: async (organizationId, electionPeriodId) =>
               electionPeriodContextForOrg(dbHandle.db, organizationId, electionPeriodId),
-            resolveCcn: async (organizationId, providerEntityId) => {
-              const [provider] = await dbHandle.db
-                .select({ ccn: schema.providerEntities.ccn })
-                .from(schema.providerEntities)
-                .where(
-                  and(
-                    eq(schema.providerEntities.id, providerEntityId),
-                    eq(schema.providerEntities.organizationId, organizationId),
-                  ),
-                )
-                .limit(1);
-              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
-              return provider.ccn;
-            },
+            // Org-scoped read (a relay tick has no app.org_id — the 22P02 that stranded transfer-outs).
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
             onSkipped: (info) =>
               app.log.info(
                 {
@@ -7478,20 +7565,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m23OutboxPublisher,
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
-            resolveCcn: async (organizationId, providerEntityId) => {
-              const [provider] = await dbHandle.db
-                .select({ ccn: schema.providerEntities.ccn })
-                .from(schema.providerEntities)
-                .where(
-                  and(
-                    eq(schema.providerEntities.id, providerEntityId),
-                    eq(schema.providerEntities.organizationId, organizationId),
-                  ),
-                )
-                .limit(1);
-              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
-              return provider.ccn;
-            },
+            // Org-scoped read (a relay tick has no app.org_id — the 22P02 that stranded transfer-outs).
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
             onSkipped: (info) =>
               app.log.info(
                 {
@@ -7501,6 +7576,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   admission: info.admissionId,
                 },
                 "M23 NOTR draft skipped",
+              ),
+          }),
+          // The 8xC transfer notice — the receiving hospice's filing for a transfer-in (direction `in` of
+          // `m6.transfer.created`; the NOTR binding above takes direction `out`). A transfer-in's inherited
+          // period is deliberately skipped by the NOE draft (8xA opens an election; 8xC continues one).
+          buildM23TransferNoticeDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveTransferIn: async (organizationId, transferEventId) =>
+              transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  org: info.organizationId,
+                  transferEvent: info.transferEventId,
+                },
+                "M23 transfer notice draft skipped",
               ),
           }),
           buildM23RemittanceConsumer({

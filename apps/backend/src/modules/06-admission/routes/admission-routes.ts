@@ -10,12 +10,26 @@
 // bypass the per-reason policy by changing the path. §4.6: the four role-gated signer/override
 // predicates M6 owns are wired via `requireAbac` (routes 31/32/40/46); the scope + signer-identity
 // predicates resolve through M6's registered resolvers (see abac-predicates.ts).
-import { hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
+import {
+  INTAKE_ROLE_KEYS,
+  hasAdmittingClinicianRole,
+  hasOrgWideScope,
+  requireAbac,
+  requireAnyAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
-import { deriveDischargePermissionKey } from "../discharge";
+import {
+  type DischargeDetailBodyIssue,
+  checkPlaceOfDeathBody,
+  checkTransferOutCareSettingBody,
+  deriveDischargePermissionKey,
+} from "../discharge";
+import { AdmissionStateError } from "../state-machines/errors";
 import {
   AdmissionActivateSchema,
   AdmissionCreateSchema,
@@ -74,6 +88,12 @@ import {
   UploadedNoticeOfRightsSchema,
   parse,
 } from "./admission-typebox";
+import { registerDischargeDetailsRoutes } from "./discharge-details-routes";
+import type { DischargeDetailsService } from "./discharge-details-service";
+import { registerDischargeWorklistRoutes } from "./discharge-worklist-routes";
+import type { DischargeWorklistService } from "./discharge-worklist-service";
+import { registerReadmissionRoutes } from "./readmission-routes";
+import type { ReadmissionService } from "./readmission-service";
 import {
   type AdmissionReadScope,
   type AdmissionRouteService,
@@ -85,6 +105,21 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface AdmissionRouteDeps {
   service: AdmissionRouteService;
+  /**
+   * The after-the-fact discharge-details service (place of death / receiving care setting). Absent in slices
+   * that do not need it — its routes then answer 503 DEGRADED rather than disappearing.
+   */
+  dischargeDetails?: DischargeDetailsService;
+  /**
+   * The end-of-episode worklist (the web "Discharge / transfer" hub). Absent in slices that do not need it — its
+   * route then answers 503 DEGRADED.
+   */
+  dischargeWorklist?: DischargeWorklistService;
+  /**
+   * The readmission / new-admission benefit-period plan. Absent in slices that do not need it — its routes then
+   * answer 503 DEGRADED.
+   */
+  readmission?: ReadmissionService;
   /**
    * The patients on a clinician's caseload (GAP-020) — defaults to M5's published `CaseloadProvider` seam.
    * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
@@ -123,6 +158,33 @@ async function readScopeOf(
   } catch {
     return { patientIds: sessionIds };
   }
+}
+
+/**
+ * The Readmit list's scope (discharge worklist `bucket=recently_discharged` ONLY). A readmission candidate's caseload
+ * assignment has usually ended, so the census narrowing alone shows a nurse nothing to readmit. An `admission.create`
+ * holder therefore also sees the bucket's rows that the readmission routes would let them open:
+ *   • an intake role → org-wide (`admission_intake_scope`: every row of the bucket is a patient with no ongoing stay);
+ *   • an admitting clinician (rn / lpn / md / np / pa …) → their own site (`admission_clinical_site_scope`).
+ * Anyone else — and anyone without `admission.create` — keeps {@link readScopeOf}.
+ */
+async function readmissionScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: CaseloadLookup,
+): Promise<AdmissionReadScope> {
+  const base = await readScopeOf(request, caseloadPatientIds);
+  if (base.patientIds === null) return base;
+  const ctx = request.context;
+  const intake = INTAKE_ROLE_KEYS.some((role) => ctx.roles.includes(role));
+  const clinician = hasAdmittingClinicianRole(ctx.roles);
+  if (!intake && !clinician) return base;
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("admission.create")) return base;
+  if (intake) return { patientIds: null };
+  return {
+    ...base,
+    sites: { providerEntityIds: [...ctx.providerEntityIds], locationIds: [...ctx.locationIds] },
+  };
 }
 
 function actorOf(request: FastifyRequest): {
@@ -252,6 +314,62 @@ const patientScope = (action: string, source: "params" | "body"): PreHandler =>
     },
   }) as PreHandler;
 
+/** The patient id a patient-keyed guard targets (`:patientId` path param, or the POST /admissions body). */
+const patientIdOf = (raw: unknown): unknown =>
+  (raw as { patientId?: unknown } | null | undefined)?.patientId;
+
+/**
+ * The new-admission / readmission routes ONLY: `caseload_or_scope` OR `admission_intake_scope` OR
+ * `admission_clinical_site_scope`. An intake user (intake_coordinator / intake_supervisor) works on patients who are
+ * not on anyone's caseload yet, so the caseload predicate alone 404'd the readmission plan and the create for them.
+ * `admission_intake_scope` (abac-predicates.ts) opens the route only for an intake role, a patient of the caller's
+ * org, and a patient with no active / on-hold admission. `admission_clinical_site_scope` opens it for a nurse /
+ * physician / NP / PA at the patient's own site (a former patient's caseload assignment has ended by the time they
+ * are readmitted). Same `notFoundOnDeny` non-leak as `patientScope`. Every other patient-keyed route keeps
+ * `patientScope` alone.
+ */
+/** The earlier stay a POST /admissions body names as its readmission source (`readmittedFromAdmissionId`). */
+const priorAdmissionIdOf = (raw: unknown): unknown =>
+  (raw as { readmittedFromAdmissionId?: unknown } | null | undefined)?.readmittedFromAdmissionId;
+
+const patientOrIntakeScope = (action: string, source: "params" | "body"): PreHandler =>
+  requireAnyAbac(
+    action,
+    ["caseload_or_scope", "admission_intake_scope", "admission_clinical_site_scope"],
+    {
+      notFoundOnDeny: true,
+      getTarget: (request) => {
+        if (source === "params") return { patientId: patientIdOf(request.params) };
+        // The body's readmission source travels as `priorAdmissionId` — only the clinical site predicate reads it
+        // (and requires it to be the SAME patient's stay); the other two keep keying off `patientId` alone.
+        const prior = priorAdmissionIdOf(request.body);
+        return {
+          patientId: patientIdOf(request.body),
+          ...(prior !== undefined ? { priorAdmissionId: prior } : {}),
+        };
+      },
+    },
+  ) as PreHandler;
+
+/**
+ * `GET /admissions/:id/readmission-context` ONLY: `admission.scope` OR `admission_intake_scope` OR
+ * `admission_clinical_site_scope` over the earlier stay `:id` (the last two resolve it to its patient).
+ */
+const admissionOrIntakeScope = (action: string): PreHandler =>
+  requireAnyAbac(
+    action,
+    ["admission.scope", "admission_intake_scope", "admission_clinical_site_scope"],
+    {
+      notFoundOnDeny: true,
+      getTarget: (request) => {
+        const params = (
+          typeof request.params === "object" && request.params ? request.params : {}
+        ) as Record<string, unknown>;
+        return { ...params, admissionId: params.id };
+      },
+    },
+  ) as PreHandler;
+
 // The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
 // shape — no `resourceKind` involved).
 const ABAC_CTI_HOSPICE_MD = requireAbac("cti.sign_hospice_md", "cti.is_hospice_md") as PreHandler;
@@ -271,6 +389,14 @@ function dischargeReasonGuard(): PreHandler {
   };
 }
 
+/** The claim-relevant field prechecks (transfer-out care setting, place of death) as a field-scoped 422. */
+function throwBodyIssue(issue: DischargeDetailBodyIssue | null): void {
+  if (!issue) return;
+  throw new AdmissionStateError(issue.code, issue.message, [
+    { field: issue.field, code: issue.code, message: issue.message },
+  ]);
+}
+
 const notFound = (id: string): never => {
   throw new ResourceNotFoundError(id);
 };
@@ -278,6 +404,20 @@ const notFound = (id: string): never => {
 export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRouteDeps): void {
   const { service } = deps;
   const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
+  // After-the-fact claim details (place of death / receiving care setting) — own registrar + service.
+  registerDischargeDetailsRoutes(app, { service: deps.dischargeDetails });
+  // The end-of-episode worklist — same caseload narrowing as the census.
+  registerDischargeWorklistRoutes(app, {
+    service: deps.dischargeWorklist,
+    readScope: (request) => readScopeOf(request, caseloadPatientIds),
+    readmissionScope: (request) => readmissionScopeOf(request, caseloadPatientIds),
+  });
+  // The benefit-period plan behind the readmission screen and the New admission benefit-period field.
+  registerReadmissionRoutes(app, {
+    service: deps.readmission,
+    admissionGuards: [ADMISSION_READ, admissionOrIntakeScope("admission.read")],
+    patientGuards: [ADMISSION_READ, patientOrIntakeScope("admission.read", "params")],
+  });
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
   app.post("/api/v1/referrals", { preHandler: [REFERRAL_CREATE] }, async (request, reply) => {
@@ -409,6 +549,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           patientId: body.patientId,
           primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
           attendingPhysicianId: body.attendingPhysicianId,
+          benefitPeriod: body.benefitPeriod,
+          f2fException: body.f2fException,
+          admissionDate: body.admissionDate,
         },
         body.ifVersion,
         userId,
@@ -429,6 +572,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           patientId: body.patientId,
           primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
           attendingPhysicianId: body.attendingPhysicianId,
+          benefitPeriod: body.benefitPeriod,
+          f2fException: body.f2fException,
+          admissionDate: body.admissionDate,
         },
         body.ifVersion,
         userId,
@@ -572,7 +718,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admissions",
-    { preHandler: [ADMISSION_CREATE, patientScope("admission.create", "body")] },
+    { preHandler: [ADMISSION_CREATE, patientOrIntakeScope("admission.create", "body")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(AdmissionCreateSchema, request.body);
@@ -1196,6 +1342,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [TRANSFER_OUT, admissionScope("transfer.out")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      throwBodyIssue(checkTransferOutCareSettingBody(request.body));
       const body = parse(TransferOutSchema, request.body);
       const res = await service.transferOut(
         organizationId,
@@ -1204,6 +1351,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           effectiveDate: body.effectiveDate,
           otherHospiceName: body.otherHospiceName,
           otherHospiceCcn: body.otherHospiceCcn,
+          receivingCareSetting: body.receivingCareSetting,
           narrative: body.narrative,
         },
         userId,
@@ -1229,6 +1377,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           effectiveDate: body.effectiveDate,
           otherHospiceName: body.otherHospiceName,
           otherHospiceCcn: body.otherHospiceCcn,
+          otherHospiceNpi: body.otherHospiceNpi,
           narrative: body.narrative,
         },
         userId,
@@ -1243,6 +1392,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [dischargeReasonGuard()] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      throwBodyIssue(checkPlaceOfDeathBody(request.body));
       const body = parse(DischargeCreateSchema, request.body);
       const res = await service.discharge(
         organizationId,
@@ -1254,6 +1404,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           forCauseReason: body.forCauseReason,
           deathCertifierId: body.deathCertifierId,
           dischargeOrder: body.dischargeOrder,
+          placeOfDeath: body.placeOfDeath,
         },
         userId,
       );

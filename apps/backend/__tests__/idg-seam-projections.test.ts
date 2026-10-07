@@ -1,7 +1,7 @@
 // Pure projections behind the M14 IDG read enrichment (no DB):
 //   • M5 `toPatientDisplayLabel` — "First L." + MRN last-4, nothing more crosses the seam;
 //   • M6 `projectIdgRecertWindow` — the per-patient recert/F2F window over M6's OWN window math (CMS 418.22
-//     prior-to window [start-30, start-1], F2F required from the 3rd benefit period).
+//     window [start-30, start] (first day timely), F2F required from the 3rd benefit period).
 import { describe, expect, it } from "vitest";
 import { toPatientDisplayLabel } from "../src/modules/05-patient/seams/patient-display-for-org";
 import { projectIdgRecertWindow } from "../src/modules/06-admission/seams/idg-recert-windows-for-org";
@@ -38,7 +38,7 @@ const period = (
 ) => ({ id, admissionId: "adm", sequence, status, start, end });
 
 describe("projectIdgRecertWindow (M6)", () => {
-  it("period 2 active → next period is #3: F2F required, window_open inside [start-30, start-1], unattested", () => {
+  it("period 2 active → next period is #3: F2F required, window_open inside [start-30, start], unattested", () => {
     const w = projectIdgRecertWindow({
       patientId: "p",
       admissionId: "adm",
@@ -59,7 +59,7 @@ describe("projectIdgRecertWindow (M6)", () => {
       daysUntilNextRecert: 20,
       f2fRequired: true,
       f2fWindowStart: "2026-05-31",
-      f2fWindowEnd: "2026-06-29",
+      f2fWindowEnd: "2026-06-30",
       f2fStatus: "window_open",
       f2fWindowState: "window_open",
       f2fScheduledDate: "2026-06-20",
@@ -81,13 +81,24 @@ describe("projectIdgRecertWindow (M6)", () => {
     });
     expect(attested).toMatchObject({ f2fStatus: "attested", f2fWindowState: "not_due" });
 
-    // today past windowEnd (2026-06-29) with the period still un-flipped → missed/overdue
-    const overdue = projectIdgRecertWindow({
+    // the period's first day (2026-06-30) is still timely (MBPM ch. 9 §20.1(5)(a))
+    const firstDay = projectIdgRecertWindow({
       patientId: "p",
       admissionId: "adm",
       periods: [period("e2", 2, "active", "2026-04-01", "2026-06-29"), periods[1]!],
       f2fByPeriodId: new Map(),
       today: "2026-06-30",
+      timeZone: TZ,
+    });
+    expect(firstDay).toMatchObject({ f2fStatus: "window_open" });
+
+    // today past windowEnd (2026-06-30) with the period still un-flipped → missed/overdue
+    const overdue = projectIdgRecertWindow({
+      patientId: "p",
+      admissionId: "adm",
+      periods: [period("e2", 2, "active", "2026-04-01", "2026-06-29"), periods[1]!],
+      f2fByPeriodId: new Map(),
+      today: "2026-07-01",
       timeZone: TZ,
     });
     expect(overdue).toMatchObject({ f2fStatus: "missed", f2fWindowState: "overdue" });

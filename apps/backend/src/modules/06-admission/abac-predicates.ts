@@ -1,6 +1,6 @@
 // apps/backend/src/modules/06-admission/abac-predicates.ts — M6-T06 (spec §4.6).
 //
-// The TEN named ABAC predicate resolvers M6 OWNS and registers into M3's named-predicate registry
+// The TWELVE named ABAC predicate resolvers M6 OWNS and registers into M3's named-predicate registry
 // (M3 §3.4). Each is a typed `(context, target) => boolean` evaluated server-side AFTER RBAC passes;
 // M6 never authorizes by reading the request body — the resource's owner facts are loaded through the
 // injected `AdmissionAbacResolver` (org-scoped, RLS-backstopped). `patient.scope` (route 8) is M5's
@@ -15,7 +15,13 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
 // is idempotent via registerPredicateIdempotent.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  INTAKE_ROLE_KEYS,
+  hasAdmittingClinicianRole,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import { F2F_PERFORMER_ROLE_KEYS } from "./certification/f2f-performer";
 import {
@@ -40,6 +46,8 @@ export const M6_ABAC_PREDICATES = [
   "discharge.is_order_signer",
   "compliance.scope",
   "compliance.window_override",
+  "admission_intake_scope",
+  "admission_clinical_site_scope",
 ] as const;
 
 /** The four §4.6 predicates the routes wire via `requireAbac` (pure over `context.roles`). */
@@ -62,6 +70,18 @@ const UNSITED_ADMISSION_ROLES = [
   "tenant_admin",
 ] as const;
 
+/**
+ * `admission_intake_scope` — the intake roles (M6 spec §6.1/§6.2). The SAME two keys
+ * `INTAKE_DEFAULT_GRANTS` (packages/auth) grants the readmission-flow permissions to.
+ */
+const INTAKE_ROLES: readonly string[] = INTAKE_ROLE_KEYS;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidField = (target: AbacTarget, field: string): string | null => {
+  const value = target[field];
+  return typeof value === "string" && UUID.test(value) ? value : null;
+};
+
 /** Deps for M6's ABAC predicate resolvers (the slice injects an in-memory resolver + caseload stub). */
 export interface AdmissionAbacDeps {
   /** Loads a resource's org-scoped owner facts (in-memory in the slice; Drizzle in prod). */
@@ -77,6 +97,20 @@ export interface AdmissionAbacDeps {
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
+
+/**
+ * `admission_clinical_site_scope`'s site test: the LOCATION decides when both the caller and the subject know one
+ * (a nurse scoped to one location of a provider entity does not reach the entity's other locations); otherwise the
+ * provider entity decides. A subject with no site at all never matches here.
+ */
+function inCallerSite(
+  context: AbacContext,
+  providerEntityId: string | null,
+  locationId: string | null,
+): boolean {
+  if (locationId && context.locationIds.length > 0) return context.locationIds.includes(locationId);
+  return providerEntityId !== null && context.providerEntityIds.includes(providerEntityId);
+}
 const targetId = (target: AbacTarget): string | null =>
   typeof target.id === "string" && target.id.length > 0 ? target.id : null;
 
@@ -109,7 +143,7 @@ function resourceKindOf(target: AbacTarget): AdmissionScopeResourceKind {
 }
 
 /**
- * Build M6's ten §4.6 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
+ * Build M6's ten §4.6 predicate resolvers + `admission_intake_scope` + `admission_clinical_site_scope` over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers these into the shared registry via {@link registerAdmissionAbacPredicates}).
  */
 export function buildAdmissionAbacPredicates(
@@ -118,10 +152,30 @@ export function buildAdmissionAbacPredicates(
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
+  /**
+   * The §6.8 clinician arm of `admission.scope` for an UNSITED admission (see admissionScopeFor): an admitting
+   * clinician reaches it only when (a) they opened it (`createdByUserId`, POST /admissions) or (c) the patient's chart
+   * is sited at their site. A chart that has never been sited grants NOTHING here — otherwise every clinician with any
+   * site scope reached every other site's pending admission of a brand-new patient. (No intended site is recorded at
+   * creation — POST /admissions carries none — so there is no (b) arm.)
+   */
+  const unsitedAdmissionAtCallerSite = async (
+    context: AbacContext,
+    facts: { patientId: string; createdByUserId?: string | null },
+  ): Promise<boolean> => {
+    if (!hasAdmittingClinicianRole(context.roles)) return false;
+    if (context.userId && facts.createdByUserId && facts.createdByUserId === context.userId)
+      return true;
+    if (context.providerEntityIds.length === 0 && context.locationIds.length === 0) return false;
+    const chart = await resolver.loadPatientIntakeFacts(context.organizationId, facts.patientId);
+    if (!chart) return false;
+    return inCallerSite(context, chart.providerEntityId, chart.locationId);
+  };
+
   /** Caseload-or-scope over an admission's patient (medical_director = org-wide). §4.6 admission.scope. */
   const admissionScopeFor = async (
     context: AbacContext,
-    facts: { patientId: string; providerEntityId: string | null },
+    facts: { patientId: string; providerEntityId: string | null; createdByUserId?: string | null },
   ): Promise<boolean> => {
     if (hasRole(context, "medical_director")) return true; // org-wide
     if (
@@ -130,6 +184,12 @@ export function buildAdmissionAbacPredicates(
     )
       return true;
     if (facts.providerEntityId && context.providerEntityIds.includes(facts.providerEntityId))
+      return true;
+    // An admitting clinician (§6.8) and an UNSITED admission — a new admission stays unsited until its election is
+    // drafted, so without this the nurse / physician who just opened it could not reach it. Narrower than the
+    // unsited-admission roles above (which reach every unsited admission of the org): only the clinician who opened
+    // it, or one at the site the patient's chart is sited at. A SITED admission keeps the provider-entity arm alone.
+    if (facts.providerEntityId === null && (await unsitedAdmissionAtCallerSite(context, facts)))
       return true;
     if (!context.userId) return false;
     return isInCaseload({
@@ -260,14 +320,71 @@ export function buildAdmissionAbacPredicates(
       return admissionScopeFor(context, {
         patientId: facts.patientId,
         providerEntityId: facts.providerEntityId,
+        createdByUserId: facts.createdByUserId ?? null,
       });
     },
     "compliance.window_override": async (context) => hasRole(context, "compliance_officer"),
+    // An intake user reaches a patient who is NOT on their caseload for the new-admission / readmission work
+    // only: the caller holds an intake role (`context.roles`, server-assembled from M3 grants — never a
+    // header), the patient is a patient of the caller's org (absent / cross-tenant → deny), and the patient has
+    // no `active` / `on_hold` admission (an ongoing stay belongs to its care team). Target: `patientId`, or
+    // `admissionId` (the readmission-context route, keyed by the earlier stay) resolved to its patient.
+    // Composed (OR) beside the routes' own scope predicate on exactly the readmission-flow routes.
+    admission_intake_scope: async (context, target) => {
+      if (!INTAKE_ROLES.some((role) => hasRole(context, role))) return false;
+      const admissionId = uuidField(target, "admissionId");
+      const patientId = admissionId
+        ? ((await resolver.loadAdmission(context.organizationId, admissionId))?.patientId ?? null)
+        : uuidField(target, "patientId");
+      if (!patientId) return false;
+      const facts = await resolver.loadPatientIntakeFacts(context.organizationId, patientId);
+      return facts !== null && !facts.hasActiveOrOnHoldAdmission;
+    },
+    // A nurse, physician, NP or PA (ADMITTING_CLINICIAN_ROLE_KEYS, packages/auth — the same roles migration 0379
+    // grants `admission.create` to) opens a new admission or a readmission for a patient of THEIR OWN SITE:
+    //   • an admitting clinician role in `context.roles` (server-assembled from M3 grants — never a header), and a
+    //     site scope (`context.providerEntityIds` / `.locationIds`, from the membership);
+    //   • the patient is a patient of the caller's org (absent / cross-tenant → deny) with no `active` / `on_hold`
+    //     admission (an ongoing stay is its care team's, reached through `caseload_or_scope`);
+    //   • the patient's site — M5 stamps the chart from the activated admission — is the caller's ({@link inCallerSite}).
+    //     A chart with no site falls back to the named earlier stay's site (a legacy unsited chart); a BRAND-NEW
+    //     patient (no admission in this org at all, so never sited) is placed by their latest site-naming referral;
+    //     only a patient with no site anywhere (no referral site either) is reachable by any admitting clinician who
+    //     has a site scope — create-time only: the pending admission is then reachable by its creator alone.
+    // Target: `patientId`, and/or `admissionId` (the readmission-context route, keyed by the earlier stay) /
+    // `priorAdmissionId` (POST /admissions' `readmittedFromAdmissionId`). When both a patient and a stay are named the
+    // stay must be THAT patient's (a stay can never lend its site to another chart). Composed (OR) beside the routes'
+    // own scope predicate and `admission_intake_scope` on exactly the new-admission / readmission routes.
+    admission_clinical_site_scope: async (context, target) => {
+      if (!hasAdmittingClinicianRole(context.roles)) return false;
+      if (context.providerEntityIds.length === 0 && context.locationIds.length === 0) return false;
+      const stayField = target.admissionId !== undefined ? "admissionId" : "priorAdmissionId";
+      const stayId = uuidField(target, stayField);
+      if (target[stayField] !== undefined && !stayId) return false;
+      const stay = stayId ? await resolver.loadAdmission(context.organizationId, stayId) : null;
+      if (stayId && !stay) return false; // absent / cross-tenant stay
+      if (target.patientId !== undefined && !uuidField(target, "patientId")) return false;
+      const patientId = uuidField(target, "patientId") ?? stay?.patientId ?? null;
+      if (!patientId) return false;
+      if (stay && stay.patientId !== patientId) return false;
+      const facts = await resolver.loadPatientIntakeFacts(context.organizationId, patientId);
+      if (!facts || facts.hasActiveOrOnHoldAdmission) return false;
+      if (facts.providerEntityId !== null || facts.locationId !== null)
+        return inCallerSite(context, facts.providerEntityId, facts.locationId);
+      if (stay) return inCallerSite(context, stay.providerEntityId, stay.locationId ?? null);
+      if (facts.hasAnyAdmission) return false;
+      // A never-admitted patient: placed at the site of their latest site-naming referral when there is one.
+      if (facts.referralProviderEntityId !== null || facts.referralLocationId !== null)
+        return inCallerSite(context, facts.referralProviderEntityId, facts.referralLocationId);
+      // No site anywhere (a chart registered directly, no referral): create-time reach for any admitting clinician
+      // with a site scope. Once opened, the admission is reachable only by its creator until it is sited.
+      return true;
+    },
   };
 }
 
 /**
- * Register M6's ten §4.6 ABAC predicate resolvers into M3's shared registry (M6-T06; idempotent).
+ * Register M6's ten §4.6 ABAC predicate resolvers + `admission_intake_scope` into M3's shared registry (M6-T06; idempotent).
  * Call at boot after the M5 `CaseloadProvider` seam is registered (admission/compliance scope resolve
  * caseload through it). Re-boot (tests) skips already-registered names (single-owner / no-clear).
  */

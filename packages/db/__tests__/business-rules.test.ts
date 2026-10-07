@@ -20,7 +20,23 @@ import "../src/schema/index";
 /** A `pg` DatabaseError as the driver actually presents one: `code` + `constraint` as own props. */
 function pgUniqueViolation(constraint: string): Error {
   const err = new Error(`duplicate key value violates unique constraint "${constraint}"`);
-  Object.assign(err, { code: "23505", constraint, table: "scale_license", severity: "ERROR" });
+  Object.assign(err, {
+    code: "23505",
+    constraint,
+    table: "scale_license",
+    severity: "ERROR",
+  });
+  return err;
+}
+
+function pgExclusionViolation(constraint: string): Error {
+  const err = new Error(`conflicting key value violates exclusion constraint "${constraint}"`);
+  Object.assign(err, {
+    code: "23P01",
+    constraint,
+    table: "visit",
+    severity: "ERROR",
+  });
   return err;
 }
 
@@ -90,6 +106,16 @@ describe("classifyDatabaseError()", () => {
     ).not.toBeNull();
   });
 
+  it("translates a visit overlap exclusion violation into a business conflict", () => {
+    const v = classifyDatabaseError(wrapped(pgExclusionViolation("visit_default_no_overlap")));
+    expect(v).toMatchObject({
+      kind: "business-rule-violation",
+      constraint: "visit_default_no_overlap",
+      reason: "CLINICIAN_SCHEDULE_CONFLICT",
+    });
+    expect(v?.meaning).toBe("This clinician already has another visit during this time.");
+  });
+
   it("returns null for a 23505 on a constraint nobody has written a meaning for", () => {
     // The deliberate choice: silence, not a sentence guessed from the name. The caller keeps the
     // 500 it already got rather than being told something that might be wrong.
@@ -100,7 +126,10 @@ describe("classifyDatabaseError()", () => {
 
   it("returns null for a different SQLSTATE on a registered constraint", () => {
     const err = new Error("null value in column violates not-null constraint");
-    Object.assign(err, { code: "23502", constraint: "scale_license_active_per_org_scale_uq" });
+    Object.assign(err, {
+      code: "23502",
+      constraint: "scale_license_active_per_org_scale_uq",
+    });
     expect(classifyDatabaseError(wrapped(err))).toBeNull();
   });
 

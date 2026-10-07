@@ -41,6 +41,8 @@ export type FaceToFaceEvent =
        *  (a non-route internal caller); the route requires it. */
       readonly encounterLocation: F2fEncounterLocation | null;
       readonly telehealthEligibility: TelehealthEligibilityAttestation | null;
+      /** MBPM ch. 9 §20.1(5)(d) — period-3+ new admission with documented exceptional circumstances. */
+      readonly exceptionDocumented?: boolean;
     }
   | {
       readonly type: "requestWindowOverride";
@@ -91,6 +93,7 @@ export function transitionFaceToFace(
         periodStart: event.periodStart,
         encounterDate: event.encounterDate,
         hasOverride: event.hasOverride,
+        exceptionDocumented: event.exceptionDocumented,
       });
       return result(from, event.type, "completed", [
         {

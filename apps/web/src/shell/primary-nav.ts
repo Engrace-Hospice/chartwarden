@@ -50,7 +50,18 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         // referral detail and Intake review (DocLens faxes start with the referral) live here too —
         // switching between the area's tabs never moves the sidebar highlight.
         claims: ["/admissions", "/compliance/admissions", "/ipu", "/referrals", "/intake"],
-        childOrder: ["/admissions", "/compliance/admissions", "/referrals", "/intake", "/ipu"],
+        // New admission, then the Discharge / transfer hub right below it, then Readmit (the readmission
+        // candidates), then the other admission pages.
+        childOrder: [
+          "/admissions/new",
+          "/admissions/discharges",
+          "/admissions/readmit",
+          "/admissions",
+          "/compliance/admissions",
+          "/referrals",
+          "/intake",
+          "/ipu",
+        ],
       },
       {
         key: "assessments",

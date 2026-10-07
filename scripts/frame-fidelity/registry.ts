@@ -279,4 +279,35 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Census KPI is the REAL active count (GET /patients/census-metrics); Admissions/Discharges/GIP/" +
       "Recerts KPIs are honest '—' placeholders noting their owning module (M6 / billing).",
   },
+  {
+    screenId: "admission.discharge",
+    screen: "Discharge / Revocation / Transfer",
+    module: "M06",
+    frameNode: "m8VaU",
+    penFile: "wardenx-P2-operational.pen",
+    status: "pending",
+    notes:
+      "Built as a stepper workflow (Reason -> Details -> Effective date -> Review -> Confirm) in the " +
+      "patient workspace on the 2026-09-25 redesign kit; not yet matched region-by-region to the frame. " +
+      "All writes are REAL (POST /admissions/:id/discharge | /revocation | /transfer-out). The rail's " +
+      "current benefit period is best-effort from election-certification. Transfer-out records whether the " +
+      "receiving hospice cares for the patient at home or in a facility (claim patient status 50/51), and a " +
+      "for-cause filing links to the cosign screen (admission.discharge-cosign, same workspace frame). " +
+      "Death is its own workflow (admission.death-pronouncement).",
+  },
+  {
+    screenId: "admission.death-pronouncement",
+    screen: "Death & Pronouncement",
+    module: "M06",
+    frameNode: "f7o1r",
+    penFile: "wardenx-P2-operational.pen",
+    status: "pending",
+    notes:
+      "Built as a stepper workflow (Record death -> Review & sign -> Post-death cascade) in the same " +
+      "patient workspace frame as admission.discharge (chart banner, step navigator, flat sections, right " +
+      "rail); not yet matched region-by-region to the frame. The write is REAL (POST " +
+      "/admissions/:id/discharge, reason death) with the pronouncing physician and the place of death " +
+      "(claim patient status 40/41/42). Honest gaps: the frame's family-notification and body-release " +
+      "steps have no backing route, so they are stated as cascade, not drawn as fillable steps.",
+  },
 ];

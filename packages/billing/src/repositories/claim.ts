@@ -14,7 +14,7 @@
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import type { ClaimState } from "../contracts";
+import type { ClaimState, TypeOfBill } from "../contracts";
 import {
   type BillingDb,
   type CursorPage,
@@ -299,5 +299,78 @@ export class ClaimRepository {
     if (row) return versionOk(toClaimRecord(row));
     const current = await this.findById(id);
     return versionConflict(current?.version ?? null);
+  }
+
+  /**
+   * Refresh the DERIVED discharge claim codes (migration 0371) after a re-validation re-derived them from
+   * current M6 facts (e.g. a biller recorded the missing place of death). These columns are a projection of
+   * clinical facts, not a user edit, so the write does NOT bump `version` (an If-Match holder is not
+   * invalidated by a fact refresh) and is a no-op when nothing changed. Returns whether a row was updated.
+   */
+  async refreshDischargeCodes(
+    id: string,
+    codes: {
+      readonly patientStatusCode: string | null;
+      readonly conditionCodes: string[];
+      readonly occurrenceCodes: { code: string; date: string }[];
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        patientStatusCode: codes.patientStatusCode,
+        conditionCodes: codes.conditionCodes,
+        occurrenceCodes: codes.occurrenceCodes,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`(${C.patientStatusCode} IS DISTINCT FROM ${codes.patientStatusCode}
+            OR ${C.conditionCodes} IS DISTINCT FROM ${JSON.stringify(codes.conditionCodes)}::jsonb
+            OR ${C.occurrenceCodes} IS DISTINCT FROM ${JSON.stringify(codes.occurrenceCodes)}::jsonb)`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Keep the claim's derived occurrence spans (migration 0378; today the late-NOE OSC 77) in step with the facts
+   * the latest validation run saw. A derived projection like {@link refreshDischargeCodes}: no version bump, a
+   * no-op when unchanged; the write-audit trigger records the change. Returns whether the row changed.
+   */
+  async refreshOccurrenceSpans(
+    id: string,
+    spans: readonly { readonly code: string; readonly from: string; readonly through: string }[],
+  ): Promise<boolean> {
+    const value = spans.map((s) => ({ code: s.code, from: s.from, through: s.through }));
+    const rows = await this.db
+      .update(C)
+      .set({ occurrenceSpans: value, updatedAt: new Date() })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`${C.occurrenceSpans} IS DISTINCT FROM ${JSON.stringify(value)}::jsonb`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Re-type an UNSUBMITTED normal-cadence claim whose stored Type of Bill no longer matches the one the resolver
+   * derives from current M6 facts (e.g. assembled as interim 812/813 before a revocation or transfer-out was
+   * counted as the end of the stay; now final 811/814). Guarded on the stored value (`fromTob`) so a concurrent
+   * replace/void builder or a second refresh cannot double-apply. Like {@link refreshDischargeCodes} this is a
+   * derived projection, not a user edit: no version bump; the write-audit trigger records the change.
+   */
+  async refreshTypeOfBill(id: string, fromTob: TypeOfBill, toTob: TypeOfBill): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({ tob: toTob, updatedAt: new Date() })
+      .where(and(eq(C.id, id), eq(C.tob, fromTob)))
+      .returning({ id: C.id });
+    return rows.length > 0;
   }
 }

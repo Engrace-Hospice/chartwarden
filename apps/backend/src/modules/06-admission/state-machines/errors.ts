@@ -7,7 +7,7 @@
 // HTTP status the UI keys its message off, with no cross-module import edge. The code→status mapping
 // is the single source mirrored from §2.4; nothing transitions on a string match — each code is an
 // enumerated constant.
-import { WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, WardenXError } from "@wardenx/types";
 
 /** The full §2.4 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M6_ERROR_STATUS = {
@@ -17,6 +17,12 @@ export const M6_ERROR_STATUS = {
   BENEFIT_PERIOD_SEQUENCE_GAP: 409,
   CURATIVE_CARE_ACK_REQUIRED: 422,
   ELECTION_PERIOD_OVERLAP: 409,
+  // The first benefit period of a NEW admission (intake/benefit-period.ts): malformed number / HETS date (422).
+  BENEFIT_PERIOD_INVALID: 422,
+  BENEFIT_PERIOD_CONFIRMATION_DATE_REQUIRED: 422,
+  BENEFIT_PERIOD_CONFIRMATION_DATE_INVALID: 422,
+  // A readmission must start from a live-discharged earlier admission of the same patient (409).
+  READMISSION_SOURCE_INVALID: 409,
   // CTI (§2.4.1 R-CTI-*)
   TERMINAL_DX_NOT_ALLOWABLE: 422,
   ATTENDING_SIGNATURE_REQUIRED: 409,
@@ -42,6 +48,8 @@ export const M6_ERROR_STATUS = {
   F2F_TELEHEALTH_ATTESTATION_REQUIRED: 422,
   F2F_ATTESTATION_NOTE_INVALID: 422,
   F2F_ATTESTATION_SOURCE_REQUIRED: 422,
+  // MBPM ch. 9 §20.1(5)(d) — the exceptional-circumstance path needs period 3+ and a documented reason.
+  F2F_EXCEPTION_INVALID: 422,
   // Admission (§2.4.1 R-ADM-*)
   NOTICE_OF_RIGHTS_REQUIRED: 409,
   INITIAL_ASSESSMENT_OVERDUE: 409,
@@ -58,6 +66,8 @@ export const M6_ERROR_STATUS = {
   REVOCATION_EFFECTIVE_BEFORE_SIGNED: 422,
   TRANSFER_LIMIT_EXCEEDED: 409,
   TRANSFER_IN_SOURCE_INVALID: 422,
+  // CMS Pub. 100-04 ch. 11 §20.1.3: transfers are not allowed from the same provider (same CCN).
+  TRANSFER_SAME_PROVIDER: 422,
   DEATH_CERTIFIER_INVALID: 422,
   DISCHARGE_BEFORE_ADMISSION: 422,
   // Discharge reason-specific capture gates (§6.3 / D11)
@@ -69,6 +79,15 @@ export const M6_ERROR_STATUS = {
   PHYSICIAN_SIGNER_INVALID: 422,
   ADMISSION_RECOMMENDATION_INVALID: 422,
   ATTENDING_CONSULT_NOTE_REQUIRED: 422,
+  // Claim patient discharge status 40/41/42 needs the place of death (CMS Pub. 100-04 Ch. 11 §30.3).
+  PLACE_OF_DEATH_REQUIRED: 422,
+  PLACE_OF_DEATH_NOT_ALLOWED: 422,
+  // Claim patient status 50/51 needs where the receiving hospice cares for the patient.
+  RECEIVING_CARE_SETTING_REQUIRED: 422,
+  // After-the-fact discharge details (discharge/discharge-details.ts): replacing a recorded value needs a
+  // correction reason; the detail must belong to the event kind (a death / a transfer-out).
+  DISCHARGE_DETAIL_CORRECTION_REASON_REQUIRED: 409,
+  DISCHARGE_DETAIL_NOT_APPLICABLE: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
   // FY2027 election statement addendum (42 CFR 418.24(c)/(d); state-machines/election-addendum.ts)
@@ -90,8 +109,8 @@ export type M6ErrorCode = keyof typeof M6_ERROR_STATUS;
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
 export class AdmissionStateError extends WardenXError {
-  constructor(code: M6ErrorCode, message: string) {
-    super(code, message, M6_ERROR_STATUS[code]);
+  constructor(code: M6ErrorCode, message: string, details?: ErrorDetailType[]) {
+    super(code, message, M6_ERROR_STATUS[code], details);
     this.name = "AdmissionStateError";
   }
 }

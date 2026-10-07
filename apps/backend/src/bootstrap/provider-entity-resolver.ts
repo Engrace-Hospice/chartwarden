@@ -14,7 +14,7 @@
 // contract, unchanged).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { DegradedError, WardenXError } from "@wardenx/types";
 import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */
@@ -186,6 +186,59 @@ export function buildProviderEntityCcnResolver(db: DbClient): {
           )
           .limit(1);
         return rows[0]?.ccn ?? null;
+      });
+    },
+  };
+}
+
+/**
+ * The CCN of a provider entity that MUST exist — the `resolveCcn` the M23 NOE/NOTR draft consumers bind.
+ * Those consumers run on a relay tick, outside any request, so the read has to open its own org context:
+ * they used to issue a bare `db.select(...)` on the pool, which ran `provider_entity`'s RLS policy
+ * (`organization_id = current_setting('app.org_id', true)::uuid`) with no `app.org_id` set. On a pooled
+ * connection a previous transaction's `set_config(..., true)` leaves the GUC as `''`, and `''::uuid` is
+ * 22P02 — the `select "ccn" from "provider_entity"` failure that stranded `m6.transfer.created` (and,
+ * on a fresh connection, a silent zero-row "provider CCN unavailable"). Same fix as F-072's M24 reader.
+ */
+export function buildRequiredProviderEntityCcnResolver(
+  db: DbClient,
+): (organizationId: string, providerEntityId: string) => Promise<string> {
+  const resolver = buildProviderEntityCcnResolver(db);
+  return async (organizationId, providerEntityId) => {
+    const ccn = await resolver.ccnFor(organizationId, providerEntityId);
+    if (ccn === null) throw new DegradedError("provider-entity", "provider CCN unavailable");
+    return ccn;
+  };
+}
+
+/**
+ * The provider identity a HETS 270's 2100B loop needs — the hospice's NPI + legal name (M23 §4.4). Lives here
+ * because `provider_entity` is M1-owned; M23's HETS port consumes it as its `HetsProviderPort`. Opens its own
+ * org-context transaction (a worker has no ambient tx) and returns null for an id outside the org.
+ */
+export function buildProviderEligibilityIdentityReader(db: DbClient): {
+  providerForEligibility(
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<{ readonly npi: string; readonly organizationName: string } | null>;
+} {
+  return {
+    async providerForEligibility(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select({
+            npi: schema.providerEntities.npi,
+            legalName: schema.providerEntities.legalName,
+          })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return row ? { npi: row.npi, organizationName: row.legalName } : null;
       });
     },
   };

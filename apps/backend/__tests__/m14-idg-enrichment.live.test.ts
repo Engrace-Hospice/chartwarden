@@ -166,7 +166,7 @@ describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as wardenx
     expect((await patientDisplayLabelsForOrg(handle.db, ORG_A, [])).size).toBe(0);
   });
 
-  it("M6: period 2 active → next recert due in 11 days, F2F required + window_open (CMS prior-to window)", async () => {
+  it("M6: period 2 active → next recert due in 11 days, F2F required + window_open (CMS window through the first day)", async () => {
     const map = await idgRecertWindowsForOrg(handle.db, ORG_A, [
       ids.p2,
       ids.p3,
@@ -185,7 +185,8 @@ describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as wardenx
       nextRecertDueDate: expectedNext.d,
       nextPeriodSequence: 3,
       f2fRequired: true,
-      f2fWindowEnd: expectedNext.e,
+      // the window runs through the next period's FIRST day (MBPM ch. 9 §20.1(5)(a))
+      f2fWindowEnd: expectedNext.d,
       f2fStatus: "window_open",
       f2fWindowState: "window_open",
     });

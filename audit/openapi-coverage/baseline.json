@@ -22,7 +22,7 @@
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 78,
+      "routes": 74,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -52,7 +52,7 @@
       "mutatingNoBody": 0
     },
     "12-dosespot": {
-      "routes": 34,
+      "routes": 33,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -97,7 +97,7 @@
       "mutatingNoBody": 0
     },
     "21-supplies": {
-      "routes": 39,
+      "routes": 38,
       "deficit": 0,
       "mutatingNoBody": 0
     },

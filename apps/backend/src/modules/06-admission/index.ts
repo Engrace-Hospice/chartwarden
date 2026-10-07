@@ -19,10 +19,14 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
+import { createDbDischargeDetailsService } from "./discharge-details-service-db";
+import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 import type { ElectionAddendumService } from "./election-addendum/service";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
+import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
+import type { PriorElectionClosurePort } from "./routes/readmission-service";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
@@ -63,6 +67,8 @@ export function mountAdmissionRoutes(
   f2fSignedNotes?: F2fSignedNotePort,
   /** FY2027 — the election statement addendum service (42 CFR 418.24(c)/(d)); its routes mount when bound. */
   electionAddendum?: ElectionAddendumService,
+  /** The prior election's NOTR / final-claim status (an M23 fact) for the readmission plan; absent → `unknown`. */
+  priorElectionClosure?: PriorElectionClosurePort,
 ): void {
   // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
   const physicianAuthority = createDbPhysicianAuthority(db);
@@ -80,6 +86,11 @@ export function mountAdmissionRoutes(
       f2fSignedNotes,
       physicianAuthority,
     ),
+    // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
+    // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
+    dischargeDetails: createDbDischargeDetailsService(db, outbox),
+    dischargeWorklist: createDbDischargeWorklistService(db),
+    readmission: createDbReadmissionService(db, priorElectionClosure),
   });
 }
 
@@ -148,6 +159,9 @@ export {
   admissionSchedulingContextForOrg,
   electionPeriodContextForOrg,
   claimAssemblyRangeContextForOrg,
+  claimStayEndFactsForOrg,
+  type TransferInNoticeContext,
+  transferInNoticeContextForOrg,
   createDrizzleAdmissionReaderStore,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
@@ -200,6 +214,24 @@ export {
 // cross-module ids validated app-side — no cross-module schema import.
 export { type AdmissionRouteDeps, registerAdmissionRoutes } from "./routes/admission-routes";
 export {
+  DISCHARGE_DETAILS_RECORDED_EVENT,
+  createDbDischargeDetailsService,
+} from "./discharge-details-service-db";
+export { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+export { createDbReadmissionService } from "./readmission-service-db";
+export type { PriorElectionClosurePort, ReadmissionService } from "./routes/readmission-service";
+export {
+  type PriorEpisode,
+  type RhcPriorStayFact,
+  type TransferInSource,
+  latestLiveEndedEpisode,
+  priorEpisodesForOrg,
+  rhcPriorStayFacts,
+} from "./seams/prior-episodes";
+export * from "./intake/benefit-period";
+export type { DischargeDetailsService } from "./routes/discharge-details-service";
+export type { DischargeWorklistService } from "./routes/discharge-worklist-service";
+export {
   type AdmissionRouteService,
   type AdmissionAbacResolver,
   type AdmissionBackendSeed,
@@ -241,6 +273,8 @@ export {
   deriveDischargePermissionKey,
   dischargeRequiresCosign,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
+  resolvePlaceOfDeath,
   decideBereavementEligibility,
   fileForCauseDischarge,
   resolveForCauseDischarge,

@@ -53,6 +53,26 @@ describe("ABAC composition gate", () => {
     ]);
   });
 
+  it("sees admission_intake_scope composed by requireAnyAbac on the M6 and M23 readmission routes", () => {
+    const sites = scan.composed.get("admission_intake_scope") ?? [];
+    expect(sites.some((s) => s.includes("06-admission/routes/admission-routes.ts"))).toBe(true);
+    expect(sites.some((s) => s.includes("23-billing-medicare/routes/guards.ts"))).toBe(true);
+    // the other names in the same requireAnyAbac list are composed too
+    expect(
+      (scan.composed.get("caseload_or_scope") ?? []).some((s) =>
+        s.includes("23-billing-medicare/routes/guards.ts"),
+      ),
+    ).toBe(true);
+  });
+
+  it("sees admission_clinical_site_scope composed on the M6 new-admission / readmission routes and M23", () => {
+    const sites = scan.composed.get("admission_clinical_site_scope") ?? [];
+    expect(sites.filter((s) => s.includes("06-admission/routes/admission-routes.ts")).length).toBe(
+      2,
+    );
+    expect(sites.some((s) => s.includes("23-billing-medicare/routes/guards.ts"))).toBe(true);
+  });
+
   it("sees sud_consent_present composed by the DocLens review routes — the GAP-067 regression", () => {
     const sites = scan.composed.get("sud_consent_present") ?? [];
     expect(

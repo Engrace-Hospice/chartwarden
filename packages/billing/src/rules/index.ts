@@ -1,22 +1,22 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 21 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 22 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
 // RULE COUNT (§4.5): the §4.5 table enumerates 17 rule CATEGORIES across NINETEEN rule rows (the
 // `eligibility` and `cap` categories each ship two default rules). The Phase-boundary "18 default rules"
-// note is reconciled here to the spec table's 19 rows (the authoritative enumeration). Eighteen of the
-// nineteen are `regulatoryRequired: true` (the platform floor a tenant cannot disable, D5); the lone
-// non-regulatory default is `eligibility_check_freshness_30d` (a warn). (ADR-0008 later made
-// `evv_bracket_coherence` non-regulatory too.) FY2027: `f2f_telehealth_g0679` (CR 14495) is the 20th default
-// rule — a second `f2f`-category row, regulatory.
+// note is reconciled here to the spec table's 19 rows (the authoritative enumeration), plus
+// `rhc_carry_over_hets_fresh` (the cross-hospice RHC day-count warning) and the two FY2027 rules
+// (`f2f_telehealth_g0679`, CR 14495; `election_addendum_signed`, 42 CFR 418.24(c)). Every default is
+// `regulatoryRequired: true` (the platform floor a tenant cannot disable, D5) except
+// `eligibility_check_freshness_30d`, `evv_bracket_coherence` (ADR-0008) and `rhc_carry_over_hets_fresh`.
 export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 21 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 22 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
 import { aggregateCapProjection } from "./aggregate-cap-projection";
@@ -51,6 +51,7 @@ import { noeTimeliness5d } from "./noe-timeliness";
 import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
 import { physicianCredentialsActive } from "./physician-credentials";
 import { POS_BY_QCODE, POS_LABEL_ALIASES, placeOfServiceConsistency } from "./place-of-service";
+import { rhcCarryOverHetsFresh } from "./rhc-carry-over-hets";
 import { siaCalculationCorrect } from "./sia-calculation";
 import { tobAndDatesConsistency } from "./tob-dates-consistency";
 
@@ -85,13 +86,14 @@ export {
   electionAddendumSigned,
   ADDENDUM_APPLIES_TO_ELECTIONS_FROM,
   ADDENDUM_ENFORCE_FROM,
+  rhcCarryOverHetsFresh,
   CMS_HOSPICE_MODIFIER_VALUE_SET,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
 };
 
 /**
- * The 21 platform-default validation rules in §4.5 table order. This is the canonical platform-floor set
+ * The 22 platform-default validation rules (§4.5 table order, then the RHC carry-over warning and the FY2027 election addendum rule). This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */
@@ -116,12 +118,13 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
-  // FY2027 (CMS-1851-F) — the twentieth rule: 42 CFR 418.24(c) election statement addendum.
+  rhcCarryOverHetsFresh,
+  // FY2027 (CMS-1851-F) — 42 CFR 418.24(c) election statement addendum.
   electionAddendumSigned,
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 21 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 22 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */

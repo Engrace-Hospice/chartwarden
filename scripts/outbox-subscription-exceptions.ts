@@ -167,12 +167,13 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m23",
     kind: "self-consumption",
     reason:
-      "All six are M23's OWN events, consumed by M23's `outbox-consumers/submit-requests.ts` outbox→BullMQ bridges (the four staged-submission topics, plus — GAP-070 — `validation_started` / `refresh_requested`, which feed the `validation-run` / `eligibility.refresh` workers). `M23_UPSTREAM_SUBSCRIPTIONS` is by construction the INBOUND half — what other modules send M23 — so a self-consumed topic is correctly absent from it while the catalog correctly declares it. The two describe different things.",
+      "All seven are M23's OWN events, consumed by M23's `outbox-consumers/submit-requests.ts` outbox→BullMQ bridges (the five staged-submission topics — claim, claim retry, NOE, NOTR and the 8xC transfer notice — plus — GAP-070 — `validation_started` / `refresh_requested`, which feed the `validation-run` / `eligibility.refresh` workers). `M23_UPSTREAM_SUBSCRIPTIONS` is by construction the INBOUND half — what other modules send M23 — so a self-consumed topic is correctly absent from it while the catalog correctly declares it. The two describe different things.",
     events: [
       "m23.claim.submit_requested",
       "m23.claim.submission_failed",
       "m23.noe.submit_requested",
       "m23.notr.submit_requested",
+      "m23.transfer_notice.submit_requested",
       "m23.claim.validation_started",
       "m23.eligibility.refresh_requested",
     ],

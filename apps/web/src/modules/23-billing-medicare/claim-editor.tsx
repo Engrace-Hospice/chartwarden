@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 import {
   claimStateTone,
   dollars,
@@ -35,7 +36,12 @@ import {
   tobLabel,
   validationRunTone,
 } from "./billing-status";
+import { ClaimStayEndPanels } from "./claim-stay-end-panels";
+import type { ClaimAttention } from "./discharge-attention";
+import { RhcDayCount } from "./rhc-day-count";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
+
+const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
 
 interface HippsPricing {
   hippsCode: string;
@@ -44,6 +50,9 @@ interface HippsPricing {
   wageIndexFiscalYear: number;
   wageIndexFactor: string;
   calculatedAt: string;
+  rhcDays1to60?: number;
+  rhcDays61Plus?: number;
+  rhcCarryOver?: RhcCarryOver | null;
 }
 
 interface SiaPricing {
@@ -86,6 +95,8 @@ interface ClaimDetail {
   replacementReason: string | null;
   latestValidation: ValidationRunSummary | null;
   pricing: { hipps: HippsPricing | null; sia: SiaPricing | null };
+  /** How the stay ended → missing discharge details / Type of Bill change (server-computed, live M6 facts). */
+  attention?: ClaimAttention | null;
 }
 
 interface ClaimLine {
@@ -259,7 +270,8 @@ export function ClaimEditor(): JSX.Element {
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
   const canSubmit = claim.state === "ready";
-  const canReplaceVoid = claim.state === "paid" || claim.state === "ack_accepted";
+  // The server's REPLACEABLE_STATES (write-service-drizzle.ts): accepted, partially accepted, paid.
+  const canReplaceVoid = REPLACEABLE.has(claim.state);
   const v = claim.latestValidation;
 
   return (
@@ -306,6 +318,12 @@ export function ClaimEditor(): JSX.Element {
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <ClaimStayEndPanels
+            claim={claim}
+            canReplace={canReplaceVoid}
+            onReplace={() => setCeremony("replace")}
+            onRevalidated={() => void load()}
+          />
           <ReplacementChain claim={claim} />
           <ValidationSummary claimId={claim.claimId} run={v} />
           <SequestrationCard claim={claim} />
@@ -613,6 +631,18 @@ function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
           </>
         )}
       </section>
+      {hipps && hipps.rhcDays1to60 !== undefined && hipps.rhcDays61Plus !== undefined ? (
+        <section style={{ ...cardStyle, flex: "1 1 100%" }}>
+          <h3 style={cardTitleStyle}>RHC day count</h3>
+          <RhcDayCount
+            pricing={{
+              rhcDays1to60: hipps.rhcDays1to60,
+              rhcDays61Plus: hipps.rhcDays61Plus,
+              rhcCarryOver: hipps.rhcCarryOver ?? null,
+            }}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

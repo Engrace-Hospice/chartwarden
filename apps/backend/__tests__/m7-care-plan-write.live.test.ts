@@ -27,6 +27,7 @@ import {
   createDbCarePlanAbacResolver,
   createDbCarePlanRouteService,
 } from "../src/modules/07-care-plan/index";
+import { runCarePlanGatesCron } from "../src/modules/07-care-plan/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -937,5 +938,33 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     expect(await resolver.loadVersion(ORG_B, boot.initialVersionId)).toBeNull();
     // A non-existent id (and a non-problem element id) also fails closed.
     expect(await resolver.loadProblem(ORG_A, randomUUID())).toBeNull();
+  });
+
+  it("the care-plan gates cron flips its marker under the NULL (system) audit actor, not a sentinel uuid", async () => {
+    // Before the fix the cron stamped `00000000-…-000000000007` into `app.user_id`; the `care_plan`
+    // write-audit trigger copied it into `audit_event.actor_user_id` (FK to `user`) → 23503 every tick.
+    const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
+    await admin.query(
+      "UPDATE care_plan SET initial_due_at = now() - interval '1 day', initial_warning_emitted = false WHERE id=$1",
+      [boot.id],
+    );
+    await runCarePlanGatesCron({
+      connection: {} as never,
+      db: handle.db,
+      outbox: svcOutbox() as never,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      now: () => new Date(),
+    });
+    const row = (
+      await admin.query("SELECT initial_warning_emitted FROM care_plan WHERE id=$1", [boot.id])
+    ).rows[0] as { initial_warning_emitted: boolean };
+    expect(row.initial_warning_emitted).toBe(true);
+    expect(await eventsFor(boot.id)).toContain("m7.care_plan.initial_overdue");
+    const audit = await admin.query(
+      "SELECT actor_user_id FROM audit_event WHERE resource_id=$1 AND event_type='care_plan.update'",
+      [boot.id],
+    );
+    expect(audit.rows.length).toBeGreaterThan(0);
+    expect(audit.rows.every((r) => r.actor_user_id === null)).toBe(true);
   });
 });

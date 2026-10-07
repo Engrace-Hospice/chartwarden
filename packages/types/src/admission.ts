@@ -218,6 +218,8 @@ export const M6_EVENT_NAMES = [
   "m6.discharge.created",
   "m6.discharge.death",
   "m6.discharge.cosigned",
+  // A place of death / receiving care setting recorded after the fact (claim patient status 40-42 / 50-51).
+  "m6.discharge.details_recorded",
   "m6.nor.acknowledged",
   "m6.compliance.window.opened",
   "m6.compliance.window.closed",
@@ -386,6 +388,25 @@ export interface AdmissionStatusReader {
     organizationId: string,
     admissionId: AdmissionId,
   ): Promise<AdmissionSiting | null>;
+  /**
+   * The admission's patient + status, and whether that patient has ANOTHER admission still under care
+   * (`active`/`on_hold`). M5's live-discharge consumer (§2.4.1 `active → discharged`) reads it so a late
+   * or redelivered discharge never discharges a patient a re-admission has already taken back under
+   * care. ORG-EXPLICIT (worker-safe, its own `withOrgContext`); null when unknown / not visible under RLS.
+   */
+  getAdmissionPatientCare(
+    organizationId: string,
+    admissionId: AdmissionId,
+  ): Promise<AdmissionPatientCare | null>;
+}
+
+/** §4.7 AdmissionStatusReader.getAdmissionPatientCare — see that method. */
+export interface AdmissionPatientCare {
+  readonly admissionId: AdmissionId;
+  readonly patientId: PatientId;
+  readonly status: AdmissionStatusValue;
+  /** True iff another admission of the same patient (same org) is `active` or `on_hold`. */
+  readonly otherAdmissionUnderCare: boolean;
 }
 
 /** §4.7 AdmissionStatusReader.getAdmissionSiting — the admission's siting as stored (nullable at draft). */

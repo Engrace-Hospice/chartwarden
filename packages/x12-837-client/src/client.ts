@@ -130,11 +130,17 @@ function isAckError(value: unknown): boolean {
   return record(value) && string(value.segment) && string(value.code) && string(value.description);
 }
 
+/** An optional ISO date element: absent, null, or a `YYYY-MM-DD` string. */
+const optionalIsoDate = (value: unknown): boolean =>
+  value === undefined || value === null || (string(value) && /^\d{4}-\d{2}-\d{2}$/.test(value));
+
 function isParsed999(value: unknown): value is Parsed999 {
   return (
     record(value) &&
     outcome(value.outcome) &&
     string(value.interchangeControlNumber) &&
+    optionalIsoDate(value.functionalGroupDate) &&
+    optionalIsoDate(value.interchangeDate) &&
     Array.isArray(value.errors) &&
     value.errors.every(isAckError)
   );
@@ -151,7 +157,8 @@ function isParsed277ca(value: unknown): value is Parsed277ca {
         string(status.claimControlNumber) &&
         typeof status.accepted === "boolean" &&
         string(status.statusCategoryCode) &&
-        string(status.statusCode),
+        string(status.statusCode) &&
+        optionalIsoDate(status.statusEffectiveDate),
     )
   );
 }

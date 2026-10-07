@@ -22,6 +22,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
+import { orgContextFor } from "../system-actor";
 import type { M26WriteActor } from "./actor";
 import type { PeriodView, ProjectionView, SettlementView } from "./read-service";
 import type {
@@ -92,7 +93,7 @@ export function buildDrizzleM26WriteService(
 
   return {
     async openPeriod(actor, input: OpenPeriodInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         // Snapshot the platform constant for the cap year (must be published, D3).
         const pc = await tx.select().from(PC).where(eq(PC.capYear, input.capYear)).limit(1);
         const constant = pc[0];
@@ -155,7 +156,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async lockMethodology(actor, periodId, input: LockMethodologyInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         if (period.methodology)
           throw new ConflictError(
@@ -180,7 +181,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async closePeriod(actor, periodId) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         assertTransition(period.status, "in_settlement");
         const updated = await tx
@@ -205,7 +206,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async reopenPeriod(actor, periodId, _input: ReopenInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         assertTransition(period.status, "reopened");
         const updated = await tx
@@ -223,7 +224,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async recompute(actor, periodId) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         const methodology: Methodology = (period.methodology as Methodology) ?? "streamlined";
         const perBenCap = period.aggregateCapAmountCents;
@@ -321,7 +322,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async acknowledgeEvent(actor, eventId, input: AcknowledgeInput) {
-      await withOrgContext(db, actor, async (tx) => {
+      await withOrgContext(db, orgContextFor(actor), async (tx) => {
         const updated = await tx
           .update(TE)
           .set({
@@ -336,7 +337,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async importPsr(actor, periodId, input: ImportPsrInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         await loadPeriod(tx, periodId);
         const bytes = Buffer.from(input.fileBase64, "base64");
         const sha = createHash("sha256").update(bytes).digest("hex");
@@ -368,7 +369,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async resolveVariance(actor, lineId, input: ResolveVarianceInput) {
-      await withOrgContext(db, actor, async (tx) => {
+      await withOrgContext(db, orgContextFor(actor), async (tx) => {
         const updated = await tx
           .update(PR)
           .set({
@@ -385,7 +386,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async proposeSettlement(actor, periodId) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         if (period.status !== "in_settlement")
           throw new ConflictError(
@@ -451,7 +452,7 @@ export function buildDrizzleM26WriteService(
     },
 
     async finalizeSettlement(actor, periodId, _input: FinalizeInput) {
-      return withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, orgContextFor(actor), async (tx) => {
         const period = await loadPeriod(tx, periodId);
         const sRows = await tx.select().from(ST).where(eq(ST.capPeriodId, periodId)).limit(1);
         const settlement = sRows[0];

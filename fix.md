@@ -81,17 +81,15 @@ Create a verbal order: physician communication, created by, created at, check bo
 - Review and Fix the error when signing a care plan - Ok
 - Work on assessment module (in the patient and globaly) in visit's tab - Ok
 - Show the notice of right in the "Election & Certification" tab as view. - Ok
+- Care Team & Assignments: the care team that the nurse or the admin should assign (the RN, the MSW, the Chaplain, the Hospice Aid, the doctor) - Ok
+- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,... 
+So when there is something regarding a patient, everybody can see it - Ok
 
-
-- RN is also the one assigning the care team in the Care Team & Assignments tab
 - RN permission in admission & care plan modules
-- Apart from passkeys, the user can sign using a code
-- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
-So when there is something regarding a patient, everybody can see it
 
 
 - When a patient is converted, the status should be active
-- Care Team & Assignments: the care team that the nurse or the admin should assign (the RN, the MSW, the Chaplain, the Hospice Aid, the doctor)
+
 - If there is Caregivers & representatives, it should populate their name
 - In Demographics & Identifiers, there is a bug on the sex and also we should be able to modify the patient's info
 - In "New Visit" modal, the patient's address should pop up automatically

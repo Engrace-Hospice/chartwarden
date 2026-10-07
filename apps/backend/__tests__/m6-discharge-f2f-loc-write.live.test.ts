@@ -29,7 +29,7 @@ import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { admitViaQualifiedReferral, registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 const F2F_ATTESTATION_NARRATIVE =
@@ -626,6 +626,7 @@ describe.skipIf(!DB_URL)(
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "expired peacefully",
           deathCertifierId: MD,
+          placeOfDeath: "home",
         },
         USER,
       );
@@ -673,6 +674,7 @@ describe.skipIf(!DB_URL)(
             dischargeDate: future,
             narrative: "expired peacefully",
             deathCertifierId: MD,
+            placeOfDeath: "home",
           },
           USER,
         ),
@@ -804,6 +806,7 @@ describe.skipIf(!DB_URL)(
         {
           effectiveDate: "2026-06-15",
           otherHospiceName: "Sunrise Hospice",
+          receivingCareSetting: "home",
           otherHospiceCcn: "391234",
           narrative: "patient relocated closer to family; care transferred by mutual agreement",
         },
@@ -844,6 +847,7 @@ describe.skipIf(!DB_URL)(
           {
             effectiveDate: "2026-06-15",
             otherHospiceName: "Sunrise Hospice",
+            receivingCareSetting: "home",
             narrative: "second attempt for the same period",
           },
           USER,
@@ -859,6 +863,8 @@ describe.skipIf(!DB_URL)(
 
     it("transfer-in → inherited active + next pending period (no counter restart)", async () => {
       const patientId = randomUUID();
+      // Direct intake confirms the patient belongs to the org (readmission security review).
+      await seedM5Patient(admin, ORG_A, patientId);
       const adm = await svc.createAdmission(
         ORG_A,
         { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: MD },
