@@ -709,9 +709,9 @@ function WorkflowGuide({
         </button>
       );
   } else if (hasOpenDraft && readiness?.canFinalize) {
-    heading = "Ready for manager review";
+    heading = "Ready for physician review";
     description =
-      "The clinical plan is complete and can now be reviewed before physician signature.";
+      "The clinical plan is complete. Sending it freezes this version for hospice physician review and signature.";
     state = "success";
     action = canFinalize ? (
       <button type="button" style={primaryBtn} disabled={busy} onClick={onFinalize}>
@@ -1217,7 +1217,7 @@ function RevisionPanel({
                 {idgProposalRequired
                   ? "Record IDG proposed changes"
                   : readiness?.canFinalize
-                    ? "Ready for manager review"
+                    ? "Ready for physician review"
                     : "Before you can send this version"}
               </h3>
               <p style={muted}>

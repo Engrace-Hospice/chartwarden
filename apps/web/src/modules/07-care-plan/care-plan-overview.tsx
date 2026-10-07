@@ -80,6 +80,10 @@ export function PlanHeader({
 }): JSX.Element {
   const shown = activeVersion ?? openVersion;
   const isActive = Boolean(activeVersion);
+  // A revision opened on top of the active plan drives the next action and the editable tabs, so
+  // the header names it rather than showing only the signed version.
+  const pendingRevision =
+    activeVersion && openVersion && openVersion.id !== activeVersion.id ? openVersion : null;
   return (
     <div className="wx-page-head">
       <div style={{ minWidth: 0 }}>
@@ -110,6 +114,13 @@ export function PlanHeader({
                 <span className="wx-row-sub">Drafted {longDate(shown.draftedAt)}</span>
               ) : null}
             </span>
+            {pendingRevision ? (
+              <span className="wx-row-sub" style={{ color: t.warning }}>
+                {`${cap(pendingRevision.kind)} v${pendingRevision.sequence} ${
+                  pendingRevision.status === "in_review" ? "in review" : "in draft"
+                }`}
+              </span>
+            ) : null}
           </span>
           <Glyph name="chevron-down" size={16} />
         </Link>
