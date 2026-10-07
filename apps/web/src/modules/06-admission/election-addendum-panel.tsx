@@ -34,6 +34,7 @@ import {
   ADDENDUM_STATUS_LABEL,
   ADDENDUM_STATUS_TONE,
   ADDENDUM_WINDOW_LABEL,
+  acknowledgementLabel,
   countdownLabel,
   countdownTone,
   nextDue,
@@ -147,6 +148,12 @@ export function ElectionAddendumPanel({
           </dd>
           <dt>Current version</dt>
           <dd>{current ? `Version ${current.versionNumber}` : "Not drafted"}</dd>
+          {current && acknowledgementLabel(current) ? (
+            <>
+              <dt>Acknowledgement</dt>
+              <dd>{acknowledgementLabel(current)}</dd>
+            </>
+          ) : null}
         </dl>
 
         {current ? (

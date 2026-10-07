@@ -2,8 +2,10 @@
 // statement addendum version (FY2027, 42 CFR 418.24(c)/(d)), on the admission-drawer pattern (aside.
 // wx-admission-drawer, flat wx-drawer-card sections, wx-kv label/value rows). A draft is edited and furnished
 // here; a furnished version records its signature, a refusal (reason required, (c)(9)), or why a signature is
-// not required ((d)(4)). Furnished versions are read-only — a plan-of-care change makes a new version. The
-// server validates every step; its message is shown verbatim on refusal.
+// not required ((d)(4)). A scanned signed (or refused) paper copy can be uploaded instead — also on a draft
+// that was furnished on paper outside WardenX (election-addendum-scan-form.tsx). Furnished versions are
+// read-only — a plan-of-care change makes a new version. The server validates every step; its message is
+// shown verbatim on refusal.
 import {
   Button,
   Glyph,
@@ -30,15 +32,17 @@ import {
   EXEMPTION_OPTIONS,
   FURNISH_OPTIONS,
   REFUSAL_MIN,
+  acknowledgementLabel,
   usDate,
 } from "./election-addendum-format";
+import { ScannedCopyForm } from "./election-addendum-scan-form";
 
 export interface AddendumPermissions {
   readonly write: boolean;
   readonly acknowledge: boolean;
 }
 
-type AckMode = "signature" | "refusal" | "not_required";
+type AckMode = "signature" | "upload" | "refusal" | "not_required";
 type Exemption = "death" | "revocation" | "discharge";
 
 const EMPTY_ITEM: AddendumItem = { category: "condition", description: "", reasonNotCovered: "" };
@@ -152,7 +156,7 @@ export function ElectionAddendumDrawer({
   const [explanation, setExplanation] = useState(v.clinicalExplanation ?? "");
   const [references, setReferences] = useState(v.guidelineReferences ?? "");
   const [method, setMethod] = useState<"paper" | "electronic_with_paper_copy">("paper");
-  const [mode, setMode] = useState<AckMode>(v.status === "draft" ? "not_required" : "signature");
+  const [mode, setMode] = useState<AckMode>(v.status === "draft" ? "upload" : "signature");
   const [signer, setSigner] = useState<"beneficiary" | "representative">("beneficiary");
   const [repName, setRepName] = useState("");
   const [repRelationship, setRepRelationship] = useState("");
@@ -169,7 +173,7 @@ export function ElectionAddendumDrawer({
     setNone(v.noNonCoveredItems);
     setExplanation(v.clinicalExplanation ?? "");
     setReferences(v.guidelineReferences ?? "");
-    setMode(v.status === "draft" ? "not_required" : "signature");
+    setMode(v.status === "draft" ? "upload" : "signature");
     setError(null);
     setTouched(false);
   }, [v]);
@@ -227,16 +231,27 @@ export function ElectionAddendumDrawer({
   const ackOptions =
     v.status === "draft"
       ? [
-          {
-            value: "not_required",
-            label: "Signature not required — left care",
-          },
+          { value: "upload", label: "Upload signed paper copy" },
+          { value: "not_required", label: "Signature not required — left care" },
         ]
       : [
           { value: "signature", label: "Signature received" },
+          { value: "upload", label: "Upload signed paper copy" },
           { value: "refusal", label: "Refused to sign" },
           { value: "not_required", label: "Signature not required" },
         ];
+
+  const openDocument = (documentId: string, versionId: string | null) =>
+    void (async () => {
+      setError(null);
+      try {
+        const url = await api.documentUrl(documentId, versionId);
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "The document is not available.");
+      }
+    })();
+  const ackLabel = acknowledgementLabel(v);
 
   return (
     <aside className="wx-admission-drawer" aria-label={`Addendum version ${v.versionNumber}`}>
@@ -278,6 +293,12 @@ export function ElectionAddendumDrawer({
             <dd className="wx-nums">{usDate(v.dueAt)}</dd>
             <dt>Furnished</dt>
             <dd className="wx-nums">{usDate(v.furnishedAt)}</dd>
+            {ackLabel ? (
+              <>
+                <dt>Acknowledgement</dt>
+                <dd>{ackLabel}</dd>
+              </>
+            ) : null}
             {v.signedAt ? (
               <>
                 <dt>Signed</dt>
@@ -306,6 +327,47 @@ export function ElectionAddendumDrawer({
             ) : null}
           </dl>
         </section>
+
+        {v.documentId || v.acknowledgementDocumentId ? (
+          <section className="wx-drawer-card">
+            <h3>Documents</h3>
+            <dl className="wx-kv wx-addendum-docs">
+              {v.documentId ? (
+                <>
+                  <dt>Printed addendum</dt>
+                  <dd>
+                    <Button
+                      tone="tertiary"
+                      size="sm"
+                      onClick={() => openDocument(v.documentId as string, null)}
+                    >
+                      <Glyph name="file-text" size={14} /> Open PDF
+                    </Button>
+                  </dd>
+                </>
+              ) : null}
+              {v.acknowledgementDocumentId ? (
+                <>
+                  <dt>{v.status === "refused" ? "Scanned refusal" : "Scanned signed copy"}</dt>
+                  <dd>
+                    <Button
+                      tone="tertiary"
+                      size="sm"
+                      onClick={() =>
+                        openDocument(
+                          v.acknowledgementDocumentId as string,
+                          v.acknowledgementDocumentVersionId,
+                        )
+                      }
+                    >
+                      <Glyph name="file-check" size={14} /> Open scan
+                    </Button>
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
 
         <section className="wx-drawer-card">
           <h3>Terminal illness and related conditions</h3>
@@ -381,7 +443,7 @@ export function ElectionAddendumDrawer({
 
         {acknowledgeable ? (
           <section className="wx-drawer-card">
-            <h3>{v.status === "draft" ? "Patient left care" : "Acknowledgement of receipt"}</h3>
+            <h3>Acknowledgement of receipt</h3>
             <SelectField
               label="Record"
               value={mode}
@@ -421,6 +483,13 @@ export function ElectionAddendumDrawer({
                   Signing only acknowledges receipt; it is not agreement with the determinations.
                 </p>
               </>
+            ) : mode === "upload" ? (
+              <ScannedCopyForm
+                admissionId={admissionId}
+                version={v}
+                api={api}
+                onAttached={onChanged}
+              />
             ) : mode === "refusal" ? (
               <TextAreaField
                 label="Why it was not signed"
@@ -444,11 +513,13 @@ export function ElectionAddendumDrawer({
                 />
               </>
             )}
-            <div className="wx-action-row is-end">
-              <Button loading={busy} onClick={acknowledge}>
-                Record
-              </Button>
-            </div>
+            {mode === "upload" ? null : (
+              <div className="wx-action-row is-end">
+                <Button loading={busy} onClick={acknowledge}>
+                  Record
+                </Button>
+              </div>
+            )}
           </section>
         ) : null}
       </div>

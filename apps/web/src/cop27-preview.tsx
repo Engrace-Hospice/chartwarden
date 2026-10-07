@@ -1,8 +1,10 @@
 // apps/web/src/cop27-preview.tsx — fixture-backed preview modes for the FY2027 CoP screens, mounted by
 // clinical-preview.tsx (visual QA only; no real patient data, nothing here ships in the app bundle).
 //
-//   ?addendum=none|draft|furnished|signed|refused|overdue|legacy — Election & Certification with the
-//       election statement addendum section (click a version row to open its drawer).
+//   ?addendum=none|draft|furnished|signed|refused|overdue|legacy|upload|uploaded — Election & Certification
+//       with the election statement addendum section (click a version row to open its drawer). `upload` is a
+//       draft furnished on paper outside WardenX (its drawer opens on "Upload signed paper copy"); `uploaded` is
+//       a version signed on a scanned paper copy (drawer: "Signed — scanned paper copy" + Open scan / Open PDF).
 //   ?coverage=med|supply|dashboard — hospice coverage section/badges on M12 medication detail, M21
 //       supply-request detail and the M21 supply dashboard.
 //   ?admit=intake|active|discharged — admission detail: 418.25(a) recommendation section (+ capture drawer
@@ -50,6 +52,7 @@ function addendumVersion(status: string, overrides: Record<string, unknown> = {}
   return {
     id: "add-v1",
     admissionId: "adm1",
+    patientId: PATIENT.id,
     versionNumber: 1,
     trigger: "initial",
     triggerCause: null,
@@ -88,6 +91,9 @@ function addendumVersion(status: string, overrides: Record<string, unknown> = {}
     signerKind: null,
     representativeName: null,
     representativeRelationship: null,
+    acknowledgementSource: status === "signed" || status === "refused" ? "structured" : null,
+    acknowledgementDocumentId: null,
+    acknowledgementDocumentVersionId: null,
     refusedAt: null,
     refusalReason: null,
     signatureNotRequiredReason: null,
@@ -147,6 +153,19 @@ function addendumOverview() {
         representativeRelationship: "Daughter",
       });
       return { ...base, current: v, history: [v, prior] };
+    }
+    case "uploaded": {
+      const v = addendumVersion("signed", {
+        furnishedAt: isoAt(-3),
+        signedAt: isoAt(-3),
+        signerKind: "representative",
+        representativeName: "Jordan Rivera",
+        representativeRelationship: "Daughter",
+        acknowledgementSource: "uploaded",
+        acknowledgementDocumentId: "doc-scan-1",
+        acknowledgementDocumentVersionId: "ver-scan-1",
+      });
+      return { ...base, current: v, history: [v] };
     }
     case "refused": {
       const v = addendumVersion("refused", {
@@ -407,6 +426,10 @@ function cop27Get(path: string): unknown {
       return electionCertification();
     case "/api/v1/admissions/{id}/election-addendum":
       return addendumOverview();
+    case "/api/v1/documents/{id}/versions":
+      return { items: [{ id: "ver-render-1", versionNumber: 1 }], nextCursor: null, hasMore: false };
+    case "/api/v1/documents/{id}/versions/{versionId}/content":
+      return { url: "about:blank" };
     case "/api/v1/patients/{id}":
       return PATIENT;
     case "/api/v1/medication-orders/{id}":

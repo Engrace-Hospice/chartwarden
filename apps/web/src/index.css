@@ -5089,3 +5089,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* The "Upload signed paper copy" form and the version's documents (election-addendum-scan-form.tsx). */
+.wx-addendum-scan {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-addendum-docs dd {
+  display: flex;
+  justify-content: flex-end;
+}

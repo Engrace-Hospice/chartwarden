@@ -2,6 +2,7 @@
 // addendum (42 CFR 418.24(c)/(d)). The server owns every state change and its guards (ADR-0030); a failed
 // call surfaces the server's message so the clinician sees why (e.g. the missing (c) elements on furnish).
 import type { ApiClient } from "@wardenx/ui";
+import { type UploadStage, verifiedUpload } from "../../shell/document-workflows";
 
 export type AddendumStatus =
   | "draft"
@@ -26,9 +27,13 @@ export interface AddendumDiagnosis {
   description: string;
 }
 
+/** How the (c)(9) acknowledgement was captured: keyed in WardenX, or a scanned signed paper copy. */
+export type AcknowledgementSource = "structured" | "uploaded";
+
 export interface AddendumVersion {
   id: string;
   admissionId: string;
+  patientId: string;
   versionNumber: number;
   trigger: "initial" | "poc_change";
   triggerCause: string | null;
@@ -50,6 +55,9 @@ export interface AddendumVersion {
   signerKind: "beneficiary" | "representative" | null;
   representativeName: string | null;
   representativeRelationship: string | null;
+  acknowledgementSource: AcknowledgementSource | null;
+  acknowledgementDocumentId: string | null;
+  acknowledgementDocumentVersionId: string | null;
   refusedAt: string | null;
   refusalReason: string | null;
   signatureNotRequiredReason: "death" | "revocation" | "discharge" | null;
@@ -75,6 +83,23 @@ export interface AddendumDraftPatch {
   clinicalExplanation?: string | null;
   guidelineReferences?: string | null;
 }
+
+/** A scanned paper copy of the addendum: the file, what the paper shows, and its dates (ISO instants). */
+export type ScannedCopyInput = {
+  file: File;
+  /** When the paper was handed over — required when the version was never furnished in WardenX. */
+  furnishedAt?: string;
+  onStage: (stage: UploadStage) => void;
+} & (
+  | {
+      outcome: "signed";
+      signerKind: "beneficiary" | "representative";
+      representativeName?: string | null;
+      representativeRelationship?: string | null;
+      signedAt: string;
+    }
+  | { outcome: "refused"; reason: string; refusedAt?: string }
+);
 
 export interface ElectionAddendumApi {
   overview(admissionId: string): Promise<AddendumOverview>;
@@ -105,6 +130,14 @@ export interface ElectionAddendumApi {
     reason: "death" | "revocation" | "discharge",
     note: string | null,
   ): Promise<AddendumVersion>;
+  /** Upload the scanned paper copy to M22 (verified-upload ceremony), then attach it as the acknowledgement. */
+  attachScannedCopy(
+    admissionId: string,
+    v: AddendumVersion,
+    input: ScannedCopyInput,
+  ): Promise<AddendumVersion>;
+  /** A short-lived URL for a document version; with no version, the document's newest one (the render). */
+  documentUrl(documentId: string, versionId: string | null): Promise<string>;
 }
 
 /** The server's own message when present, else a plain fallback. */
@@ -191,6 +224,75 @@ export function createElectionAddendumApi(client: ApiClient): ElectionAddendumAp
         }),
         "Could not record the refusal.",
       );
+    },
+    async attachScannedCopy(admissionId, v, input) {
+      const { file, onStage, ...rest } = input;
+      const uploaded = await verifiedUpload(client, {
+        context: { kind: "patient", patientId: v.patientId, admissionId } as never,
+        mode: "new_document",
+        file,
+        title:
+          rest.outcome === "signed"
+            ? `Election addendum v${v.versionNumber} — signed paper copy`
+            : `Election addendum v${v.versionNumber} — refusal on paper`,
+        documentType: "election_addendum",
+        patientFacing: false,
+        sourceMetadata: {
+          documentType: "election_addendum",
+          sourceChannel: "scanned_physical",
+          receivedAt: new Date().toISOString(),
+          originalFilename: file.name,
+        },
+        onStage,
+      });
+      const ids = {
+        documentId: uploaded.documentId,
+        documentVersionId: uploaded.documentVersionId,
+      };
+      const fail = "The scan uploaded, but it could not be attached to the addendum.";
+      if (rest.outcome === "signed") {
+        const { outcome: _o, ...signature } = rest;
+        return unwrap(
+          await client.POST(`${BASE}/signature/uploaded-evidence`, {
+            ...path(admissionId, v),
+            body: { ifVersion: v.version, ...ids, ...signature },
+          }),
+          fail,
+        );
+      }
+      const { outcome: _o, ...refusal } = rest;
+      return unwrap(
+        await client.POST(`${BASE}/refusal/uploaded-evidence`, {
+          ...path(admissionId, v),
+          body: { ifVersion: v.version, ...ids, ...refusal },
+        }),
+        fail,
+      );
+    },
+    async documentUrl(documentId, versionId) {
+      const fail = "The document is not available.";
+      let id = versionId;
+      if (!id) {
+        const versions = unwrap<{ items: { id: string; versionNumber: number }[] }>(
+          await client.GET("/api/v1/documents/{id}/versions", {
+            params: { path: { id: documentId } },
+          }),
+          fail,
+        );
+        id = [...versions.items].sort((a, b) => b.versionNumber - a.versionNumber)[0]?.id ?? null;
+        if (!id) throw new Error(fail);
+      }
+      const minted = unwrap<{ url?: string }>(
+        await client.GET("/api/v1/documents/{id}/versions/{versionId}/content", {
+          params: {
+            path: { id: documentId, versionId: id },
+            query: { purpose: "treatment", ttlSeconds: 300 },
+          },
+        }),
+        fail,
+      );
+      if (!minted.url) throw new Error(fail);
+      return minted.url;
     },
     async notRequired(admissionId, v, reason, note) {
       return unwrap(
