@@ -28,6 +28,15 @@
 
 ## Changelog
 
+- **COP27 amendment (2026-10-06; header version unchanged — additive, re-lock pending)** — FY2027 hospice CoP
+  workstream B (42 CFR 418.24(b)(6)/(c), in force for elections on or after 2026-10-01; research:
+  [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1). Adds the
+  **hospice coverage determination** on `supply_request` for the `dme` / `supply` kinds (§2.12): the shared
+  `hospice_coverage` enum + reason / determined-at / determined-by columns (migration `0386`),
+  `PUT /api/v1/supplies/supply-requests/:supplyRequestId/coverage-determination`
+  (`supplies.request.coverage_determine`), the `m21.supply_request.coverage_determination_changed` event
+  (declared consumer M6, binding deferred to the COP27 integration), and the owned `NonCoveredDmeSuppliesReader`
+  seam (`listNonCoveredDmeSuppliesForAdmission`) the M6 election-statement addendum composes.
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all eighteen open questions into binding decisions (§11). Defines the **shared `supply_request` row with per-kind TypeBox-typed `data` jsonb** spanning `dme | supply | comfort_kit_deploy | comfort_kit_replenish` (D1), the **explicit XState lifecycle machine** with the eight-state graph `requested → vendor_assigned → ordered → in_transit → delivered → received_confirmed → completed` plus `cancelled` and `returned` branches (D2), the **platform-floor comfort-kit template** with the four-medication floor (morphine 20 mg/mL solution 30 mL, lorazepam 2 mg/mL solution 15 mL, haloperidol 5 mg/mL solution 10 mL, atropine 1% ophthalmic solution 5 mL) and **tenant-may-extend / tenant-may-tighten-only** semantics mirroring the M9 D2 / M11 D3 / M15 D3 platform-floor-tighten-only pattern (D3), the **deterministic vendor-routing rule** with per-tenant default → per-Location override → per-SKU pin precedence resolved at request time and recorded immutably on `supply_request.assigned_vendor_id` plus `routing_rule_resolved_jsonb` for survey-grade reconstruction (D4), the **par-stock monitoring at the supply hub** with `par_stock` per (orgId, locationId, skuId) and a nightly `par-monitor` cron emitting `m21.par.below_threshold` consumed by M36 (D5), the **controlled-substance accounting at dispatch + return** with per-controlled-substance kit-medication `lot_number` + `expiration_date` + `quantity_dispensed` + on-return `quantity_returned` + `quantity_disposed_at_home` + `disposal_method` + `disposal_witness_membership_id` providing the DEA 21 CFR §1304 perpetual-log data layer that M30's Phase-2 CSII report will project (D6), the **delivery confirmation model** with required courier/driver attestation (`delivered_by_membership_id` + `delivered_at` + `delivery_method`) and optional caregiver signature + photo evidence via M22 form rendering (D7), the **5%-discrepancy threshold for controlled substances** with `m21.controlled_substance.discrepancy_detected` emitted as a survey-investigable event mirroring M13 D5's threshold and routed to M30 + M36 (D8), the **explicit Phase boundary** placing vendor EDI / X12 integration in Phase 2 with `packages/vendor-edi` as a deny-stub adapter package today and Phase 1 fulfillment as portal-upload / email / fax with internal tracking (D9), the **outbox-only handoff to M11 / M13 / M22** with M21 never importing M11 or M13 schemas and never writing to their tables, mirroring M11 D6 / M11 D8 / M13 D5 (D10), the **HCPCS-keyed canonical SKU catalog with tenant-extendable overlay** mirroring the M40 canonical-plus-overlay pattern: `supply_item` is platform-shared (read-only to tenants) for billable HCPCS-keyed SKUs and `tenant_supply_item_extension` is tenant-scoped for non-billable internal items (D11), the **monthly-partitioned `supply_request` and `comfort_kit_dispatch`** matching M11 D12 / M13 D13 partition conventions with `par_stock` / `supply_item` / `comfort_kit_template` / `vendor_routing_rule` / `comfort_kit_return` non-partitioned (D12), the **free-text PHI denylist scrub** on `supply_request.delivery_instructions`, `supply_request.cancellation_reason`, `comfort_kit_dispatch.special_handling_notes`, `comfort_kit_return.disposal_notes`, `comfort_kit_return.discrepancy_notes`, `par_stock.reorder_notes` (D13), the **published M21 seams** `SupplyFulfillmentProvider` (read paths for M11/M22/M23/M27/M28/M30/M33), `ComfortKitDispatchProvider` (read paths for M13/M27/M30/M33/M37), `SupplyCostProvider` (read paths for M27) registered at boot via M1 seam registry with `validateSeams()` refusing startup if unregistered and the dependency-cruiser boundary check blocking consumers from importing `apps/backend/src/modules/21-supplies/db/*` directly (D14), the **AI-prohibited zone for controlled-substance dispatch and return reconciliation**: Module 32's LLM may not create, modify, witness, or attest to a controlled-substance dispatch or return row; enforced at boot via `validateSupplyAIBlock()` against M32's prompt registry mirroring M13 D15 / M12 D12 (D15), the **vendor-invoice reconciliation pipeline** with M21 emitting `m21.supply_request.invoice_accrued` (on dispatch) and `m21.supply_request.invoice_reconciled` (on invoice match) consumed by M27 forward-seam against a recorded-fixture envelope per the M11 D6 / M13 D5 forward-seam precedent until M27 locks (D16), the **`deployment_site` discriminator** unifying home / ALF / SNF-as-residence / IPU-room comfort kits behind a single dispatch surface and projecting the IPU-room kit through `ComfortKitDispatchProvider.getIpuRoomKitInventory(locationId, roomId)` consumed by M37 at M37 lock (D17), and the **cascade-recipient (not cascade-orchestrator) pattern** with M21 consuming the M11 cancellation cascade and M13 return-required cascade rather than subscribing to `m6.admission.discharged` directly, eliminating the three-way race condition where M11 / M13 / M21 might disagree on the discharge-time supply posture (D18). Wires the permission keys this module registers into Module 3 (§4.6), the `controlled_substance_dispatcher_eligible` and `comfort_kit_return_reconciler_eligible` ABAC predicates this module registers with Module 3's named-predicate registry (§4.7), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), and the destruction `eraseFn` registered with Module 4 (§8.4). Includes a **proposed manifest patch** (§12, last item) updating `M21.dependsOn` from `[11, 40]` to `[1, 2, 3, 4, 5, 6, 11, 13, 22, 28, 36, 38, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the prior encoding was structurally identical to M11 / M12 / M13's pre-lock state: it omitted the foundation deps (1–4) that are transitively required but not surfaced in the architecture §20 short-list, omitted M5 / M6 (real consumer-of-data relationships through patient.id + admission.id on every per-patient row), omitted M13 (real consumer-of-event relationships through the comfort-kit replenish + return cascade — and bidirectionally M13 consumes M21's deployed / returned / reconciliation events), and omitted M22 / M28 / M36 / M38 (consumer-of-typed-payload relationships rather than transitive). The M11 / M12 / M13 locks established the precedent that every module surfaces *all* its declared imports in `dependsOn`, including foundation and cross-cutting; M21 follows. Also adds `packages/vendor-edi` (deny-stub Phase-1 adapter package) to `M21.codePaths` per D9, keeping `apps/backend/src/modules/21-supplies` as the primary backend home.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
@@ -690,6 +699,63 @@ Every M21 mutation has a defined audit + outbox + alert posture. The matrix is i
 - **Outbox dispatcher reads its own state.** The M21 outbox writes are partitioned with the rest of M1's outbox dispatcher; per the M1 §4.3 outbox pattern, events are committed in the same transaction as the row mutation.
 
 -----
+
+### 2.12 Hospice Coverage Determination (COP27 — 42 CFR 418.24(c))
+
+From 2026-10-01 every hospice election carries the mandatory addendum "Patient Notification of Hospice
+Non-Covered Items, Services, and Drugs" (§ 418.24(b)(6), (c); research doc §1). It must list each **item** the
+hospice determined is unrelated to the terminal illness and related conditions (or otherwise not covered),
+with a clinical explanation the patient can understand (§ 418.24(c)(5)–(6)), and be updated within 3 days of
+a plan-of-care change affecting those determinations (§ 418.24(d)(2)). DME and supplies are ordered as
+`supply_request` rows (M11 orders fan out into them via `source_order_id`), so the determination lives on the
+request.
+
+**Domain.**
+
+- Enum `hospice_coverage` (shared with M12 `medication_order`; created by M12's migration `0385`):
+  `covered_related` | `not_covered_unrelated` | `not_covered_other` (`HOSPICE_COVERAGE_VALUES` in
+  `@wardenx/types`, `hospiceCoverage` in `packages/db/src/enums.ts`).
+- Columns on `supply_request` (migration `0386_m21_supply_request_hospice_coverage.sql`): `hospice_coverage`
+  (NOT NULL, default `covered_related`), `coverage_reason` (text, patient-facing), `coverage_determined_at`
+  (timestamptz; NULL = never explicitly determined), `coverage_determined_by_membership_id` (uuid, SESSION
+  membership — logical FK → M2).
+- CHECK `m21_supply_request_coverage_reason`: covered, or non-blank reason AND determination instant.
+  CHECK `m21_supply_request_coverage_kind`: only `kind IN ('dme','supply')` may be not covered — a comfort kit
+  is the hospice's own symptom-management supply by construction; a drug in it the hospice deems unrelated is
+  determined on its M12 `medication_order`. The service refuses a kit kind first with 422
+  `M21_COVERAGE_NOT_APPLICABLE_TO_KIND`, and a missing reason with 422 `COVERAGE_REASON_REQUIRED`
+  (`lifecycle/coverage-determination.ts`).
+- Partial index `supply_request_admission_not_covered_idx (organization_id, admission_id) WHERE
+  hospice_coverage <> 'covered_related'`.
+- **Default `covered_related` for existing and new rows** — § 418.24(b)(3) makes related/covered the
+  presumption ("exceptional and unusual"); an invented "not covered" line on a patient's addendum would be a
+  coverage denial nobody decided. Backfilled rows keep `coverage_determined_at` NULL.
+- **Not a §2.2 transition.** Status never moves; a determination may be set in any status (a plan-of-care
+  change can re-classify equipment already delivered). It is still a real mutation, so `If-Match` (§7.2) and
+  `Idempotency-Key` are required; row-locked; an unchanged re-save writes nothing and emits nothing.
+- **Audit / PHI posture.** `coverage_reason` is NOT added to the D13 denylist and IS carried in the event
+  payload — a named exception to §4.5.2's no-free-text rule: it is the explanation the hospice must disclose
+  to the patient, non-hospice providers and Medicare contractors (§ 418.24(c)(6), (c)(9)).
+
+**Route.** `PUT /api/v1/supplies/supply-requests/:supplyRequestId/coverage-determination` — permission
+`supplies.request.coverage_determine` (RBAC, category `clinical`); headers `If-Match` (the row's `updatedAt`)
+and `Idempotency-Key`; body `{ hospiceCoverage, reason? }`; response `SupplyRequestDetail`. The list item now
+carries `hospiceCoverage` (badge); the detail adds `coverageReason`, `coverageDeterminedAt`,
+`coverageDeterminedBy`.
+
+**Event.** `m21.supply_request.coverage_determination_changed` — payload `{ orgId, admissionId?, patientId,
+sourceId, hospiceCoverage, previousHospiceCoverage, reason, changedAt }` (`sourceId` = supply-request id).
+Declared consumer **M6** (addendum refresh); binding lands with workstream A, so the pair is in
+`scripts/outbox-deferred-consumers.ts` until the COP27 integration.
+
+**Owned seam.** `NonCoveredDmeSuppliesReader` (registry key, owner M21, `phi: true`, fail-closed deny-stub) —
+the `NonCoveredItemsReader` contract. Implemented by `listNonCoveredDmeSuppliesForAdmission(db, orgId,
+admissionId)` (`apps/backend/src/modules/21-supplies/seams/non-covered-dme-supplies.ts`), org-explicit under
+`withOrgContext`. One snapshot per not-covered request on the admission whose status is **not** `cancelled`,
+`cancellation_pending` or `returned` (`completed` stays listed — a delivered rental is still in the home):
+`source: 'dme' | 'supply'`, `category: 'item'`, description = the catalog item name (platform `supply_item` or
+tenant overlay, resolved from `data.skuId`) else "Durable medical equipment / Medical supply (HCPCS …)",
+reason, determinedAt, determinedByUserId.
 
 ## 3. Drizzle Schema
 
@@ -2091,6 +2157,7 @@ established by the M2 session middleware. Cross-module communication is **outbox
 | POST   | `/supply-requests/:id/mark-ordered` | `markOrdered` | `supplies.request.mark_ordered` | – |
 | POST   | `/supply-requests/:id/mark-in-transit` | `markInTransit` | `supplies.request.mark_in_transit` | – |
 | POST   | `/supply-requests/:id/mark-delivered` | `markDelivered` | `supplies.request.mark_delivered` | – |
+| PUT    | `/supply-requests/:id/coverage-determination` | `setCoverageDetermination` | `supplies.request.coverage_determine` | – (COP27 §2.12; dme/supply only; If-Match + Idempotency-Key; reason required when not covered) |
 | POST   | `/supply-requests/:id/confirm-received` | `confirmReceived` | `supplies.request.confirm_received` | – |
 | POST   | `/supply-requests/:id/cancel` | `cancelSupplyRequest` | `supplies.request.cancel` | – |
 | POST   | `/supply-requests/:id/return` | `returnSupplyRequest` | `supplies.request.return` | – |
@@ -2258,6 +2325,7 @@ export const ReconcileReturnResponse = Type.Object({
 | `supplies.request.mark_ordered` | Mark request as ordered (vendor accepted) | supply_coordinator, admin |
 | `supplies.request.mark_in_transit` | Mark request as in transit | supply_coordinator, admin |
 | `supplies.request.mark_delivered` | Mark request as delivered (courier attestation) | supply_coordinator, admin, courier |
+| `supplies.request.coverage_determine` | Set/change a dme/supply request's hospice coverage determination (COP27 §2.12) | registered_nurse, case_manager, medical_director, admin |
 | `supplies.request.confirm_received` | Caregiver / clinician confirms receipt | registered_nurse, case_manager, hospice_aide |
 | `supplies.request.cancel` | Cancel a non-terminal request | supply_coordinator, admin, registered_nurse |
 | `supplies.request.return` | Initiate equipment return | supply_coordinator, admin |
@@ -2318,6 +2386,7 @@ during M21 boot and referenced by ABAC name in route definitions.
 | `m21.par.below_threshold` | Par-monitor nightly job | `{ orgId, locationId, supplyItemId, parMinimum, currentQuantityOnHand, severity, observedAt }` | M36 (alerts), M30 (if recurring) |
 | `m21.supply_request.invoice_accrued` | Invoice received from vendor (M27 forward seam) | `{ supplyRequestId, orgId, invoiceTotalUsd, invoiceCurrency, accruedAt }` | M27 (forward seam — deny-stub until M27 locks) |
 | `m21.supply_request.invoice_reconciled` | Invoice matched + reconciled | `{ supplyRequestId, orgId, invoiceTotalUsd, varianceUsd, reconciledAt }` | M27 (forward seam) |
+| `m21.supply_request.coverage_determination_changed` | `setCoverageDetermination` changed the determination (COP27 §2.12) | `{ orgId, admissionId?, patientId, sourceId, hospiceCoverage, previousHospiceCoverage, reason, changedAt }` | M6 (election-statement addendum refresh; binding deferred to the COP27 integration) |
 
 ### 4.6 BullMQ Queue Catalog
 
@@ -2749,6 +2818,7 @@ Roles used: `platform_supplies_admin` (P), `admin` (tenant admin), `medical_dire
 | `supplies.request.mark_ordered` | · | ✓ | · | · | · | · | · | ✓ | · |
 | `supplies.request.mark_in_transit` | · | ✓ | · | · | · | · | · | ✓ | · |
 | `supplies.request.mark_delivered` | · | ✓ | · | · | · | · | · | ✓ | ✓ |
+| `supplies.request.coverage_determine` | · | ✓ | ✓ | ✓ | · | ✓ | · | · | · |
 | `supplies.request.confirm_received` | · | · | · | ✓ | · | ✓ | ✓ | · | · |
 | `supplies.request.cancel` | · | ✓ | · | ✓ | · | · | · | ✓ | · |
 | `supplies.request.return` | · | ✓ | · | · | · | · | · | ✓ | · |
@@ -3047,6 +3117,32 @@ discharge) OR an RN directly initiates from S21.4.
 4. If the request is in a terminal status (`delivered | received_confirmed | completed | cancelled | returned`):
    - Do NOT mutate the row.
    - Emit `m21.supply_request.cancel_no_op` so M11 can mark its order accordingly.
+
+
+### 7.8 Workflow W8: Hospice Coverage Determination (COP27)
+
+**User story (RN / physician):**
+> When the IDG decides a piece of equipment or a supply is unrelated to the terminal prognosis (or otherwise
+> not covered), I record that on the request with a plain-language reason, so it appears on the patient's
+> election-statement addendum.
+
+**Acceptance:**
+
+1. Migration `0386` applies on a populated baseline; every existing request reads `covered_related` with
+   `coverage_determined_at` NULL.
+2. `not_covered_unrelated` / `not_covered_other` with a blank or missing reason → 422
+   `COVERAGE_REASON_REQUIRED`; the DB CHECK rejects the same write if the app guard is bypassed.
+3. A determination on a `comfort_kit_deploy` / `comfort_kit_replenish` request → 422
+   `M21_COVERAGE_NOT_APPLICABLE_TO_KIND`.
+4. A stale `If-Match` → 412 `M21_STALE_VERSION`; a missing `Idempotency-Key` → 400.
+5. A valid change persists value, reason, instant and SESSION membership, leaves `status` untouched, and emits
+   exactly one `m21.supply_request.coverage_determination_changed` in the same transaction; an unchanged
+   re-save emits nothing.
+6. `NonCoveredDmeSuppliesReader.listForAdmission` returns only that admission's not-covered requests outside
+   `cancelled` / `cancellation_pending` / `returned`; run as the NOBYPASSRLS `wardenx_app` role it never returns
+   another tenant's rows.
+7. **(forward seam)** M6's addendum consumer binds the event at the COP27 integration and the pair leaves
+   `scripts/outbox-deferred-consumers.ts`.
 
 
 ---

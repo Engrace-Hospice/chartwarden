@@ -333,6 +333,8 @@ export interface ClaimRangeFaceToFace {
   readonly electionPeriodSequence: number;
   readonly attested: boolean;
   readonly encounterDate: string | null;
+  /** FY2027 (CR 14495) — `telehealth` / `in_person` from `encounter_location`; `null` when not recorded. */
+  readonly modality: "in_person" | "telehealth" | null;
 }
 
 export interface ClaimRangeLevelOfCarePeriod {
@@ -350,6 +352,12 @@ export interface ClaimRangeLevelOfCarePeriod {
   /** ALWAYS `null` for the same reason as {@link ClaimRangeLevelOfCarePeriod.chcDocumentedHours} — no GIP
    *  admission-criteria documentation flag exists anywhere in the schema yet. */
   readonly gipAdmissionCriteriaDocumented: boolean | null;
+}
+
+/** `encounter_location` → the billing modality (`telehealth` vs any physical site); `null` = not recorded. */
+function f2fModalityOf(location: string | null): "in_person" | "telehealth" | null {
+  if (location === null) return null;
+  return location === "telehealth" ? "telehealth" : "in_person";
 }
 
 export interface ClaimAssemblyRangeContext {
@@ -559,25 +567,52 @@ export async function claimAssemblyRangeContextForOrg(
             attendingCosigned: pick.attendingMdSignedAt !== null,
           });
         }
+      }
 
+      // F2F rows for EVERY period of the admission: an overlapping period's F2F is reported as before
+      // (R-F2F-04 / `f2f_attested_for_recert`), and — FY2027, CR 14495 — a later period's TELEHEALTH F2F
+      // whose encounter date falls inside `range` is reported too. A recert F2F takes place up to 30 days
+      // BEFORE its period starts, so the claim that must carry its G0679 line covers the PRIOR period.
+      // Every period of the admission, INCLUDING a not-yet-effective one: the next period is often still
+      // pending (no `effective_at`) while the claim for the current one is assembled.
+      const admissionPeriods = await tx
+        .select({ id: EP.id, sequenceNumber: EP.sequenceNumber })
+        .from(EP)
+        .where(eq(EP.admissionId, admissionId));
+      const allPeriodIds = admissionPeriods.map((p) => p.id);
+      if (allPeriodIds.length > 0) {
+        const sequenceOf = new Map(admissionPeriods.map((p) => [p.id, Number(p.sequenceNumber)]));
+        const overlappingSet = new Set(overlappingIds);
         const f2fRows = await tx
           .select({
             electionPeriodId: F2F.electionPeriodId,
             status: F2F.status,
             encounterDate: F2F.encounterDate,
+            encounterLocation: F2F.encounterLocation,
             createdAt: F2F.createdAt,
           })
           .from(F2F)
-          .where(inArray(F2F.electionPeriodId, overlappingIds))
+          .where(inArray(F2F.electionPeriodId, allPeriodIds))
           .orderBy(asc(F2F.createdAt));
-        for (const periodId of overlappingIds) {
+        for (const periodId of overlappingIds.concat(
+          allPeriodIds.filter((id) => !overlappingSet.has(id)),
+        )) {
           const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
           const pick = pickFaceToFace(rows); // F-217 — shared with the adequacy predicate
           if (!pick) continue;
+          const encounterDate = localDateN(pick.encounterDate);
+          const modality = f2fModalityOf(pick.encounterLocation);
+          const telehealthInRange =
+            modality === "telehealth" &&
+            encounterDate !== null &&
+            encounterDate >= range.from &&
+            encounterDate <= range.to;
+          if (!overlappingSet.has(periodId) && !telehealthInRange) continue;
           faceToFace.push({
-            electionPeriodSequence: bySequence.get(periodId)!,
+            electionPeriodSequence: sequenceOf.get(periodId)!,
             attested: pick.status === "attested",
-            encounterDate: localDateN(pick.encounterDate),
+            encounterDate,
+            modality,
           });
         }
       }

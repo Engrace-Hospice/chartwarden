@@ -250,6 +250,8 @@ export interface M6ClaimRangeReader {
       readonly electionPeriodSequence: number;
       readonly attested: boolean;
       readonly encounterDate: string | null;
+      /** FY2027 (CR 14495) — drives the G0679 telehealth-F2F claim line. */
+      readonly modality: "in_person" | "telehealth" | null;
     }[];
     readonly levelOfCarePeriods: readonly {
       readonly levelOfCarePeriodId: string;

@@ -327,7 +327,11 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     const cosigned = await service.cosignDischarge(
       ORG,
       filed.id,
-      { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+      {
+        cosignerName: "Dr. Med Director",
+        cosignerNpi: "1234567893",
+        actorRoleKeys: ["medical_director"],
+      },
       filed.version,
       "md_1",
     );

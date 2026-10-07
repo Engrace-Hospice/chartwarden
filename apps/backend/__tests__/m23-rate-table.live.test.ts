@@ -629,4 +629,56 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       ).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
     });
   });
+
+  // ── FY2027 workstream E — hqrp_compliant (0394) and the national-reference warnings ──
+  describe("HQRP status + CMS national reference (migration 0394)", () => {
+    const FY2027_NON_COMPLIANT = {
+      fiscalYearStarting: 2026,
+      effectiveFrom: "2026-10-01",
+      rhcDays1to60PerDiemCents: 22_709,
+      rhcDays61PlusPerDiemCents: 17_904,
+      chcPerDiemCents: 165_866,
+      chcHourlyRateCents: 6_911,
+      ircPerDiemCents: 52_458,
+      gipPerDiemCents: 118_335,
+    };
+
+    it("persists hqrpCompliant and warns when the keyed rates are the OTHER column", async () => {
+      await reset();
+      const declaredCompliant = await svc().createRateTable(
+        actorA,
+        rates({ ...FY2027_NON_COMPLIANT, hqrpCompliant: true }),
+      );
+      expect(declaredCompliant.hqrpCompliant).toBe(true);
+      expect(declaredCompliant.nationalReferenceWarnings).toHaveLength(1);
+      expect(declaredCompliant.nationalReferenceWarnings[0]).toMatch(
+        /NON-compliant national rates/,
+      );
+
+      const fixed = await svc().supersedeRateTable(
+        actorA,
+        declaredCompliant.rateTableId,
+        rates({ ...FY2027_NON_COMPLIANT, hqrpCompliant: false }),
+      );
+      expect(fixed.hqrpCompliant).toBe(false);
+      expect(fixed.nationalReferenceWarnings).toEqual([]);
+      const { rows } = await admin.query(
+        "SELECT hqrp_compliant FROM hospice_rate_table WHERE id = $1",
+        [fixed.rateTableId],
+      );
+      expect(rows[0].hqrp_compliant).toBe(false);
+    });
+
+    it("an omitted status is stored NULL (undeclared), and the guard freezes it like the rates", async () => {
+      await reset();
+      const v = await svc().createRateTable(actorA, rates());
+      expect(v.hqrpCompliant).toBeNull();
+      expect(v.nationalReferenceWarnings).toEqual([]); // no FY2026 reference is bundled
+      await expect(
+        admin.query("UPDATE hospice_rate_table SET hqrp_compliant = true WHERE id = $1", [
+          v.rateTableId,
+        ]),
+      ).rejects.toThrow(/append-only/);
+    });
+  });
 });

@@ -36,6 +36,7 @@ import {
   AdmissionHoldSchema,
   AdmissionListQuerySchema,
   AdmissionReadinessResponseSchema,
+  AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   ComplianceCloseSchema,
@@ -210,6 +211,7 @@ const ADMISSION_READ = P("admission.read");
 const ADMISSION_UPDATE = P("admission.update");
 const ADMISSION_HOLD = P("admission.hold");
 const ADMISSION_ACTIVATE = P("admission.activate");
+const ADMISSION_RECORD_RECOMMENDATION = P("admission.record_recommendation");
 const ELECTION_DRAFT = P("election.draft");
 const ELECTION_READ = P("election.read");
 const ELECTION_SIGN = P("election.sign");
@@ -243,9 +245,10 @@ const ABAC_F2F_OVERRIDE = requireAbac(
   "f2f.window_override",
   M6_ROLE_PREDICATE_NAMES.f2fWindowOverride,
 ) as PreHandler;
-const ABAC_DISCHARGE_MD = requireAbac(
+// 42 CFR 418.26(b) — the cosigner must be in the discharge-order signer set for THIS discharge's date/chart.
+const ABAC_DISCHARGE_ORDER_SIGNER = requireAbac(
   "discharge.cosign_for_cause",
-  M6_ROLE_PREDICATE_NAMES.dischargeMedicalDirector,
+  M6_ROLE_PREDICATE_NAMES.dischargeOrderSigner,
 ) as PreHandler;
 const ABAC_COMPLIANCE_OVERRIDE = requireAbac(
   "compliance.override",
@@ -875,6 +878,64 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
+  // ── 42 CFR 418.25(a) physician admission recommendation + the 418.25/418.26 signer picker ──────────
+  app.post(
+    "/api/v1/admissions/:id/admission-recommendation",
+    {
+      preHandler: [
+        ADMISSION_RECORD_RECOMMENDATION,
+        admissionScope("admission.record_recommendation"),
+      ],
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdmissionRecommendationSchema, request.body);
+      return service.recordAdmissionRecommendation(
+        organizationId,
+        idOf(request),
+        {
+          recommendedByUserId: body.recommendedByUserId,
+          recommendedAt: body.recommendedAt,
+          capacity: body.capacity,
+          attendingConsulted: body.attendingConsulted,
+          attendingConsultNote: body.attendingConsultNote,
+        },
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.get(
+    "/api/v1/admissions/:id/discharge-order",
+    {
+      preHandler: [ADMISSION_READ, admissionScope("admission.read")],
+      config: { auditRead: { resourceKind: "discharge", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const id = idOf(request);
+      return (await service.getDischargeOrder(organizationId, id)) ?? notFound(id);
+    },
+  );
+
+  app.get(
+    "/api/v1/admissions/:id/physician-signers",
+    {
+      preHandler: [ADMISSION_READ, admissionScope("admission.read")],
+      config: {
+        auditRead: {
+          none: "staff directory (physician user ids, names, signer capacities) — no patient data is returned",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const id = idOf(request);
+      return (await service.listPhysicianSigners(organizationId, id)) ?? notFound(id);
+    },
+  );
+
   // ── Election statement & period (routes 15–21) ───────────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/election-statements",
@@ -1150,7 +1211,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(F2fCompleteSchema, request.body);
-      return service.completeF2f(organizationId, idOf(request), body.ifVersion, body.encounterDate);
+      return service.completeF2f(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        body.encounterDate,
+        {
+          encounterLocation: body.encounterLocation,
+          telehealthEligibility: body.telehealthEligibility ?? null,
+        },
+      );
     },
   );
 
@@ -1165,7 +1235,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         idOf(request),
         body.ifVersion,
         userId,
-        body.attestationNarrative,
+        body.attestationNarrative ?? null,
+        body.signedNoteEncounterId ?? null,
       );
     },
   );
@@ -1332,6 +1403,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           narrative: body.narrative,
           forCauseReason: body.forCauseReason,
           deathCertifierId: body.deathCertifierId,
+          dischargeOrder: body.dischargeOrder,
           placeOfDeath: body.placeOfDeath,
         },
         userId,
@@ -1342,14 +1414,22 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/discharges/:id/cosign-for-cause",
-    { preHandler: [DISCHARGE_COSIGN, ABAC_DISCHARGE_MD] },
+    { preHandler: [DISCHARGE_COSIGN, ABAC_DISCHARGE_ORDER_SIGNER] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(DischargeCosignSchema, request.body);
       return service.cosignDischarge(
         organizationId,
         idOf(request),
-        { cosignerName: body.cosignerName, cosignerNpi: body.cosignerNpi },
+        {
+          cosignerName: body.cosignerName,
+          cosignerNpi: body.cosignerNpi,
+          // 42 CFR 418.26(b) — the signer's capacity is judged on the SERVER-derived roles, never the body.
+          actorRoleKeys: request.context?.roles ?? [],
+          capacity: body.capacity,
+          orderText: body.orderText,
+          orderReference: body.orderReference,
+        },
         body.ifVersion,
         userId,
       );

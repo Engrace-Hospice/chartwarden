@@ -27,7 +27,13 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { deaSchedule, dosespotSendState, medClass, medicationOrderStatus } from "../../enums";
+import {
+  deaSchedule,
+  dosespotSendState,
+  hospiceCoverage,
+  medClass,
+  medicationOrderStatus,
+} from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
 import { organizations } from "../organizations";
@@ -110,6 +116,15 @@ export const medicationOrders = pgTable(
     // Document backref (M22 outbox handshake; null until rendered).
     documentId: uuid("document_id"),
 
+    // COP27 (42 CFR 418.24(c), mig 0385) — the hospice coverage determination the M6 election addendum lists.
+    // Default `covered_related` (418.24(b)(3): unrelated care is "exceptional and unusual"); a NOT-covered
+    // value requires a non-blank reason + determination instant (CHECK `medication_order_coverage_reason_chk`).
+    hospiceCoverage: hospiceCoverage("hospice_coverage").notNull().default("covered_related"),
+    coverageReason: text("coverage_reason"), // patient-facing clinical explanation (418.24(c)(6))
+    coverageDeterminedAt: timestamp("coverage_determined_at", { withTimezone: true }),
+    // The acting MEMBERSHIP (session-derived, never the body). Logical ref — no FK on the partitioned table.
+    coverageDeterminedByMembershipId: uuid("coverage_determined_by_membership_id"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), // partition key + PK member
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     signedAt: timestamp("signed_at", { withTimezone: true }),
@@ -154,9 +169,18 @@ export const medicationOrders = pgTable(
       .on(t.organizationId, t.triggeringReconciliationDecisionId)
       .where(sql`triggering_reconciliation_decision_id IS NOT NULL`),
     byCreatedAt: index("medication_order_created_idx").on(t.createdAt),
+    // COP27 — the NonCoveredMedicationsReader seam read (per admission, not-covered rows only).
+    byAdmissionNotCovered: index("medication_order_admission_not_covered_idx")
+      .on(t.organizationId, t.admissionId)
+      .where(sql`hospice_coverage <> 'covered_related'`),
     controlledScheduleConsistency: check(
       "medication_order_controlled_schedule_consistency",
       sql`(is_controlled_substance = true) = (dea_schedule IS NOT NULL)`,
+    ),
+    coverageReasonWhenNotCovered: check(
+      "medication_order_coverage_reason_chk",
+      sql`hospice_coverage = 'covered_related'
+          OR (coverage_reason IS NOT NULL AND btrim(coverage_reason) <> '' AND coverage_determined_at IS NOT NULL)`,
     ),
     // Mirrors mig 0158's guarded CHECK (name differs from Drizzle's default so the migration owns it).
     acquisitionCostNonNegative: check(

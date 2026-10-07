@@ -90,6 +90,15 @@ const M6_BACKREF_TARGETS: Readonly<Record<string, Stamp>> = {
   },
   // F-192 (#248) — M6's seventh artifact, the transfer variant, landed. `transfer_event.document_id`
   // ("(M22) transfer summary") has carried this exact comment since the schema landed.
+  // FY2027 — the 42 CFR 418.24(c) election statement addendum, one document per addendum version. The
+  // `acknowledged` re-render is a new VERSION of the same document, so the unset-only guard keeps the link.
+  election_addendum: (tx, orgId, rowId, documentId) => {
+    const T = schema.electionAddenda;
+    return tx
+      .update(T)
+      .set({ documentId })
+      .where(and(eq(T.organizationId, orgId), eq(T.id, rowId), isNull(T.documentId)));
+  },
   discharge_summary_transfer: (tx, orgId, rowId, documentId) => {
     const T = schema.transferEvents;
     return tx

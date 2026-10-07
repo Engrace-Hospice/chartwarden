@@ -12,10 +12,71 @@ export type ElectionStatementDetail = ElectionCertificationResourceDetail;
 export type CtiDetail = ElectionCertificationResourceDetail;
 export type FaceToFaceDetail = ElectionCertificationResourceDetail;
 
+/** The §3.2 `f2f_encounter_location` alphabet (R-F2F-05). */
+export type F2fEncounterLocation =
+  | "patient_home"
+  | "alf"
+  | "snf"
+  | "ipu"
+  | "hospital"
+  | "telehealth";
+
+/** The § 418.22(a)(4)(ii)(A)–(C) facts the completing clinician attests for a telehealth F2F. */
+export interface TelehealthEligibility {
+  patientInMoratoriumArea: boolean;
+  hospiceUnderEnhancedOversight: boolean;
+  performerMedicareEnrolledOrOptedOut: boolean;
+}
+
+export interface CompleteFaceToFaceInput {
+  encounterDate: string;
+  encounterLocation: F2fEncounterLocation;
+  telehealthEligibility?: TelehealthEligibility;
+  ifVersion: number;
+}
+
+/** Exactly one source (§ 418.22(b)(4)): a written narrative or a linked signed visit note. */
+export type AttestFaceToFaceInput =
+  | { attestationNarrative: string; ifVersion: number }
+  | { signedNoteEncounterId: string; ifVersion: number };
+
+/** A signed M8 visit note that could serve as the F2F attestation (R-F2F-06). */
+export interface SignedVisitNote {
+  id: string;
+  encounterType: string;
+  discipline: string;
+  serviceDate: string;
+  status: string;
+  authoredByUserId: string;
+  signedAt: string | null;
+}
+
+const PRIMARY_SIGNED = ["signed", "cosign_pending", "cosigned"];
+
 export interface ElectionCertificationApi {
   getElectionStatement(id: string): Promise<ElectionStatementDetail>;
   getCti(id: string): Promise<CtiDetail>;
   getFaceToFace(id: string): Promise<FaceToFaceDetail>;
+  completeFaceToFace(id: string, input: CompleteFaceToFaceInput): Promise<void>;
+  attestFaceToFace(id: string, input: AttestFaceToFaceInput): Promise<void>;
+  /** The patient's notes signed on `serviceDate` (optionally by `authorUserId`) — the R-F2F-06 candidates. */
+  signedNotesOn(
+    patientId: string,
+    serviceDate: string,
+    authorUserId?: string | null,
+  ): Promise<SignedVisitNote[]>;
+}
+
+/** The server's machine-readable error code, when the envelope carries one. */
+export class FaceToFaceWriteError extends Error {
+  constructor(readonly code: string | null) {
+    super(code ?? "F2F_WRITE_FAILED");
+  }
+}
+
+function errorCode(error: unknown): string | null {
+  const code = (error as { error?: { code?: unknown } } | undefined)?.error?.code;
+  return typeof code === "string" ? code : null;
 }
 
 function detailOrThrow<T extends ElectionCertificationResourceDetail>(
@@ -48,6 +109,37 @@ export function createElectionCertificationApi(client: ApiClient): ElectionCerti
         params: { path: { id } },
       });
       return detailOrThrow(data, error);
+    },
+
+    async completeFaceToFace(id, input) {
+      const { error } = await client.POST("/api/v1/face-to-face/{id}/complete", {
+        params: { path: { id } },
+        body: input,
+      });
+      if (error) throw new FaceToFaceWriteError(errorCode(error));
+    },
+
+    async attestFaceToFace(id, input) {
+      const { error } = await client.POST("/api/v1/face-to-face/{id}/attest", {
+        params: { path: { id } },
+        body: input,
+      });
+      if (error) throw new FaceToFaceWriteError(errorCode(error));
+    },
+
+    async signedNotesOn(patientId, serviceDate, authorUserId) {
+      const { data, error } = await client.GET("/api/v1/encounters", {
+        params: { query: { patientId, from: serviceDate, to: serviceDate, limit: 50 } },
+      });
+      if (error || !data) throw new Error("NOTES_LOAD_FAILED");
+      const rows = (data as { encounters?: SignedVisitNote[] }).encounters ?? [];
+      return rows.filter(
+        (n) =>
+          PRIMARY_SIGNED.includes(n.status) &&
+          n.signedAt !== null &&
+          n.serviceDate === serviceDate &&
+          (!authorUserId || n.authoredByUserId === authorUserId),
+      );
     },
   };
 }

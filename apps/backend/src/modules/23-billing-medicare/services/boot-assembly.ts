@@ -130,6 +130,7 @@ import {
   buildM23SignedEncountersAdapter,
   buildM23TerminologyAdapter,
 } from "./claim-assembly-seam-adapters";
+import type { ElectionAddendumComplianceReader } from "./claim-assembly-types";
 import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
@@ -178,6 +179,9 @@ export interface M23BootAssemblyPorts {
    *  `mdm.resolveClinicalParticipants().placeOfService`. Absent, `placeOfService` stays `null`
    *  (line Q-code falls to Q5009 honestly). */
   readonly placeOfService?: PlaceOfServicePorts;
+  /** FY2027 — M6's `electionAddendumComplianceForOrg` (42 CFR 418.24(c)). Absent, the
+   *  `election_addendum_signed` rule SKIPs `seam_not_bound`. */
+  readonly m6ElectionAddendum?: ElectionAddendumComplianceReader;
 }
 
 /**
@@ -258,6 +262,7 @@ export function buildM23BootAssemblySeams(
     // TENANT-ENTERED hippsRateTable / chcHourlyRateCents (M23-owned `hospice_rate_table`, read org-explicitly
     // over `db` — no injected port; `RATE_TABLE_MISSING`/422 when no table covers the service date).
     referenceData: buildM23ReferenceDataAdapter(db),
+    ...(ports.m6ElectionAddendum ? { electionAddendum: ports.m6ElectionAddendum } : {}),
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };

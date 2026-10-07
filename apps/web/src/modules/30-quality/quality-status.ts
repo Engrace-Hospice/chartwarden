@@ -94,6 +94,7 @@ export const MORTALITY_STATUS_TONE: Record<MortalityStatus, StatusTone> = {
 /** Measure domain → a short human label for the hub's grouping. */
 export const DOMAIN_LABEL: Record<MeasureDomain, string> = {
   hci: "HCI",
+  ssvi: "SSVI (internal estimate)",
   hvldl: "HVLDL",
   hope: "HOPE",
   cahps: "CAHPS",
@@ -135,7 +136,7 @@ export function ratePct(rate: number | null, bandColor?: MeasureBandColor): stri
  * mean rescaled to a share of the day (÷ 1440) so it fits the proportion contract — which would read as a
  * meaningless "1.0%". It is shown in CMS's own unit instead, from the exact numerator/denominator.
  */
-const MINUTES_PER_DAY_MEASURES = new Set(["hci_indicator_08"]);
+const MINUTES_PER_DAY_MEASURES = new Set(["hci_indicator_08", "ssvi_metric_06"]);
 
 /** Render a measure value's rate: minutes per RHC day for HCI 8, a percentage for everything else. */
 export function measureRate(

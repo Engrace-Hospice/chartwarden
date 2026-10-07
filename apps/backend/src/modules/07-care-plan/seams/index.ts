@@ -19,6 +19,12 @@ export {
   createInMemoryCarePlanReaderStore,
 } from "./store";
 export { type NowClock, createCarePlanReader } from "./reader";
+// FY2027 — the election statement addendum's M7 sources (42 CFR 418.24(c)(4)–(5)).
+export {
+  UNRELATED_PROBLEM_REASON,
+  createAddendumDiagnosesReader,
+  createUnrelatedProblemItemsReader,
+} from "./addendum-sources";
 // TASK-002 — the FULL Drizzle-backed store (no in-memory fallback); the composition root binds it as
 // `registerCarePlanSeams({ store: createDrizzleCarePlanReaderStore(db) })` (the M8 pattern).
 export {

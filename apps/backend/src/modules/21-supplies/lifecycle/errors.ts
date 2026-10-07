@@ -48,6 +48,9 @@ export const M21_ERROR_STATUS = {
   /** F-193 (#248) — the evidence given does not satisfy the declared capture method's floor (mirrors
    *  M39's `validateCaptureEvidence` refusal). */
   M21_CAREGIVER_SIGNATURE_EVIDENCE_REQUIRED: 422,
+  /** COP27 (42 CFR 418.24(c)) — a hospice coverage determination applies to the `dme` / `supply` kinds only;
+   *  a comfort-kit drug is determined on its M12 medication order. */
+  M21_COVERAGE_NOT_APPLICABLE_TO_KIND: 422,
 
   // ── §2.3 comfort-kit template ──────────────────────────────────────────────────────────────────────
   /** §7.2 — a tenant template removed / loosened a platform-floor medication. */

@@ -18,6 +18,7 @@ import type {
   PatientId,
   SignedEncounterDigest,
   SkilledNursingDayTotal,
+  SkilledVisitDay,
 } from "@wardenx/types";
 
 /**
@@ -82,6 +83,11 @@ export interface EncounterReaderStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<ReadonlyArray<SkilledNursingDayTotal>>;
+  /** ORG-LEVEL (admission, service date) pairs with a signed `rn`/`lpn`/`msw` visit — SSVI metrics 3 and 7. */
+  skilledVisitDaysForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<ReadonlyArray<SkilledVisitDay>>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -154,6 +160,10 @@ export function createInMemoryEncounterReaderStore(seed: EncounterReaderSeed = {
       /** Slice default: the in-memory facts carry no service dates or durations, so no day totals. The
        *  HCI indicators built on this SUPPRESS on an empty day set rather than scoring a perfect zero. */
       async skilledNursingDayTotalsForOrg() {
+        return [];
+      },
+      /** Slice default: no service dates in the in-memory facts, so no skilled-visit days (SSVI suppresses). */
+      async skilledVisitDaysForOrg() {
         return [];
       },
     },

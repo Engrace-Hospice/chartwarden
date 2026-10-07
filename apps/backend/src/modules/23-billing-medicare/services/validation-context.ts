@@ -72,6 +72,7 @@ export function assembleValidationContext(
     capProjectionBound,
     capProjectionCtx,
     signedEncounters,
+    electionAddendum,
   } = facts;
   // One derivation for the assembly and every re-validation (claim-discharge.ts): a revocation or transfer-out
   // ends the stay too, not only a completed discharge_event.
@@ -164,6 +165,7 @@ export function assembleValidationContext(
       factorDecimal: wageIndex.factorDecimal,
       cbsaCode: wageIndex.cbsaCode,
     },
+    ...(electionAddendum ? { electionAddendum } : {}),
     seams: {
       capProjectionBound,
       mdmResolverBound: true,

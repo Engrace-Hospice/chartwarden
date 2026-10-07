@@ -14,7 +14,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DischargeReader } from "@wardenx/types";
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 
 const DE = schema.dischargeEvents;
 const ADM = schema.admissions;
@@ -30,6 +30,17 @@ const EARLY_LIVE_DISCHARGE_DAY_CUTOFF = 7;
 const LATE_LIVE_DISCHARGE_DAY_CUTOFF = 180;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** SSVI metric 5 (CMS-1851-F Table 9) — "length of stay over 180 days": strictly more than this many days. */
+const SSVI_LONG_STAY_DAYS = 180;
+
+/** SSVI metric 8 — a live discharge "returns to the same hospice in seven days": readmitted within this many days. */
+const SSVI_READMIT_WINDOW_DAYS = 7;
+
+/** `yyyy-mm-dd` + n days. */
+function addDays(date: string, n: number): string {
+  return new Date(Date.parse(`${date}T00:00:00.000Z`) + n * MS_PER_DAY).toISOString().slice(0, 10);
+}
 
 /** Whole days between an admission timestamp and a discharge `date` (yyyy-mm-dd) column value. */
 function daysSinceAdmission(admissionAt: Date, effectiveAt: string): number {
@@ -77,6 +88,65 @@ export function createDischargeReader(db: DbClient): DischargeReader {
           else if (days >= LATE_LIVE_DISCHARGE_DAY_CUTOFF) lateLiveDischarges += 1;
         }
         return { totalDischarges: rows.length, earlyLiveDischarges, lateLiveDischarges };
+      });
+    },
+
+    ssviDischargeCounts(organizationId, period) {
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const client = tx as unknown as DbClient;
+        const rows = await client
+          .select({
+            admissionId: DE.admissionId,
+            dischargeType: DE.dischargeType,
+            effectiveAt: DE.effectiveAt,
+            admissionAt: ADM.admissionAt,
+            patientId: ADM.patientId,
+          })
+          .from(DE)
+          .innerJoin(ADM, eq(DE.admissionId, ADM.id))
+          .where(
+            and(
+              eq(DE.organizationId, organizationId),
+              gte(DE.effectiveAt, period.from),
+              lt(DE.effectiveAt, period.to),
+            ),
+          );
+
+        const live = rows.filter((r) => r.dischargeType !== "death");
+        let dischargesWithLosOver180 = 0;
+        for (const r of rows) {
+          if (r.admissionAt === null) continue; // never guessed — see liveDischargeTimingCounts
+          if (daysSinceAdmission(r.admissionAt, r.effectiveAt) > SSVI_LONG_STAY_DAYS)
+            dischargesWithLosOver180 += 1;
+        }
+
+        // Readmissions: the same patient's OTHER admissions to this org, admitted on or after the discharge
+        // date and no more than 7 days later. One bounded read for every live-discharged patient.
+        let liveDischargesReadmittedWithin7Days = 0;
+        const patientIds = [...new Set(live.map((r) => r.patientId))];
+        if (patientIds.length > 0) {
+          const later = await client
+            .select({ id: ADM.id, patientId: ADM.patientId, admissionAt: ADM.admissionAt })
+            .from(ADM)
+            .where(and(eq(ADM.organizationId, organizationId), inArray(ADM.patientId, patientIds)));
+          for (const d of live) {
+            const windowEnd = addDays(d.effectiveAt, SSVI_READMIT_WINDOW_DAYS);
+            const readmitted = later.some((a) => {
+              if (a.id === d.admissionId || a.patientId !== d.patientId || a.admissionAt === null)
+                return false;
+              const day = a.admissionAt.toISOString().slice(0, 10);
+              return day >= d.effectiveAt && day <= windowEnd;
+            });
+            if (readmitted) liveDischargesReadmittedWithin7Days += 1;
+          }
+        }
+
+        return {
+          totalDischarges: rows.length,
+          liveDischarges: live.length,
+          dischargesWithLosOver180,
+          liveDischargesReadmittedWithin7Days,
+        };
       });
     },
   };

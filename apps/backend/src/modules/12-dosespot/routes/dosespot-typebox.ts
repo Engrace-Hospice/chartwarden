@@ -7,7 +7,11 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import {
+  HospiceCoverageFieldsSchema,
+  SetHospiceCoverageBodySchema,
+  ValidationError,
+} from "@wardenx/types";
 import type {
   MedicationHistoryRecordView,
   ControlledSubstancePolicyView as ServiceControlledSubstancePolicyView,
@@ -149,6 +153,10 @@ export const ReportMedicationErrorRequest = Type.Object({
   errorCategory: Type.String({ minLength: 1, maxLength: 100 }),
   summary: Type.Optional(Type.String({ maxLength: 2000 })),
 });
+
+/** COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination. `reason` is required
+ *  when the drug is not covered (the service answers 422 `COVERAGE_REASON_REQUIRED`). */
+export const SetCoverageDeterminationRequest = SetHospiceCoverageBodySchema;
 
 export const CorrectMedicationOrderRequest = CreateMedicationOrderRequest;
 
@@ -293,6 +301,8 @@ export const MedicationOrderResponseSchema = Type.Object({
   discontinuedAt: Nullable(Type.String()),
   discontinuationReason: Nullable(DISCONTINUATION_REASON),
   createdAt: Type.String(),
+  // COP27 — the hospice coverage determination (mig 0385).
+  ...HospiceCoverageFieldsSchema,
 });
 /** The `{ orders }` envelope the list + active-medications reads return. */
 export const MedicationOrderListResponseSchema = Type.Object({

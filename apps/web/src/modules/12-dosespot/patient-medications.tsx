@@ -23,6 +23,12 @@ import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
+  HOSPICE_COVERAGE_LABEL,
+  type HospiceCoverage,
+  HospiceCoverageBadge,
+  isNotCovered,
+} from "../../shell/hospice-coverage";
+import {
   ChartBanner,
   PatientSummaryPanel,
   fmtDate,
@@ -62,6 +68,9 @@ interface MedRow {
   signedAt: string | null;
   discontinuedAt: string | null;
   discontinuationReason: string | null;
+  /** COP27 — the hospice coverage determination (absent on an older server ⇒ treated as covered). */
+  hospiceCoverage?: HospiceCoverage;
+  coverageReason?: string | null;
   data: { sigStructured?: Sig; sigFreeText?: string; daysSupply?: number } | null;
 }
 
@@ -498,10 +507,13 @@ export function PatientMedications(): JSX.Element {
                         <td>{indicationText(m)}</td>
                         <td className="wx-nums">{usDate(startOf(m))}</td>
                         <td>
-                          <StatusPill
-                            label={stateLabel(m.status)}
-                            tone={MED_ORDER_TONE[m.status] ?? "neutral"}
-                          />
+                          <span className="wx-coverage-cell">
+                            <StatusPill
+                              label={stateLabel(m.status)}
+                              tone={MED_ORDER_TONE[m.status] ?? "neutral"}
+                            />
+                            <HospiceCoverageBadge coverage={m.hospiceCoverage} />
+                          </span>
                         </td>
                         <td>
                           <Link
@@ -617,6 +629,7 @@ function MedicationDetailCard({
           <div className="wx-row-sub">{[m.strength, m.doseForm].filter(Boolean).join(" ")}</div>
         </div>
         <StatusPill label={stateLabel(m.status)} tone={MED_ORDER_TONE[m.status] ?? "neutral"} />
+        <HospiceCoverageBadge coverage={m.hospiceCoverage} />
         {m.status === "draft" ? (
           <Link to={`/medication-orders/${m.id}/edit`} className="wx-btn-secondary wx-btn-sm">
             <Glyph name="pencil" size={14} /> Edit
@@ -654,12 +667,21 @@ function MedicationDetailCard({
           <Field label="Refills">
             {m.refillsRemaining} of {m.refillsAuthorized}
           </Field>
+          <Field label="Hospice coverage">
+            {HOSPICE_COVERAGE_LABEL[m.hospiceCoverage ?? "covered_related"]}
+          </Field>
         </div>
         <div style={{ display: "grid", gap: "0.75rem", alignContent: "start" }}>
           {m.data?.sigFreeText ? (
             <div className="wx-note-box">
               <strong>Directions</strong>
               <p>{m.data.sigFreeText}</p>
+            </div>
+          ) : null}
+          {m.hospiceCoverage && isNotCovered(m.hospiceCoverage) && m.coverageReason ? (
+            <div className="wx-note-box">
+              <strong>Not covered by hospice</strong>
+              <p>{m.coverageReason}</p>
             </div>
           ) : null}
           {m.discontinuationReason ? (

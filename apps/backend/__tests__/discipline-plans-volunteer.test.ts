@@ -666,6 +666,9 @@ describe("M15 §7.6 M8 volunteer-visit resolver (SignedEncountersReader seam)", 
       skilledNursingDayTotalsForOrg: async () => {
         throw new Error("not used");
       },
+      skilledVisitDaysForOrg: async () => {
+        throw new Error("not used");
+      },
     });
   }
 

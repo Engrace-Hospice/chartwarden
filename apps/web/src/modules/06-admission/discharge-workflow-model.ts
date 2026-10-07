@@ -240,6 +240,15 @@ const CODE_MESSAGES: Record<string, string> = {
     "transfer step — it sets the final claim's patient status (50 or 51).",
   PLACE_OF_DEATH_NOT_ALLOWED:
     "A place of death is only recorded on a death. Use Record death on the admission for a death.",
+  // 42 CFR 418.26(b) (FY 2027) — the physician discharge order (physician-authority.ts on the server).
+  DISCHARGE_ORDER_REQUIRED:
+    "A discharge dated on or after October 1, 2026 needs the physician discharge order. Add the ordering " +
+    "physician on the effective-date step.",
+  DISCHARGE_ORDER_TIMING_INVALID:
+    "The discharge order must be signed no later than the discharge date and not in the future.",
+  PHYSICIAN_SIGNER_INVALID:
+    "That physician can't sign this discharge order. Choose the medical director, a physician designee, or " +
+    "this patient's IDG physician.",
   FOR_CAUSE_REQUIRES_COSIGN:
     "A for-cause discharge cannot take effect until the medical director cosigns it.",
   ILLEGAL_TRANSITION:

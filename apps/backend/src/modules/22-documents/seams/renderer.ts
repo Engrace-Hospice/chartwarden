@@ -74,6 +74,13 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Hospice Election Statement",
   },
+  // FY2027 (CMS-1851-F) — the 42 CFR 418.24(c) "Patient Notification of Hospice Non-Covered Items, Services,
+  // and Drugs". Compliance class, like the election statement it is filed with (418.24(d)(1)).
+  election_addendum: {
+    aggregateType: "election_addendum",
+    retentionClass: "compliance",
+    defaultTitle: "Patient Notification of Hospice Non-Covered Items, Services, and Drugs",
+  },
   revocation: {
     aggregateType: "revocation",
     retentionClass: "compliance",

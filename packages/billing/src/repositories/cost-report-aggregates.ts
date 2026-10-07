@@ -49,7 +49,15 @@ export interface BilledDaysAggregate {
 export interface ClaimLineRollup extends BilledDaysAggregate {
   /** Per-diem claim LINES summed into this rollup (the population, not the day total). */
   readonly claimLineCount: number;
+  /**
+   * FY2027 SSVI metric 2 — of `byLevelOfCare.rhc`, the RHC (0651) days whose site of service is a nursing
+   * facility / LTC (Q5003) or a skilled nursing facility (Q5004).
+   */
+  readonly rhcNursingFacilityDays: number;
 }
+
+/** Site-of-service Q-codes CMS's SSVI metric 2 counts as "a nursing home or skilled nursing facility". */
+const NURSING_FACILITY_Q_CODES: ReadonlySet<string> = new Set(["Q5003", "Q5004"]);
 
 /** Read port for the M27 cost-report billing aggregates (PatientDaysProvider). No write surface. */
 export class CostReportAggregateRepository {
@@ -111,6 +119,7 @@ export class CostReportAggregateRepository {
     const rows = await this.db
       .select({
         revenueCode: L.revenueCode,
+        qCode: L.qCode,
         days: sql<number>`coalesce(sum(${L.unitCount}), 0)::int`,
         lineCount: sql<number>`count(*)::int`,
       })
@@ -124,18 +133,20 @@ export class CostReportAggregateRepository {
           between(L.serviceDateFrom, fromIso, toIso),
         ),
       )
-      .groupBy(L.revenueCode);
+      .groupBy(L.revenueCode, L.qCode);
 
     const byLevelOfCare: BilledDaysByLevel = { rhc: 0, chc: 0, irc: 0, gip: 0 };
     let totalPatientDays = 0;
     let claimLineCount = 0;
+    let rhcNursingFacilityDays = 0;
     for (const r of rows) {
       const level = LEVEL_BY_REVENUE_CODE[r.revenueCode];
       const days = Number(r.days) || 0;
       if (level) byLevelOfCare[level] += days;
+      if (level === "rhc" && NURSING_FACILITY_Q_CODES.has(r.qCode)) rhcNursingFacilityDays += days;
       totalPatientDays += days;
       claimLineCount += Number(r.lineCount) || 0;
     }
-    return { totalPatientDays, byLevelOfCare, claimLineCount };
+    return { totalPatientDays, byLevelOfCare, claimLineCount, rhcNursingFacilityDays };
   }
 }

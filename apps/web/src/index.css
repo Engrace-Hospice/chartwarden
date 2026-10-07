@@ -2307,6 +2307,53 @@
   .wx-clinical-section-body {
     padding: 1.125rem 1.25rem 1.25rem;
   }
+  /* COP27 hospice coverage determination (shell/hospice-coverage.tsx) */
+  .wx-coverage-head {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-coverage-fields,
+  .wx-coverage-form {
+    display: grid;
+    gap: 1rem;
+  }
+  .wx-coverage-cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  .wx-coverage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .wx-coverage-rows {
+    display: grid;
+    margin: 0;
+  }
+  .wx-coverage-rows > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, min(38%, 16rem)) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--color-outline-variant);
+  }
+  .wx-coverage-rows > div:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .wx-coverage-rows dt {
+    color: var(--color-on-surface-variant);
+    font-size: 0.85rem;
+  }
+  .wx-coverage-rows dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+  }
   .wx-field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
@@ -3703,6 +3750,46 @@
   .wx-action-row.is-end {
     justify-content: flex-end;
   }
+  /* FY2027 face-to-face rail (06-admission/face-to-face-rail.tsx) — admission-drawer chrome. */
+  .wx-f2f-rail-slot {
+    flex: 1 1 22rem;
+    min-width: min(100%, 20rem);
+    padding: 1rem;
+  }
+  .wx-action-body.is-flush {
+    padding: 0;
+  }
+  .wx-drawer-head-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-drawer-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .wx-f2f-icon {
+    color: var(--color-primary);
+  }
+  .wx-f2f-attest-set {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 0 0;
+    border: 0;
+    border-top: 1px solid var(--color-outline-variant);
+  }
+  .wx-f2f-attest-set legend {
+    padding: 0;
+    font-size: 0.8125rem;
+    font-weight: 650;
+    color: var(--color-on-surface);
+  }
+  .wx-code {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--color-on-surface-variant);
+  }
   .wx-kv {
     display: grid;
     grid-template-columns: 8.5rem minmax(0, 1fr);
@@ -3781,6 +3868,181 @@
     }
   }
 
+  /* Hospice rates (23-billing-medicare/rate-tables.tsx, FY2027 workstream E) — the admissions drawer pattern. */
+  .wx-rates {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-rates.has-drawer {
+    grid-template-columns: minmax(0, 1fr) 24rem;
+  }
+  .wx-rates-main {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-rates-pe {
+    flex: 1 1 18rem;
+    min-width: 0;
+  }
+  .wx-rates .wx-filter-panel {
+    align-items: flex-end;
+  }
+  .wx-rates-drawer-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-rates .wx-drawer-head .wx-rail-icon {
+    color: var(--color-primary);
+  }
+  .wx-num-col {
+    text-align: right;
+  }
+  .wx-muted-code {
+    margin-left: 0.25rem;
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .wx-source-line {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin: 0;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-segmented {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.375rem;
+  }
+  .wx-rate-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .wx-locked-amount {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .wx-locked-amount svg {
+    color: var(--color-muted);
+  }
+  .wx-warning-list {
+    display: grid;
+    gap: 0.25rem;
+  }
+  @media (max-width: 1280px) {
+    .wx-rates.has-drawer {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-rates .wx-admission-drawer {
+      position: static;
+    }
+  }
+  @media (max-width: 560px) {
+    .wx-rates {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+    .wx-ssvi .wx-list-table-wrap,
+    .wx-rates .wx-list-table-wrap {
+      overflow-x: auto;
+    }
+    .wx-rates .wx-stat-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-rate-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* SSVI internal estimate (30-quality/ssvi-panel.tsx) — Home-dashboard tiles over a flat section. */
+  /* Flat inside the hub's filter card: no box in a box. */
+  .wx-ssvi.wx-clinical-section {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .wx-ssvi > header,
+  .wx-ssvi > .wx-clinical-section-body {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .wx-ssvi-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.75rem;
+  }
+  .wx-ssvi-tile {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+  }
+  .wx-ssvi-tile > span {
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-ssvi-tile > strong {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+    font-variant-numeric: tabular-nums;
+  }
+  .wx-ssvi-tile > small {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-ssvi-tile.is-outlier > strong {
+    color: var(--color-error);
+  }
+  .wx-ssvi-meter {
+    display: flex;
+    gap: 2px;
+    margin-top: 0.25rem;
+  }
+  .wx-ssvi-meter > span {
+    flex: 1;
+    height: 0.375rem;
+    border-radius: 2px;
+    background: var(--color-surface-container);
+  }
+  .wx-ssvi-meter > span.is-on {
+    background: var(--color-primary);
+  }
+  .wx-ssvi-meter > span.is-on.is-outlier {
+    background: var(--color-error);
+  }
+  .wx-ssvi-meter > span.is-unknown {
+    background: repeating-linear-gradient(
+      45deg,
+      var(--color-surface-container),
+      var(--color-surface-container) 2px,
+      var(--color-surface-low) 2px,
+      var(--color-surface-low) 4px
+    );
+  }
+  .wx-ssvi-metrics {
+    margin-top: 1rem;
+  }
+  .wx-ssvi-points {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
   /* IDG tab (14-idg/patient-idg-history.tsx). */
   .wx-idg-grid {
     display: grid;
@@ -4649,6 +4911,83 @@
     font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
   }
+  /* M6 physician signer set (42 CFR 418.25(a) recommendation, 418.26(b) discharge order) —
+     06-admission/physician-authority-ui.tsx, admission-recommendation-ui.tsx, discharge-order-ui.tsx. */
+  /* Drawer icon: the shared round .wx-rail-icon tile (F2F / addendum / rates rails), in primary. */
+  .wx-pa-head-icon {
+    color: var(--color-primary);
+  }
+  .wx-pa-head-text {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+  /* Narrow: the CMS code + status wrap under the title instead of squeezing it to one word a line. */
+  .wx-clinical-section > header:has(> .wx-pa-section-aside) {
+    flex-wrap: wrap;
+  }
+  .wx-pa-stack {
+    display: grid;
+    gap: 0.875rem;
+  }
+  .wx-pa-source {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+  .wx-pa-capacities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .wx-pa-section-aside {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-left: auto;
+  }
+  /* DetailPageLayout at phone/tablet width: the 24rem rail would starve the page (390px left ~0 for
+     content). The readiness/activation panel stacks under the content; a capture drawer (418.25(a)
+     recommendation) becomes an application drawer over a scrim, like the work-queue panel above. */
+  @media (max-width: 768px) {
+    .wx-detail-page > div:has(> .wx-context-rail) {
+      flex-direction: column;
+    }
+    .wx-detail-page .wx-context-rail:has(> .wx-right-panel) {
+      width: 100%;
+      max-width: none !important;
+    }
+    .wx-detail-page .wx-context-rail > .wx-right-panel {
+      width: 100% !important;
+      border-left: none !important;
+    }
+    .wx-detail-page .wx-context-rail:has(> .wx-admission-drawer) {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      width: 100% !important;
+      max-width: none !important;
+      padding: 0 !important;
+      background: var(--color-scrim);
+    }
+    .wx-detail-page .wx-context-rail > .wx-admission-drawer {
+      position: static;
+      width: min(100%, 32rem);
+      min-height: 100%;
+      margin-left: auto;
+      border-radius: 0;
+      box-shadow: var(--shadow-float);
+    }
+  }
+  .wx-pa-order-text {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
 }
 
 /* ---- Motion: keyframes for the @wardenx/ui system primitives ----
@@ -4677,5 +5016,76 @@
 @media (prefers-reduced-motion: reduce) {
   .wx-ai-halo {
     animation: none;
+  }
+}
+
+/* FY2027 election statement addendum (06-admission/election-addendum-panel.tsx): the clinical section with
+   the admissions drawer beside it for the selected version; stacks under 1100px. */
+.wx-addendum-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.wx-addendum-split.has-drawer {
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+}
+.wx-addendum-body {
+  display: grid;
+  gap: 1rem;
+}
+.wx-addendum-head-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+/* Narrow: the status/countdown pills wrap under the title instead of squeezing it. */
+.wx-addendum-split .wx-clinical-section > header {
+  flex-wrap: wrap;
+}
+/* The versions list fits its section (4 short columns) instead of the 58rem page-table floor. */
+.wx-addendum-body .wx-data-table {
+  min-width: 0;
+}
+.wx-addendum-body .wx-data-table td {
+  white-space: normal;
+}
+/* "Not covered" group in the section: a hairline-separated sub-list, not a nested box. */
+.wx-addendum-group {
+  display: grid;
+  gap: 0.625rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-card-border);
+}
+.wx-addendum-subhead {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+.wx-addendum-icon {
+  color: var(--color-primary);
+}
+.wx-addendum-items {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-addendum-item {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0 0 0.75rem;
+  border: none;
+  border-bottom: 1px solid var(--color-card-border);
+}
+.wx-addendum-split .wx-clinical-section-aside {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-left: auto;
+}
+@media (max-width: 1100px) {
+  .wx-addendum-split.has-drawer {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

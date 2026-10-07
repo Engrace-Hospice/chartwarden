@@ -479,7 +479,11 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     await svc.cosignDischarge(
       ORG_A,
       filed.id,
-      { cosignerName: "Dr Director", cosignerNpi: "1234567893" } as never,
+      {
+        cosignerName: "Dr Director",
+        cosignerNpi: "1234567893",
+        actorRoleKeys: ["medical_director"],
+      },
       filed.version,
       MD,
     );

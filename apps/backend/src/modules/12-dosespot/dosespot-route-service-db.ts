@@ -38,7 +38,13 @@ import {
 } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass, PatientAllergyReader } from "@wardenx/types";
-import { NotFoundError, StepUpRequiredError, ValidationError, WardenXError } from "@wardenx/types";
+import {
+  NotFoundError,
+  StepUpRequiredError,
+  ValidationError,
+  WardenXError,
+  assertCoverageDetermination,
+} from "@wardenx/types";
 import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
@@ -177,6 +183,10 @@ const toOrderView = (r: MoRow): MedicationOrderView => ({
   discontinuedAt: iso(r.discontinuedAt),
   discontinuationReason: null, // no persisted column
   createdAt: iso(r.createdAt) ?? new Date(0).toISOString(),
+  hospiceCoverage: r.hospiceCoverage,
+  coverageReason: r.coverageReason ?? null,
+  coverageDeterminedAt: iso(r.coverageDeterminedAt),
+  coverageDeterminedBy: r.coverageDeterminedByMembershipId ?? null,
 });
 
 type RrRow = typeof RR.$inferSelect;
@@ -436,6 +446,39 @@ export function createDbDoseSpotBackend(
    * acquisition cost — the future DoseSpot fill/NDC pricing feed populates it at dispense time (a plain
    * `update ... set acquisitionCostCents` when that webhook lands). Until then every line is honestly
    * NULL = "not priced", and the §2.10 cost-basis seam refuses to aggregate unpriced lines (never $0). */
+  /**
+   * COP27 (42 CFR 418.24(c)) — the coverage block a new draft starts with. A correction (`replaces…`) or a
+   * refill mint (`derivedFromRefill…` → the refill's source order) is the SAME drug for the SAME patient, so it
+   * inherits the predecessor's determination; otherwise a silently-reset `covered_related` would drop a
+   * not-covered drug off the patient's election addendum. Everything else takes the column default.
+   */
+  async function inheritedCoverage(
+    tx: DbClient,
+    args: CreateMedicationOrderArgs,
+  ): Promise<Partial<typeof MO.$inferInsert>> {
+    let predecessorId = args.replacesMedicationOrderId ?? null;
+    if (!predecessorId && args.derivedFromRefillId) {
+      const [rr] = await tx
+        .select({ src: RR.sourceMedicationOrderId })
+        .from(RR)
+        .where(eq(RR.id, args.derivedFromRefillId))
+        .limit(1);
+      predecessorId = rr?.src ?? null;
+    }
+    if (!predecessorId) return {};
+    const [p] = await tx
+      .select({
+        hospiceCoverage: MO.hospiceCoverage,
+        coverageReason: MO.coverageReason,
+        coverageDeterminedAt: MO.coverageDeterminedAt,
+        coverageDeterminedByMembershipId: MO.coverageDeterminedByMembershipId,
+      })
+      .from(MO)
+      .where(eq(MO.id, predecessorId))
+      .limit(1);
+    return p ?? {};
+  }
+
   async function insertDraft(
     tx: DbClient,
     organizationId: string,
@@ -477,6 +520,7 @@ export function createDbDoseSpotBackend(
           status: "draft",
           derivedFromRefillId: args.derivedFromRefillId ?? null,
           replacesMedicationOrderId: args.replacesMedicationOrderId ?? null,
+          ...(await inheritedCoverage(tx, args)),
         })
         .returning({ id: MO.id }),
       "medication_order insert returned no row",
@@ -1039,6 +1083,47 @@ export function createDbDoseSpotBackend(
           ...(args.summary !== undefined ? { summary: args.summary } : {}),
         });
         return { medicationErrorId, orderId: id, reportedAt: reportedAt.toISOString() };
+      });
+    },
+    // COP27 (42 CFR 418.24(c)) — the hospice coverage determination. Not a lifecycle transition (status /
+    // version untouched — the M13/M14 version-pinned reads must not see a "new" order), so it is allowed in
+    // every status. Row-locked so two clinicians cannot interleave a change + its event. An unchanged re-save
+    // is a no-op with no event. `coverage_determined_by_membership_id` is the SESSION membership.
+    async setCoverageDetermination(organizationId, userId, id, args) {
+      const reason = assertCoverageDetermination(args);
+      return withOrg(organizationId, async (tx) => {
+        const r = await lockOrder(tx, id);
+        if (r.hospiceCoverage === args.hospiceCoverage && (r.coverageReason ?? null) === reason)
+          return toOrderView(r);
+        const at = new Date();
+        await tx
+          .update(MO)
+          .set({
+            hospiceCoverage: args.hospiceCoverage,
+            coverageReason: reason,
+            coverageDeterminedAt: at,
+            coverageDeterminedByMembershipId: userId,
+            updatedAt: at,
+          })
+          .where(eq(MO.id, id));
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication_order.coverage_determination_changed",
+          "medication_order",
+          id,
+          {
+            orgId: organizationId,
+            admissionId: r.admissionId,
+            patientId: r.patientId,
+            sourceId: id,
+            hospiceCoverage: args.hospiceCoverage,
+            previousHospiceCoverage: r.hospiceCoverage,
+            reason,
+            changedAt: at.toISOString(),
+          },
+        );
+        return readOrder(tx, id);
       });
     },
     async completeOrder(organizationId, _userId, id, reason) {

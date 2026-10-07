@@ -29,6 +29,10 @@ import {
   type Cents,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
+  G0679_HCPCS,
+  G0679_REVENUE_CODE,
+  G0679_UNITS_PER_ENCOUNTER,
+  G0679_UNIT_CHARGE_CENTS,
   type IsoDate,
   type LevelOfCare,
   POS_BY_QCODE,
@@ -41,6 +45,7 @@ import {
   isWithinInclusive,
   repositories,
   summarizeRuleRun,
+  telehealthF2fDatesRequiringG0679,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
@@ -127,6 +132,63 @@ function resultOutcome(r: RuleResult): "pass" | "fail" | "warn" | "info" {
   if (r.severity === "error") return "fail";
   if (r.severity === "warn") return "warn";
   return "info";
+}
+
+/**
+ * FY2027 — CR 14495 (Pub 100-04 ch. 11 § 30.3): one separately dated G0679 line on revenue code 0657 per
+ * telehealth recertification face-to-face whose encounter date falls in the claim span (dates of service
+ * from 2027-01-01). In-person encounters are never reported. The line rides the LOC period covering the
+ * encounter date (the `claim_line` model requires one) and the claim's site Q-code; the 837I builder emits
+ * the G0679 HCPCS for it, not the Q-code. Units / charge are the UNCONFIRMED constants in
+ * `@wardenx/billing` (`G0679_UNITS_PER_ENCOUNTER`, `G0679_UNIT_CHARGE_CENTS`).
+ */
+export function buildG0679LineInputs(args: {
+  readonly orgId: string;
+  readonly faceToFace: Parameters<typeof telehealthF2fDatesRequiringG0679>[0];
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly resolvedLoc: readonly {
+    readonly levelOfCarePeriodId: string;
+    readonly levelOfCare: LevelOfCare;
+    readonly from: string;
+    readonly to: string;
+  }[];
+  readonly qCode: repositories.NewClaimLineInput["qCode"];
+  readonly icdPointerPositions: readonly number[];
+  readonly firstLineNumber: number;
+}): repositories.NewClaimLineInput[] {
+  const dates = telehealthF2fDatesRequiringG0679(args.faceToFace, {
+    serviceFrom: args.serviceFrom,
+    serviceTo: args.serviceTo,
+  });
+  return dates.map((date, idx) => {
+    const owningPeriod = args.resolvedLoc.find((p) => isWithinInclusive(date, p.from, p.to));
+    if (!owningPeriod) {
+      throw new WardenXError(
+        "ASSEMBLY_VALIDATION_FAILED",
+        `no level-of-care period backs the telehealth face-to-face G0679 line on ${date}`,
+        422,
+      );
+    }
+    return {
+      organizationId: args.orgId,
+      claimId: "",
+      lineNumber: args.firstLineNumber + idx,
+      revenueCode: G0679_REVENUE_CODE,
+      qCode: args.qCode,
+      levelOfCare: owningPeriod.levelOfCare,
+      hcpcsCode: G0679_HCPCS,
+      serviceDateFrom: date,
+      serviceDateTo: date,
+      unitCount: G0679_UNITS_PER_ENCOUNTER,
+      unitRateCents: G0679_UNIT_CHARGE_CENTS,
+      lineChargeCents: G0679_UNITS_PER_ENCOUNTER * G0679_UNIT_CHARGE_CENTS,
+      levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
+      backingEncounterIds: [],
+      icdPointerPositions: [...args.icdPointerPositions],
+      modifiers: [],
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -314,6 +376,20 @@ export function buildClaimAssemblyService(
           };
         });
 
+        // ── 3b. FY2027 CR 14495 — the separately dated G0679 telehealth-F2F lines (rev 0657) ──────────
+        const g0679Lines = buildG0679LineInputs({
+          orgId,
+          faceToFace,
+          serviceFrom,
+          serviceTo,
+          resolvedLoc,
+          qCode: placeOfService,
+          icdPointerPositions,
+          firstLineNumber: lineInputs.length + 1,
+        });
+        const allLineInputs = [...lineInputs, ...g0679Lines];
+        const g0679ChargeCents: Cents = g0679Lines.reduce((sum, l) => sum + l.lineChargeCents, 0);
+
         // ── 4. SIA add-on math (D6) — purely encounter-derived ───────────────────────────────────────
         const siaResult = await computeClaimSia(seams, facts);
         const siaCents: Cents = siaResult?.siaAddOnCents ?? 0;
@@ -340,6 +416,9 @@ export function buildClaimAssemblyService(
         const sequestration = applySequestrationPolicy(grossCents, {
           percentage: seqPolicy.percentage,
         });
+        // The billed total includes the G0679 line charge (an administrative expense: never paid, so it
+        // stays out of the sequestered expected payment).
+        const totalChargeCents: Cents = grossCents + g0679ChargeCents;
 
         // ── 6. Mint ids + the deterministic control number, then persist the claim DRAFT ─────────────
         const claimId = randomUUID();
@@ -366,7 +445,7 @@ export function buildClaimAssemblyService(
           // state defaults to DRAFT at the DB; this service never advances the lifecycle (spec response = DRAFT).
           claimControlNumber,
           macJurisdiction: pe.macJurisdiction,
-          totalChargeCents: grossCents,
+          totalChargeCents,
           totalExpectedPaymentCents: sequestration.netCents,
           sequestrationAppliedPct: sequestration.percentApplied,
           sequestrationPolicyId: seqPolicy.sequestrationPolicyId,
@@ -377,7 +456,7 @@ export function buildClaimAssemblyService(
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(
-          lineInputs.map((l) => ({ ...l, claimId })),
+          allLineInputs.map((l) => ({ ...l, claimId })),
         );
 
         await new repositories.HippsCalculationRepository(tx).append({
@@ -416,7 +495,7 @@ export function buildClaimAssemblyService(
             serviceFrom,
             serviceTo,
             replacesClaimId: null,
-            totalChargeCents: grossCents,
+            totalChargeCents,
             priorClaimTob: priorClaim?.tob ?? null,
             priorClaimServiceTo: priorClaim?.serviceTo ?? null,
           },
@@ -451,7 +530,7 @@ export function buildClaimAssemblyService(
               serviceTo,
               tob,
               hippsCode: hipps.hippsCode,
-              totalChargeCents: grossCents,
+              totalChargeCents,
               lineCount: insertedLines.length,
             }),
           )
@@ -519,7 +598,7 @@ export function buildClaimAssemblyService(
         return {
           claimId,
           state: "DRAFT",
-          totalChargeCents: grossCents,
+          totalChargeCents,
           hippsCode: hipps.hippsCode,
           hippsRateCents: hipps.perDiemRateCents,
           lineCount: insertedLines.length,

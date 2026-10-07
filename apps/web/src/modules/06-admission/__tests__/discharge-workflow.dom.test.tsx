@@ -56,6 +56,10 @@ function clientFor(post: (path: string) => PostResult = () => ok({ id: "x" }, 20
         return ok({
           periods: [{ id: "p1", state: "active", sequenceNumber: 1, effectiveAt: "2026-08-28" }],
         });
+      if (path === "/api/v1/admissions/{id}/physician-signers")
+        return ok({
+          items: [{ userId: "md-1", name: "Dr. Avery Lin", capacities: ["medical_director"] }],
+        });
       if (path === "/api/v1/patients/{id}")
         return ok({
           id: patientId,
@@ -150,6 +154,52 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
     expect(
       await screen.findByText(/ADMISSION DETAIL Patient discharged effective Sep 30, 2026/),
     ).toBeTruthy();
+  });
+
+  it("no longer terminal on/after 2026-10-01: requires the 42 CFR 418.26(b) physician order and POSTs it", async () => {
+    const { client, POST } = clientFor();
+    renderWorkflow(client);
+    await pick("No longer terminally ill");
+    cont();
+    typeNarrative(
+      "Weight stable for 90 days, PPS improved to 70%, ambulating independently; IDG agrees prognosis exceeds six months.",
+    );
+    cont();
+    setDate(/^Discharge date/, "2026-10-05");
+    // The order section appears once the date falls under the FY 2027 rule, and Continue is held without it.
+    expect(await screen.findByText("Physician discharge order")).toBeTruthy();
+    cont();
+    expect(
+      screen.getByText("Choose the ordering physician and when the order was signed."),
+    ).toBeTruthy();
+    const picker = (await screen.findByLabelText(/^Ordering physician/)) as HTMLSelectElement;
+    await waitFor(() => expect(picker.disabled).toBe(false));
+    fireEvent.change(picker, { target: { value: "md-1" } });
+    fireEvent.change(screen.getByLabelText(/^Order signed at/), {
+      target: { value: "2026-10-05T09:30" },
+    });
+    cont();
+    cont();
+    expect(screen.getByText("Physician discharge order")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Discharge patient" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    const body = (POST.mock.calls[0]?.[1] as { body: Record<string, unknown> }).body;
+    expect(body.reason).toBe("no_longer_terminal");
+    expect(body.dischargeOrder).toEqual({
+      signedByUserId: "md-1",
+      signedAt: new Date("2026-10-05T09:30").toISOString(),
+      capacity: "medical_director",
+    });
+  });
+
+  it("maps the 418.26(b) order errors to plain messages", () => {
+    expect(messageForError(422, "DISCHARGE_ORDER_REQUIRED")).toMatch(
+      /needs the physician discharge order/,
+    );
+    expect(messageForError(422, "PHYSICIAN_SIGNER_INVALID")).toMatch(
+      /can't sign this discharge order/,
+    );
   });
 
   it("moved → one-click switch to Transfer out keeps the narrative and POSTs transfer-out", async () => {
@@ -248,12 +298,12 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
         forCauseReason: "Repeated unsafe home environment with threats to staff.",
       },
     });
-    expect(await screen.findByText("Pending medical-director cosign")).toBeTruthy();
+    expect(await screen.findByText("Pending physician cosign")).toBeTruthy();
     expect(screen.getByText(/the patient stays on service until then/)).toBeTruthy();
-    // Links the medical director straight to route 40 with the filed discharge's id and version.
-    expect(
-      screen.getByRole("link", { name: "Open medical-director cosign" }).getAttribute("href"),
-    ).toBe(`/discharges/d1/cosign?version=1&admissionId=${admissionId}`);
+    // Links the cosigning physician straight to route 40 with the filed discharge's id and version.
+    expect(screen.getByRole("link", { name: "Open physician cosign" }).getAttribute("href")).toBe(
+      `/discharges/d1/cosign?version=1&admissionId=${admissionId}`,
+    );
     expect(screen.queryByText(/ADMISSION DETAIL/)).toBeNull();
   });
 

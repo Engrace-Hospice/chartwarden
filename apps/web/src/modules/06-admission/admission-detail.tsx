@@ -45,6 +45,11 @@ import {
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import {
+  AdmissionRecommendationDrawer,
+  AdmissionRecommendationSection,
+  type AdmissionRecommendationView,
+} from "./admission-recommendation-ui";
+import {
   ADMISSION_TONE,
   DISCHARGEABLE_STATES,
   DISCHARGE_WORKFLOW_PERMISSIONS,
@@ -52,6 +57,7 @@ import {
   stateLabel,
 } from "./admission-status";
 import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
+import { DischargeOrderSection } from "./discharge-order-ui";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
@@ -81,6 +87,8 @@ interface AdmissionDetailView extends SummaryRow {
   hospicePhysician?: PhysicianSummary | null;
   primaryDiagnosisIcd10?: string | null;
   referringDxText?: string | null;
+  admissionRecommendation?: AdmissionRecommendationView | null;
+  attendingPhysicianId?: string | null;
   activationGate: { ready: boolean; missing: string[] };
   readiness?: AdmissionReadiness;
 }
@@ -245,6 +253,8 @@ export function AdmissionDetail(): JSX.Element {
     | null
   >(null);
   const [busy, setBusy] = useState(false);
+  // 42 CFR 418.25(a) — the recommendation capture drawer replaces the readiness rail while open.
+  const [recommending, setRecommending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -943,6 +953,10 @@ export function AdmissionDetail(): JSX.Element {
     } else if (action === "COMPLETE_CTI") setCeremony("cti");
     else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
     else if (action === "REVIEW_PRIVACY") setCeremony("privacy");
+    else if (action === "RECORD_ADMISSION_RECOMMENDATION") setRecommending(true);
+    // FY2027 — the informational 42 CFR 418.24(c) addendum item: worked on the patient's Election tab.
+    else if (action === "COMPLETE_ELECTION_ADDENDUM" && admission.patientId)
+      navigate(`/patients/${admission.patientId}/election-certification`);
   };
   const actionContext = { electionStatement, cti };
 
@@ -1000,13 +1014,26 @@ export function AdmissionDetail(): JSX.Element {
           </PageHeader>
         }
         aside={
-          <RightDetailPanel title="Admission readiness">
-            {readiness ? (
-              <ReadinessChecklist readiness={readiness} />
-            ) : (
-              <ActivationChecklist gate={admission.activationGate} />
-            )}
-          </RightDetailPanel>
+          recommending ? (
+            <AdmissionRecommendationDrawer
+              admissionId={admission.id}
+              version={admission.version}
+              hasAttending={!!admission.attendingPhysicianId}
+              onClose={() => setRecommending(false)}
+              onSaved={() => {
+                setRecommending(false);
+                void load();
+              }}
+            />
+          ) : (
+            <RightDetailPanel title="Admission readiness">
+              {readiness ? (
+                <ReadinessChecklist readiness={readiness} />
+              ) : (
+                <ActivationChecklist gate={admission.activationGate} />
+              )}
+            </RightDetailPanel>
+          )
         }
       >
         <div style={contentShellStyle}>
@@ -1238,6 +1265,12 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="Face-to-Face">
             <RequirementLine requirement={readiness?.requirements.find((r) => r.code === "f2f")} />
           </Section>
+          <AdmissionRecommendationSection
+            admissionId={admission.id}
+            recommendation={admission.admissionRecommendation}
+            editable
+            onRecord={() => setRecommending(true)}
+          />
           <Section title="Documents">
             <AdmissionDocuments
               requirements={readiness?.requirements ?? []}
@@ -1318,9 +1351,22 @@ export function AdmissionDetail(): JSX.Element {
         </PageHeader>
       }
       aside={
-        <RightDetailPanel title="Activation gate">
-          <ActivationChecklist gate={admission.activationGate} />
-        </RightDetailPanel>
+        recommending ? (
+          <AdmissionRecommendationDrawer
+            admissionId={admission.id}
+            version={admission.version}
+            hasAttending={!!admission.attendingPhysicianId}
+            onClose={() => setRecommending(false)}
+            onSaved={() => {
+              setRecommending(false);
+              void load();
+            }}
+          />
+        ) : (
+          <RightDetailPanel title="Activation gate">
+            <ActivationChecklist gate={admission.activationGate} />
+          </RightDetailPanel>
+        )
       }
     >
       <div style={contentShellStyle}>
@@ -1368,6 +1414,13 @@ export function AdmissionDetail(): JSX.Element {
         <Section title="Compliance windows">
           <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
         </Section>
+        <AdmissionRecommendationSection
+          admissionId={admission.id}
+          recommendation={admission.admissionRecommendation}
+          editable={admission.state === "active" || admission.state === "on_hold"}
+          onRecord={() => setRecommending(true)}
+        />
+        <DischargeOrderSection admissionId={admission.id} />
       </div>
 
       {renderCeremonies()}
@@ -2504,6 +2557,8 @@ function isActionHandled(
     case "COMPLETE_CTI":
     case "COMPLETE_CTI_SIGNATURE":
     case "REVIEW_PRIVACY":
+    case "RECORD_ADMISSION_RECOMMENDATION":
+    case "COMPLETE_ELECTION_ADDENDUM":
       return true;
     case "REVIEW_CTI":
       return !context.cti || !context.cti.hospiceMdSigned;
@@ -2780,6 +2835,8 @@ function actionLabel(
   if (action === "COMPLETE_CTI") return "Complete CTI";
   if (action === "COMPLETE_CTI_SIGNATURE") return "Complete CTI signature";
   if (action === "REVIEW_PRIVACY") return "Review privacy";
+  if (action === "RECORD_ADMISSION_RECOMMENDATION") return "Record recommendation";
+  if (action === "COMPLETE_ELECTION_ADDENDUM") return "Open election addendum";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {

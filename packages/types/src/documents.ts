@@ -138,6 +138,8 @@ export type DocumentAggregateType =
   // F-224 (#248, mig 0290) — the M19 caregiver / attending triage-call summaries (`recipientKind`).
   | "triage_summary_caregiver"
   | "triage_summary_attending"
+  // FY2027 (mig 0380) — the 42 CFR 418.24(c) election statement addendum, one document per version.
+  | "election_addendum"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

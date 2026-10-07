@@ -414,6 +414,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      // FY2027 — additive, optional: what M22's 42 CFR 418.24(b)(1)–(8) statement template prints.
+      patientName: Type.Optional(Type.String({ minLength: 1 })),
+      signerKind: Type.Optional(
+        Type.Union([Type.Literal("patient"), Type.Literal("representative")]),
+      ),
+      hospiceName: Type.Optional(Type.String({ minLength: 1 })),
+      effectiveDate: Type.Optional(Type.String({ minLength: 1 })),
     }),
     // F-106 — m23 REMOVED. M23's §4.4 map routes its NOE draft off this topic, but the two NOT NULL
     // date columns a `noe_record` needs (`election_effective_date`, `window_target_at`) have no source
@@ -1069,6 +1076,109 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // `m6.f2f.window_overridden` sibling above, which the F-178 seam genuinely does bind as a real backend
     // relationship.
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  // ── FY2027 election statement addendum (42 CFR 418.24(c)/(d), CMS-1851-F) ─────────────────────────────
+  {
+    eventName: "m6.election_addendum.drafted",
+    moduleOwner: "m6",
+    description:
+      "An election statement addendum version was drafted (the initial one at election, or an update after a plan-of-care change).",
+    payloadSchema: Type.Object({
+      electionAddendumId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      versionNumber: Type.Integer({ minimum: 1 }),
+      trigger: Type.Union([Type.Literal("initial"), Type.Literal("poc_change")]),
+      dueAt: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+    }),
+    // Record-only: the clock is the compliance window opened in the same transaction, and the window's own
+    // overdue event (below) is what pages someone.
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.election_addendum.furnished",
+    moduleOwner: "m6",
+    description:
+      "An addendum version was furnished in writing (418.24(c)(10)) — M22 renders the 'Patient Notification of Hospice Non-Covered Items, Services, and Drugs' PDF from `renderPayload`.",
+    payloadSchema: Type.Object({
+      electionAddendumId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered addendum against. */
+      patientId: Type.String({ minLength: 1 }),
+      versionNumber: Type.Integer({ minimum: 1 }),
+      furnishedAt: Type.String({ minLength: 1 }),
+      furnishMethod: Type.Union([
+        Type.Literal("paper"),
+        Type.Literal("electronic_with_paper_copy"),
+      ]),
+      /** Every 418.24(c)(1)–(10) element, already resolved (election-addendum/render-payload.ts). */
+      renderPayload: Type.Unknown(),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.election_addendum.acknowledged",
+    moduleOwner: "m6",
+    description:
+      "A furnished addendum version was signed, refused (reason documented), or marked signature-not-required — M22 appends a new version of the same PDF carrying the notation (418.24(c)(9), (d)(4)).",
+    payloadSchema: Type.Object({
+      electionAddendumId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      versionNumber: Type.Integer({ minimum: 1 }),
+      outcome: Type.Union([
+        Type.Literal("signed"),
+        Type.Literal("refused"),
+        Type.Literal("signature_not_required"),
+      ]),
+      acknowledgedAt: Type.String({ minLength: 1 }),
+      renderPayload: Type.Unknown(),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.election_addendum.not_required",
+    moduleOwner: "m6",
+    description:
+      "An unfurnished addendum version was marked not required because the patient died, revoked, or was discharged first (418.24(d)(3)).",
+    payloadSchema: Type.Object({
+      electionAddendumId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      versionNumber: Type.Integer({ minimum: 1 }),
+      reason: Type.Union([
+        Type.Literal("death"),
+        Type.Literal("revocation"),
+        Type.Literal("discharge"),
+      ]),
+    }),
+    // Record-only: nothing downstream acts on a closed obligation; M23 reads the settled state through the
+    // claim-assembly addendum seam (`electionAddendumComplianceForOrg`).
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.election_addendum.overdue",
+    moduleOwner: "m6",
+    description:
+      "An addendum's 418.24(d) window (5 days from election / 3 days from a plan-of-care change) passed without it being furnished — M36 alerts the care team and compliance.",
+    payloadSchema: Type.Object({
+      complianceWindowId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      electionAddendumId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      windowKind: Type.Union([
+        Type.Literal("election_addendum_initial"),
+        Type.Literal("election_addendum_update"),
+      ]),
+      dueAt: Type.String({ minLength: 1 }),
+    }),
+    // A DEDICATED overdue event rather than the generic `m6.compliance.window.overdue`: that one is emitted for
+    // every window kind, carries no patient, and has no consumer (F-178/F-179). The addendum is a condition for
+    // payment, so its miss needs a page with a patient to route on.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── bereavement / applier ───────────────────────────────────────────────────────────────────────

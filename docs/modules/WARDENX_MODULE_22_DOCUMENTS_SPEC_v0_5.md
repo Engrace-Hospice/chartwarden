@@ -36,6 +36,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 
 ## Changelog
 
+- **FY2027 amendment (2026-10-06; version unchanged)** — 42 CFR 418.24 as amended by CMS-1851-F (effective 2026-10-01; facts in [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1). New template `election_addendum` ("Patient Notification of Hospice Non-Covered Items, Services, and Drugs", aggregate type `election_addendum`, mig `0380`), rendered from `m6.election_addendum.furnished` and re-versioned from `m6.election_addendum.acknowledged`; the `election_statement` template now prints every 418.24(b)(1)–(8) element. Both have real PDF builders (`apps/backend/src/modules/22-documents/render-pdf/election-addendum-doc.ts`, `election-statement-doc.ts`). The template library grows to 32. See §4.5, §4.11.
 - **v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep)** — Adds §8.9 (SEC-052 bulk-export controls), §8.10 (DR/BCP posture — Tier 2, degraded-mode, BCP Print feed, post-recovery check), §5.2.1 (mobile offline encrypted cache), §15 (Open Questions). Augments §4.1 route inventory with Idempotency-Key and Pagination columns. Augments §4.8 queue catalog with attempts/backoff/DLQ. Corrects §9.2 authoring artifact and §1.3/§4.12 single-use URL claim. No scope change; no decision reversals. **M22-F16/F19 (ADR-0022)** reconciled in this revision: single §4.6 dot-key permission catalog (§6 regenerated; colon-keys removed), §3.3 enum/column single-truth restored, §4.10 event catalog completed, append-only soft-delete model fixed (D2/§2.2.2), classifier threshold unified. F10 (encryption design) remains deferred.
 
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
@@ -1809,11 +1810,12 @@ export function initM22(reg: SeamRegistry): void {
 
 ### 4.5 The Form Template Library (D14, D20, D21)
 
-M22 ships with 31 v1 templates. Each lives at `packages/forms/src/templates/<key>/` with a `react-pdf` component (or Puppeteer HTML) at `v<X>_<Y>_<Z>.tsx`, a TypeBox `payload-schema.ts`, and an `index.ts` exporting `{template, currentVersion, retentionClass}`. The platform-floor template is the source of truth; tenant overlays tighten only.
+M22 ships with 32 v1 templates (31 + the FY2027 `election_addendum`). Each lives at `packages/forms/src/templates/<key>/` with a `react-pdf` component (or Puppeteer HTML) at `v<X>_<Y>_<Z>.tsx`, a TypeBox `payload-schema.ts`, and an `index.ts` exporting `{template, currentVersion, retentionClass}`. The platform-floor template is the source of truth; tenant overlays tighten only.
 
 | Template Key | Source Module | Aggregate Type | Engine | Retention Class | Patient-Facing |
 |---|---|---|---|---|---|
 | `election_statement` | M6 | `election_statement` | react_pdf | compliance | yes |
+| `election_addendum` | M6 | `election_addendum` | react_pdf | compliance | yes |
 | `revocation` | M6 | `revocation` | react_pdf | compliance | yes |
 | `cti` | M6 | `cti` | react_pdf | compliance | no |
 | `f2f` | M6 | `f2f` | react_pdf | compliance | no |
@@ -1849,6 +1851,12 @@ The `bereavement_letter` template is a single template_key with a `letterKind` d
 
 The `lab_results_pdf` template renders observation values with abnormal-flag highlighting except for SUD-class values, which render as a redacted placeholder per D20; the critical variant carries a "CRITICAL RESULT" watermark per D22. The `discharge_summary_v2_external_source` and `_cosigned` variants render the external-source death-discharge per D21.
 
+
+#### FY2027 regulatory templates: `election_statement` and `election_addendum`
+
+**`election_statement`** carries every element of 42 CFR 418.24(b): (1) the hospice and the attending physician of the individual's choice; (2) palliative, not curative, care; (3) coverage responsibility and waived services, including that unrelated services are "exceptional and unusual" and the hospice should provide virtually all care; (4) the effective date; (5) cost sharing; (6) notice that the individual **will** receive the addendum within 5 days of the effective date and updates within 3 days of a plan-of-care change; (7) BFCC-QIO immediate advocacy and contacts; (8) the signature. The customer's paper form (version 4/18) lacked (b)(3)'s unrelated-services language, (b)(5), (b)(6) and (b)(7). `m6.election.signed` carries optional `patientName`, `signerKind`, `hospiceName`, `effectiveDate`; absent values print as blank lines. Forms-registry floor fields: `palliative_care_acknowledgment`, `coverage_waiver_and_unrelated_services_text`, `cost_sharing_text`, `election_addendum_notice`, `bfcc_qio_immediate_advocacy`.
+
+**`election_addendum`** carries every element of 418.24(c): (1) the exact title; (2) hospice name; (3) patient name and medical record number; (4) terminal illness and related conditions; (5) the non-covered conditions, items, services and drugs with the reason for each (or the documented "all related" determination); (6) the clinical explanation plus the per-patient relatedness statement; (7) guideline references; (8) the purpose and the BFCC-QIO right to immediate advocacy (1-800-MEDICARE, TTY 1-877-486-2048, the CMS family-centered-care URL, as on the CMS model addendum); (9) the receipt-only acknowledgement with signature lines, or the refusal reason / the (d)(4) signature-not-required notation printed on the addendum; (10) the date furnished. It also prints the financial-responsibility note. The template reads payload fields by name only.
 ### 4.6 Permission Keys Registered into Module 3
 
 M22 contributes these keys to M3's permission catalog (`packages/auth/src/permissions/documents.ts`) and assigns them to default role templates. **Binding handshake: boot validation fails if any key is missing from M3's catalog at startup.**
@@ -2014,6 +2022,8 @@ M22's outbox consumers — events from other modules that drive M22 state — ar
 | `m5.patient.merged` | M5 | `m5-patient-merged.ts` | UPDATE document SET patient_id = mergedIntoId WHERE patient_id = sourceId; outbox event for downstream re-link |
 | `m5.patient.amendment_decided` (filter `decision='denied'`) | M5 | `m5-amendment-denied.ts` | Render `patient_amendment_statement_of_disagreement` template; set `document.attach_to_disclosures=true`; tag with `original_amendment_request_id=<id>` |
 | `m6.election.signed` | M6 | `m6-document-requested.ts` | Render `election_statement` template; emit `m22.document.rendered` |
+| `m6.election_addendum.furnished` | M6 | `outbox-consumers/render-consumer.ts` | Render `election_addendum` (one document per addendum version) from `renderPayload`; emit `m22.document.rendered` (M6 stamps `election_addendum.document_id`) |
+| `m6.election_addendum.acknowledged` | M6 | `outbox-consumers/render-consumer.ts` | Append a new version of the same `election_addendum` document carrying the signature, refusal reason, or signature-not-required notation (`appends: true`) |
 | `m6.cti.signed` | M6 | `m6-document-requested.ts` | Render `cti` template |
 | `m6.f2f.attested` | M6 | `m6-document-requested.ts` | Render `f2f` template |
 | `m6.nor.acknowledged` | M6 | `m6-document-requested.ts` | Render `nor` template |

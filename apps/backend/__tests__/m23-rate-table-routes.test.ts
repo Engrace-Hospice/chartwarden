@@ -58,6 +58,8 @@ const VIEW: RateTableView = {
   laborShareChc: "0.6800",
   laborShareIrc: "0.5400",
   laborShareGip: "0.6400",
+  hqrpCompliant: null,
+  nationalReferenceWarnings: [],
   enteredByMembershipId: MEMBERSHIP,
   entryReason: null,
   supersededAt: null,
@@ -332,6 +334,48 @@ describe("M23 rate-table routes (F-210)", () => {
       headers: READER,
     });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("national-reference: a reader gets the corrected FY2027 CMS rates; an unknown year is null; scope enforced", async () => {
+    const { app } = makeServer();
+    const ok = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/rate-tables/national-reference?providerEntityId=${PE}&fiscalYearStarting=2026`,
+      headers: READER,
+    });
+    expect(ok.statusCode).toBe(200);
+    const body = ok.json() as {
+      reference: {
+        fiscalYearLabel: string;
+        hqrpCompliant: { rhcDays1to60PerDiemCents: number };
+        hqrpNonCompliant: { rhcDays1to60PerDiemCents: number };
+      } | null;
+    };
+    expect(body.reference?.fiscalYearLabel).toBe("FY2027");
+    expect(body.reference?.hqrpCompliant.rhcDays1to60PerDiemCents).toBe(23_633);
+    expect(body.reference?.hqrpNonCompliant.rhcDays1to60PerDiemCents).toBe(22_709);
+
+    const none = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/rate-tables/national-reference?providerEntityId=${PE}&fiscalYearStarting=2019`,
+      headers: READER,
+    });
+    expect(none.statusCode).toBe(200);
+    expect((none.json() as { reference: unknown }).reference).toBeNull();
+
+    const otherScope = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/rate-tables/national-reference?providerEntityId=${OTHER_PE}&fiscalYearStarting=2026`,
+      headers: READER,
+    });
+    expect(otherScope.statusCode).toBe(404); // existence-non-leak, like every other scoped read
+    const noGrant = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/rate-tables/national-reference?providerEntityId=${PE}&fiscalYearStarting=2026`,
+      headers: NONE,
+    });
+    expect(noGrant.statusCode).toBe(403);
     await app.close();
   });
 });

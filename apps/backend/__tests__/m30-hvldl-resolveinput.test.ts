@@ -108,6 +108,9 @@ function fakeEncounters(byPatient: Record<string, ReadonlyArray<SignedEncounterD
     async skilledNursingDayTotalsForOrg() {
       throw new Error("skilledNursingDayTotalsForOrg is not used on the HVLDL path");
     },
+    async skilledVisitDaysForOrg() {
+      throw new Error("skilledVisitDaysForOrg is not used on the HVLDL path");
+    },
     async renderPayloadFor() {
       throw new Error("renderPayloadFor is not used on the HVLDL path");
     },

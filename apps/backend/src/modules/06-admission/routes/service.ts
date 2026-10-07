@@ -42,7 +42,25 @@ import {
   assertBenefitPeriodEntry,
   assertF2fExceptionReason,
 } from "../intake/benefit-period";
+import {
+  type PhysicianAuthorityPort,
+  type PhysicianSignerCandidate,
+  type PhysicianSignerCapacity,
+  dischargeOrderRequired,
+  heldSignerCapacities,
+} from "../physician-authority";
+import {
+  type AdmissionRecommendationInput,
+  type DischargeOrderInput,
+  resolveCosignerCapacity,
+  validateAdmissionRecommendation,
+  validateDischargeOrder,
+} from "../physician-signer-checks";
 import { AdmissionStateError } from "../state-machines/errors";
+import type {
+  F2fEncounterLocation,
+  TelehealthEligibilityAttestation,
+} from "../state-machines/f2f-attestation-rules";
 import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { daysBetween } from "../state-machines/validation";
 
@@ -269,6 +287,15 @@ export interface AdmissionAbacResolver {
     organizationId: string,
     patientId: string,
   ): Promise<PatientIntakeFacts | null>;
+  /** 42 CFR 418.26(b) — the facts the route-40 cosign predicate judges the signer against. */
+  loadDischargeSigning(organizationId: string, id: string): Promise<DischargeSigningFacts | null>;
+}
+
+/** A discharge's signing facts: whose chart, which date's signer set, and whether it is an external death. */
+export interface DischargeSigningFacts {
+  readonly patientId: string | null;
+  readonly dischargeDate: string;
+  readonly externalDeath: boolean;
 }
 
 /** The capture contracts the routes hand the service (§4.2; abbreviated to the load-bearing fields). */
@@ -463,6 +490,8 @@ export interface DischargeInput {
    * `cosign_required` with the M29 proposal it came from. Never reachable from the HTTP route body.
    */
   readonly externalSource?: { readonly proposalId: string };
+  /** 42 CFR 418.26(b) — the written physician discharge order (required for live discharges from 2026-10-01). */
+  readonly dischargeOrder?: DischargeOrderInput;
 }
 
 /** §4.2.7 route 37 body (TransferOutSchema) — the receiving hospice's identity + the transfer narrative. */
@@ -500,17 +529,51 @@ export interface DischargeResult extends MutationResult {
 }
 
 /**
- * §4.2.7 route 40 body (DischargeCosignSchema) — the medical director's identity on a for-cause
- * cosign. Validated at the route but has no `discharge_event` column to land in today (same posture
- * as `RevocationInput.signingPatientName` / TASK-034's `NorAcknowledgeInput` fields): the M4
- * write-audit trigger already records the cosigning ACTOR on this write, and the rendered discharge
- * summary (M22, via `discharge_event.document_id`) is the durable record of the signed name/NPI, not
- * this table. Wired through so the fields are at least reachable by the service (previously
- * `cosignDischarge` had no input parameter at all — they never even arrived here to be dropped).
+ * §4.2.7 route 40 body (DischargeCosignSchema) — the cosigning physician's identity on a for-cause cosign.
+ * Since migration 0388 the name/NPI are PERSISTED on `discharge_event` (`cosigner_name`/`cosigner_npi`;
+ * they used to be validated then discarded), and the cosign is recorded as the 42 CFR 418.26(b) discharge
+ * order: the signer is the actor, judged on `actorRoleKeys` — the SERVER-derived `request.context.roles`,
+ * never a body field — plus the IDG care-team fact. `capacity` is an optional claim that must be backed.
  */
 export interface CosignDischargeInput {
   readonly cosignerName: string;
   readonly cosignerNpi: string;
+  readonly actorRoleKeys?: readonly string[];
+  readonly capacity?: PhysicianSignerCapacity;
+  readonly orderText?: string;
+  readonly orderReference?: string;
+}
+
+/** 42 CFR 418.26(b) — the discharge order + route-40 cosigner on an admission's discharge (read view). */
+export interface DischargeOrderView {
+  readonly dischargeEventId: string;
+  readonly reason: string;
+  readonly status: string;
+  readonly dischargeDate: string;
+  /** True when 418.26(b) required an order for this discharge (live, non-death, dated on/after 2026-10-01). */
+  readonly orderRequired: boolean;
+  readonly order: {
+    readonly signedByUserId: string;
+    readonly signedByName: string | null;
+    readonly capacity: PhysicianSignerCapacity;
+    readonly signedAt: string;
+    readonly orderText: string | null;
+    readonly orderReference: string | null;
+  } | null;
+  readonly cosigner: {
+    readonly name: string;
+    readonly npi: string;
+    readonly cosignedAt: string | null;
+  } | null;
+}
+
+/** 42 CFR 418.25(a) — the recorded physician admission recommendation (route 10 projection). */
+export interface AdmissionRecommendationView {
+  readonly recommendedByUserId: string;
+  readonly capacity: PhysicianSignerCapacity;
+  readonly recommendedAt: string;
+  readonly attendingConsulted: boolean;
+  readonly attendingConsultNote: string | null;
 }
 
 /** A cursor-paginated page (§4: `?cursor=&limit=` → `{ items, nextCursor }`). */
@@ -525,6 +588,15 @@ export interface SummaryRow {
   readonly state: string;
   readonly version: number;
   readonly patientId?: string | null;
+}
+
+/** A compliance-window worklist row: the summary plus what the window IS and when it is due (FY2027 — so the
+ *  compliance dashboard can show the election-addendum kinds). The DB service fills the extras. */
+export interface ComplianceWindowRow extends SummaryRow {
+  readonly admissionId?: string;
+  readonly windowKind?: string;
+  readonly severity?: string;
+  readonly dueAt?: string;
 }
 
 /** F-195 (#248) — `GET /api/v1/admissions`'s own row, carrying the hold/resume facts M6's spec (line 2983)
@@ -571,6 +643,9 @@ export interface AdmissionDetail extends SummaryRow {
   } | null;
   readonly primaryDiagnosisIcd10?: string | null;
   readonly referringDxText?: string | null;
+  readonly admissionRecommendation?: AdmissionRecommendationView | null;
+  /** M40 attending physician id (418.25(a): "in consultation with … the attending physician (if any)"). */
+  readonly attendingPhysicianId?: string | null;
   readonly activationGate: ActivationGate;
   readonly readiness?: AdmissionReadinessResult;
 }
@@ -698,6 +773,13 @@ export interface AdmissionReadScope {
     readonly providerEntityIds: readonly string[];
     readonly locationIds: readonly string[];
   };
+}
+
+/** R-F2F-05 — what the clinician records about HOW the face-to-face took place. */
+export interface F2fCompletionModality {
+  readonly encounterLocation: F2fEncounterLocation;
+  /** The § 418.22(a)(4)(ii)(A)–(C) attestation; required for telehealth from 2026-01-31. */
+  readonly telehealthEligibility: TelehealthEligibilityAttestation | null;
 }
 
 export interface AdmissionRouteService {
@@ -995,14 +1077,21 @@ export interface AdmissionRouteService {
     id: string,
     ifVersion: number,
     encounterDate: string,
+    /** R-F2F-05 — the encounter modality (the route requires it; omitted = not recorded). */
+    modality?: F2fCompletionModality,
   ): Promise<MutationResult>;
-  /** GAP-022 - `attestationNarrative` (>= 100 chars, R-F2F-04) is persisted; the attester must be the performer. */
+  /**
+   * GAP-022 - `attestationNarrative` (>= 100 chars, R-F2F-04) is persisted; the attester must be the
+   * performer. R-F2F-06 — OR `signedNoteEncounterId` links an M8 note signed and dated by the performer on
+   * the encounter date (§ 418.22(b)(4)); exactly one source is required.
+   */
   attestF2f(
     organizationId: string,
     id: string,
     ifVersion: number,
     actorUserId: string,
-    attestationNarrative: string,
+    attestationNarrative: string | null,
+    signedNoteEncounterId?: string | null,
   ): Promise<MutationResult>;
   overrideF2fWindow(
     organizationId: string,
@@ -1067,6 +1156,24 @@ export interface AdmissionRouteService {
     ifVersion: number,
     actorUserId: string,
   ): Promise<MutationResult>;
+  // 42 CFR 418.25(a) / 418.26(b) physician signer set
+  recordAdmissionRecommendation(
+    organizationId: string,
+    admissionId: string,
+    input: AdmissionRecommendationInput,
+    ifVersion: number,
+    actorUserId: string,
+  ): Promise<MutationResult>;
+  /** The admission's discharge order + cosigner (`null` = unknown admission; `discharge: null` = none yet). */
+  getDischargeOrder(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{ readonly discharge: DischargeOrderView | null } | null>;
+  /** The physicians who may sign for this admission's patient (`null` = unknown admission). */
+  listPhysicianSigners(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{ readonly items: readonly PhysicianSignerCandidate[] } | null>;
   // NOR (routes 41–42)
   acknowledgeNor(
     organizationId: string,
@@ -1079,11 +1186,11 @@ export interface AdmissionRouteService {
   listComplianceWindowsForAdmission(
     organizationId: string,
     admissionId: string,
-  ): Promise<readonly SummaryRow[] | null>;
+  ): Promise<readonly ComplianceWindowRow[] | null>;
   listComplianceWindows(
     organizationId: string,
     query: { state?: string; cursor?: string; limit?: number },
-  ): Promise<Page<SummaryRow>>;
+  ): Promise<Page<ComplianceWindowRow>>;
   closeComplianceWindow(
     organizationId: string,
     id: string,
@@ -1190,7 +1297,24 @@ interface Rec {
   methodValid?: boolean;
   signerValid?: boolean;
   f2fAttested?: boolean;
+  // 42 CFR 418.25(a) / 418.26(b) — the recommendation (admission) and the discharge order (discharge).
+  recommendation?: AdmissionRecommendationView;
+  dischargeOrderSignedByUserId?: string;
+  dischargeOrderCapacity?: PhysicianSignerCapacity;
+  dischargeOrderSignedAt?: string;
+  dischargeOrderText?: string | null;
+  dischargeOrderReference?: string | null;
+  cosignedAt?: string;
+  cosignerName?: string;
+  cosignerNpi?: string;
 }
+
+/** Admission states in which a 418.25(a) recommendation can no longer be recorded (the episode is over). */
+export const RECOMMENDATION_CLOSED_STATES: ReadonlySet<string> = new Set([
+  "discharged",
+  "bereavement",
+  "closed",
+]);
 
 /** A seed record for the slice (lets a test pre-populate a resource with owner facts for ABAC). */
 export interface AdmissionSeedRecord {
@@ -1238,6 +1362,13 @@ export interface AdmissionBackendSeed {
    * With no map seeded, a `user` actor falls back to the claimed role (legacy slice tests).
    */
   readonly clinicianRoleKeys?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * 42 CFR 418.25(a) / 418.26(b) — patientId -> user ids holding an open `md` care-team assignment (the
+   * physician member of that patient's IDG), standing in for M5's `patient_assignment`.
+   */
+  readonly idgPhysicianAssignments?: Readonly<Record<string, readonly string[]>>;
+  /** user id -> display name for the signer picker. */
+  readonly userNames?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -1278,6 +1409,7 @@ function referralSiteOf(
 export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}): {
   service: AdmissionRouteService;
   resolver: AdmissionAbacResolver;
+  physicianAuthority: PhysicianAuthorityPort;
   events: string[];
 } {
   const events: string[] = [];
@@ -1308,6 +1440,28 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     });
   }
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
+  /** The slice's PhysicianAuthorityPort over the seeded role keys + IDG care-team assignments. */
+  const physicianAuthority: PhysicianAuthorityPort = {
+    async signerFacts(_organizationId, userId, patientId) {
+      return {
+        roleKeys: seed.clinicianRoleKeys?.[userId] ?? null,
+        idgPhysicianOfPatient: (seed.idgPhysicianAssignments?.[patientId] ?? []).includes(userId),
+      };
+    },
+    async listSignerCandidates(_organizationId, patientId) {
+      const idg = seed.idgPhysicianAssignments?.[patientId] ?? [];
+      return Object.entries(seed.clinicianRoleKeys ?? {})
+        .map(([userId, roleKeys]) => ({
+          userId,
+          name: seed.userNames?.[userId] ?? null,
+          capacities: heldSignerCapacities({
+            roleKeys,
+            idgPhysicianOfPatient: idg.includes(userId),
+          }),
+        }))
+        .filter((c) => c.capacities.length > 0);
+    },
+  };
   const orgTimeZone = seed.orgTimeZone ?? DEFAULT_ORG_TIME_ZONE;
   const providerEntityLocations = seed.providerEntityLocations;
   /**
@@ -1584,6 +1738,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         attestationRequired: (period?.sequence ?? 1) >= 3,
         attested: f2f?.state === "attested" || f2f?.f2fAttested === true,
       },
+
+      admissionRecommendation: { recorded: adm.recommendation !== undefined },
     };
     return evaluateAdmissionReadiness(facts);
   };
@@ -1929,6 +2085,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             locationId: rec.locationId ?? null,
             primaryDiagnosisIcd10: rec.primaryDiagnosisIcd10 ?? null,
             referringDxText: rec.referringDxText ?? null,
+            admissionRecommendation: rec.recommendation ?? null,
+            attendingPhysicianId: rec.attendingPhysicianId ?? null,
             activationGate: gateFor(rec),
             readiness: readinessFor(rec),
           }
@@ -2376,15 +2534,30 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "f2f");
       return rec ? summary(rec) : null;
     },
-    async completeF2f(organizationId, id, ifVersion, encounterDate) {
+    async completeF2f(organizationId, id, ifVersion, encounterDate, modality) {
       void encounterDate;
+      void modality;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "completed", ifVersion);
     },
-    async attestF2f(organizationId, id, ifVersion, actorUserId, attestationNarrative) {
+    async attestF2f(
+      organizationId,
+      id,
+      ifVersion,
+      actorUserId,
+      attestationNarrative,
+      signedNoteEncounterId,
+    ) {
       void actorUserId;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
-      // GAP-022 — R-F2F-04: the >= 100-char narrative guard runs through the real machine.
+      // GAP-022 — R-F2F-04: the >= 100-char narrative guard runs through the real machine. The in-memory
+      // store has no M8 notes to validate a linked note against, so the signed-note path is refused here.
+      if (signedNoteEncounterId) {
+        throw new AdmissionStateError(
+          "F2F_ATTESTATION_NOTE_INVALID",
+          "The linked clinical note was not found",
+        );
+      }
       transitionFaceToFace("completed", {
         type: "attest",
         narrative: attestationNarrative,
@@ -2542,6 +2715,25 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         input.deathCertifierId,
       );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
+      // 42 CFR 418.26(b) — the physician discharge order (required for live discharges from 2026-10-01).
+      const order = await validateDischargeOrder({
+        port: physicianAuthority,
+        organizationId,
+        patientId: adm.patientId ?? "",
+        reason: input.reason,
+        dischargeDate: input.dischargeDate,
+        order: input.dischargeOrder,
+        now: now(),
+      });
+      const orderFacts: Partial<Rec> = order
+        ? {
+            dischargeOrderSignedByUserId: order.signedByUserId,
+            dischargeOrderCapacity: order.capacity,
+            dischargeOrderSignedAt: order.signedAt.toISOString(),
+            dischargeOrderText: order.orderText,
+            dischargeOrderReference: order.orderReference,
+          }
+        : {};
       const placeOfDeath = resolvePlaceOfDeath(
         input.reason,
         input.placeOfDeath,
@@ -2565,6 +2757,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
           admissionId: adm.id,
           patientId: adm.patientId,
           reason: input.reason,
+          effectiveAt: input.dischargeDate,
         });
         return {
           ...summary(rec),
@@ -2582,6 +2775,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         admissionId: adm.id,
         patientId: adm.patientId,
         reason: input.reason,
+        effectiveAt: input.dischargeDate,
+        ...orderFacts,
       });
       if (isDeath) {
         events.push("m6.discharge.death");
@@ -2606,9 +2801,26 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       };
     },
     async cosignDischarge(organizationId, id, input, ifVersion, actorUserId) {
-      void actorUserId;
-      void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
       const rec = get(organizationId, id, "discharge") ?? notFound(id);
+      // 42 CFR 418.26(b) — the cosigner is the discharge-order signer (the actor; server-derived roles).
+      const capacity = await resolveCosignerCapacity({
+        port: physicianAuthority,
+        organizationId,
+        actorUserId,
+        actorRoleKeys: input.actorRoleKeys ?? [],
+        patientId: rec.patientId ?? null,
+        dischargeDate: rec.effectiveAt ?? now().toISOString().slice(0, 10),
+        externalDeath: false,
+        claimed: input.capacity,
+      });
+      rec.dischargeOrderSignedByUserId = actorUserId;
+      rec.dischargeOrderCapacity = capacity;
+      rec.dischargeOrderSignedAt = now().toISOString();
+      rec.dischargeOrderText = input.orderText ?? null;
+      rec.dischargeOrderReference = input.orderReference ?? null;
+      rec.cosignedAt = now().toISOString();
+      rec.cosignerName = input.cosignerName;
+      rec.cosignerNpi = input.cosignerNpi;
       // W-DC-02 — the medical-director cosign completes the discharge AND discharges the admission that
       // was held `active` with the pending flag while awaiting governance sign-off (D11).
       const outcome = resolveForCauseDischarge("cosign");
@@ -2623,6 +2835,77 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         }
       }
       return res;
+    },
+
+    async recordAdmissionRecommendation(
+      organizationId,
+      admissionId,
+      input,
+      ifVersion,
+      actorUserId,
+    ) {
+      void actorUserId;
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      if (adm.version !== ifVersion) throw new VersionMismatchError(adm.id, adm.version, ifVersion);
+      if (RECOMMENDATION_CLOSED_STATES.has(adm.state))
+        throw new AdmissionStateError(
+          "ADMISSION_RECOMMENDATION_INVALID",
+          `admission ${admissionId} is ${adm.state}; a recommendation can no longer be recorded`,
+        );
+      const capacity = await validateAdmissionRecommendation({
+        port: physicianAuthority,
+        organizationId,
+        patientId: adm.patientId ?? "",
+        hasAttendingPhysician: !!adm.attendingPhysicianId,
+        input,
+        now: now(),
+      });
+      adm.recommendation = {
+        recommendedByUserId: input.recommendedByUserId,
+        capacity,
+        recommendedAt: new Date(input.recommendedAt).toISOString(),
+        attendingConsulted: input.attendingConsulted,
+        attendingConsultNote: input.attendingConsultNote ?? null,
+      };
+      adm.version += 1;
+      return summary(adm);
+    },
+    async getDischargeOrder(organizationId, admissionId) {
+      const adm = get(organizationId, admissionId, "admission");
+      if (!adm) return null;
+      const de = listOfKind(organizationId, "discharge").find((r) => r.admissionId === adm.id);
+      if (!de) return { discharge: null };
+      return {
+        discharge: {
+          dischargeEventId: de.id,
+          reason: de.reason ?? "other",
+          status: de.state,
+          dischargeDate: de.effectiveAt ?? "",
+          orderRequired: dischargeOrderRequired(de.reason ?? "other", de.effectiveAt ?? ""),
+          order:
+            de.dischargeOrderSignedByUserId && de.dischargeOrderCapacity
+              ? {
+                  signedByUserId: de.dischargeOrderSignedByUserId,
+                  signedByName: seed.userNames?.[de.dischargeOrderSignedByUserId] ?? null,
+                  capacity: de.dischargeOrderCapacity,
+                  signedAt: de.dischargeOrderSignedAt ?? "",
+                  orderText: de.dischargeOrderText ?? null,
+                  orderReference: de.dischargeOrderReference ?? null,
+                }
+              : null,
+          cosigner:
+            de.cosignerName && de.cosignerNpi
+              ? { name: de.cosignerName, npi: de.cosignerNpi, cosignedAt: de.cosignedAt ?? null }
+              : null,
+        },
+      };
+    },
+    async listPhysicianSigners(organizationId, admissionId) {
+      const adm = get(organizationId, admissionId, "admission");
+      if (!adm) return null;
+      return {
+        items: await physicianAuthority.listSignerCandidates(organizationId, adm.patientId ?? ""),
+      };
     },
 
     async acknowledgeNor(organizationId, admissionId, input, actorUserId) {
@@ -2761,6 +3044,16 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "loc");
       return resolveAdmissionFacts(organizationId, rec?.admissionId);
     },
+    async loadDischargeSigning(organizationId, id) {
+      const rec = get(organizationId, id, "discharge");
+      return rec
+        ? {
+            patientId: rec.patientId ?? null,
+            dischargeDate: rec.effectiveAt ?? now().toISOString().slice(0, 10),
+            externalDeath: false,
+          }
+        : null;
+    },
     // The slice has no patient table: a patient "exists in the org" when a `patient` record or any of the
     // org's records names it (the Drizzle resolver asks M5's org-scoped patient read instead).
     async loadPatientIntakeFacts(organizationId, patientId) {
@@ -2783,5 +3076,5 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
   };
 
-  return { service, resolver, events };
+  return { service, resolver, physicianAuthority, events };
 }

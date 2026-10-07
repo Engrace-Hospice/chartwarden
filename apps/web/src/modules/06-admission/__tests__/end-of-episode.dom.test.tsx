@@ -329,6 +329,38 @@ describe("DischargeCosign", () => {
     });
   });
 
+  it("sends the 42 CFR 418.26(b) order facts (capacity, order text, reference) with the cosign", async () => {
+    const POST = vi.fn(async () => ok({ id: DE, state: "completed", version: 1 }));
+    mount(
+      `/discharges/${DE}/cosign?version=2&admissionId=${ADM}`,
+      <DischargeCosign />,
+      "/discharges/:id/cosign",
+      { GET: getFor(admission("active")), POST },
+    );
+    fireEvent.change(await screen.findByLabelText(/NPI/), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText(/^Signing as/), {
+      target: { value: "idg_physician_member" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Discharge order text/), {
+      target: { value: "Discharge for cause effective today." },
+    });
+    fireEvent.change(screen.getByLabelText(/^Order reference/), { target: { value: "FAX-881" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Cosign discharge" }));
+    await screen.findByText("Discharge cosigned");
+    expect(POST).toHaveBeenCalledWith("/api/v1/discharges/{id}/cosign-for-cause", {
+      params: { path: { id: DE } },
+      body: {
+        cosignerName: "Dr. Ana Reyes",
+        cosignerNpi: "1234567890",
+        capacity: "idg_physician_member",
+        orderText: "Discharge for cause effective today.",
+        orderReference: "FAX-881",
+        ifVersion: 2,
+      },
+    });
+  });
+
   it("maps a stale version and a non-pending discharge to clear messages", async () => {
     const POST = vi
       .fn()
@@ -343,7 +375,7 @@ describe("DischargeCosign", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cosign discharge" }));
     expect(await screen.findByText(/changed since the link was created/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cosign discharge" }));
-    expect(await screen.findByText(/not awaiting a medical-director cosign/)).toBeTruthy();
+    expect(await screen.findByText(/not awaiting a physician cosign/)).toBeTruthy();
     expect((POST.mock.calls[0] as unknown[])[1]).toMatchObject({ body: { ifVersion: 0 } });
   });
 

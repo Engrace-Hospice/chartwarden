@@ -4,6 +4,7 @@
 // Reads the resolved `lines` + `levelOfCarePeriods` snapshots. PURE: reads ctx only.
 import type { LevelOfCare } from "../contracts";
 import { locPeriodCoveringDate, paramStringMap } from "./_util";
+import { G0679_HCPCS } from "./f2f-telehealth-g0679";
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
 
@@ -44,6 +45,8 @@ export const levelOfCareCoherence: Rule = {
 
     const defects: string[] = [];
     for (const line of ctx.lines) {
+      // A G0679 telehealth-F2F line (rev 0657) is not a per-diem LOC line — `f2f_telehealth_g0679` owns it.
+      if (line.hcpcs === G0679_HCPCS) continue;
       const period = locPeriodCoveringDate(ctx.levelOfCarePeriods, line.serviceDate);
       if (period === undefined) {
         defects.push(`${line.serviceDate}: no LOC period`);

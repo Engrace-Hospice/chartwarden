@@ -42,6 +42,7 @@ corrected — M36 is re-lockable.
 
 ## Changelog
 
+- **FY2027 amendment (2026-10-06; version unchanged)** — M36 consumes `m6.election_addendum.overdue` (consumer `m36.admission-compliance-alerts`, `apps/backend/src/modules/36-messaging/outbox-consumers/admission-compliance-alerts.ts`): the first M6 compliance-window fact that pages anyone. One event raises two alerts — `m6.election_addendum.overdue` (patient care team) and `m6.election_addendum.overdue_compliance` (compliance officer + clinical lead) — each with a deterministic correlation id per window and audience. Both platform rules are seeded (§3.10; `packages/messaging/src/seed/alert-rules.ts`).
 - **ADR-0024 applied (2026-06-13)** — Notification **composition + recipient resolution** for cross-module events moved from M14 to M36 (SD-017). Added the two notification-template tables `notification_template` + `tenant_notification_template_overlay` (§3.13 — versioned `(organization_id, template_key, version)`, per-tenant tighten-only overlay, mirroring M22's `form_template` pattern), bringing M36's owned-table count to **15** (manifest already reflects this). Added the cross-module composition + recipient-resolution role (§4.11) for `m6.referral.{received,accepted,declined,withdrawn}`, `m22.document.rendered_critical_results`, and `m11.order.transmission_terminal_failed`; registered the corresponding payload types in `alert_payload_catalog` (§3.12.5) and the `ordering_provider` / `intake_supervisor` / `admissions_team` `RecipientResolver` entries (§4.6). New task T-M36-13.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Consolidated the typed alert payloads contributed across the v0.3 spec track:
@@ -982,6 +983,9 @@ INSERT INTO alert_rule (organization_id, event_type, category, severity_floor, r
 -- clinical routine
 (NULL, 'admission.recert_window_opening', 'clinical_routine','info','care_team',  '{"patientIdPath":"patientId"}',               NULL,                                  false, true),
 (NULL, 'admission.f2f_due',         'clinical_routine','warn',     'care_team',   '{"patientIdPath":"patientId"}',               NULL,                                  false, true),
+-- FY2027 (42 CFR 418.24(d)): election statement addendum window missed — two audiences, one consumer
+(NULL, 'm6.election_addendum.overdue',            'clinical_routine','warn','care_team','{"patientIdPath":"patientId"}',            NULL,                                  false, true),
+(NULL, 'm6.election_addendum.overdue_compliance', 'administrative', 'warn','role_set', '{"roleKeys":["compliance_officer","clinical_lead"]}', NULL,                    false, true),
 -- operational
 (NULL, 'visit.late',                'operational',     'warn',     'role_set',    '{"roleKeys":["clinical_lead","scheduler"]}',  NULL,                                  false, true),
 (NULL, 'evv.geofence_violation',    'operational',     'warn',     'role_set',    '{"roleKeys":["clinical_lead","scheduler"]}',  NULL,                                  false, true),

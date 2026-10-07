@@ -85,6 +85,10 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m6.revocation.created", // revocation
   "m6.discharge.created", // discharge_summary
   "m6.discharge.cosigned", // discharge_summary — F-176: appends a new version on the for-cause cosign
+  // FY2027 (CMS-1851-F) — the 42 CFR 418.24(c) election statement addendum: rendered when furnished, and a
+  // new version of the same document when it is signed / refused / marked signature-not-required.
+  "m6.election_addendum.furnished", // election_addendum
+  "m6.election_addendum.acknowledged", // election_addendum — appends the (c)(9) / (d)(4) notation
   // ── F-144 (#248) — four render requests M22's own §4.11 sweep confirmed were catalogued, named by
   // their producing module's own document-request table, and STILL never emitted (the producer-side
   // half of the gap, distinct from every event above this line, which was a catalog-declaration
