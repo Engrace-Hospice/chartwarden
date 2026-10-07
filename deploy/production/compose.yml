@@ -76,7 +76,8 @@ services:
   # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
   # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
   minio-provision:
-    image: minio/mc:latest
+    # Reuse the running server's image; it includes /usr/bin/mc and /bin/sh.
+    image: minio/minio:latest
     restart: "no"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}

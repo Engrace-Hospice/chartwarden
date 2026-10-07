@@ -212,7 +212,7 @@ fi
 # Make the new release configuration visible only after its image references have been validated.
 mv "$next_file" .env.production
 
-docker compose --env-file .env.production -f compose.yml pull migrate provision api worker web docling-worker minio-provision || {
+docker compose --env-file .env.production -f compose.yml pull migrate provision api worker web docling-worker || {
   restore_previous_release
   exit 1
 }
