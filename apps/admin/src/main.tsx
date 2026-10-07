@@ -5,8 +5,8 @@ import "./index.css"; // Tailwind v4 Preflight + the admin app's Lantern token l
 // @wardenx/admin — the Platform-Ops console composition ROOT (the WardenX-staff analogue of
 // apps/web/src/main.tsx). The one place that instantiates the typed API client, creates the admin screen
 // registry, and registers each platform-module slice into it before mounting the shell. Screens are
-// registered here, so AdminApp + the shell stay free of per-slice imports (ADR-0030). Phase 0 registers
-// nothing yet — the M35 §5.2 subscription-billing slice registers here when it lands.
+// registered here, so AdminApp + the shell stay free of per-slice imports (ADR-0030). The ops (M1),
+// AI-platform (M32), SaaS-platform (M34) and subscription-billing (M35) slices register below.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminApp } from "./app";

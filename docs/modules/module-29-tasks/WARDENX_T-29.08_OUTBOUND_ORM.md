@@ -162,7 +162,7 @@ import { ulid } from 'ulid'
 import { db } from '@wardenx/db'
 import { externalFeed, hl7MessageOutbound } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext, withPlatformContext } from '@wardenx/tenancy'
+import { withOrgContext, withPlatformContext } from '@wardenx/tenancy'
 import type { Queue } from 'bullmq'
 
 interface OrmRequestedPayload {
@@ -220,7 +220,7 @@ function handleOrmRequested(deps: OrmDispatcherDeps): OutboxConsumerHandler<OrmR
     const { orderRecordId, organizationId, labDestinationFacilityId, labOrderPayload } = payload
 
     // 1. Resolve destination feed
-    const destinationFeed = await withTenantContext(db, { organizationId }, async (tx) => {
+    const destinationFeed = await withOrgContext(db, { organizationId }, async (tx) => {
       const [row] = await tx
         .select()
         .from(externalFeed)
@@ -253,7 +253,7 @@ function handleOrmRequested(deps: OrmDispatcherDeps): OutboxConsumerHandler<OrmR
     }
 
     // 2. Idempotency check
-    const existing = await withTenantContext(db, { organizationId }, async (tx) => {
+    const existing = await withOrgContext(db, { organizationId }, async (tx) => {
       const [row] = await tx
         .select({ id: hl7MessageOutbound.id, state: hl7MessageOutbound.transmitState })
         .from(hl7MessageOutbound)
@@ -292,7 +292,7 @@ function handleOrmRequested(deps: OrmDispatcherDeps): OutboxConsumerHandler<OrmR
     const outboundMessageId = ulid()
     const messageControlId = `WX-${ulid().slice(0, 18)}`
 
-    await withTenantContext(db, { organizationId }, async (tx) => {
+    await withOrgContext(db, { organizationId }, async (tx) => {
       await tx.insert(hl7MessageOutbound).values({
         id: outboundMessageId,
         organizationId,
@@ -719,7 +719,7 @@ import { pino } from 'pino'
 import { db } from '@wardenx/db'
 import { hl7MessageOutbound, externalFeed, externalFeedCredential } from '@wardenx/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { mkOutbox } from '@wardenx/foundation/seams/outbox'
 import { mkKmsEnvelope } from '@wardenx/foundation/seams/kms'
 import { mkMdmClient } from '@wardenx/foundation/seams/mdm'
@@ -816,7 +816,7 @@ export const ormTransmitWorker = new Worker<TransmitJobData>(
 
     // 7. Persist payload + segments_summary
     const payloadCipher = await envelope.encrypt(buildResult.wireBytes.toString('utf8'), { organizationId: row.organizationId })
-    await withTenantContext(db, { organizationId: row.organizationId }, async (tx) => {
+    await withOrgContext(db, { organizationId: row.organizationId }, async (tx) => {
       await tx.update(hl7MessageOutbound).set({
         payloadCipher,
         payloadSha256: buildResult.sha256,
@@ -882,7 +882,7 @@ async function loadOutboundRow(id: string) {
   // Note: we don't know the tenant from the id alone; resolved via a platform query
   // (the outbox handler ran in a tenant context, but BullMQ workers don't always).
   // Production code uses a small lookup that resolves tenant by id and re-enters
-  // withTenantContext. Omitted here for brevity.
+  // withOrgContext. Omitted here for brevity.
   return /* row */
 }
 
@@ -891,13 +891,13 @@ async function loadFeedAndCred(row: any): Promise<{ feed: any; credential: any }
 }
 
 async function transitionTo(id: string, orgId: string, state: string, failureReason: string | null) {
-  await withTenantContext(db, { organizationId: orgId }, async (tx) => {
+  await withOrgContext(db, { organizationId: orgId }, async (tx) => {
     await tx.update(hl7MessageOutbound).set({ transmitState: state, failureReason }).where(eq(hl7MessageOutbound.id, id))
   })
 }
 
 async function markTransmitted(id: string, orgId: string, ackCode: string) {
-  await withTenantContext(db, { organizationId: orgId }, async (tx) => {
+  await withOrgContext(db, { organizationId: orgId }, async (tx) => {
     await tx.update(hl7MessageOutbound).set({
       transmitState: 'transmitted',
       ackCode,
@@ -908,7 +908,7 @@ async function markTransmitted(id: string, orgId: string, ackCode: string) {
 
 async function markFailed(id: string, orgId: string, reason: string, willRetry: boolean, newRetryCount: number) {
   const nextRetryAt = willRetry ? new Date(Date.now() + BACKOFF_MS[Math.min(newRetryCount, BACKOFF_MS.length - 1)]) : null
-  await withTenantContext(db, { organizationId: orgId }, async (tx) => {
+  await withOrgContext(db, { organizationId: orgId }, async (tx) => {
     await tx.update(hl7MessageOutbound).set({
       transmitState: 'failed',
       failureReason: reason,

@@ -809,6 +809,12 @@ export interface AdmissionRouteService {
       limit?: number;
     },
     actorUserId?: string,
+    /**
+     * GAP-182 — the SAME location scope `referral.scope` applies to a single referral, applied to the list:
+     * a location-restricted caller sees referrals with no location (the documented org-level steady state)
+     * or one of THEIR locations. Absent = org-wide (the caller carries no location restriction).
+     */
+    scope?: { readonly locationIds: readonly string[] },
   ): Promise<Page<ReferralReadView>>;
   getReferral(organizationId: string, id: string): Promise<ReferralReadView | null>;
   updateReferral(
@@ -867,6 +873,8 @@ export interface AdmissionRouteService {
     input: AcceptReferralInput,
     ifVersion: number,
     actorUserId: string,
+    /** `emitAccepted` — the route-6 accept path also publishes `m6.referral.accepted` (GAP-177). */
+    opts?: { readonly emitAccepted?: boolean },
   ): Promise<MutationResult & { admissionId: string }>;
   declineReferral(
     organizationId: string,
@@ -1794,8 +1802,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       events.push("m6.referral.received");
       return summary(rec);
     },
-    async listReferrals(organizationId, query, actorUserId) {
+    async listReferrals(organizationId, query, actorUserId, scope) {
       let rows = listOfKind(organizationId, "referral");
+      if (scope) {
+        const allowed = scope.locationIds;
+        rows = rows.filter((r) => {
+          const loc = (r as { locationId?: string | null }).locationId ?? null;
+          return loc === null || allowed.includes(loc);
+        });
+      }
       const status = query.status ?? query.state;
       if (status) rows = rows.filter((r) => r.state === status);
       else if (!query.includeConverted) rows = rows.filter((r) => r.state !== "converted");

@@ -88,6 +88,7 @@ The design language, 113 screen specs, layout glossary, and Pencil prompts live 
 | [`design/pencil-prompts/`](./design/pencil-prompts/) | Phase-batched Pencil generation prompts + MCP workflow ([`pencil-prompts/README.md`](./design/pencil-prompts/README.md)). |
 | [`design/FRAME_FIDELITY_PLAYBOOK.md`](./design/FRAME_FIDELITY_PLAYBOOK.md) | Built-screen ↔ Pencil-frame fidelity process (`frame:fidelity` tracker). |
 | [`design/DEFERRED_SCREENS.md`](./design/DEFERRED_SCREENS.md) | Frontend implementation tracking (Track B / ADR-0030). |
+| [`design/SCREEN_SPEC_STATUS.md`](./design/SCREEN_SPEC_STATUS.md) | Per-spec implementation status (built / partial / deferred) joined to the registered screen sets; enforced by `docs:ui`. |
 | [`design/UI_README.md`](./design/UI_README.md) · [`design/DESIGN_REVIEW.md`](./design/DESIGN_REVIEW.md) · [`design/FRONTEND_RECONCILIATION_SCOPE.md`](./design/FRONTEND_RECONCILIATION_SCOPE.md) | Supporting design-corpus notes. |
 
 ---

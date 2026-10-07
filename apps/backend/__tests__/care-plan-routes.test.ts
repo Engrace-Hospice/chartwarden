@@ -436,3 +436,21 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
     expect(res.json().error.code).toBe("OPEN_VERSION_EXISTS");
   });
 });
+
+describe("GAP-182 — the internal relevant-elements read is caseload-scoped", () => {
+  const url = `/api/v1/internal/care-plan/relevant-elements?patientId=${PATIENT}&encounterType=routine`;
+
+  it("a clinician outside the patient's caseload is denied (404) — 'the M8 caller asserts scope' asserted nothing", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({ method: "GET", url, headers: RN });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("the guard admits the same clinician once the patient is on their caseload", async () => {
+    const { app } = makeServer({ isInCaseload: async () => true });
+    const res = await app.inject({ method: "GET", url, headers: RN });
+    // The CarePlanReader seam itself is not bound in this slice; what matters is that the SCOPE guard let
+    // the request through (neither 403 nor the non-leaking 404).
+    expect([403, 404]).not.toContain(res.statusCode);
+  });
+});

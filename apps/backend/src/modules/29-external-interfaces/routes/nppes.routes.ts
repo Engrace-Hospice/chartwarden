@@ -13,6 +13,7 @@
 // UNBOUND (no queue connection — a db-only or REDIS-less boot) still fails closed, but as a 503
 // `NPPES_SYNC_QUEUE_UNBOUND` rather than the old blanket 501: "this deployment has no worker" is an
 // operational fact an operator can fix, where 501 said "this feature does not exist".
+import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -51,7 +52,7 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
       actorOf(request);
       const { npi } = request.params as { npi: string };
       const provider = await store.getNppesProvider(npi);
-      if (!provider) return reply.code(404).send({ code: "NOT_FOUND", message: "NPI not cached" });
+      if (!provider) throw new NotFoundError("NPI cache entry");
       return { provider };
     },
   );

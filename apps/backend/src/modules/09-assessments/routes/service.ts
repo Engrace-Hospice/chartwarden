@@ -202,6 +202,8 @@ export interface AssessmentRouteService {
   acknowledgeChange(
     organizationId: string,
     eventId: string,
+    /** The acknowledging membership + optional note — carried on `m9.assessment.significant_change_acknowledged`. */
+    ack?: { readonly ackBy: string; readonly note?: string },
   ): Promise<{ status: SignificantChangeStatus }>;
   listLicenses(organizationId: string): Promise<{ licenses: ScaleLicenseView[] }>;
   createLicense(

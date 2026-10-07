@@ -1705,7 +1705,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { orderRecord } from '@wardenx/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface Lm29TransmittedPayload {
   readonly outboundMessageId: string
@@ -1859,7 +1859,7 @@ export class LabTransmissionApplier {
     fromStatuses: readonly string[],
     updates: Record<string, unknown>,
   ): Promise<{ transmissionStatus: string } | null> {
-    return await withTenantContext(db, { organizationId }, async (tx) => {
+    return await withOrgContext(db, { organizationId }, async (tx) => {
       const result = await tx
         .update(orderRecord)
         .set(updates)
@@ -1885,7 +1885,7 @@ export class LabTransmissionApplier {
   }
 
   private async loadOrderingPhysicianMdmId(orderRecordId: string, organizationId: string): Promise<string | null> {
-    const row = await withTenantContext(db, { organizationId }, async (tx) => {
+    const row = await withOrgContext(db, { organizationId }, async (tx) => {
       const [r] = await tx
         .select({ orderingPhysicianMdmId: orderRecord.orderingPhysicianMdmId })
         .from(orderRecord)
@@ -1908,7 +1908,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { orderRecord } from '@wardenx/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 interface Lm29ObservationAttachedPayload {
   readonly observationId: string
@@ -1944,7 +1944,7 @@ export class LabResultsApplier {
 
     const newStatus = payload.attachmentKind === 'partial' ? 'partial_results_received' : 'results_received'
 
-    const prior = await withTenantContext(db, { organizationId: payload.organizationId }, async (tx) => {
+    const prior = await withOrgContext(db, { organizationId: payload.organizationId }, async (tx) => {
       const result = await tx
         .update(orderRecord)
         .set({

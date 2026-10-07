@@ -112,7 +112,8 @@ export type M10TableName =
   | "hope_validation_finding"
   | "hope_submission"
   | "hope_submission_item"
-  | "hope_submission_result_event";
+  | "hope_submission_result_event"
+  | "hope_retention_review";
 
 /** Per-table audit denylist (§3.1 / §8.1). Empty array = no free-text PHI on that table. */
 export const M10_AUDIT_DENYLIST: { readonly [K in M10TableName]: readonly string[] } = {
@@ -124,6 +125,7 @@ export const M10_AUDIT_DENYLIST: { readonly [K in M10TableName]: readonly string
   hope_submission_item: ["iqies_validation_result"],
   // The iQIES result as received and its free-text CMS message (migration 0234).
   hope_submission_result_event: ["raw_result", "message"],
+  hope_retention_review: [],
 } as const;
 
 // ── §2.4 outbox event names (the canonical `m10.*` wire identifiers the dispatcher + arch:gaps validate) ─
@@ -147,6 +149,7 @@ export const M10_EVENT_NAMES = [
   "m10.hope.submission_accepted",
   "m10.hope.submission_rejected",
   "m10.hope.summary_requested",
+  "m10.hope.retention_eligible",
 ] as const;
 
 /** An M10 outbox event name (§2.4). */

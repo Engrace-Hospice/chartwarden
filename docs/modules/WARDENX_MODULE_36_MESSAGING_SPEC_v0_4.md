@@ -1552,11 +1552,12 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | POST | `/api/v1/notifications/endpoints/:id/verify` | session | `notifications.endpoint.manage` | confirm verification token |
 | DELETE | `/api/v1/notifications/endpoints/:id` | session | `notifications.endpoint.manage` | remove endpoint |
 | GET | `/api/v1/alerts/inbox` | session | `messaging.read` | user's recent alerts with delivery status |
+| POST | `/api/v1/alerts/:id/read` | session | `messaging.read` | mark one alert read (as-built; clears the badge) |
 | GET | `/api/v1/alert-rules` | session | `alert.rules.read` | tenant + inherited platform rules |
 | PATCH | `/api/v1/alert-rules/:id` | session | `alert.rules.manage` | enable/disable/override (non-system_locked); clones platform default into org-scoped on first edit |
-| POST | `/api/v1/webhooks/twilio/sms-status` | signature | — | inbound delivery callback |
-| POST | `/api/v1/webhooks/twilio/voice-status` | signature | — | inbound call status |
-| POST | `/api/v1/webhooks/postmark/event` | signature | — | bounce / delivery / complaint |
+| POST | `/webhooks/twilio/sms-status` | signature | — | inbound delivery callback |
+| POST | `/webhooks/twilio/voice-status` | signature | — | inbound call status |
+| POST | `/webhooks/postmark/event` | signature | — | bounce / delivery / complaint |
 | GET | `/api/v1/admin/messaging/alert-deliveries` | session | `messaging.admin.read` | platform-ops: failures and audit drill. **IMPLEMENTED (GAP-165).** Cross-tenant, so: RBAC key AND the `messaging_admin_platform_ops` ABAC conjunct (a tenant role holding the key is refused); data comes only through the `SECURITY DEFINER` reader `messaging_admin_list_alert_deliveries` (migration 0474 — delivery metadata only: no recipient, destination or payload; bounded, keyset-paginated by `before`); every call writes an org-less platform audit event before the response is released. |
 
 > All `/api/v1/admin/messaging/*` routes are platform-ops only and audited as `audit.elevated_access` per M4 §6.

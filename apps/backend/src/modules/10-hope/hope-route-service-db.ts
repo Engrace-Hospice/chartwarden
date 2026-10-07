@@ -872,10 +872,13 @@ export function createDbHopeBackend(
     },
 
     // ── SFV worklist reads (§2.2.3) ────────────────────────────────────────────────────────────────
-    async listSfv(organizationId, state) {
+    async listSfv(organizationId, state, patientIds) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await tx.select().from(SFV)) as SfvRow[];
-        const sfvs = rows.filter((r) => !state || r.status === state).map(toSfvView);
+        const sfvs = rows
+          .filter((r) => !state || r.status === state)
+          .filter((r) => !patientIds || patientIds.includes(r.patientId))
+          .map(toSfvView);
         return { sfvs };
       });
     },

@@ -40,6 +40,7 @@ type SeedIds = {
   goal: string;
   intervention: string;
   idgDecisionApplication: string;
+  idgProposedChange: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -50,6 +51,11 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "goal", key: "goal" },
   { table: "intervention", key: "intervention" },
   { table: "care_plan_idg_decision_application", key: "idgDecisionApplication" },
+];
+
+// GAP-183 — the governed-IDG proposal rows (0218); RLS lives in a later migration than the policy-shape list.
+const EXTRA_COVERED: { table: string; key: keyof SeedIds }[] = [
+  { table: "care_plan_idg_proposed_change", key: "idgProposedChange" },
 ];
 
 describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -197,6 +203,17 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
       )
     ).rows[0].id as string;
 
+    const idgProposedChange = (
+      await db.query(
+        `INSERT INTO care_plan_idg_proposed_change (organization_id, provider_entity_id, location_id,
+           application_id, care_plan_id, care_plan_version_id, idg_decision_id, idg_meeting_id, ordinal,
+           entity_type, operation, proposed)
+         VALUES ($1,$2,$3,$4,$5,$6,gen_random_uuid(),gen_random_uuid(),1,'problem','problem_add','{}'::jsonb)
+         RETURNING id`,
+        [org, providerEntity, location, idgDecisionApplication, carePlan, carePlanVersion],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -208,6 +225,7 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
       goal,
       intervention,
       idgDecisionApplication,
+      idgProposedChange,
     };
   }
 
@@ -260,7 +278,9 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
     }
   });
 
-  it.each(COVERED)(
+  // GAP-183 — tables whose RLS policy lives in a LATER migration than the file the policy-shape case above
+  // reads, so they are proven here by behaviour (and the catalog check below) rather than by policy text.
+  it.each([...COVERED, ...EXTRA_COVERED])(
     "$table: org A sees its row, org B cannot (cross-tenant denial)",
     async ({ table, key }) => {
       const id = a[key];

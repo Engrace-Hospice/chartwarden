@@ -393,6 +393,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const events = await eventsFor(id);
     expect(events).toContain("m8.encounter.finalized");
     expect(events).toContain("m8.encounter.signed");
+    // GAP-177 — a visit-less (ad-hoc/retroactive) encounter also records the M17 reconciliation fact.
+    expect(events).toContain("m8.encounter.orphan_recorded");
   });
 
   it("sign requires a fresh step-up (D13) — a stale step-up is 412", async () => {

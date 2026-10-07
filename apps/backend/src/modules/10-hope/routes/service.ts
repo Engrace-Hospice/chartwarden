@@ -344,7 +344,12 @@ export interface HopeRouteService extends HopeAbacResolver {
     userId: string,
     id: string,
   ): Promise<{ assessmentId: string; requested: true }>;
-  listSfv(organizationId: string, state?: string): Promise<{ sfvs: HopeSfvView[] }>;
+  listSfv(
+    organizationId: string,
+    state?: string,
+    /** GAP-182 — caseload narrowing: ONLY these patients' SFVs (empty = none); absent = org-wide. */
+    patientIds?: readonly string[],
+  ): Promise<{ sfvs: HopeSfvView[] }>;
   getSfv(organizationId: string, id: string): Promise<HopeSfvView>;
   getValidation(
     organizationId: string,
@@ -1593,9 +1598,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return { assessmentId: id, requested: true };
     },
 
-    async listSfv(organizationId, state) {
+    async listSfv(organizationId, state, patientIds) {
       const all = [...sfvs.values()].filter(
-        (r) => r.organizationId === organizationId && (!state || r.status === state),
+        (r) =>
+          r.organizationId === organizationId &&
+          (!state || r.status === state) &&
+          (!patientIds || patientIds.includes(r.patientId)),
       );
       return { sfvs: all.map(viewF) };
     },

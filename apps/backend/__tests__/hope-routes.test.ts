@@ -70,6 +70,7 @@ const PERMISSION_SEED = [
   },
   { userId: "chap_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "viewer_1", permissions: ["hope.schedule.read"] },
+  { userId: "md_1", permissions: [...READ_KEYS] },
   { userId: "compliance_1", permissions: SUB_KEYS },
 ];
 
@@ -89,6 +90,10 @@ function makeServer(
     resolveAdmissionPatient?: ResolveAdmissionPatient;
     /** #48 — the M6 admission status the §2.3 active-admission guard turns on (default `active`). */
     admissionStatus?: string;
+    /** GAP-182 — the caller's caseload (patient ids) for the org-wide worklist narrowing (default: PATIENT). */
+    caseload?: readonly string[];
+    /** GAP-182 — the caseload seam rejects (the worklist must fail CLOSED). */
+    caseloadFails?: boolean;
   } = {},
 ) {
   const backend = createInMemoryHopeBackend({
@@ -187,11 +192,22 @@ function makeServer(
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerHopeRoutes(app, { service: backend });
+  registerHopeRoutes(app, {
+    service: backend,
+    caseloadPatientIds: async () => {
+      if (options.caseloadFails) throw new Error("caseload seam unavailable");
+      return options.caseload ?? [PATIENT];
+    },
+  });
   return { app, backend };
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
+const MEDICAL_DIRECTOR = {
+  "x-test-user": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "medical_director",
+};
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const COMPLIANCE = {
@@ -1053,6 +1069,44 @@ describe("GAP-124 — draft writes apply the discipline floor and regenerate is 
       payload: { admissionId: ADMISSION },
     });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("GAP-182 — the org-wide HOPE worklists are narrowed to the caller's caseload", () => {
+  it("GET /hope/sfv returns only caseload patients' rows to a non-org-wide role", async () => {
+    const { app } = makeServer({ caseload: [PATIENT] });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/sfv", headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sfvs).toHaveLength(1);
+    await app.close();
+  });
+
+  it("GET /hope/sfv hides a patient who is not on the caller's caseload", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/sfv", headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sfvs).toHaveLength(0);
+    await app.close();
+  });
+
+  it("an org-wide scope role (medical_director) sees the whole worklist with an empty caseload", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/sfv",
+      headers: MEDICAL_DIRECTOR,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sfvs).toHaveLength(1);
+    await app.close();
+  });
+
+  it("fails closed when the caseload cannot be resolved", async () => {
+    const { app } = makeServer({ caseloadFails: true });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/sfv", headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sfvs).toHaveLength(0);
     await app.close();
   });
 });

@@ -113,6 +113,7 @@ jobs:
           - { name: "M8 Encounters", script: "test:rls:live:m8" }
           - { name: "M9 Assessments", script: "test:rls:live:m9" }
           - { name: "M10 HOPE", script: "test:rls:live:m10" }
+          - { name: "FK index coverage", script: "test:fk-indexes:live" }
           - { name: "M11 Orders", script: "test:rls:live:m11" }
           - { name: "M12 DoseSpot", script: "test:rls:live:m12" }
           - { name: "M13 eMAR", script: "test:rls:live:m13" }
@@ -232,6 +233,8 @@ jobs:
           # 2026-09-17 force-push with no runner; the restored live-suite gate caught them.
           - { name: "M10 HOPE spec registry", scripts: "test:m10:spec:live" }
           - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
+          # GAP-181 — the monthly `hope-retention-scan` (flags only; destruction stays on M4) + the M9 cadence ledger.
+          - { name: "M10 HOPE retention scan", scripts: "test:m10:retention:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.

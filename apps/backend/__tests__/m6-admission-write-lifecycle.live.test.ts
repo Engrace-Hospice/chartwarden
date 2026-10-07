@@ -115,6 +115,14 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     if (admin) await admin.end();
   });
 
+  async function eventsFor(aggregateId: string): Promise<string[]> {
+    const { rows } = await admin.query(
+      "SELECT event_type FROM outbox_event WHERE aggregate_id=$1 ORDER BY created_at, event_type",
+      [aggregateId],
+    );
+    return rows.map((r) => r.event_type as string);
+  }
+
   /**
    * Drive a referral to `qualified` (version 2): triage(eligible) → under_review, then qualifyReferral.
    * Qualification requires a resolved patient plus a clinical indication and referral-source info
@@ -163,6 +171,34 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     const triaged = await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
     expect(triaged.state).toBe("under_review");
     expect(triaged.version).toBe(1);
+    // GAP-177 — the triage OUTCOME is its own catalogued event, beside the transition's review_started.
+    const events = await eventsFor(ref.id);
+    expect(events).toContain("m6.referral.triaged");
+    expect(events).toContain("m6.referral.review_started");
+  });
+
+  it("pending-information and duplicate transitions each emit their catalogued event (GAP-177)", async () => {
+    const mk = async (name: string): Promise<string> => {
+      const r = await svc.createReferral(
+        ORG_A,
+        {
+          source: "phone",
+          receivedAt: new Date().toISOString(),
+          receivingUserId: USER,
+          patientNameAtReceipt: name,
+        },
+        USER,
+      );
+      await svc.triageReferral(ORG_A, r.id, "eligible", 0); // → under_review, v1
+      return r.id;
+    };
+    const pendingId = await mk("Pending, Pat");
+    await svc.markReferralPendingInformation(ORG_A, pendingId, "need MD orders", 1, USER);
+    expect(await eventsFor(pendingId)).toContain("m6.referral.pending_information");
+
+    const dupId = await mk("Dup, Dana");
+    await svc.markReferralDuplicate(ORG_A, dupId, "same patient", 1, USER);
+    expect(await eventsFor(dupId)).toContain("m6.referral.duplicate");
   });
 
   it("a stale ifVersion is a 409 VERSION_MISMATCH (optimistic lock)", async () => {
@@ -195,6 +231,10 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     );
     expect(accepted.state).toBe("converted");
     expect(accepted.admissionId).toBeTruthy();
+    // GAP-177 — route 6 (accept) publishes `m6.referral.accepted` beside `converted`.
+    const acceptedEvents = await eventsFor(refId);
+    expect(acceptedEvents).toContain("m6.referral.converted");
+    expect(acceptedEvents).toContain("m6.referral.accepted");
     const adm = await svc.getAdmission(ORG_A, accepted.admissionId);
     expect(adm?.state).toBe("pending");
     const windows = await admin.query(

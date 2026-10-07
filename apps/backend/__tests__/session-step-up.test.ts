@@ -160,7 +160,7 @@ describe("M2-T05 step-up route", () => {
         payload: { factor: "totp" },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("totp_not_enrolled");
+      expect(res.json().error.code).toBe("TOTP_NOT_ENROLLED");
       await app.close();
     });
 
@@ -173,7 +173,7 @@ describe("M2-T05 step-up route", () => {
         payload: { challengeId: "does-not-exist", factor: "totp", totpCode: "123456" },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("challenge_expired_or_invalid");
+      expect(res.json().error.code).toBe("CHALLENGE_EXPIRED_OR_INVALID");
       await app.close();
     });
   });
@@ -188,7 +188,7 @@ describe("M2-T05 step-up route", () => {
         payload: { factor: "sms" },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("sms_not_step_up_qualifying");
+      expect(res.json().error.code).toBe("SMS_NOT_STEP_UP_QUALIFYING");
       expect(auditSink.rows).toHaveLength(0); // no attempt started
       await app.close();
     });
@@ -202,7 +202,7 @@ describe("M2-T05 step-up route", () => {
         payload: { challengeId: "x", factor: "sms", totpCode: "123456" },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("sms_not_step_up_qualifying");
+      expect(res.json().error.code).toBe("SMS_NOT_STEP_UP_QUALIFYING");
       await app.close();
     });
 
@@ -242,7 +242,10 @@ describe("M2-T05 step-up route", () => {
       expect((await verifyBad()).statusCode).toBe(401);
       const third = await verifyBad();
       expect(third.statusCode).toBe(423);
-      expect(third.json()).toMatchObject({ error: "session_locked", reason: "step_up_lockout" });
+      expect(third.json().error).toMatchObject({
+        code: "SESSION_LOCKED",
+        details: [{ code: "STEP_UP_LOCKOUT" }],
+      });
 
       expect(writer.isTerminated("sess_1")).toBe(true);
       expect(

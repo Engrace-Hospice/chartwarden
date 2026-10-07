@@ -248,6 +248,7 @@ import {
   registerAuditOpsWorkers,
   scheduleAuditOpsJobs,
 } from "./modules/04-audit/jobs/audit-ops-workers";
+import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
@@ -797,9 +798,12 @@ import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-co
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
 // (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
-// stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
-// fail-closed-unbound at boot (RULE 4), so Phase-0 containment disables their construction; the assembly
-// reader seams + the live MAC/X12 binds are follow-ups.
+// stale-watch, MAC-portal health, the revalidate consumer). The domain + watchdog workers construct on every
+// db boot ("M23 domain + watchdog (+ launch) workers constructed"); the LAUNCH workers (claim/NOE/NOTR submit,
+// 999/277CA pulls) additionally need the X12 + MAC gateways, which bind from `M23_X12_GATEWAY_*` /
+// `M23_MAC_GATEWAY_*` (opt-out via `M23_LAUNCH_GATEWAY_ENABLED=false`; the production env validator
+// requires them). A port whose gateway is not configured stays fail-closed-unbound (RULE 4) — it is never
+// silently absent, and the other workers are unaffected.
 import {
   type M23BootAssemblyPorts,
   type M23HetsConfig,
@@ -901,9 +905,10 @@ import {
 } from "./modules/24-billing-medicaid/index";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
-// read/write services. The write service's transactional outbox publisher + the read service's M38
-// terminology lookup stay on their fail-closed defaults at boot (no-op emit / deny-stub lookup) until those
-// binds land — a documented follow-up (the M23/M27 deferred-bind posture); routes are fully live otherwise.
+// read/write services. The write service binds the catalog-validating transactional outbox publisher
+// (`m25OutboxPublisher`) and the read service binds the M38 CARC/RARC catalog floor over the registered
+// `TerminologyProvider` seam; both are live on a db boot (the no-op emit / deny-stub defaults apply only to a
+// db-less slice).
 import {
   type WorkerAlertPort as M25WorkerAlertPort,
   M25_OUTBOX_EVENTS,
@@ -2188,8 +2193,9 @@ export function wireModuleSeams(
   // platform never serves a request whose PHI ciphertext it cannot key. Phase 2D: when a DB client is
   // present, `registerLiveM34Seams` binds the REAL Drizzle-backed providers (lifecycle/onboarding/support
   // reads over the §3 repos under withOrgContext/withPlatformContext + the D5 key provider over the real
-  // key-ring repo + the injected KEK-unwrap port — the KEK adapter itself is the one typed-TODO, fail-closed
-  // on call). Without a DB client (tests / no-db boot) the fail-closed slice key provider keeps boot green.
+  // key-ring repo + the platform-KEK unwrap port, bound from `M34_TENANT_KEK` (#105 / ADR-0045), or the
+  // provision gateway as the fallback). Without a DB client (tests / no-db boot) the fail-closed slice key
+  // provider keeps boot green.
   if (deps.db) {
     const gatewayConfig = m34ProvisionGatewayConfigFromEnv(process.env);
     const gateway = gatewayConfig ? createM34ProvisionGateway(gatewayConfig) : null;
@@ -3842,12 +3848,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox. Two DEK
           // envelopes over the SAME M34 key ring M39's consent notes and M31's status reasons use:
           // `hearthnote_selection.free_text_cipher` (§3.6, #114) and
-          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). The key ring is a
-          // deny-stub until the Phase-2D KMS-backed provider binds (#105), so both refuse with
-          // 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing PHI in the clear. That means: a selection
-          // tree carrying clinician prose refuses, and — since an assembled narrative is prose by
-          // construction and its columns are NOT NULL — FINALIZE refuses for every encounter. A tree with
-          // no prose still writes, so authoring a structured draft does not depend on the key ring.
+          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). On a db boot with the
+          // platform KEK configured (`M34_TENANT_KEK`, #105 / ADR-0045) `registerLiveM34Seams` binds the real
+          // key-ring provider, so both ciphers work. Only where it is NOT configured (a db-less slice, or a
+          // deployment missing the KEK — production refuses to boot without it) is the key ring the
+          // fail-closed deny-stub, and then both refuse with 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing
+          // PHI in the clear: a selection tree carrying clinician prose refuses and FINALIZE refuses. A tree
+          // with no prose still writes, so authoring a structured draft does not depend on the key ring.
           mountEncounterRoutes(
             app,
             dbHandle.db,
@@ -4224,14 +4231,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every
           // statement to app.org_id), runs the pure @wardenx/billing lifecycle reducer, and emits its §4.10
           // m23.* event through the catalog-validating tx publisher (callerModule `m23`) in the same unit of
-          // work (D2 outbox-only). The assembly service now binds 4 of its 11 cross-module reader seams for
-          // real (#250: patientPayer/M5, mdm.resolveProviderEntity/M1+M23, 2 of referenceData's 4 methods) —
-          // see `boot-assembly.ts`'s header for the exact per-seam accounting of what still deny-stubs and
-          // why. POST /claims/assemble still returns 503 SEAM_UNBOUND for every real caller today (now at
-          // `admission.resolveForRange`, M6, rather than at the first read), never a fabricated claim. The
-          // §4.8 BullMQ submit/eligibility producer + the M1 secret-cipher / M4 override-audit ports stay on
-          // their fail-closed defaults until those binds land (the submit routes enqueue once the producer
-          // binds).
+          // work (D2 outbox-only). The assembly service binds ten of its eleven cross-module reader seams for
+          // real (M5 payer, the five M6 range seams, M8 billable/signed encounters, M18 EVV, M38 terminology,
+          // M40 provider entity + physician identity, all four referenceData methods) — see
+          // `boot-assembly.ts`'s header for the exact per-seam accounting of what remains a deny-stub and
+          // why; a still-unbound reader raises the typed 503 SEAM_UNBOUND, never a fabricated claim. The
+          // §4.8 BullMQ submit/eligibility producer and the M1 secret-cipher / M4 override-audit ports are
+          // injected where configured and stay fail-closed otherwise.
           //
           // `provider_entity` is M1-owned (arch:tables), so BOTH the write-service's control-number
           // derivation and the assembly-service's `mdm.resolveProviderEntity` bind the SAME `ProviderCcnPort`
@@ -4334,10 +4340,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
           // services. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
           // validates the §2.2 transition via the pure domain machines, and version-checks the PATCH surfaces
-          // (§2.5). The §4.5 m25.* transactional outbox publisher + the M38 terminology lookup stay on their
-          // fail-closed defaults (no-op emit / deny-stub) until those binds land — the routes (reads, manual-
-          // match, the denial/appeal state ladders, the overlay edit) are fully live; only the cross-module
-          // event fan-out + the M38 plain-language merge are deferred (the M23/M27 deferred-bind posture).
+          // (§2.5). The §4.5 m25.* transactional outbox publisher (`m25OutboxPublisher`) and the M38
+          // terminology lookup (below) are BOUND on this db path — the no-op emit / deny-stub defaults only
+          // apply to the db-less slice.
           // Bind the M38 CARC/RARC catalog floor (the taxonomy view's category + default plain-language)
           // over the registered TerminologyProvider seam (resolved lazily per lookup, so registration order
           // is irrelevant). The per-tenant overlay still layers on top; an unknown code degrades to 'unmapped'.
@@ -6805,6 +6810,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m9OutboxPublisher,
       activeOrgs: m9ActiveOrgs,
+      // GAP-181 — the cadence scan's active-patient population (M6, org-explicit, keyset-paginated).
+      activeAdmissions: {
+        activeAdmissionsForOrg: (organizationId, afterAdmissionId, limit) =>
+          idgActiveAdmissionsForOrg(dbHandle.db, organizationId, afterAdmissionId, limit),
+      },
     });
 
     const m9Workers = registerM9CronWorkers(m9WorkerDeps);
@@ -6937,6 +6947,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       },
       iqies: createUnboundIqiesAdapter(),
       providerEntityCcn: buildProviderEntityCcnResolver(dbHandle.db),
+      // GAP-181 — the monthly `hope-retention-scan` is gated on M4's active legal holds (M10 never reads
+      // `legal_hold`). No tenant override is bound: the architecture horizons (7y / 10y) already exceed every
+      // regulatory floor, and an override could only lengthen them.
+      retentionHolds: {
+        activeLegalHoldScopeForOrg: (organizationId) =>
+          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+      },
     });
     const m10Workers = registerM10CronWorkers(m10WorkerDeps);
     attachDlqAlertsToAll(m10Workers, "m10");
@@ -6953,7 +6970,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info(
       { queues: m10Workers.length },
-      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs; iQIES submission is the manual package flow)",
+      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs + monthly retention scan; iQIES submission is the manual package flow)",
     );
 
     // ── M14 §4.8 crons: `idg.review-clock-sweep` (GAP-092), `idg.schedule-materialise` (§7.1) and

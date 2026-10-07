@@ -777,6 +777,23 @@ export function createDbEncounterRouteService(
     });
   }
 
+  /** GAP-177 — `m8.encounter.orphan_recorded`: a just-signed encounter with NO `visit_id` (ad-hoc /
+   *  retroactive) is the M17 reconciliation fact (D2). Emitted beside `.signed`, on the same tx. */
+  async function emitOrphanIfUnlinked(
+    tx: unknown,
+    org: string,
+    r: { readonly id: string; readonly patientId: string; readonly visitId: string | null },
+    signedAt: Date,
+  ): Promise<void> {
+    if (r.visitId) return;
+    await emit(tx, org, "m8.encounter.orphan_recorded", "encounter", r.id, {
+      encounterId: r.id,
+      patientId: r.patientId,
+      organizationId: org,
+      recordedAt: signedAt.toISOString(),
+    });
+  }
+
   /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
   async function loadEnc(t: DbClient, encounterId: string): Promise<typeof ENC.$inferSelect> {
     const [row] = await t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
@@ -1097,6 +1114,10 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const conditions: SQL[] = [];
         if (filters.patientId) conditions.push(eq(ENC.patientId, filters.patientId));
+        if (filters.patientIds) {
+          if (filters.patientIds.length === 0) return { encounters: [] };
+          conditions.push(inArray(ENC.patientId, [...filters.patientIds]));
+        }
         if (filters.admissionId) conditions.push(eq(ENC.admissionId, filters.admissionId));
         if (filters.status) conditions.push(eq(ENC.status, filters.status));
         if (filters.authorId) conditions.push(eq(ENC.authoredByMembershipId, filters.authorId));
@@ -1885,6 +1906,7 @@ export function createDbEncounterRouteService(
             careplanLinks,
             documentRenderPayload: { final: finalPayload, addenda: [] },
           });
+          await emitOrphanIfUnlinked(t, organizationId, r, now);
           return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
         }
 
@@ -1939,6 +1961,7 @@ export function createDbEncounterRouteService(
           careplanLinks,
           documentRenderPayload: { final: finalPayload, addenda: [] },
         });
+        await emitOrphanIfUnlinked(t, organizationId, r, now);
         if (requiresCosign) {
           // §2.4 D3 — open the cosignature request already `routed` to the assigned RN case manager,
           // resolved above through M5's CareTeamProvider. It used to route to `signedByMembershipId` —

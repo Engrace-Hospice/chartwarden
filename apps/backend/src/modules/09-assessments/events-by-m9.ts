@@ -135,6 +135,22 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m9.assessment.reassessment_due",
+    moduleOwner: "m9",
+    description:
+      "The §4.8 daily cadence scan found a (patient, scale) past its reassessment due date (CoP 418.54(d) floor, tenant-tightenable); M36 surfaces the overdue banner/alert. Emitted once per overdue episode.",
+    payloadSchema: Type.Object({
+      patientId: Type.String({ minLength: 1 }),
+      scaleType,
+      dueAt: Type.String({ minLength: 1 }),
+      lastCapturedAt: Type.String({ minLength: 1 }),
+      cadenceDays: Type.Number({ minimum: 1 }),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m9.assessment.significant_change_escalated",
     moduleOwner: "m9",
     description:

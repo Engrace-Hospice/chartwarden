@@ -255,7 +255,7 @@ import {
   labObservationValue,
   labObservationInboundLink,
 } from '@wardenx/db/schema/external-interfaces'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { Logger } from 'pino'
 
 export interface ProjectedObr {
@@ -309,7 +309,7 @@ export async function attachLab(input: LabAttachInput, logger: Logger): Promise<
 
   const hasPendingPdf = input.obxList.some(obx => obx.valueType === 'ED')
 
-  await withTenantContext(db, { organizationId: input.organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId: input.organizationId }, async (tx) => {
     // 1. lab_observation
     await tx.insert(labObservation).values({
       id: observationId,
@@ -736,7 +736,7 @@ import type { Logger } from 'pino'
 import { db } from '@wardenx/db'
 import { labObservation } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 
 export function registerM22DocumentBackrefConsumer(outbox: Outbox, logger: Logger): void {
   outbox.registerConsumer({
@@ -746,7 +746,7 @@ export function registerM22DocumentBackrefConsumer(outbox: Outbox, logger: Logge
       const { documentId, requestingModule, backRef, organizationId } = payload
       if (requestingModule !== 'm29' || backRef?.kind !== 'lab_observation') return  // not ours
 
-      await withTenantContext(db, { organizationId }, async (tx) => {
+      await withOrgContext(db, { organizationId }, async (tx) => {
         await tx
           .update(labObservation)
           .set({ attachedDocumentId: documentId })
@@ -922,7 +922,7 @@ import { Type } from '@sinclair/typebox'
 import { db } from '@wardenx/db'
 import { labObservation, labObservationInboundLink } from '@wardenx/db/schema/external-interfaces'
 import { and, eq, isNull, desc } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import { requirePermissions } from '@wardenx/foundation/auth'
 
 const BindBody = Type.Object({
@@ -943,7 +943,7 @@ export function registerUnmatchedLabRoutes(app: FastifyInstance): void {
     },
     async (req) => {
       const organizationId = req.user!.organizationId
-      const rows = await withTenantContext(db, { organizationId }, async (tx) =>
+      const rows = await withOrgContext(db, { organizationId }, async (tx) =>
         tx
           .select({
             observation: labObservation,
@@ -978,7 +978,7 @@ export function registerUnmatchedLabRoutes(app: FastifyInstance): void {
       const organizationId = req.user!.organizationId
 
       // Atomic UPDATE WHERE patient_id IS NULL — guards against double-bind race
-      const updated = await withTenantContext(db, { organizationId }, async (tx) => {
+      const updated = await withOrgContext(db, { organizationId }, async (tx) => {
         const result = await tx
           .update(labObservation)
           .set({ patientId, boundAt: new Date(), boundByMembershipId: req.user!.membershipId, bindRationale: decisionRationale })

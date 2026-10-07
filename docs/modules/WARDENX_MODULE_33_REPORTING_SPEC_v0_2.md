@@ -1186,11 +1186,11 @@ M33 ships three frontend bundles on the TanStack Start + TanStack Router + TanSt
 | `/reports/admin/mvs` | `report.admin` | MV catalog detail — last refresh, row count, refresh-failed alerts |
 | `/reports/admin/system-defs` | `report.admin` | System-authored definition registry (read-only; published by Anthropic ops) |
 
-Routes that depend on `reportable_scope` predicate evaluation are guarded by a TanStack Router `beforeLoad` that calls `/api/reporting/scope/precheck` — failing the precheck redirects to `/reports` with a contextual banner ("This dashboard requires Org-scope access"). The scope precheck is cached for 5 minutes per membership; ABAC predicate changes (e.g., a role grant change) invalidate via the M2 membership-changed outbox event.
+Routes that depend on `reportable_scope` predicate evaluation are guarded by a TanStack Router `beforeLoad` that calls `/api/reporting/scope/precheck` (**DEFERRED — unbuilt; the server enforces `reportable_scope` per request**) — failing the precheck redirects to `/reports` with a contextual banner ("This dashboard requires Org-scope access"). The scope precheck is cached for 5 minutes per membership; ABAC predicate changes (e.g., a role grant change) invalidate via the M2 membership-changed outbox event.
 
 #### 5.1.2 Reports Landing (`/reports`)
 
-The landing page reads from `GET /api/reporting/landing` which returns:
+The landing page reads from `GET /api/reporting/landing` (**DEFERRED — unbuilt; see the build notes**) which returns:
 - The active org's `featured_dashboards` (a tenant-configurable JSON list of definition IDs surfaced from `report_base_catalog.is_featured`)
 - The user's `recently_viewed` (last 5 distinct definitions from `report_run.user_id`)
 - A `system_health` block: replica lag tier (`fresh | degraded | stale`), total MVs in `failed` state, count of overdue scheduled deliveries
@@ -1208,7 +1208,7 @@ Each `<TileFrame>` shows a freshness chip computed from `tile.dataFreshnessSecon
 
 Tiles support **drilldown navigation** when `tile.drilldownTarget` is set:
 - Hovering reveals "Drill into M-X" action on the tile menu
-- Clicking emits a `POST /api/reporting/drilldown/emit` call (synchronous) that:
+- Clicking emits a `POST /api/v1/reporting/drilldown/emit` call (synchronous) that:
   1. Builds a target URL for the M-X route with the dimension context (e.g., `/encounters?membershipId=…&dateRange=…`)
   2. Returns the URL after the M-X module-side checks the actor's `module-x.view` permission AND consent narrowing (M39); if access is denied for any row, the URL is built with the narrowed filter set and a `consentNarrowed=true` query param
   3. Writes the `report_drilldown_audit` row via the audit queue
@@ -1226,7 +1226,7 @@ The builder is a constrained UI over `ReportDefinitionSpec`. It is **not** a SQL
 7. **Drilldown wiring** — if the dimension has a `drilldownTarget` annotation in the catalog (e.g., `dim.membership_id → M2`), the builder offers to enable drilldown on that dimension
 8. **Save & publish** — saves as `is_published=false` initially; publishing writes a `report_definition_version` row and flips the flag
 
-The builder calls `POST /api/reporting/preview` to render the live preview; preview is `LIMIT 100` capped server-side and runs against the read replica with a 5s statement timeout. Preview is rate-limited to 6 calls/minute per membership.
+The builder calls `POST /api/reporting/preview` (**DEFERRED — unbuilt**) to render the live preview; preview is `LIMIT 100` capped server-side and runs against the read replica with a 5s statement timeout. Preview is rate-limited to 6 calls/minute per membership.
 
 #### 5.1.5 Saved Views & Sharing (`/reports/views`)
 
@@ -1591,7 +1591,7 @@ Each workflow is a numbered, reviewer-checkable acceptance contract: every step 
 **Flow:**
 1. Clinician views a productivity tile on `/m/reports/clinician_caseload` showing their own + team aggregate.
 2. Clinician taps a tile drilldown action ("View visit details for team member X").
-3. UI calls `POST /api/reporting/drilldown/emit` with `{ sourceTileKey, targetModule: 'M8', dimensionContext: { membershipId: 'X', dateRange } }`.
+3. UI calls `POST /api/v1/reporting/drilldown/emit` with `{ sourceTileKey, targetModule: 'M8', dimensionContext: { membershipId: 'X', dateRange } }`.
 4. M33 builds a candidate URL: `/encounters?membershipId=X&dateRange=...`.
 5. M33 calls M8's `EncounterAccessProvider.checkAccess(actor, { membershipId: 'X', dateRange })`.
 6. M8 returns `{ allowed: true, narrowedFilter: { excludePatientIds: ['P123'] } }` because M39 consent denies the actor access to patient P123's encounters specifically.
@@ -1655,7 +1655,7 @@ Each workflow is a numbered, reviewer-checkable acceptance contract: every step 
 **Flow:**
 1. Analyst opens a saved view "Caseload by Discipline" with ~12,000 rows after filter resolution.
 2. Analyst clicks **Export → CSV**.
-3. UI calls `GET /api/reporting/views/:viewId/export.csv` with streaming response (`Content-Type: text/csv; charset=utf-8`, `Transfer-Encoding: chunked`).
+3. UI calls `POST /api/v1/reporting/views/:id/export.csv` (as-built verb and path; a streamed CSV response) with streaming response (`Content-Type: text/csv; charset=utf-8`, `Transfer-Encoding: chunked`).
 4. Server opens read-replica session with `statement_timeout=300s`, executes the resolved query with a server-side cursor (`DECLARE c CURSOR ...; FETCH 1000 ...`).
 5. Server streams CSV rows in 1000-row chunks; backpressure honored via Node stream API.
 6. Stream completes; total bytes sent and row count recorded in audit row.
@@ -1692,7 +1692,7 @@ Each workflow is a numbered, reviewer-checkable acceptance contract: every step 
 **Actor:** AI service account (M32 LLM agent)
 
 **Flow:**
-1. M32 agent attempts to call `POST /api/reporting/definitions` with a generated spec.
+1. M32 agent attempts to call `POST /api/v1/reporting/definitions` with a generated spec.
 2. M33 route handler checks the actor's membership type; `actor.membershipType==='ai_service'` triggers the AI-prohibited zone gate.
 3. Request rejected with 403 and reason `AI_AUTHORSHIP_PROHIBITED`.
 4. `m33.ai_attempt_blocked` outbox event emitted to M32 audit subscription.
@@ -2082,22 +2082,22 @@ Register M33's `eraseFn` with M4 per W-R-11; configure retention classes per §8
 ### Phase 2 — User Surfaces (T-13 to T-22)
 
 **T-13: Routes — definitions & versions**
-Implement all 8 routes under `/api/reporting/definitions/*` and `/api/reporting/definitions/:id/versions/*`. ABAC gates at route level. Spec validation. Audit emission. Outbox events on publish.
+Implement all 8 routes under `/api/v1/reporting/definitions/*` and `/api/v1/reporting/definitions/:id/versions/*`. ABAC gates at route level. Spec validation. Audit emission. Outbox events on publish.
 
 **T-14: Routes — views & shares**
-Implement `/api/reporting/views/*`, `/api/reporting/views/:id/share`, `/api/reporting/views/:id/export.csv` (with cursor-based streaming).
+Implement `/api/v1/reporting/views/*`, `/api/v1/reporting/views/:id/share`, `/api/v1/reporting/views/:id/export.csv` (with cursor-based streaming).
 
 **T-15: Routes — schedules**
-Implement `/api/reporting/schedules/*` with cron-parser validation, recipient pre-check, M22 render-request payload construction.
+Implement `/api/v1/reporting/schedules/*` with cron-parser validation, recipient pre-check, M22 render-request payload construction.
 
 **T-16: Routes — dashboards & tiles**
-Implement `/api/reporting/dashboards/:definitionId/tiles` (batched tile fetch), `/api/reporting/preview` (rate-limited preview), `/api/reporting/landing` (featured + recent).
+Implement `/api/v1/reporting/dashboards/:dashboardId` + `/api/v1/reporting/tiles/:tileKey` (+ `/freshness`) (as-built tile fetch). **DEFERRED (unbuilt, no route):** `/api/reporting/preview` (rate-limited preview) and `/api/reporting/landing` (featured + recent) — the landing/catalog screens compose `GET /dashboards`, `/views` and `/metrics` instead.
 
 **T-17: Routes — drilldown**
 Implement `/api/reporting/drilldown/emit` with consumer-side `EncounterAccessProvider`-style adapter calls; audit row write; outbox event emission.
 
 **T-18: Routes — admin & catalog**
-Implement `/api/reporting/admin/mvs/*`, `/api/reporting/admin/health`, `/api/reporting/catalog/bases`, `/api/reporting/catalog/metrics`, `/api/reporting/admin/system-defs`.
+Implement `/api/v1/reporting/admin/mvs/*` and `/api/v1/reporting/admin/lag` (as-built; replaces `admin/health`), `/api/v1/reporting/bases` + `/api/v1/reporting/metrics` (as-built; the `catalog/` segment was dropped). **DEFERRED (unbuilt):** `admin/system-defs`.
 
 **T-19: Frontend — TanStack Router tree**
 Build the route tree from §5.1.1. File-based code splitting. `beforeLoad` ABAC pre-checks. Layout shells with the dashboard chrome.

@@ -673,7 +673,7 @@ await outbox.publish('m29.hl7_message.parsed_other', { messageId, feedId, organi
 // apps/backend/src/modules/29-external-interfaces/inbound/cascade-persistence.ts
 import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withTenantContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@wardenx/tenancy'
 import type { MatchOutcome } from './match-cascade'
 
 export async function persistCascadeResult(
@@ -684,7 +684,7 @@ export async function persistCascadeResult(
 ): Promise<void> {
   const { matchedPatientId, matchLevel, matchOutcome, matchConfidence } = projectForSchema(outcome)
 
-  await withTenantContext(db, { organizationId }, async (tx) => {
+  await withOrgContext(db, { organizationId }, async (tx) => {
     await tx
       .update(hl7MessageInbound)
       .set({

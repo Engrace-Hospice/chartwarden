@@ -193,7 +193,6 @@ export {
   type M39ConsentChangedPayload,
   type PrivacySnapshotPorts,
   SudConsentRequiredError,
-  M39_CONSENT_CONSUMER_DEFERRED,
   recomputePrivacyFlags,
   mergeConsentSignal,
   isSudReadAllowed,

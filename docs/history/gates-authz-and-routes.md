@@ -412,3 +412,23 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   registered nowhere and is not a dependency. Mounting it would answer Twilio with a signature check
   over an empty body and then call a service that does not exist. An entry that gains a mount fails
   ("outlived its reason"), one whose registrar disappears fails, and an empty reason fails.
+
+- **`check-error-envelope` (`arch:error-envelope`, GAP-175).** M1 §4.3 defines one error envelope
+  (`{ error: { code, message, details?, correlationId } }`) that the M1 error handler renders for every
+  thrown `WardenXError`. 38 route responses in M02/M12/M29/M33/M37 (and three more the audit did not
+  count in M28/M29/M33) answered failures with `reply.code(4xx).send({ error: "snake_case" })` or a bare
+  `{ code, message }`, so the client got no `correlationId` and a second error shape — the session
+  step-up and device-attestation routes among them. They now `throw` a typed `WardenXError`/
+  `NotFoundError`/`ConflictError` (codes are the former strings, upper-cased: `STEP_UP_FAILED`-style
+  names are the envelope `code`; the web client keys on status only). The gate fails any non-test
+  `apps/backend/src` file that passes `{ error: "<string>" … }` or `{ code: … }` as the body of a
+  `.send(...)`; `ALLOWED` is empty and a sanctioned flat body would need a reason there.
+- **GAP-182 caseload on list / internal routes.** Org-wide lists were RBAC+RLS only. M8 `GET /encounters`
+  and M10 `GET /hope/sfv` now narrow rows to `CaseloadProvider.caseloadPatientIds` (org-wide scope roles
+  exempt; fail-closed to the pinned session patient on a seam error — the M6 `readScopeOf` shape). M6
+  `GET /referrals` applies the same location scope `referral.scope` already enforces on a single
+  referral. M9 `/internal/assessments/{latest,series}-batch` are system-principal-only (their callers are
+  the in-process M7/M10/M32 seams), and M7 `/internal/care-plan/relevant-elements` — which the web
+  encounter screen calls with a human session, so "the M8 caller asserts scope" asserted nothing — is
+  `caseload_or_scope` over its query `patientId`. M10 `GET /hope/schedules` was already scoped by
+  `hope.scope` (an unfiltered list is org-wide-roles only).
