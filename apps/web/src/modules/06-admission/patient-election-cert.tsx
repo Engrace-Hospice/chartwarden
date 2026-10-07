@@ -503,7 +503,10 @@ export function PatientElectionCert(): JSX.Element {
                                     </button>
                                   ) : null}
 
-                                  {canPrepareCti && !p.cti ? (
+                                  {/* A voided CTI is history: `cti_period_active_idx` covers only
+                                      non-voided rows, so the period can be certified again. A
+                                      superseded CTI is not offered — its replacement is live. */}
+                                  {canPrepareCti && (!p.cti || p.cti.status === "voided") ? (
                                     <Link
                                       to={`/admissions/${admission.id}`}
                                       style={primaryLinkAction}

@@ -409,4 +409,26 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     const voided = await svc.voidCti(ORG_A, cti.id, "entered in error", late.version);
     expect(voided.state).toBe("voided");
   });
+
+  it("a voided CTI never blocks drafting a new one for the period (partial cti_period_active_idx)", async () => {
+    const { periodId } = await admitFor(randomUUID());
+    const input = {
+      electionPeriodId: periodId,
+      hospiceMedicalDirectorId: MD,
+      ...CTI_CLINICAL,
+      isRecert: false,
+    };
+    const first = await svc.draftCti(ORG_A, input, USER);
+    await svc.voidCti(ORG_A, first.id, "entered in error", first.version);
+    // The patient Election & Certification view offers "Create CTI" beside the voided one; the draft
+    // it leads to must succeed.
+    const redraft = await svc.draftCti(ORG_A, input, USER);
+    expect(redraft.id).not.toBe(first.id);
+    expect(redraft.state).toBe("drafted");
+    // A live CTI still blocks a further draft.
+    await expect(svc.draftCti(ORG_A, input, USER)).rejects.toMatchObject({
+      code: "CTI_ALREADY_EXISTS",
+      statusCode: 409,
+    });
+  });
 });
