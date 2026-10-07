@@ -11,6 +11,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { FUNERAL_LINK_TTL_SEC } from "../src/modules/02-identity/identity-ports";
 import {
   type IdentityRouteDeps,
   createContextActorResolver,
@@ -22,7 +23,6 @@ import {
   createInMemoryUserDirectory,
   registerIdentityRoutes,
 } from "../src/modules/02-identity/index";
-import { FUNERAL_LINK_TTL_SEC } from "../src/modules/02-identity/identity-ports";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];

@@ -82,15 +82,6 @@ import {
   withM24LaunchGatewayDefault,
 } from "./bootstrap/index";
 import {
-  PARTITION_ROTATION_CRON,
-  PARTITION_ROTATION_QUEUE,
-  classifyPartitionCoverage,
-  readPartitionCoverage,
-  runPartitionRotation,
-  summarizeRotation,
-  wirePartitionRotationTenancy,
-} from "./bootstrap/jobs/partition-rotation";
-import {
   AUDIT_ARCHIVE_CRON,
   AUDIT_ARCHIVE_QUEUE,
   auditArchiveConfigFromEnv,
@@ -104,6 +95,15 @@ import {
   scheduleIdempotencyCleanup,
   wireIdempotencyCleanupTenancy,
 } from "./bootstrap/jobs/idempotency-cleanup";
+import {
+  PARTITION_ROTATION_CRON,
+  PARTITION_ROTATION_QUEUE,
+  classifyPartitionCoverage,
+  readPartitionCoverage,
+  runPartitionRotation,
+  summarizeRotation,
+  wirePartitionRotationTenancy,
+} from "./bootstrap/jobs/partition-rotation";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
@@ -251,6 +251,7 @@ import {
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
+  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   buildM5AdmissionDischargedConsumer,
@@ -258,10 +259,8 @@ import {
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
   buildM5ExtractionAllergyConsumer,
-  buildM5GeocodeAddressConsumer,
-  patientIsDeceasedForOrg,
-  resolveGeocoder,
   buildM5ExtractionWritebackConsumer,
+  buildM5GeocodeAddressConsumer,
   buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
@@ -283,27 +282,30 @@ import {
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
   patientIdsPageForOrg,
+  patientIsDeceasedForOrg,
   rebuildPrivacySnapshotsForOrg,
+  registerAmendmentSlaWorker,
   registerPatientErasers,
   registerPatientSeams,
-  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
-  registerAmendmentSlaWorker,
-  scheduleAmendmentSla,
-  wireAmendmentSlaTenancy,
   registerSnapshotRebuildWorker,
+  resolveGeocoder,
+  scheduleAmendmentSla,
   scheduleSnapshotRebuild,
+  wireAmendmentSlaTenancy,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
 // group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
 // ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
 import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
+import { payerProgramsForPatientsForOrg } from "./modules/05-patient/seams/payer-programs-for-patients";
 import { primaryCaregiverContactForOrg } from "./modules/05-patient/seams/primary-caregiver-contact-for-org";
 import {
   M6_OUTBOX_EVENTS,
   M6_PLATFORM_JOB_ID,
   activeAdmissionDraftContextForPatient,
   activeAdmissionSitingForPatientForOrg,
+  admissionCensusSummaryForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
   buildM6CarePlanAddendumConsumer,
@@ -340,16 +342,16 @@ import {
   scheduleM6Jobs,
   transferInNoticeContextForOrg,
   wireM6Tenancy,
-  admissionCensusSummaryForOrg,
 } from "./modules/06-admission/index";
-// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
-// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
 import { cahpsDeathCandidatesForOrg } from "./modules/06-admission/seams/cahps-death-candidates-for-org";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
 import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
 import { orderTriggeredRecordsForOrg } from "./modules/06-admission/seams/order-triggered-records-for-org";
 import { patientSiteForOrg } from "./modules/06-admission/seams/patient-site-for-org";
+// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
+// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { serviceCensusForOrg } from "./modules/06-admission/seams/service-census-for-org";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -396,6 +398,7 @@ import {
   signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
 } from "./modules/08-encounters/index";
+import { visitCountsByDisciplineForOrg } from "./modules/08-encounters/seams/visit-counts-by-discipline-for-org";
 import {
   M9_OUTBOX_EVENTS,
   M9_PLATFORM_JOB_ID,
@@ -604,6 +607,7 @@ import {
   scheduleM16Jobs,
   wireM16Tenancy,
 } from "./modules/16-bereavement/index";
+import { bereavementCensusForOrg } from "./modules/16-bereavement/seams/bereavement-census-for-org";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
@@ -746,12 +750,10 @@ import {
   type DocLensSudDetectorPort,
   type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
-  M22_OUTBOX_EVENTS,
   M22_FORM_RENDER_PLATFORM_JOB_ID,
+  M22_OUTBOX_EVENTS,
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
-  registerAiBlockValidatorWorker,
-  registerRetentionRotationWorker,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -779,6 +781,7 @@ import {
   expireRecordsRequestsForOrg,
   getDocumentRenderer,
   mountDocumentRoutes,
+  registerAiBlockValidatorWorker,
   registerDocLensIntakeWorker,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -786,6 +789,7 @@ import {
   registerDocumentSeams,
   registerFormRenderWorker,
   registerRecordsRequestExpiryWorker,
+  registerRetentionRotationWorker,
   s3ObjectStoreConfigFromEnv,
   scheduleAiBlockValidator,
   scheduleFormRender,
@@ -816,11 +820,12 @@ import {
   buildClaimValidationService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
-  buildDrizzlePlatformAdminService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
@@ -839,7 +844,6 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
-  buildDrizzleOrgMacJurisdictionReader,
   buildMacJurisdictionLister,
   buildNoticeWindowPort,
   buildTransferNoticeService,
@@ -988,6 +992,7 @@ import {
   scheduleM27Jobs,
   wireM27Tenancy,
 } from "./modules/27-cost-report/index";
+import { buildM27StatisticsSeams } from "./modules/27-cost-report/jobs/statistics-seams";
 // M28 (FHIR Gateway) boot surface — the §4.3 published read seams (M28-T06). The three impls register over
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
 // T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
@@ -5856,6 +5861,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // statistics census and assembles the hospice chain inputs (Worksheet B step-down on the B-1 statistical
       // basis → Worksheet C per-diem cost by level of care). No cap/settlement worksheet on the form (M26).
       allocationInputs: buildM27AllocationInputs(),
+      // GAP-080 — the S-3 statistics sources: M6 service census + M5 payer program (Part I), M8 completed visits by
+      // discipline (Part III), FTE from M27's own wage import (Part II), M16 bereavement census (Part IV). Every
+      // cross-module fact is an org-explicit port (arch:tables stays green: M27 reads no foreign table).
+      statisticsSeams: buildM27StatisticsSeams({
+        db: dbHandle.db,
+        serviceCensus: (organizationId, window) =>
+          serviceCensusForOrg(dbHandle.db, organizationId, window),
+        payerPrograms: (organizationId, patientIds, asOf) =>
+          payerProgramsForPatientsForOrg(dbHandle.db, organizationId, patientIds, asOf),
+        visitCounts: (organizationId, window) =>
+          visitCountsByDisciplineForOrg(dbHandle.db, organizationId, window),
+        bereavementCensus: (organizationId, window) =>
+          bereavementCensusForOrg(dbHandle.db, organizationId, window),
+      }),
     });
     const m27Workers = [
       ...registerM27Workers(m27WorkerDeps),

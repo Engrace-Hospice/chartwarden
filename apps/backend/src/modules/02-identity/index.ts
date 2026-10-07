@@ -300,22 +300,21 @@ import {
   createDbUserIdentityReader as _dbUserIdentity,
 } from "./identity-stores-db";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
+import { createDrizzleOrgAdminStore as _drizzleOrgAdminStore } from "./org-admin-store";
 import {
   type OrganizationLifecycleOutboxPort,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
-import { createDrizzleOrgAdminStore as _drizzleOrgAdminStore } from "./org-admin-store";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
+import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import {
   type TaxIdCipherPort,
   registerOrgAdminRoutes as _registerOrgAdminRoutes,
 } from "./routes/org-admin-routes";
-import { registerStepUpOverrideRoutes as _registerStepUpOverrideRoutes } from "./routes/step-up-override-routes";
-import { createDrizzleStepUpOverrideAdminStore as _drizzleStepUpOverrideAdminStore } from "./step-up-override-admin";
-import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { registerOrganizationLifecycleRoutes as _registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
 import { registerPlatformUserRoutes as _registerPlatformUserRoutes } from "./routes/platform-user-routes";
 import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
+import { registerStepUpOverrideRoutes as _registerStepUpOverrideRoutes } from "./routes/step-up-override-routes";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
 import {
   createContextSessionResolver as _contextSessionResolver,
@@ -325,6 +324,7 @@ import {
   createDbStepUpSessionResolver as _dbStepUpSessionResolver,
 } from "./step-up-adapters-db";
 import { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
+import { createDrizzleStepUpOverrideAdminStore as _drizzleStepUpOverrideAdminStore } from "./step-up-override-admin";
 import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
 
 /**

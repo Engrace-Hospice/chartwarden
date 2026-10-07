@@ -1,5 +1,6 @@
 import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
+import type { PlatformAdminRouteService } from "./platform-admin-service";
 // apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
 //
 // The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
@@ -13,7 +14,6 @@ import type { TransferNoticeService } from "../services/transfer-notice-service"
 import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
-import type { PlatformAdminRouteService } from "./platform-admin-service";
 import type { WageIndexRouteService } from "./wage-index-service";
 import type { M23WriteRouteService } from "./write-service";
 

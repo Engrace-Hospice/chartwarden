@@ -7,9 +7,9 @@
 // controlled-substance signatures add the step-up gate; every mutation declares `Idempotency-Key`
 // (ADR-0021) and every state transition requires `If-Match` (§7.2).
 import type { FastifyInstance } from "fastify";
+import { rejectAiActor } from "./actor";
 import { registerSupplyCatalogRoutes } from "./catalog.routes";
 import { registerComfortKitRoutes } from "./comfort-kits.routes";
-import { rejectAiActor } from "./actor";
 import type { M21RouteServices } from "./index";
 import { registerSupplyOperationsRoutes } from "./operations.routes";
 import { registerSupplyRequestRoutes } from "./supply-requests.routes";

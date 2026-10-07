@@ -23,8 +23,8 @@ vi.mock("@wardenx/tenancy", () => ({
 }));
 
 import {
-  GeocoderUnconfiguredError,
   type GeocoderPort,
+  GeocoderUnconfiguredError,
   createDeniedGeocoder,
   resolveGeocoder,
 } from "../src/modules/05-patient/geocoder";

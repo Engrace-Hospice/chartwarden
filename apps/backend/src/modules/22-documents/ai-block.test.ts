@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DOCUMENTS_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
-  type DocumentsAiPromptRegistryPort,
   DocumentsAIBlockViolation,
+  type DocumentsAiPromptRegistryPort,
   validateDocumentsAIBlock,
 } from "./ai-block";
 
