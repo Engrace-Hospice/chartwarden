@@ -16,6 +16,16 @@ export {
 // F-230 — the inbound body contract (§4.2 envelope is spec-defined; the script_status_update inner payload is
 // PROVISIONAL pending vendor documentation — see payloads.ts).
 export {
+  DOSESPOT_ACK_STATUSES,
+  DOSESPOT_NACK_STATUSES,
+  DoseSpotPrescriberStatusPayloadSchema,
+  DoseSpotRefillRequestPayloadSchema,
+  isAckStatus,
+  isNackStatus,
+  parsePrescriberStatusPayload,
+  parseRefillRequestPayload,
+  type DoseSpotPrescriberStatusPayload,
+  type DoseSpotRefillRequestPayload,
   DOSESPOT_DISPENSE_STATUSES,
   DOSESPOT_WEBHOOK_EVENT_TYPES,
   DOSESPOT_WIRE_MAPPING_VERIFIED,

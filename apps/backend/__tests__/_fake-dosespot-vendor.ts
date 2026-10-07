@@ -14,10 +14,13 @@ import type {
   DoseSpotEpcsSessionResponse,
   DoseSpotMedHistoryPayload,
   DoseSpotMedHistoryResponse,
+  DoseSpotNewRxPayload,
   DoseSpotNewRxResponse,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
   DoseSpotPrescriberResponse,
+  DoseSpotPrescriptionStatusResponse,
+  DoseSpotRxBenefitPayload,
   DoseSpotRxBenefitResponse,
 } from "@wardenx/dosespot";
 
@@ -26,6 +29,21 @@ export interface FakeDoseSpotVendorScript {
   readonly dosespotPatientId?: string;
   /** The MedHx the fake "vendor" returns; default: zero entries. */
   readonly medHistory?: DoseSpotMedHistoryResponse;
+  /** GAP-037 — scripted outbound behaviour (a throw becomes the adapter failure the worker must classify). */
+  readonly transmit?: (
+    orgId: string,
+    payload: DoseSpotNewRxPayload,
+    idempotencyKey: string,
+  ) => Promise<DoseSpotNewRxResponse>;
+  readonly prescriptionStatus?: (
+    orgId: string,
+    dosespotPatientId: string,
+    dosespotPrescriptionId: string,
+  ) => Promise<DoseSpotPrescriptionStatusResponse>;
+  readonly rxBenefit?: (
+    orgId: string,
+    payload: DoseSpotRxBenefitPayload,
+  ) => Promise<DoseSpotRxBenefitResponse>;
 }
 
 export class FakeDoseSpotVendor implements DoseSpotClient {
@@ -57,11 +75,33 @@ export class FakeDoseSpotVendor implements DoseSpotClient {
   async revokePrescriber(): Promise<void> {
     throw new Error("FakeDoseSpotVendor: revokePrescriber not scripted");
   }
-  async transmitNewRx(): Promise<DoseSpotNewRxResponse> {
-    throw new Error("FakeDoseSpotVendor: transmitNewRx not scripted");
+  async transmitNewRx(
+    orgId: string,
+    payload: DoseSpotNewRxPayload,
+    idempotencyKey: string,
+  ): Promise<DoseSpotNewRxResponse> {
+    this.calls.push({ method: "transmitNewRx", orgId, payload });
+    if (!this.script.transmit) throw new Error("FakeDoseSpotVendor: transmitNewRx not scripted");
+    return this.script.transmit(orgId, payload, idempotencyKey);
   }
-  async lookupRxBenefit(): Promise<DoseSpotRxBenefitResponse> {
-    throw new Error("FakeDoseSpotVendor: lookupRxBenefit not scripted");
+  async lookupRxBenefit(
+    orgId: string,
+    payload: DoseSpotRxBenefitPayload,
+  ): Promise<DoseSpotRxBenefitResponse> {
+    this.calls.push({ method: "lookupRxBenefit", orgId, payload });
+    if (!this.script.rxBenefit) throw new Error("FakeDoseSpotVendor: lookupRxBenefit not scripted");
+    return this.script.rxBenefit(orgId, payload);
+  }
+  async getPrescriptionStatus(
+    orgId: string,
+    dosespotPatientId: string,
+    dosespotPrescriptionId: string,
+  ): Promise<DoseSpotPrescriptionStatusResponse> {
+    this.calls.push({ method: "getPrescriptionStatus", orgId, payload: dosespotPrescriptionId });
+    if (!this.script.prescriptionStatus) {
+      throw new Error("FakeDoseSpotVendor: getPrescriptionStatus not scripted");
+    }
+    return this.script.prescriptionStatus(orgId, dosespotPatientId, dosespotPrescriptionId);
   }
   async respondToRefillRequest(): Promise<void> {
     throw new Error("FakeDoseSpotVendor: respondToRefillRequest not scripted");

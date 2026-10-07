@@ -491,6 +491,7 @@ exports.MODULES = [
       "medication_history_pull",
       "medication_history_record",
       "medication_order_dispense",
+      "rx_benefit_cache",
     ],
   },
   {

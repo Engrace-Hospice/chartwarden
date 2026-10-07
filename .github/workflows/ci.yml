@@ -269,6 +269,12 @@ jobs:
           # F-230 (#248) — OUR side of the DoseSpot vendor boundary (MedHx ingest + `POST /webhooks/dosespot`
           # dispense path + the M14 slot's seam), against a clearly-labelled vendor TEST DOUBLE.
           - { name: "M12 vendor boundary", scripts: "test:m12:vendor-boundary:live" }
+          # GAP-037 — the seven §4.8 M12 crons (transmit_newrx, recovery drain, status sweep + the refill-SLA / IAL2 /
+          # EPCS-expiry / RxBenefit-prewarm passes) and the ack / nack / refill / prescriber webhook handlers.
+          - {
+              name: "M12 DoseSpot crons",
+              scripts: "test:m12:crons-transmit:live test:m12:crons-housekeeping:live",
+            }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
