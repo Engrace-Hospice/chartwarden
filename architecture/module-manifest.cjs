@@ -413,6 +413,7 @@ exports.MODULES = [
       "clinical_assessment",
       "assessment_cosignature",
       "significant_change_event",
+      "assessment_reassessment_due",
       "scale_license",
       "scale_policy",
     ],
@@ -440,6 +441,7 @@ exports.MODULES = [
       "hope_submission",
       "hope_submission_item",
       "hope_submission_result_event",
+      "hope_retention_review",
     ],
   },
   {

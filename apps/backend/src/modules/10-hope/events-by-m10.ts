@@ -254,4 +254,19 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m10.hope.retention_eligible",
+    moduleOwner: "m10",
+    description:
+      "The monthly `hope-retention-scan` found a patient's HOPE record past its retention horizon (10y from the last iQIES transmission, else 7y from the last effective date) with no blocker; it is FLAGGED for M4 certified destruction. Emitted once per eligibility episode — the scan never deletes.",
+    payloadSchema: Type.Object({
+      patientId: Type.String({ minLength: 1 }),
+      basis: Type.Union([Type.Literal("submitted_cms_10y"), Type.Literal("standard_7y")]),
+      retentionYears: Type.Number({ minimum: 7 }),
+      eligibleAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
+    isOutboxOnly: true,
+  },
 ];

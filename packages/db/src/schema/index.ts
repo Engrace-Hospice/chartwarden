@@ -286,6 +286,7 @@ export * from "./assessment/assessment-cosignatures";
 export * from "./assessment/significant-change-events";
 export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
+export * from "./assessment/assessment-reassessment-due"; // GAP-181 — the cadence-scan ledger (0481)
 
 // ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
 // M10 owns 11 tables: the existing HOPE workflow infrastructure (timepoint schedule, partitioned
@@ -305,6 +306,7 @@ export * from "./hope/hope-validation-findings";
 export * from "./hope/hope-submissions";
 export * from "./hope/hope-submission-items";
 export * from "./hope/hope-submission-result-events";
+export * from "./hope/hope-retention-reviews"; // GAP-181 — the retention-scan ledger (0482)
 
 // ---------------------------------------------------------------------------
 // Module 11 — Orders (M11-T02)

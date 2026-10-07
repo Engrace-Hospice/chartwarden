@@ -212,6 +212,7 @@ import {
   mountAuditRoutes,
   registerAuditErasers,
 } from "./modules/04-audit/index";
+import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
@@ -6126,6 +6127,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m9OutboxPublisher,
       activeOrgs: m9ActiveOrgs,
+      // GAP-181 — the cadence scan's active-patient population (M6, org-explicit, keyset-paginated).
+      activeAdmissions: {
+        activeAdmissionsForOrg: (organizationId, afterAdmissionId, limit) =>
+          idgActiveAdmissionsForOrg(dbHandle.db, organizationId, afterAdmissionId, limit),
+      },
     });
 
     const m9Workers = registerM9CronWorkers(m9WorkerDeps);
@@ -6258,6 +6264,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       },
       iqies: createUnboundIqiesAdapter(),
       providerEntityCcn: buildProviderEntityCcnResolver(dbHandle.db),
+      // GAP-181 — the monthly `hope-retention-scan` is gated on M4's active legal holds (M10 never reads
+      // `legal_hold`). No tenant override is bound: the architecture horizons (7y / 10y) already exceed every
+      // regulatory floor, and an override could only lengthen them.
+      retentionHolds: {
+        activeLegalHoldScopeForOrg: (organizationId) =>
+          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+      },
     });
     const m10Workers = registerM10CronWorkers(m10WorkerDeps);
     attachDlqAlertsToAll(m10Workers, "m10");
@@ -6274,7 +6287,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info(
       { queues: m10Workers.length },
-      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs; iQIES submission is the manual package flow)",
+      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs + monthly retention scan; iQIES submission is the manual package flow)",
     );
 
     // ── M14 §4.8 crons: `idg.review-clock-sweep` (GAP-092), `idg.schedule-materialise` (§7.1) and

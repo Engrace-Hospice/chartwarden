@@ -1040,6 +1040,14 @@ Per Module 3 D5 (typed predicates registered via the seam registry):
 | `assessment.summary` | `build-summary-cache` | On `significant_change` or on chart-open, rebuild summary cache (Valkey, 1-hour TTL) for the patient/scale | Outbox subscriber + on-demand | 3 (normal) | 3 | fixed 10 s | 8 (cache writes are fast; higher concurrency acceptable) | `assessment.summary.dlq` — warn-severity alert; stale cache is degraded, not unsafe |
 | `assessment.eraser` | `erase-patient-assessments` | Module 4 destruction-certificate callback (`eraseFn`); erases all assessment rows for a patient under an approved certificate | M4 destruction workflow | 2 (high — destruction SLAs are time-bound by the certificate) | 3 | exponential 30 s | 1 (serialized per patient; advisory lock prevents concurrent erasure of same patient) | `assessment.eraser.dlq` — PagerDuty P1 alert; unprocessed destruction certificate is a HIPAA violation |
 
+> **As-built decision (GAP-181) — `reassessment-due-scan` output.** The cron no longer only logs. Its output is a durable, M9-owned ledger: `assessment_reassessment_due` (migration 0481), one row per `(organization, patient, scale_type)` holding `last_captured_at`, the effective `cadence_days`, `due_at`, and `status` (`open` | `overdue` | `closed`). This IS the "chart-banner cache" the row above names (no Valkey cache, no cross-module write). Rules:
+> - **Population:** only patients on an ACTIVE admission (M6 `idgActiveAdmissionsForOrg`, injected as a port — M9 has no M6 import edge). A patient who leaves active care, or whose scale the tenant turns off, has the row `closed`; a discharged patient is therefore never flagged overdue.
+> - **Cadence:** the CoP 42 CFR §418.54(d) 15-day floor, **tightened but never loosened** by `scale_policy.reassessment_cadence_overrides[scaleType]` (a missing, non-integer or < 1 override is ignored; a looser one is clamped to the floor). Overdue is a soft state and never blocks recording.
+> - **Alert path:** a pair that newly goes overdue publishes `m9.assessment.reassessment_due` **once per overdue episode** (seam consumer M36, which surfaces the banner/alert through its `AlertEmitter` path); staying overdue does not re-announce, a new capture moves `due_at` forward and re-opens the row. The cron runs as the system actor under `withOrgContext` (audit actor NULL), org-explicit, one tx per org with the outbox rows.
+> - **HOPE windows** (admission / HUV1 / HUV2 / discharge) are NOT derived here — they are M10's `hope_timepoint_schedule`, watched by M10's window watchdog.
+> - Still declared-without-worker: the `assessment.summary` queue (event-driven cache) — a documented deferral.
+
+
 ### 4.9 M36 Typed Alert Payload
 
 > **M09-F12 (ARCH-184, SD-015):** Alert severity is assigned at first emission by the

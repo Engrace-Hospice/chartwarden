@@ -12,6 +12,7 @@ import {
   type ReassessmentSnapshot,
   type ScaleLicenseSnapshot,
   type SignificantChangeSnapshot,
+  effectiveCadenceDays,
   jobIdempotencyKey,
   planChangeEscalation,
   planLicenseStatusScan,
@@ -152,5 +153,37 @@ describe("planReassessmentDueScan — §418.54(d) daily", () => {
       false,
     );
     expect(REASSESSMENT_CADENCE_DAYS).toBe(15);
+  });
+});
+
+describe("effectiveCadenceDays — tenant may only TIGHTEN the 15-day floor (GAP-181)", () => {
+  it("uses the floor with no override", () => {
+    expect(effectiveCadenceDays("braden", undefined)).toBe(15);
+    expect(effectiveCadenceDays("braden", {})).toBe(15);
+  });
+  it("honours a tighter override", () => {
+    expect(effectiveCadenceDays("braden", { braden: 7 })).toBe(7);
+  });
+  it("clamps a looser override to the floor", () => {
+    expect(effectiveCadenceDays("braden", { braden: 30 })).toBe(15);
+  });
+  it("ignores a malformed override rather than disabling the cadence", () => {
+    for (const bad of [0, -3, 2.5, "7", null, Number.NaN]) {
+      expect(effectiveCadenceDays("braden", { braden: bad })).toBe(15);
+    }
+  });
+  it("applies per scale in the due scan", () => {
+    const now = new Date("2026-06-10T00:00:00.000Z");
+    const latest = [
+      { patientId: "p", scaleType: "braden" as const, lastCapturedAt: "2026-06-01T00:00:00.000Z" },
+      { patientId: "p", scaleType: "pps" as const, lastCapturedAt: "2026-06-01T00:00:00.000Z" },
+    ];
+    const flags = planReassessmentDueScan(latest, now, (scale) =>
+      effectiveCadenceDays(scale, { braden: 7 }),
+    );
+    expect(flags.map((f) => [f.scaleType, f.cadenceDays, f.overdue])).toEqual([
+      ["braden", 7, true],
+      ["pps", 15, false],
+    ]);
   });
 });

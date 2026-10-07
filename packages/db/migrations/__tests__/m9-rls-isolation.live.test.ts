@@ -43,6 +43,7 @@ type SeedIds = {
   significantChangeEvent: string;
   scaleLicense: string;
   scalePolicy: string;
+  reassessmentDue: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -53,6 +54,11 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "significant_change_event", key: "significantChangeEvent" },
   { table: "scale_license", key: "scaleLicense" },
   { table: "scale_policy", key: "scalePolicy" },
+];
+
+// GAP-181 — the cadence ledger (0481): its policy lives in a later migration than the policy-shape case reads.
+const EXTRA_COVERED: { table: string; key: keyof SeedIds }[] = [
+  { table: "assessment_reassessment_due", key: "reassessmentDue" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -174,6 +180,15 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
+      const reassessmentDue = (
+        await db.query(
+          `INSERT INTO assessment_reassessment_due (organization_id, provider_entity_id, location_id, patient_id,
+             scale_type, last_captured_at, cadence_days, due_at)
+           VALUES ($1,$2,$3,gen_random_uuid(),'pps', now(), 15, now() + interval '15 days') RETURNING id`,
+          [org, providerEntity, location],
+        )
+      ).rows[0].id as string;
+
       return {
         membership,
         providerEntity,
@@ -183,6 +198,7 @@ describe.skipIf(!DB_URL)(
         significantChangeEvent,
         scaleLicense,
         scalePolicy,
+        reassessmentDue,
       };
     }
 
@@ -232,7 +248,7 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    it.each(COVERED)(
+    it.each([...COVERED, ...EXTRA_COVERED])(
       "$table: org A sees its row, org B cannot (cross-tenant denial)",
       async ({ table, key }) => {
         const id = a[key];

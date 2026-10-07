@@ -50,6 +50,7 @@ type SeedIds = {
   submissionItem: string;
   answer: string;
   resultEvent: string;
+  retentionReview: string;
 };
 
 // All six M10-owned tables are org-scoped (organization_id NOT NULL) and each carries a direct `<table>_org`
@@ -71,6 +72,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
 const EXTRA_COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "hope_assessment_answer", key: "answer" },
   { table: "hope_submission_result_event", key: "resultEvent" },
+  { table: "hope_retention_review", key: "retentionReview" }, // GAP-181 (0482)
 ];
 
 describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -240,6 +242,15 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
       )
     ).rows[0].id as string;
 
+    const retentionReview = (
+      await db.query(
+        `INSERT INTO hope_retention_review (organization_id, provider_entity_id, location_id, patient_id,
+           basis, anchor_at, retention_years, eligible_at, status)
+         VALUES ($1,$2,$3,$4,'standard_7y', now(), 7, now() + interval '7 years', 'cleared') RETURNING id`,
+        [org, providerEntity, location, PATIENT],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -252,6 +263,7 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
       submissionItem,
       answer,
       resultEvent,
+      retentionReview,
     };
   }
 

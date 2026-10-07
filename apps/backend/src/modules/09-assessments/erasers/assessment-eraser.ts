@@ -26,6 +26,8 @@ export interface AssessmentEraseCounts {
   readonly cosignatures: number;
   readonly significantChangeEvents: number;
   readonly assessments: number;
+  /** `assessment_reassessment_due` rows removed (GAP-181 cadence ledger; patient-keyed, no assessment FK). */
+  readonly reassessmentDue?: number;
 }
 
 /** The narrow data port the assessment eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -106,6 +108,7 @@ export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentErase
   const CA = schema.clinicalAssessments;
   const COSIGN = schema.assessmentCosignatures;
   const SCE = schema.significantChangeEvents;
+  const DUE = schema.assessmentReassessmentDue;
 
   return {
     async lockPatient(organizationId, patientId) {
@@ -122,12 +125,17 @@ export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentErase
           significantChangeEvents: 0,
           assessments: 0,
         };
+        // The cadence ledger is keyed on the patient, not an assessment id, so it goes first and regardless of
+        // whether any assessment row survives (a second erase is still idempotent).
+        const reassessmentDue = (
+          await tx.delete(DUE).where(eq(DUE.patientId, patientId)).returning({ id: DUE.id })
+        ).length;
         // The children are keyed on assessment id (plain uuid — the partitioned parent takes no FK),
         // so resolve the patient's assessment ids first, via the parent (partition-safe).
         const assessmentIds = (
           await tx.select({ id: CA.id }).from(CA).where(eq(CA.patientId, patientId))
         ).map((r) => r.id);
-        if (assessmentIds.length === 0) return zero; // idempotent: a second erase finds nothing.
+        if (assessmentIds.length === 0) return { ...zero, reassessmentDue }; // idempotent: a second erase finds nothing.
 
         const cosignatures = (
           await tx
@@ -147,7 +155,7 @@ export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentErase
           await tx.delete(CA).where(eq(CA.patientId, patientId)).returning({ id: CA.id })
         ).length;
 
-        return { cosignatures, significantChangeEvents, assessments };
+        return { cosignatures, significantChangeEvents, assessments, reassessmentDue };
       });
     },
   };

@@ -130,3 +130,10 @@
   unmapped frame is joined through SCREENS.md and SCREEN_SPEC_STATUS.md to a disposition — deferred (spec has
   no screen), design-library (the D1–D7 shared libraries) or unmatched (a screen serves the spec, composition
   not yet compared; explicitly not a fidelity claim) — and a frame that cannot be joined hard-fails.
+- **GAP-181 (M9 cadence output, M10 retention).** `reassessment-due-scan` persists an M9-owned due ledger
+  (`assessment_reassessment_due`, 0481) for ACTIVELY ADMITTED patients and announces each overdue episode once
+  (`m9.assessment.reassessment_due`, seam consumer M36); the 15-day CoP floor can only be tightened per tenant.
+  `hope.retention` got its worker: the monthly `hope-retention-scan` flags records past 10y-from-transmission
+  (submitted) / 7y-from-last-effective (otherwise) in `hope_retention_review` (0482), blocked by legal hold, open
+  iQIES error or pending correction, never deleting — destruction stays an M4 certificate invoking the `hope_record`
+  eraser. The user's default (6 years) gave way to the architecture's longer horizons (OPEN-021, M10 retention class).

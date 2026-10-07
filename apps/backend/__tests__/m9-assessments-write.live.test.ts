@@ -26,7 +26,10 @@ import {
   M9_OUTBOX_EVENTS,
   createDbAssessmentRouteService,
 } from "../src/modules/09-assessments/index";
-import { runChangeEscalationCron } from "../src/modules/09-assessments/jobs/cron-workers";
+import {
+  runChangeEscalationCron,
+  runReassessmentDueCron,
+} from "../src/modules/09-assessments/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -675,6 +678,82 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     expect(Number(ev[0].threshold_value)).toBe(20);
     // The baseline is recorded, so a reader can see what the decline was measured from.
     expect(ev[0].prior_assessment_id).not.toBeNull();
+  });
+
+  it("reassessment-due-scan (GAP-181) — persists the due ledger for ACTIVE patients, announces each overdue episode once, tightens per tenant policy, closes on discharge", async () => {
+    const cadencePatient = randomUUID();
+    const sitedSvc = createDbAssessmentRouteService(handle.db, outbox, {
+      resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: providerA, locationId: locationA },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
+    });
+    const rec = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      cadencePatient,
+      recordArgs(),
+    );
+    const capturedAt = new Date(
+      (await admin.query("SELECT captured_at FROM clinical_assessment WHERE id=$1", [rec.id]))
+        .rows[0].captured_at,
+    );
+    const at = (days: number) => new Date(capturedAt.getTime() + days * 86_400_000);
+    let active = [cadencePatient];
+    const deps = (now: Date) => ({
+      connection: {} as never,
+      db: handle.db,
+      outbox,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      activeAdmissions: {
+        activeAdmissionsForOrg: async () =>
+          active.map((patientId) => ({ admissionId: randomUUID(), patientId })),
+      },
+      now: () => now,
+    });
+    const ledger = async () =>
+      (
+        await admin.query(
+          "SELECT id, status, cadence_days, overdue_since, alerted_at FROM assessment_reassessment_due WHERE patient_id=$1 AND scale_type='painad'",
+          [cadencePatient],
+        )
+      ).rows;
+
+    // Day 10: inside the 15-day floor -> an `open` ledger row, no alert.
+    await runReassessmentDueCron(deps(at(10)));
+    let rows = await ledger();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "open", cadence_days: 15, alerted_at: null });
+    expect(await eventsFor(rows[0].id)).toEqual([]);
+
+    // A tenant TIGHTENS painad to 7 days (a looser value would be clamped to the floor): day 10 is now overdue.
+    await admin.query(
+      `INSERT INTO scale_policy (organization_id, scale_type, reassessment_cadence_overrides, updated_by_membership_id)
+       VALUES ($1,'painad','{"painad": 7}'::jsonb,$2)
+       ON CONFLICT (organization_id, scale_type) DO UPDATE SET reassessment_cadence_overrides='{"painad": 7}'::jsonb`,
+      [ORG_A, recorderOf[ORG_A]],
+    );
+    await runReassessmentDueCron(deps(at(10)));
+    rows = await ledger();
+    expect(rows[0]).toMatchObject({ status: "overdue", cadence_days: 7 });
+    expect(rows[0].alerted_at).not.toBeNull();
+    expect(await eventsFor(rows[0].id)).toEqual(["m9.assessment.reassessment_due"]);
+
+    // Re-running while still overdue does not re-announce the episode.
+    await runReassessmentDueCron(deps(at(11)));
+    expect(await eventsFor(rows[0].id)).toEqual(["m9.assessment.reassessment_due"]);
+
+    // Discharge (no longer on an active admission): the ledger row closes; nothing new is emitted.
+    active = [];
+    await runReassessmentDueCron(deps(at(12)));
+    rows = await ledger();
+    expect(rows[0].status).toBe("closed");
+    expect(await eventsFor(rows[0].id)).toEqual(["m9.assessment.reassessment_due"]);
+
+    await admin.query("DELETE FROM scale_policy WHERE organization_id=$1 AND scale_type='painad'", [
+      ORG_A,
+    ]);
   });
 
   it("RLS — org B cannot read or correct org A's assessment (non-leaking 404)", async () => {
