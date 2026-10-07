@@ -1233,32 +1233,35 @@ Like Modules 3 and 4, this module ships obligations every consuming module must 
 | GET | `/api/v1/patients` | `patient.read` | `caseload_or_scope` (narrows list) | search: name/MRN/MBI/DOB; cursor-paginated; returns canonical only (excludes `merged`) |
 | GET | `/api/v1/patients/:id` | `patient.read` | `caseload_or_scope` | follows `merged_into_id` and returns 301-like in body for merged |
 | POST | `/api/v1/patients` | `patient.create` | `location_scope` (creator's location) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
-| PATCH | `/api/v1/patients/:id` | `patient.edit` | `caseload_or_scope` | MRN immutable; SSN write requires `phi.write_ssn` (step-up); `status` transitions per §2.4 |
-| POST | `/api/v1/patients/:id/status` | `patient.transition_status` | `caseload_or_scope` | enforces state-machine transitions |
-| POST | `/api/v1/patients/:id/deceased` | `patient.record_death` | `caseload_or_scope` | sets `status='deceased'`, `deceased_date`; emits cascade |
+| PATCH | `/api/v1/patients/:id` | `patient.edit` | `caseload_or_scope` | MRN immutable; SSN write requires `phi.write_ssn` (step-up); `status` transitions per §2.4 **DEFERRED (unbuilt):** no PATCH route; demographics are edited through the address/payer/identifier/assignment sub-resources and `PATCH` is deferred. |
+| POST | `/api/v1/patients/:id/status` | `patient.transition_status` | `caseload_or_scope` | enforces state-machine transitions **DEFERRED (unbuilt):** no status route; status moves via the M6 admission/discharge lifecycle and the M5 consumers. |
+| POST | `/api/v1/patients/:id/deceased` | `patient.record_death` | `caseload_or_scope` | sets `status='deceased'`, `deceased_date`; emits cascade **DEFERRED (unbuilt):** no route; death is applied by the `m6.discharge.death` consumer (deceased-db), not a client endpoint. |
 | GET | `/api/v1/patients/:id/addresses` | `patient.read` | `caseload_or_scope` | history list |
 | POST | `/api/v1/patients/:id/addresses` | `patient.edit` | `caseload_or_scope` | append-only; if `is_primary=true`, atomically closes the prior primary |
 | GET | `/api/v1/patients/:id/identifiers` | `patient.read` | `caseload_or_scope` | SSN/state-id returned as `last4` unless `phi.read_ssn` |
-| POST | `/api/v1/patients/:id/identifiers` | `patient.edit_identifiers` | `caseload_or_scope` | MRN insert blocked once one exists; SSN write requires `phi.write_ssn` |
+| POST | `/api/v1/patients/:id/identifiers` | `patient.edit_identifiers` | `caseload_or_scope` | MRN insert blocked once one exists; SSN write requires `phi.write_ssn` **DEFERRED (unbuilt):** no POST; identifiers are written at create/merge time (read route only). |
 | GET | `/api/v1/patients/:id/payers` | `patient.read` | `caseload_or_scope` | coverage stack |
 | POST | `/api/v1/patients/:id/payers` | `patient.edit_payers` | `caseload_or_scope` | rank-aware insert |
-| GET | `/api/v1/patients/:id/caregivers` | `patient.read` | `caseload_or_scope` | |
-| POST | `/api/v1/patients/:id/caregivers` | `patient.edit` | `caseload_or_scope` | enforces single primary; LR requires authority + proof doc |
+| GET | `/api/v1/patients/:id/caregivers` | `patient.read` | `caseload_or_scope` | **DEFERRED (unbuilt):** no caregivers route; the care team is `GET /api/v1/patients/:id/care-team` + assignments. |
+| POST | `/api/v1/patients/:id/caregivers` | `patient.edit` | `caseload_or_scope` | enforces single primary; LR requires authority + proof doc **DEFERRED (unbuilt):** no caregivers route; see the care-team/assignments rows. |
 | GET | `/api/v1/patients/:id/assignments` | `patient.read` | `caseload_or_scope` | care-team |
 | POST | `/api/v1/patients/:id/assignments` | `patient.assign` | `caseload_or_scope` (assigner must already have access) | invalidates caseload cache |
 | POST | `/api/v1/patients/:id/assignments/:assignmentId/end` | `patient.assign` | `caseload_or_scope` | sets `unassignedAt`; cascades cache invalidation + audit |
-| GET | `/api/v1/patient-matches` | `patient.match_review` | none (org-scoped) | open queue |
-| POST | `/api/v1/patient-matches/:id/merge` | `patient.merge` (step-up) | none | confirms merge; writes `patient_merge` |
-| POST | `/api/v1/patient-matches/:id/not-a-match` | `patient.match_review` | none | closes review; future suppression hint |
+| GET | `/api/v1/patient-matches` | `patient.match_review` | none (org-scoped) | open queue **DEFERRED (unbuilt):** no review-queue route; the only as-built match surface is `POST /api/v1/referrals/:id/patient-matches` (M6 referral intake). |
+| POST | `/api/v1/patient-matches/:id/merge` | `patient.merge` (step-up) | none | confirms merge; writes `patient_merge` **DEFERRED (unbuilt):** no route; merges go through `POST /api/v1/patients/:id/merge`. |
+| POST | `/api/v1/patient-matches/:id/not-a-match` | `patient.match_review` | none | closes review; future suppression hint **DEFERRED (unbuilt):** no route (see the match-queue row). |
 | POST | `/api/v1/patients/:id/merge` | `patient.merge` (step-up) | `caseload_or_scope` on both source + target | direct merge (admin-initiated, outside queue) |
-| POST | `/api/v1/patient-merges/:id/unmerge` | `patient.merge` (step-up; ≤30d) OR `platform_ops` break-glass (>30d) | none | reverses |
+| POST | `/api/v1/patient-merges/:id/unmerge` | `patient.merge` (step-up; ≤30d) OR `platform_ops` break-glass (>30d) | none | reverses **DEFERRED (unbuilt):** no unmerge route. |
 | GET | `/api/v1/patients/:id/privacy-flags` | `patient.read` | `caseload_or_scope` | returns snapshot + `capturedAt` + staleness flag |
 | POST | `/api/v1/patients/:id/privacy-flags/resync` | `privacy.admin` | none | force re-read from M39; admin-only |
-| GET | `/api/v1/patients/:id/amendments` | `patient.read` | `caseload_or_scope` | list |
+| GET | `/api/v1/patients/:id/amendments` | `patient.read` | `caseload_or_scope` | list **DEFERRED (unbuilt):** no list route; as-built are `POST /api/v1/patients/:id/amendments`, `POST /api/v1/amendments/:id/{accept,deny}` and the portal `GET /api/v1/portal/amendments` + `POST /api/v1/portal/amendments/submit`. |
 | POST | `/api/v1/patients/:id/amendments` | `patient.amend_request_submit` (portal) OR `patient.amend_request_record` (staff entering) | `caseload_or_scope` | `sla_due_at = receivedAt + 60d` |
 | POST | `/api/v1/amendments/:id/accept` | `patient.amend_review` | none | applies changes via standard write path with full pre/post audit |
 | POST | `/api/v1/amendments/:id/deny` | `patient.amend_review` | none | requires `denial_reason`; opens statement-of-disagreement window |
-| POST | `/api/v1/amendments/:id/statement` | `patient.amend_request_submit` | none | patient/rep submits SoD; attached to subsequent disclosures |
+| POST | `/api/v1/amendments/:id/statement` | `patient.amend_request_submit` | none | patient/rep submits SoD; attached to subsequent disclosures **DEFERRED (unbuilt):** no route; the portal submit route above carries the statement. |
+
+> **As-built `/api/v1/*` routes not in the table (GAP-184):** `GET /api/v1/patients/:id/demographics`, `GET /api/v1/patients/:id/care-team`, `GET /api/v1/patients/:id/allergies` + `POST …/allergies/:allergyId/{verify,entered-in-error}`, `GET /api/v1/patients/:id/privacy`, `GET /api/v1/patients/census-metrics`, `GET /api/v1/privacy/restricted-patients`, `POST /api/v1/privacy/snapshot-rebuild`.
+
 
 ### 4.4 Complete Route Schemas (TypeBox)
 
@@ -2431,7 +2434,7 @@ Delivered in `apps/web` (admin + clinical web). Portal-side amendment submission
 
 **Patient creation (`/patients/new`)** — three-step wizard with live match pipeline:
 
-1. *Identity*: legal name, preferred, DOB, sex assigned at birth, gender identity / pronouns. As the user types the last name + DOB, a background `POST /api/v1/patients/_match-preview` (auth-gated; same matcher) shows live "Possible matches in this org" panel; clicking a match opens the existing patient without creating a new one.
+1. *Identity*: legal name, preferred, DOB, sex assigned at birth, gender identity / pronouns. As the user types the last name + DOB, a background `POST /api/v1/patients/_match-preview` (**DEFERRED — unbuilt**) (auth-gated; same matcher) shows live "Possible matches in this org" panel; clicking a match opens the existing patient without creating a new one.
 2. *Demographics & contact*: race/ethnicity (USCDI value-set autocomplete via Module 38), preferred language, primary address (USPS autocomplete), primary phone (E.164 mask).
 3. *Identifiers & payer*: MRN (auto-generated or override), MBI (with format validation), SSN (masked input, encrypted server-side; field-level RBAC), primary payer (search M40 canonical; subscriber ID, effective date).
 

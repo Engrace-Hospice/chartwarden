@@ -2048,9 +2048,9 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 - **B3.** Implement consumer for `m39.consent.created(portal_access | family_caregiver_access | dpoa_healthcare | personal_representative_authority_post_death | bereavement_outreach_consent)` → creates/updates grants per §3.3 schema.
 - **B4.** Implement consumer for `m39.consent.revoked` → cascade revoke grants, close sessions.
 - **B5.** Wire M2 collaborator-invite primitive for invite delivery (`scope='portal_account_setup'`); M36 notification dispatch.
-- **B6.** Implement staff routes: `POST /admin/portal/invitations`, `POST /admin/portal/invitations/:id/resend`, `DELETE /admin/portal/invitations/:id`.
-- **B7.** Implement staff routes: `POST /admin/portal/accounts/:id/grants`, `DELETE /admin/portal/accounts/:id/grants/:grantId` (revoke).
-- **B8.** Implement portal routes: `POST /setup/:inviteToken/accept` (the account-setup wizard backend).
+- **B6.** Implement staff routes: `POST /api/v1/admin/portal-invitations` (as-built path; list = `GET /api/v1/admin/portal-invitations`), `POST /api/v1/admin/portal-invitations/:id/resend` (**DEFERRED — unbuilt:** no resend route; revoke and re-invite), `POST /api/v1/admin/portal-invitations/:id/revoke` (as-built verb and path).
+- **B7.** Implement staff routes: `GET /api/v1/admin/portal-accounts/:id/access-grants` (**DEFERRED — unbuilt:** grants are issued by the `m39.consent.created` consumer, not a staff POST; the route is read-only), `POST /api/v1/admin/portal-accounts/:id/suspend` / `…/reinstate` (**DEFERRED — unbuilt:** no per-grant revoke route; grants are revoked by the `m39.consent.revoked` cascade) (revoke).
+- **B8.** Implement portal routes: `POST /api/v1/collaborators/consume` (**DEFERRED — unbuilt:** the dedicated `/setup/:inviteToken/accept` wizard route is not built; the M2 collaborator-consume primitive accepts the invite) (the account-setup wizard backend).
 - **B9.** Emit outbox events: `m31.portal_invitation.sent`, `m31.portal_invitation.accepted`, `m31.portal_account.activated`, `m31.portal_access_grant.issued`, `m31.portal_access_grant.revoked`.
 - **B10.** Playwright E2E: §7.1 happy path.
 
@@ -2062,8 +2062,8 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 
 - **C1.** Implement `portal_session_context` repo + service: open, switch-patient, close, list-by-account.
 - **C2.** Wire M2 portal session class; verify idle/hard timeouts; TOTP step-up window.
-- **C3.** Implement `POST /portal/session/scope` (set patient context); enforce ABAC `portal_grant_active_for_patient`.
-- **C4.** Implement portal routes: `GET /account`, `PATCH /account` (email, phone, name), `POST /account/totp/enroll`, `POST /account/totp/verify`, `GET /account/devices`, `DELETE /account/devices/:id`.
+- **C3.** Implement `POST /api/v1/portal/sessions/select-patient` (as-built) (set patient context); enforce ABAC `portal_grant_active_for_patient`.
+- **C4.** Implement portal routes: `GET /api/v1/portal/sessions/current` (the account PATCH / TOTP-enroll / devices routes are **DEFERRED — unbuilt**) (email, phone, name), `POST /account/totp/enroll`, `POST /account/totp/verify`, `GET /account/devices`, `DELETE /account/devices/:id`.
 - **C5.** Implement `PortalSessionMinter` seam (§4.3) for downstream use.
 - **C6.** Emit `m31.portal_session.opened`, `m31.portal_session.closed`.
 
@@ -2073,13 +2073,13 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 
 **Goal:** Read-only portal surface fully renders patient data via upstream seams.
 
-- **D1.** Implement `GET /p/:patientId` (dashboard summary) — composes data from M5 (`PortalPatientReader`), M17 (`PortalVisitReader`), M36 (recent message preview), M12 (`PortalMedicationReader` summary).
-- **D2.** Implement `GET /p/:patientId/care-plan` — reads M7 via `PortalCarePlanReader`; DTO validation.
-- **D3.** Implement `GET /p/:patientId/visits` and `GET /p/:patientId/visits/:visitId` — reads M17.
-- **D4.** Implement `GET /p/:patientId/medications` — reads M12 via `PortalMedicationReader`.
-- **D5.** Implement `GET /p/:patientId/documents` and `GET /p/:patientId/documents/:docId` — reads M22 via `PortalDocumentReader`; respects M22's `is_patient_facing` flag.
-- **D6.** Implement `GET /p/:patientId/messages` and `GET /p/:patientId/messages/:threadId` — reads M36.
-- **D7.** Implement `GET /p/:patientId/access-log` — reads M4 + M39 via `PortalDisclosureAccountingProvider`.
+- **D1.** Implement `GET /api/v1/portal/care-summary` (dashboard summary) — composes data from M5 (`PortalPatientReader`), M17 (`PortalVisitReader`), M36 (recent message preview), M12 (`PortalMedicationReader` summary).
+- **D2.** Implement `GET /api/v1/portal/care-plan/summary` — reads M7 via `PortalCarePlanReader`; DTO validation.
+- **D3.** Implement `GET /api/v1/portal/visits/upcoming` and `GET /api/v1/portal/visits/history` (no per-visit detail route) — reads M17.
+- **D4.** Implement `GET /api/v1/portal/medications/active` — reads M12 via `PortalMedicationReader`.
+- **D5.** Implement `GET /api/v1/portal/documents` and `GET /api/v1/portal/documents/:documentId/download-url` — reads M22 via `PortalDocumentReader`; respects M22's `is_patient_facing` flag.
+- **D6.** Implement `GET /api/v1/portal/messages/channel` (one channel per patient; no thread-id route) — reads M36.
+- **D7.** Implement `GET /p/:patientId/access-log` (**DEFERRED — unbuilt:** no patient-facing access-log route; staff read `GET /api/v1/admin/portal-accounts/:id/audit-views`) — reads M4 + M39 via `PortalDisclosureAccountingProvider`.
 - **D8.** Implement `validatePortalDto` runtime guard (D17); wrap all read-route handlers.
 - **D9.** Apply `portal_grant_active_for_patient` ABAC to every patient-scoped route via decorator.
 - **D10.** Integration test suite: IDOR for every route (§9.2).
@@ -2090,13 +2090,13 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 
 **Goal:** Write-capable portal interactions land in upstream modules' canonical stores via M31's mediator pattern.
 
-- **E1.** Implement `POST /p/:patientId/messages` — writes to M36 via `PortalMessageSender` seam (M36-owned); M31 emits `m31.portal_message.sent_via_m36` metric event.
-- **E2.** Implement `POST /p/:patientId/documents/upload` — streams to M22 intake; create `portal_document_upload` row; emit `m31.portal_document.uploaded` on success.
+- **E1.** Implement `POST /api/v1/portal/messages/send` — writes to M36 via `PortalMessageSender` seam (M36-owned); M31 emits `m31.portal_message.sent_via_m36` metric event.
+- **E2.** Implement `POST /api/v1/portal/documents/upload-init` + `POST /api/v1/portal/documents/upload-complete/:uploadId` — streams to M22 intake; create `portal_document_upload` row; emit `m31.portal_document.uploaded` on success.
 - **E3.** Implement consumer for `m22.intake.completed | m22.intake.rejected` (both published from M22's intake outbox catalog §4.10) → update `portal_document_upload.intake_pipeline_status`; emit `m31.portal_document.upload_rejected` on rejection.
-- **E4.** Implement `POST /p/:patientId/amendments` — calls M5 `AmendmentRequestCreator`; creates `portal_amendment_request_ref`; emit `m31.portal_amendment_request.submitted`.
+- **E4.** Implement `POST /api/v1/portal/amendments/submit` — calls M5 `AmendmentRequestCreator`; creates `portal_amendment_request_ref`; emit `m31.portal_amendment_request.submitted`.
 - **E5.** Implement consumer for `m5.patient.amendment_request_received` and `m5.patient.amendment_decided` status events → mirror status into `portal_amendment_request_ref`.
-- **E6.** Implement `POST /p/:patientId/medications/:orderId/attest` — calls M13 `CaregiverAttestedAdministrationCreator` (M13 D10 path); ABAC `portal_caregiver_is_primary_or_dpoa`; emit `m31.caregiver_attestation.recorded`.
-- **E7.** Implement `POST /portal/preferences/notifications` — writes `portal_notification_preference`; reconciles against M36 channel availability.
+- **E6.** Implement `POST /api/v1/portal/administrations/caregiver-attested` — calls M13 `CaregiverAttestedAdministrationCreator` (M13 D10 path); ABAC `portal_caregiver_is_primary_or_dpoa`; emit `m31.caregiver_attestation.recorded`.
+- **E7.** Implement `PATCH /api/v1/portal/notification-preferences/:id` (+ `GET /api/v1/portal/notification-preferences`) — writes `portal_notification_preference`; reconciles against M36 channel availability.
 - **E8.** Implement consumer for `m6.admission.discharged` (non-death) → enqueue 30-day grace timer (§7.6).
 - **E9.** Playwright E2E: §7.7 caregiver attestation, §7.8 document upload, §7.9 amendment submission.
 
@@ -2111,9 +2111,9 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 - **F3.** Implement `MockTelehealthProvider` for tests + scaffolds for Twilio + native-WebRTC (interface-conformant stubs only).
 - **F4.** Implement consumer for `m17.visit.published(telehealth)` → enqueue `m31.telehealth-room-mint` BullMQ job.
 - **F5.** Implement room-mint worker → calls adapter, persists `telehealth_visit` row with `lifecycle_state='room_minted'`, emits `m31.telehealth_visit.room_minted`.
-- **F6.** Implement `POST /p/:patientId/visits/:visitId/telehealth/join` (caregiver side) — verifies ABAC `telehealth_consent_active`; presents consent capture if needed; returns adapter token + room metadata.
-- **F7.** Implement `POST /admin/portal/telehealth/visits/:visitId/join` (clinician side).
-- **F8.** Implement webhook router: `POST /webhooks/telehealth/:vendor` — HMAC verify, idempotency by `(vendor, vendor_event_id)`, dispatch to event-typed handler (participant-joined, participant-left, meeting-ended, recording-ready, recording-failed).
+- **F6.** Implement `POST /api/v1/portal/telehealth/visits/:visitId/join` (caregiver side) — verifies ABAC `telehealth_consent_active`; presents consent capture if needed; returns adapter token + room metadata.
+- **F7.** Implement `POST /api/v1/telehealth/visits/:visitId/join` (clinician side).
+- **F8.** Implement webhook router: `POST /api/v1/telehealth/webhooks/daily-co` and `…/twilio-video` — HMAC verify, idempotency by `(vendor, vendor_event_id)`, dispatch to event-typed handler (participant-joined, participant-left, meeting-ended, recording-ready, recording-failed).
 - **F9.** Implement lifecycle state machine for `telehealth_visit` per §2.2; all transitions tested.
 - **F10.** Implement consumer for `m17.visit.rescheduled(telehealth)` and `m17.visit.cancelled(telehealth)` → re-mint or force-end as appropriate.
 - **F11.** Implement consumer for `m8.encounter.signed(telehealth-attached)` → flip `lifecycle_state='reconciled'`.
@@ -2127,10 +2127,10 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 **Goal:** §7.4 recording flow with state-aware consent gate.
 
 - **G1.** Implement `state_two_party_recording_consent_present` ABAC predicate (§4.7) — table-driven per §3.8 matrix.
-- **G2.** Implement `POST /admin/portal/telehealth/visits/:visitId/recording/start` — ABAC gate + `telehealth_recording` row creation + adapter call.
+- **G2.** Implement `POST /api/v1/telehealth/visits/:visitId/start-recording` (+ `…/stop-recording`) — ABAC gate + `telehealth_recording` row creation + adapter call.
 - **G3.** Implement webhook handler for `recording.ready` → download artifact from vendor, encrypt-at-rest in M31 object storage, populate `telehealth_recording.storage_uri_encrypted`, emit `m31.telehealth_recording.available`.
 - **G4.** Implement webhook handler for `recording.failed` → set status, emit M36 alert.
-- **G5.** Implement `GET /admin/portal/telehealth/visits/:visitId/recording/playback` — step-up TOTP required, ABAC `telehealth_consent_active`, audit row per playback.
+- **G5.** Implement `GET /admin/portal/telehealth/visits/:visitId/recording/playback` (**DEFERRED — unbuilt:** no playback route) — step-up TOTP required, ABAC `telehealth_consent_active`, audit row per playback.
 - **G6.** Register 10-year retention with M4; ensure eraser shreds the storage URI (§8.6).
 - **G7.** Table-driven test per state in §3.8 matrix; verify recording-start succeeds/fails per consent profile.
 
@@ -2144,7 +2144,7 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 - **H2.** Implement consumer for `m6.admission.discharged(death)` → enqueue bereavement transition orchestration.
 - **H3.** Implement consumer for `m16.bereavement.plan_opened` → flip grants per H1's scope set; emit `m31.portal_account.bereaved_mode_entered`.
 - **H4.** Implement consumer for `m16.bereavement.plan_closed_completed` → revoke bereaved grants; emit `m31.portal_account.bereaved_window_closed`.
-- **H5.** Implement bereaved-mode portal routes: `GET /p/:patientId/bereavement` (composes M16 resource library + bereavement-channel messages).
+- **H5.** Implement bereaved-mode portal routes: `GET /api/v1/portal/bereavement/program` (+ `/resources`, `POST …/opt-out`) (composes M16 resource library + bereavement-channel messages).
 - **H6.** Implement discharge-grace 30-day delayed worker (Phase E E8 finalization) — on elapse, revoke grants per §7.6.
 - **H7.** Implement `DataEraser` seams (§8.6) for patient-erase + portal-account-erase + telehealth-recording-erase; emit `m31.eraser.patient_completed` with destruction-cert hash manifest.
 - **H8.** Implement consumer for `m4.legal_hold.applied | m4.legal_hold.released` → suspend/resume eraser execution for held subjects.
@@ -2158,7 +2158,7 @@ M31 is the largest module by surface area; implementation is decomposed into nin
 
 - **I1.** Implement staff admin pane (`apps/staff/portal-admin/`) per §5.3.
 - **I2.** Implement `PortalDisclosureAccountingProvider` seam end-to-end (D-line 4.3 #7) — generates HIPAA §164.528 accounting from M4 + M39 sources, formatted for the patient view + the admin export.
-- **I3.** Implement `GET /admin/portal/disclosure-accounting/:patientId/export` — PDF/CSV generation via M22 letter-rendering seam.
+- **I3.** Implement `GET /admin/portal/disclosure-accounting/:patientId/export` (**DEFERRED — unbuilt:** no export route; the portal disclosure accounting is read via the `PortalDisclosureAccountingProvider` seam) — PDF/CSV generation via M22 letter-rendering seam.
 - **I4.** Publish all 7 reader/provider seams to M31's `SeamRegistry` entry; verify `validateSeams()` passes at boot.
 - **I5.** Apply the manifest patch (§13) — `dependsOn` from `[5,7,8,22,36,39]` to the full 24-entry list; `ownedTables` populated with the 15-table list.
 - **I6.** Run `bun run arch:fitness` — dependency-cruiser, seam-validation, table-ownership, ABAC-registry-completeness all green.

@@ -122,3 +122,11 @@
   calls read-only M26 "done" or restates a screen count; the `main.tsx` composition-root headers no longer say
   nothing is registered; the M23 boot comment, the M22 eraser and the dead `M39_CONSENT_CONSUMER_DEFERRED`
   constant no longer describe live wiring as unbound.
+- **GAP-184 / GAP-179 follow-up.** The route inventories of the M02, M05, M23, M29, M31, M33, M34 and M36 specs
+  now carry the as-built paths (Google-style `:verb` suffixes became `/verb`, `/api/reporting` became
+  `/api/v1/reporting`, the M31 `/p/:patientId/*` sketch became the session-pinned `/api/v1/portal/*`
+  routes, the M36 webhooks lost their `/api/v1` prefix) and every row with no registered route is marked
+  **DEFERRED (unbuilt)** with the reason. `frame:fidelity` no longer leaves ~100 frames unexplained: each
+  unmapped frame is joined through SCREENS.md and SCREEN_SPEC_STATUS.md to a disposition — deferred (spec has
+  no screen), design-library (the D1–D7 shared libraries) or unmatched (a screen serves the spec, composition
+  not yet compared; explicitly not a fidelity claim) — and a frame that cannot be joined hard-fails.

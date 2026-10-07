@@ -733,16 +733,18 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | DELETE | `/api/auth/passkey/:id` | session | — | yes | remove own passkey |
 | GET | `/api/v1/auth/memberships` | session(pre-org) | self | yes | list own memberships to choose org at login |
 | POST | `/api/v1/auth/select-organization` | session(pre-org) | self | n/a | binds `active_organization_id`; **only at login** |
-| GET | `/api/v1/auth/sessions` | session | self | yes | list own active sessions |
-| DELETE | `/api/v1/auth/sessions/:id` | session | self | yes | revoke one of own sessions |
-| POST | `/api/v1/auth/screen-unlock` | session | self | n/a | re-auth to clear `screen_locked_at` |
-| GET | `/api/v1/me/session` | session | self | yes | current session metadata incl. `lastStepUpAt`, `lastStepUpFactor`, `stepUpStatus` |
+| GET | `/api/v1/auth/sessions` | session | self | yes | list own active sessions **DEFERRED (unbuilt):** own-session list is not exposed; sessions are managed by Better Auth. |
+| DELETE | `/api/v1/auth/sessions/:id` | session | self | yes | revoke one of own sessions **DEFERRED (unbuilt):** own-session revoke is not exposed. |
+| POST | `/api/v1/auth/screen-unlock` | session | self | n/a | re-auth to clear `screen_locked_at` **DEFERRED (unbuilt):** no route; screen lock is client-side + step-up. |
+| GET | `/api/v1/me/session` | session | self | yes | current session metadata incl. `lastStepUpAt`, `lastStepUpFactor`, `stepUpStatus` **DEFERRED (unbuilt):** no route; step-up state is read server-side via the `SessionContextResolver` seam and surfaced by `GET /api/v1/auth/context`. |
 | POST | `/api/v1/sessions/step-up/initiate` | session | self | n/a | begin an MFA step-up challenge (WebAuthn/TOTP); SMS refused |
 | POST | `/api/v1/sessions/step-up` | session | self | n/a | verify step-up challenge; writes `last_step_up_at`/`last_step_up_factor` |
 | POST | `/api/v1/collaborators/invite` | staff | per role | yes | mint external-collaborator magic-link (per-patient) |
 | POST | `/api/v1/collaborators/consume` | none | — | yes | consume magic-link → scoped session |
 | ~~POST~~ | ~~`/api/v1/auditors/invite`~~ | — | — | — | **Served by Module 3, not M2** — moved to M3 with the `auditor_engagement` entity (D4 / §4.7). M2 only exposes the boot-validated `AuditorSessionMinter` that M3 calls. |
-| POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) |
+| POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) **DEFERRED (unbuilt):** no route; funeral-home magic links are not built. |
+
+> **As-built `/api/v1/*` routes not in the table (GAP-184):** `GET /api/v1/auth/context`; `POST /api/v1/sessions/step-up` + `/initiate` (and the portal twins under `/api/v1/portal/sessions/*`); `GET/POST /api/v1/devices/attestation` (+ `/challenge`, `/:id/revoke`); `GET /api/v1/invitations/:token`; `GET /api/v1/orgs/:id/invitations` + `POST …/:invId/resend`; `GET/POST /api/v1/orgs/:id/members/:mId/elevated-approvals` + `DELETE …/:kind`; `POST /api/v1/platform/organizations/:organizationId/status`. The `/api/auth/*` rows above are mounted by Better Auth, not registered as Fastify routes.
 | POST | `/api/v1/orgs/:id/invitations` | admin | `org_admin` | yes (by email) | invite user to org |
 | POST | `/api/v1/invitations/accept` | none | — | yes | consume invite token → membership |
 | DELETE | `/api/v1/orgs/:id/invitations/:invId` | admin | `org_admin` | yes | rescind pending invite |

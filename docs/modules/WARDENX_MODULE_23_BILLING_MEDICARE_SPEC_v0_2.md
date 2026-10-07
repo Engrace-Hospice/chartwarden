@@ -1486,48 +1486,50 @@ All routes live under `apps/backend/src/modules/23-billing-medicare/routes/` and
 
 | # | Method | Path | Permission | ABAC | Purpose |
 |---|---|---|---|---|---|
-| 1 | POST | `/api/v1/billing/claims:assemble` | `billing.claim.assemble` | `provider_entity_billing_scope` | Server-authoritative claim assembly: takes `(provider_entity_id, patient_id, service_from, service_to, tob)` and produces a DRAFT `claim` with lines + HIPPS + SIA snapshots |
+| 1 | POST | `/api/v1/billing/claims/assemble` | `billing.claim.assemble` | `provider_entity_billing_scope` | Server-authoritative claim assembly: takes `(provider_entity_id, patient_id, service_from, service_to, tob)` and produces a DRAFT `claim` with lines + HIPPS + SIA snapshots |
 | 2 | GET | `/api/v1/billing/claims` | `billing.claim.read` | `provider_entity_billing_scope` | List claims with filters (state, patient, PE, service-date range, AR-age bucket); cursor-paginated |
 | 3 | GET | `/api/v1/billing/claims/:id` | `billing.claim.read` | `caseload_or_scope` (via patient FK resolution) | Single-claim detail incl. lines, HIPPS, SIA, latest validation run, submissions, acknowledgments |
 | 4 | PATCH | `/api/v1/billing/claims/:id` | `billing.claim.update_draft` | `caseload_or_scope` | DRAFT-only edits (TOB choice, override of an assembly-time auto-derived value with rationale) |
 | 5 | DELETE | `/api/v1/billing/claims/:id` | `billing.claim.delete_draft` | `caseload_or_scope` | DRAFT-only delete |
-| 6 | POST | `/api/v1/billing/claims/:id:validate` | `billing.validation.run` | `caseload_or_scope` | Manually trigger a `validation_run` (the `manual_re_run` trigger) |
-| 7 | POST | `/api/v1/billing/claims/:id:submit` | `billing.claim.submit` | `provider_entity_billing_scope` + step-up | Transition READY → SUBMITTED; emits `m23.claim.submit_requested` outbox; **M2 step-up auth required per D2** |
-| 8 | POST | `/api/v1/billing/claims/:id:replace` | `billing.claim.replace` | `provider_entity_billing_scope` + step-up | Build a TOB 817 referencing this claim; returns the new claim id in DRAFT |
-| 9 | POST | `/api/v1/billing/claims/:id:void` | `billing.claim.void` | `provider_entity_billing_scope` + step-up | Build a TOB 818 referencing this claim; returns the new claim id in DRAFT |
+| 6 | POST | `/api/v1/billing/claims/:id/validate` | `billing.validation.run` | `caseload_or_scope` | Manually trigger a `validation_run` (the `manual_re_run` trigger) |
+| 7 | POST | `/api/v1/billing/claims/:id/submit` | `billing.claim.submit` | `provider_entity_billing_scope` + step-up | Transition READY → SUBMITTED; emits `m23.claim.submit_requested` outbox; **M2 step-up auth required per D2** |
+| 8 | POST | `/api/v1/billing/claims/:id/replace` | `billing.claim.replace` | `provider_entity_billing_scope` + step-up | Build a TOB 817 referencing this claim; returns the new claim id in DRAFT |
+| 9 | POST | `/api/v1/billing/claims/:id/void` | `billing.claim.void` | `provider_entity_billing_scope` + step-up | Build a TOB 818 referencing this claim; returns the new claim id in DRAFT |
 | 10 | GET | `/api/v1/billing/claims/:id/lines` | `billing.claim.read` | `caseload_or_scope` | List claim_line rows |
 | 11 | GET | `/api/v1/billing/claims/:id/state-history` | `billing.claim.read` | `caseload_or_scope` | Full transition timeline (the per-claim audit narrative) |
 | 12 | GET | `/api/v1/billing/claims/:id/submissions` | `billing.claim.read` | `caseload_or_scope` | All dispatch attempts |
 | 13 | GET | `/api/v1/billing/claims/:id/acknowledgments` | `billing.claim.read` | `caseload_or_scope` | All 999/277CA/835 acks |
-| 14 | GET | `/api/v1/billing/claims/:id/validation-runs` | `billing.validation.read_run` | `caseload_or_scope` | Validation-run history (the per-claim §11.A worklist) |
-| 15 | GET | `/api/v1/billing/validation-runs/:runId` | `billing.validation.read_run` | `caseload_or_scope` | Single run with all results |
-| 16 | POST | `/api/v1/billing/validation-results/:resultId:override` | `billing.validation.override` | `override_role_eligible` | Apply an override on a failed result (typed reason ≥40 chars) |
-| 17 | GET | `/api/v1/billing/validation-overrides` | `billing.validation.read_override` | `provider_entity_billing_scope` | Org-wide override audit view (compliance officer / surveyor) |
-| 18 | GET | `/api/v1/billing/rule-config` | `billing.rule_config.read` | `provider_entity_billing_scope` | List tenant overlay rows + platform registry snapshot (for the editor UI) |
-| 19 | PATCH | `/api/v1/billing/rule-config/:ruleKey` | `billing.rule_config.edit` | `regulatory_required_rule_protected` (denies regulatory-required) | Tenant overlay edit (disable, parameterize) |
-| 20 | POST | `/api/v1/billing/rule-config:custom` | `billing.rule_config.edit` | `provider_entity_billing_scope` | Create a tenant custom rule with predicate DSL |
-| 21 | DELETE | `/api/v1/billing/rule-config/:ruleKey` | `billing.rule_config.edit` | `regulatory_required_rule_protected` | Remove tenant overlay (revert to platform default) |
-| 22 | POST | `/api/v1/billing/eligibility:check` | `billing.eligibility.check` | `caseload_or_scope` | Force a fresh 270/271 round-trip for a patient + as-of date |
+| 14 | GET | `/api/v1/claims/:id/validation-runs` | `billing.validation.read_run` | `caseload_or_scope` | Validation-run history (the per-claim §11.A worklist) |
+| 15 | GET | `/api/v1/claims/:id/validation-runs/:runId` | `billing.validation.read_run` | `caseload_or_scope` | Single run with all results |
+| 16 | POST | `/api/v1/claims/:id/validation-runs/:runId/results/:resultId/override` | `billing.validation.override` | `override_role_eligible` | Apply an override on a failed result (typed reason ≥40 chars) |
+| 17 | GET | `/api/v1/billing/validation-overrides` | `billing.validation.read_override` | `provider_entity_billing_scope` | Org-wide override audit view (compliance officer / surveyor) **DEFERRED (unbuilt):** no list route; overrides are read per run via row 15 and the audit trail. |
+| 18 | GET | `/api/v1/billing/rule-configs` | `billing.rule_config.read` | `provider_entity_billing_scope` | List tenant overlay rows + platform registry snapshot (for the editor UI) |
+| 19 | PATCH | `/api/v1/billing/rule-configs/:id` | `billing.rule_config.edit` | `regulatory_required_rule_protected` (denies regulatory-required) | Tenant overlay edit (disable, parameterize) |
+| 20 | POST | `/api/v1/billing/rule-configs/custom` | `billing.rule_config.edit` | `provider_entity_billing_scope` | Create a tenant custom rule with predicate DSL |
+| 21 | DELETE | `/api/v1/billing/rule-configs/:id` | `billing.rule_config.edit` | `regulatory_required_rule_protected` | Remove tenant overlay (revert to platform default) |
+| 22 | POST | `/api/v1/billing/eligibility/check` | `billing.eligibility.check` | `caseload_or_scope` | Force a fresh 270/271 round-trip for a patient + as-of date |
 | 23 | GET | `/api/v1/billing/eligibility` | `billing.eligibility.read` | `caseload_or_scope` | List per-patient eligibility-check history |
-| 24 | GET | `/api/v1/billing/noe-records` | `billing.noe.read` | `provider_entity_billing_scope` | List NOEs (filters by state + window age) |
-| 25 | GET | `/api/v1/billing/noe-records/:id` | `billing.noe.read` | `caseload_or_scope` | Single NOE detail |
-| 26 | POST | `/api/v1/billing/noe-records/:id:submit` | `billing.noe.submit` | `provider_entity_billing_scope` + step-up | READY → SUBMITTED; emits `m23.noe.submit_requested` |
-| 27 | POST | `/api/v1/billing/noe-records/:id:cancel` | `billing.noe.cancel` | `provider_entity_billing_scope` | DRAFT/READY → CANCELLED (typically when M6 cancels the election before submission) |
-| 28 | GET | `/api/v1/billing/notr-records` | `billing.notr.read` | `provider_entity_billing_scope` | List NOTRs |
-| 29 | GET | `/api/v1/billing/notr-records/:id` | `billing.notr.read` | `caseload_or_scope` | Single NOTR detail |
-| 30 | POST | `/api/v1/billing/notr-records/:id:submit` | `billing.notr.submit` | `provider_entity_billing_scope` + step-up | NOTR submission |
-| 31 | POST | `/api/v1/billing/notr-records/:id:cancel` | `billing.notr.cancel` | `provider_entity_billing_scope` | NOTR cancel |
-| 32 | GET | `/api/v1/billing/sequestration-policy` | `billing.sequestration_policy.read` | `provider_entity_billing_scope` | Effective-dated policy timeline |
-| 33 | POST | `/api/v1/billing/sequestration-policy` | `billing.sequestration_policy.edit` | `provider_entity_billing_scope` | Forward-date a new policy row |
+| 24 | GET | `/api/v1/noe-records` | `billing.noe.read` | `provider_entity_billing_scope` | List NOEs (filters by state + window age) |
+| 25 | GET | `/api/v1/noe-records/:id` | `billing.noe.read` | `caseload_or_scope` | Single NOE detail |
+| 26 | POST | `/api/v1/noe-records/:id/submit` | `billing.noe.submit` | `provider_entity_billing_scope` + step-up | READY → SUBMITTED; emits `m23.noe.submit_requested` |
+| 27 | POST | `/api/v1/noe-records/:id/cancel` | `billing.noe.cancel` | `provider_entity_billing_scope` | DRAFT/READY → CANCELLED (typically when M6 cancels the election before submission) |
+| 28 | GET | `/api/v1/notr-records` | `billing.notr.read` | `provider_entity_billing_scope` | List NOTRs |
+| 29 | GET | `/api/v1/notr-records/:id` | `billing.notr.read` | `caseload_or_scope` | Single NOTR detail |
+| 30 | POST | `/api/v1/notr-records/:id/submit` | `billing.notr.submit` | `provider_entity_billing_scope` + step-up | NOTR submission |
+| 31 | POST | `/api/v1/notr-records/:id/cancel` | `billing.notr.cancel` | `provider_entity_billing_scope` | NOTR cancel |
+| 32 | GET | `/api/v1/billing/sequestration-policies` | `billing.sequestration_policy.read` | `provider_entity_billing_scope` | Effective-dated policy timeline |
+| 33 | POST | `/api/v1/billing/sequestration-policies` | `billing.sequestration_policy.edit` | `provider_entity_billing_scope` | Forward-date a new policy row |
 | 34 | GET | `/api/v1/billing/mac-credentials` | `billing.mac_credential.read` | `provider_entity_billing_scope` | List per-PE credentials (secrets masked) |
 | 35 | POST | `/api/v1/billing/mac-credentials` | `billing.mac_credential.admin` | `provider_entity_billing_scope` + step-up | Upsert MAC credentials (M34 wizard) |
-| 36 | POST | `/api/v1/billing/mac-credentials/:id:test` | `billing.mac_credential.admin` | `provider_entity_billing_scope` | Send a synthetic claim through to MAC sandbox; record `last_sandbox_test_at` |
+| 36 | POST | `/api/v1/billing/mac-credentials/:id:test` | `billing.mac_credential.admin` | `provider_entity_billing_scope` | Send a synthetic claim through to MAC sandbox; record `last_sandbox_test_at` **DEFERRED (unbuilt):** no sandbox-test route; `last_sandbox_test_at` is not written. As-built read: `GET /api/v1/billing/mac-credentials/:providerEntityId`. |
 | 37 | GET | `/api/v1/billing/ar-dashboard` | `billing.claim.read_ar_dashboard` | `provider_entity_billing_scope` | AR aging buckets, denial rate, NOE/NOTR window state |
 | 38 | GET | `/api/v1/billing/metrics` | `billing.claim.read_metrics` | `provider_entity_billing_scope` | Per-window aggregate metrics for the M33 reporting consumer |
 | 39 | GET | `/api/v1/internal/billing/claim-day-projection` | `system_principal` (M26 service-to-service) | system-scope | `ClaimDayProjectionProvider` seam endpoint |
 | 40 | GET | `/api/v1/internal/billing/submissions` | `system_principal` (M25) | system-scope | `ClaimSubmissionReader.acceptedSubmissionsInWindow` seam endpoint |
-| 41 | POST | `/api/v1/admin/billing/platform-rules` | `billing.rule_config.platform_admin` | platform-only | Platform admin: register a new platform rule (with regulatory_required tag) |
-| 42 | POST | `/api/v1/admin/billing/wage-index:load` | `billing.rule_config.platform_admin` | platform-only | Platform admin: trigger the annual wage-index loader against a CMS file URI |
+| 41 | POST | `/api/v1/admin/billing/platform-rules` | `billing.rule_config.platform_admin` | platform-only | Platform admin: register a new platform rule (with regulatory_required tag) **DEFERRED (unbuilt):** platform rules ship in code (the platform registry); no admin registration route. |
+| 42 | POST | `/api/v1/admin/billing/wage-index:load` | `billing.rule_config.platform_admin` | platform-only | Platform admin: trigger the annual wage-index loader against a CMS file URI **DEFERRED (unbuilt):** the as-built surface is the tenant-entered CRUD `GET/POST /api/v1/billing/wage-indexes` (+ `/:id`, `/:id/supersede`, `/effective`), per F-211; there is no CMS-file loader route. |
+
+> **As-built routes the table above does not number (GAP-184):** NOE/NOTR `POST /api/v1/{noe,notr}-records/:id/correct`; `/api/v1/billing/transfer-notices` (+ `/:id`, and `POST` `/:id/{submit,cancel,void,redraft,correct-date,confirm-prior-billing}`); `/api/v1/billing/rate-tables` (+ `/:id`, `/:id/supersede`, `/effective`, `/national-reference`); `/api/v1/billing/wage-indexes` and `/api/v1/billing/sequestration-policies` (`/:id`, `/:id/supersede`, `/effective`, `/active`); `GET /api/v1/billing/eligibility/{latest,hospice-periods}`; `POST /api/v1/claims/:id/validate`.
 
 > **All PATCH / POST mutation routes carry `If-Match` for optimistic concurrency where the target carries a `version` column (§2.5). 412 Precondition Failed on stale.**
 
@@ -2205,7 +2207,7 @@ All M23 screens live under `apps/web/src/modules/23-billing-medicare/`, built on
 | 1 | AR Dashboard | `/app/billing` | Billing Manager, Biller, AR, Compliance, Org Admin | Landing surface: AR aging buckets (0-30 / 31-60 / 61-90 / 90+), denial rate trend, NOE/NOTR window state pie, MAC portal availability indicator, pending validation-failure worklist count |
 | 2 | Claim Workbench | `/app/billing/claims` | Billing Manager, Biller, Coder | Filterable claim list (state, TOB, PE, patient, service-date range, AR age); inline action menu (Assemble, Submit, Replace, Void); export to CSV for ops |
 | 3 | Claim Editor | `/app/billing/claims/:claimId` | Billing Manager, Biller, Coder | Full claim detail: lines, HIPPS, SIA, sequestration, ICD list, modifiers, latest validation run with worklist drawer, submissions timeline, acknowledgments timeline, replacement chain breadcrumb |
-| 4 | Claim Assembly Wizard | `/app/billing/claims/new` | Billing Manager, Biller | 4-step wizard: pick PE + patient + service-date range → derive TOB → preview lines + HIPPS + SIA → confirm assembly; route 1 (`/api/v1/billing/claims:assemble`) is the server action |
+| 4 | Claim Assembly Wizard | `/app/billing/claims/new` | Billing Manager, Biller | 4-step wizard: pick PE + patient + service-date range → derive TOB → preview lines + HIPPS + SIA → confirm assembly; route 1 (`/api/v1/billing/claims/assemble`) is the server action |
 | 5 | Claim Validation Worklist | `/app/billing/claims/:claimId/validation` | Billing Manager, Biller, Coder, Compliance, Medical Director | The §11.A worklist: per-rule status, remediation hints with deep-links (Edit in M6, Cosign in M8, Refresh Eligibility), Override button per failed rule (gated by `override_role_eligible`) |
 | 6 | Validation Override Modal | (drawer on screen 5) | Billing Manager, Compliance, Medical Director | Apply override: reason text area (≥40 chars), confirm + M4 audit-event capture; the modal surfaces the rule's regulatoryRequired tag prominently when applicable |
 | 7 | Submission Confirmation | (modal on screen 3) | Billing Manager | Submit modal: shows the claim control number that will be assigned, the active MAC jurisdiction, the latest validation outcome, the M2 step-up auth prompt |
@@ -2396,7 +2398,7 @@ All four predicates are typed (`(ctx, args) => Promise<boolean>`), registered at
 | **Information disclosure** via cross-tenant claim leakage | RLS at every table; the cross-isolation test (§9.3) is the regression guard; the system-principal seam-call routes (39, 40) accept an `orgId` parameter and the RLS policy on the underlying tables enforces the same boundary — a M26 / M25 service call cannot read another org's claims even with system-principal credentials, because the seam call applies `withOrgContext(orgId)` before executing the query. |
 | **Information disclosure** via a surveyor session reading PHI they shouldn't | The Surveyor role's M3 engagement-scope binds the read paths to the engagement's specified scope (e.g. "GIP claims in Q3 2025"); the Surveyor Read View (5.1.21) is denylist-aware — internal worker-correlation ids, internal validation_run metadata (`runInputHash`), MAC credential fields, and the raw acknowledgment file URIs are scrubbed; the M4 audit-read declaration captures every surveyor access. |
 | **Information disclosure** via the §11.A remediation hint containing PHI | The remediation hint shape (`packages/billing/src/rules/types.ts ValidationResultPayload`) constrains the payload to typed fields: `summary` (≤200 chars, must not include patient-identifying free-text per a content-policy lint), `blameTarget`, `blameTargetId` (a UUID — not a name), `fixAction`, `fixDeepLink`. The lint rule `no-phi-in-remediation-summary` (a custom Biome rule) scans rule predicate source for string-concatenation patterns that would embed patient names; CI fails on violation. |
-| **Denial of service** via spamming claim assembly | Per-actor rate limit on route 1 (`/api/v1/billing/claims:assemble` — 60/hour per Billing Manager, 120/hour per Biller; rate-limit reset surfaces in the response headers); the rate-limit is per-actor-membership not per-IP so a NAT-shared agency office doesn't have one user starving another. The validation worklist refresh (route 14) is the cheap path; the assembly route is the expensive one. |
+| **Denial of service** via spamming claim assembly | Per-actor rate limit on route 1 (`/api/v1/billing/claims/assemble` — 60/hour per Billing Manager, 120/hour per Biller; rate-limit reset surfaces in the response headers); the rate-limit is per-actor-membership not per-IP so a NAT-shared agency office doesn't have one user starving another. The validation worklist refresh (route 14) is the cheap path; the assembly route is the expensive one. |
 | **Denial of service** via the MAC portal flooding | The `claim.submit.retry` worker enforces exponential backoff per MAC jurisdiction; the `mac-portal.health` cron's circuit-breaker pattern (per ARCH §10) opens the circuit on consecutive failures and blocks further dispatch until the health check passes; the architecture's standard `DegradedError` envelope surfaces the outage to operations without breaking the submission queue. |
 | **Elevation of privilege** via a Coder editing a non-ICD field on a DRAFT claim | The Coder's `billing.claim.update_draft` permission is augmented by the field-allowlist ABAC `coder_icd_only_scope` per §6 notes; the route handler validates the PATCH body against the allowlist (ICD list + sequencing positions only); any other field in the body returns 403 `FIELD_OUT_OF_SCOPE`. |
 | **Elevation of privilege** via an actor applying an override outside their role-eligibility | `override_role_eligible` denies; the route returns 403 `OVERRIDE_ROLE_INSUFFICIENT` with the required role surfaced. The pattern mirrors M19's mandatory-escalation tier-recipient ABAC. |
@@ -2540,9 +2542,9 @@ Full Postgres + Valkey + MinIO containers; tests run end-to-end against the real
 
 | Metric | Target |
 |---|---|
-| `POST /api/v1/billing/claims:assemble` p95 (30-day RHC claim with 20 visits) | < 800 ms (excludes any forced eligibility refresh) |
-| `POST /api/v1/billing/claims/:id:validate` (manual re-run) p95 | < 500 ms (18 rules against a fully-assembled claim) |
-| `POST /api/v1/billing/claims/:id:submit` p95 | < 250 ms (the state transition itself; the actual MAC dispatch is async via the BullMQ worker) |
+| `POST /api/v1/billing/claims/assemble` p95 (30-day RHC claim with 20 visits) | < 800 ms (excludes any forced eligibility refresh) |
+| `POST /api/v1/billing/claims/:id/validate` (manual re-run) p95 | < 500 ms (18 rules against a fully-assembled claim) |
+| `POST /api/v1/billing/claims/:id/submit` p95 | < 250 ms (the state transition itself; the actual MAC dispatch is async via the BullMQ worker) |
 | `claim.submit` BullMQ worker end-to-end (outbox pickup → 837I generated → MAC upload accepted) p95 | < 30 s (excluding MAC portal latency, which is portal-dependent and not in our SLO) |
 | `noe.submit` worker end-to-end p95 | < 30 s |
 | `ack.pull-999` worker (per file) p95 | < 5 s |
@@ -2624,13 +2626,13 @@ Sized **S** (≤1 day), **M** (1–3 days), **L** (3–7 days). PR boundaries la
 | 28 | `claim-validation-service.ts` — executes the rule registry against a claim; writes `validation_run` + `validation_result` rows; computes the `runInputHash` for idempotency | M | 16, 25, 27 | D |
 | 29 | `override-service.ts` — `override_role_eligible` predicate check; `validation_override` row write with M4 audit-event linkage | S | 22, 27, 28 | D |
 | 30 | `claim-assembly.ts` — walks readers; produces `claim` + `claim_line` + `hipps_calculation` + `sia_calculation` + sequestration snapshot; cosignature-wait posture (D10) implemented as a filter on `BillableEncounterReader.billability` | L | 11, 12, 13, 14, 16, 25 | **E** |
-| 31 | `POST /api/v1/billing/claims:assemble` route + TypeBox + ABAC + emits `m23.claim.draft_created` | M | 30 | E |
-| 32 | `POST /api/v1/billing/claims/:id:validate` route + manual re-run trigger | S | 28 | E |
-| 33 | `POST /api/v1/billing/claims/:id:submit` route + M2 step-up auth gate + emits `m23.claim.submit_requested` | M | 25, 28 | E |
+| 31 | `POST /api/v1/billing/claims/assemble` route + TypeBox + ABAC + emits `m23.claim.draft_created` | M | 30 | E |
+| 32 | `POST /api/v1/billing/claims/:id/validate` route + manual re-run trigger | S | 28 | E |
+| 33 | `POST /api/v1/billing/claims/:id/submit` route + M2 step-up auth gate + emits `m23.claim.submit_requested` | M | 25, 28 | E |
 | 34 | `POST /api/v1/billing/claims/:id:replace` + `POST /api/v1/billing/claims/:id:void` routes (TOB 817 / 818 builders per D14) | M | 30, 31 | E |
 | 35 | GET routes (claims list, claim detail, lines, state-history, submissions, acknowledgments, validation-runs) per §4.1 routes 2, 3, 10, 11, 12, 13, 14, 15 | M | 16, 17 | E |
 | 36 | PATCH route for DRAFT claim edits (`coder_icd_only_scope` enforcement) + DELETE route | S | 35 | E |
-| 37 | `POST /api/v1/billing/validation-results/:resultId:override` route + override-service wiring | S | 29 | E |
+| 37 | `POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override` route + override-service wiring | S | 29 | E |
 | 38 | Rule-config CRUD routes (GET / PATCH / POST custom / DELETE) per §4.1 routes 18, 19, 20, 21; `regulatory_required_rule_protected` predicate enforcement | M | 21, 22, 27 | E |
 | 39 | `claim.submit` BullMQ worker — drains `m23.claim.submit_requested` outbox; calls `x12-worker-client.generate-837i`; uploads to MAC portal via `mac-portal/ngs-j6.ts`; writes `claim_submission`; transitions claim to SUBMITTED | L | 16, 19, 25 | **F** |
 | 40 | `claim.submit.retry` worker — exponential backoff on portal failure; max 5 attempts; `submission_stalled` alert emit on exhaustion | M | 39 | F |
@@ -2638,7 +2640,7 @@ Sized **S** (≤1 day), **M** (1–3 days), **L** (3–7 days). PR boundaries la
 | 42 | `ack.pull-277ca` cron — parallel to 999; drives ACK_PENDING → ACK_ACCEPTED / ACK_REJECTED / ACK_PARTIAL | M | 41 | F |
 | 43 | `mac-portal.health` cron per MAC jurisdiction — emits `m23.mac_portal.unavailable` / `m23.mac_portal.recovered`; circuit-breaker against the `claim.submit` worker | M | 19 | F |
 | 44 | `eligibility-service.ts` + `eligibility.refresh` worker — `MbiUnlockReader` consumer; HETS 270/271 round-trip via `x12-worker-client.eligibility-270`; `eligibility_check` row write with MBI not persisted | M | 19 | F |
-| 45 | `POST /api/v1/billing/eligibility:check` route + `GET /api/v1/billing/eligibility` route + auto-refresh-on-stale wiring per fixture `fx-eligibility-stale-refresh` | S | 44 | F |
+| 45 | `POST /api/v1/billing/eligibility/check` route + `GET /api/v1/billing/eligibility` route + auto-refresh-on-stale wiring per fixture `fx-eligibility-stale-refresh` | S | 44 | F |
 | 46 | `eligibility-stale-watch.cron` — daily; flags `eligibility_check` rows past `staleAt`; emits `m23.eligibility.expired` alert | S | 44 | F |
 | 47 | `noe-assembly.ts` + `m6-election-signed.consumer.ts` — creates `noe_record` DRAFT on `m6.election.signed` outbox arrival | M | 16, 26 | **G** |
 | 48 | `noe.submit` BullMQ worker — drains `m23.noe.submit_requested`; calls `generate-noe`; uploads to MAC portal; writes submission row | M | 19, 26, 47 | G |
