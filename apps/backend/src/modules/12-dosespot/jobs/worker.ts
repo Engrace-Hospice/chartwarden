@@ -69,6 +69,7 @@ import {
   recordPatientSyncSuccess,
 } from "./patient-sync-store";
 import { DosespotSyncQueueRepository } from "./repository";
+import { invalidateRxBenefitCacheForPatient } from "./rx-benefit-prewarm";
 import {
   type DosespotPatientIdResolver,
   type DosespotSyncDemographicsForOrg,
@@ -144,7 +145,15 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         // Genuinely no such patient under this org any more — nothing to sync, not a failure.
         outcome = { kind: "completed" };
       } else {
-        const payload = buildPatientUpsertPayload(snapshot);
+        // GAP-037 — a patient already known to DoseSpot is EDITED, never re-created (no duplicate chart).
+        const knownDosespotPatientId = await dosespotPatientIdResolver.resolve(
+          row.organizationId,
+          row.patientId,
+        );
+        const payload = {
+          ...buildPatientUpsertPayload(snapshot),
+          ...(knownDosespotPatientId ? { existingDosespotPatientId: knownDosespotPatientId } : {}),
+        };
         const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt);
         // Reached (past this point) only once the vendor client is real — today it always throws here.
         const response = await doseSpotClient.upsertPatient(
@@ -181,11 +190,14 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
           },
         );
         if (row.invalidateRxBenefitCache) {
-          // No RxBenefit cache exists anywhere in this repository (checked: no rxBenefitCache/
-          // RxBenefitCache reference outside this decider's own boolean flag and the client's response
-          // type) — a smaller, separately-reportable gap per this pass's own scoping instruction, not
-          // fabricated here. The flag is preserved on the row (see schema.ts) so a future cache layer has
-          // the fact to act on.
+          // GAP-037 — demographics / payer changed: the cached coverage may no longer be true, so drop it
+          // (the prewarm cron repopulates). Same org scope, after the id is recorded.
+          await withOrgContext(
+            deps.db,
+            { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+            (tx) =>
+              invalidateRxBenefitCacheForPatient(tx as DbClient, row.organizationId, row.patientId),
+          );
         }
         outcome = { kind: "completed" };
       }

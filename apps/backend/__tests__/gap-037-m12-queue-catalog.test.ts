@@ -1,14 +1,19 @@
-// GAP-037 — the M12 §4.8 BullMQ queue catalog is accounted for queue by queue: every one of the ten spec queues
-// is either BUILT (and names the live worker) or DEFERRED with the exact upstream the build is gated on. A
-// deferred queue is never silently absent, and the boot warning lists them so a status matrix that says
-// "Implemented" cannot be read as "e-prescribing transmits".
+// GAP-037 — the M12 §4.8 BullMQ queue catalog is accounted for queue by queue. After the close-out round all ten
+// spec queues are BUILT; the test pins that the catalog still equals the spec list, that every built entry names
+// its worker and its sandbox caveat, that the seven new cron queue names are real catalog entries, and that the
+// boot line stays honest about the adapter being unbound without credentials.
 import { describe, expect, it } from "vitest";
 import {
   M12_DEFERRED_QUEUES,
   M12_QUEUE_CATALOG,
   M12_SPEC_QUEUE_NAMES,
-  describeM12DeferredQueues,
+  describeM12AdapterPosture,
 } from "../src/modules/12-dosespot/jobs/queue-catalog";
+import {
+  M12_CRON_QUEUES,
+  M12_CRON_QUEUE_PARAMS,
+  M12_CRON_SCHEDULES,
+} from "../src/modules/12-dosespot/jobs/queues";
 
 describe("M12 §4.8 queue catalog", () => {
   it("accounts for exactly the ten spec queues, once each", () => {
@@ -17,41 +22,37 @@ describe("M12 §4.8 queue catalog", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("marks the two vendor-I/O drains that exist as built and names their worker", () => {
-    const built = M12_QUEUE_CATALOG.filter((q) => q.status === "built").map((q) => q.queue);
-    expect(built.sort()).toEqual([
-      "dosespot.dispatch_webhook",
-      "dosespot.fetch_medhx",
-      "dosespot.patient_sync",
-    ]);
-    for (const q of M12_QUEUE_CATALOG.filter((x) => x.status === "built")) {
-      expect(q.builtBy.length).toBeGreaterThan(0);
+  it("reports all ten as built, none deferred", () => {
+    expect(M12_DEFERRED_QUEUES).toHaveLength(0);
+    for (const q of M12_QUEUE_CATALOG) {
+      expect(q.status).toBe("built");
+      if (q.status === "built") {
+        expect(q.builtBy.length).toBeGreaterThan(20);
+        expect(q.adapterCaveats.length).toBeGreaterThan(0);
+      }
     }
   });
 
-  it("defers transmission, the recovery drain, the benefit prewarm and the four SLA crons", () => {
-    expect(M12_DEFERRED_QUEUES.map((q) => q.queue).sort()).toEqual([
-      "dosespot.epcs_attempt_expiry_sweep",
-      "dosespot.ial2_expiry_warn",
-      "dosespot.refill_sla",
-      "dosespot.rx_benefit_prewarm",
-      "dosespot.transmission_timeout_sweep",
-      "dosespot.transmit_newrx",
-      "dosespot.transmit_queued_on_recovery",
-    ]);
-  });
-
-  it("gives every deferral a blocker, an unblock condition and the data it would read", () => {
-    for (const q of M12_DEFERRED_QUEUES) {
-      expect(q.blockedOn.length).toBeGreaterThan(20);
-      expect(q.unblockedBy.length).toBeGreaterThan(20);
-      expect(q.upstreamData.length).toBeGreaterThan(0);
+  it("every cron queue the worker registers is a spec queue with a schedule and retry policy", () => {
+    for (const [key, name] of Object.entries(M12_CRON_QUEUES)) {
+      expect(M12_SPEC_QUEUE_NAMES).toContain(name);
+      expect(M12_CRON_SCHEDULES[key as keyof typeof M12_CRON_QUEUES]).toBeTruthy();
+      expect(M12_CRON_QUEUE_PARAMS[key as keyof typeof M12_CRON_QUEUES].attempts).toBeGreaterThan(
+        0,
+      );
     }
+    expect(Object.keys(M12_CRON_QUEUES)).toHaveLength(7);
   });
 
-  it("renders a boot warning that names every deferred queue", () => {
-    const text = describeM12DeferredQueues();
-    for (const q of M12_DEFERRED_QUEUES) expect(text).toContain(q.queue);
-    expect(text).toMatch(/not_required/);
+  it("discloses the sandbox caveat of the queue that cannot work yet (no RxBenefit endpoint)", () => {
+    const prewarm = M12_QUEUE_CATALOG.find((q) => q.queue === "dosespot.rx_benefit_prewarm");
+    expect(prewarm?.status === "built" && prewarm.adapterCaveats).toContain("fails closed");
+  });
+
+  it("says the adapter is unbound until credentials are configured", () => {
+    expect(describeM12AdapterPosture([])).toMatch(/UNBOUND until per-tenant credentials/);
+    expect(describeM12AdapterPosture([])).toMatch(/orders keep activating locally/);
+    expect(describeM12AdapterPosture(["org-1"])).toMatch(/bound for 1 tenant/);
+    expect(describeM12AdapterPosture(["org-1"])).toMatch(/unverified until a sandbox run/);
   });
 });

@@ -7,7 +7,11 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerDoseSpotAbacPredicates as _registerM12Abac } from "./abac-predicates";
-import { type DoseSpotWriteOutboxPort, createDbDoseSpotBackend } from "./dosespot-route-service-db";
+import {
+  type DoseSpotSafetyGateDeps,
+  type DoseSpotWriteOutboxPort,
+  createDbDoseSpotBackend,
+} from "./dosespot-route-service-db";
 import { registerDoseSpotRoutes as _registerM12Routes } from "./routes/dosespot-routes";
 
 /**
@@ -21,8 +25,9 @@ export function mountDoseSpotRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: DoseSpotWriteOutboxPort,
+  gates: DoseSpotSafetyGateDeps = {},
 ): void {
-  const backend = createDbDoseSpotBackend(db, outbox);
+  const backend = createDbDoseSpotBackend(db, outbox, gates);
   _registerM12Abac({ resolver: backend });
   _registerM12Routes(app, { service: backend });
 }
@@ -187,14 +192,21 @@ export {
   type PatientSyncSnapshotResolver,
   DosespotSyncQueueRepository,
   M12DosespotPatientIdUnbound,
+  type BreakerEdge,
+  type M12CronWorkerDeps,
+  M12_CRON_QUEUES,
   M12_DEFERRED_QUEUES,
   M12_DOSESPOT_SYNC_QUEUE,
   M12_DOSESPOT_SYNC_SCHEDULE,
   M12_PLATFORM_JOB_ID,
   M12_QUEUE_CATALOG,
+  createBreakerEdgeRecorder,
   createDrizzlePatientSyncSnapshotResolver,
   createUnboundDosespotPatientIdResolver,
+  describeM12AdapterPosture,
   describeM12DeferredQueues,
+  registerM12CronWorkers,
+  scheduleM12Jobs,
   registerDoseSpotSyncQueueWorker,
   runDoseSpotSyncQueueDrain,
   scheduleDoseSpotSyncQueueDrain,
@@ -254,3 +266,4 @@ export {
   ingestDoseSpotWebhook,
 } from "./webhooks/ingest";
 export { DOSESPOT_WEBHOOK_PATH, registerDoseSpotWebhookRoute } from "./webhooks/webhook-route";
+export { enqueueTransmissionIfBound } from "./transmission-enqueue";

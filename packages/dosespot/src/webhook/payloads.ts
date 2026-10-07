@@ -92,3 +92,60 @@ export function parseScriptStatusUpdate(payload: unknown): ScriptStatusParseResu
     ? { ok: true, update: payload as DoseSpotScriptStatusUpdatePayload }
     : { ok: false };
 }
+
+// ── GAP-037 close-out: the three further inner payloads the handlers need. Same status as the
+// `script_status_update` mapping above: the envelope is spec-defined, the INNER field names are OUR provisional
+// snake_case mapping (`DOSESPOT_WIRE_MAPPING_VERIFIED` stays false) and must be checked against a recorded DoseSpot
+// delivery before anything is trusted in production.
+
+/** §2.2 — the `script_status_update` statuses that mean the pharmacy ACCEPTED the NewRx (`pharmacyAck`). */
+export const DOSESPOT_ACK_STATUSES = ["Sent"] as const;
+/** §2.2 — the statuses that mean the pharmacy/network REJECTED it (`pharmacyNack`). */
+export const DOSESPOT_NACK_STATUSES = ["RxFillError", "Rejected"] as const;
+
+export const isAckStatus = (status: string): boolean =>
+  (DOSESPOT_ACK_STATUSES as readonly string[]).includes(status);
+export const isNackStatus = (status: string): boolean =>
+  (DOSESPOT_NACK_STATUSES as readonly string[]).includes(status);
+
+/** PROVISIONAL — the `refill_request` inner payload (a pharmacy asking to renew a prescription we sent). */
+export const DoseSpotRefillRequestPayloadSchema = Type.Object({
+  dosespot_prescription_id: Type.String({ minLength: 1 }),
+  requested_quantity: Type.Optional(Type.String({ minLength: 1 })),
+  requested_days_supply: Type.Optional(Type.Integer({ minimum: 1 })),
+  pharmacy_ncpdp: Type.Optional(Type.String({ minLength: 1 })),
+  pharmacy_notes: Type.Optional(Type.String()),
+});
+export type DoseSpotRefillRequestPayload = Static<typeof DoseSpotRefillRequestPayloadSchema>;
+
+export function parseRefillRequestPayload(
+  payload: unknown,
+): { readonly ok: true; readonly refill: DoseSpotRefillRequestPayload } | { readonly ok: false } {
+  return Value.Check(DoseSpotRefillRequestPayloadSchema, payload)
+    ? { ok: true, refill: payload as DoseSpotRefillRequestPayload }
+    : { ok: false };
+}
+
+/** PROVISIONAL — the `prescriber_status_changed` inner payload (IAL2 proofing outcome for one prescriber). */
+export const DoseSpotPrescriberStatusPayloadSchema = Type.Object({
+  dosespot_prescriber_id: Type.String({ minLength: 1 }),
+  ial2_status: Type.Union([
+    Type.Literal("in_progress"),
+    Type.Literal("verified"),
+    Type.Literal("expired"),
+    Type.Literal("revoked"),
+  ]),
+  ial2_verified_at: Type.Optional(Type.String({ minLength: 1 })),
+  ial2_expires_at: Type.Optional(Type.String({ minLength: 1 })),
+});
+export type DoseSpotPrescriberStatusPayload = Static<typeof DoseSpotPrescriberStatusPayloadSchema>;
+
+export function parsePrescriberStatusPayload(
+  payload: unknown,
+):
+  | { readonly ok: true; readonly status: DoseSpotPrescriberStatusPayload }
+  | { readonly ok: false } {
+  return Value.Check(DoseSpotPrescriberStatusPayloadSchema, payload)
+    ? { ok: true, status: payload as DoseSpotPrescriberStatusPayload }
+    : { ok: false };
+}

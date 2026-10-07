@@ -16,6 +16,7 @@ export type DoseSpotOperation =
   | "lookupRxBenefit"
   | "pullMedicationHistory"
   | "respondToRefillRequest"
+  | "getPrescriptionStatus"
   | "initiateEpcsSigningSession";
 
 /**

@@ -81,6 +81,7 @@ import type {
   RefillRequestView,
 } from "./routes/service";
 import { MEDICATION_ORDER_LIST_LIMIT } from "./routes/service";
+import { enqueueTransmissionIfBound } from "./transmission-enqueue";
 
 const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
@@ -274,6 +275,12 @@ function withAllergyOverride(data: unknown, override: Record<string, unknown> | 
 export interface DoseSpotSafetyGateDeps {
   readonly resolveConsentEvaluator?: () => ConsentGatePort;
   readonly resolveAllergyReader?: () => PatientAllergyReader;
+  /**
+   * GAP-037 — does this tenant have a bound DoseSpot adapter (complete per-tenant credentials)? When true, a
+   * signed order that CAN be e-prescribed (has an RxCUI + a structured sig) is queued for transmission
+   * instead of being activated locally. Absent / false ⇒ the F-058 behaviour is unchanged (`not_required`).
+   */
+  readonly transmissionEnabledFor?: (organizationId: string) => boolean;
 }
 
 export function createDbDoseSpotBackend(
@@ -382,6 +389,12 @@ export function createDbDoseSpotBackend(
     row: MoRow,
     at: Date,
   ): Promise<void> {
+    if (
+      gates.transmissionEnabledFor?.(organizationId) &&
+      (await enqueueTransmissionIfBound(tx, outbox, organizationId, row, at))
+    ) {
+      return;
+    }
     if (row.dosespotSendState !== "not_required") return;
     transitionMedicationOrder("signed", {
       type: "activate",

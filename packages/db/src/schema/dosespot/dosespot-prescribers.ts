@@ -34,6 +34,8 @@ export const dosespotPrescribers = pgTable(
     ial2VerifiedAt: timestamp("ial2_verified_at", { withTimezone: true }),
     ial2ExpiresAt: timestamp("ial2_expires_at", { withTimezone: true }),
     epcsEnabled: boolean("epcs_enabled").notNull().default(false),
+    // Migration 0412 — the last IAL2-expiry stage alerted ('warn' | 'critical'); NULL = none / reset on re-verify.
+    ial2AlertStage: text("ial2_alert_stage"),
 
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),

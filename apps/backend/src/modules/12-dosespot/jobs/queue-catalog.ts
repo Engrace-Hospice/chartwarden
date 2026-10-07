@@ -1,22 +1,19 @@
 // apps/backend/src/modules/12-dosespot/jobs/queue-catalog.ts — GAP-037: the §4.8 BullMQ queue catalog, accounted
-// for QUEUE BY QUEUE.
+// for QUEUE BY QUEUE, with the honest state of each.
 //
-// WHY THIS EXISTS. The status matrix reports M12 as Implemented because its routes, tables and the
-// `dosespot_sync_queue` drain exist. It cannot say that outbound e-prescribing transmission and the §4.8
-// refill / IAL2 / transmission-timeout / EPCS-expiry crons do NOT exist, so "Implemented" was read as
-// "e-prescribing transmits". They are not built on purpose, and the reason is not effort: there are no DoseSpot
-// credentials, base URL, vendor documentation or recorded sample anywhere in this repository (F-230,
-// docs/history/outbox-248-builds.md), so a transport would fabricate an integration, and each cron below scans
-// data that only the vendor ingest produces — a cron that wakes hourly to scan a table nothing writes would be a
-// green dashboard over a control that does not exist. Every order is therefore `not_required` and activates
-// locally (see `dosespot-route-service-db.ts`), which is the honest Phase-1 posture until the vendor lands.
+// HISTORY. The first GAP-037 pass could only record the seven vendor-gated queues as DEFERRED (no DoseSpot
+// credentials, docs or samples existed). The close-out round BUILT them against the `DoseSpotClient` port: the
+// live HTTP adapter (`@wardenx/dosespot` `createHttpDoseSpotClient`, written from the public v2 swagger and proven
+// against a recorded fake transport), the per-tenant configuration source, the seven crons, the sign-time enqueue
+// and the webhook handlers. All ten §4.8 queues are therefore BUILT.
 //
-// This file is the explicit per-queue deferral the audit asked for: each of the ten spec queues is either BUILT
-// (and names its worker) or DEFERRED with the exact upstream it is gated on. The unit test pins the catalog to
-// the spec's queue list so a queue cannot silently drop out, and the composition root logs the deferrals at boot.
-// When the vendor ingest lands, build the crons TOGETHER with it (the pure deciders already exist in
-// `@wardenx/dosespot`: `refill/refill-sla.ts`, `epcs/ial2.ts`, `epcs/signing-session.ts`,
-// `transmission/enqueue.ts`) and move the entry from DEFERRED to BUILT in the same change.
+// WHAT "BUILT" DOES AND DOES NOT MEAN. Each queue runs only for a tenant whose DoseSpot configuration is complete
+// (`DOSESPOT_TENANT_CONFIGS`); with none, the adapter is UNBOUND, nothing is queued for transmission and orders keep
+// activating locally (`not_required`). And nothing here has ever spoken to a real DoseSpot: the endpoints and field
+// names that no readable spec confirmed are flagged in `client/endpoints.ts` / `client/mappers.ts` and listed in
+// `docs/history/m12-dosespot-adapter.md` under "requires sandbox verification". `adapterCaveats` carries the one
+// per-queue fact an operator needs before enabling it.
+import { M12_CRON_QUEUES } from "./queues";
 
 /** The ten §4.8 queue names, verbatim. */
 export const M12_SPEC_QUEUE_NAMES = [
@@ -39,99 +36,92 @@ export interface M12BuiltQueue {
   readonly status: "built";
   /** The live worker / route that runs it. */
   readonly builtBy: string;
+  /** What must still be confirmed against a DoseSpot sandbox before this queue is trusted in production. */
+  readonly adapterCaveats: string;
 }
 
+/** Retained for the boot log / tests: nothing is deferred any more, but the shape stays so a future regression
+ * (a queue dropping back to deferred) is a typed, visible change. */
 export interface M12DeferredQueue {
   readonly queue: M12SpecQueueName;
   readonly status: "deferred";
-  /** Why it is not built. */
   readonly blockedOn: string;
-  /** What has to exist for the build to be real rather than a stub. */
   readonly unblockedBy: string;
-  /** The data the job would read — and whether anything produces it today. */
   readonly upstreamData: string;
 }
 
 export type M12QueueEntry = M12BuiltQueue | M12DeferredQueue;
 
-const NO_VENDOR =
-  "no DoseSpot credentials, base URL, vendor documentation or recorded sample exist in this repository (F-230); the production client is createUnboundDoseSpotClient";
-
 export const M12_QUEUE_CATALOG: readonly M12QueueEntry[] = [
   {
     queue: "dosespot.transmit_newrx",
-    status: "deferred",
-    blockedOn: `${NO_VENDOR}, so there is no transmitNewRx transport to call`,
-    unblockedBy:
-      "a real DoseSpotClient.transmitNewRx binding plus the enqueue-transmission service moving signed orders to queued_for_transmission (packages/dosespot transmission/enqueue.ts has the pure decisions)",
-    upstreamData:
-      "medication_order rows in queued_for_transmission — nothing produces them today: every order is dosespot_send_state not_required and activates locally",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.transmitNewRx} (jobs/transmit-newrx.ts) — claims queued orders, calls DoseSpotClient.transmitNewRx with the D8 key, settles the order + transmission row`,
+    adapterCaveats:
+      "coded-prescription body field names and the send confirmation shape (requires sandbox verification)",
   },
   {
     queue: "dosespot.transmit_queued_on_recovery",
-    status: "deferred",
-    blockedOn:
-      "it drains on m12.dosespot_recovered (circuit close), and with no vendor transport the breaker never opens or closes",
-    unblockedBy: "the transmit_newrx worker and a breaker driven by real DoseSpot calls",
-    upstreamData: "queued_for_transmission rows accumulated during an outage — none exist",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.transmitQueuedOnRecovery} (jobs/transmit-newrx.ts) — reclaims crashed in-flight claims and drains the backlog an outage accumulated; poll-driven rather than event-driven`,
+    adapterCaveats: "none beyond transmit_newrx",
   },
   {
     queue: "dosespot.patient_sync",
     status: "built",
     builtBy:
-      "m12 dosespot_sync_queue drain (dosespot.sync_queue_drain, jobs/worker.ts) — fails closed with DegradedError against the unbound client",
+      "dosespot.sync_queue_drain (jobs/worker.ts) — edits an already-known DoseSpot patient, creates otherwise, drops the RxBenefit cache on a demographic change",
+    adapterCaveats: "add/edit patient body field names (requires sandbox verification)",
   },
   {
     queue: "dosespot.fetch_medhx",
     status: "built",
     builtBy:
-      "the medhx_fetch kind of the same dosespot_sync_queue drain (jobs/worker.ts + history/ingest.ts) — records nothing against the unbound client",
+      "the medhx_fetch kind of dosespot.sync_queue_drain (jobs/worker.ts + history/ingest.ts)",
+    adapterCaveats: "medication-history item field names; paging parameters not sent (one page)",
   },
   {
     queue: "dosespot.rx_benefit_prewarm",
-    status: "deferred",
-    blockedOn: `${NO_VENDOR}, and the rx-benefit lookup it would prewarm is itself a vendor call`,
-    unblockedBy: "a real DoseSpotClient rx-benefit binding and the rx_benefit_cache write path",
-    upstreamData: "rx_benefit_cache — empty; the lookup route answers from the unbound client",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.rxBenefitPrewarm} (jobs/rx-benefit-prewarm.ts) — fills rx_benefit_cache from real lookups only`,
+    adapterCaveats:
+      "NO RxBenefit endpoint exists in the public v2 swagger: lookupRxBenefit fails closed, so the cache stays empty until a sandbox-verified endpoint is added to client/endpoints.ts",
   },
   {
     queue: "dosespot.refill_sla",
-    status: "deferred",
-    blockedOn:
-      "there is no refill ingest: the webhook route records receipts but nothing folds a refill-request event into refill_request",
-    unblockedBy:
-      "the vendor refill-request ingest (the §4.2 refill-request handler); the clock math is already in packages/dosespot refill/refill-sla.ts",
-    upstreamData: "refill_request rows with a pending status — none are ever written",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.refillSla} (jobs/refill-sla.ts) — once-per-stage 48h/72h events over pending refill_request rows`,
+    adapterCaveats:
+      "rows come from the webhook refill_request handler, whose payload is provisional (WARNING: DOSESPOT_WIRE_MAPPING_VERIFIED=false); respondToRefillRequest has no verified endpoint",
   },
   {
     queue: "dosespot.ial2_expiry_warn",
-    status: "deferred",
-    blockedOn:
-      "nothing writes dosespot_prescriber.ial2_expires_at: IAL2 proofing completes at the vendor, and no enrollment callback exists",
-    unblockedBy:
-      "the prescriber-enrollment / IAL2 vendor callback that records ial2_expires_at; the tiering is already in packages/dosespot epcs/ial2.ts",
-    upstreamData: "dosespot_prescriber.ial2_expires_at — always NULL",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.ial2ExpiryWarn} (jobs/ial2-and-epcs-sweeps.ts) — 30d/7d stages, expired prescribers lose EPCS`,
+    adapterCaveats:
+      "ial2_expires_at is written by the prescriber_status_changed webhook handler (provisional payload); no IDP polling exists",
   },
   {
     queue: "dosespot.transmission_timeout_sweep",
-    status: "deferred",
-    blockedOn: "no order ever reaches the transmitted state, because nothing transmits",
-    unblockedBy: "the transmit_newrx worker and the script-status-update webhook handler",
-    upstreamData: "medication_order rows in transmitted with no webhook — none exist",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.transmissionTimeoutSweep} (jobs/transmission-sweep.ts) — polls getPrescriptionStatus for ack/nack and times out an unacknowledged order after 24h`,
+    adapterCaveats:
+      "Prescription.Status enum is swagger-verified; the list response envelope key is read tolerantly",
   },
   {
     queue: "dosespot.epcs_attempt_expiry_sweep",
-    status: "deferred",
-    blockedOn:
-      "EPCS signing is gated off (ADR-006, EPCS_NOT_CERTIFIED), so no epcs_signing_attempt row is ever written",
-    unblockedBy: "EPCS certification (21 CFR 1311.300) and the signing-session writer",
-    upstreamData: "epcs_signing_attempt rows with outcome pending — none exist",
+    status: "built",
+    builtBy: `${M12_CRON_QUEUES.epcsAttemptExpirySweep} (jobs/ial2-and-epcs-sweeps.ts) — pending epcs_signing_attempt past expires_at => failed_timeout and the order back to pending_signature`,
+    adapterCaveats:
+      "EPCS signing itself stays gated off (EPCS_NOT_CERTIFIED, ADR-006); this sweep only closes attempts that exist",
   },
   {
     queue: "dosespot.dispatch_webhook",
     status: "built",
     builtBy:
-      "POST /webhooks/dosespot (webhooks/webhook-route.ts + webhooks/ingest.ts): verified, encrypted receipt, dedup, then dispatched inline — PARTIAL: only script_status_update Dispensed/PickedUp has a handler; refill-request, ack/nack, MedHx-result and patient-mismatch are recorded as *_not_handled (the refill_sla / transmission_timeout deferrals below depend on those handlers)",
+      "POST /webhooks/dosespot (webhooks/webhook-route.ts + webhooks/ingest.ts): verified, encrypted receipt, dedup, then dispatched inline by event type — script_status_update (dispensed / ack / nack), refill_request, prescriber_status_changed",
+    adapterCaveats:
+      "inner payload field names are OUR provisional mapping until a recorded DoseSpot delivery exists; medication_history_result and patient_mismatch are recorded as *_not_handled",
   },
 ];
 
@@ -139,8 +129,18 @@ export const M12_DEFERRED_QUEUES: readonly M12DeferredQueue[] = M12_QUEUE_CATALO
   (q): q is M12DeferredQueue => q.status === "deferred",
 );
 
-/** The boot-time warning text: names every deferred queue and the posture it leaves the tenant in. */
+/** The boot-time line: honest about the adapter being unbound until credentials are configured. */
+export function describeM12AdapterPosture(configuredOrganizationIds: readonly string[]): string {
+  const built = M12_QUEUE_CATALOG.filter((q) => q.status === "built").length;
+  if (configuredOrganizationIds.length === 0) {
+    return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; the DoseSpot adapter is UNBOUND until per-tenant credentials are configured (DOSESPOT_TENANT_CONFIGS) — nothing is queued for transmission and orders keep activating locally; vendor endpoints/field names are unverified until a sandbox run`;
+  }
+  return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; DoseSpot adapter bound for ${configuredOrganizationIds.length} tenant(s); vendor endpoints/field names are unverified until a sandbox run (see docs/history/m12-dosespot-adapter.md)`;
+}
+
+/** Back-compat for the first pass's boot line (kept so an unexpected deferral is still reported). */
 export function describeM12DeferredQueues(): string {
-  const names = M12_DEFERRED_QUEUES.map((q) => q.queue).join(", ");
-  return `M12 §4.8 queues DEFERRED until the DoseSpot vendor integration exists (every order stays dosespot_send_state not_required and activates locally): ${names}`;
+  return M12_DEFERRED_QUEUES.length === 0
+    ? "M12 §4.8: no deferred queues"
+    : `M12 §4.8 queues DEFERRED: ${M12_DEFERRED_QUEUES.map((q) => q.queue).join(", ")}`;
 }

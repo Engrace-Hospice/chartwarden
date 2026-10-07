@@ -142,7 +142,8 @@ export type M12TableName =
   | "dosespot_patient_sync"
   | "medication_history_pull"
   | "medication_history_record"
-  | "medication_order_dispense";
+  | "medication_order_dispense"
+  | "rx_benefit_cache";
 
 /** Per-table audit denylist (§7.6). Empty array = no free-text/PHI column on that table. */
 export const M12_AUDIT_DENYLIST: { readonly [K in M12TableName]: readonly string[] } = {
@@ -158,6 +159,8 @@ export const M12_AUDIT_DENYLIST: { readonly [K in M12TableName]: readonly string
   medication_history_pull: [],
   medication_history_record: ["drug_name", "sig_text"],
   medication_order_dispense: [],
+  // GAP-037 (migration 0411) — no free-text column.
+  rx_benefit_cache: [],
 } as const;
 
 // ── §4.4 outbox event names (the canonical `m12.*` wire identifiers the dispatcher + arch:gaps validate) ─

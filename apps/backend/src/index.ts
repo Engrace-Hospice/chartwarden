@@ -22,12 +22,17 @@ import {
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
-import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
-import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
-import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messaging";
 // F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
 // M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
 // the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
+import {
+  createEnvTenantConfigResolver,
+  createHttpDoseSpotClient,
+  unverifiedEndpoints,
+} from "@wardenx/dosespot";
+import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
+import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
+import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messaging";
 import { type PseudonymKeyProvider, loadPseudonymKekRing } from "@wardenx/subscription-billing";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import {
@@ -82,15 +87,6 @@ import {
   withM24LaunchGatewayDefault,
 } from "./bootstrap/index";
 import {
-  PARTITION_ROTATION_CRON,
-  PARTITION_ROTATION_QUEUE,
-  classifyPartitionCoverage,
-  readPartitionCoverage,
-  runPartitionRotation,
-  summarizeRotation,
-  wirePartitionRotationTenancy,
-} from "./bootstrap/jobs/partition-rotation";
-import {
   AUDIT_ARCHIVE_CRON,
   AUDIT_ARCHIVE_QUEUE,
   auditArchiveConfigFromEnv,
@@ -104,6 +100,15 @@ import {
   scheduleIdempotencyCleanup,
   wireIdempotencyCleanupTenancy,
 } from "./bootstrap/jobs/idempotency-cleanup";
+import {
+  PARTITION_ROTATION_CRON,
+  PARTITION_ROTATION_QUEUE,
+  classifyPartitionCoverage,
+  readPartitionCoverage,
+  runPartitionRotation,
+  summarizeRotation,
+  wirePartitionRotationTenancy,
+} from "./bootstrap/jobs/partition-rotation";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
@@ -251,6 +256,7 @@ import {
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
+  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   buildM5AdmissionDischargedConsumer,
@@ -258,10 +264,8 @@ import {
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
   buildM5ExtractionAllergyConsumer,
-  buildM5GeocodeAddressConsumer,
-  patientIsDeceasedForOrg,
-  resolveGeocoder,
   buildM5ExtractionWritebackConsumer,
+  buildM5GeocodeAddressConsumer,
   buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
@@ -283,15 +287,16 @@ import {
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
   patientIdsPageForOrg,
+  patientIsDeceasedForOrg,
   rebuildPrivacySnapshotsForOrg,
+  registerAmendmentSlaWorker,
   registerPatientErasers,
   registerPatientSeams,
-  M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
-  registerAmendmentSlaWorker,
-  scheduleAmendmentSla,
-  wireAmendmentSlaTenancy,
   registerSnapshotRebuildWorker,
+  resolveGeocoder,
+  scheduleAmendmentSla,
   scheduleSnapshotRebuild,
+  wireAmendmentSlaTenancy,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
@@ -304,6 +309,7 @@ import {
   M6_PLATFORM_JOB_ID,
   activeAdmissionDraftContextForPatient,
   activeAdmissionSitingForPatientForOrg,
+  admissionCensusSummaryForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
   buildM6CarePlanAddendumConsumer,
@@ -340,7 +346,6 @@ import {
   scheduleM6Jobs,
   transferInNoticeContextForOrg,
   wireM6Tenancy,
-  admissionCensusSummaryForOrg,
 } from "./modules/06-admission/index";
 // F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
 // restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
@@ -470,7 +475,6 @@ import {
   scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
 import {
-  M12_DEFERRED_QUEUES,
   M12_OUTBOX_EVENTS,
   M12_PLATFORM_JOB_ID,
   buildM12AdmissionActivatedMedHxConsumer,
@@ -486,6 +490,7 @@ import {
   buildM12RecertificationMedHxConsumer,
   buildM12ReconciliationDiscontinueConsumer,
   buildM12VerbalExpiredConsumer,
+  createBreakerEdgeRecorder,
   createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
   createDrizzleMedHxFetchEnqueuePort,
@@ -493,7 +498,7 @@ import {
   createDrizzlePatientSyncEnqueuePort,
   createEnvWebhookSecretResolver,
   createWebhookBodyCipher,
-  describeM12DeferredQueues,
+  describeM12AdapterPosture,
   idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
@@ -504,7 +509,9 @@ import {
   registerDoseSpotSeams,
   registerDoseSpotSyncQueueWorker,
   registerDoseSpotWebhookRoute,
+  registerM12CronWorkers,
   scheduleDoseSpotSyncQueueDrain,
+  scheduleM12Jobs,
   wireM12Tenancy,
 } from "./modules/12-dosespot/index";
 import { medicationOrdersForAdmissionForOrg } from "./modules/12-dosespot/seams/drizzle-store";
@@ -746,12 +753,10 @@ import {
   type DocLensSudDetectorPort,
   type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
-  M22_OUTBOX_EVENTS,
   M22_FORM_RENDER_PLATFORM_JOB_ID,
+  M22_OUTBOX_EVENTS,
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
-  registerAiBlockValidatorWorker,
-  registerRetentionRotationWorker,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -779,6 +784,7 @@ import {
   expireRecordsRequestsForOrg,
   getDocumentRenderer,
   mountDocumentRoutes,
+  registerAiBlockValidatorWorker,
   registerDocLensIntakeWorker,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -786,6 +792,7 @@ import {
   registerDocumentSeams,
   registerFormRenderWorker,
   registerRecordsRequestExpiryWorker,
+  registerRetentionRotationWorker,
   s3ObjectStoreConfigFromEnv,
   scheduleAiBlockValidator,
   scheduleFormRender,
@@ -816,11 +823,12 @@ import {
   buildClaimValidationService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleOrgMacJurisdictionReader,
+  buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
-  buildDrizzlePlatformAdminService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
@@ -839,7 +847,6 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
-  buildDrizzleOrgMacJurisdictionReader,
   buildMacJurisdictionLister,
   buildNoticeWindowPort,
   buildTransferNoticeService,
@@ -2812,6 +2819,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // GAP-037 — the DoseSpot adapter. UNBOUND unless `DOSESPOT_TENANT_CONFIGS` holds a complete config for a tenant:
+  // an unconfigured tenant gets a non-retryable DegradedError from every call, is never queued for transmission,
+  // and keeps activating orders locally. The breaker's open/close edges are collected here and published as
+  // `m12.dosespot_degraded` / `_recovered` by the next M12 cron tick.
+  const m12TenantConfig = createEnvTenantConfigResolver();
+  const m12BreakerEdges = createBreakerEdgeRecorder();
+  const m12DoseSpotClient = createHttpDoseSpotClient({
+    resolver: m12TenantConfig,
+    onBreakerEdge: (edge) => m12BreakerEdges.record(edge),
+  });
   // M35 §5.2 platform-ops admin surface runs its cross-tenant reads/writes through a SEPARATE platform
   // credential — NOT the tenant `wardenx_app` pool. The six PLATFORM-ONLY M35 tables
   // (revenue_recognition_snapshot, stripe_webhook_event, patient_pseudonym_key, stripe_api_call_audit,
@@ -3885,7 +3902,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           registerHeldTransmissionRoutes(app, {
             recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher),
           });
-          mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
+          mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher, {
+            transmissionEnabledFor: (organizationId) =>
+              m12TenantConfig.isConfiguredFor(organizationId),
+          }); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           // F-230 (#248) — the public `POST /webhooks/dosespot` (HMAC + replay window + dedup + DEK-encrypted receipt;
           // Dispensed/PickedUp -> `medication_order_dispense` + `m12.medication_order.dispensed_at_pharmacy`).
           // FAIL-CLOSED: with no `DOSESPOT_WEBHOOK_SECRETS` bound (the default — no DoseSpot credentials exist)
@@ -7591,6 +7611,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       activeOrgs: m12SyncActiveOrgs,
       outbox: m12OutboxPublisher,
       connection: queueConnection,
+      doseSpotClient: m12DoseSpotClient,
       demographicsForOrg: (organizationId, patientId) =>
         dosespotSyncDemographicsForOrg(dbHandle.db, organizationId, patientId),
     });
@@ -7606,11 +7627,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M12 dosespot_sync_queue drain schedule registration failed");
     }
-    // GAP-037 — the seven §4.8 queues that are NOT built (transmission + the refill / IAL2 / timeout / EPCS
-    // crons) are gated on the DoseSpot vendor integration; say so at every boot rather than leaving it implicit.
+    // GAP-037 — the seven §4.8 crons (transmit_newrx, transmit_queued_on_recovery, rx_benefit_prewarm, refill_sla,
+    // ial2_expiry_warn, transmission_timeout_sweep, epcs_attempt_expiry_sweep). The vendor-facing four run only for
+    // tenants with a bound adapter; the three DB-only ones run for every org.
+    const m12CronWorkers = registerM12CronWorkers({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m12OutboxPublisher,
+      client: m12DoseSpotClient,
+      activeOrgs: m12SyncActiveOrgs,
+      config: m12TenantConfig,
+      breakerEdges: m12BreakerEdges,
+    });
+    attachDlqAlertsToAll(m12CronWorkers, "m12");
+    app.addHook("onClose", async () => {
+      await Promise.all(m12CronWorkers.map((w) => w.close()));
+    });
+    try {
+      const m12CronQueues = await scheduleM12Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m12CronQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M12 §4.8 cron-schedule registration failed");
+    }
     app.log.warn(
-      { deferredQueues: M12_DEFERRED_QUEUES.map((q) => q.queue) },
-      describeM12DeferredQueues(),
+      {
+        configuredTenants: m12TenantConfig.configuredOrganizationIds().length,
+        unverifiedEndpoints: unverifiedEndpoints(),
+      },
+      describeM12AdapterPosture(m12TenantConfig.configuredOrganizationIds()),
     );
     // M19 §4.5 path 1 / §4.8 — the `on_call_roster_sync_queue` drain (`m19.shift-sync.debounced`) +
     // catch-up-seed workers (m19 `handlers-unbound` group, #248; F-155's own finding, now built).

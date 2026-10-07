@@ -857,7 +857,7 @@ describe.skipIf(!DB_URL)(
         const app = await makeApp(configured());
         const before = await counts();
         const sent = sender.delivery(
-          body(ORG_A, `ev-${randomUUID()}`, { dosespot_prescription_id: rx, status: "Sent" }),
+          body(ORG_A, `ev-${randomUUID()}`, { dosespot_prescription_id: rx, status: "Pending" }),
         );
         expect(
           (
@@ -886,7 +886,7 @@ describe.skipIf(!DB_URL)(
           ).statusCode,
         ).toBe(200);
         const refill = sender.delivery(
-          body(ORG_A, `ev-${randomUUID()}`, { anything: 1 }, "refill_request"),
+          body(ORG_A, `ev-${randomUUID()}`, { anything: 1 }, "medication_history_result"),
         );
         expect(
           (
