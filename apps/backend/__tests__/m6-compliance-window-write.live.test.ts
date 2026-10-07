@@ -84,7 +84,8 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
    * (recert, F2F-gated) period. Mirrors `m6-election-cti-write.live.test.ts`'s "recert (period 2):
    * hospice sign fully signs + activates the period" test — the minimal real write path that gets a
    * period to `active` with a real `scheduled_end_at`, needing neither an activated admission nor a
-   * signed election statement (`signCtiHospiceMd` alone activates a recert period, R-EL sequence < 3).
+   * signed election statement (`signCtiHospiceMd` alone activates a recert period whose start date — the
+   * day after period 1 ends — has arrived, R-EL sequence < 3).
    */
   async function pendingRecertPeriod3(
     org: string,
@@ -102,6 +103,16 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       actorUserId: user,
       patientId: randomUUID(),
     });
+    // Period 1 ran and ended yesterday (org-local), so period 2 — contiguous, 42 CFR 418.21(a) — starts
+    // today and its (late) recert signature below starts it at once.
+    await admin.query(
+      `UPDATE election_period
+          SET status='active',
+              scheduled_end_at=(now() AT TIME ZONE 'America/New_York')::date - 1,
+              effective_at=(now() AT TIME ZONE 'America/New_York')::date - 90
+        WHERE admission_id=$1 AND sequence_number=1`,
+      [admissionId],
+    );
     const p2 = await svc.createElectionPeriod(org, admissionId);
     const cti2 = await svc.draftCti(
       org,
@@ -114,7 +125,7 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       "SELECT status, scheduled_end_at FROM election_period WHERE id=$1",
       [p2.id],
     );
-    expect(rows[0].status).toBe("active"); // §7.3 recert activates the period
+    expect(rows[0].status).toBe("active"); // §7.3 recert activates the period (its start date has arrived)
     const period2ScheduledEndAt = rows[0].scheduled_end_at.toISOString().slice(0, 10);
 
     const p3 = await svc.createElectionPeriod(org, admissionId);

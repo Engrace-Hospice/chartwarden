@@ -405,6 +405,10 @@ export function AdmissionDetail(): JSX.Element {
         setActionError("Choose the service location this admission is served from.");
       else if (status === 422 && code === "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY")
         setActionError("That location does not belong to this admission's hospice.");
+      else if (status === 422 && code === "CTI_NARRATIVE_REQUIRED")
+        setActionError(
+          "The CTI needs a physician narrative of at least 200 characters before it can be signed.",
+        );
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
       return false;

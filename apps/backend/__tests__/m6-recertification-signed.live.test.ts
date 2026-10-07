@@ -5,14 +5,14 @@
  * through the production write service (referral → election → CTI → activation; period 2/3 activation
  * through `signCtiHospiceMd`, the path the F-217 adequacy gate guards).
  *
- *   · a signed recert order opens period 2 PENDING (ninety_day, source_order_id stamped) + publishes
- *     `m6.election.period_started` through the real publisher
+ *   · a signed recert order opens period 2 PENDING (ninety_day, source_order_id stamped) and publishes NO
+ *     `m6.election.period_started` — that fires once, when the period actually starts on its start date
  *   · a redelivery is a settled no-op (one row, one event); a manual open that raced ahead is not duplicated
  *   · period kinds follow 90/90/60: 2 -> ninety_day, 3 -> sixty_day, 4 -> sixty_day
  *   · unknown / discharged admission, mismatched periodEndDate, malformed payload SETTLE (return, no throw)
  *   · cross-tenant: org B's event naming org A's admission opens nothing
- *   · a transient failure (publisher throws) PROPAGATES and rolls the period back (dispatcher retries)
- *   · the gate is intact: activating the auto-opened period without F2F/CTI adequacy still refuses 409
+ *   · opening touches no publisher (a failing one cannot block or roll back the open)
+ *   · the gate is intact: signing the auto-opened period's CTI without a 200-char narrative refuses 422
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:recertification-signed:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
@@ -24,6 +24,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { runElectionPeriodAutoEndCron } from "../src/modules/06-admission/jobs/cron-workers";
 import {
   applyRecertificationSigned,
   buildM6RecertificationSignedConsumer,
@@ -164,7 +165,11 @@ describe.skipIf(!DB_URL)(
         payload: { orderId, admissionId, periodEndDate, certifyingPhysicianMdmId: randomUUID() },
       }).then((outcome) => ({ outcome, orderId }));
 
-    /** Activate a pending period >= 2 via the production CTI path (F2F first when sequence >= 3). */
+    /**
+     * Activate a pending period >= 2 via the production CTI path (F2F first when sequence >= 3): sign its
+     * recert CTI (early), then run the hourly auto-end cron on its start date — the day after its
+     * predecessor ends (42 CFR 418.21(a)) — which completes the predecessor and starts it.
+     */
     async function activatePending(periodId: string, sequence: number) {
       const cti = await svc.draftCti(
         ORG_A,
@@ -189,6 +194,22 @@ describe.skipIf(!DB_URL)(
         );
       }
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      const { rows } = await admin.query(
+        `SELECT (prior.scheduled_end_at + 1)::text AS start
+           FROM election_period ep
+           JOIN election_period prior
+             ON prior.admission_id = ep.admission_id AND prior.sequence_number = ep.sequence_number - 1
+          WHERE ep.id = $1`,
+        [periodId],
+      );
+      const start = rows[0].start as string;
+      await runElectionPeriodAutoEndCron({
+        connection: {} as never,
+        db: handle.db,
+        outbox: validatingM6Outbox(),
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        now: () => new Date(`${start}T17:00:00.000Z`),
+      });
     }
 
     beforeAll(async () => {
@@ -251,9 +272,9 @@ describe.skipIf(!DB_URL)(
         new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
       expect(rows[1]?.expectedStart).toBe(dayAfter(p1?.end as string));
       expect(rows[0]?.expectedStart).toBeNull();
+      // Only period 1 has started; period 2 is announced when it starts on its start date, not when opened.
       const events = await startedEvents(a.admissionId);
-      expect(events.map((e) => e.sequence)).toEqual([1, 2]);
-      expect(events[1]?.electionPeriodId).toBe(rows[1]?.id);
+      expect(events.map((e) => e.sequence)).toEqual([1]);
     });
 
     it("the consumer binding's handle() is the same path (dispatcher shape)", async () => {
@@ -278,7 +299,7 @@ describe.skipIf(!DB_URL)(
       const again = await deliver(ORG_A, a.admissionId, p1?.end as string, first.orderId);
       expect(again.outcome).toEqual({ kind: "settled", reason: "already_applied" });
       expect(await periods(a.admissionId)).toHaveLength(2);
-      expect(await startedEvents(a.admissionId)).toHaveLength(2);
+      expect(await startedEvents(a.admissionId)).toHaveLength(1); // period 1 only — period 2 has not started
     });
 
     it("a period staff already opened manually is not duplicated by a different order", async () => {
@@ -353,7 +374,7 @@ describe.skipIf(!DB_URL)(
       expect(await periods(a.admissionId)).toHaveLength(1);
     });
 
-    it("a transient publisher failure PROPAGATES and rolls the period back (dispatcher retries)", async () => {
+    it("opening a pending period touches no publisher: a failing one neither blocks nor rolls back the open", async () => {
       const a = await activate();
       const [p1] = await periods(a.admissionId);
       const boom = {
@@ -361,20 +382,19 @@ describe.skipIf(!DB_URL)(
           throw new Error("outbox down");
         },
       };
-      await expect(
-        applyRecertificationSigned(
-          { db: handle.db, outbox: boom },
-          {
-            organizationId: ORG_A,
-            payload: {
-              orderId: randomUUID(),
-              admissionId: a.admissionId,
-              periodEndDate: p1?.end,
-            },
+      const outcome = await applyRecertificationSigned(
+        { db: handle.db, outbox: boom },
+        {
+          organizationId: ORG_A,
+          payload: {
+            orderId: randomUUID(),
+            admissionId: a.admissionId,
+            periodEndDate: p1?.end,
           },
-        ),
-      ).rejects.toThrow("outbox down");
-      expect(await periods(a.admissionId)).toHaveLength(1);
+        },
+      );
+      expect(outcome.kind).toBe("opened");
+      expect(await periods(a.admissionId)).toHaveLength(2);
     });
 
     it("the gate is intact: the auto-opened period still refuses activation without F2F/CTI adequacy", async () => {
@@ -382,7 +402,7 @@ describe.skipIf(!DB_URL)(
       const [p1] = await periods(a.admissionId);
       expect((await deliver(ORG_A, a.admissionId, p1?.end as string)).outcome.kind).toBe("opened");
       const p2 = (await periods(a.admissionId))[1];
-      // a recert CTI with a too-short narrative cannot activate the auto-opened period
+      // a recert CTI with a too-short narrative cannot be signed, so cannot activate the auto-opened period
       const cti = await svc.draftCti(
         ORG_A,
         {
@@ -395,8 +415,8 @@ describe.skipIf(!DB_URL)(
         USER,
       );
       await expect(svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER)).rejects.toMatchObject({
-        code: "ELECTION_PERIOD_ADEQUACY_FAILED",
-        statusCode: 409,
+        code: "CTI_NARRATIVE_REQUIRED",
+        statusCode: 422,
       });
       expect((await periods(a.admissionId))[1]?.status).toBe("pending");
     });
