@@ -36,8 +36,8 @@ import {
   registerPredicateIdempotent,
 } from "@wardenx/auth";
 import { fhirInboundIsPatientScoped } from "@wardenx/fhir";
-import { getSeam } from "../../bootstrap/index";
 import type { FhirInboundOwnerModule } from "@wardenx/types";
+import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M28 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M28_FHIR_ABAC_PREDICATES = [
@@ -237,7 +237,8 @@ export function buildFhirGatewayAbacPredicates(
         .inboundSubjectPatient(context.organizationId, proposalId)
         .catch(() => null);
       if (subject === null) return false; // absent / unreadable
-      if (subject.subjectPatientId === null) return !fhirInboundIsPatientScoped(subject.resourceType);
+      if (subject.subjectPatientId === null)
+        return !fhirInboundIsPatientScoped(subject.resourceType);
       if (hasOrgWideScope(context.roles ?? [])) return true;
       if (!context.userId) return false;
       try {

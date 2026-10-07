@@ -45,12 +45,12 @@ import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
-import { activationPromotesToActive } from "../patient-status-transitions";
-import { type M5OutboxPort } from "../deceased-db";
+import type { M5OutboxPort } from "../deceased-db";
 import {
-  transitionPatientOnAdmissionActivated,
   type PatientStatus,
+  transitionPatientOnAdmissionActivated,
 } from "../lifecycle/admission-activation";
+import { activationPromotesToActive } from "../patient-status-transitions";
 
 const P = schema.patients;
 
@@ -79,9 +79,7 @@ function factsOf(payload: unknown): AdmissionActivatedPayload {
   const read = (key: string): string => {
     const value = p[key];
     if (typeof value !== "string" || value.length === 0) {
-      throw new Error(
-        `${M5_ADMISSION_SITING_CONSUMER.consumerName}: payload has no ${key}`,
-      );
+      throw new Error(`${M5_ADMISSION_SITING_CONSUMER.consumerName}: payload has no ${key}`);
     }
     return value;
   };

@@ -93,7 +93,8 @@ describe("consumer dispatch (§4.4)", () => {
 describe("M25 subscription map (GAP-205: the dead registrar is gone; live bindings are ../outbox-consumers)", () => {
   it("lists every upstream topic once, each with a map entry", () => {
     expect(new Set(M25_UPSTREAM_SUBSCRIPTIONS).size).toBe(M25_UPSTREAM_SUBSCRIPTIONS.length);
-    for (const topic of M25_UPSTREAM_SUBSCRIPTIONS) expect(M25_SUBSCRIPTION_MAP[topic]).toBeDefined();
+    for (const topic of M25_UPSTREAM_SUBSCRIPTIONS)
+      expect(M25_SUBSCRIPTION_MAP[topic]).toBeDefined();
   });
 });
 

@@ -91,8 +91,18 @@ function harness(results: unknown[]) {
       {
         get(_t, prop) {
           if (prop === "then") return (resolve: (v: unknown) => void) => resolve(queue.shift());
-          if (prop === "set") return (v: unknown) => (sets.push(v), node);
-          if (prop === "values") return (v: unknown) => (values.push(v), node);
+          if (prop === "set") {
+            return (v: unknown) => {
+              sets.push(v);
+              return node;
+            };
+          }
+          if (prop === "values") {
+            return (v: unknown) => {
+              values.push(v);
+              return node;
+            };
+          }
           return () => node;
         },
       },

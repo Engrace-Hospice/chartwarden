@@ -22067,6 +22067,10 @@
                             "signerKind",
                             "representativeName",
                             "representativeRelationship",
+                            "acknowledgementSource",
+                            "acknowledgementDocumentId",
+                            "acknowledgementDocumentVersionId",
+                            "contentSource",
                             "refusedAt",
                             "refusalReason",
                             "signatureNotRequiredReason",
@@ -22418,6 +22422,53 @@
                                 }
                               ]
                             },
+                            "acknowledgementSource": {
+                              "anyOf": [
+                                {
+                                  "const": "structured",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "uploaded",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementDocumentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementDocumentVersionId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "contentSource": {
+                              "anyOf": [
+                                {
+                                  "const": "structured",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scanned_paper",
+                                  "type": "string"
+                                }
+                              ]
+                            },
                             "refusedAt": {
                               "anyOf": [
                                 {
@@ -22557,6 +22608,10 @@
                           "signerKind",
                           "representativeName",
                           "representativeRelationship",
+                          "acknowledgementSource",
+                          "acknowledgementDocumentId",
+                          "acknowledgementDocumentVersionId",
+                          "contentSource",
                           "refusedAt",
                           "refusalReason",
                           "signatureNotRequiredReason",
@@ -22905,6 +22960,53 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementSource": {
+                            "anyOf": [
+                              {
+                                "const": "structured",
+                                "type": "string"
+                              },
+                              {
+                                "const": "uploaded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementDocumentVersionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "contentSource": {
+                            "anyOf": [
+                              {
+                                "const": "structured",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scanned_paper",
+                                "type": "string"
                               }
                             ]
                           },
@@ -23134,6 +23236,10 @@
                             "signerKind",
                             "representativeName",
                             "representativeRelationship",
+                            "acknowledgementSource",
+                            "acknowledgementDocumentId",
+                            "acknowledgementDocumentVersionId",
+                            "contentSource",
                             "refusedAt",
                             "refusalReason",
                             "signatureNotRequiredReason",
@@ -23485,6 +23591,53 @@
                                 }
                               ]
                             },
+                            "acknowledgementSource": {
+                              "anyOf": [
+                                {
+                                  "const": "structured",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "uploaded",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementDocumentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementDocumentVersionId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "contentSource": {
+                              "anyOf": [
+                                {
+                                  "const": "structured",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scanned_paper",
+                                  "type": "string"
+                                }
+                              ]
+                            },
                             "refusedAt": {
                               "anyOf": [
                                 {
@@ -23624,6 +23777,10 @@
                           "signerKind",
                           "representativeName",
                           "representativeRelationship",
+                          "acknowledgementSource",
+                          "acknowledgementDocumentId",
+                          "acknowledgementDocumentVersionId",
+                          "contentSource",
                           "refusedAt",
                           "refusalReason",
                           "signatureNotRequiredReason",
@@ -23975,6 +24132,53 @@
                               }
                             ]
                           },
+                          "acknowledgementSource": {
+                            "anyOf": [
+                              {
+                                "const": "structured",
+                                "type": "string"
+                              },
+                              {
+                                "const": "uploaded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementDocumentVersionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "contentSource": {
+                            "anyOf": [
+                              {
+                                "const": "structured",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scanned_paper",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "refusedAt": {
                             "anyOf": [
                               {
@@ -24189,6 +24393,10 @@
                     "signerKind",
                     "representativeName",
                     "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
                     "refusedAt",
                     "refusalReason",
                     "signatureNotRequiredReason",
@@ -24537,6 +24745,53 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
                         }
                       ]
                     },
@@ -24924,6 +25179,10 @@
                     "signerKind",
                     "representativeName",
                     "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
                     "refusedAt",
                     "refusalReason",
                     "signatureNotRequiredReason",
@@ -25272,6 +25531,53 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
                         }
                       ]
                     },
@@ -25485,6 +25791,10 @@
                     "signerKind",
                     "representativeName",
                     "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
                     "refusedAt",
                     "refusalReason",
                     "signatureNotRequiredReason",
@@ -25833,6 +26143,53 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
                         }
                       ]
                     },
@@ -25977,13 +26334,13 @@
         }
       }
     },
-    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature": {
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/refusal/uploaded-evidence": {
       "post": {
-        "operationId": "postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignature",
+        "operationId": "postApiV1AdmissionsByIdElectionaddendumByAddendumIdRefusalUploadedevidence",
         "tags": [
           "06-admission"
         ],
-        "summary": "Record the beneficiary's or representative's receipt signature (418.24(c)(9))",
+        "summary": "Attach a scanned paper copy documenting a refusal to sign, with the reason (418.24(c)(9))",
         "parameters": [
           {
             "name": "id",
@@ -26035,6 +26392,10 @@
                     "signerKind",
                     "representativeName",
                     "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
                     "refusedAt",
                     "refusalReason",
                     "signatureNotRequiredReason",
@@ -26383,6 +26744,672 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "refusedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refusalReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredReason": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "death",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revocation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "documentId",
+                  "documentVersionId",
+                  "reason"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "furnishedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 5,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "refusedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignature",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record the beneficiary's or representative's receipt signature (418.24(c)(9))",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "patientId",
+                    "electionStatementId",
+                    "versionNumber",
+                    "trigger",
+                    "triggerCause",
+                    "triggeredAt",
+                    "status",
+                    "hospiceName",
+                    "patientName",
+                    "medicalRecordNumber",
+                    "terminalDiagnosis",
+                    "relatedDiagnoses",
+                    "items",
+                    "noNonCoveredItems",
+                    "clinicalExplanation",
+                    "guidelineReferences",
+                    "dueAt",
+                    "furnishedAt",
+                    "furnishMethod",
+                    "signedAt",
+                    "signerKind",
+                    "representativeName",
+                    "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
+                    "refusedAt",
+                    "refusalReason",
+                    "signatureNotRequiredReason",
+                    "signatureNotRequiredNote",
+                    "signatureNotRequiredAt",
+                    "documentId",
+                    "supersededById",
+                    "supersededAt",
+                    "createdAt",
+                    "updatedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "electionStatementId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "versionNumber": {
+                      "type": "integer"
+                    },
+                    "trigger": {
+                      "anyOf": [
+                        {
+                          "const": "initial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "poc_change",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "triggerCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeredAt": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "furnished",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "refused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signature_not_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_required",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hospiceName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicalRecordNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "terminalDiagnosis": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "icd10Code",
+                          "description"
+                        ],
+                        "properties": {
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "maxLength": 16,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "relatedDiagnoses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "icd10Code",
+                          "description"
+                        ],
+                        "properties": {
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "maxLength": 16,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "category",
+                          "description",
+                          "reasonNotCovered"
+                        ],
+                        "properties": {
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "condition",
+                                "type": "string"
+                              },
+                              {
+                                "const": "item",
+                                "type": "string"
+                              },
+                              {
+                                "const": "service",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drug",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "reasonNotCovered": {
+                            "minLength": 1,
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "problem",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dme",
+                                "type": "string"
+                              },
+                              {
+                                "const": "supply",
+                                "type": "string"
+                              },
+                              {
+                                "const": "service",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceId": {
+                            "minLength": 1,
+                            "maxLength": 64,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "noNonCoveredItems": {
+                      "type": "boolean"
+                    },
+                    "clinicalExplanation": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "guidelineReferences": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "furnishedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "furnishMethod": {
+                      "anyOf": [
+                        {
+                          "const": "paper",
+                          "type": "string"
+                        },
+                        {
+                          "const": "electronic_with_paper_copy",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signerKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeRelationship": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
                         }
                       ]
                     },
@@ -26618,6 +27645,10 @@
                     "signerKind",
                     "representativeName",
                     "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
                     "refusedAt",
                     "refusalReason",
                     "signatureNotRequiredReason",
@@ -26969,6 +28000,53 @@
                         }
                       ]
                     },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "refusedAt": {
                       "anyOf": [
                         {
@@ -27124,6 +28202,655 @@
                         "type": "null"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature/uploaded-evidence": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignatureUploadedevidence",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Attach a scanned signed paper copy as the receipt signature (418.24(c)(9)); a draft needs furnishedAt and is furnished on paper in the same step",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "patientId",
+                    "electionStatementId",
+                    "versionNumber",
+                    "trigger",
+                    "triggerCause",
+                    "triggeredAt",
+                    "status",
+                    "hospiceName",
+                    "patientName",
+                    "medicalRecordNumber",
+                    "terminalDiagnosis",
+                    "relatedDiagnoses",
+                    "items",
+                    "noNonCoveredItems",
+                    "clinicalExplanation",
+                    "guidelineReferences",
+                    "dueAt",
+                    "furnishedAt",
+                    "furnishMethod",
+                    "signedAt",
+                    "signerKind",
+                    "representativeName",
+                    "representativeRelationship",
+                    "acknowledgementSource",
+                    "acknowledgementDocumentId",
+                    "acknowledgementDocumentVersionId",
+                    "contentSource",
+                    "refusedAt",
+                    "refusalReason",
+                    "signatureNotRequiredReason",
+                    "signatureNotRequiredNote",
+                    "signatureNotRequiredAt",
+                    "documentId",
+                    "supersededById",
+                    "supersededAt",
+                    "createdAt",
+                    "updatedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "electionStatementId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "versionNumber": {
+                      "type": "integer"
+                    },
+                    "trigger": {
+                      "anyOf": [
+                        {
+                          "const": "initial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "poc_change",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "triggerCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeredAt": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "furnished",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "refused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signature_not_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_required",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hospiceName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicalRecordNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "terminalDiagnosis": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "icd10Code",
+                          "description"
+                        ],
+                        "properties": {
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "maxLength": 16,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "relatedDiagnoses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "icd10Code",
+                          "description"
+                        ],
+                        "properties": {
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "maxLength": 16,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "category",
+                          "description",
+                          "reasonNotCovered"
+                        ],
+                        "properties": {
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "condition",
+                                "type": "string"
+                              },
+                              {
+                                "const": "item",
+                                "type": "string"
+                              },
+                              {
+                                "const": "service",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drug",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "reasonNotCovered": {
+                            "minLength": 1,
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "problem",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dme",
+                                "type": "string"
+                              },
+                              {
+                                "const": "supply",
+                                "type": "string"
+                              },
+                              {
+                                "const": "service",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceId": {
+                            "minLength": 1,
+                            "maxLength": 64,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "noNonCoveredItems": {
+                      "type": "boolean"
+                    },
+                    "clinicalExplanation": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "guidelineReferences": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "furnishedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "furnishMethod": {
+                      "anyOf": [
+                        {
+                          "const": "paper",
+                          "type": "string"
+                        },
+                        {
+                          "const": "electronic_with_paper_copy",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signerKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeRelationship": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementDocumentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentSource": {
+                      "anyOf": [
+                        {
+                          "const": "structured",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanned_paper",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "refusedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refusalReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredReason": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "death",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revocation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signatureNotRequiredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "documentId",
+                  "documentVersionId",
+                  "signerKind",
+                  "signedAt"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "furnishedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "signerKind": {
+                    "anyOf": [
+                      {
+                        "const": "beneficiary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "representative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "representativeName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeRelationship": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "signedAt": {
+                    "format": "date-time",
+                    "type": "string"
                   }
                 }
               }

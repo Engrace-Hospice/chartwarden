@@ -24,13 +24,13 @@ import {
 } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { guardChromedRoute } from "./actor-session";
+import { AlertInboxProvider } from "./alert-inbox";
 import {
   getGlobalResponseSignal,
   setGlobalResponseSignal,
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
-import { AlertInboxProvider } from "./alert-inbox";
 import { OfflineBanner } from "./offline-banner";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";

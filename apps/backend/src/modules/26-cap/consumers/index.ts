@@ -12,10 +12,7 @@ import {
   handleRemittancePosted,
   handleTransfer,
 } from "./handlers";
-import {
-  M26_SUBSCRIPTION_MAP,
-  M26_UPSTREAM_SUBSCRIPTIONS,
-} from "./subscription-map";
+import { M26_SUBSCRIPTION_MAP, M26_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 
 export { M26_SUBSCRIPTION_MAP, M26_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 export type { CapConsumerStore, AccrualLineToRecord, InpatientDayToRecord } from "./handlers";

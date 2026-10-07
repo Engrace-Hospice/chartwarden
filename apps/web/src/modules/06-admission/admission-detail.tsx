@@ -44,6 +44,7 @@ import {
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import { EvidenceUploadDrawer, type EvidenceUploadKind } from "./admission-evidence-upload";
 import { AdmissionHoldAction } from "./admission-hold-action";
 import {
   AdmissionRecommendationDrawer,
@@ -214,7 +215,16 @@ const GATE_ROWS: { code: string; label: string }[] = [
   { code: "cti_signed", label: "CTI signed by hospice medical director" },
 ];
 
-export function AdmissionDetail(): JSX.Element {
+/** The evidence upload drawer to open on mount (visual-QA harness seam; production passes nothing). */
+export type InitialEvidenceUpload =
+  | "nor-upload"
+  | "election-upload"
+  | "election-sign-upload"
+  | "cti-upload";
+
+export function AdmissionDetail({
+  initialUpload,
+}: { initialUpload?: InitialEvidenceUpload } = {}): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -252,7 +262,7 @@ export function AdmissionDetail(): JSX.Element {
     | "sign-cti-hospice-md"
     | "privacy"
     | null
-  >(null);
+  >(initialUpload ?? null);
   const [busy, setBusy] = useState(false);
   // 42 CFR 418.25(a) — the recommendation capture drawer replaces the readiness rail while open.
   const [recommending, setRecommending] = useState(false);
@@ -265,6 +275,17 @@ export function AdmissionDetail(): JSX.Element {
     "patient" | "legal_representative" | "caregiver"
   >("patient");
   const [uploadedSignatureDate, setUploadedSignatureDate] = useState("");
+  // The NOR / Election / CTI "Upload document" ceremonies open in the right-hand drawer (scanned-upload.tsx).
+  const uploadKind: EvidenceUploadKind | null =
+    ceremony === "nor-upload"
+      ? "nor"
+      : ceremony === "election-upload"
+        ? "election"
+        : ceremony === "election-sign-upload"
+          ? "election-signed"
+          : ceremony === "cti-upload"
+            ? "cti"
+            : null;
 
   const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>("electronic_witnessed");
   const [acknowledgedByName, setAcknowledgedByName] = useState("");
@@ -1022,7 +1043,44 @@ export function AdmissionDetail(): JSX.Element {
           </PageHeader>
         }
         aside={
-          recommending ? (
+          uploadKind ? (
+            <EvidenceUploadDrawer
+              kind={uploadKind}
+              state={{
+                file: uploadedFile,
+                signedState: uploadedSignedState,
+                signerName: uploadedSignerName,
+                signerRole: uploadedSignerRole,
+                signatureDate: uploadedSignatureDate,
+              }}
+              on={{
+                onFile: setUploadedFile,
+                onSignedState: setUploadedSignedState,
+                onSignerName: setUploadedSignerName,
+                onSignerRole: setUploadedSignerRole,
+                onSignatureDate: setUploadedSignatureDate,
+              }}
+              {...(uploadKind === "cti"
+                ? {
+                    signedByLabel: physicianLabel(
+                      admission.hospicePhysician,
+                      admission.hospicePhysicianId,
+                    ),
+                  }
+                : {})}
+              stage={uploadStage}
+              busy={busy}
+              error={actionError}
+              onSubmit={() =>
+                void (uploadKind === "nor"
+                  ? uploadNor()
+                  : uploadKind === "cti"
+                    ? uploadCti()
+                    : uploadElection())
+              }
+              onClose={closeCeremony}
+            />
+          ) : recommending ? (
             <AdmissionRecommendationDrawer
               admissionId={admission.id}
               version={admission.version}
@@ -1661,78 +1719,6 @@ export function AdmissionDetail(): JSX.Element {
           signer={{ name: "Admission coordinator", role: "This session" }}
           commitLabel="Close"
           onCommit={closeCeremony}
-          onCancel={closeCeremony}
-        />
-
-        <CeremonyModal
-          open={ceremony === "nor-upload"}
-          title="Upload Notice of Rights"
-          attestation={
-            <UploadedEvidenceForm
-              file={uploadedFile}
-              onFile={setUploadedFile}
-              stage={uploadStage}
-              error={actionError}
-            />
-          }
-          signer={{ name: "Admission coordinator", role: "This session" }}
-          commitLabel={busy ? "Uploading..." : "Attach document"}
-          onCommit={() => void uploadNor()}
-          onCancel={closeCeremony}
-        />
-
-        <CeremonyModal
-          open={ceremony === "election-upload" || ceremony === "election-sign-upload"}
-          title={
-            ceremony === "election-sign-upload"
-              ? "Upload signed Election Statement"
-              : "Upload Election Statement"
-          }
-          attestation={
-            <UploadedEvidenceForm
-              file={uploadedFile}
-              onFile={setUploadedFile}
-              stage={uploadStage}
-              signedState={uploadedSignedState}
-              onSignedState={setUploadedSignedState}
-              signerName={uploadedSignerName}
-              onSignerName={setUploadedSignerName}
-              signerRole={uploadedSignerRole}
-              onSignerRole={setUploadedSignerRole}
-              signatureDate={uploadedSignatureDate}
-              onSignatureDate={setUploadedSignatureDate}
-              signedOnly={ceremony === "election-sign-upload"}
-              error={actionError}
-            />
-          }
-          signer={{ name: "Admission coordinator", role: "This session" }}
-          commitLabel={busy ? "Uploading..." : "Attach document"}
-          onCommit={() => void uploadElection()}
-          onCancel={closeCeremony}
-        />
-
-        <CeremonyModal
-          open={ceremony === "cti-upload"}
-          title="Upload CTI"
-          attestation={
-            <UploadedEvidenceForm
-              file={uploadedFile}
-              onFile={setUploadedFile}
-              stage={uploadStage}
-              signedState={uploadedSignedState}
-              onSignedState={setUploadedSignedState}
-              signatureDate={uploadedSignatureDate}
-              onSignatureDate={setUploadedSignatureDate}
-              signedByLabel={physicianLabel(
-                admission!.hospicePhysician,
-                admission!.hospicePhysicianId,
-              )}
-              error={actionError}
-            />
-          }
-          signer={{ name: "Admission coordinator", role: "This session" }}
-          commitLabel={busy ? "Uploading..." : "Attach document"}
-          onCommit={() => void uploadCti()}
           onCancel={closeCeremony}
         />
 
@@ -2385,135 +2371,6 @@ function RequirementMethodPicker({
       ))}
     </div>
   );
-}
-
-function UploadedEvidenceForm({
-  file,
-  onFile,
-  stage,
-  signedState,
-  onSignedState,
-  signerName,
-  onSignerName,
-  signerRole,
-  onSignerRole,
-  signatureDate,
-  onSignatureDate,
-  signedByLabel,
-  signedOnly,
-  error,
-}: {
-  file: File | null;
-  onFile: (file: File | null) => void;
-  stage: UploadStage;
-  signedState?: "unsigned" | "signed";
-  onSignedState?: (state: "unsigned" | "signed") => void;
-  signerName?: string;
-  onSignerName?: (value: string) => void;
-  signerRole?: "patient" | "legal_representative" | "caregiver";
-  onSignerRole?: (value: "patient" | "legal_representative" | "caregiver") => void;
-  signatureDate?: string;
-  onSignatureDate?: (value: string) => void;
-  signedByLabel?: string;
-  signedOnly?: boolean;
-  error: string | null;
-}): JSX.Element {
-  const effectiveState = signedOnly ? "signed" : signedState;
-  return (
-    <div style={formStackStyle}>
-      <label htmlFor="evidence-upload-file" style={fieldLabel}>
-        Document
-      </label>
-      <input
-        id="evidence-upload-file"
-        type="file"
-        accept=".pdf,.docx,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/*"
-        onChange={(ev) => onFile(ev.target.files?.[0] ?? null)}
-      />
-      {file ? <span style={hintTextStyle}>{file.name}</span> : null}
-      {onSignedState ? (
-        <fieldset style={segmentedStyle}>
-          <legend className="wx-sr-only">Document signature status</legend>
-          {(["unsigned", "signed"] as const).map((state) => (
-            <button
-              key={state}
-              type="button"
-              aria-pressed={effectiveState === state}
-              onClick={() => onSignedState(state)}
-              disabled={signedOnly && state === "unsigned"}
-              style={effectiveState === state ? selectedSegmentStyle : segmentStyle}
-            >
-              {state === "signed" ? "Signed" : "Unsigned"}
-            </button>
-          ))}
-        </fieldset>
-      ) : null}
-      {effectiveState === "signed" ? (
-        <>
-          {signedByLabel ? <Field label="Signed by" value={signedByLabel} /> : null}
-          {onSignerName ? (
-            <>
-              <label htmlFor="uploaded-signer-name" style={fieldLabel}>
-                Signer name
-              </label>
-              <input
-                id="uploaded-signer-name"
-                value={signerName ?? ""}
-                onChange={(ev) => onSignerName(ev.target.value)}
-                style={inputStyle}
-              />
-            </>
-          ) : null}
-          {onSignerRole ? (
-            <>
-              <label htmlFor="uploaded-signer-role" style={fieldLabel}>
-                Signer role
-              </label>
-              <select
-                id="uploaded-signer-role"
-                value={signerRole ?? "patient"}
-                onChange={(ev) =>
-                  onSignerRole(ev.target.value as "patient" | "legal_representative" | "caregiver")
-                }
-              >
-                <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
-                <option value="caregiver">Caregiver</option>
-              </select>
-            </>
-          ) : null}
-          {onSignatureDate ? (
-            <>
-              <label htmlFor="uploaded-signature-date" style={fieldLabel}>
-                Signature date
-              </label>
-              <input
-                id="uploaded-signature-date"
-                type="date"
-                value={signatureDate ?? ""}
-                onChange={(ev) => onSignatureDate(ev.target.value)}
-                style={inputStyle}
-              />
-            </>
-          ) : null}
-        </>
-      ) : null}
-      {stage !== "idle" ? <span style={hintTextStyle}>{uploadStageLabel(stage)}</span> : null}
-      {error ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function uploadStageLabel(stage: UploadStage): string {
-  if (stage === "preparing") return "Preparing upload";
-  if (stage === "uploading") return "Uploading document";
-  if (stage === "verifying") return "Verifying document";
-  if (stage === "complete") return "Document uploaded";
-  return "";
 }
 
 function AdmissionDocuments({
@@ -3264,30 +3121,6 @@ const methodButtonStyle: CSSProperties = {
   color: "var(--color-on-surface)",
   cursor: "pointer",
 };
-const segmentedStyle: CSSProperties = {
-  // A <fieldset> (the segmented control's native group): drop its UA margin/padding/min-width.
-  margin: 0,
-  padding: 0,
-  minWidth: 0,
-  display: "inline-flex",
-  alignSelf: "flex-start",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "var(--radius-md)",
-  overflow: "hidden",
-};
-const segmentStyle: CSSProperties = {
-  padding: "0.45rem 0.75rem",
-  border: "none",
-  background: "var(--color-surface-lowest)",
-  color: "var(--color-on-surface)",
-  cursor: "pointer",
-};
-const selectedSegmentStyle: CSSProperties = {
-  ...segmentStyle,
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
-};
-
 // §5.2.5 activation gate as a Guardrail treatment: a blocked GuardChip summary (or a success pill when
 // ready) over a GateStepper whose rows render server-truth — each unmet precondition is `blocked`
 // (alert glyph, error tint, surfaced first), each met one `complete` (check, struck through).

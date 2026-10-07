@@ -406,7 +406,9 @@ function readNavMode(): NavMode {
 function readVisited(assessmentId: string | undefined): Set<string> {
   if (!assessmentId) return new Set();
   try {
-    const parsed: unknown = JSON.parse(readStorage(`${VISITED_KEY}.${assessmentId}`, "session") ?? "[]");
+    const parsed: unknown = JSON.parse(
+      readStorage(`${VISITED_KEY}.${assessmentId}`, "session") ?? "[]",
+    );
     return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []);
   } catch {
     return new Set();

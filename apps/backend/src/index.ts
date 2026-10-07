@@ -325,6 +325,7 @@ import {
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
+  createDocumentReaderEvidenceValidator,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
@@ -3303,6 +3304,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             return p ? { name: `${p.firstName} ${p.lastName}`.trim(), mrn: p.mrn } : null;
           },
         },
+        // A scanned signed paper copy (418.24(c)(9)) must be an ACTIVE M22 version of this patient + admission.
+        documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
       })
     : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered

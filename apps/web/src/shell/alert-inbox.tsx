@@ -1,7 +1,15 @@
-import { BACKGROUND_REQUEST_HEADERS, useApiClient, type operations } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, type operations, useApiClient } from "@wardenx/ui";
 // apps/web/src/shell — the shared client state for the global alert inbox. The shell owns the
 // global bell, while M36 consumes this provider for the full inbox screen (ADR-0030).
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { JSX, ReactNode } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { useSessionState } from "./session";
@@ -42,9 +50,7 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
   const loadInFlight = useRef<Promise<void> | null>(null);
   const scopeRef = useRef<string | null>(null);
   const scope =
-    status === "authenticated" && session
-      ? `${session.organizationId}:${session.userId}`
-      : null;
+    status === "authenticated" && session ? `${session.organizationId}:${session.userId}` : null;
 
   useEffect(() => {
     scopeRef.current = scope;
@@ -56,35 +62,38 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
     loadInFlight.current = null;
   }, [scope]);
 
-  const load = useCallback(async (options?: { background?: boolean }): Promise<void> => {
-    if (scope === null) return;
-    if (loadInFlight.current) return loadInFlight.current;
+  const load = useCallback(
+    async (options?: { background?: boolean }): Promise<void> => {
+      if (scope === null) return;
+      if (loadInFlight.current) return loadInFlight.current;
 
-    setLoading(true);
-    const requestScope = scope;
-    const response = options?.background
-      ? client.GET("/api/v1/alerts/inbox", { headers: BACKGROUND_REQUEST_HEADERS })
-      : client.GET("/api/v1/alerts/inbox");
-    const request = response
-      .then(({ data, error }) => {
-        if (scopeRef.current !== requestScope) return;
-        if (error) {
-          setLoadFailed(true);
-          return;
-        }
-        setLoadFailed(false);
-        setAlerts(data?.alerts ?? []);
-      })
-      .catch(() => {
-        if (scopeRef.current === requestScope) setLoadFailed(true);
-      })
-      .finally(() => {
-        if (scopeRef.current === requestScope) setLoading(false);
-        if (loadInFlight.current === request) loadInFlight.current = null;
-      });
-    loadInFlight.current = request;
-    return request;
-  }, [client, scope]);
+      setLoading(true);
+      const requestScope = scope;
+      const response = options?.background
+        ? client.GET("/api/v1/alerts/inbox", { headers: BACKGROUND_REQUEST_HEADERS })
+        : client.GET("/api/v1/alerts/inbox");
+      const request = response
+        .then(({ data, error }) => {
+          if (scopeRef.current !== requestScope) return;
+          if (error) {
+            setLoadFailed(true);
+            return;
+          }
+          setLoadFailed(false);
+          setAlerts(data?.alerts ?? []);
+        })
+        .catch(() => {
+          if (scopeRef.current === requestScope) setLoadFailed(true);
+        })
+        .finally(() => {
+          if (scopeRef.current === requestScope) setLoading(false);
+          if (loadInFlight.current === request) loadInFlight.current = null;
+        });
+      loadInFlight.current = request;
+      return request;
+    },
+    [client, scope],
+  );
 
   useEffect(() => {
     if (scope === null) return;
@@ -117,9 +126,10 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
 
       markingRead.current.add(alert.alertId);
       const readAt = new Date().toISOString();
-      setAlerts((current) =>
-        current?.map((item) => (item.alertId === alert.alertId ? { ...item, readAt } : item)) ??
-        current,
+      setAlerts(
+        (current) =>
+          current?.map((item) => (item.alertId === alert.alertId ? { ...item, readAt } : item)) ??
+          current,
       );
 
       // Deliberately background work: routing and the optimistic unread count do not wait on it.

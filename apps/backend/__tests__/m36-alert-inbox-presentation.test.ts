@@ -59,12 +59,9 @@ describe("M36 alert inbox presentation", () => {
     expect(normalizeAlertDeepLink(deepLink)).toBeNull();
   });
 
-  it.each(["/safety", "/patients/patient-123/emar"])(
-    "accepts internal path %s",
-    (deepLink) => {
-      expect(normalizeAlertDeepLink(deepLink)).toBe(deepLink);
-    },
-  );
+  it.each(["/safety", "/patients/patient-123/emar"])("accepts internal path %s", (deepLink) => {
+    expect(normalizeAlertDeepLink(deepLink)).toBe(deepLink);
+  });
 
   it("returns only the explicit presentation projection", () => {
     const result = projectAlertInboxPresentation(

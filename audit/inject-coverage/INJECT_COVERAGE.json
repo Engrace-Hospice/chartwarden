@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1453,
-    "coveredRoutes": 1453,
-    "directRoutesReferenced": 1397
+    "routes": 1455,
+    "coveredRoutes": 1455,
+    "directRoutesReferenced": 1399
   },
   "modules": [
     {
@@ -79,7 +79,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 85,
+      "routes": 87,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -90,11 +90,12 @@
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
+        "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 85
+      "directRoutesReferenced": 87
     },
     {
       "module": "07-care-plan",

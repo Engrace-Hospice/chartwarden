@@ -181,7 +181,9 @@ export async function applyMigrations(
   const fileSet = new Set(files);
   const orphaned = [...applied.keys()].filter((f) => !fileSet.has(f)).sort();
   for (const f of orphaned) {
-    console.log(`  ⚠ ${f} is recorded as applied but its file no longer exists (renamed or deleted)`);
+    console.log(
+      `  ⚠ ${f} is recorded as applied but its file no longer exists (renamed or deleted)`,
+    );
   }
   if (opts.strictOrphans && orphaned.length > 0) {
     throw new Error(

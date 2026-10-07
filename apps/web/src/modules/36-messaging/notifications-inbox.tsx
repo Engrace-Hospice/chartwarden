@@ -72,9 +72,9 @@ export function NotificationsInbox(): JSX.Element {
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
   >("all");
-  const [deliveryFilter, setDeliveryFilter] = useState<
-    "all" | AlertInboxItem["deliveryStatus"]
-  >("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | AlertInboxItem["deliveryStatus"]>(
+    "all",
+  );
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);

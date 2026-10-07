@@ -441,13 +441,10 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
       subject: { reference: "Patient/not-a-uuid" },
     });
     const legacyPatient = await insert("Patient", "m5", { id: patientA });
-    const sql = readFileSync(
-      join(MIGRATIONS_DIR, "0490_m28_inbound_subject_patient.sql"),
-      "utf8",
-    );
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0490_m28_inbound_subject_patient.sql"), "utf8");
     const backfill = sql.slice(sql.indexOf("UPDATE"), sql.indexOf("-->", sql.indexOf("UPDATE")));
     await admin.query(
-      'UPDATE fhir_inbound_resource SET subject_patient_id = NULL WHERE id = ANY($1::uuid[])',
+      "UPDATE fhir_inbound_resource SET subject_patient_id = NULL WHERE id = ANY($1::uuid[])",
       [[legacyMed, legacyBad, legacyPatient]],
     );
     await admin.query(backfill);
@@ -528,9 +525,12 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
     expect(await predicate(ctx, { proposalId: patientRow.id } as never)).toBe(true);
     // Cross-tenant: org B's actor cannot even see the proposal.
     expect(
-      await predicate({ ...(ctx as object), organizationId: ORG_B } as never, {
-        proposalId: medRow.id,
-      } as never),
+      await predicate(
+        { ...(ctx as object), organizationId: ORG_B } as never,
+        {
+          proposalId: medRow.id,
+        } as never,
+      ),
     ).toBe(false);
   });
 });

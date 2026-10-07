@@ -45,6 +45,7 @@ import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reade
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
+import { createDocumentReaderEvidenceValidator } from "./admission-document-validator";
 import {
   type AdmissionEvidenceDocumentValidator,
   createAdmissionEvidenceService,
@@ -624,29 +625,8 @@ export function createDbAdmissionRouteService(
    * The version must be the document's ACTIVE version and the document must be linked to this admission
    * and patient.
    */
-  const admissionDocumentValidator: AdmissionEvidenceDocumentValidator = {
-    async validateAdmissionEvidenceDocumentVersion(args) {
-      const link = await getSeam("DocumentReader").activeVersionLink({
-        organizationId: args.organizationId,
-        documentId: args.documentId,
-        documentVersionId: args.documentVersionId,
-      });
-      if (!link) {
-        throw new WardenXError(
-          "DOCUMENT_VERSION_UNAVAILABLE",
-          "The document version is no longer available.",
-          400,
-        );
-      }
-      if (link.patientId !== args.patientId || link.admissionId !== args.admissionId) {
-        throw new WardenXError(
-          "ADMISSION_EVIDENCE_DOCUMENT_MISMATCH",
-          "The uploaded document is not linked to this admission and patient.",
-          400,
-        );
-      }
-    },
-  };
+  const admissionDocumentValidator: AdmissionEvidenceDocumentValidator =
+    createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader"));
 
   /**
    * #50 — the service location this activation sites the admission at.

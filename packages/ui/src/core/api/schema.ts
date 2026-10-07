@@ -2233,6 +2233,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/refusal/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a scanned paper copy documenting a refusal to sign, with the reason (418.24(c)(9)) */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdRefusalUploadedevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature": {
         parameters: {
             query?: never;
@@ -2261,6 +2278,23 @@ export interface paths {
         put?: never;
         /** Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4)) */
         post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignaturenotrequired"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a scanned signed paper copy as the receipt signature (418.24(c)(9)); a draft needs furnishedAt and is furnished on paper in the same step */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignatureUploadedevidence"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27755,6 +27789,10 @@ export interface operations {
                             signerKind: "beneficiary" | "representative" | null;
                             representativeName: string | null;
                             representativeRelationship: string | null;
+                            acknowledgementSource: "structured" | "uploaded" | null;
+                            acknowledgementDocumentId: string | null;
+                            acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27805,6 +27843,10 @@ export interface operations {
                             signerKind: "beneficiary" | "representative" | null;
                             representativeName: string | null;
                             representativeRelationship: string | null;
+                            acknowledgementSource: "structured" | "uploaded" | null;
+                            acknowledgementDocumentId: string | null;
+                            acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27894,6 +27936,10 @@ export interface operations {
                             signerKind: "beneficiary" | "representative" | null;
                             representativeName: string | null;
                             representativeRelationship: string | null;
+                            acknowledgementSource: "structured" | "uploaded" | null;
+                            acknowledgementDocumentId: string | null;
+                            acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -27944,6 +27990,10 @@ export interface operations {
                             signerKind: "beneficiary" | "representative" | null;
                             representativeName: string | null;
                             representativeRelationship: string | null;
+                            acknowledgementSource: "structured" | "uploaded" | null;
+                            acknowledgementDocumentId: string | null;
+                            acknowledgementDocumentVersionId: string | null;
+                            contentSource: "structured" | "scanned_paper";
                             refusedAt: string | null;
                             refusalReason: string | null;
                             signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -28052,6 +28102,10 @@ export interface operations {
                         signerKind: "beneficiary" | "representative" | null;
                         representativeName: string | null;
                         representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -28135,6 +28189,10 @@ export interface operations {
                         signerKind: "beneficiary" | "representative" | null;
                         representativeName: string | null;
                         representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -28216,6 +28274,103 @@ export interface operations {
                         signerKind: "beneficiary" | "representative" | null;
                         representativeName: string | null;
                         representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdRefusalUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    /** Format: date-time */
+                    furnishedAt?: string;
+                    reason: string;
+                    /** Format: date-time */
+                    refusedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -28301,6 +28456,10 @@ export interface operations {
                         signerKind: "beneficiary" | "representative" | null;
                         representativeName: string | null;
                         representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
@@ -28383,6 +28542,105 @@ export interface operations {
                         signerKind: "beneficiary" | "representative" | null;
                         representativeName: string | null;
                         representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignatureUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    /** Format: date-time */
+                    furnishedAt?: string;
+                    signerKind: "beneficiary" | "representative";
+                    representativeName?: string | null;
+                    representativeRelationship?: string | null;
+                    /** Format: date-time */
+                    signedAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        acknowledgementSource: "structured" | "uploaded" | null;
+                        acknowledgementDocumentId: string | null;
+                        acknowledgementDocumentVersionId: string | null;
+                        contentSource: "structured" | "scanned_paper";
                         refusedAt: string | null;
                         refusalReason: string | null;
                         signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;

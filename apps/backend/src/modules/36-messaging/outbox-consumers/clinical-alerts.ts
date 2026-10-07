@@ -120,7 +120,8 @@ export function presentationForClinicalEvent(
       return {
         ...base,
         deepLink: "/scheduling/day",
-        message: "Route optimization is unavailable; the scheduling day view is using its fallback order.",
+        message:
+          "Route optimization is unavailable; the scheduling day view is using its fallback order.",
       };
     case "m8.encounter.signed":
       return {

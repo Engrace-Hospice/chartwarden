@@ -104,6 +104,10 @@ export const M6_ERROR_STATUS = {
   ADDENDUM_REFUSAL_REASON_REQUIRED: 422,
   ADDENDUM_REPRESENTATIVE_REQUIRED: 422,
   ADDENDUM_NOT_APPLICABLE: 409,
+  // A scanned signed paper copy attached to a never-furnished draft must say when the paper was handed over
+  // ((c)(10) date furnished); dates on paper are back-entered, never in the future, furnish <= acknowledgement.
+  ADDENDUM_FURNISH_DATE_REQUIRED: 422,
+  ADDENDUM_DATE_INVALID: 422,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;

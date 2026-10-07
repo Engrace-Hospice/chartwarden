@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, type ApiClient } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { JSX } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { AlertInboxProvider, type AlertInboxItem, useAlertInbox } from "./alert-inbox";
-import { SessionProvider, type Session } from "./session";
+import { type AlertInboxItem, AlertInboxProvider, useAlertInbox } from "./alert-inbox";
+import { type Session, SessionProvider } from "./session";
 
 const session: Session = {
   userId: "user-1",
@@ -36,7 +36,10 @@ function client(): ApiClient {
   } as unknown as ApiClient;
 }
 
-function Harness({ alert, navigate }: { alert: AlertInboxItem; navigate: NavigateFunction }): JSX.Element {
+function Harness({
+  alert,
+  navigate,
+}: { alert: AlertInboxItem; navigate: NavigateFunction }): JSX.Element {
   const { activateAlert, markRead } = useAlertInbox();
   return (
     <>
@@ -126,7 +129,9 @@ describe("shared alert inbox freshness", () => {
         .fn()
         .mockResolvedValueOnce({ data: { alerts: [unreadAlert] }, error: undefined })
         .mockResolvedValueOnce({
-          data: { alerts: [{ ...unreadAlert, alertId: "alert-2", readAt: "2026-10-07T01:00:00.000Z" }] },
+          data: {
+            alerts: [{ ...unreadAlert, alertId: "alert-2", readAt: "2026-10-07T01:00:00.000Z" }],
+          },
           error: undefined,
         }),
       POST: vi.fn(),

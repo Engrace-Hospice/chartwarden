@@ -18,10 +18,7 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  buildBootOutboxCatalog,
-  buildTxOutboxPublisher,
-} from "../src/bootstrap/outbox-persister";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 // Imported by exact file path, not the module barrel: the coordinator wires the barrel export
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
@@ -35,12 +32,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
-];
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -119,12 +111,7 @@ describe.skipIf(!DB_URL)(
            (organization_id, patient_id, provider_entity_id, location_id, status, activated_at)
          VALUES ($1, $2, $3, $4, 'active', now())
          RETURNING id`,
-        [
-          opts.organizationId,
-          opts.patientId,
-          opts.providerEntityId,
-          opts.locationId,
-        ],
+        [opts.organizationId, opts.patientId, opts.providerEntityId, opts.locationId],
       );
       return row.rows[0].id as string;
     }
@@ -194,9 +181,7 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
-      await admin.query(
-        `ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`,
-      );
+      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({
         connectionString: appRoleUrl(DB_URL as string),
       });
@@ -296,9 +281,7 @@ describe.skipIf(!DB_URL)(
         organizationId: ORG_A,
         payload: { admissionId: firstAdmission, patientId },
       });
-      expect((await patientSiting(patientId)).provider_entity_id).toBe(
-        providerA1,
-      );
+      expect((await patientSiting(patientId)).provider_entity_id).toBe(providerA1);
 
       // A real re-admission: the first admission must discharge before a second can open
       // (`admission_patient_open_idx` — at most one OPEN (status NOT IN discharged/bereavement/closed)

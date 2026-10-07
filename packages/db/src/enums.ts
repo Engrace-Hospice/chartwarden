@@ -888,6 +888,20 @@ export const electionAddendumSignerKind = pgEnum("election_addendum_signer_kind"
   "representative",
 ]);
 
+/** `election_addendum_acknowledgement_source` — how the (c)(9) acknowledgement was captured: keyed in WardenX, or a
+ *  scanned signed paper copy linked to its M22 document version (mig 0395). */
+export const electionAddendumAcknowledgementSource = pgEnum(
+  "election_addendum_acknowledgement_source",
+  ["structured", "uploaded"],
+);
+
+/** `election_addendum_content_source` — where the 418.24(c) content of a version lives: in WardenX, or on a
+ *  signed paper copy that was scanned (the version was never completed in WardenX; mig 0396). */
+export const electionAddendumContentSource = pgEnum("election_addendum_content_source", [
+  "structured",
+  "scanned_paper",
+]);
+
 /** `election_addendum_exemption_reason` — 418.24(d)(3)/(4): the patient died, revoked, or was discharged
  *  before the addendum was furnished (→ not_required) or signed (→ signature_not_required). */
 export const electionAddendumExemptionReason = pgEnum("election_addendum_exemption_reason", [
