@@ -37,8 +37,8 @@ export const F2F_STATUS_RANK: Readonly<Record<string, number>> = {
   scheduled: 0,
 };
 
-/** `election_statement_period_idx` keeps one row per period today; ranked anyway so the view never
- *  depends on that index staying total. */
+/** `election_statement_period_idx` keeps one LIVE row per period (partial, `status <> 'voided'`), so
+ *  voided statements may sit beside it: signed/drafted always outrank voided. */
 export const ELECTION_STATEMENT_STATUS_RANK: Readonly<Record<string, number>> = {
   signed: 2,
   drafted: 1,

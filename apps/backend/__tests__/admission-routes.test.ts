@@ -1486,6 +1486,34 @@ describe("M6 — conflicting election-statement draft / transfer-in answer 409, 
     await app.close();
   });
 
+  it("a voided election statement does not block re-drafting the period (one LIVE statement per period)", async () => {
+    const { app, backend } = makeServer();
+    const draft = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/election-statements`,
+        headers: DRAFTER,
+        payload: {
+          electionPeriodId: EP_OF_ADMISSION,
+          effectiveDate: "2026-06-01",
+          primaryDiagnosisIcd10: "C34.90",
+          electedProviderEntityId: PROVIDER_ENTITY,
+          waiverAcknowledged: true,
+        },
+      });
+    const first = await draft();
+    expect(first.statusCode).toBe(201);
+    const { id, version } = first.json() as { id: string; version: number };
+    await backend.service.voidElection(ORG, id, "drafted in error", version);
+    const redraft = await draft();
+    expect(redraft.statusCode).toBe(201);
+    // The new draft is now the period's live statement: a third draft still conflicts.
+    const third = await draft();
+    expect(third.statusCode).toBe(409);
+    expect(codeOf(third)).toBe("ELECTION_STATEMENT_CONFLICT");
+    await app.close();
+  });
+
   it("a transfer-in whose carried period already exists on the admission is 409 TRANSFER_IN_PERIOD_CONFLICT", async () => {
     // ADMISSION already carries benefit period 1 (EP_OF_ADMISSION, as a referral acceptance seeds it).
     const { app, backend } = makeServer();

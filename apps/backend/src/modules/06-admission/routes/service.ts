@@ -1691,7 +1691,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     );
     const period = periods[0];
     const election = childrenOf("election_statement").find(
-      (s) => !period || s.electionPeriodId === period.id,
+      (s) => (!period || s.electionPeriodId === period.id) && s.state !== "voided",
     );
     const cti = childrenOf("cti").find((c) => !period || c.electionPeriodId === period.id);
     const nor = childrenOf("nor")[0];
@@ -2438,10 +2438,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // GAP-024 — the period must belong to THE admission in the path (404, like absent).
       const ownPeriod = get(organizationId, electionPeriodId, "election_period");
       if (!ownPeriod || ownPeriod.admissionId !== adm.id) notFound(electionPeriodId);
-      // One election statement per period (mirrors `election_statement_period_idx` in the Drizzle path).
+      // One LIVE election statement per period (mirrors the partial `election_statement_period_idx`,
+      // `WHERE status <> 'voided'`, in the Drizzle path): a voided statement never blocks a re-draft.
       if (
         listOfKind(organizationId, "election_statement").some(
-          (r) => r.electionPeriodId === electionPeriodId,
+          (r) => r.electionPeriodId === electionPeriodId && r.state !== "voided",
         )
       ) {
         throw new AdmissionStateError(

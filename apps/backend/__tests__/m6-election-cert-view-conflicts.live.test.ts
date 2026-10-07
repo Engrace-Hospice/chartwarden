@@ -243,6 +243,56 @@ describe.skipIf(!DB_URL)("M6 election-cert view pick + 409 conflicts, LIVE Postg
       expect(rows.map((r) => r.id)).toEqual([first.id]);
     });
 
+    it("(c) a VOIDED statement does not block re-drafting; the re-draft is the period's live statement", async () => {
+      const a = await admit();
+      const first = await svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT);
+      await svc.voidElection(ORG_A, first.id, "drafted in error", first.version);
+      const second = await svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT);
+      expect(second.id).not.toBe(first.id);
+      expect(second.state).toBe("drafted");
+      // A live (non-voided) statement still blocks a further draft, before any write.
+      await expect(
+        svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT),
+      ).rejects.toMatchObject({ code: "ELECTION_STATEMENT_CONFLICT", statusCode: 409 });
+      const { rows } = await admin.query(
+        "SELECT id, status FROM election_statement WHERE election_period_id=$1 ORDER BY created_at",
+        [a.periodId],
+      );
+      expect(rows).toEqual([
+        { id: first.id, status: "voided" },
+        { id: second.id, status: "drafted" },
+      ]);
+      // The view's ranked pick shows the live statement, never the voided one.
+      const view = await svc.getPatientElectionCertification(ORG_A, a.patientId);
+      expect(view.periods.find((p) => p.id === a.periodId)?.electionStatement).toMatchObject({
+        id: second.id,
+        status: "drafted",
+      });
+    });
+
+    it("(c) the partial index still refuses a second LIVE statement at the database (raw insert)", async () => {
+      const a = await admit();
+      const first = await svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT);
+      await svc.voidElection(ORG_A, first.id, "drafted in error", first.version);
+      const insertLive = () =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          tx.insert(schema.electionStatements).values({
+            organizationId: ORG_A,
+            electionPeriodId: a.periodId,
+            patientId: a.patientId,
+            signerKind: "patient",
+            providerEntityId: PROVIDER_ENTITY,
+            curativeCareAcknowledgment: true,
+          }),
+        );
+      await insertLive();
+      const raced = await insertLive().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(classifyDatabaseError(raced)?.constraint).toBe("election_statement_period_idx");
+    });
+
     it("backstop: a REAL 23505 past the pre-check maps to the 409 (service mapping + registered rule)", async () => {
       const a = await admit();
       await svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT);

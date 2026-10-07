@@ -23,8 +23,8 @@ export const M6_ERROR_STATUS = {
   BENEFIT_PERIOD_CONFIRMATION_DATE_INVALID: 422,
   // A readmission must start from a live-discharged earlier admission of the same patient (409).
   READMISSION_SOURCE_INVALID: 409,
-  // A period holds one election statement (`election_statement_period_idx`): a second draft for the same
-  // period is a conflict, never a raw unique_violation (42 CFR 418.24 — one election per period).
+  // A period holds one LIVE election statement (`election_statement_period_idx`, partial — voided rows
+  // excluded): a second draft beside a live one is a conflict, never a raw unique_violation (42 CFR 418.24 — one election per period).
   ELECTION_STATEMENT_CONFLICT: 409,
   // CTI (§2.4.1 R-CTI-*)
   TERMINAL_DX_NOT_ALLOWABLE: 422,

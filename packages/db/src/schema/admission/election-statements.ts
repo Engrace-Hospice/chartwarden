@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `election_statement` (M6 §3.3). The signed hospice-benefit election for a period.
 // PHI-bearing (carries a patient reference) → the three-column tenancy rule (org NOT NULL + nullable
 // provider_entity_id / location_id). Cross-module refs (M5 patient, M39 representative consent, M40
@@ -63,7 +64,10 @@ export const electionStatements = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    periodUnique: uniqueIndex(ELECTION_STATEMENT_PERIOD_IDX).on(t.electionPeriodId),
+    // One LIVE statement per period: a voided draft never blocks re-drafting (migration 0398).
+    periodUnique: uniqueIndex(ELECTION_STATEMENT_PERIOD_IDX)
+      .on(t.electionPeriodId)
+      .where(sql`status <> 'voided'`),
   }),
 );
 

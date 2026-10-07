@@ -1289,7 +1289,8 @@ export function createDbAdmissionRouteService(
         signedAt: ES.signedAt,
       })
       .from(ES)
-      .where(eq(ES.electionPeriodId, period.id))
+      // The period's LIVE statement: a voided one may sit beside it (partial `election_statement_period_idx`).
+      .where(and(eq(ES.electionPeriodId, period.id), ne(ES.status, "voided")))
       .limit(1);
     if (es && es.status !== "voided") {
       if (
@@ -1461,7 +1462,8 @@ export function createDbAdmissionRouteService(
             electionPeriodId: ES.electionPeriodId,
           })
           .from(ES)
-          .where(eq(ES.electionPeriodId, period.id))
+          // The period's LIVE statement (a voided one may sit beside it — partial index, migration 0398).
+          .where(and(eq(ES.electionPeriodId, period.id), ne(ES.status, "voided")))
           .limit(1)
       : [null];
     const [cti] = period
@@ -4129,12 +4131,13 @@ export function createDbAdmissionRouteService(
           .where(and(eq(EP.id, electionPeriodId), eq(EP.admissionId, admissionId)))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
-        // `election_statement_period_idx` — one statement per period (any status). Refused here with a
-        // precise code; the unique-violation mapping below is the backstop for a concurrent draft.
+        // `election_statement_period_idx` — one LIVE statement per period (partial: `status <> 'voided'`,
+        // migration 0398), so a voided draft never blocks re-drafting. Refused here with a precise code;
+        // the unique-violation mapping below is the backstop for a concurrent draft.
         const [existingStatement] = await tx
           .select({ id: ES.id })
           .from(ES)
-          .where(eq(ES.electionPeriodId, electionPeriodId))
+          .where(and(eq(ES.electionPeriodId, electionPeriodId), ne(ES.status, "voided")))
           .limit(1);
         if (existingStatement) throw electionStatementConflict();
         // The elected hospice must belong to THIS org before it is written to two tables — the FK
