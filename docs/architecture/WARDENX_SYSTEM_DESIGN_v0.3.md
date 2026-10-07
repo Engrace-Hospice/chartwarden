@@ -1038,7 +1038,11 @@ Examples:
 - `POST /api/v1/intake/upload` — file upload
 - `GET /api/v1/intake/:job_id/review` — read state
 
-**Tenant scoping** — encoded in subdomain (`<tenant-slug>.wardenx.app`) which Pangolin resolves to a tenant slug header. The backend never trusts URL or body for tenant identity — only the resolved subdomain mapped to organization_id by Better Auth session.
+**Tenant scoping** — the tenant for a request is the Better Auth session's active organization, never the URL, body or any header. Each tenant is served at `<slug>.<TENANT_BASE_DOMAIN>` ([ADR-0049](../adr/ADR-0049-tenant-subdomains.md)):
+- **Edge:** Pangolin preserves `Host` (it injects no tenant header).
+- **Host check:** the backend resolves the host's slug to an organization and refuses the request (403 `TENANT_HOST_MISMATCH`) if it disagrees with the session.
+
+The host is a consistency check that can only refuse, never widen access.
 
 **Versioning** — explicit `/api/v1`, `/api/v2` etc. Breaking changes increment version; deprecation overlap minimum 12 months.
 

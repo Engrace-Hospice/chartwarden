@@ -2391,11 +2391,23 @@ services:
 
 ## 19. Production Deployment
 
+> **Amended by [ADR-0049](../adr/ADR-0049-tenant-subdomains.md) (2026-10-05).**
+>
+> - **Host pattern:** `<slug>.<TENANT_BASE_DOMAIN>`. The base domain is deferred and must be set before
+>   the first tenant goes live on a subdomain.
+> - **Edge:** a Pangolin wildcard resource terminates one DNS-01 wildcard certificate and preserves
+>   `Host` down to the ingress. The ingress path-routes `/api/`, `/portal/` and `/` on every tenant host.
+> - **The host is never authority.** The backend resolves the host's slug and refuses a request whose
+>   session org disagrees (403 `TENANT_HOST_MISMATCH`). No proxy-injected tenant header exists.
+> - **Sessions** are host-only `__Host-` cookies, one per tenant host. Slugs are never reused.
+> - **Target platform:** Talos Linux / Kubernetes behind Pangolin. The migration from the current VPS
+>   is a separate ADR.
+
 - Proxmox VMs on user’s homelab (primary)
 - Off-site DR: TBD — flagged as ADR-002
 - Pangolin reverse proxy
-- Per-tenant subdomain pattern: `<tenant-slug>.wardenx.app`
-- TLS via Let’s Encrypt
+- Per-tenant subdomain pattern: `<slug>.<TENANT_BASE_DOMAIN>` (ADR-0049)
+- TLS via Let’s Encrypt (tenant hosts: one DNS-01 wildcard certificate at Pangolin, ADR-0049)
 - Backup: pgBackRest with offsite encrypted backup to second site (TBD per ADR-002)
 
 -----
