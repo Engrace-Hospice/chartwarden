@@ -69,6 +69,11 @@ export const NoeView = Type.Object({
   windowBreachedAt: Type.Union([IsoDateSchema, Type.Null()]),
   noeControlNumber: Type.String(),
   payerNoeControlNumber: Type.Union([Type.String(), Type.Null()]),
+  /** The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection + PHI-free codes. */
+  acceptedAt: Type.Union([IsoDateTimeSchema, Type.Null()]),
+  rejectedAt: Type.Union([IsoDateTimeSchema, Type.Null()]),
+  rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+  rejectionCodes: Type.Array(Type.String()),
   version: Type.Integer(),
   updatedAt: IsoDateTimeSchema,
 });

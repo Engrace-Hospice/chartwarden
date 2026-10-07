@@ -30,6 +30,7 @@ export interface ReferralView {
   /** The patient's Medicare number (MBI) as the referrer gave it — normalized by the server. */
   medicareNumberAtReceipt?: string | null;
   medicaidNumberAtReceipt?: string | null;
+  sexAssignedAtBirth: "F" | "M" | "O" | "U" | null;
   referringDxText: string | null;
   icd10TerminalPrimary: string | null;
   source: string;

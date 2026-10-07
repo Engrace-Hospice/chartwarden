@@ -255,20 +255,23 @@ function collectUses(callee: string, argIndex: number): void {
       if (nameArg === undefined) continue;
       if (/^\w+\s*:\s*\w/.test(nameArg)) continue; // a parameter declaration, not a call
 
-      const lit = literal(nameArg);
-      const name =
-        lit ??
-        (/^\w+$/.test(nameArg) ? stringConsts.get(nameArg) : undefined) ??
-        memberConsts.get(nameArg);
+      // `requireAnyAbac(action, ["a", "b"], …)` names SEVERAL predicates — each one must be declared.
+      const nameArgs = nameArg.startsWith("[") ? splitArgs(nameArg.slice(1, -1)) : [nameArg];
       const line = src.slice(0, m.index).split("\n").length;
-      const use: Use = { name: name ?? nameArg, file: relative(REPO_ROOT, file), line };
-      if (name === undefined) unresolvable.push(use);
-      else uses.push(use);
+      for (const one of nameArgs) {
+        const lit = literal(one);
+        const name =
+          lit ?? (/^\w+$/.test(one) ? stringConsts.get(one) : undefined) ?? memberConsts.get(one);
+        const use: Use = { name: name ?? one, file: relative(REPO_ROOT, file), line };
+        if (name === undefined) unresolvable.push(use);
+        else uses.push(use);
+      }
     }
   }
 }
 
 collectUses("requireAbac", 1);
+collectUses("requireAnyAbac", 1);
 for (const [wrapper, index] of wrapperArgIndex) collectUses(wrapper, index);
 
 // ── Report ────────────────────────────────────────────────────────────────────────────────────

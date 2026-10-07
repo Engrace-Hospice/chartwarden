@@ -32,6 +32,7 @@
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
 import { createHash } from "node:crypto";
 import {
+  type ClaimDocument837i,
   type ClaimState,
   type ClaimTransitionEvent,
   type EligibilityOutcome,
@@ -45,14 +46,23 @@ import {
   repositories,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
+import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
   M23_CRON_QUEUES,
   M23_JOB_SCHEDULES,
   M23_QUEUES,
   M23_QUEUE_PARAMS,
+  m23JobId,
 } from "./queues";
+import {
+  type GenerateTransferNotice,
+  type TransferNoticeSubmitJob,
+  applyTransferNoticeAck,
+  runTransferNoticeSubmit,
+} from "./transfer-notice-jobs";
 
 const {
   ClaimRepository,
@@ -176,6 +186,9 @@ export interface X12ClientPort {
     readonly organizationId: string;
     readonly claimId: string;
     readonly claimControlNumber: string;
+    /** The claim facts the gateway renders (`@wardenx/billing` `ClaimDocument837i`): today the TOB, the
+     *  service window and the CMS Pub. 100-04 Ch. 11 §30.3 discharge codes → CL103 / HI*BG / HI*BH. */
+    readonly claimDocument: ClaimDocument837i;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
   generateNoe(input: {
     readonly organizationId: string;
@@ -187,6 +200,10 @@ export interface X12ClientPort {
     readonly notrId: string;
     readonly notrControlNumber: string;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
+  /** The 8xC / 8xD transfer notice (`POST /generate-transfer-notice`); the reference rendering is
+   *  `build837iTransferNotice` in `@wardenx/x12-837-client`. Optional so older bindings stay valid —
+   *  an absent binding fails the job closed (`unboundWorkerPort`). */
+  generateTransferNotice?: GenerateTransferNotice;
   parse999(input: {
     readonly macJurisdiction: string;
     readonly rawFileUri: string;
@@ -206,6 +223,10 @@ export interface Parsed999 {
   readonly accepted: boolean;
   readonly reasonCodes: readonly string[];
   readonly ackFileUri: string;
+  /** The 999's own GS04 functional group date (ISO) — a 999 has no status date (`read999EnvelopeDates`). */
+  readonly functionalGroupDate?: string | null;
+  /** The 999's ISA09 interchange date (ISO), the fallback when GS04 is absent. */
+  readonly interchangeDate?: string | null;
 }
 
 /** A parsed 277CA result (PHI-free: claim-level accept/reject/partial + payer control number + reason codes). */
@@ -217,6 +238,8 @@ export interface Parsed277ca {
   readonly payerClaimControlNumber: string;
   readonly reasonCodes: readonly string[];
   readonly ackFileUri: string;
+  /** STC02 — the MAC's status information effective date (ISO) for this claim / notice (`read277caStatusDates`). */
+  readonly statusEffectiveDate?: string | null;
 }
 
 /** The MAC-portal transport (upload generated files; pull pending ack files; probe availability). */
@@ -225,7 +248,7 @@ export interface MacPortalPort {
     readonly organizationId: string;
     /** The submitting provider entity (M40); the transport resolves the MAC jurisdiction from its credential. */
     readonly providerEntityId: string;
-    readonly kind: "claim_837i" | "noe" | "notr";
+    readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
     readonly x12: string;
     readonly controlNumber: string;
   }): Promise<{
@@ -240,9 +263,36 @@ export interface MacPortalPort {
 }
 
 /**
- * The HETS 270/271 eligibility seam (§4.4). The bound impl unlocks the patient MBI via the M5 `MbiUnlockReader`
- * (deny-stub until M5's post-M23 lock revision), builds + sends the 270, parses the 271, and zeroes the MBI —
- * so the MBI NEVER crosses into this file (D13 / §3.6). Returns the domain-cased outcome + the persisted refs.
+ * The hospice election / benefit-period history derived from a HETS 271 (Companion Guide §7.16). Built by
+ * `deriveHospiceHistory` in `@wardenx/x12-837-client`; carries no MBI (NPIs + dates + codes only).
+ */
+export type HetsHospiceHistory = HospiceHistory;
+
+/** One HETS round-trip result. PHI-minimal: no MBI, no name, no DOB (D13 / §3.6 / §8.7). */
+export interface HetsEligibilityResult {
+  readonly outcome: EligibilityOutcome;
+  /** PHI-free reason code when the outcome is not a resolved Part A answer (`mbi_not_on_file`, `HETS_TIMEOUT`, …). */
+  readonly reason: string | null;
+  readonly partAEffectiveDate: string | null;
+  readonly partATerminationDate: string | null;
+  readonly hospiceElectionOnFile: boolean;
+  /** The hospice history, or null when no usable 271 came back (transport error, AAA, 999, no MBI on file). */
+  readonly hospice: HetsHospiceHistory | null;
+  /** AAA rejections as `<loop>:<AAA03>` (e.g. `2100C:72`). */
+  readonly rejectionCodes: readonly string[];
+  /** Which transport answered — `sandbox` results are synthetic and flagged as such downstream. */
+  readonly transport: "core_mime" | "sandbox";
+  /** The TRN trace number of the 270 (PHI-free), stored as `worker_correlation_id`. */
+  readonly correlationId: string | null;
+  /** Always null today: the raw 271 echoes the MBI, so it is never stored (D13). */
+  readonly responseFileUri: string | null;
+  readonly staleAt: Date;
+}
+
+/**
+ * The HETS 270/271 eligibility seam (§4.4). The bound impl (`hets-eligibility.ts`) unlocks the patient MBI via
+ * the M5 `MbiUnlockReader`, builds + sends the 270, parses the 271 and releases the MBI — so the MBI NEVER
+ * crosses into this file (D13 / §3.6). Unbound (no `M23_HETS_TRANSPORT`) it fails closed on call.
  */
 export interface HetsEligibilityPort {
   check(input: {
@@ -250,14 +300,7 @@ export interface HetsEligibilityPort {
     readonly patientId: string;
     readonly providerEntityId: string;
     readonly asOfServiceDate: string;
-  }): Promise<{
-    readonly outcome: EligibilityOutcome;
-    readonly partAEffectiveDate: string | null;
-    readonly partATerminationDate: string | null;
-    readonly hospiceElectionOnFile: boolean;
-    readonly responseFileUri: string;
-    readonly staleAt: Date;
-  }>;
+  }): Promise<HetsEligibilityResult>;
 }
 
 /** The §2.2 NOE/NOTR window stamp — sets `window_breached_at` (the append-only repos expose no plain update). */
@@ -324,7 +367,12 @@ export interface MacJurisdictionListPort {
 export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
   readonly port: {
     enqueue(
-      queueName: "claim.submit" | "claim.submit.retry" | "noe.submit" | "notr.submit",
+      queueName:
+        | "claim.submit"
+        | "claim.submit.retry"
+        | "noe.submit"
+        | "notr.submit"
+        | "transfer_notice.submit",
       jobId: string,
       payload: Record<string, unknown>,
     ): Promise<void>;
@@ -350,9 +398,11 @@ export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
               ? M23_QUEUE_PARAMS.claimSubmitRetry
               : queueName === "noe.submit"
                 ? M23_QUEUE_PARAMS.noeSubmit
-                : M23_QUEUE_PARAMS.notrSubmit;
+                : queueName === "transfer_notice.submit"
+                  ? M23_QUEUE_PARAMS.transferNoticeSubmit
+                  : M23_QUEUE_PARAMS.notrSubmit;
         await queueFor(queueName).add(queueName, payload, {
-          jobId: `m23:${queueName}:${jobId}`,
+          jobId: m23JobId(queueName, jobId),
           attempts: params.attempts,
           backoff: params.backoff,
           removeOnComplete: { count: 500 },
@@ -658,6 +708,63 @@ function daysToTarget(targetDate: string, now: Date): number {
   return Math.round((target - today) / (24 * 60 * 60 * 1000));
 }
 
+/**
+ * The generate-837i claim document for a persisted claim. THROWS when the discharge codes are not resolved
+ * (`patient_status_code` NULL) — the submit preflight already requires a passing validation run, whose
+ * `bereavement_discharge_legitimacy` rule blocks unresolved codes, so this is defense in depth: the throw
+ * lands in the caller's catch and fails the attempt (`failed_worker`) rather than sending a claim without
+ * a patient status.
+ */
+export function claimDocumentFor(
+  claim: {
+    readonly id: string;
+    readonly tob: string;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly patientStatusCode: string | null;
+    readonly conditionCodes: unknown;
+    readonly occurrenceCodes: unknown;
+    /** Migration 0378 — the derived occurrence spans (late-NOE OSC 77). Absent on a pre-0378 caller shape. */
+    readonly occurrenceSpans?: unknown;
+  },
+  claimControlNumber: string,
+): ClaimDocument837i {
+  if (claim.patientStatusCode === null) {
+    throw new Error(`claim ${claim.id} has no patient discharge status (re-validate the claim)`);
+  }
+  const conditionCodes = Array.isArray(claim.conditionCodes)
+    ? claim.conditionCodes.filter((c): c is string => typeof c === "string")
+    : [];
+  const occurrenceCodes = Array.isArray(claim.occurrenceCodes)
+    ? claim.occurrenceCodes.flatMap((o: unknown) => {
+        const r = o as { code?: unknown; date?: unknown } | null;
+        return r && typeof r.code === "string" && typeof r.date === "string"
+          ? [{ code: r.code, date: r.date }]
+          : [];
+      })
+    : [];
+  const occurrenceSpans = Array.isArray(claim.occurrenceSpans)
+    ? claim.occurrenceSpans.flatMap((o: unknown) => {
+        const r = o as { code?: unknown; from?: unknown; through?: unknown } | null;
+        return r &&
+          typeof r.code === "string" &&
+          typeof r.from === "string" &&
+          typeof r.through === "string"
+          ? [{ code: r.code, from: r.from, through: r.through }]
+          : [];
+      })
+    : [];
+  return {
+    claimId: claim.id,
+    claimControlNumber,
+    tob: claim.tob,
+    serviceFrom: claim.serviceFrom,
+    serviceTo: claim.serviceTo,
+    dischargeCodes: { patientStatus: claim.patientStatusCode, conditionCodes, occurrenceCodes },
+    occurrenceSpans,
+  };
+}
+
 // ── the §4.8 WORK processors (each runs INSIDE the worker's per-job withOrgContext tx) ──────────────────────
 
 /**
@@ -719,6 +826,7 @@ export async function runClaimSubmit(
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber: job.claimControlNumber,
+      claimDocument: claimDocumentFor(claim, job.claimControlNumber),
     });
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
@@ -919,6 +1027,7 @@ export async function runClaimSubmitRetry(
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber,
+      claimDocument: claimDocumentFor(claim, claimControlNumber),
     });
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
@@ -980,11 +1089,36 @@ export async function runClaimSubmitRetry(
 }
 
 /**
+ * Record a NOE / NOTR transmission attempt. The submit route already appended the attempt as QUEUED (same
+ * `(provider_entity, control_number, attempt 0)` key), so the idempotent append collapses onto that row and
+ * returns it unchanged: terminalize it with this transmission's outcome (the transfer-notice precedent) instead of
+ * leaving a transmitted notice's attempt QUEUED forever.
+ */
+async function recordNoticeTransmission(
+  submissions: InstanceType<typeof ClaimSubmissionRepository>,
+  values: Parameters<InstanceType<typeof ClaimSubmissionRepository>["append"]>[0],
+): Promise<Awaited<ReturnType<InstanceType<typeof ClaimSubmissionRepository>["append"]>>> {
+  const appended = await submissions.append(values);
+  if (appended.outcome !== "queued") return appended;
+  return submissions.terminalize(appended.id, {
+    outcome: values.outcome,
+    outcomeReason: null,
+    generatedFileUri: values.generatedFileUri ?? null,
+    submittedAt: values.submittedAt ?? null,
+    workerCorrelationId: values.workerCorrelationId ?? null,
+  });
+}
+
+/**
  * `noe.submit` (§4.8): drain `m23.noe.submit_requested` — generate the NOE via the x12 sidecar, upload to the
  * MAC portal, append the `claim_submission` (kind='noe') row, drive the §2.2 NOE READY → SUBMITTED transition
  * (pure `noeMachine.reduce`, version-checked), and emit `m23.noe.submitted`.
  */
-async function runNoeSubmit(tx: BillingDb, deps: M23WorkerDeps, job: NoeSubmitJob): Promise<void> {
+export async function runNoeSubmit(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  job: NoeSubmitJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const noes = new NoeRepository(tx);
   const submissions = new ClaimSubmissionRepository(tx);
@@ -1005,7 +1139,7 @@ async function runNoeSubmit(tx: BillingDb, deps: M23WorkerDeps, job: NoeSubmitJo
     x12: generated.x12,
     controlNumber: noe.noeControlNumber,
   });
-  const submission = await submissions.append({
+  const submission = await recordNoticeTransmission(submissions, {
     organizationId: job.organizationId,
     providerEntityId: noe.providerEntityId,
     kind: "noe",
@@ -1041,7 +1175,7 @@ async function runNoeSubmit(tx: BillingDb, deps: M23WorkerDeps, job: NoeSubmitJo
 }
 
 /** `notr.submit` (§4.8): the NOTR twin of {@link runNoeSubmit} (parallel state machine + control number). */
-async function runNotrSubmit(
+export async function runNotrSubmit(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: NotrSubmitJob,
@@ -1066,7 +1200,7 @@ async function runNotrSubmit(
     x12: generated.x12,
     controlNumber: notr.notrControlNumber,
   });
-  const submission = await submissions.append({
+  const submission = await recordNoticeTransmission(submissions, {
     organizationId: job.organizationId,
     providerEntityId: notr.providerEntityId,
     kind: "notr",
@@ -1107,6 +1241,58 @@ async function runNotrSubmit(
 }
 
 /**
+ * `transfer_notice.submit`: the 8xC / 8xD processor (`jobs/transfer-notice-jobs.ts`) over this bundle's ports.
+ * Exported for the live suite, which drives it directly (the `runClaimSubmit` posture).
+ */
+export async function runTransferNoticeSubmitJob(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  job: TransferNoticeSubmitJob,
+): Promise<void> {
+  const x12 = x12Of(deps);
+  const portal = macPortalOf(deps);
+  await runTransferNoticeSubmit(
+    tx,
+    {
+      generate: (input) =>
+        x12.generateTransferNotice
+          ? x12.generateTransferNotice(input)
+          : unboundWorkerPort(
+              "x12.generateTransferNotice",
+              "bind the X12 gateway's generate-transfer-notice operation",
+            ),
+      upload: (input) => portal.upload(input),
+      outbox: outboxOf(deps),
+      now: deps.now ?? (() => new Date()),
+    },
+    job,
+  );
+}
+
+/**
+ * The `eligibility_check.parsed_payload` (§3.6) — coverage flags + the structured hospice history. NO MBI / NO
+ * name / NO DOB. `hospicePeriods` is null when HETS returned no usable hospice section (so a reader can tell
+ * "no history" from "not asked"). The hospice fields are what `GET /billing/eligibility/hospice-periods` reads.
+ */
+export function eligibilityParsedPayload(result: HetsEligibilityResult): Record<string, unknown> {
+  const h = result.hospice;
+  return {
+    partAActive: result.outcome === "active_part_a",
+    partAEffectiveDate: result.partAEffectiveDate,
+    partATerminationDate: result.partATerminationDate,
+    hospiceElectionOnFile: result.hospiceElectionOnFile,
+    hospicePeriods: h ? h.periods.map((p) => ({ ...p })) : null,
+    hospiceElectionOpen: h ? h.electionOpen : null,
+    hospiceHistoryTruncated: h ? h.truncated : null,
+    hospiceNextPeriodNumber: h ? h.nextPeriodNumber : null,
+    hospiceNextPeriodBasis: h ? h.nextPeriodBasis : null,
+    rejectionCodes: [...result.rejectionCodes],
+    reason: result.reason,
+    transport: result.transport,
+  };
+}
+
+/**
  * `eligibility.refresh` (§4.4 / §4.8): drain `m23.eligibility.refresh_requested` — run the HETS 270/271 check
  * (the bound seam unlocks + zeroes the MBI internally; the MBI never crosses this file), APPEND the
  * `eligibility_check` row (append-only; outcome codec mapped at the repo boundary), and emit
@@ -1127,20 +1313,18 @@ export async function runEligibilityRefresh(
     asOfServiceDate: job.asOfServiceDate,
   });
 
+  const parsedPayload = eligibilityParsedPayload(result);
+  // Persistence-boundary guard (§8.7): an MBI-shaped token in the payload aborts the write (no row, no event).
+  assertNoMbi(parsedPayload);
   const row = await checks.append({
     organizationId: job.organizationId,
     providerEntityId: job.providerEntityId,
     patientId: job.patientId,
     asOfServiceDate: job.asOfServiceDate,
     outcome: result.outcome,
-    // The §3.6 parsed 271 payload — coverage flags only, NO PHI / NO MBI (the MBI was zeroed in the seam).
-    parsedPayload: {
-      partAActive: result.outcome === "active_part_a",
-      partAEffectiveDate: result.partAEffectiveDate,
-      partATerminationDate: result.partATerminationDate,
-      hospiceElectionOnFile: result.hospiceElectionOnFile,
-    },
+    parsedPayload,
     rawResponseFileUri: result.responseFileUri,
+    workerCorrelationId: result.correlationId,
     staleAt: result.staleAt,
   });
 
@@ -1219,151 +1403,221 @@ export async function runRevalidateConsumer(
 
 // ── the §4.8 CRON processors (per-MAC-jurisdiction ack pulls + per-org watchdogs) ──────────────────────────
 
-/**
- * `ack.pull-999` / `ack.pull-277ca` (§4.8 cron): for each MAC jurisdiction, pull pending ack files from the
- * portal, parse them via the x12 sidecar, APPEND a `claim_acknowledgment` row per result (under each result's
- * own org `withOrgContext`), and drive the matching §2.2 claim transition. 999 advances ACK staging; 277CA
- * drives ACK_PENDING → ACK_ACCEPTED / ACK_REJECTED / ACK_PARTIAL. Portal/x12 calls sit behind fail-closed binds.
- */
-async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
-  const portal = macPortalOf(deps);
-  const x12 = x12Of(deps);
-  const jurisdictions = await jurisdictionsOf(deps).listJurisdictions();
+// `ack.pull-999` / `ack.pull-277ca` (§4.8 cron): for each MAC jurisdiction, pull pending ack files from the
+// portal, parse them via the x12 sidecar and, per result under that result's own org `withOrgContext`, route
+// the ack by its submission's subject kind (claim / NOE / NOTR / transfer notice): APPEND a
+// `claim_acknowledgment` row and drive the subject's §2.2 transition. 999 advances ACK staging; 277CA drives
+// ACK_PENDING → ACK_ACCEPTED / ACK_REJECTED (/ ACK_PARTIAL for a claim). Portal/x12 calls sit behind fail-closed
+// binds.
 
-  for (const { macJurisdiction } of jurisdictions) {
-    const files = await portal.pullPending999(macJurisdiction);
-    for (const file of files) {
-      const parsed = await x12.parse999({
-        macJurisdiction,
-        rawFileUri: file.rawFileUri,
-      });
-      for (const result of parsed) {
-        await withOrgContext(
-          deps.db,
-          {
-            organizationId: result.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
-          },
-          async (txAny) => {
-            const tx = txAny as unknown as BillingDb;
-            const acks = new ClaimAcknowledgmentRepository(tx);
-            const claims = new ClaimRepository(tx);
-            const ack = await acks.append({
-              organizationId: result.organizationId,
-              submissionId: result.submissionId,
-              claimId: result.claimId,
-              kind: "ack_999",
-              macJurisdiction: macJurisdiction as NewClaimAck["macJurisdiction"],
-              ackFileUri: result.ackFileUri,
-              ackReceivedAt: (deps.now ?? (() => new Date()))(),
-              parsedPayload: {
-                accepted: result.accepted,
-                reasonCodes: result.reasonCodes,
-              },
-              outcomeStatus: result.accepted ? "accepted" : "rejected",
-            });
-            const claim = await claims.findById(result.claimId);
-            if (!claim) return;
-            const event: ClaimTransitionEvent = result.accepted
-              ? "ack_999_accepted"
-              : "ack_999_rejected";
-            if (!canClaimTransition(claim.state, event)) return;
-            const to = nextClaimState(claim.state, event);
-            await claims.transitionToState(result.claimId, claim.version, to);
-            if (!result.accepted) {
-              await outboxOf(deps).publish(tx, {
-                eventName: "m23.claim.rejected",
-                organizationId: result.organizationId,
-                aggregateKind: "claim",
-                aggregateId: result.claimId,
-                payload: {
-                  claimId: result.claimId,
-                  acknowledgmentId: ack.id,
-                  reasonCodes: result.reasonCodes,
-                },
-              });
-            }
-          },
-        );
-      }
-    }
+/** The submission an acknowledgment answers. Under the ack's own org (RLS), so another org's reads as unknown. */
+type AckedSubmission = NonNullable<
+  Awaited<ReturnType<InstanceType<typeof ClaimSubmissionRepository>["findById"]>>
+>;
+
+/** Every parsed acknowledgment line the two crons route (999 and 277CA, normalised). */
+interface RoutedAck {
+  readonly organizationId: string;
+  readonly kind: "ack_999" | "ack_277ca";
+  readonly outcome: "accepted" | "rejected" | "partial";
+  readonly payerControlNumber: string | null;
+  readonly reasonCodes: readonly string[];
+  readonly macJurisdiction: string;
+  readonly ackFileUri: string;
+  readonly receivedAt: Date;
+  /** The payer-stamped dates the gateway parsed (a notice's `payer_status_date`). */
+  readonly payerDates?: AckPayerDates;
+}
+
+/**
+ * Route one acknowledgment by its submission's subject kind: a transfer notice (8xC / 8xD), a NOE, a NOTR or a
+ * claim. An ack whose submission is unknown (or another org's) is skipped — there is nothing to record it
+ * against, and the `claim_acknowledgment.submission_id` FK would refuse it.
+ */
+async function routeAck(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  submissionId: string,
+  parsed: RoutedAck,
+): Promise<void> {
+  const submission = await new ClaimSubmissionRepository(tx).findById(submissionId);
+  if (!submission) return;
+  // Only code-shaped reason codes go on, whichever subject they land on (no free text / PHI from the gateway).
+  const ack = { ...parsed, reasonCodes: sanitizeAckReasonCodes(parsed.reasonCodes) };
+  if (submission.kind === "transfer_notice") {
+    await applyTransferNoticeAck(tx, outboxOf(deps), { ...ack, submissionId });
+    return;
+  }
+  if (submission.kind === "noe" || submission.kind === "notr") {
+    await applyNoticeAck(
+      tx,
+      { outbox: outboxOf(deps), alerts: alertsOf(deps) },
+      {
+        id: submission.id,
+        kind: submission.kind,
+        noeId: submission.noeId ?? null,
+        notrId: submission.notrId ?? null,
+      },
+      ack,
+    );
+    return;
+  }
+  await applyClaimAck(tx, deps, submission, ack);
+}
+
+/** The claim twin of {@link applyNoticeAck}: 999 advances ACK staging; 277CA drives ACK_PENDING → accepted/rejected/partial. */
+async function applyClaimAck(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  submission: AckedSubmission,
+  ack: RoutedAck,
+): Promise<void> {
+  const claimId = submission.claimId;
+  if (!claimId) return;
+  const reasonCodes = [...ack.reasonCodes];
+  const recorded = await new ClaimAcknowledgmentRepository(tx).append({
+    organizationId: ack.organizationId,
+    submissionId: submission.id,
+    claimId,
+    kind: ack.kind,
+    macJurisdiction: ack.macJurisdiction as NewClaimAck["macJurisdiction"],
+    ackFileUri: ack.ackFileUri,
+    ackReceivedAt: ack.receivedAt,
+    parsedPayload:
+      ack.kind === "ack_999"
+        ? { accepted: ack.outcome === "accepted", reasonCodes }
+        : { outcome: ack.outcome, payerClaimControlNumber: ack.payerControlNumber, reasonCodes },
+    outcomeStatus: ack.outcome,
+  });
+  const claims = new ClaimRepository(tx);
+  const claim = await claims.findById(claimId);
+  if (!claim) return;
+  const event: ClaimTransitionEvent =
+    ack.kind === "ack_999"
+      ? ack.outcome === "accepted"
+        ? "ack_999_accepted"
+        : "ack_999_rejected"
+      : ack.outcome === "accepted"
+        ? "ack_277ca_accepted"
+        : ack.outcome === "partial"
+          ? "ack_277ca_partial"
+          : "ack_277ca_rejected";
+  if (!canClaimTransition(claim.state, event)) return;
+  await claims.transitionToState(claimId, claim.version, nextClaimState(claim.state, event));
+  const emit = (eventName: string, payload: Record<string, unknown>) =>
+    outboxOf(deps).publish(tx, {
+      eventName,
+      organizationId: ack.organizationId,
+      aggregateKind: "claim",
+      aggregateId: claimId,
+      payload: { claimId, acknowledgmentId: recorded.id, ...payload },
+    });
+  // Payloads match the catalog (`events-by-m23.ts`) — the catalog-validating publisher refuses anything else.
+  if (event === "ack_999_rejected" || event === "ack_277ca_rejected") {
+    await emit("m23.claim.rejected", {
+      rejectionStage: event === "ack_999_rejected" ? "999" : "277ca",
+      rejectionCodes: reasonCodes,
+    });
+  } else if (event === "ack_277ca_accepted") {
+    await emit("m23.claim.acknowledged", { payerClaimControlNumber: ack.payerControlNumber ?? "" });
+  } else if (event === "ack_277ca_partial") {
+    // The 277CA parse carries no per-line accept/reject sets yet.
+    await emit("m23.claim.acknowledgment_partial", {
+      acceptedLineNumbers: [],
+      rejectedLineNumbers: [],
+      rejectionCodes: reasonCodes,
+    });
   }
 }
 
-/** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
-async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
+/**
+ * Apply every parsed ack of a run, each in its own org's `withOrgContext`. One failing ack (a version conflict, an
+ * unavailable alert router) must not strand the acks behind it: it is collected, the rest are applied, and the run
+ * then fails with a PHI-free summary so BullMQ retries it (every ack is idempotent, so a retry re-applies only what
+ * failed).
+ */
+async function applyAcks(
+  deps: M23WorkerDeps,
+  acks: readonly { readonly submissionId: string; readonly ack: RoutedAck }[],
+): Promise<void> {
+  const failures: string[] = [];
+  for (const { submissionId, ack } of acks) {
+    try {
+      await withOrgContext(
+        deps.db,
+        { organizationId: ack.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+        (txAny) => routeAck(txAny as unknown as BillingDb, deps, submissionId, ack),
+      );
+    } catch (err) {
+      failures.push(`${ack.kind} for submission ${submissionId}: ${(err as Error).message}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} of ${acks.length} acknowledgment(s) failed: ${failures.join("; ")}`,
+    );
+  }
+}
+
+/** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
+export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
-  const jurisdictions = await jurisdictionsOf(deps).listJurisdictions();
-
-  for (const { macJurisdiction } of jurisdictions) {
-    const files = await portal.pullPending277ca(macJurisdiction);
-    for (const file of files) {
-      const parsed = await x12.parse277ca({
-        macJurisdiction,
-        rawFileUri: file.rawFileUri,
-      });
-      for (const result of parsed) {
-        await withOrgContext(
-          deps.db,
-          {
+  const now = deps.now ?? (() => new Date());
+  const acks: { submissionId: string; ack: RoutedAck }[] = [];
+  for (const { macJurisdiction } of await jurisdictionsOf(deps).listJurisdictions()) {
+    for (const file of await portal.pullPending999(macJurisdiction)) {
+      for (const result of await x12.parse999({ macJurisdiction, rawFileUri: file.rawFileUri })) {
+        acks.push({
+          submissionId: result.submissionId,
+          ack: {
             organizationId: result.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
+            kind: "ack_999",
+            outcome: result.accepted ? "accepted" : "rejected",
+            payerControlNumber: null,
+            reasonCodes: result.reasonCodes,
+            macJurisdiction,
+            ackFileUri: result.ackFileUri,
+            receivedAt: now(),
+            payerDates: {
+              functionalGroupDate: result.functionalGroupDate ?? null,
+              interchangeDate: result.interchangeDate ?? null,
+            },
           },
-          async (txAny) => {
-            const tx = txAny as unknown as BillingDb;
-            const acks = new ClaimAcknowledgmentRepository(tx);
-            const claims = new ClaimRepository(tx);
-            const ack = await acks.append({
-              organizationId: result.organizationId,
-              submissionId: result.submissionId,
-              claimId: result.claimId,
-              kind: "ack_277ca",
-              macJurisdiction: macJurisdiction as NewClaimAck["macJurisdiction"],
-              ackFileUri: result.ackFileUri,
-              ackReceivedAt: (deps.now ?? (() => new Date()))(),
-              parsedPayload: {
-                outcome: result.outcome,
-                payerClaimControlNumber: result.payerClaimControlNumber,
-                reasonCodes: result.reasonCodes,
-              },
-              outcomeStatus: result.outcome,
-            });
-            const claim = await claims.findById(result.claimId);
-            if (!claim) return;
-            const event: ClaimTransitionEvent =
-              result.outcome === "accepted"
-                ? "ack_277ca_accepted"
-                : result.outcome === "partial"
-                  ? "ack_277ca_partial"
-                  : "ack_277ca_rejected";
-            if (!canClaimTransition(claim.state, event)) return;
-            const to = nextClaimState(claim.state, event);
-            await claims.transitionToState(result.claimId, claim.version, to);
-
-            const eventName =
-              result.outcome === "accepted"
-                ? "m23.claim.acknowledged"
-                : result.outcome === "partial"
-                  ? "m23.claim.acknowledgment_partial"
-                  : "m23.claim.rejected";
-            await outboxOf(deps).publish(tx, {
-              eventName,
-              organizationId: result.organizationId,
-              aggregateKind: "claim",
-              aggregateId: result.claimId,
-              payload: {
-                claimId: result.claimId,
-                acknowledgmentId: ack.id,
-                payerClaimControlNumber: result.payerClaimControlNumber,
-                reasonCodes: result.reasonCodes,
-              },
-            });
-          },
-        );
+        });
       }
     }
   }
+  await applyAcks(deps, acks);
+}
+
+/** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
+export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
+  const portal = macPortalOf(deps);
+  const x12 = x12Of(deps);
+  const now = deps.now ?? (() => new Date());
+  const acks: { submissionId: string; ack: RoutedAck }[] = [];
+  for (const { macJurisdiction } of await jurisdictionsOf(deps).listJurisdictions()) {
+    for (const file of await portal.pullPending277ca(macJurisdiction)) {
+      for (const result of await x12.parse277ca({ macJurisdiction, rawFileUri: file.rawFileUri })) {
+        acks.push({
+          submissionId: result.submissionId,
+          ack: {
+            organizationId: result.organizationId,
+            kind: "ack_277ca",
+            outcome: result.outcome,
+            payerControlNumber: result.payerClaimControlNumber,
+            reasonCodes: result.reasonCodes,
+            macJurisdiction,
+            ackFileUri: result.ackFileUri,
+            receivedAt: now(),
+            payerDates: { statusEffectiveDate: result.statusEffectiveDate ?? null },
+          },
+        });
+      }
+    }
+  }
+  await applyAcks(deps, acks);
 }
 
 /**
@@ -1726,6 +1980,11 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
       M23_QUEUE_PARAMS.notrSubmit.concurrency,
       runNotrSubmit,
     ),
+    orgScoped<TransferNoticeSubmitJob>(
+      M23_QUEUES.transferNoticeSubmit,
+      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
+      runTransferNoticeSubmitJob,
+    ),
     orgScoped<EligibilityRefreshJob>(
       M23_QUEUES.eligibilityRefresh,
       M23_QUEUE_PARAMS.eligibilityRefresh.concurrency,
@@ -2068,10 +2327,12 @@ export function buildM23WorkerDeps(deps: {
   };
 }
 
-// STILL UNBOUND (these throw only when a job runs, RULE 4):
-//   • the HETS 270/271 seam (`deps.hets`) — needs a clearinghouse client plus an M5 MBI-unlock seam, neither of
-//     which exists yet; the MBI must never persist (§3.6). The route-side gate refuses eligibility checks (503)
-//     until it is bound, so no request is accepted that this worker cannot complete.
+// BOUND ONLY WHEN CONFIGURED (these throw only when a job runs, RULE 4):
+//   • the HETS 270/271 seam (`deps.hets`) — bound by the composition root over `hets-eligibility.ts` when
+//     `M23_HETS_TRANSPORT` is set (CORE MIME to CMS / a clearinghouse, or the dev/test sandbox) and M5's
+//     `MbiUnlockReader` is registered. Unset, it stays unbound and the route-side gate refuses eligibility
+//     checks (503), so no request is accepted that this worker cannot complete.
+// STILL UNBOUND:
 //   • the x12-837-client sidecar (`deps.x12`) + MAC-portal transport (`deps.macPortal`) outside the launch
 //     gateway, and the MAC-jurisdiction enumerator beyond the single launch jurisdiction.
 // BOUND in the composition root (apps/backend/src/index.ts): outbox, alerts (M36), activeOrgs (M23 platform job),

@@ -401,9 +401,11 @@ describe.skipIf(!DB_URL)("GAP-078 — M26 PS&R import + reconcile — LIVE Postg
     void periodB;
   });
   it("the existing M26 crons run audited writes as the NULL system actor (no audit_event actor FK violation)", async () => {
-    // Before: the crons stamped a fixed worker uuid (…0e6) that is not a seeded "user"; the audit trigger's
-    // actor FK (audit_event_actor_user_id_user_id_fk) rejected every audited write they made.
+    // Before: the crons put a fixed worker uuid (…0e6) into app.user_id, which is not a seeded "user"; the
+    // audit trigger's actor FK (audit_event_actor_user_id_user_id_fk) rejected every audited write they made.
+    // Now the sentinel is stamped on authored rows (closed_by, no FK) only and orgContextFor maps it to NULL.
     const { buildStores } = await import("../src/modules/26-cap/jobs/index");
+    const { M26_WORKER_SYSTEM_USER_ID } = await import("../src/modules/26-cap/system-actor");
     const stores = buildStores(handle.db);
     const stalePeriod = await seedPeriod(ORG_A, "FY2024");
 
@@ -415,7 +417,7 @@ describe.skipIf(!DB_URL)("GAP-078 — M26 PS&R import + reconcile — LIVE Postg
     );
     expect(
       (await scalar("SELECT closed_by FROM cap_period WHERE id=$1", [stalePeriod])).closed_by,
-    ).toBeNull();
+    ).toBe(M26_WORKER_SYSTEM_USER_ID); // authored-by sentinel (logical uuid, no FK) — never the audit actor
     const audit = await scalar(
       `SELECT count(*)::int n, count(*) FILTER (WHERE actor_user_id IS NULL)::int nulls
          FROM audit_event WHERE resource_kind='cap_period' AND resource_id=$1 AND event_type='cap_period.update'`,

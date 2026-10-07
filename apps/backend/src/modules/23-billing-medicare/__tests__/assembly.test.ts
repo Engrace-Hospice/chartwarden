@@ -92,6 +92,8 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
+        placeOfDeath: null,
+        transferOut: null,
       }),
     },
     electionPeriods: {
@@ -331,6 +333,8 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
           dischargeDate: null,
           dischargeReason: null,
           deceasedDate: "2025-11-07",
+          placeOfDeath: null,
+          transferOut: null,
         }),
       },
       signedEncounters: {
@@ -514,5 +518,79 @@ describe("F-213 (#252) — placeOfService is resolved over the whole claim range
     });
     expect(store.lines.length).toBeGreaterThan(0);
     for (const line of store.lines) expect(line.qCode).toBe(qCode);
+  });
+});
+
+describe("two-tier RHC carry-over — our earlier stay + another hospice's days from HETS (ch. 11 §30.2)", () => {
+  const readmission = {
+    admissionId: "adm-1",
+    hospiceAdmissionDate: "2025-11-01",
+    rhcPriorHospiceDays: 11,
+    // Our stay 09/20–09/30 (11 days, gap 32 to 11/01).
+    rhcPriorStays: [{ admissionId: "adm-0", startedOn: "2025-09-20", endedOn: "2025-09-30" }],
+    dischargeDate: null,
+    dischargeReason: null,
+    deceasedDate: null,
+    placeOfDeath: null,
+    transferOut: null,
+  };
+
+  it("prices the claim with the merged count and records the basis + chain on hipps_calculation", async () => {
+    // Arrange: a fresh HETS check shows another hospice 08/01–09/15 (46 days, gap 5 to our stay).
+    store.eligibilityChecks.push({
+      id: "11111111-1111-4111-8111-111111111111",
+      organizationId: ORG,
+      patientId: REQUEST.patientId,
+      asOfServiceDate: "2025-11-01",
+      outcome: "active_part_a",
+      checkedAt: new Date("2025-11-05T00:00:00.000Z"),
+      staleAt: new Date("2025-12-05T00:00:00.000Z"),
+      parsedPayload: {
+        hospicePeriods: [
+          {
+            kind: "benefit_period",
+            periodNumber: 1,
+            startDate: "2025-08-01",
+            endDate: "2025-09-15",
+            hospiceNpi: "1649726464",
+            revocationOrDischargeDate: "2025-09-15",
+            revocationCode: "1",
+            daysUsed: 46,
+          },
+        ],
+        hospiceHistoryTruncated: false,
+      },
+    });
+    const svc = buildClaimAssemblyService(
+      makeFakeDb() as never,
+      buildSeams({ admission: { resolveForRange: async () => readmission } }),
+    );
+
+    // Act
+    await svc.assemble(ACTOR, REQUEST);
+
+    // Assert: 46 + 11 = 57 prior days → 11/01–11/03 are days 58–60 (high), 11/04–11/07 low.
+    expect(store.hipps[0].rhcDays1to60).toBe(3);
+    expect(store.hipps[0].rhcDays61Plus).toBe(4);
+    expect(store.hipps[0].rhcCarryOver).toMatchObject({
+      priorDays: 57,
+      basis: "hets_merged",
+      startsAtDay: 58,
+      hetsCheck: { ageDays: 5, stale: false },
+      chain: [
+        { source: "hets", hospiceNpi: "1649726464", countedDays: 46 },
+        { source: "internal", ref: "adm-0", countedDays: 11 },
+      ],
+    });
+  });
+
+  it("falls back to our own stays (basis internal_only) when no HETS check is on file", async () => {
+    const svc = buildClaimAssemblyService(
+      makeFakeDb() as never,
+      buildSeams({ admission: { resolveForRange: async () => readmission } }),
+    );
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.hipps[0].rhcCarryOver).toMatchObject({ priorDays: 11, basis: "internal_only" });
+    expect(store.hipps[0].rhcDays1to60).toBe(7);
   });
 });

@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 160,
+  "totalStaticWebScreens": 164,
   "e2eReachedCount": 19,
-  "axeReachedCount": 154,
+  "axeReachedCount": 158,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -125,6 +125,22 @@
       "axeReached": true
     },
     {
+      "id": "admission.discharges",
+      "module": "06-admission",
+      "path": "/admissions/discharges",
+      "permission": "discharge.create",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "admission.readmit-list",
+      "module": "06-admission",
+      "path": "/admissions/readmit",
+      "permission": "admission.create",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "audit.log-viewer",
       "module": "04-audit",
       "path": "/audit",
@@ -225,6 +241,14 @@
       "module": "23-billing-medicare",
       "path": "/billing/sequestration-policy",
       "permission": "billing.sequestration_policy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "billing.transfer-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/transfer-notices",
+      "permission": "billing.noe.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -885,6 +909,14 @@
       "axeReached": true
     },
     {
+      "id": "scheduling.clinician-credentials",
+      "module": "17-scheduling",
+      "path": "/scheduling/clinician-credentials",
+      "permission": "membership_credential.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "scheduling.proposals",
       "module": "17-scheduling",
       "path": "/scheduling/proposals",
@@ -1313,11 +1345,27 @@
       "axeReached": true
     },
     {
+      "id": "admission.discharges",
+      "module": "06-admission",
+      "path": "/admissions/discharges",
+      "permission": "discharge.create",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "admission.create",
       "module": "06-admission",
       "path": "/admissions/new",
       "permission": "admission.create",
       "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "admission.readmit-list",
+      "module": "06-admission",
+      "path": "/admissions/readmit",
+      "permission": "admission.create",
+      "e2eReached": false,
       "axeReached": true
     },
     {
@@ -1437,6 +1485,14 @@
       "module": "23-billing-medicare",
       "path": "/billing/sequestration-policy",
       "permission": "billing.sequestration_policy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "billing.transfer-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/transfer-notices",
+      "permission": "billing.noe.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2189,6 +2245,14 @@
       "module": "20-field-safety",
       "path": "/safety/supervisor-subscriptions",
       "permission": "safety_supervisor.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "scheduling.clinician-credentials",
+      "module": "17-scheduling",
+      "path": "/scheduling/clinician-credentials",
+      "permission": "membership_credential.read",
       "e2eReached": false,
       "axeReached": true
     },

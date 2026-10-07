@@ -53,6 +53,13 @@ const record = (value: unknown): value is Record<string, unknown> =>
 const string = (value: unknown): value is string => typeof value === "string";
 const strings = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every(string);
+/** An optional payer date (STC02 / GS04 / ISA09, already ISO): absent, null, or `YYYY-MM-DD`. */
+const optionalIsoDate = (value: unknown): boolean => {
+  if (value === undefined || value === null) return true;
+  if (!string(value) || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
 
 async function requestJson(http: GatewayHttpPort, input: GatewayHttpRequest): Promise<unknown> {
   const response = await http.request(input);
@@ -106,6 +113,7 @@ export function createM23LaunchGateway(
     generate837i: (input) => generated("/generate-837i", input),
     generateNoe: (input) => generated("/generate-noe", input),
     generateNotr: (input) => generated("/generate-notr", input),
+    generateTransferNotice: (input) => generated("/generate-transfer-notice", input),
     async parse999(input) {
       const body = await x12Request("/parse-999", input);
       if (!Array.isArray(body) || !body.every(isParsed999)) {
@@ -182,7 +190,9 @@ function isParsed999(value: unknown): boolean {
     string(value.claimControlNumber) &&
     typeof value.accepted === "boolean" &&
     strings(value.reasonCodes) &&
-    string(value.ackFileUri)
+    string(value.ackFileUri) &&
+    optionalIsoDate(value.functionalGroupDate) &&
+    optionalIsoDate(value.interchangeDate)
   );
 }
 
@@ -195,7 +205,8 @@ function isParsed277ca(value: unknown): boolean {
     (value.outcome === "accepted" || value.outcome === "rejected" || value.outcome === "partial") &&
     string(value.payerClaimControlNumber) &&
     strings(value.reasonCodes) &&
-    string(value.ackFileUri)
+    string(value.ackFileUri) &&
+    optionalIsoDate(value.statusEffectiveDate)
   );
 }
 

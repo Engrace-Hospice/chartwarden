@@ -77,6 +77,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "medicaid.eligibility.stale_at_assembly",
       // GAP-084 — M28 inbound-proposal SLA breach alert.
       "fhir.inbound.proposal_overdue",
+      // M23 — the MAC rejected a Notice of Election / Termination-Revocation (999 or 277CA); raised by the
+      // ack-pull crons. Before, a rejected NOE looked valid and a rejected NOTR counted as filed.
+      "m23.noe.rejected",
+      "m23.notr.rejected",
       "cap.approaching",
       "noe.late_risk",
       "system.integration_failure",
@@ -168,6 +172,25 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     });
     // No org-wide biller audience: an unscoped roleKeys would page every biller in the org.
     expect(rule?.resolverArgs).not.toHaveProperty("roleKeys");
+  });
+
+  it("seeds the M23 NOE / NOTR rejection alerts critical and PE-scoped to billers", () => {
+    for (const eventType of ["m23.noe.rejected", "m23.notr.rejected"]) {
+      const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+      expect(rule).toMatchObject({
+        category: "administrative",
+        severityFloor: "critical",
+        recipientResolver: "role_set",
+        resolverArgs: {
+          providerEntityIdPath: "providerEntityId",
+          providerEntityScopedRoleKeys: ["billing_manager", "biller"],
+          providerEntityFallbackRoleKeys: ["billing_manager"],
+        },
+        systemLocked: false,
+        enabled: true,
+      });
+      expect(rule?.resolverArgs).not.toHaveProperty("roleKeys");
+    }
   });
 
   it("SOS routes on_call with the voice channel (§2.5 voice is SOS-only)", () => {

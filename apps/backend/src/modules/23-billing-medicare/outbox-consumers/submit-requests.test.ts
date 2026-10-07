@@ -51,6 +51,41 @@ describe("M23 submission outbox bridge", () => {
     ]);
   });
 
+  it("bridges a transfer-notice submit request onto the transfer_notice.submit queue", async () => {
+    const calls: unknown[] = [];
+    const consumer = buildM23SubmissionRequestConsumer({
+      async enqueue(...args) {
+        calls.push(args);
+      },
+    });
+    await consumer.handle({
+      ...eventBase,
+      id: "event-tn",
+      eventType: "m23.transfer_notice.submit_requested",
+      aggregateKind: "transfer_notice_record",
+      aggregateId: "tn-1",
+      payload: { transferNoticeId: "tn-1", submissionId: "sub-tn", controlNumber: "c" },
+    });
+    expect(calls).toEqual([
+      [
+        "transfer_notice.submit",
+        "sub-tn",
+        { organizationId: "org-1", transferNoticeId: "tn-1", submissionId: "sub-tn" },
+      ],
+    ]);
+  });
+
+  it("gates transfer_notice.submit on its own capability flag", async () => {
+    const off = buildM23OutboxBackedSubmissionGate({ "transfer_notice.submit": false });
+    await expect(off.enqueue("transfer_notice.submit", "k", {})).rejects.toMatchObject({
+      statusCode: 503,
+    });
+    const on = buildM23OutboxBackedSubmissionGate({ "transfer_notice.submit": true });
+    await expect(on.enqueue("transfer_notice.submit", "k", {})).resolves.toEqual({
+      jobId: "outbox:k",
+    });
+  });
+
   it("maps a persisted failure to a retry job without requiring transient transport data", async () => {
     const calls: unknown[] = [];
     const consumer = buildM23SubmissionRequestConsumer({

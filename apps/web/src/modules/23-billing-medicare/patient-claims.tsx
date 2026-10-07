@@ -40,6 +40,7 @@ interface MedicareClaim {
   macJurisdiction: string;
   totalChargeCents: number;
   totalExpectedPaymentCents: number;
+  attention?: { flags: readonly string[] } | null;
 }
 interface MedicaidClaim {
   id: string;
@@ -70,6 +71,8 @@ interface Row {
   state: string; // lower-cased
   tone: StatusTone;
   detail: string;
+  /** Medicare only: the claim needs a biller's action because of how the stay ended. */
+  attention: string | null;
   billedCents: number | null;
   expectedCents: number | null;
   to: string;
@@ -107,6 +110,16 @@ const TOB_SHORT: Record<string, string> = {
   "817": "Replacement",
   "818": "Void",
 };
+
+/** The "needs attention" line under a Medicare claim's state (the claim editor explains and resolves it). */
+function attentionLabel(flags: readonly string[] | undefined): string | null {
+  if (!flags || flags.length === 0) return null;
+  const parts = [
+    flags.includes("missing_discharge_details") ? "Missing discharge details" : null,
+    flags.includes("tob_changed") ? "Type of bill changed" : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 const ymd = (v: string): Date | null => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
@@ -216,6 +229,7 @@ export function PatientClaims(): JSX.Element {
         state: c.state,
         tone: claimStateTone(c.state),
         detail: `${TOB_SHORT[c.tob] ?? `TOB ${c.tob}`} · ${c.macJurisdiction}`,
+        attention: attentionLabel(c.attention?.flags),
         billedCents: c.totalChargeCents,
         expectedCents: c.totalExpectedPaymentCents,
         to: `/billing/claims/${c.claimId}`,
@@ -232,6 +246,7 @@ export function PatientClaims(): JSX.Element {
         state,
         tone: MEDICAID_EXTRA_TONE[state] ?? claimStateTone(state),
         detail: `${TOB_SHORT[c.tob] ?? `TOB ${c.tob}`} · ${c.serviceState}`,
+        attention: null,
         billedCents: null,
         expectedCents: null,
         to: `/medicaid/billing/claims/${c.id}`,
@@ -444,6 +459,11 @@ export function PatientClaims(): JSX.Element {
                         </td>
                         <td>
                           <StatusPill label={statusLabel(r.state)} tone={r.tone} />
+                          {r.attention ? (
+                            <div className="wx-row-sub">
+                              <Link to={r.to}>{r.attention}</Link>
+                            </div>
+                          ) : null}
                         </td>
                         <td className="wx-nums" style={{ textAlign: "right" }}>
                           {r.billedCents === null ? "—" : dollars(r.billedCents)}

@@ -6,7 +6,7 @@ import {
   createDbSchedulingBackend,
 } from "../scheduling-route-service-db";
 
-const M17_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
+import { M17_SYSTEM_USER_ID } from "../system-actor";
 
 function stringOf(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];

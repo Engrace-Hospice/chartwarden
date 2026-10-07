@@ -60,12 +60,34 @@ export interface PatientPayerReader {
 /** M6 — the admission anchor facts the assembly + the HIPPS day-of-stay bucket + the TOB derivation need. */
 export interface AdmissionContext {
   readonly admissionId: string;
-  /** The hospice election/admission date — anchors the RHC days-1-7 vs days-8+ bucket (D7). */
+  /** The hospice election/admission date — day 1 of THIS stay in the ADR-0001 RHC day-60 tier count (D7). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
+  readonly rhcPriorHospiceDays?: number;
+  /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice
+   *  history by `computeRhcCarryOver`. Absent (older readers / fakes) ⇒ `rhcPriorHospiceDays` is used as is. */
+  readonly rhcPriorStays?: readonly {
+    readonly admissionId: string;
+    readonly startedOn: IsoDate | null;
+    readonly endedOn: IsoDate | null;
+    readonly otherHospice?: { readonly npi: string | null };
+  }[];
+  /** The COMPLETED `discharge_event` only (a voided or pending-cosign row is not a discharge). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;
   /** M5/M6 date of death (drives SIA + the PATIENT_DECEASED_BEFORE_FROM gate); `null` ⇒ alive. */
   readonly deceasedDate: IsoDate | null;
+  /** M6 `discharge_event.place_of_death` (`home` / `facility` / `unknown`); claim patient status 40/41/42. */
+  readonly placeOfDeath: string | null;
+  /** The completed `discharge_event.id` (addresses the record a blocked claim needs completed). Optional so
+   *  older fakes/fixtures stay valid; absent ⇒ unknown. */
+  readonly dischargeEventId?: string | null;
+  /** M6 transfer-OUT (no `discharge_event` row); `receivingCareSetting` drives claim patient status 50/51. */
+  readonly transferOut: {
+    readonly transferEventId?: string;
+    readonly effectiveDate: IsoDate;
+    readonly receivingCareSetting: string | null;
+  } | null;
 }
 
 export interface AdmissionContextReader {

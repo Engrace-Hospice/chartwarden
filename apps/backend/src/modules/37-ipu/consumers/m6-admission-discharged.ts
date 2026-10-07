@@ -46,9 +46,8 @@
 // constraint (`packages/db/src/schema/ipu/admission.ts`'s own header: "Cross-module ids … are logical
 // uuids — M37 never FKs into other modules' schema (D17)"), so the F-102 empty-string `CONSUMER_USER_ID`
 // convention (valid for a text GUC, not a `uuid NOT NULL` column) does not apply here. Reuses the literal
-// M37 already established for exactly this purpose in `jobs/cron-workers.ts`'s
-// `M37_WORKER_SYSTEM_USER_ID` (not exported there, so restated here rather than importing across an
-// unrelated file) — a fixed, module-scoped sentinel rather than a fresh one, so every system-attributed
+// M37 already established for exactly this purpose in `routes/system-actor.ts`'s
+// `M37_SYSTEM_MEMBERSHIP_ID` (restated here rather than importing across an unrelated file) — a fixed, module-scoped sentinel rather than a fresh one, so every system-attributed
 // M37 write shares one identifiable non-human actor.
 import { type DbClient, schema } from "@wardenx/db";
 import { transitionAdmission, transitionBedCleaning } from "@wardenx/inpatient";
@@ -63,7 +62,7 @@ const B = schema.ipuBed;
 const BCE = schema.ipuBedCleaningEvent;
 const IE = schema.ircEpisode;
 
-/** Mirrors `M37_WORKER_SYSTEM_USER_ID` (`../jobs/cron-workers.ts`) — see file header. */
+/** Mirrors `M37_SYSTEM_MEMBERSHIP_ID` (`../routes/system-actor.ts`) — see file header. */
 const M37_SYSTEM_MEMBERSHIP_ID = "00000000-0000-0000-0000-000000000037";
 /** The `withOrgContext` session-GUC actor for a consumer-driven write (F-102's `CONSUMER_USER_ID`
  *  convention — a plain text session variable, distinct from the `uuid NOT NULL` column above). */

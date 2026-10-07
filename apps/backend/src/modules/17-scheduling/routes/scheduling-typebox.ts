@@ -367,6 +367,28 @@ export const CredentialViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const CredentialListResponseSchema = Type.Array(CredentialViewSchema);
+export const EligibleCliniciansQuerySchema = Type.Object({
+  patientId: Type.String({ format: "uuid" }),
+  visitPurpose: VISIT_PURPOSE,
+  scheduledStartedAt: Type.String({ format: "date-time" }),
+  scheduledEndedAt: Type.String({ format: "date-time" }),
+});
+// Scheduling-UI read models (GET /scheduling/eligible-clinicians, GET /scheduling/staff). The
+// discipline vocabulary is `SchedulingDiscipline`, which is the same set as `CREDENTIAL_DISCIPLINE`.
+export const EligibleClinicianViewSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  displayName: Type.String(),
+  disciplines: Type.Array(CREDENTIAL_DISCIPLINE),
+  eligible: Type.Boolean(),
+  reasonCodes: Type.Array(Type.String()),
+});
+export const EligibleCliniciansResponseSchema = Type.Array(EligibleClinicianViewSchema);
+export const SchedulingStaffViewSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  displayName: Type.String(),
+  discipline: Nullable(CREDENTIAL_DISCIPLINE),
+});
+export const SchedulingStaffResponseSchema = Type.Array(SchedulingStaffViewSchema);
 export const GrantCredentialRequest = Type.Object({
   credentialType: CREDENTIAL_DISCIPLINE,
   effectiveAt: Type.String({ format: "date" }),

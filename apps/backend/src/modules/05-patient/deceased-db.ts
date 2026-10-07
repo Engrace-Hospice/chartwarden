@@ -18,14 +18,15 @@
 // that fully SUCCEEDED, but a delivery that failed partway (e.g. a sibling consumer bound to the
 // same event throws) is retried in full. `patient.status` itself is the durable idempotency signal
 // here — no separate marker table is needed: a patient already `deceased` is a no-op success (the
-// M6 `m6.applier.*` "refusals are success to the dispatcher" precedent), and a patient in any status
-// OTHER than `active`/`on_hold` is a genuine state-machine violation (the §7.8 diagram's only two
-// `→ deceased` edges) that dead-letters for a human rather than silently overwriting an unrelated
-// transition (e.g. a merge).
+// M6 `m6.applier.*` "refusals are success to the dispatcher" precedent). Which other statuses may flip
+// is `deathTransitionFrom` (./patient-status-transitions.ts): `active`/`on_hold`, plus a `prospective`/
+// `discharged` row that merely lagged M6's activation; a `merged` chart dead-letters for a human.
+// Every flip also emits `m5.patient.status_changed` (§4.6) with the real `fromStatus`.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { type DeceasedCascadePorts, recordDeath } from "./deceased";
+import { deathTransitionFrom } from "./patient-status-transitions";
 
 const P = schema.patients;
 
@@ -53,10 +54,9 @@ export type DeathCascadeOutcome =
   /** The patient was already `deceased` — a redelivery or a race with another death intake. No-op. */
   | { readonly kind: "already_deceased" };
 
-/** Thrown when a death is recorded against a patient whose status is not `active`/`on_hold` (and not
- *  already `deceased`, which is the idempotent no-op case above) — the §7.8 diagram's only two
- *  `→ deceased` edges. A genuine bug (e.g. a discharged/merged chart) that should dead-letter, not
- *  silently overwrite an unrelated transition. */
+/** Thrown when a death is recorded against a patient whose status cannot take it (`deathTransitionFrom`
+ *  → `reject`, i.e. a merged chart) — a genuine conflict that should dead-letter, not silently overwrite
+ *  an unrelated transition. */
 export class InvalidDeceasedTransitionError extends Error {
   constructor(
     readonly patientId: string,
@@ -86,10 +86,12 @@ export async function recordDeathFromDischarge(
         .where(eq(P.id, input.patientId))
         .limit(1);
       if (!row) throw new Error(`patient '${input.patientId}' not found`);
-      if (row.status === "deceased") return { kind: "already_deceased" };
-      if (row.status !== "active" && row.status !== "on_hold") {
+      const transition = deathTransitionFrom(row.status);
+      if (transition === "already_deceased") return { kind: "already_deceased" };
+      if (transition === "reject") {
         throw new InvalidDeceasedTransitionError(input.patientId, row.status);
       }
+      const fromStatus = row.status;
 
       const ports: DeceasedCascadePorts = {
         async markDeceased(organizationId, patientId, deceasedDate) {
@@ -99,6 +101,13 @@ export async function recordDeathFromDischarge(
             .where(eq(P.id, patientId));
         },
         async emitDeceased(organizationId, patientId, deceasedDate) {
+          await outbox.publish(tx, {
+            eventName: "m5.patient.status_changed",
+            payload: { patientId, organizationId, fromStatus, toStatus: "deceased" },
+            organizationId,
+            aggregateKind: "patient",
+            aggregateId: patientId,
+          });
           await outbox.publish(tx, {
             eventName: "m5.patient.deceased",
             payload: { patientId, organizationId, deceasedDate },

@@ -30,6 +30,11 @@
 // `withOrgContextFromRequest` and are documented elsewhere in this codebase as unsafe from a relay tick,
 // `getAdmissionSiting` was built for exactly this (M14/M30 queue and dashboard reads) and is safe here.
 //
+// STATUS (§2.4.1): the same delivery also applies the `prospective → active` / `discharged → active`
+// edges ("admission approved (M6)" / "re-admission") — nothing else in the repository ever did, so every
+// admitted patient stayed `prospective` and the death cascade dead-lettered on them. `active`/`on_hold`/
+// `deceased`/`merged` rows keep their status. A redelivery finds `active` and emits nothing.
+//
 // IDEMPOTENT BY CONSTRUCTION: every delivery re-reads the admission's current siting and re-applies the
 // same UPDATE: a redelivery is a no-op write, and a later admission activating for the same patient
 // (re-admission at a different provider entity) correctly overwrites the earlier value with the
@@ -40,6 +45,8 @@ import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import type { M5OutboxPort } from "../deceased-db";
+import { activationPromotesToActive } from "../patient-status-transitions";
 
 const P = schema.patients;
 
@@ -53,6 +60,8 @@ export const M5_ADMISSION_SITING_CONSUMER = {
 
 export interface AdmissionSitingDeps {
   readonly db: DbClient;
+  /** Emits `m5.patient.status_changed` when the activation promotes the patient (§2.4.1). */
+  readonly outbox: M5OutboxPort;
 }
 
 interface AdmissionActivatedPayload {
@@ -104,13 +113,37 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
         { organizationId, userId: CONSUMER_USER_ID },
         async (scoped) => {
           const tx = scoped as unknown as DbClient;
+          const [row] = await tx
+            .select({ status: P.status })
+            .from(P)
+            .where(eq(P.id, facts.patientId))
+            .limit(1);
+          if (!row) return;
+          // §2.4.1 `prospective --> active : admission approved (M6)` and `discharged --> active :
+          // re-admission` — the status half of the activation, applied with the siting in one tx.
+          const promote = activationPromotesToActive(row.status);
           await tx
             .update(P)
             .set({
               providerEntityId: siting.providerEntityId,
               locationId: siting.locationId,
+              ...(promote ? { status: "active" as const, updatedAt: new Date() } : {}),
             })
             .where(eq(P.id, facts.patientId));
+          if (promote) {
+            await deps.outbox.publish(tx, {
+              eventName: "m5.patient.status_changed",
+              payload: {
+                patientId: facts.patientId,
+                organizationId,
+                fromStatus: row.status,
+                toStatus: "active",
+              },
+              organizationId,
+              aggregateKind: "patient",
+              aggregateId: facts.patientId,
+            });
+          }
         },
       );
     },

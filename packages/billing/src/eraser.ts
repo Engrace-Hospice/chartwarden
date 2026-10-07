@@ -37,6 +37,8 @@ export const M23_PATIENT_CASCADE_ORDER = [
   "claim",
   "noe_record",
   "notr_record",
+  // Migration 0375 — the 8xC / 8xD transfer notice (follow-ups deleted before the originals they act on).
+  "transfer_notice_record",
 ] as const;
 
 export type M23PatientCascadeTable = (typeof M23_PATIENT_CASCADE_ORDER)[number];
@@ -49,6 +51,9 @@ export type M23PatientCascadeTable = (typeof M23_PATIENT_CASCADE_ORDER)[number];
 export const M23_REDACT_FIELDS = [
   "claim.replacement_reason",
   "validation_override.reason",
+  // Migration 0378 — the biller's free-text reason for a corrected NOE / NOTR.
+  "noe_record.correction_reason",
+  "notr_record.correction_reason",
   "sequestration_policy.set_reason",
   "mac_submitter_credential.client_secret_cipher",
   "noe_record.patient_id_ref",

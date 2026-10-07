@@ -84,11 +84,24 @@ const CalendarPage = lazy(() =>
     default: m.CalendarPage,
   })),
 );
+const ClinicianCredentials = lazy(() =>
+  import("./clinician-credentials").then((m) => ({
+    default: m.ClinicianCredentials,
+  })),
+);
 
 export const schedulingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 17,
   slug: "17-scheduling",
   screens: [
+    {
+      id: "scheduling.clinician-credentials",
+      path: "/scheduling/clinician-credentials",
+      title: "Clinician Credentials",
+      navGroup: "Scheduling",
+      requiredPermission: "membership_credential.read",
+      screen: ClinicianCredentials,
+    },
     {
       id: "scheduling.calendar",
       path: "/calendar",

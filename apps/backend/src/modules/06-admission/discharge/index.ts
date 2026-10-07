@@ -16,6 +16,11 @@ export {
   deriveDischargePermissionKey,
   dischargeRequiresCosign,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
+  issueDetails,
+  resolvePlaceOfDeath,
+  PLACES_OF_DEATH,
+  type PlaceOfDeath,
 } from "./permission-map";
 export {
   type BereavementFacts,
@@ -33,5 +38,9 @@ export {
   type TransferInInput,
   type TransferInPeriodPlan,
   type TransferInPlan,
+  type TransferInSourceRefusal,
+  isNpiCheckDigitValid,
   planTransferIn,
+  transferInSourceRefusal,
 } from "./transfer-in";
+export * from "./discharge-details";

@@ -349,10 +349,10 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       await expectRefused(periodId, cti, ["F2F_OUTSIDE_WINDOW"]);
     });
 
-    it("F-226: same-day F2F (encounter == period start) is outside the window even when flagged true (R-F2F-02)", async () => {
+    it("F-226: an F2F the day AFTER the period start is outside the window even when flagged true (R-F2F-02; the first day itself is timely, MBPM ch. 9 §20.1(5)(a))", async () => {
       const a = await activate();
       const { periodId, cti } = await recert(a.admissionId, 3);
-      await f2f(periodId, { withinWindow: true, encounterDate: EXPECTED_START });
+      await f2f(periodId, { withinWindow: true, encounterDate: dayOffset(11) });
       await expectRefused(periodId, cti, ["F2F_OUTSIDE_WINDOW"]);
     });
 

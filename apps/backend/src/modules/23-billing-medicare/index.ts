@@ -69,6 +69,12 @@ export {
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
 export {
+  type PriorElectionClosure,
+  type PriorLiveEndedStayPort,
+  PriorElectionNotClosedError,
+  priorElectionClosureForOrg,
+} from "./services/prior-election-closure";
+export {
   type M23BootAssemblyPorts,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
@@ -130,6 +136,11 @@ export {
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
+  buildHetsEligibilityPort,
+  createM23HetsTransport,
+  m23HetsConfigFromEnv,
+  type HetsProviderPort,
+  type M23HetsConfig,
 } from "./jobs/index";
 export { M23_PLATFORM_JOB_ID, wireM23Tenancy } from "./wiring";
 export { buildClaimValidationContextPort } from "./services/claim-validation-context-port";
@@ -168,6 +179,23 @@ export {
   notrWindowTargetAt,
   planNotrDraft,
 } from "./outbox-consumers/m6-notr-triggers";
+
+// The receiving hospice's Medicare transfer notice (TOB 8xC): the draft consumer off `m6.transfer.created`
+// direction `in`, and the worklist service (confirm prior billing / submit / cancel / correct / void / redraft).
+export {
+  type M23TransferNoticeDraftConsumerDeps,
+  type TransferInFacts,
+  type TransferInFactsResolver,
+  M23_TRANSFER_NOTICE_DRAFT_CONSUMER,
+  buildM23TransferNoticeDraftConsumer,
+  planTransferNoticeDraft,
+} from "./outbox-consumers/m6-transfer-in-notice";
+export {
+  type TransferNoticeService,
+  type TransferNoticeView,
+  TRANSFER_NOTICE_SUBMIT_QUEUE,
+  buildTransferNoticeService,
+} from "./services/transfer-notice-service";
 
 // GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
 export {

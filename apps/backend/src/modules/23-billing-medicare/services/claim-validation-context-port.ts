@@ -10,7 +10,12 @@
 // a new rate) therefore shows up as a failing rule instead of being masked by stale persisted numbers. Two
 // facts the assembly deliberately leaves null are real here: the latest resolved HETS eligibility check and the
 // admission's NOE row.
-import { type IsoDate, repositories } from "@wardenx/billing";
+import {
+  type IsoDate,
+  type NoeStatusSnapshot,
+  medicareReceiptDay,
+  repositories,
+} from "@wardenx/billing";
 import type { ClaimAssemblySeams } from "./claim-assembly";
 import { computeClaimHipps, computeClaimSia, readAssemblyFacts } from "./claim-assembly-facts";
 import type { BillingTx, BillingWriteActor } from "./claim-state-service";
@@ -18,6 +23,7 @@ import type {
   MaterializedValidationInputs,
   ValidationContextPort,
 } from "./claim-validation-service";
+import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
 
 const MS_PER_DAY = 86_400_000;
@@ -57,10 +63,19 @@ export function buildClaimValidationContextPort(
         serviceTo: claim.serviceTo,
       });
       const lines = await new repositories.ClaimLineRepository(tx).listForClaim(claim.id);
-      const hipps = computeClaimHipps(facts, {
-        serviceFrom: claim.serviceFrom,
-        serviceTo: claim.serviceTo,
-      });
+      // Two-tier RHC carry-over, re-derived (a newer HETS check or a corrected stay surfaces as a HIPPS diff).
+      const rhcCarryOver = await readClaimRhcCarryOver(
+        tx as repositories.BillingDb,
+        orgId,
+        claim.patientId,
+        facts.admission,
+        now(),
+      );
+      const hipps = computeClaimHipps(
+        facts,
+        { serviceFrom: claim.serviceFrom, serviceTo: claim.serviceTo },
+        rhcCarryOver.priorDays,
+      );
       const sia = await computeClaimSia(deps.seams, facts);
 
       // Prior-claim continuity for the admission, EXCLUDING the claim under validation.
@@ -88,9 +103,11 @@ export function buildClaimValidationContextPort(
             claim.patientId,
           )
         : null;
-      const noeRow = await new repositories.NoeRepository(tx).findActiveByAdmission(
-        facts.admission.admissionId,
-      );
+      // The admission's EFFECTIVE NOE (latest non-cancelled, non-rejected — an `ack_accepted` one included).
+      // `findActiveByAdmission` excludes accepted NOEs (it means "still in flight"), which made an accepted NOE
+      // validate as "No Notice of Election".
+      const noeRepo = new repositories.NoeRepository(tx);
+      const noeRow = await noeRepo.findEffectiveByAdmission(facts.admission.admissionId);
 
       const context = assembleValidationContext({
         orgId,
@@ -120,18 +137,75 @@ export function buildClaimValidationContextPort(
             }
           : null,
         noe: noeRow
-          ? {
-              state: noeRow.state,
-              admissionDay: wholeDaysBetween(
-                new Date(`${facts.admission.hospiceAdmissionDate}T00:00:00.000Z`),
-                new Date(`${isoDayOf(asOf)}T00:00:00.000Z`),
-              ),
-              windowBreached: noeRow.windowBreachedAt !== null,
-            }
+          ? noeStatusSnapshot(
+              noeRow,
+              await noeClockStart((id) => noeRepo.findById(id), noeRow),
+              facts.admission.hospiceAdmissionDate,
+              asOf,
+            )
           : null,
         eligibilityBound: deps.eligibilityBound,
+        rhcCarryOver: rhcCarryOverSnapshot(rhcCarryOver),
       });
       return { context };
     },
   };
+}
+
+/**
+ * The effective NOE as the `noe_timeliness_5d` rule sees it. A corrected NOE accepted after a rejection is the
+ * effective one (`findEffectiveByAdmission` skips rejected rows). The ch. 11 §20.1.1 clock starts at `clockStart`
+ * ({@link noeClockStart}), so a correction cannot move it later. Its acceptance date is the MAC's (`payer_status_date`) when
+ * recorded, else the (Eastern) day we received the acceptance (a pre-0378 row).
+ */
+export function noeStatusSnapshot(
+  noe: repositories.NoeRecord,
+  clockStart: IsoDate,
+  hospiceAdmissionDate: string,
+  asOf: Date,
+): NoeStatusSnapshot {
+  const accepted = noe.state === "ack_accepted";
+  const acceptedDate = !accepted
+    ? null
+    : (noe.payerStatusDate ?? (noe.acceptedAt ? medicareReceiptDay(noe.acceptedAt) : null));
+  return {
+    state: noe.state,
+    admissionDay: wholeDaysBetween(
+      new Date(`${hospiceAdmissionDate}T00:00:00.000Z`),
+      new Date(`${isoDayOf(asOf)}T00:00:00.000Z`),
+    ),
+    windowBreached: noe.windowBreachedAt !== null,
+    electionEffectiveDate: clockStart,
+    acceptedDate,
+    acceptedDateSource: !accepted
+      ? null
+      : noe.payerStatusDate
+        ? (noe.payerStatusDateSource ?? "receipt")
+        : acceptedDate
+          ? "receipt"
+          : null,
+  };
+}
+
+/** Corrections are bounded by the D4 attempt index (`notice-correction-service.ts`). */
+const MAX_CHAIN_LINKS = 99;
+
+/**
+ * Where the NOE's 5-day clock starts: the EARLIEST admission date along its correction chain (the original NOE was
+ * dated from M6's election period). A corrected NOE may fix a wrong date, but it can never move the clock later —
+ * otherwise "correcting" the admission date would turn a late NOE into a timely one and erase its OSC 77 days.
+ */
+export async function noeClockStart(
+  find: (id: string) => Promise<repositories.NoeRecord | null>,
+  noe: repositories.NoeRecord,
+): Promise<IsoDate> {
+  let start = noe.electionEffectiveDate;
+  let cursor = noe.correctsNoticeId;
+  for (let link = 0; cursor !== null && link < MAX_CHAIN_LINKS; link += 1) {
+    const prior = await find(cursor);
+    if (!prior) break;
+    if (prior.electionEffectiveDate < start) start = prior.electionEffectiveDate;
+    cursor = prior.correctsNoticeId;
+  }
+  return start;
 }

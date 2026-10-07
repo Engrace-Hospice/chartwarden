@@ -173,6 +173,7 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
         dischargeDate: at,
         narrative: "Patient died at home, family present.",
         deathCertifierId: MD,
+        placeOfDeath: "home",
       } as never,
       USER,
     );

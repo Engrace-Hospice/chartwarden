@@ -69,16 +69,16 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(DEFAULT_RULE_SET_VERSION).toBe(1);
   });
 
-  it("DEFAULT_BILLING_RULES holds 19 rules with unique keys", () => {
-    expect(DEFAULT_BILLING_RULES).toHaveLength(19);
+  it("DEFAULT_BILLING_RULES holds 20 rules with unique keys", () => {
+    expect(DEFAULT_BILLING_RULES).toHaveLength(20);
     const keys = DEFAULT_BILLING_RULES.map((r) => r.key);
-    expect(new Set(keys).size).toBe(19);
+    expect(new Set(keys).size).toBe(20);
   });
 
-  it("builds a fresh, UN-frozen registry pre-loaded with the 19 defaults", () => {
+  it("builds a fresh, UN-frozen registry pre-loaded with the 20 defaults", () => {
     const reg = createDefaultBillingRegistry();
     expect(reg.isFrozen).toBe(false);
-    expect(reg.getRules()).toHaveLength(19);
+    expect(reg.getRules()).toHaveLength(20);
     // a fresh instance each call (no shared singleton)
     expect(createDefaultBillingRegistry()).not.toBe(reg);
   });
@@ -89,6 +89,7 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(regKeys).toHaveLength(17);
     expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // non-regulatory (warn)
     expect(regKeys).not.toContain("evv_bracket_coherence"); // ADR-0008: operational, never a Medicare regulatory floor
+    expect(regKeys).not.toContain("rhc_carry_over_hets_fresh"); // a pricing-accuracy warning, not a floor
   });
 });
 
@@ -96,7 +97,7 @@ describe("runRules — one result per rule, in registration order", () => {
   it("returns exactly one RuleResult per registered rule, key-aligned to the registry order", () => {
     const reg = createDefaultBillingRegistry();
     const results = reg.runRules(passingContext());
-    expect(results).toHaveLength(19);
+    expect(results).toHaveLength(20);
     expect(results.map((r) => r.ruleKey)).toEqual(DEFAULT_BILLING_RULES.map((r) => r.key));
   });
 

@@ -17,11 +17,14 @@ import {
   type DischargeReason,
   type TransferInInput,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
   decideBereavementEligibility,
   dischargeRequiresCosign,
   fileForCauseDischarge,
+  issueDetails,
   planTransferIn,
   resolveForCauseDischarge,
+  resolvePlaceOfDeath,
 } from "../discharge";
 import {
   type ActivationGap,
@@ -34,6 +37,11 @@ import {
 } from "../intake";
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
+import {
+  type BenefitPeriodEntry,
+  assertBenefitPeriodEntry,
+  assertF2fExceptionReason,
+} from "../intake/benefit-period";
 import { AdmissionStateError } from "../state-machines/errors";
 import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { daysBetween } from "../state-machines/validation";
@@ -135,7 +143,7 @@ export class LocationProviderMismatchError extends WardenXError {
 
 /**
  * 422 F2F_OUTSIDE_WINDOW — a scheduled F2F date falls outside the CMS 418.22 prior-to window
- * `[period_start − 30, period_start − 1]` (§7.4 W-F2F-01). The window is server-computed in org TZ.
+ * `[period_start − 30, period_start]` (§7.4 W-F2F-01). The window is server-computed in org TZ.
  */
 export class F2fScheduleOutOfWindowError extends WardenXError {
   constructor(scheduledDate: string, windowStart: string, windowEnd: string) {
@@ -195,6 +203,10 @@ export interface ReferralFacts {
 export interface AdmissionFacts {
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  /** The stay's service location (`admission_clinical_site_scope`'s fallback site); optional for child-keyed loaders. */
+  readonly locationId?: string | null;
+  /** Who opened it through POST /admissions (`admission.scope`'s creator arm for an unsited admission, §6.8). */
+  readonly createdByUserId?: string | null;
 }
 export interface CtiFacts {
   readonly hospiceMedicalDirectorId: string;
@@ -207,6 +219,23 @@ export interface ComplianceWindowFacts {
   readonly admissionId: string;
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  readonly createdByUserId?: string | null;
+}
+/** `admission_intake_scope` — the facts about a patient of the caller's org that decide intake reach. */
+export interface PatientIntakeFacts {
+  /** The patient has an admission in `active` or `on_hold` — an ongoing stay, not intake's business. */
+  readonly hasActiveOrOnHoldAdmission: boolean;
+  /** The patient has ANY admission in this org (`admission_clinical_site_scope`: a never-admitted patient has no site). */
+  readonly hasAnyAdmission: boolean;
+  /** The chart's site (M5 stamps it from the activated admission); null until a stay of theirs is activated. */
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  /**
+   * The site of the patient's latest referral that names one — how a never-admitted (never-sited) patient is placed at
+   * a site (`admission_clinical_site_scope`, §6.8). Null when no referral names a site.
+   */
+  readonly referralProviderEntityId: string | null;
+  readonly referralLocationId: string | null;
 }
 
 /**
@@ -232,6 +261,14 @@ export interface AdmissionAbacResolver {
   loadCtiScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
   loadF2fScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
   loadLocScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  /**
+   * `admission_intake_scope` — is `patientId` a patient of `organizationId`, and does it have an active / on-hold
+   * admission? `null` when the patient is absent or another org's (the predicate then fails closed).
+   */
+  loadPatientIntakeFacts(
+    organizationId: string,
+    patientId: string,
+  ): Promise<PatientIntakeFacts | null>;
 }
 
 /** The capture contracts the routes hand the service (§4.2; abbreviated to the load-bearing fields). */
@@ -244,18 +281,32 @@ export interface ReferralCreateInput {
   readonly patientDobAtReceipt?: string;
   readonly medicareNumberAtReceipt?: string;
   readonly medicaidNumberAtReceipt?: string;
+  readonly sexAssignedAtBirth?: "F" | "M" | "O" | "U";
   readonly referringDxText?: string;
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
   readonly referrerPhone?: string;
   readonly externalReferralId?: string;
 }
-export interface AdmissionCreateInput {
+/**
+ * The first benefit period a NEW admission elects into (intake/benefit-period.ts). Absent = our own history's
+ * suggestion, recorded as `internal_history` (1 for a patient we never served — the pre-readmission behaviour).
+ */
+export interface FirstBenefitPeriodInput {
+  readonly benefitPeriod?: BenefitPeriodEntry;
+  /** Period 3+ only: the documented exceptional circumstance (MBPM ch. 9 §20.1(5)(d)). */
+  readonly f2fException?: { readonly reason: string };
+  /** The planned admission / election date (`YYYY-MM-DD`); anchors the F2F window of a period-3+ admission. */
+  readonly admissionDate?: string;
+}
+export interface AdmissionCreateInput extends FirstBenefitPeriodInput {
   readonly patientId: string;
   readonly referralId?: string;
   readonly intakeMethod: string;
   readonly attendingPhysicianId?: string;
   readonly hospiceMedicalDirectorId: string;
+  /** A readmission: the patient's earlier, live-discharged admission this one follows. */
+  readonly readmittedFromAdmissionId?: string;
 }
 export interface AdmissionUpdateInput {
   readonly admissionAt?: string;
@@ -286,7 +337,7 @@ export interface UploadedCtiInput {
   readonly signedAt?: string;
 }
 /** §4.2.1 accept body — links/creates the M5 patient and supplies the primary dx (W-RF-04). */
-export interface AcceptReferralInput {
+export interface AcceptReferralInput extends FirstBenefitPeriodInput {
   readonly patientId?: string;
   readonly primaryDiagnosisIcd10: string;
   readonly attendingPhysicianId?: string;
@@ -299,6 +350,7 @@ export interface ReferralUpdateInput {
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
   readonly referrerPhone?: string;
+  readonly sexAssignedAtBirth?: "F" | "M" | "O" | "U";
 }
 
 export interface ReferralNoteInput {
@@ -333,6 +385,7 @@ export interface ReferralReadView extends SummaryRow {
   readonly patientDobAtReceipt: string | null;
   readonly medicareNumberAtReceipt: string | null;
   readonly medicaidNumberAtReceipt: string | null;
+  readonly sexAssignedAtBirth: string | null;
   readonly referringDxText: string | null;
   readonly icd10TerminalPrimary: string | null;
   readonly source: string;
@@ -400,6 +453,9 @@ export interface DischargeInput {
   readonly forCauseReason?: string;
   /** R-DC-01 — required when `reason === 'death'` (`checkDischargeNarrative` enforces it). */
   readonly deathCertifierId?: string;
+  /** Required when `reason === 'death'` (`checkPlaceOfDeath`); claim patient status 40/41/42. An external
+   *  (HL7) death that cannot know it records `unknown`. */
+  readonly placeOfDeath?: "home" | "facility" | "unknown";
   /**
    * F-227 (#248) — set ONLY by the M29 proposal applier (`recordExternalDeath`, W-M6-31): the death was
    * reported by an external facility, so R-DC-01's pronouncing-certifier capture does not apply at intake
@@ -414,6 +470,8 @@ export interface TransferOutInput {
   readonly effectiveDate: string;
   readonly otherHospiceName: string;
   readonly otherHospiceCcn?: string;
+  /** Where the receiving hospice cares for the patient — claim patient status 50 (home) / 51 (facility). */
+  readonly receivingCareSetting: "home" | "facility";
   readonly narrative: string;
 }
 
@@ -630,6 +688,16 @@ export interface ElectionSignInput {
  */
 export interface AdmissionReadScope {
   readonly patientIds: readonly string[] | null;
+  /**
+   * The Readmit list only (discharge worklist `recently_discharged`): rows whose ADMISSION is at one of these sites are
+   * ALSO in scope (OR'd with `patientIds`; ignored when `patientIds` is null). Same site test as M6's
+   * `admission_clinical_site_scope`: the location decides when both the row and the caller know one, else the
+   * provider entity.
+   */
+  readonly sites?: {
+    readonly providerEntityIds: readonly string[];
+    readonly locationIds: readonly string[];
+  };
 }
 
 export interface AdmissionRouteService {
@@ -1042,6 +1110,7 @@ interface Rec {
   patientId?: string;
   providerEntityId?: string | null;
   locationId?: string | null;
+  createdByUserId?: string | null;
   patientResidenceAddressId?: string | null;
   admissionId?: string;
   admissionAt?: string | null;
@@ -1082,6 +1151,7 @@ interface Rec {
   patientDobAtReceipt?: string;
   medicareNumberAtReceipt?: string;
   medicaidNumberAtReceipt?: string;
+  sexAssignedAtBirth?: "F" | "M" | "O" | "U";
   patientResolutionStatus?: "unresolved" | "possible_match" | "matched" | "created";
   electionPeriodId?: string;
   sequence?: number;
@@ -1101,6 +1171,7 @@ interface Rec {
   effectiveAt?: string;
   otherHospiceName?: string;
   otherHospiceCcn?: string | null;
+  receivingCareSetting?: "home" | "facility" | null;
   narrative?: string;
   // revocation facts (§4.2.7 route 36) — what was actually submitted, not a hardcoded default.
   signedAt?: string;
@@ -1130,6 +1201,8 @@ export interface AdmissionSeedRecord {
   readonly patientId?: string;
   readonly providerEntityId?: string | null;
   readonly locationId?: string | null;
+  /** The admission's creator (POST /admissions actor) — `admission.scope`'s §6.8 creator arm. */
+  readonly createdByUserId?: string | null;
   readonly admissionId?: string;
   readonly hospiceMedicalDirectorId?: string;
   readonly attendingPhysicianId?: string | null;
@@ -1173,6 +1246,35 @@ export interface AdmissionBackendSeed {
  * `events` array records emitted outbox event names for assertion. Deterministic — no I/O, injected
  * clock.
  */
+/**
+ * The in-memory slice's first benefit period: the staff entry (validated like the Drizzle path) or 1 — the slice
+ * keeps no discharge history to suggest from (the Drizzle path's suggestion is proven by its live suite).
+ */
+function firstSequence(input: FirstBenefitPeriodInput): number {
+  if (!input.benefitPeriod) return 1;
+  assertBenefitPeriodEntry(input.benefitPeriod, new Date().toISOString().slice(0, 10));
+  assertF2fExceptionReason(input.f2fException?.reason, input.benefitPeriod.sequence);
+  return input.benefitPeriod.sequence;
+}
+
+/** The in-memory twin of the Drizzle resolver's latest site-naming referral of a patient (last seeded wins). */
+function referralSiteOf(
+  ofOrg: readonly Rec[],
+  patientId: string,
+): { referralProviderEntityId: string | null; referralLocationId: string | null } {
+  const sited = ofOrg.filter(
+    (r) =>
+      r.kind === "referral" &&
+      r.patientId === patientId &&
+      (r.providerEntityId != null || r.locationId != null),
+  );
+  const last = sited[sited.length - 1];
+  return {
+    referralProviderEntityId: last?.providerEntityId ?? null,
+    referralLocationId: last?.locationId ?? null,
+  };
+}
+
 export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}): {
   service: AdmissionRouteService;
   resolver: AdmissionAbacResolver;
@@ -1190,6 +1292,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       patientId: r.patientId,
       providerEntityId: r.providerEntityId ?? null,
       locationId: r.locationId ?? null,
+      createdByUserId: r.createdByUserId ?? null,
       admissionId: r.admissionId,
       hospiceMedicalDirectorId: r.hospiceMedicalDirectorId,
       attendingPhysicianId: r.attendingPhysicianId ?? null,
@@ -1323,6 +1426,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       patientDobAtReceipt: rec.patientDobAtReceipt ?? null,
       medicareNumberAtReceipt: rec.medicareNumberAtReceipt ?? null,
       medicaidNumberAtReceipt: rec.medicaidNumberAtReceipt ?? null,
+      sexAssignedAtBirth: rec.sexAssignedAtBirth ?? "U",
       referringDxText: rec.referringDxText ?? null,
       icd10TerminalPrimary: rec.primaryDiagnosisIcd10 ?? null,
       source: rec.source ?? "phone",
@@ -1506,6 +1610,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         patientDobAtReceipt: input.patientDobAtReceipt,
         medicareNumberAtReceipt: input.medicareNumberAtReceipt,
         medicaidNumberAtReceipt: input.medicaidNumberAtReceipt,
+        sexAssignedAtBirth: input.sexAssignedAtBirth ?? "U",
         referringDxText: input.referringDxText,
         referrerName: input.referrerName,
         referrerOrganization: input.referrerOrganization,
@@ -1553,12 +1658,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return rec ? referralView(rec) : null;
     },
     async updateReferral(organizationId, id, input, ifVersion) {
-      void input;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (!["received", "under_review", "pending_information"].includes(rec.state)) {
         throw new InvalidReferralStateError(id, rec.state, "update referral information");
       }
+      if (input.sexAssignedAtBirth) rec.sexAssignedAtBirth = input.sexAssignedAtBirth;
       return transition(rec, rec.state, ifVersion);
     },
     async triageReferral(organizationId, id, outcome, ifVersion) {
@@ -1666,7 +1771,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       insert("election_period", organizationId, "pending", {
         admissionId: adm.id,
         patientId,
-        sequence: 1,
+        sequence: firstSequence(input),
         primaryDiagnosisIcd10: input.primaryDiagnosisIcd10,
       });
       insert("compliance_window", organizationId, "open", {
@@ -1771,19 +1876,20 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
 
     async createAdmission(organizationId, input, actorUserId) {
-      void actorUserId;
       if (input.referralId) throw new ReferralAdmissionPathError();
       const rec = insert("admission", organizationId, "pending", {
         patientId: input.patientId,
         providerEntityId: null,
+        createdByUserId: actorUserId || null,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         primaryDiagnosisIcd10: "C00",
       });
+      const sequence = firstSequence(input);
       const period = insert("election_period", organizationId, "pending", {
         admissionId: rec.id,
         patientId: input.patientId,
-        sequence: 1,
+        sequence,
         primaryDiagnosisIcd10: "C00",
       });
       insert("cti", organizationId, "drafted", {
@@ -1791,7 +1897,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         electionPeriodId: period.id,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
-        sequence: 1,
+        sequence,
       });
       return summary(rec);
     },
@@ -2374,6 +2480,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         effectiveAt: input.effectiveDate,
         otherHospiceName: input.otherHospiceName,
         otherHospiceCcn: input.otherHospiceCcn ?? null,
+        receivingCareSetting: input.receivingCareSetting,
         narrative: input.narrative,
       });
       events.push("m6.transfer.created");
@@ -2435,6 +2542,18 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         input.deathCertifierId,
       );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
+      const placeOfDeath = resolvePlaceOfDeath(
+        input.reason,
+        input.placeOfDeath,
+        input.externalSource !== undefined,
+      );
+      const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
+      if (placeIssue)
+        throw new AdmissionStateError(
+          placeIssue.code,
+          placeIssue.message,
+          issueDetails(placeIssue),
+        );
       const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");
       if (requiresMedicalDirectorCosign) {
@@ -2569,6 +2688,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       ? {
           patientId: adm.patientId,
           providerEntityId: adm.providerEntityId ?? null,
+          createdByUserId: adm.createdByUserId ?? null,
         }
       : null;
   };
@@ -2589,6 +2709,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         ? {
             patientId: rec.patientId,
             providerEntityId: rec.providerEntityId ?? null,
+            locationId: rec.locationId ?? null,
+            createdByUserId: rec.createdByUserId ?? null,
           }
         : null;
     },
@@ -2638,6 +2760,26 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async loadLocScope(organizationId, id) {
       const rec = get(organizationId, id, "loc");
       return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    // The slice has no patient table: a patient "exists in the org" when a `patient` record or any of the
+    // org's records names it (the Drizzle resolver asks M5's org-scoped patient read instead).
+    async loadPatientIntakeFacts(organizationId, patientId) {
+      const ofOrg = [...byId.values()].filter((r) => r.organizationId === organizationId);
+      const known = ofOrg.some(
+        (r) => (r.kind === "patient" && r.id === patientId) || r.patientId === patientId,
+      );
+      if (!known) return null;
+      const stays = ofOrg.filter((r) => r.kind === "admission" && r.patientId === patientId);
+      const chart = ofOrg.find((r) => r.kind === "patient" && r.id === patientId);
+      return {
+        hasActiveOrOnHoldAdmission: stays.some(
+          (r) => r.state === "active" || r.state === "on_hold",
+        ),
+        hasAnyAdmission: stays.length > 0,
+        providerEntityId: chart?.providerEntityId ?? null,
+        locationId: chart?.locationId ?? null,
+        ...referralSiteOf(ofOrg, patientId),
+      };
     },
   };
 

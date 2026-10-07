@@ -23,10 +23,11 @@ export const claimSubmission = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     providerEntityId: uuid("provider_entity_id").notNull(), // logical FK → M40
 
-    kind: m23ClaimSubmissionKind("kind").notNull(), // claim_837i | noe | notr
+    kind: m23ClaimSubmissionKind("kind").notNull(), // claim_837i | noe | notr | transfer_notice
     claimId: uuid("claim_id").references(() => claim.id, { onDelete: "restrict" }), // NULL for noe/notr
     noeId: uuid("noe_id"), // logical FK → noe_record; populated when kind='noe'
     notrId: uuid("notr_id"), // logical FK → notr_record; populated when kind='notr'
+    transferNoticeId: uuid("transfer_notice_id"), // logical FK → transfer_notice_record (migration 0375)
 
     claimControlNumber: text("claim_control_number").notNull(),
     attemptIndex: integer("attempt_index").notNull(),
@@ -47,11 +48,12 @@ export const claimSubmission = pgTable(
       t.attemptIndex,
     ),
     claimIdx: index("claim_submission_claim_idx").on(t.claimId).where(sql`claim_id IS NOT NULL`),
-    exactlyOneSubject: sql`CHECK ((claim_id IS NOT NULL)::int + (noe_id IS NOT NULL)::int + (notr_id IS NOT NULL)::int = 1)`,
+    exactlyOneSubject: sql`CHECK ((claim_id IS NOT NULL)::int + (noe_id IS NOT NULL)::int + (notr_id IS NOT NULL)::int + (transfer_notice_id IS NOT NULL)::int = 1)`,
     kindMatchesSubject: sql`CHECK (
     (kind = 'claim_837i' AND claim_id IS NOT NULL) OR
     (kind = 'noe' AND noe_id IS NOT NULL) OR
-    (kind = 'notr' AND notr_id IS NOT NULL)
+    (kind = 'notr' AND notr_id IS NOT NULL) OR
+    (kind = 'transfer_notice' AND transfer_notice_id IS NOT NULL)
   )`,
   }),
 );

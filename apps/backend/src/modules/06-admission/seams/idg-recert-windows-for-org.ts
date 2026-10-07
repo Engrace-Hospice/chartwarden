@@ -9,7 +9,7 @@
 // SEAM PULL, not outbox push: M14's spec names an M6 READER for these facts and M6's own outbox consumer list
 // records `m14` as declared-not-needed for CTI/F2F events (`events-by-m6.ts`, F-129). The window MATH is not
 // re-derived here — it is M6's own pure `computeF2fWindow` / `decideF2fWindowStatus` (window-math.ts, the
-// CMS 418.22 prior-to window `[period_start − 30, period_start − 1]` in ORG-LOCAL calendar days, D8), the same
+// CMS 418.22 prior-to window `[period_start − 30, period_start]` in ORG-LOCAL calendar days, D8), the same
 // functions the `admission.window_alert` cron uses to raise `m6.f2f.window_missed`. What is new is only the
 // per-patient projection.
 //

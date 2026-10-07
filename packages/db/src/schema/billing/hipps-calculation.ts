@@ -20,7 +20,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
-import type { HippsCalculationSegments } from "./types";
+import type { HippsCalculationRhcCarryOver, HippsCalculationSegments } from "./types";
 
 export const hippsCalculation = pgTable(
   "hipps_calculation",
@@ -48,6 +48,9 @@ export const hippsCalculation = pgTable(
     // ADR-0001 RHC day-60 two-tier day counts (RHC-High days 1-60 / RHC-Low day 61+, 80 FR 47142):
     rhcDays1to60: integer("rhc_days_1_to_60").notNull().default(0),
     rhcDays61Plus: integer("rhc_days_61_plus").notNull().default(0),
+    // The prior hospice days carried into the RHC day count (ours + other hospices' per HETS), with the chain,
+    // basis (internal_only / hets_merged / hets_stale) and warnings — migration 0376; NULL on older rows.
+    rhcCarryOver: jsonb("rhc_carry_over").$type<HippsCalculationRhcCarryOver>(),
 
     calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
   },

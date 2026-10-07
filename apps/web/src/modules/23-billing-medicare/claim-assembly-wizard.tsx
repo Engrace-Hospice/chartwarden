@@ -25,6 +25,7 @@ import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { dollars, statusLabel, tobLabel } from "./billing-status";
+import { assembleErrorMessage } from "./claim-assembly-errors";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 // The four assemblable Type-of-Bill codes (§4.1: 817/818 route through :replace / :void, not assembly).
@@ -576,28 +577,6 @@ function DtDd({
       </dd>
     </>
   );
-}
-
-// Map the assemble error envelope (§4.2 codes) to a precise, PHI-free inline message.
-function assembleErrorMessage(code: string | undefined, status: number | undefined): string {
-  switch (code) {
-    case "NON_MEDICARE_PRIMARY_PAYER":
-      return "This patient's primary payer is not Medicare (D15) — a Medicare claim cannot be assembled.";
-    case "PATIENT_NOT_ELECTED":
-      return "No active Medicare hospice election covers this service-date range.";
-    case "PATIENT_DECEASED_BEFORE_FROM":
-      return "The patient's date of death precedes the claim's service-from date.";
-    case "OVERLAPPING_ACTIVE_CLAIM":
-      return "An active claim already covers part of this service-date range.";
-    case "ASSEMBLY_VALIDATION_FAILED":
-      return "Assembly validation failed — review the elected periods and dates, then retry.";
-    default:
-      if (status === 503)
-        return "Billing assembly is unavailable — the assembly seam is not bound, or you lack scope.";
-      if (status === 403)
-        return "You do not have scope to assemble claims for this provider entity.";
-      return "The claim could not be assembled. Check the inputs and try again.";
-  }
 }
 
 const sectionStyle = {

@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 307 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 317 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 260 screen(s)
+- **web**: 270 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -53,9 +53,17 @@
 | web | 06-admission | `admission.census` | `/admissions` | `admission.read` | ✅ |
 | web | 06-admission | `admission.compliance` | `/compliance/admissions` | `compliance.read` | ✅ |
 | web | 06-admission | `admission.detail` | `/admissions/:id` | `admission.read` | ✅ |
+| web | 06-admission | `admission.discharge` | `/admissions/:id/discharge` | `discharge.create` | ✅ |
 | web | 06-admission | `admission.referral-detail` | `/referrals/:id` | `referral.read` | ✅ |
 | web | 06-admission | `admission.create` | `/admissions/new` | `admission.create` | ✅ |
+| web | 06-admission | `admission.discharges` | `/admissions/discharges` | `discharge.create` | ✅ |
+| web | 06-admission | `admission.readmit-list` | `/admissions/readmit` | `admission.create` | ✅ |
 | web | 06-admission | `admission.patient-election-cert` | `/patients/:patientId/election-certification` | `election.read` | ✅ |
+| web | 06-admission | `admission.death-pronouncement` | `/admissions/:id/death` | `discharge.death` | ✅ |
+| web | 06-admission | `admission.transfer-in` | `/admissions/:id/transfer-in` | `transfer.in` | ✅ |
+| web | 06-admission | `admission.readmit` | `/admissions/:id/readmit` | `admission.create` | ✅ |
+| web | 06-admission | `admission.discharge-cosign` | `/discharges/:id/cosign` | `discharge.cosign_for_cause` | ✅ |
+| web | 06-admission | `admission.discharge-details` | `/admissions/:id/discharge-details` | `admission.read` | ✅ |
 | web | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | `care_plan.read` | ✅ |
@@ -137,6 +145,7 @@
 | web | 16-bereavement | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | `bereavement.plan.read` | ✅ |
 | web | 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
 | web | 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
+| web | 17-scheduling | `scheduling.clinician-credentials` | `/scheduling/clinician-credentials` | `membership_credential.read` | ✅ |
 | web | 17-scheduling | `scheduling.calendar` | `/calendar` | `(none)` | ✅ |
 | web | 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
 | web | 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
@@ -213,6 +222,7 @@
 | web | 23-billing-medicare | `billing.noe.detail` | `/billing/noe/:noeId` | `billing.noe.read` | ✅ |
 | web | 23-billing-medicare | `billing.notr` | `/billing/notr` | `billing.notr.read` | ✅ |
 | web | 23-billing-medicare | `billing.notr.detail` | `/billing/notr/:notrId` | `billing.notr.read` | ✅ |
+| web | 23-billing-medicare | `billing.transfer-notices` | `/billing/transfer-notices` | `billing.noe.read` | ✅ |
 | web | 23-billing-medicare | `billing.rule-config` | `/billing/rule-config` | `billing.rule_config.read` | ✅ |
 | web | 23-billing-medicare | `billing.eligibility` | `/billing/eligibility` | `billing.eligibility.read` | ✅ |
 | web | 23-billing-medicare | `billing.sequestration` | `/billing/sequestration-policy` | `billing.sequestration_policy.read` | ✅ |

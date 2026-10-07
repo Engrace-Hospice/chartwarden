@@ -103,6 +103,7 @@ export type {
   PatientAdmissionClearanceReader,
   PatientCaregiverReader,
   PatientCoverageReader,
+  MbiUnlockReader,
   PatientHopeAdmissionPrefillReader,
   PatientAllergyReader,
   PatientPrivacyFlagReader,

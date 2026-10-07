@@ -106,6 +106,9 @@ export function applyErrorHandler(app: FastifyInstance): void {
         error: {
           code: conflict.code,
           message: conflict.message,
+          ...(/^visit(?:_|$).*_no_overlap$/.test(businessRule.constraint)
+            ? { reason: "CLINICIAN_SCHEDULE_CONFLICT" }
+            : {}),
           correlationId,
           documentationUrl: `${DOCS_BASE}/${conflict.code}`,
         },

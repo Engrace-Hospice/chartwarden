@@ -10,12 +10,14 @@
 // (D2 outbox-only); the MAC-portal dispatch + the X12 generation are deferred to the §4.8 workers (the
 // service emits the `*_requested` outbox row + records the submission attempt; the worker uploads and emits
 // the terminal `submitted`/`accepted`/`rejected`).
+import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
 import type {
   ClaimDetailView,
   ClaimSubmissionKind,
   MacCredentialView,
   NoeView,
+  NoticeCorrectionView,
   NotrView,
   OverrideRole,
   RuleConfigView,
@@ -118,6 +120,12 @@ export interface M23WriteServicePorts {
   readonly secretCipher?: SecretCipherPort;
   /** Records the prominent M4 override audit event + returns its id (fail-closed default). */
   readonly audit?: AuditEventPort;
+  /**
+   * The patient's latest earlier live-ended stay (an M6 fact). When bound, `submitNoe` refuses a readmission's NOE
+   * while that stay has no NOTR / final claim filed (Claims Processing Manual ch. 11 §20.1.6). Absent in slices
+   * that do not wire M6 — the check is then skipped.
+   */
+  readonly priorLiveEndedStay?: PriorLiveEndedStayPort;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }
@@ -254,6 +262,16 @@ export interface CancelNotrArgs {
   readonly terminatingEventReversed: boolean;
 }
 
+/**
+ * File a corrected NOE / NOTR for a rejected one (ch. 11 §20.1.1 / §20.1.2): the biller's reason (20–2000 chars)
+ * and, optionally, the corrected notice date — NOE: the admission (election effective) date; NOTR: the effective
+ * end (discharge / revocation) date. Everything else is copied from the rejected notice.
+ */
+export interface CorrectNoticeArgs {
+  readonly reason: string;
+  readonly correctedDate?: string | null;
+}
+
 export interface CheckEligibilityArgs {
   readonly patientId: string;
   readonly providerEntityId: string;
@@ -328,6 +346,18 @@ export interface M23WriteRouteService {
   cancelNoe(actor: M23WriteActor, noeId: string, args: CancelNoeArgs): Promise<NoeView>;
   submitNotr(actor: M23WriteActor, notrId: string): Promise<NoticeSubmissionAcceptedView>;
   cancelNotr(actor: M23WriteActor, notrId: string, args: CancelNotrArgs): Promise<NotrView>;
+  /** Draft the corrected NOE for a rejected one (idempotent: replays the correction in progress). */
+  correctNoe(
+    actor: M23WriteActor,
+    noeId: string,
+    args: CorrectNoticeArgs,
+  ): Promise<NoticeCorrectionView<NoeView>>;
+  /** Draft the corrected NOTR for a rejected one (idempotent: replays the correction in progress). */
+  correctNotr(
+    actor: M23WriteActor,
+    notrId: string,
+    args: CorrectNoticeArgs,
+  ): Promise<NoticeCorrectionView<NotrView>>;
 
   // ── eligibility ──
   checkEligibility(

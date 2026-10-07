@@ -26,6 +26,7 @@ import { registerNotrRoutes } from "./notr.routes";
 import { registerRateTableRoutes } from "./rate-table.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
+import { registerTransferNoticeRoutes } from "./transfer-notice.routes";
 import { registerValidationRoutes } from "./validation.routes";
 import { registerWageIndexRoutes } from "./wage-index.routes";
 
@@ -34,6 +35,10 @@ export { registerValidationRoutes, type ValidationRouteDeps } from "./validation
 export { registerRuleConfigRoutes, type RuleConfigRouteDeps } from "./rule-config.routes";
 export { registerNoeRoutes, type NoeRouteDeps } from "./noe.routes";
 export { registerNotrRoutes, type NotrRouteDeps } from "./notr.routes";
+export {
+  registerTransferNoticeRoutes,
+  type TransferNoticeRouteDeps,
+} from "./transfer-notice.routes";
 export { registerEligibilityRoutes, type EligibilityRouteDeps } from "./eligibility.routes";
 export {
   registerSequestrationPolicyRoutes,
@@ -73,6 +78,10 @@ export function mountM23Routes(
   // Route group D — NOE / NOTR (list/detail/submit/cancel).
   registerNoeRoutes(app, { readService, writeService });
   registerNotrRoutes(app, { readService, writeService });
+  // The Medicare transfer notice (TOB 8xC / corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
+  if (services.transferNoticeService) {
+    registerTransferNoticeRoutes(app, { transferNoticeService: services.transferNoticeService });
+  }
   // Route group E — eligibility / sequestration-policy / MAC credentials.
   registerEligibilityRoutes(app, { readService, writeService });
   // F-212 — the tenant-entered sequestration policy (absent service => the /billing/sequestration-policies routes are not mounted).

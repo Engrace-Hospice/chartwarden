@@ -26,6 +26,7 @@
 //   • The §7.x conflict rules — double-booking, availability, approved time off. A reschedule that
 //     collides is refused with a 409 and the message names what it collided with.
 import type { ApiClient, operations } from "@wardenx/ui";
+import { mapSchedulingApiError } from "./scheduling-errors";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -67,11 +68,6 @@ export interface PatientAddressOption {
   readonly id: string;
   readonly label: string;
 }
-/** One of the org's memberships — who a visit is assigned to. */
-export interface MembershipOption {
-  readonly id: string;
-  readonly label: string;
-}
 
 /** The outcome of one write — discriminated, because every caller renders the failure in place. */
 export type WriteResult<T> =
@@ -93,31 +89,13 @@ export type WriteResult<T> =
  */
 function failure(status: number | undefined, body: unknown): WriteResult<never> {
   const httpStatus = typeof status === "number" ? status : null;
-  const err =
-    body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown; message?: unknown } }).error
-      : undefined;
-  const detail = typeof err?.message === "string" ? err.message : null;
-  const code = typeof err?.code === "string" ? err.code : null;
-  const message =
-    code === "DISCIPLINE_NOT_ELIGIBLE" || code === "PRE_SCHEDULE_DENIED"
-      ? // The platform copy LEADS here rather than deferring to `detail`, unlike every other branch: the
-        // server's message for this one is a bare refusal ("not eligible"), and a scheduler needs to know
-        // that the fix is a different clinician — not a retry. The server's words follow it.
-        `That clinician's discipline or active licence does not cover this visit purpose (§4.7 D8).${
-          detail ? ` ${detail}` : ""
-        }`
-      : httpStatus === 403
-        ? (detail ?? "Your role is not permitted to take this action on this visit.")
-        : httpStatus === 409
-          ? (detail ??
-            "That change conflicts with an existing visit, availability or approved time off.")
-          : httpStatus === 404
-            ? "That visit is no longer available to you."
-            : httpStatus === 422
-              ? (detail ?? "The server rejected the details supplied.")
-              : (detail ?? "The action could not be completed.");
-  return { ok: false, status: httpStatus, code, message };
+  const mapped = mapSchedulingApiError(body, httpStatus);
+  return {
+    ok: false,
+    status: httpStatus,
+    code: mapped.code ?? null,
+    message: mapped.message,
+  };
 }
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
@@ -147,29 +125,6 @@ export async function loadPatientAddresses(
   }));
 }
 
-/**
- * The org's memberships — who a visit can be assigned to. This is a ROSTER, not an eligibility list: the
- * §4.7 D8 gate decides whether the chosen clinician may take this visit purpose, and it decides that
- * from their role grants and the currency of their licence. Filtering here would be a second, divergent
- * implementation of that rule.
- */
-export async function loadMemberships(
-  client: ApiClient,
-  orgId: string,
-): Promise<MembershipOption[]> {
-  const { data } = await client.GET("/api/v1/orgs/{id}/members", {
-    params: { path: { id: orgId } },
-  });
-  const rows = data?.members ?? [];
-  return (
-    rows
-      // A revoked or suspended membership is not someone a visit can be assigned to. The server would
-      // refuse it anyway; offering it would be offering a choice that is certain to fail.
-      .filter((m) => m.status === "active")
-      .map((m) => ({ id: m.membershipId, label: m.displayName ?? m.membershipId.slice(0, 8) }))
-  );
-}
-
 /** Search the org's patients — who a visit is being scheduled for. */
 export async function searchPatients(
   client: ApiClient,
@@ -179,7 +134,10 @@ export async function searchPatients(
     params: { query: q.trim() ? { q: q.trim(), limit: 20 } : { limit: 20 } },
   });
   const rows = data?.items ?? [];
-  return rows.map((r) => ({ id: r.id, label: `${r.lastName}, ${r.firstName} · ${r.mrn}` }));
+  return rows.map((r) => ({
+    id: r.id,
+    label: `${r.lastName}, ${r.firstName} · ${r.mrn}`,
+  }));
 }
 
 /** The patient's admissions, newest first (F-065) — the admission a visit is scheduled under (#161). */
@@ -190,7 +148,11 @@ export async function loadPatientAdmissions(
   const { data } = await client.GET("/api/v1/patients/{patientId}/admissions", {
     params: { path: { patientId } },
   });
-  return (data?.items ?? []) as { id: string; state: string; dischargedAt: string | null }[];
+  return (data?.items ?? []) as {
+    id: string;
+    state: string;
+    dischargedAt: string | null;
+  }[];
 }
 
 // ── §2.2 visit lifecycle ───────────────────────────────────────────────────────────────────────────────
@@ -200,7 +162,9 @@ export async function createVisit(
   client: ApiClient,
   body: CreateVisitBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits", { body });
+  const { data, error, response } = await client.POST("/api/v1/visits", {
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -357,7 +321,9 @@ export async function requestTimeOff(
   client: ApiClient,
   body: CreateTimeOffBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/time-off", { body });
+  const { data, error, response } = await client.POST("/api/v1/time-off", {
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }

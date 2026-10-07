@@ -8,7 +8,7 @@ import {
 } from "../scheduling-route-service-db";
 import { M17_JOB_SCHEDULES, M17_QUEUES, M17_QUEUE_PARAMS } from "./index";
 
-const M17_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
+import { M17_SYSTEM_USER_ID as M17_WORKER_SYSTEM_USER_ID } from "../system-actor";
 
 export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;

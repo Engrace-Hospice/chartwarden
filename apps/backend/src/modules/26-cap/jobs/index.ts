@@ -5,7 +5,7 @@
 // thunk default until the integrator binds them — constructing the workers at boot stays green; a port only
 // throws WHEN A CRON TICK RUNS. Nothing here runs at import (constructing a Worker opens Valkey).
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, lte, or, sql } from "drizzle-orm";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../psr/psr-reconcile";
 import type { WriteOutboxPort } from "../routes/write-service";
 import { buildDrizzleM26WriteService } from "../routes/write-service-drizzle";
+import { M26_WORKER_SYSTEM_USER_ID } from "../system-actor";
 import {
   type CapYearCloseStore,
   type NightlyProjectionStore,
@@ -28,16 +29,11 @@ import { M26_CRON_QUEUES, M26_JOB_SCHEDULES, M26_QUEUE_PARAMS } from "./queues";
 export * from "./m26-jobs";
 export * from "./queues";
 
-/**
- * The system actor the cron stamps on its per-org withOrgContext reads/writes: the NULL system actor
- * (`userId: ""` + `systemActor`, as M33/M16 and the PS&R worker do). The audit trigger's actor FK targets
- * "user", and a fixed worker uuid is not a seeded user, so any audited write under it would violate
- * audit_event_actor_user_id_user_id_fk; NULL records "system" without a "user" row.
- */
+/** The cron's write actor: the sentinel is stamped on authored rows (`closed_by`) only — the write service
+ *  maps it to the NULL audit actor (`../system-actor.ts`), never into `app.user_id`. */
 const sysActor = (orgId: string) => ({
   organizationId: orgId,
-  userId: "",
-  systemActor: true,
+  userId: M26_WORKER_SYSTEM_USER_ID,
   roles: [],
 });
 const sysWriteActor = (orgId: string) => ({ ...sysActor(orgId), stepUpRecent: false });
@@ -96,7 +92,7 @@ export function buildStores(db: DbClient): {
   return {
     projection: {
       async listOpenPeriods(orgId) {
-        return withOrgContext(db, sysActor(orgId), (tx) =>
+        return withOrgContext(db, systemOrgContext(orgId), (tx) =>
           tx
             .select({ id: P.id })
             .from(P)
@@ -109,7 +105,7 @@ export function buildStores(db: DbClient): {
     },
     close: {
       async listClosablePeriods(orgId, asOf) {
-        return withOrgContext(db, sysActor(orgId), (tx) =>
+        return withOrgContext(db, systemOrgContext(orgId), (tx) =>
           tx
             .select({ id: P.id })
             .from(P)
@@ -127,7 +123,7 @@ export function buildStores(db: DbClient): {
     },
     watchdog: {
       async staleReconciliationCount(orgId, asOf, staleDays) {
-        return withOrgContext(db, sysActor(orgId), async (tx) => {
+        return withOrgContext(db, systemOrgContext(orgId), async (tx) => {
           const rows = await tx
             .select({ n: sql<number>`count(*)::int` })
             .from(PR)

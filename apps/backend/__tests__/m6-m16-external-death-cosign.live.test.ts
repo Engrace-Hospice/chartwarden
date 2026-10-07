@@ -492,6 +492,7 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
         dischargeDate: today(),
         narrative: "Patient died at home, family present.",
         deathCertifierId: MD,
+        placeOfDeath: "home",
       } as never,
       USER,
     );

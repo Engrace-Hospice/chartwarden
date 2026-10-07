@@ -61,6 +61,13 @@ export const admissions = pgTable(
     transferredIn: boolean("transferred_in").notNull().default(false),
     transferredInFromCcn: text("transferred_in_from_ccn"),
     inheritedPeriodSequence: smallint("inherited_period_sequence"),
+    // Migration 0373 — a readmission's earlier, live-discharged admission of the same patient (self-FK, SET NULL
+    // on delete; installed in the migration to avoid a self-referencing column type cycle here).
+    readmittedFromAdmissionId: uuid("readmitted_from_admission_id"),
+    // Migration 0379 — the staff member who opened the admission through POST /admissions (logical user id; null for
+    // referral-converted / earlier rows). M6 `admission.scope` lets an admitting clinician reach an UNSITED admission
+    // they opened themselves (the brand-new patient case, M6 §6.8).
+    createdByUserId: uuid("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),

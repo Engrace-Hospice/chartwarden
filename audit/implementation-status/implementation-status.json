@@ -111,8 +111,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 68,
-        "enriched": 68
+        "routes": 74,
+        "enriched": 74
       },
       "screens": true,
       "tests": true,
@@ -331,8 +331,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 33,
-        "enriched": 33
+        "routes": 35,
+        "enriched": 35
       },
       "screens": true,
       "tests": true,
@@ -451,15 +451,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 56,
-        "enriched": 56
+        "routes": 67,
+        "enriched": 67
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 20,
-        "covered": 20
+        "tables": 21,
+        "covered": 21
       }
     },
     {

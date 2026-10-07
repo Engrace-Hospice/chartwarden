@@ -34,6 +34,8 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
+  ADMITTING_CLINICIAN_DEFAULT_GRANTS,
+  INTAKE_DEFAULT_GRANTS,
   LAB_RECOVERY_DEFAULT_GRANTS,
   SYSTEM_LOCKED_FLOORS,
   allPermissionMirrorRows,
@@ -406,13 +408,23 @@ async function main(): Promise<void> {
     // roles that hold them by default (DON, clinical supervisor, compliance officer) get them from the one shared table.
     const labRecoveryKeys: readonly string[] =
       (LAB_RECOVERY_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
+    // The intake roles' readmission-flow defaults (migration 0374's single source) — `billing`/`clinical` keys the
+    // category sweep would not grant on its own terms. A no-op until a persona holds an intake role.
+    const intakeKeys: readonly string[] =
+      (INTAKE_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
+    // The nursing / physician / NP / PA roles open admissions at their own site (migration 0379's single source) —
+    // `billing.eligibility.read` is a `billing` key the category sweep would not grant on its own terms.
+    const admittingKeys: readonly string[] =
+      (ADMITTING_CLINICIAN_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
     const baseKeys = (ROLE_GRANT_OVERRIDES[key] ?? clinicalKeys).filter(
       (k) => k !== "privacy.admin" || PRIVACY_ADMIN_ROLES.has(key),
     );
     if (PRIVACY_ADMIN_ROLES.has(key) && !baseKeys.includes("privacy.admin")) {
       baseKeys.push("privacy.admin");
     }
-    for (const permKey of [...new Set([...baseKeys, ...labRecoveryKeys])]) {
+    for (const permKey of [
+      ...new Set([...baseKeys, ...labRecoveryKeys, ...intakeKeys, ...admittingKeys]),
+    ]) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
         [orgId, firstRow(r, `seed-staff-personas: role ${key}`).id, permKey],

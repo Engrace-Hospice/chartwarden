@@ -10,11 +10,13 @@ import type {
   EligibilitySnapshot,
   IsoDate,
   NoeStatusSnapshot,
+  RhcCarryOverSnapshot,
   ValidationContext,
   calculateHipps,
   repositories,
 } from "@wardenx/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
+import { claimDischargeCodes } from "./claim-discharge";
 
 /** The claim-row facts the rules read (the rest of `ClaimSnapshot` comes from the admission/diagnosis facts). */
 export interface ClaimFactsInput {
@@ -43,6 +45,8 @@ export interface AssembleValidationContextInput {
   /** `null` when the admission has no NOE row yet. */
   readonly noe: NoeStatusSnapshot | null;
   readonly eligibilityBound: boolean;
+  /** The RHC carry-over the claim is priced with (`rhc-carry-over.ts`); absent ⇒ the carry rule skips. */
+  readonly rhcCarryOver?: RhcCarryOverSnapshot | null;
 }
 
 export function assembleValidationContext(
@@ -69,6 +73,13 @@ export function assembleValidationContext(
     capProjectionCtx,
     signedEncounters,
   } = facts;
+  // One derivation for the assembly and every re-validation (claim-discharge.ts): a revocation or transfer-out
+  // ends the stay too, not only a completed discharge_event.
+  const { discharge, codes: dischargeClaimCodes } = claimDischargeCodes(
+    admission,
+    resolvedPeriods,
+    claim.serviceTo,
+  );
   return {
     orgId,
     asOfDate: claim.serviceFrom,
@@ -88,8 +99,11 @@ export function assembleValidationContext(
       totalChargeCents: claim.totalChargeCents,
       priorClaimTob: claim.priorClaimTob,
       priorClaimServiceTo: claim.priorClaimServiceTo,
-      dischargeDate: admission.dischargeDate,
-      dischargeReason: admission.dischargeReason,
+      dischargeDate: discharge?.effectiveDate ?? null,
+      dischargeReason: discharge?.kind ?? null,
+      deathDate: discharge?.deathDate ?? null,
+      dischargeClaimCodes,
+      dischargeSourceEventId: discharge?.sourceEventId ?? null,
     },
     lines: lines.map((row) => ({
       claimLineId: row.id,
@@ -138,6 +152,7 @@ export function assembleValidationContext(
     capProjection: capProjectionCtx, // M26 §11.A live projection (or null → cap rules warn-skip, D8)
     eligibility: input.eligibility,
     noe: input.noe,
+    rhcCarryOver: input.rhcCarryOver ?? null,
     sequestration: {
       percentage: seqPolicy.percentage,
       effectiveFrom: seqPolicy.effectiveFrom,

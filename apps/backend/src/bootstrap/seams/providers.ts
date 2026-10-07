@@ -81,6 +81,7 @@ import type {
   LatestAssessmentProvider,
   LevelOfCarePeriodReader,
   LevelOfCareReader,
+  MbiUnlockReader,
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   MileagePayrollReader,
@@ -227,6 +228,16 @@ export const patientCoverageReaderDenyStub: PatientCoverageReader = {
   },
   activeCoverageOfKind() {
     throw new NotImplementedError("PatientCoverageReader");
+  },
+};
+
+/**
+ * M5 → M23 (§4.4 / §8.7) — the transient MBI unlock for one HETS 270 build. Fail-closed THROW: the MBI is
+ * security-sensitive, so an unregistered reader must never degrade open (no "empty" identity, no guess).
+ */
+export const mbiUnlockReaderDenyStub: MbiUnlockReader = {
+  unlockForEligibility() {
+    throw new NotImplementedError("MbiUnlockReader");
   },
 };
 
@@ -642,6 +653,9 @@ export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
     throw new NotImplementedError("AdmissionStatusReader");
   },
   getAdmissionSiting() {
+    throw new NotImplementedError("AdmissionStatusReader");
+  },
+  getAdmissionPatientCare() {
     throw new NotImplementedError("AdmissionStatusReader");
   },
 };

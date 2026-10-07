@@ -187,7 +187,7 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
 
   // ── F-178b (#248) — the F2F "prior-to" window-missed scan ──────────────────────────────────────
   describe("F2F window-missed scan (admission.window_alert, F-178b)", () => {
-    /** 3 days past `scheduledEndAt` (== the F2F window's own `windowEnd`) — comfortably past the
+    /** 3 days past `scheduledEndAt` (the F2F window ends the next day, period 3's first day) — comfortably past the
      *  CMS 418.22 deadline regardless of the default org timezone's offset from UTC. */
     function pastWindowEnd(scheduledEndAt: string): Date {
       return new Date(Date.parse(`${scheduledEndAt}T00:00:00.000Z`) + 3 * 86_400_000);

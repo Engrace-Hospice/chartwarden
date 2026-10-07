@@ -146,7 +146,10 @@ export function useClinicalData(
     ).then((r) => merge({ ppsLatest: r ?? null }));
     void settle<{ assessments: ScaleAssessment[] }>(
       client.GET("/api/v1/patients/{patientId}/assessments", {
-        params: { path, query: { scaleType: "esas_r", from: daysAgo(30), limit: 30 } },
+        params: {
+          path,
+          query: { scaleType: "esas_r", from: daysAgo(30), limit: 30 },
+        },
       }),
     ).then((r) =>
       merge({
@@ -154,13 +157,21 @@ export function useClinicalData(
       }),
     );
     void settle<{ events: SignificantChange[] }>(
-      client.GET("/api/v1/patients/{patientId}/significant-changes", { params: { path } }),
-    ).then((r) => merge({ changes: (r?.events ?? []).filter((e) => e.status !== "acknowledged") }));
+      client.GET("/api/v1/patients/{patientId}/significant-changes", {
+        params: { path },
+      }),
+    ).then((r) =>
+      merge({
+        changes: (r?.events ?? []).filter((e) => e.status !== "acknowledged"),
+      }),
+    );
     void settle<{ data: Consent[] }>(
       client.GET("/api/v1/patients/{patientId}/consents", { params: { path } }),
     ).then((r) => merge({ consents: (r?.data ?? []).filter((c) => c.status === "active") }));
     void settle<{ data: Dpoa | null }>(
-      client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", { params: { path } }),
+      client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", {
+        params: { path },
+      }),
     ).then((r) => merge({ dpoa: r?.data ?? null }));
     return () => {
       alive.current = false;
@@ -186,7 +197,10 @@ export function useClinicalData(
       ),
     ).then((rows) => {
       if (active) {
-        setData((d) => ({ ...d, notes: rows.filter((r): r is EncounterDetail => Boolean(r)) }));
+        setData((d) => ({
+          ...d,
+          notes: rows.filter((r): r is EncounterDetail => Boolean(r)),
+        }));
       }
     });
     return () => {
@@ -216,22 +230,43 @@ const PPS_CONSCIOUSNESS: Record<string, string> = {
 };
 
 const CHANGE_LABEL: Record<string, { title: string; detail: string }> = {
-  pps_drop_20_in_14d: { title: "Functional decline", detail: "PPS dropped ≥20 in 14 days" },
-  kps_drop_20_in_14d: { title: "Functional decline", detail: "KPS dropped ≥20 in 14 days" },
+  pps_drop_20_in_14d: {
+    title: "Functional decline",
+    detail: "PPS dropped ≥20 in 14 days",
+  },
+  kps_drop_20_in_14d: {
+    title: "Functional decline",
+    detail: "KPS dropped ≥20 in 14 days",
+  },
   esas_total_increase_20_in_7d: {
     title: "Symptom burden rising",
     detail: "ESAS-r total +20 in 7 days",
   },
-  esas_symptom_ge_7: { title: "Severe symptom", detail: "An ESAS-r symptom scored ≥ 7" },
+  esas_symptom_ge_7: {
+    title: "Severe symptom",
+    detail: "An ESAS-r symptom scored ≥ 7",
+  },
   painad_ge_4: { title: "High pain score", detail: "PAINAD ≥ 4" },
   nyha_class_iv: { title: "NYHA class IV", detail: "Symptoms at rest" },
   braden_le_12: { title: "Pressure injury risk", detail: "Braden ≤ 12" },
   morse_ge_51: { title: "Fall risk", detail: "Morse fall scale ≥ 51" },
   meld_ge_30: { title: "MELD ≥ 30", detail: "Advanced liver disease" },
-  fast_progression_30d: { title: "FAST progression", detail: "Dementia stage advanced in 30 days" },
-  gds_progression_30d: { title: "GDS progression", detail: "Stage advanced in 30 days" },
-  flacker_increase: { title: "Behavioral pain rising", detail: "FLACC-R increased" },
-  aims_emergent_dyskinesia: { title: "Emergent dyskinesia", detail: "AIMS flagged" },
+  fast_progression_30d: {
+    title: "FAST progression",
+    detail: "Dementia stage advanced in 30 days",
+  },
+  gds_progression_30d: {
+    title: "GDS progression",
+    detail: "Stage advanced in 30 days",
+  },
+  flacker_increase: {
+    title: "Behavioral pain rising",
+    detail: "FLACC-R increased",
+  },
+  aims_emergent_dyskinesia: {
+    title: "Emergent dyskinesia",
+    detail: "AIMS flagged",
+  },
 };
 
 const ENCOUNTER_LABEL: Record<string, string> = {
@@ -390,7 +425,13 @@ function ClinicalOverviewPanel({
               <strong>Primary Diagnosis</strong>
               {primary.icd10Code ? <span className="wx-code-chip">{primary.icd10Code}</span> : null}
             </div>
-            <div style={{ display: "flex", gap: "0.875rem", alignItems: "flex-start" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.875rem",
+                alignItems: "flex-start",
+              }}
+            >
               <IconTile icon="heart-pulse" color={t.error} size={3} />
               <div style={{ minWidth: 0 }}>
                 <div
@@ -540,13 +581,43 @@ function ClinicalStatusPanel({
   );
 }
 
-const SYMPTOMS: { key: string; label: string; icon: GlyphName; color: string }[] = [
+const SYMPTOMS: {
+  key: string;
+  label: string;
+  icon: GlyphName;
+  color: string;
+}[] = [
   { key: "pain", label: "Pain", icon: "zap", color: "var(--color-viz-orange)" },
-  { key: "shortnessOfBreath", label: "Dyspnea", icon: "lungs", color: "var(--color-viz-rose)" },
-  { key: "nausea", label: "Nausea", icon: "frown", color: "var(--color-viz-amber)" },
-  { key: "anxiety", label: "Anxiety", icon: "brain", color: "var(--color-viz-violet)" },
-  { key: "tiredness", label: "Fatigue", icon: "battery", color: "var(--color-error)" },
-  { key: "lackOfAppetite", label: "Appetite", icon: "utensils", color: "var(--color-viz-green)" },
+  {
+    key: "shortnessOfBreath",
+    label: "Dyspnea",
+    icon: "lungs",
+    color: "var(--color-viz-rose)",
+  },
+  {
+    key: "nausea",
+    label: "Nausea",
+    icon: "frown",
+    color: "var(--color-viz-amber)",
+  },
+  {
+    key: "anxiety",
+    label: "Anxiety",
+    icon: "brain",
+    color: "var(--color-viz-violet)",
+  },
+  {
+    key: "tiredness",
+    label: "Fatigue",
+    icon: "battery",
+    color: "var(--color-error)",
+  },
+  {
+    key: "lackOfAppetite",
+    label: "Appetite",
+    icon: "utensils",
+    color: "var(--color-viz-green)",
+  },
 ];
 
 function SymptomsPanel({
@@ -590,7 +661,13 @@ function SymptomsPanel({
               .filter((x): x is number => x != null);
             return (
               <div key={s.key} className="wx-symptom-card">
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
                   <span style={{ color: s.color }}>
                     <Glyph name={s.icon} size={16} strokeWidth={1.75} />
                   </span>
@@ -732,7 +809,11 @@ function VitalsPanel({
 }
 
 /** PPS trend over 30 days — an area line chart with a 0–100% axis. */
-function PpsChart({ points }: { points: { at: number; score: number }[] }): JSX.Element {
+function PpsChart({
+  points,
+}: {
+  points: { at: number; score: number }[];
+}): JSX.Element {
   const W = 520;
   const H = 150;
   const L = 34;
@@ -925,7 +1006,13 @@ function RecentDocumentsPanel({
                 </td>
                 <td>{titleCase(d.aggregateType)}</td>
                 <td>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                    }}
+                  >
                     <span style={{ color: t.primary }}>
                       <Glyph name="file-text" size={14} />
                     </span>
@@ -960,7 +1047,12 @@ export function ClinicalRail({
     (c) => c.typeKey === "advance_directive_acknowledgment" || c.typeKey === "dpoa_healthcare",
   );
   const period = activePeriod(data.election);
-  const upcoming: { key: string; icon: GlyphName; title: string; when: string }[] = [
+  const upcoming: {
+    key: string;
+    icon: GlyphName;
+    title: string;
+    when: string;
+  }[] = [
     ...(data.visits ?? []).slice(0, 2).map((v) => ({
       key: v.id,
       icon: "calendar" as GlyphName,
@@ -989,7 +1081,13 @@ export function ClinicalRail({
       />
       <Panel
         title={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
             Clinical Alerts
             {changes && changes.length > 0 ? <CountBadge count={changes.length} /> : null}
           </span>
@@ -1008,7 +1106,10 @@ export function ClinicalRail({
         ) : (
           <ul className="wx-rail-list">
             {changes.slice(0, 4).map((c) => {
-              const label = CHANGE_LABEL[c.ruleId] ?? { title: titleCase(c.ruleId), detail: "" };
+              const label = CHANGE_LABEL[c.ruleId] ?? {
+                title: titleCase(c.ruleId),
+                detail: "",
+              };
               return (
                 <li key={c.id}>
                   <RailAlert
@@ -1105,7 +1206,9 @@ export function ClinicalRail({
       <Panel
         title="Upcoming"
         icon="calendar"
-        action={<PanelLink to="/calendar">View all</PanelLink>}
+        action={
+          <PanelLink to={`/calendar?patient=${encodeURIComponent(patient.id)}`}>View all</PanelLink>
+        }
       >
         {data.visits === undefined ? (
           <Loading />

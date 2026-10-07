@@ -14,7 +14,7 @@
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
 // `window_breached_at` through `transitionToState` (or a same-state patch). No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, isNull, lte, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -56,11 +56,20 @@ export type NoeTransitionPatch = Partial<
     | "latestAcknowledgmentId"
     | "confirmationDocumentId"
     | "windowBreachedAt"
+    | "acceptedAt"
+    | "rejectedAt"
+    | "rejectionStage"
+    | "rejectionCodes"
+    | "payerStatusDate"
+    | "payerStatusDateSource"
   >
 >;
 
 /** The NOE states that have left the 5-day window in flight (excluded from the watchdog scan + admission uq). */
 const NOE_TERMINAL_DB: schema.NoeRecord["state"][] = ["ACK_ACCEPTED", "CANCELLED", "ACK_REJECTED"];
+
+/** The NOE states that never establish an election on the CWF (a withdrawn or MAC-rejected filing). */
+const NOE_NOT_EFFECTIVE_DB: schema.NoeRecord["state"][] = ["CANCELLED", "ACK_REJECTED"];
 
 /** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNoeRecord(row: schema.NoeRecord): NoeRecord {
@@ -113,6 +122,23 @@ export class NoeRepository {
       .select()
       .from(N)
       .where(and(eq(N.admissionId, admissionId), notInArray(N.state, NOE_TERMINAL_DB)))
+      .limit(1);
+    return row ? toNoeRecord(row) : null;
+  }
+
+  /**
+   * The admission's EFFECTIVE NOE — the latest one that is neither cancelled nor rejected, INCLUDING an
+   * `ack_accepted` one (which {@link findActiveByAdmission} deliberately excludes: it answers "is a NOE still in
+   * flight?", not "is there a NOE for this admission?"). This is what claim validation reads: an accepted NOE is
+   * the strongest evidence of an election, never "no NOE". `null` when only cancelled/rejected NOEs (or none)
+   * exist.
+   */
+  async findEffectiveByAdmission(admissionId: string): Promise<NoeRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(N)
+      .where(and(eq(N.admissionId, admissionId), notInArray(N.state, NOE_NOT_EFFECTIVE_DB)))
+      .orderBy(desc(N.createdAt), desc(N.id))
       .limit(1);
     return row ? toNoeRecord(row) : null;
   }
@@ -173,6 +199,30 @@ export class NoeRepository {
       )
       .orderBy(desc(N.windowTargetAt))
       .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNoeRecord);
+  }
+
+  /**
+   * The corrections filed against a rejected notice (`corrects_notice_id = id`, migration 0378), newest first —
+   * the one-correction-at-a-time rule and the "corrected by" link read them.
+   */
+  async listCorrectionsOf(id: string): Promise<readonly NoeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(eq(N.correctsNoticeId, id))
+      .orderBy(desc(N.createdAt), desc(N.id));
+    return rows.map(toNoeRecord);
+  }
+
+  /** {@link listCorrectionsOf} for a page of notices at once (the list view's "corrected by" link). */
+  async listCorrectionsForMany(ids: readonly string[]): Promise<readonly NoeRecord[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(inArray(N.correctsNoticeId, [...ids]))
+      .orderBy(desc(N.createdAt), desc(N.id));
     return rows.map(toNoeRecord);
   }
 

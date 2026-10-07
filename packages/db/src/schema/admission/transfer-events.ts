@@ -23,7 +23,17 @@ export const transferEvents = pgTable(
     // name are filled when the sending/receiving hospice is known.
     receivingOrSendingCcn: text("receiving_or_sending_ccn"),
     receivingOrSendingName: text("receiving_or_sending_name"),
+    // Migration 0375: the counterparty hospice's NPI (10 digits), captured with its CCN on a transfer-in so
+    // the receiving hospice's 8xC transfer notice (CMS Pub. 100-04 ch. 11 §20.1.3) can name it.
+    receivingOrSendingNpi: text("receiving_or_sending_npi"),
     receivingOrSendingFacilityId: uuid("receiving_or_sending_facility_id"), // M40 facility (app-validated)
+    // Transfer-OUT only (migration 0370): where the RECEIVING hospice cares for the patient — drives the
+    // claim's patient discharge status 50 (hospice, home) vs 51 (hospice, medical facility) per CMS Pub.
+    // 100-04 Ch. 11 §30.3. Required on new transfer-outs (route 37); NULL on transfer-ins and historic rows.
+    receivingCareSetting: text("receiving_care_setting", { enum: ["home", "facility"] }),
+    // Migration 0372: why a RECORDED receiving care setting was changed afterwards
+    // (POST /transfers/:id/receiving-care-setting); NULL when the value was only ever filled in.
+    receivingCareSettingCorrectionReason: text("receiving_care_setting_correction_reason"),
     effectiveAt: date("effective_at").notNull(),
     periodSequenceAtTransfer: smallint("period_sequence_at_transfer").notNull(),
     narrative: text("narrative"),

@@ -58,6 +58,7 @@ describe("M9 capture-siting resolver (§3.3 — the M6 AdmissionStatusReader cha
         return summary();
       },
       getAdmissionSiting: async () => admissionSiting(),
+      getAdmissionPatientCare: async () => null,
     });
     const siting = await createSeamAssessmentSitingResolver().resolve(ORG, PATIENT, ADMISSION);
     expect(siting).toEqual({ providerEntityId: PE, locationId: null });
@@ -67,6 +68,7 @@ describe("M9 capture-siting resolver (§3.3 — the M6 AdmissionStatusReader cha
     registerSeam("AdmissionStatusReader", {
       getAdmissionSummary: async () => summary({ organizationId: "org-b" } as never),
       getAdmissionSiting: async () => admissionSiting({ organizationId: "org-b" }),
+      getAdmissionPatientCare: async () => null,
     });
     const siting = await createSeamAssessmentSitingResolver().resolve(ORG, PATIENT, ADMISSION);
     expect(siting).toEqual(UNSITED_CAPTURE);
@@ -76,6 +78,7 @@ describe("M9 capture-siting resolver (§3.3 — the M6 AdmissionStatusReader cha
     registerSeam("AdmissionStatusReader", {
       getAdmissionSummary: async () => summary({ patientId: "pat-other" } as never),
       getAdmissionSiting: async () => admissionSiting(),
+      getAdmissionPatientCare: async () => null,
     });
     const siting = await createSeamAssessmentSitingResolver().resolve(ORG, PATIENT, ADMISSION);
     expect(siting).toEqual(UNSITED_CAPTURE);
@@ -87,6 +90,7 @@ describe("M9 capture-siting resolver (§3.3 — the M6 AdmissionStatusReader cha
         throw new Error("admission 'adm-1' not found");
       },
       getAdmissionSiting: async () => null,
+      getAdmissionPatientCare: async () => null,
     });
     await expect(
       createSeamAssessmentSitingResolver().resolve(ORG, PATIENT, ADMISSION),

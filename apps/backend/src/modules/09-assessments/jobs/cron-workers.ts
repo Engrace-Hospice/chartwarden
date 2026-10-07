@@ -15,7 +15,7 @@
 // tick runs it is guaranteed bound. Only `activeOrgs` gets the lazy fail-closed thunk (`unbound()`,
 // `M9_WORKER_PORT_UNBOUND: <port> — <hint>`, the M25/M7 convention).
 import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   escalateSignificantChange,
@@ -33,13 +33,6 @@ import {
   planLicenseStatusScan,
   planReassessmentDueScan,
 } from "./index";
-
-/**
- * The system actor id the crons stamp on their per-org `withOrgContext` tx (audit attribution). Grepped
- * the repo for every `00000000-0000-0000-0000-0000000000xx` constant first: M7 uses `...07`, M25 uses
- * `...e5`, M26 uses `...e6` — `...09` (M9's own module number) is unused.
- */
-const M9_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000009";
 
 /**
  * The transactional-outbox publish port the composition root binds (the `AssessmentWriteOutboxPort`
@@ -133,39 +126,35 @@ export async function runLicenseStatusCron(deps: M9WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M9_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const licenses = await scaleLicensesForOrg(t, organizationId);
-        const expiresAtById = new Map(licenses.map((l) => [l.scaleLicenseId, l.expiresAt]));
-        const plan = planLicenseStatusScan(licenses, today(now));
-        for (const transition of plan.transitions) {
-          if (!transition.changed) continue;
-          await updateLicenseStatus(t, transition.scaleLicenseId, transition.toStatus);
-          const expiresAt = expiresAtById.get(transition.scaleLicenseId);
-          if (expiresAt === undefined) continue;
-          if (transition.toStatus === "pending_renewal") {
-            await deps.outbox.publish(t, {
-              eventName: "m9.scale.license_pending_renewal",
-              payload: { scaleType: transition.scaleType, expiresAt },
-              organizationId,
-              aggregateKind: "scale_license",
-              aggregateId: transition.scaleLicenseId,
-            });
-          } else if (transition.toStatus === "expired") {
-            await deps.outbox.publish(t, {
-              eventName: "m9.scale.license_lapsed",
-              payload: { scaleType: transition.scaleType, expiredAt: expiresAt },
-              organizationId,
-              aggregateKind: "scale_license",
-              aggregateId: transition.scaleLicenseId,
-            });
-          }
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
+      const licenses = await scaleLicensesForOrg(t, organizationId);
+      const expiresAtById = new Map(licenses.map((l) => [l.scaleLicenseId, l.expiresAt]));
+      const plan = planLicenseStatusScan(licenses, today(now));
+      for (const transition of plan.transitions) {
+        if (!transition.changed) continue;
+        await updateLicenseStatus(t, transition.scaleLicenseId, transition.toStatus);
+        const expiresAt = expiresAtById.get(transition.scaleLicenseId);
+        if (expiresAt === undefined) continue;
+        if (transition.toStatus === "pending_renewal") {
+          await deps.outbox.publish(t, {
+            eventName: "m9.scale.license_pending_renewal",
+            payload: { scaleType: transition.scaleType, expiresAt },
+            organizationId,
+            aggregateKind: "scale_license",
+            aggregateId: transition.scaleLicenseId,
+          });
+        } else if (transition.toStatus === "expired") {
+          await deps.outbox.publish(t, {
+            eventName: "m9.scale.license_lapsed",
+            payload: { scaleType: transition.scaleType, expiredAt: expiresAt },
+            organizationId,
+            aggregateKind: "scale_license",
+            aggregateId: transition.scaleLicenseId,
+          });
         }
-      },
-    );
+      }
+    });
   }
 }
 
@@ -178,27 +167,23 @@ export async function runChangeEscalationCron(deps: M9WorkerDeps): Promise<void>
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M9_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const changes = await openSignificantChangesForOrg(t, organizationId);
-        const plan = planChangeEscalation(changes, now);
-        for (const escalation of plan.escalations) {
-          await escalateSignificantChange(t, escalation.eventId, new Date(escalation.escalatedAt));
-        }
-        for (const event of plan.events) {
-          await deps.outbox.publish(t, {
-            eventName: event.eventName,
-            payload: event.payload,
-            organizationId,
-            aggregateKind: "significant_change_event",
-            aggregateId: String(event.payload.eventId),
-          });
-        }
-      },
-    );
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
+      const changes = await openSignificantChangesForOrg(t, organizationId);
+      const plan = planChangeEscalation(changes, now);
+      for (const escalation of plan.escalations) {
+        await escalateSignificantChange(t, escalation.eventId, new Date(escalation.escalatedAt));
+      }
+      for (const event of plan.events) {
+        await deps.outbox.publish(t, {
+          eventName: event.eventName,
+          payload: event.payload,
+          organizationId,
+          aggregateKind: "significant_change_event",
+          aggregateId: String(event.payload.eventId),
+        });
+      }
+    });
   }
 }
 
@@ -214,20 +199,16 @@ export async function runReassessmentDueCron(deps: M9WorkerDeps): Promise<void> 
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M9_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const latest = await latestAssessmentsPerPatientScaleForOrg(t, organizationId);
-        const flags = planReassessmentDueScan(latest, now);
-        const overdueCount = flags.filter((f) => f.overdue).length;
-        // No chart-banner cache seam exists yet (see this function's header) — log-only, on purpose.
-        console.log(
-          `M9 cadence scan: organizationId=${organizationId} evaluated=${flags.length} overdue=${overdueCount}`,
-        );
-      },
-    );
+    await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+      const t = tx as unknown as DbClient;
+      const latest = await latestAssessmentsPerPatientScaleForOrg(t, organizationId);
+      const flags = planReassessmentDueScan(latest, now);
+      const overdueCount = flags.filter((f) => f.overdue).length;
+      // No chart-banner cache seam exists yet (see this function's header) — log-only, on purpose.
+      console.log(
+        `M9 cadence scan: organizationId=${organizationId} evaluated=${flags.length} overdue=${overdueCount}`,
+      );
+    });
   }
 }
 

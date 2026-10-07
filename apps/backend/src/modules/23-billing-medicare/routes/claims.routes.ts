@@ -219,6 +219,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
           providerEntityId: q.providerEntityId,
           patientId: q.patientId,
           state: q.state,
+          ...(q.attention ? { attention: q.attention } : {}),
           providerEntityScope: resolveClaimProviderScope(request),
         },
         q.cursor,

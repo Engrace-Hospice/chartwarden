@@ -162,6 +162,7 @@ export const SubmissionKindApi = Type.Union([
   Type.Literal("claim_837i"),
   Type.Literal("noe"),
   Type.Literal("notr"),
+  Type.Literal("transfer_notice"),
 ]);
 
 /** `m23_claim_acknowledgment_kind`. */

@@ -83,25 +83,27 @@ describe("M6-T08 — §7.3 D4 written-cert deadline (org-TZ, calendar-day)", () 
 });
 
 describe("M6-T08 — §7.4 F2F window (CMS 418.22 prior-to window)", () => {
-  it("computes [period_start − 30, period_start − 1] in org-local dates", () => {
+  it("computes [period_start − 30, period_start] in org-local dates (first day timely, MBPM ch. 9 §20.1(5)(a))", () => {
     const w = computeF2fWindow("2026-09-30", "America/Los_Angeles");
     expect(w.windowStart).toBe("2026-08-31");
-    expect(w.windowEnd).toBe("2026-09-29");
+    expect(w.windowEnd).toBe("2026-09-30");
   });
 
   it("W-F2F-01: a date inside the window passes; the boundaries are inclusive; outside fails", () => {
     const w = computeF2fWindow("2026-09-30", "America/Los_Angeles");
     expect(isF2fScheduledWithinWindow("2026-09-15", w)).toBe(true);
     expect(isF2fScheduledWithinWindow("2026-08-31", w)).toBe(true); // earliest
-    expect(isF2fScheduledWithinWindow("2026-09-29", w)).toBe(true); // latest
-    expect(isF2fScheduledWithinWindow("2026-08-30", w)).toBe(false); // too early
-    expect(isF2fScheduledWithinWindow("2026-09-30", w)).toBe(false); // the period start itself
+    expect(isF2fScheduledWithinWindow("2026-09-29", w)).toBe(true); // day −1
+    expect(isF2fScheduledWithinWindow("2026-09-30", w)).toBe(true); // day 0 = the period's first day
+    expect(isF2fScheduledWithinWindow("2026-08-30", w)).toBe(false); // day −31, too early
+    expect(isF2fScheduledWithinWindow("2026-10-01", w)).toBe(false); // day +1
   });
 
   it("W-F2F-04: the window monitor reports open / missed / attested", () => {
     const w = computeF2fWindow("2026-09-30", "America/Los_Angeles");
     expect(decideF2fWindowStatus({ today: "2026-09-15", window: w, attested: false })).toBe("open");
-    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: false })).toBe(
+    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: false })).toBe("open");
+    expect(decideF2fWindowStatus({ today: "2026-10-01", window: w, attested: false })).toBe(
       "missed",
     );
     expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: true })).toBe(

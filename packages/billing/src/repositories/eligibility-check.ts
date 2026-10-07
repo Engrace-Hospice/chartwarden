@@ -12,10 +12,10 @@
 // read always sees the latest `checked_at`); the §11.A rule then reads the MOST-RECENT row only. Contrast
 // `validation_run`, which dedups on an idempotency key.
 //
-// ENUM BOUNDARY: `outcome` diverges (the DB has 5 values — incl. `mbi_invalid`/`hets_error` — vs the domain
-// `EligibilityOutcome`'s 4), so every read maps through `eligibilityOutcomeCodec.fromDb` (DB `mbi_invalid`
-// and `hets_error` both fold to domain `error`; `unknown_response` ↔ `indeterminate`) and writes map through
-// `.toDb` (domain `error` → the canonical DB `hets_error`). The case/value never leaks past this boundary.
+// ENUM BOUNDARY: `outcome` is spelled differently in the DB (`unknown_response` / `hets_error`) than in the
+// domain `EligibilityOutcome` (`indeterminate` / `error`), so every read maps through
+// `eligibilityOutcomeCodec.fromDb` and every write through `.toDb` (`mbi_invalid` and the two Part A values
+// are 1:1). The DB spelling never leaks past this boundary.
 import * as schema from "@wardenx/db/schema";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import type { EligibilityOutcome } from "../contracts";

@@ -8,12 +8,12 @@
 // Two halves:
 //  1. PUBLISH — `registerM23PublishedSeams` registers M23's five seams. The live Drizzle/adapter-backed
 //     providers are supplied by the caller once the §3 services + adapters are wired (P3).
-//  2. CONSUME — the §4.4 consumed-seam names. LIVE producers: M2/M5/M6/M8/M18/M36/M38/M40 + the M23-owned
-//     `X12WorkerClient` (housed in `@wardenx/x12-837-client`). FORWARD-SEAM DENY-STUBS today:
+//  2. CONSUME — the §4.4 consumed-seam names. LIVE producers: M2/M5/M6/M8/M18/M36/M38/M40 (M5 now
+//     includes `MbiUnlockReader`, the HETS 270 MBI unlock) + the M23-owned `X12WorkerClient` (housed in
+//     `@wardenx/x12-837-client`). FORWARD-SEAM DENY-STUB today:
 //       • `CapProjectionProvider` (M26, D8) — degrades to `status:"unavailable"` so the cap rules WARN
 //         rather than throw; tightens to `error` when M26 locks (NOT a hard fail-closed).
-//       • `MbiUnlockReader` (M5 post-M23-lock revision, §3.6) — fail-closed THROW (MBI is security-
-//         sensitive; this stub NEVER degrades-open).
+//     `makeMbiUnlockDenyStub` stays as the package-local fail-closed THROW stub for tests / slices.
 import type {
   CapOrgProjectionResult,
   CapPatientProjectionResult,
@@ -57,9 +57,9 @@ export function registerM23PublishedSeams(
 export const M23_PUBLISHED_SEAMS = M23_PUBLISHED_SEAM_NAMES;
 
 /**
- * The §4.4 consumed-seam names (REQUIRED_SEAMS contract). LIVE producers: M2 / M5 / M6 / M8 / M18 / M36 /
- * M38 / M40 + the M23-owned `X12WorkerClient`. FORWARD-SEAM DENY-STUBS today: `CapProjectionProvider`
- * (M26, D8) + `MbiUnlockReader` (M5 post-M23-lock revision).
+ * The §4.4 consumed-seam names (REQUIRED_SEAMS contract). LIVE producers: M2 / M5 (incl. `MbiUnlockReader`)
+ * / M6 / M8 / M18 / M36 / M38 / M40 + the M23-owned `X12WorkerClient`. FORWARD-SEAM DENY-STUB today:
+ * `CapProjectionProvider` (M26, D8).
  */
 export const M23_REQUIRED_SEAMS = [
   // M2 — actor / membership / credential resolution
@@ -97,7 +97,7 @@ export const M23_REQUIRED_SEAMS = [
 export type M23RequiredSeamName = (typeof M23_REQUIRED_SEAMS)[number];
 
 /** The forward-seam (deny-stub) consumed names — wired live when the producing module locks. */
-export const M23_FORWARD_SEAM_NAMES = ["CapProjectionProvider", "MbiUnlockReader"] as const;
+export const M23_FORWARD_SEAM_NAMES = ["CapProjectionProvider"] as const;
 
 export type M23ForwardSeamName = (typeof M23_FORWARD_SEAM_NAMES)[number];
 
@@ -155,7 +155,7 @@ export function makeCapProjectionDenyStub(): CapProjectionProvider {
 /** The `MbiUnlockReader` DENY-STUB (§3.6) — fail-closed THROW (MBI must never degrade-open). */
 export function makeMbiUnlockDenyStub(): MbiUnlockReader {
   return {
-    unlockMbiForRequest: async () => {
+    unlockForEligibility: async () => {
       throw new Error(`${SEAM_NOT_BOUND}: MbiUnlockReader`);
     },
   };

@@ -79,6 +79,9 @@ export function createAdmissionStatusReader(store: AdmissionReaderStore): Admiss
     async getAdmissionSiting(organizationId, admissionId) {
       return store.admissionSiting(organizationId, admissionId);
     },
+    async getAdmissionPatientCare(organizationId, admissionId) {
+      return store.admissionPatientCare(organizationId, admissionId);
+    },
   };
 }
 

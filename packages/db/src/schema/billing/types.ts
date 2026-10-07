@@ -141,6 +141,8 @@ export const m23ClaimSubmissionKind = pgEnum("m23_claim_submission_kind", [
   "claim_837i",
   "noe",
   "notr",
+  // Migration 0375 — the 8xC transfer notice / 8xD void (CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
+  "transfer_notice",
 ]);
 
 export const m23ClaimSubmissionOutcome = pgEnum("m23_claim_submission_outcome", [
@@ -199,6 +201,32 @@ export interface HippsCalculationSegment {
   hippsCharPosition: number;
 }
 export type HippsCalculationSegments = HippsCalculationSegment[];
+
+// hipps_calculation.rhc_carry_over — the two-tier RHC carry-over the claim was priced with (migration 0376;
+// nullable: rows priced before it carry NULL). Shape owned by `@wardenx/billing` `computeRhcCarryOver` +
+// M23's `RhcCarryOverView`; kept structural here (db does not import billing). Dates, counts, NPIs, codes —
+// no PHI / MBI.
+export interface HippsCalculationRhcCarryOver {
+  electionDate: string;
+  priorDays: number;
+  chainDays: number;
+  basis: "internal_only" | "hets_merged" | "hets_stale";
+  startsAtDay: number;
+  highRateDaysRemaining: number;
+  daysSinceLastCare: number | null;
+  chain: readonly {
+    source: "internal" | "hets";
+    kind: "stay" | "sending_hospice" | "election" | "benefit_period";
+    start: string;
+    end: string;
+    endAssumed: boolean;
+    countedDays: number;
+    hospiceNpi: string | null;
+    ref: string | null;
+  }[];
+  warnings: readonly { code: string; message: string }[];
+  hetsCheck: { checkId: string; checkedAt: string; ageDays: number; stale: boolean } | null;
+}
 
 // sia_calculation.qualifying_visits — last-7-days-of-life qualifying RN/MSW visits (NOT NULL, no default).
 export interface SiaQualifyingVisit {

@@ -215,7 +215,7 @@ jobs:
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
                 test:m6:t5:write:live test:m6:t5:counts:live test:m6:abac-scope:live
-                test:m6:election-guards:live",
+                test:m6:election-guards:live test:m6:claim-discharge-seam:live",
             }
           - {
               name: "M7 Care Plan",
@@ -885,8 +885,16 @@ jobs:
           - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
           # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
           - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
+          # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
+          # readmission NOE held until the prior election's NOTR / final claim is filed.
+          - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
+          # M23 §4.4 — HETS 270/271 eligibility (sandbox transport) + hospice-periods read + MBI non-persistence.
+          - { name: "M23 HETS eligibility", scripts: "test:m23:hets-eligibility:live" }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
+          # The receiving hospice's transfer notice (TOB 8xC): drafted on transfer-in, held until the
+          # transferring hospice's billing is confirmed, submitted, acked; same-CCN / once-per-period refusals.
+          - { name: "M23 transfer notice", scripts: "test:m23:transfer-notice:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.
           - { name: "M23 revalidate triggers", scripts: "test:m23:revalidate-triggers:live" }
           # F-162 (#248) — the seventh revalidate trigger, m18.evv.late_check_resolved, over a new M8

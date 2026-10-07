@@ -7,10 +7,15 @@
 // submit gates `billing.noe.submit` + the §D14 step-up assertion; cancel gates `billing.noe.cancel`. Both
 // mutations compose the §4.7 `provider_entity_billing_scope` predicate over the NOE's ProviderEntity + the
 // §D13 AI-block + `Idempotency-Key` (§4.1). Org/actor/membership binding is ALWAYS server-side.
+//
+// CORRECT (migration 0378) drafts a corrected NOE for a REJECTED one — a new linked DRAFT (`corrects_notice_id`),
+// gated like filing it (`billing.noe.submit` + provider scope + AI-block + `Idempotency-Key`; the step-up stays on
+// submit). CMS Pub. 100-04 ch. 11 §20.1.1; M23 §2.2 "corrected NOE is its own row".
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import {
   CancelNoeBodySchema,
+  CorrectNoticeBodySchema,
   NoeIdParamsSchema,
   NoeListQuerySchema,
   parse,
@@ -31,6 +36,9 @@ const SUBMIT = P("billing.noe.submit");
 const SUBMIT_ABAC = PROVIDER_SCOPE("billing.noe.submit", targetNoeId);
 const SUBMIT_STEPUP = STEP_UP("billing.noe.submit");
 const CANCEL = P("billing.noe.cancel");
+// Filing a corrected notice is part of filing it: the submit key + provider scope (the step-up is on submit).
+const CORRECT = P("billing.noe.submit");
+const CORRECT_ABAC = PROVIDER_SCOPE("billing.noe.submit", targetNoeId);
 const CANCEL_ABAC = PROVIDER_SCOPE("billing.noe.cancel", targetNoeId);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
@@ -95,6 +103,21 @@ export function registerNoeRoutes(app: FastifyInstance, deps: NoeRouteDeps): voi
       const { id } = parse(NoeIdParamsSchema, request.params);
       const body = parse(CancelNoeBodySchema, request.body);
       return writeService.cancelNoe(actor, id, { electionReversed: body.electionReversed });
+    },
+  );
+
+  // POST /noe-records/:id/correct — draft the corrected NOE for a REJECTED one (ch. 11 §20.1.1; M23 §2.2
+  // "corrected NOE is its own row"). 201 with the new DRAFT; 200 with the correction already in progress
+  // (idempotent replay). It is then submitted like any other NOE (step-up on submit).
+  app.post(
+    "/api/v1/noe-records/:id/correct",
+    { preHandler: [CORRECT, CORRECT_ABAC, NO_AI, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(NoeIdParamsSchema, request.params);
+      const body = parse(CorrectNoticeBodySchema, request.body);
+      const res = await writeService.correctNoe(actor, id, body);
+      return reply.code(res.created ? 201 : 200).send(res);
     },
   );
 }

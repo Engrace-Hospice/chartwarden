@@ -18,7 +18,11 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
+import { createDbDischargeDetailsService } from "./discharge-details-service-db";
+import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
+import type { PriorElectionClosurePort } from "./routes/readmission-service";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
@@ -40,6 +44,8 @@ export function mountAdmissionRoutes(
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  /** The prior election's NOTR / final-claim status (an M23 fact) for the readmission plan; absent → `unknown`. */
+  priorElectionClosure?: PriorElectionClosurePort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
@@ -52,6 +58,11 @@ export function mountAdmissionRoutes(
       dpoaConsentCheck(),
       f2fClinicianRoles,
     ),
+    // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
+    // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
+    dischargeDetails: createDbDischargeDetailsService(db, outbox),
+    dischargeWorklist: createDbDischargeWorklistService(db),
+    readmission: createDbReadmissionService(db, priorElectionClosure),
   });
 }
 
@@ -120,6 +131,9 @@ export {
   admissionSchedulingContextForOrg,
   electionPeriodContextForOrg,
   claimAssemblyRangeContextForOrg,
+  claimStayEndFactsForOrg,
+  type TransferInNoticeContext,
+  transferInNoticeContextForOrg,
   createDrizzleAdmissionReaderStore,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
@@ -174,6 +188,24 @@ export {
 // cross-module ids validated app-side — no cross-module schema import.
 export { type AdmissionRouteDeps, registerAdmissionRoutes } from "./routes/admission-routes";
 export {
+  DISCHARGE_DETAILS_RECORDED_EVENT,
+  createDbDischargeDetailsService,
+} from "./discharge-details-service-db";
+export { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
+export { createDbReadmissionService } from "./readmission-service-db";
+export type { PriorElectionClosurePort, ReadmissionService } from "./routes/readmission-service";
+export {
+  type PriorEpisode,
+  type RhcPriorStayFact,
+  type TransferInSource,
+  latestLiveEndedEpisode,
+  priorEpisodesForOrg,
+  rhcPriorStayFacts,
+} from "./seams/prior-episodes";
+export * from "./intake/benefit-period";
+export type { DischargeDetailsService } from "./routes/discharge-details-service";
+export type { DischargeWorklistService } from "./routes/discharge-worklist-service";
+export {
   type AdmissionRouteService,
   type AdmissionAbacResolver,
   type AdmissionBackendSeed,
@@ -215,6 +247,8 @@ export {
   deriveDischargePermissionKey,
   dischargeRequiresCosign,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
+  resolvePlaceOfDeath,
   decideBereavementEligibility,
   fileForCauseDischarge,
   resolveForCauseDischarge,

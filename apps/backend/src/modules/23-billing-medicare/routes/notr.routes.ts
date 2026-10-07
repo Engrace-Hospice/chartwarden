@@ -7,10 +7,15 @@
 // gate `billing.notr.read`; submit gates `billing.notr.submit` + the §D14 step-up assertion; cancel gates
 // `billing.notr.cancel`. Both mutations compose the §4.7 `provider_entity_billing_scope` predicate over the
 // NOTR's ProviderEntity + the §D13 AI-block + `Idempotency-Key` (§4.1). Org/actor binding is server-side.
+//
+// CORRECT (migration 0378) drafts a corrected NOTR for a REJECTED one — a new linked DRAFT (`corrects_notice_id`),
+// gated like filing it (`billing.notr.submit` + provider scope + AI-block + `Idempotency-Key`; the step-up stays on
+// submit). CMS Pub. 100-04 ch. 11 §20.1.2; M23 §2.2 "corrected NOTR is its own row".
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import {
   CancelNotrBodySchema,
+  CorrectNoticeBodySchema,
   NotrIdParamsSchema,
   NotrListQuerySchema,
   parse,
@@ -31,6 +36,9 @@ const SUBMIT = P("billing.notr.submit");
 const SUBMIT_ABAC = PROVIDER_SCOPE("billing.notr.submit", targetNotrId);
 const SUBMIT_STEPUP = STEP_UP("billing.notr.submit");
 const CANCEL = P("billing.notr.cancel");
+// Filing a corrected notice is part of filing it: the submit key + provider scope (the step-up is on submit).
+const CORRECT = P("billing.notr.submit");
+const CORRECT_ABAC = PROVIDER_SCOPE("billing.notr.submit", targetNotrId);
 const CANCEL_ABAC = PROVIDER_SCOPE("billing.notr.cancel", targetNotrId);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
@@ -98,6 +106,21 @@ export function registerNotrRoutes(app: FastifyInstance, deps: NotrRouteDeps): v
       return writeService.cancelNotr(actor, id, {
         terminatingEventReversed: body.terminatingEventReversed,
       });
+    },
+  );
+
+  // POST /notr-records/:id/correct — draft the corrected NOTR for a REJECTED one (ch. 11 §20.1.2; M23 §2.2
+  // "corrected NOTR is its own row"). 201 with the new DRAFT; 200 with the correction already in progress
+  // (idempotent replay). It is then submitted like any other NOTR (step-up on submit).
+  app.post(
+    "/api/v1/notr-records/:id/correct",
+    { preHandler: [CORRECT, CORRECT_ABAC, NO_AI, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(NotrIdParamsSchema, request.params);
+      const body = parse(CorrectNoticeBodySchema, request.body);
+      const res = await writeService.correctNotr(actor, id, body);
+      return reply.code(res.created ? 201 : 200).send(res);
     },
   );
 }

@@ -2,7 +2,7 @@
   "$comment": "RATCHET FLOOR for OpenAPI enrichment coverage. `deficit` = routes with no entry in scripts/openapi/enrichments.ts; `mutatingNoBody` = POST/PUT/PATCH routes whose entry (if any) carries no `body` schema — a SHALLOW (summary-only) enrichment still counts as enriched for `deficit` but must not hide a body-less mutation, so it is ratcheted separately. Neither may ever RISE per module (new routes must ship real request contracts); when either FALLS, re-baseline with `bun run openapi:coverage --update` to lock the progress in. A module missing here has an implied floor of 0 for both.",
   "modules": {
     "02-identity": {
-      "routes": 25,
+      "routes": 26,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -17,12 +17,12 @@
       "mutatingNoBody": 0
     },
     "05-patient": {
-      "routes": 19,
+      "routes": 26,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 68,
+      "routes": 74,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -52,7 +52,7 @@
       "mutatingNoBody": 0
     },
     "12-dosespot": {
-      "routes": 32,
+      "routes": 33,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -72,7 +72,7 @@
       "mutatingNoBody": 0
     },
     "16-bereavement": {
-      "routes": 33,
+      "routes": 34,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -102,12 +102,12 @@
       "mutatingNoBody": 0
     },
     "22-documents": {
-      "routes": 54,
+      "routes": 57,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "23-billing-medicare": {
-      "routes": 56,
+      "routes": 57,
       "deficit": 0,
       "mutatingNoBody": 0
     },

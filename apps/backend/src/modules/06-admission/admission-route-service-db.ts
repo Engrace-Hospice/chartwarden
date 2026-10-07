@@ -36,6 +36,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   ne,
   or,
   sql,
@@ -65,17 +66,28 @@ import {
   resolveF2fWindowStart,
 } from "./certification/f2f-window";
 import {
+  type AssessmentWindowKind,
+  addCalendarDays,
+  computeAssessmentWindowDeadline,
   computeCtiSignatureDueAt,
   computeWrittenCertDeadline,
+  isAssessmentWindowKind,
   localDateOfInstant,
 } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
   dischargeRequiresCosign,
+  issueDetails,
+  resolvePlaceOfDeath,
 } from "./discharge/permission-map";
-import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import {
+  type TransferInInput,
+  planTransferIn,
+  transferInSourceRefusal,
+} from "./discharge/transfer-in";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -83,6 +95,8 @@ import {
   computeActivationGate,
   evaluateAdmissionReadiness,
 } from "./intake";
+import { F2F_EXCEPTION_DAYS_AFTER_ADMISSION } from "./intake/benefit-period";
+import { resolveFirstBenefitPeriod } from "./readmission-service-db";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
@@ -436,6 +450,7 @@ function toReferralReadView(
     patientDobAtReceipt: string | null;
     medicareNumberAtReceipt: string | null;
     medicaidNumberAtReceipt: string | null;
+    sexAssignedAtBirth: string | null;
     referringDxText: string | null;
     icd10TerminalPrimary: string | null;
     sourceChannel: string;
@@ -466,6 +481,7 @@ function toReferralReadView(
     patientDobAtReceipt: r.patientDobAtReceipt,
     medicareNumberAtReceipt: r.medicareNumberAtReceipt,
     medicaidNumberAtReceipt: r.medicaidNumberAtReceipt,
+    sexAssignedAtBirth: r.sexAssignedAtBirth,
     referringDxText: r.referringDxText,
     icd10TerminalPrimary: r.icd10TerminalPrimary,
     source: r.sourceChannel,
@@ -490,13 +506,60 @@ function toReferralReadView(
 const DEFAULT_ORG_TZ = "America/Los_Angeles";
 const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
 
-/** §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). */
+/**
+ * §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). The two 42 CFR
+ * 418.54 assessment windows are NOT here: their deadline is election-anchored calendar math
+ * (`computeAssessmentWindowDeadline` — 48 hours, and election date as day 0 + 5 days), not a flat hour count.
+ */
 const WINDOW_HOURS: Record<string, number> = {
-  initial_assessment_48h: 48,
-  comprehensive_assessment_5d: 24 * 5,
   care_plan_5d: 24 * 5,
   notice_of_rights: 48,
 };
+
+/** The 418.54 windows re-anchored on the election when the admission activates. */
+const ASSESSMENT_WINDOW_KINDS: readonly AssessmentWindowKind[] = [
+  "initial_assessment_48h",
+  "comprehensive_assessment_5d",
+];
+
+/**
+ * 42 CFR 418.54 — the initial (48 h) and comprehensive (election day 0 + 5) assessment clocks run from the
+ * ELECTION, and activation is the election here (the first period's `effective_at` is the activation day). The
+ * windows `createAdmission` opened were anchored on the DRAFT, which can precede the election by days — so every
+ * still-open one is re-dated from `electedAt` (and back to `open`: a provisional deadline that lapsed before the
+ * patient elected was never a real breach). A closed window is left alone.
+ */
+async function reanchorAssessmentWindows(
+  tx: DbClient,
+  admissionId: string,
+  electedAt: Date,
+): Promise<void> {
+  for (const kind of ASSESSMENT_WINDOW_KINDS) {
+    await tx
+      .update(CW)
+      .set({
+        startsAt: electedAt,
+        mustCompleteBy: computeAssessmentWindowDeadline(kind, electedAt, DEFAULT_ORG_TZ),
+        status: "open",
+        updatedAt: electedAt,
+        version: sql`${CW.version} + 1`,
+      })
+      .where(
+        and(
+          eq(CW.admissionId, admissionId),
+          eq(CW.windowKind, kind),
+          inArray(CW.status, ["open", "closing_soon", "overdue"]),
+        ),
+      );
+  }
+}
+
+/** The deadline a newly opened window carries, opened at `openedAt`. */
+function windowDeadline(window: string, openedAt: Date): Date {
+  if (isAssessmentWindowKind(window))
+    return computeAssessmentWindowDeadline(window, openedAt, DEFAULT_ORG_TZ);
+  return new Date(openedAt.getTime() + (WINDOW_HOURS[window] ?? 48) * 3600_000);
+}
 
 /**
  * The production, RLS-backed AdmissionRouteService. Every read and every write is real Drizzle over
@@ -644,14 +707,16 @@ export function createDbAdmissionRouteService(
           aggregateId: ctx.aggregateId,
         });
       } else if (e.kind === "open_window") {
-        const hours = WINDOW_HOURS[e.window] ?? 48;
+        // A draft admission's 418.54 windows are PROVISIONAL here (anchored on the draft); activation — the
+        // election — re-anchors them (`activateAdmission`).
+        const openedAt = now();
         await tx.insert(CW).values({
           organizationId: ctx.organizationId,
           admissionId: ctx.admissionId,
           windowKind: e.window,
           status: "open",
-          startsAt: now(),
-          mustCompleteBy: new Date(now().getTime() + hours * 3600_000),
+          startsAt: openedAt,
+          mustCompleteBy: windowDeadline(e.window, openedAt),
         });
       } else if (e.kind === "close_window") {
         await tx
@@ -855,11 +920,47 @@ export function createDbAdmissionRouteService(
         ),
       )
       .limit(1);
+    // Readmission workflow — an admission's FIRST period (a re-election into period 3+) has no predecessor on the
+    // admission to derive a start from; its start is the admission date.
+    let admissionDay: string | null = null;
+    const [earlier] =
+      !prior && !ep.expectedStart && !ep.effectiveAt
+        ? await tx
+            .select({ id: EP.id })
+            .from(EP)
+            .where(
+              and(
+                eq(EP.admissionId, ep.admissionId),
+                lt(EP.sequenceNumber, Number(ep.sequenceNumber)),
+              ),
+            )
+            .limit(1)
+        : [{ id: "n/a" }];
+    // Only the admission's FIRST period falls back to the admission date; a recert with a missing predecessor
+    // stays unverifiable (fail closed, F-226).
+    if (!earlier) {
+      const [adm] = await tx
+        .select({ admissionAt: ADM.admissionAt })
+        .from(ADM)
+        .where(eq(ADM.id, ep.admissionId))
+        .limit(1);
+      admissionDay = adm?.admissionAt ? adm.admissionAt.toISOString().slice(0, 10) : null;
+    }
     return resolveF2fWindowStart({
-      expectedStart: ep.expectedStart,
+      expectedStart: ep.expectedStart ?? admissionDay,
       priorScheduledEnd: prior?.scheduledEndAt ?? null,
       effectiveAt: ep.effectiveAt,
     });
+  }
+
+  /** MBPM ch. 9 §20.1(5)(d) — does this period carry a documented F2F exceptional circumstance? */
+  async function periodHasF2fException(tx: DbClient, periodId: string): Promise<boolean> {
+    const [ep] = await tx
+      .select({ reason: EP.f2fExceptionReason })
+      .from(EP)
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    return !!ep?.reason;
   }
 
   /**
@@ -983,6 +1084,7 @@ export function createDbAdmissionRouteService(
     patientNameAtReceipt: string;
     patientDobAtReceipt: string | null;
     medicareNumberAtReceipt: string | null;
+    sexAssignedAtBirth: string | null;
     referringDxText: string | null;
     referrerName: string | null;
     referrerOrganization: string | null;
@@ -997,6 +1099,7 @@ export function createDbAdmissionRouteService(
         patientNameAtReceipt: REF.patientNameAtReceipt,
         patientDobAtReceipt: REF.patientDobAtReceipt,
         medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
+        sexAssignedAtBirth: REF.sexAssignedAtBirth,
         referringDxText: REF.referringDxText,
         referrerName: REF.referrerName,
         referrerOrganization: REF.referrerOrganization,
@@ -1067,6 +1170,7 @@ export function createDbAdmissionRouteService(
     patientDobAtReceipt: REF.patientDobAtReceipt,
     medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
     medicaidNumberAtReceipt: REF.medicaidNumberAtReceipt,
+    sexAssignedAtBirth: REF.sexAssignedAtBirth,
     referringDxText: REF.referringDxText,
     icd10TerminalPrimary: REF.icd10TerminalPrimary,
     sourceChannel: REF.sourceChannel,
@@ -1150,6 +1254,8 @@ export function createDbAdmissionRouteService(
           sequenceNumber: number;
           effectiveAt: string | null;
           scheduledEndAt: string | null;
+          expectedStart: string | null;
+          f2fExceptionReason: string | null;
         }
       | undefined;
     inherited: boolean;
@@ -1160,6 +1266,8 @@ export function createDbAdmissionRouteService(
         sequenceNumber: EP.sequenceNumber,
         effectiveAt: EP.effectiveAt,
         scheduledEndAt: EP.scheduledEndAt,
+        expectedStart: EP.expectedStart,
+        f2fExceptionReason: EP.f2fExceptionReason,
       })
       .from(EP)
       .where(eq(EP.admissionId, admissionId))
@@ -1199,6 +1307,8 @@ export function createDbAdmissionRouteService(
     periodScheduledEndAt: string | null;
     /** D9 — the activation period is the sending hospice's inherited one (transfer-in). */
     inheritedPeriod: boolean;
+    /** MBPM ch. 9 §20.1(5)(d) — a period-3+ new admission's documented F2F exceptional circumstance. */
+    f2fExceptionDocumented: boolean;
   }> {
     await backfillLegacyEvidenceForAdmission(tx, organizationId, admissionId);
     const { period, inherited } = await activationPeriodFor(tx, admissionId);
@@ -1253,6 +1363,7 @@ export function createDbAdmissionRouteService(
       periodEffectiveAt: period?.effectiveAt ?? null,
       periodScheduledEndAt: period?.scheduledEndAt ?? null,
       inheritedPeriod: inherited,
+      f2fExceptionDocumented: !!period?.f2fExceptionReason,
     };
   }
 
@@ -1587,6 +1698,14 @@ export function createDbAdmissionRouteService(
         attestationRequired: !inheritedPeriod && (period?.sequenceNumber ?? 1) >= 3,
         attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
+        exceptionDocumented: !inheritedPeriod && !!period?.f2fExceptionReason,
+        exceptionDueBy: (() => {
+          const start =
+            period?.effectiveAt ??
+            period?.expectedStart ??
+            (adm.admissionAt ? adm.admissionAt.toISOString().slice(0, 10) : null);
+          return start ? addCalendarDays(start, F2F_EXCEPTION_DAYS_AFTER_ADMISSION) : null;
+        })(),
       },
     };
     return evaluateAdmissionReadiness(facts);
@@ -1921,6 +2040,7 @@ export function createDbAdmissionRouteService(
               patientNameAtReceipt: r.patientNameAtReceipt,
               patientDobAtReceipt: r.patientDobAtReceipt,
               medicareNumberAtReceipt: r.medicareNumberAtReceipt,
+              sexAssignedAtBirth: r.sexAssignedAtBirth,
               referringDxText: r.referringDxText,
               referrerName: r.referrerName,
               referrerOrganization: r.referrerOrganization,
@@ -1948,6 +2068,7 @@ export function createDbAdmissionRouteService(
                 patientNameAtReceipt: r.patientNameAtReceipt,
                 patientDobAtReceipt: r.patientDobAtReceipt,
                 medicareNumberAtReceipt: r.medicareNumberAtReceipt,
+                sexAssignedAtBirth: r.sexAssignedAtBirth,
                 referringDxText: r.referringDxText,
                 referrerName: r.referrerName,
                 referrerOrganization: r.referrerOrganization,
@@ -2444,6 +2565,7 @@ export function createDbAdmissionRouteService(
             patientDobAtReceipt: input.patientDobAtReceipt ?? null,
             medicareNumberAtReceipt: referralMedicareNumber(input.medicareNumberAtReceipt),
             medicaidNumberAtReceipt: referralMedicaidNumber(input.medicaidNumberAtReceipt),
+            sexAssignedAtBirth: input.sexAssignedAtBirth ?? "U",
             referringDxText: input.referringDxText ?? null,
             referrerName: input.referrerName ?? null,
             referrerOrganization: input.referrerOrganization ?? null,
@@ -2513,6 +2635,7 @@ export function createDbAdmissionRouteService(
             referrerName: input.referrerName,
             referrerOrganization: input.referrerOrganization,
             referrerPhone: input.referrerPhone,
+            sexAssignedAtBirth: input.sexAssignedAtBirth,
             version: sql`${REF.version} + 1`,
             updatedAt: now(),
           })
@@ -2760,6 +2883,7 @@ export function createDbAdmissionRouteService(
           patientNameAtReceipt: cur.patientNameAtReceipt,
           patientDobAtReceipt: cur.patientDobAtReceipt,
           medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
+          administrativeSex: cur.sexAssignedAtBirth ?? "U",
         });
         const r = firstOrThrow(
           await tx
@@ -2899,6 +3023,14 @@ export function createDbAdmissionRouteService(
           referralAccepted: true,
           hasOtherOpenAdmission: !!open,
         } satisfies AdmissionEvent);
+        // Readmission workflow — the first benefit period (staff-entered or history-suggested), validated first.
+        const first = await resolveFirstBenefitPeriod(tx as DbClient, {
+          organizationId,
+          patientId,
+          input,
+          actorUserId,
+          now: now(),
+        });
         const adm = firstOrThrow(
           await tx
             .insert(ADM)
@@ -2907,6 +3039,7 @@ export function createDbAdmissionRouteService(
               patientId,
               referralId: id,
               status: t.to,
+              ...(first.admissionAt ? { admissionAt: first.admissionAt } : {}),
             })
             .returning({ id: ADM.id, version: ADM.version }),
           "admission insert returned no row",
@@ -2922,12 +3055,12 @@ export function createDbAdmissionRouteService(
           t.effects,
           { "m6.admission.draft_created": { patientId, referralId: id } },
         );
-        // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
+        // Seed the first benefit period (the §7.1 cascade — not a state-machine effect). It is period 1 only for a
+        // patient with no earlier election; a re-election continues the count (42 CFR 418.21 / 418.24).
         await tx.insert(EP).values({
           organizationId,
           admissionId: adm.id,
-          sequenceNumber: 1,
-          periodKind: "ninety_day",
+          ...first.periodValues,
         });
         // Advance the referral to converted.
         const r = firstOrThrow(
@@ -3297,9 +3430,32 @@ export function createDbAdmissionRouteService(
     // event (opens the same 4 compliance windows, lands on `pending`), a seeded period 1, and a draft
     // CTI carrying the hospice-MD/attending ids the form actually asked for.
     async createAdmission(organizationId, input, actorUserId): Promise<MutationResult> {
-      void actorUserId;
+      if (input.referralId) throw new ReferralAdmissionPathError();
+      // The body's patient id must be a patient of THIS org (M5's org-scoped read — the same confirmation referral
+      // conversion runs). Resolved before the transaction: the seam opens its own org context.
+      const confirmed = await patientResolver().confirmPatient({
+        organizationId,
+        patientId: input.patientId,
+      });
+      if (!confirmed)
+        throw new WardenXError(
+          "PATIENT_NOT_FOUND",
+          "the patient does not exist in this organization",
+          409,
+        );
+      if (input.readmittedFromAdmissionId && input.intakeMethod === "transfer_in")
+        throw new AdmissionStateError(
+          "READMISSION_SOURCE_INVALID",
+          "A transfer-in continues another hospice's election; record it through the transfer-in workflow, not as a readmission",
+          [
+            {
+              field: "readmittedFromAdmissionId",
+              code: "READMISSION_SOURCE_INVALID",
+              message: "not allowed with intakeMethod transfer_in",
+            },
+          ],
+        );
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-        if (input.referralId) throw new ReferralAdmissionPathError();
         // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
         // entry path into the same admission lifecycle, not an exemption from it.
         const [open] = await tx
@@ -3319,6 +3475,18 @@ export function createDbAdmissionRouteService(
           referralAccepted: true,
           hasOtherOpenAdmission: !!open,
         } satisfies AdmissionEvent);
+        // Readmission workflow — the first benefit period is the staff-entered (or history-suggested) number,
+        // validated before any write. A transfer-in inherits its sequence via `transferIn` instead (below).
+        const first =
+          input.intakeMethod === "transfer_in"
+            ? null
+            : await resolveFirstBenefitPeriod(tx as DbClient, {
+                organizationId,
+                patientId: input.patientId,
+                input,
+                actorUserId,
+                now: now(),
+              });
         const adm = firstOrThrow(
           await tx
             .insert(ADM)
@@ -3328,7 +3496,15 @@ export function createDbAdmissionRouteService(
               referralId: input.referralId ?? null,
               hospicePhysicianId: input.hospiceMedicalDirectorId,
               attendingPhysicianId: input.attendingPhysicianId ?? null,
+              // §6.8 — who opened it: `admission.scope`'s creator arm while it is still unsited.
+              createdByUserId: actorUserId || null,
               status: t.to,
+              ...(first?.admissionAt ? { admissionAt: first.admissionAt } : {}),
+              // Only once `resolveFirstBenefitPeriod` verified it is an earlier, live-ended stay of THIS patient in
+              // THIS org (explicit org + patient predicates, not RLS alone).
+              ...(first && input.readmittedFromAdmissionId
+                ? { readmittedFromAdmissionId: input.readmittedFromAdmissionId }
+                : {}),
             })
             .returning({
               id: ADM.id,
@@ -3359,7 +3535,7 @@ export function createDbAdmissionRouteService(
         // (42 CFR 418.28, the benefit-period counter never restarts). Seeding period 1 here for a
         // transfer-in unconditionally created a spurious extra election_period row (+ a spurious CTI
         // attached to it) ahead of `transferIn`'s own inherited/next pair.
-        if (input.intakeMethod === "transfer_in") {
+        if (!first) {
           return {
             id: adm.id,
             state: adm.status,
@@ -3372,8 +3548,7 @@ export function createDbAdmissionRouteService(
             .values({
               organizationId,
               admissionId: adm.id,
-              sequenceNumber: 1,
-              periodKind: "ninety_day",
+              ...first.periodValues,
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -3781,7 +3956,9 @@ export function createDbAdmissionRouteService(
           privacyFlagBlock: false,
           initialAssessment48hOverdue: false,
           donOverride: false,
-          isFirstElectionPeriod: facts.periodSequence === 1,
+          // The admission's FIRST period starts here — period 1 for a first election, the continuing number for a
+          // re-election (readmission). A transfer-in's inherited period keeps its old rule (it started elsewhere).
+          isFirstElectionPeriod: facts.inheritedPeriod ? facts.periodSequence === 1 : true,
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
         const activatedAt = now();
@@ -3843,6 +4020,7 @@ export function createDbAdmissionRouteService(
                 periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
                   ? await hasAttestedF2f(tx as DbClient, facts.periodId)
                   : true,
+              f2fExceptionDocumented: facts.f2fExceptionDocumented,
               effectiveAt: isoDay(activatedAt),
             });
           }
@@ -3861,6 +4039,7 @@ export function createDbAdmissionRouteService(
             })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
         }
+        await reanchorAssessmentWindows(tx as DbClient, id, activatedAt);
         await runEffects(
           tx,
           {
@@ -4363,7 +4542,14 @@ export function createDbAdmissionRouteService(
           },
           createdByMembershipId: actorUserId,
         });
-        if (period.seq >= 2 && cti.epId) {
+        // Readmission workflow — a re-election's FIRST period can be 2 or later, but it is not a recertification:
+        // it activates with the admission (`activateAdmission`, R-AC-01 gate), never on the CTI signature alone.
+        const [earlierPeriod] = await tx
+          .select({ id: EP.id })
+          .from(EP)
+          .where(and(eq(EP.admissionId, period.admissionId), lt(EP.sequenceNumber, period.seq)))
+          .limit(1);
+        if (period.seq >= 2 && cti.epId && earlierPeriod) {
           // §2.3.2 `setActive` on the RECERT path — the one that matters. This path advances any
           // period ≥ 2 on the hospice-MD signature alone and has no face-to-face term, so a third
           // or later benefit period activated with no attested F2F encounter: 42 CFR 418.22(a)(4)
@@ -4648,8 +4834,8 @@ export function createDbAdmissionRouteService(
         // F-226 - the REAL encounter date (validated: a calendar date, not in the future, not absurdly old)
         // against the period's REAL expected start (prior end + 1, see `resolvePeriodF2fWindowStart`).
         // Before this the body's `encounterDate` was dropped, "today" was stamped, and the window was
-        // computed against today + 7, so `within_window` was true on every production write. Same-day and
-        // later dates are outside [start-30, start-1] (R-F2F-02) and are refused unless a window override
+        // computed against today + 7, so `within_window` was true on every production write. Dates after the
+        // period's first day are outside [start-30, start] (R-F2F-02; MBPM ch. 9 §20.1(5)(a)) and are refused unless a window override
         // (R-F2F-03, `overrideF2fWindow`, legal from `scheduled`) is already on file.
         assertPlausibleEncounterDate(
           encounterDate,
@@ -4662,6 +4848,7 @@ export function createDbAdmissionRouteService(
           periodStart: windowStart?.start ?? null,
           encounterDate,
           hasOverride: cur.override,
+          exceptionDocumented: await periodHasF2fException(tx as DbClient, cur.epId),
         });
         const withinWindow: boolean | null = t.effects.some(
           (e) => e.kind === "set_flag" && e.field === "within_window_unknown",
@@ -5148,6 +5335,7 @@ export function createDbAdmissionRouteService(
               periodSequenceAtTransfer: period.sequence,
               receivingOrSendingCcn: input.otherHospiceCcn ?? null,
               receivingOrSendingName: input.otherHospiceName,
+              receivingCareSetting: input.receivingCareSetting,
               narrative: input.narrative,
             })
             .returning({ id: TE.id, version: TE.version }),
@@ -5194,11 +5382,44 @@ export function createDbAdmissionRouteService(
           .select({
             patientId: ADM.patientId,
             hospicePhysicianId: ADM.hospicePhysicianId,
+            attendingPhysicianId: ADM.attendingPhysicianId,
+            providerEntityId: ADM.providerEntityId,
           })
           .from(ADM)
           .where(eq(ADM.id, admissionId))
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
+        // CMS Pub. 100-04 ch. 11 §20.1.3 — the sending hospice must be ANOTHER provider (a different CCN), and
+        // a beneficiary changes hospices at most once per benefit period: any transfer (in or out) already
+        // recorded for this patient in the carried period refuses a second one. Both are the receiving
+        // hospice's 8xC transfer-notice rules, enforced here at capture so a bad transfer never posts.
+        const ownCcn = adm.providerEntityId
+          ? ((
+              await foundationSites.providerEntityIdentifiers(
+                tx,
+                organizationId,
+                adm.providerEntityId,
+              )
+            )?.ccn ?? null)
+          : null;
+        const [priorTransferInPeriod] = await tx
+          .select({ id: TE.id })
+          .from(TE)
+          .innerJoin(ADM, eq(ADM.id, TE.admissionId))
+          .where(
+            and(
+              eq(ADM.patientId, adm.patientId),
+              eq(TE.periodSequenceAtTransfer, input.priorBenefitPeriodSequence),
+            ),
+          )
+          .limit(1);
+        const refusal = transferInSourceRefusal({
+          otherHospiceCcn: input.otherHospiceCcn ?? null,
+          otherHospiceNpi: input.otherHospiceNpi ?? null,
+          ownCcn,
+          transferAlreadyRecordedInPeriod: !!priorTransferInPeriod,
+        });
+        if (refusal) throw new AdmissionStateError(refusal.code, refusal.message);
         const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
         if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
           throw new WardenXError(
@@ -5207,11 +5428,15 @@ export function createDbAdmissionRouteService(
             400,
           );
         }
-        if (!adm.hospicePhysicianId) {
+        // The transfer-in's attending physician was accepted by the route and then dropped; it is the 8xC's
+        // Attending Physician (CMS Pub. 100-04 ch. 11 §20.1.3), so it fills an admission that names none.
+        const fillAttending = !adm.attendingPhysicianId && !!input.attendingPhysicianId;
+        if (!adm.hospicePhysicianId || fillAttending) {
           await tx
             .update(ADM)
             .set({
-              hospicePhysicianId: selectedHospicePhysicianId,
+              ...(adm.hospicePhysicianId ? {} : { hospicePhysicianId: selectedHospicePhysicianId }),
+              ...(fillAttending ? { attendingPhysicianId: input.attendingPhysicianId } : {}),
               version: sql`${ADM.version} + 1`,
               updatedAt: now(),
             })
@@ -5322,6 +5547,7 @@ export function createDbAdmissionRouteService(
               effectiveAt: input.effectiveDate,
               periodSequenceAtTransfer: plan.inherited.sequence,
               receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingNpi: input.otherHospiceNpi ?? null,
               receivingOrSendingName: input.otherHospiceName,
               narrative: input.narrative,
             })
@@ -5388,6 +5614,19 @@ export function createDbAdmissionRouteService(
           input.externalSource ? "external-facility" : input.deathCertifierId,
         );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
+        // Claim patient status 40/41/42 (CMS Pub. 100-04 Ch. 11 §30.3) needs the place of death.
+        const placeOfDeath = resolvePlaceOfDeath(
+          input.reason,
+          input.placeOfDeath,
+          input.externalSource !== undefined,
+        );
+        const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
+        if (placeIssue)
+          throw new AdmissionStateError(
+            placeIssue.code,
+            placeIssue.message,
+            issueDetails(placeIssue),
+          );
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
         const dbType = REASON_TO_DB_TYPE[input.reason];
         if (requiresMedicalDirectorCosign) {
@@ -5460,6 +5699,7 @@ export function createDbAdmissionRouteService(
               narrative: input.narrative,
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
+              placeOfDeath: input.reason === "death" ? (placeOfDeath ?? null) : null,
               bereavementEligible: input.reason === "death",
               // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
               ...(input.externalSource
@@ -5813,6 +6053,55 @@ export function createDbAdmissionRouteService(
  */
 export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolver {
   return {
+    // `admission_intake_scope` — the patient must be a patient of THIS org (M5's org-scoped read, the same
+    // confirmation `createAdmission` runs), and the predicate needs to know whether it has an ongoing stay.
+    async loadPatientIntakeFacts(organizationId, patientId) {
+      const patient = await getSeam("PatientIntakeResolver").confirmPatient({
+        organizationId,
+        patientId,
+      });
+      if (!patient) return null;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.organizationId, organizationId),
+              eq(ADM.patientId, patientId),
+              inArray(ADM.status, ["active", "on_hold"]),
+            ),
+          )
+          .limit(1);
+        const [any] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+          .limit(1);
+        // The latest referral of this patient that names a site — how a never-admitted patient is placed (§6.8).
+        const [ref] = await tx
+          .select({ providerEntityId: REF.providerEntityId, locationId: REF.locationId })
+          .from(REF)
+          .where(
+            and(
+              eq(REF.organizationId, organizationId),
+              eq(REF.patientId, patientId),
+              or(isNotNull(REF.providerEntityId), isNotNull(REF.locationId)),
+            ),
+          )
+          .orderBy(desc(REF.createdAt))
+          .limit(1);
+        // The chart's site comes from M5's own org-scoped read (M6 never selects M5's table).
+        return {
+          hasActiveOrOnHoldAdmission: open !== undefined,
+          hasAnyAdmission: any !== undefined,
+          providerEntityId: patient.providerEntityId ?? null,
+          locationId: patient.locationId ?? null,
+          referralProviderEntityId: ref?.providerEntityId ?? null,
+          referralLocationId: ref?.locationId ?? null,
+        };
+      });
+    },
     async loadReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
@@ -5837,14 +6126,19 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(ADM)
-          .where(eq(ADM.id, id))
+          // Explicit org predicate as well as RLS (defense in depth: the §6.8 predicates read through this).
+          .where(and(eq(ADM.id, id), eq(ADM.organizationId, organizationId)))
           .limit(1);
         return r
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -5887,6 +6181,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             admissionId: CW.admissionId,
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(CW)
           .innerJoin(ADM, eq(CW.admissionId, ADM.id))
@@ -5897,6 +6192,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               admissionId: r.admissionId,
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -5914,6 +6210,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(EP)
           .innerJoin(ADM, eq(EP.admissionId, ADM.id))
@@ -5923,6 +6220,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -5933,6 +6231,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(ES)
           .innerJoin(EP, eq(ES.electionPeriodId, EP.id))
@@ -5943,6 +6242,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -5953,6 +6253,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(CTI)
           .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
@@ -5963,6 +6264,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -5973,6 +6275,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(F2F)
           .innerJoin(EP, eq(F2F.electionPeriodId, EP.id))
@@ -5983,6 +6286,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });
@@ -5993,6 +6297,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           .select({
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
+            createdByUserId: ADM.createdByUserId,
           })
           .from(LOC)
           .innerJoin(ADM, eq(LOC.admissionId, ADM.id))
@@ -6002,6 +6307,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+              createdByUserId: r.createdByUserId ?? null,
             }
           : null;
       });

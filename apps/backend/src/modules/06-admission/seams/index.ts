@@ -78,6 +78,17 @@ export {
   idgActiveAdmissionsForOrg,
   type IdgActiveAdmission,
 } from "./drizzle-store";
+// M23 transfer notice (TOB 8xC) — the org-explicit transfer-in facts the receiving hospice's notice needs.
+export {
+  type TransferInNoticeContext,
+  transferInNoticeContextForOrg,
+} from "./transfer-in-notice-context";
+// M23 claim list / detail — the batched, admission-keyed stay-end facts ("needs attention" flags).
+export {
+  CLAIM_STAY_END_BATCH_MAX,
+  type ClaimStayEndFacts,
+  claimStayEndFactsForOrg,
+} from "./claim-stay-end-store";
 // M14 IDG screens — the org-explicit, BATCHED per-patient recert/F2F window read (M6's own pure window math).
 export {
   type IdgRecertF2fStatus,

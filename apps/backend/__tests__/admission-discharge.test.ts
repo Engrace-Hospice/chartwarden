@@ -23,6 +23,7 @@ import {
   DISCHARGE_POLICY,
   buildAdmissionAbacPredicates,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
   createInMemoryAdmissionBackend,
   decideBereavementEligibility,
   deriveDischargePermissionKey,
@@ -31,6 +32,7 @@ import {
   planTransferIn,
   registerAdmissionRoutes,
   resolveForCauseDischarge,
+  resolvePlaceOfDeath,
 } from "../src/modules/06-admission/index";
 
 const ORG = "org_a";
@@ -112,6 +114,32 @@ describe("M6-T09 — §6.3 per-reason narrative gates", () => {
     );
     // No other reason requires it.
     expect(checkDischargeNarrative("moved_out_of_service_area", "moved to FL")).toBeNull();
+  });
+});
+
+// ── Claim patient status 40/41/42: the place of death (CMS Pub. 100-04 Ch. 11 §30.3) ──────────────────
+
+describe("place of death gate (claim patient status 40/41/42)", () => {
+  it("a death requires home, facility or unknown (PLACE_OF_DEATH_REQUIRED)", () => {
+    expect(checkPlaceOfDeath("death", undefined)?.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    expect(checkPlaceOfDeath("death", "hospital")?.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    for (const place of ["home", "facility", "unknown"]) {
+      expect(checkPlaceOfDeath("death", place)).toBeNull();
+    }
+  });
+
+  it("any other reason refuses a place of death (PLACE_OF_DEATH_NOT_ALLOWED)", () => {
+    expect(checkPlaceOfDeath("moved_out_of_service_area", "home")?.code).toBe(
+      "PLACE_OF_DEATH_NOT_ALLOWED",
+    );
+    expect(checkPlaceOfDeath("no_longer_terminal", undefined)).toBeNull();
+  });
+
+  it("an external (HL7) death with no place records unknown; an internal one keeps the gap", () => {
+    expect(resolvePlaceOfDeath("death", undefined, true)).toBe("unknown");
+    expect(resolvePlaceOfDeath("death", "home", true)).toBe("home");
+    expect(resolvePlaceOfDeath("death", undefined, false)).toBeUndefined();
+    expect(resolvePlaceOfDeath("other", undefined, true)).toBeUndefined();
   });
 });
 
@@ -239,6 +267,7 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
         dischargeDate: "2026-03-15",
         narrative: "patient expired at home",
         deathCertifierId: "md_1",
+        placeOfDeath: "home",
       },
       "u1",
     );
@@ -268,6 +297,7 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
         dischargeDate: "2026-03-15",
         narrative: "patient expired at home",
         deathCertifierId: "md_1",
+        placeOfDeath: "home",
       },
       "u1",
     );
@@ -365,6 +395,7 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
       {
         effectiveDate: "2026-06-20",
         otherHospiceName: "Other Hospice",
+        receivingCareSetting: "home",
         narrative: "patient requested transfer to a closer facility",
       },
       "u1",
@@ -416,6 +447,8 @@ function makeServer() {
             "discharge.no_longer_terminal",
             "discharge.for_cause",
             "discharge.death",
+            "discharge.moved",
+            "transfer.out",
           ],
         },
       ],
@@ -479,6 +512,98 @@ describe("M6-T09 — route layer (§6.3)", () => {
     });
     expect(res.statusCode).toBe(412);
     expect(res.json().error.code).toBe("NARRATIVE_REQUIRED_FOR_CAUSE");
+    await app.close();
+  });
+
+  it("a death without placeOfDeath returns 422 PLACE_OF_DEATH_REQUIRED and leaves the admission active", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/discharge`,
+      headers: MD,
+      payload: {
+        reason: "death",
+        dischargeDate: "2026-06-20",
+        narrative: "patient expired at home",
+        deathCertifierId: "55555555-5555-4555-8555-555555555555",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    // Self-explanatory for integrators: the field, the values and the claim effect, plus a field-scoped detail.
+    expect(res.json().error.message).toMatch(
+      /placeOfDeath is required.*"home", "facility" or "unknown".*40.*41.*42/,
+    );
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "placeOfDeath", code: "PLACE_OF_DEATH_REQUIRED" }),
+    ]);
+    expect(backend.events).not.toContain("m6.discharge.created");
+    expect((await backend.service.getAdmission(ORG, ADMISSION))?.state).toBe("active");
+    await app.close();
+  });
+
+  it("a non-death discharge carrying placeOfDeath returns 422 PLACE_OF_DEATH_NOT_ALLOWED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/discharge`,
+      headers: MD,
+      payload: {
+        reason: "moved_out_of_service_area",
+        dischargeDate: "2026-06-20",
+        narrative: "family relocated to Florida",
+        placeOfDeath: "home",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("PLACE_OF_DEATH_NOT_ALLOWED");
+    expect(res.json().error.details?.[0]?.field).toBe("placeOfDeath");
+    await app.close();
+  });
+
+  it("a death with an invalid placeOfDeath names the allowed values (PLACE_OF_DEATH_REQUIRED, not a schema error)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/discharge`,
+      headers: MD,
+      payload: {
+        reason: "death",
+        dischargeDate: "2026-06-20",
+        narrative: "patient expired at the hospital",
+        deathCertifierId: "55555555-5555-4555-8555-555555555555",
+        placeOfDeath: "hospital",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    await app.close();
+  });
+
+  it("a transfer-out without receivingCareSetting returns 422 RECEIVING_CARE_SETTING_REQUIRED naming values and claim effect", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/transfer-out`,
+      headers: MD,
+      payload: {
+        direction: "out",
+        effectiveDate: "2026-06-20",
+        otherHospiceName: "Other Hospice",
+        narrative: "patient requested transfer to a closer facility",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("RECEIVING_CARE_SETTING_REQUIRED");
+    expect(res.json().error.message).toMatch(
+      /receivingCareSetting is required.*"home" or "facility".*50.*51/,
+    );
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({
+        field: "receivingCareSetting",
+        code: "RECEIVING_CARE_SETTING_REQUIRED",
+      }),
+    ]);
     await app.close();
   });
 });

@@ -22,11 +22,11 @@ import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   NewVisitModal,
   SchedulingNav,
-  apiErrorMessage,
   findLinkedEncounter,
   hasPermission,
 } from "./scheduling-workflow";
@@ -166,7 +166,7 @@ export function MyVisits(): JSX.Element {
     const evvMissingReason = attestReason.trim();
     setBusyVisitId(visitId);
     setAttestError(null);
-    const { error: err } =
+    const { error: err, response } =
       action === "start"
         ? await client.POST("/api/v1/visits/{visitId}/start", {
             params: { path: { visitId } },
@@ -187,10 +187,7 @@ export function MyVisits(): JSX.Element {
       setAttestError(
         isAssignedClinicianRefusal(err)
           ? ASSIGNED_CLINICIAN_MESSAGE
-          : apiErrorMessage(
-              err,
-              action === "start" ? "Could not start visit." : "Could not check in.",
-            ),
+          : mapSchedulingApiError(err, response?.status).message,
       );
       return;
     }
@@ -204,7 +201,12 @@ export function MyVisits(): JSX.Element {
       <WorkQueueLayout
         header={
           <PageHeader title="My Visits" breadcrumb="Field / Scheduling">
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            <div
+              style={{
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.875rem",
+              }}
+            >
               Review your scheduled visits for today and the upcoming week.
             </div>
           </PageHeader>
@@ -357,10 +359,20 @@ export function MyVisits(): JSX.Element {
                         </code>
                       </td>
                       <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
                         {formatDateTime(v.scheduledStartedAt)}
                       </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
                         {formatDateTime(v.scheduledEndedAt)}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>

@@ -10,7 +10,7 @@
 // alert that said otherwise was lost.
 import type { DbClient } from "@wardenx/db";
 import { buildCoverageWindows } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 import { activeUnitsForOrg, assignmentFactsForUnit, upsertCoverageWindows } from "./cron-store";
@@ -27,10 +27,6 @@ import {
 } from "./index";
 import { M37_LIFECYCLE_JOBS } from "./lifecycle-workers";
 import { M37_WATCHDOG_JOBS, type SignedEncountersPort } from "./watchdog-workers";
-
-/** The system actor id the cron stamps on its per-org `withOrgContext` tx (audit attribution). The other
- *  module crons use `…0000000000NN` with their own module number; `…37` is M37's and was unused. */
-const M37_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000037";
 
 const HOUR_MS = 3_600_000;
 
@@ -135,63 +131,59 @@ export async function runRnCoverageWatchdogCron(
   for (const { organizationId } of orgs) {
     if (alreadySwept.has(organizationId)) continue;
     try {
-      await withOrgContext(
-        deps.db,
-        { organizationId, userId: M37_WORKER_SYSTEM_USER_ID },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const units = await activeUnitsForOrg(t, organizationId);
-          for (const unit of units) {
-            const facts = await assignmentFactsForUnit(
-              t,
-              unit.unitId,
-              new Date(windowStartMs),
-              new Date(windowEndMs),
-            );
-            const grid = buildCoverageWindows(facts, windowStartMs, COVERAGE_WINDOW_HOURS);
-            const rows: CoverageWindowRow[] = grid.map((h) => ({
-              unitId: unit.unitId,
-              hourStartAt: new Date(h.hourStartMs),
-              isCovered: h.isCovered,
-              rnAssignmentIds: h.rnAssignmentIds,
-            }));
-            await upsertCoverageWindows(t, organizationId, rows);
+      await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+        const t = tx as unknown as DbClient;
+        const units = await activeUnitsForOrg(t, organizationId);
+        for (const unit of units) {
+          const facts = await assignmentFactsForUnit(
+            t,
+            unit.unitId,
+            new Date(windowStartMs),
+            new Date(windowEndMs),
+          );
+          const grid = buildCoverageWindows(facts, windowStartMs, COVERAGE_WINDOW_HOURS);
+          const rows: CoverageWindowRow[] = grid.map((h) => ({
+            unitId: unit.unitId,
+            hourStartAt: new Date(h.hourStartMs),
+            isCovered: h.isCovered,
+            rnAssignmentIds: h.rnAssignmentIds,
+          }));
+          await upsertCoverageWindows(t, organizationId, rows);
 
-            const horizon = resolveAlertHorizonHours(unit.rnCoverageHorizonHours);
-            const outcome = planCoverageAlerts(unit.unitId, rows, nowMs, horizon);
+          const horizon = resolveAlertHorizonHours(unit.rnCoverageHorizonHours);
+          const outcome = planCoverageAlerts(unit.unitId, rows, nowMs, horizon);
 
-            if (outcome.currentHourUncovered) {
-              await deps.outbox.publish(t, {
-                eventName: "m37.shift.rn_uncovered",
-                payload: {
-                  unitId: unit.unitId,
-                  organizationId,
-                  hourStartAt: new Date(currentHourMs).toISOString(),
-                  coveredHours: outcome.coveredHours,
-                  totalHours: outcome.totalHours,
-                },
+          if (outcome.currentHourUncovered) {
+            await deps.outbox.publish(t, {
+              eventName: "m37.shift.rn_uncovered",
+              payload: {
+                unitId: unit.unitId,
                 organizationId,
-                aggregateKind: "inpatient_unit",
-                aggregateId: unit.unitId,
-              });
-            }
-            if (outcome.projectedGapAt) {
-              await deps.outbox.publish(t, {
-                eventName: "m37.shift.coverage_gap_projected",
-                payload: {
-                  unitId: unit.unitId,
-                  organizationId,
-                  gapStartsAt: outcome.projectedGapAt.toISOString(),
-                  alertHorizonHours: horizon,
-                },
-                organizationId,
-                aggregateKind: "inpatient_unit",
-                aggregateId: unit.unitId,
-              });
-            }
+                hourStartAt: new Date(currentHourMs).toISOString(),
+                coveredHours: outcome.coveredHours,
+                totalHours: outcome.totalHours,
+              },
+              organizationId,
+              aggregateKind: "inpatient_unit",
+              aggregateId: unit.unitId,
+            });
           }
-        },
-      );
+          if (outcome.projectedGapAt) {
+            await deps.outbox.publish(t, {
+              eventName: "m37.shift.coverage_gap_projected",
+              payload: {
+                unitId: unit.unitId,
+                organizationId,
+                gapStartsAt: outcome.projectedGapAt.toISOString(),
+                alertHorizonHours: horizon,
+              },
+              organizationId,
+              aggregateKind: "inpatient_unit",
+              aggregateId: unit.unitId,
+            });
+          }
+        }
+      });
     } catch (error) {
       failures.push({ organizationId, error });
       continue;

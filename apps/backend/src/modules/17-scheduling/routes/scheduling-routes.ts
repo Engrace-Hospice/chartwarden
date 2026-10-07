@@ -36,6 +36,7 @@ import {
   DiscontinueRecurringVisitRequest,
   DismissProposalRequest,
   EditVisitRequest,
+  EligibleCliniciansQuerySchema,
   GrantCredentialRequest,
   IdParamsSchema,
   MapViewQuerySchema,
@@ -355,6 +356,21 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
       return reply.code(201).send(res);
     },
   );
+
+  // Candidate projection for the scheduling UI. This is advisory only: POST /visits retains every
+  // RBAC/ABAC/domain gate, because eligibility can change between this read and the write.
+  app.get("/api/v1/scheduling/eligible-clinicians", { preHandler: [CREATE] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const q = parse(EligibleCliniciansQuerySchema, request.query);
+    return service.eligibleClinicians(organizationId, q);
+  });
+
+  // Minimal directory for scheduling readers.  Unlike the organization roster,
+  // this does not require membership administration permission.
+  app.get("/api/v1/scheduling/staff", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    return service.schedulingStaff(organizationId);
+  });
 
   // 4 — edit non-lineage fields / assignment. Schedule time changes use the dedicated reschedule command.
   app.patch("/api/v1/visits/:visitId", { preHandler: [EDIT] }, async (request) => {

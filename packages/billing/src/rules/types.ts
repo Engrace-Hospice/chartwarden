@@ -1,3 +1,4 @@
+import type { DischargeClaimCodes } from "../claim-codes";
 // @wardenx/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
 // equivalent" promise: every claim is run through a set of typed predicates before it can leave READY.
@@ -32,6 +33,7 @@ import type {
   ValidationSeverity,
 } from "../contracts";
 import type { Cents } from "../domain/money";
+import type { PayerStatusDateSource } from "../notice/payer-status-date";
 
 // ── severity / category unions (mirror the §3.3 pgEnums) ───────────────────────────────────────────────
 
@@ -114,10 +116,22 @@ export interface RuleRemediation {
 /** Aggregate, PHI-free observed values a rule may attach for the worklist (e.g. `{ daysToWindow: 2 }`). */
 export type RuleObserved = Readonly<Record<string, number | string | boolean>>;
 
+/**
+ * One machine-readable defect behind a failed result (e.g. `PLACE_OF_DEATH_MISSING`), with the record ids a UI
+ * needs to route the fix (`admissionId`, `dischargeEventId`, `transferEventId`, ...). PHI-free: codes and ids only.
+ */
+export interface RuleDefect {
+  readonly code: string;
+  readonly message: string;
+  readonly refs?: Readonly<Record<string, string>>;
+}
+
 /** Optional structured annotations carried alongside a result. */
 export interface RuleAnnotations {
   readonly remediation?: RuleRemediation;
   readonly observed?: RuleObserved;
+  /** Structured defects (additive — rules that do not set it are unchanged). */
+  readonly defects?: readonly RuleDefect[];
   /** Present iff the rule SKIPPED (deny-stub seam or not-applicable); a skip is non-blocking. */
   readonly skipReason?: RuleSkipReason;
 }
@@ -173,6 +187,19 @@ export interface ClaimSnapshot {
   /** Discharge facts for the `bereavement_discharge_legitimacy` rule (null on non-discharge TOBs). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;
+  /** The date of death when the stay ended in death (M6 `discharge_event.death_at`); null/absent otherwise. */
+  readonly deathDate?: IsoDate | null;
+  /**
+   * The discharge-driven claim codes (patient status / condition 52, H2 / occurrence 42, 55) derived from
+   * the same facts (`deriveDischargeClaimCodes`). Required so no context producer can omit it; the
+   * `bereavement_discharge_legitimacy` rule blocks a claim whose codes are unresolved or conflicting.
+   */
+  readonly dischargeClaimCodes: DischargeClaimCodes;
+  /**
+   * The M6 row the stay-ending fact came from (`discharge_event.id` for a discharge, `transfer_event.id` for a
+   * transfer-out; `null`/absent for a revocation or a still-open stay). Only used to address the fix.
+   */
+  readonly dischargeSourceEventId?: string | null;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */
@@ -201,6 +228,12 @@ export interface ElectionPeriodSnapshot {
   readonly effectiveTo: IsoDate | null;
   readonly revoked: boolean;
   readonly revocationDate: IsoDate | null;
+  /**
+   * M6 seam fact: this period is a NEW admission's first period (3+) admitted with DOCUMENTED exceptional
+   * circumstances (MBPM ch. 9 §20.1(5)(d)). With it, a death within 2 days of the period start deems the F2F
+   * complete. Absent/false on every other period.
+   */
+  readonly f2fExceptionDocumented?: boolean;
 }
 
 /** Certification (CTI) facts per election period (M6 `CertificationReader`). */
@@ -342,12 +375,34 @@ export interface EligibilitySnapshot {
   readonly ageDays: number;
 }
 
+/**
+ * The two-tier RHC carry-over the claim was priced with (`computeRhcCarryOver`) + what the
+ * `rhc_carry_over_hets_fresh` rule needs to judge it. PHI-free: dates, counts, codes.
+ */
+export interface RhcCarryOverSnapshot {
+  readonly priorDays: number;
+  readonly basis: "internal_only" | "hets_merged" | "hets_stale";
+  /** True when this stay began within 60 days of the end of an earlier hospice stay (ours or HETS-known). */
+  readonly readmittedWithin60Days: boolean;
+  /** Age in whole days of the HETS check the carry read; null when no resolved check is on file. */
+  readonly hetsCheckAgeDays: number | null;
+  readonly warningCodes: readonly string[];
+}
+
 /** The admission's NOE status (D3) for the `noe_timeliness_5d` rule. */
 export interface NoeStatusSnapshot {
   readonly state: NoticeState;
   /** Days elapsed since admission (precomputed; clock-free). Warn at day 3, block at day 5+1. */
   readonly admissionDay: number;
   readonly windowBreached: boolean;
+  /** The NOE's admission (election effective) date — the ch. 11 §20.1.1 timeliness clock starts here. */
+  readonly electionEffectiveDate: IsoDate;
+  /**
+   * The date the MAC accepted the NOE: the payer's own date (277CA STC02) when known, else the date we received
+   * the acceptance. `null` until accepted (or on a legacy row with neither).
+   */
+  readonly acceptedDate: IsoDate | null;
+  readonly acceptedDateSource: PayerStatusDateSource | null;
 }
 
 /** The active sequestration policy snapshot (D11). `null` if none configured (a config defect). */
@@ -417,6 +472,8 @@ export interface ValidationContext {
   readonly eligibility: EligibilitySnapshot | null;
   /** `null` when the admission has no NOE row yet. */
   readonly noe: NoeStatusSnapshot | null;
+  /** The RHC carry-over the claim was priced with; absent/null when not materialized (the rule skips). */
+  readonly rhcCarryOver?: RhcCarryOverSnapshot | null;
   readonly sequestration: SequestrationSnapshot | null;
   /** `null` when the wage-index file for this CCN/FY is not loaded. */
   readonly wageIndex: WageIndexSnapshot | null;

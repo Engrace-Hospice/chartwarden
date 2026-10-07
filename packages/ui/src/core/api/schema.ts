@@ -2062,6 +2062,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/discharge-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The admission's stay-ending record (completed discharge / transfer-out) and the claim detail it lacks */
+        get: operations["getApiV1AdmissionsByIdDischargedetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/election-periods": {
         parameters: {
             query?: never;
@@ -2193,6 +2210,23 @@ export interface paths {
         };
         /** Admission intake readiness requirements for activation */
         get: operations["getApiV1AdmissionsByIdReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/readmission-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Readmission plan for a live-discharged admission: the previous stay, the suggested next benefit period from our own history (Medicare counts periods across all hospices — confirm in HETS / ELGA / ELGH), the chosen period's requirements (certification signers, face-to-face window, NOE due date), the two-tier RHC carry-over, and whether the prior election's NOTR / final claim is on file (a new NOE is blocked until it is) */
+        get: operations["getApiV1AdmissionsByIdReadmissioncontext"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3995,6 +4029,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/eligibility/hospice-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period and, given an electionDate, the two-tier RHC day-count carry-over (readmission screen) */
+        get: operations["getApiV1BillingEligibilityHospiceperiods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/eligibility/latest": {
         parameters: {
             query?: never;
@@ -4283,6 +4334,142 @@ export interface paths {
         get: operations["getApiV1BillingStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions */
+        get: operations["getApiV1BillingTransfernotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Transfer notice detail — blockers, derived occurrence/condition codes, allowed actions */
+        get: operations["getApiV1BillingTransfernoticesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT/READY transfer notice with a reason (a submitted one is voided instead) */
+        post: operations["postApiV1BillingTransfernoticesByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/confirm-prior-billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the transferring hospice finalized its billing (its final claim's Through date + status 50/51) */
+        post: operations["postApiV1BillingTransfernoticesByIdConfirmpriorbilling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/correct-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft a corrected 8xC for an accepted notice: From = corrected date, OC 56 = date on file, CC D0 */
+        post: operations["postApiV1BillingTransfernoticesByIdCorrectdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/redraft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redraft a rejected or cancelled original transfer notice */
+        post: operations["postApiV1BillingTransfernoticesByIdRedraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File the transfer notice with Medicare — re-checks every blocker; emits m23.transfer_notice.submit_requested (step-up; 202) */
+        post: operations["postApiV1BillingTransfernoticesByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4) */
+        post: operations["postApiV1BillingTransfernoticesByIdVoid"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6713,6 +6900,40 @@ export interface paths {
         put?: never;
         /** Medical-director cosign for a for-cause discharge (§6.3 ABAC) */
         post: operations["postApiV1DischargesByIdCosignforcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discharges/{id}/place-of-death": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason */
+        post: operations["postApiV1DischargesByIdPlaceofdeath"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discharges/worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause) */
+        get: operations["getApiV1DischargesWorklist"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -12207,6 +12428,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/noe-records/{id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
+        post: operations["postApiV1NoerecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/noe-records/{id}/submit": {
         parameters: {
             query?: never;
@@ -12338,6 +12576,23 @@ export interface paths {
         put?: never;
         /** Cancel a DRAFT/READY NOTR — terminating-event-reversed guard fact (§4.1 #31) */
         post: operations["postApiV1NotrrecordsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notr-records/{id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
+        post: operations["postApiV1NotrrecordsByIdCorrect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13422,6 +13677,23 @@ export interface paths {
         put?: never;
         /** F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary) */
         post: operations["postApiV1PatientsByPatientIdAssessmentsSummaryDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/benefit-period-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Benefit-period plan for any new admission of the patient: the suggested first benefit period from our own history (1 when the patient was never served), its requirements and the prior election's close-out status */
+        get: operations["getApiV1PatientsByPatientIdBenefitperiodplan"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17906,6 +18178,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scheduling/eligible-clinicians": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Advisory D8 projection for the scheduling UI — each active clinician with eligibility + reason codes (POST /visits still enforces every gate) */
+        get: operations["getApiV1SchedulingEligibleclinicians"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduling/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Minimal scheduling staff directory — membership id, display name, clinical discipline */
+        get: operations["getApiV1SchedulingStaff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/step-up": {
         parameters: {
             query?: never;
@@ -19428,6 +19734,23 @@ export interface paths {
         put?: never;
         /** Deny PTO (reason) */
         post: operations["postApiV1TimeoffByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transfers/{id}/receiving-care-setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record where the receiving hospice cares for the patient on a transfer-out (claim patient status 50/51); a recorded value is replaced only with a correctionReason */
+        post: operations["postApiV1TransfersByIdReceivingcaresetting"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25667,6 +25990,28 @@ export interface operations {
                     attendingPhysicianId?: string;
                     /** Format: uuid */
                     hospiceMedicalDirectorId: string;
+                    /** @description A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context). */
+                    readmittedFromAdmissionId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                 };
             };
         };
@@ -26184,6 +26529,8 @@ export interface operations {
                     forCauseReason?: string;
                     /** Format: uuid */
                     deathCertifierId?: string;
+                    /** @description REQUIRED when reason is "death", refused otherwise. Where the patient died: "home", "facility" or "unknown". Sets the Medicare claim's patient discharge status — 40 (expired at home), 41 (expired in a medical facility) or 42 (expired, place unknown), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid on a death → 422 PLACE_OF_DEATH_REQUIRED; sent on another reason → 422 PLACE_OF_DEATH_NOT_ALLOWED. A death recorded without it can be completed later with POST /api/v1/discharges/{id}/place-of-death. */
+                    placeOfDeath?: "home" | "facility" | "unknown";
                 };
             };
         };
@@ -26194,6 +26541,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdDischargedetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        patientId: string;
+                        admissionState: string;
+                        discharge: {
+                            dischargeEventId: string;
+                            reason: string;
+                            status: string;
+                            /** Format: date */
+                            effectiveDate: string;
+                            placeOfDeath: ("home" | "facility" | "unknown") | null;
+                            placeOfDeathCorrectionReason: string | null;
+                            version: number;
+                        } | null;
+                        transferOut: {
+                            transferEventId: string;
+                            /** Format: date */
+                            effectiveDate: string;
+                            receivingHospiceName: string | null;
+                            receivingCareSetting: ("home" | "facility") | null;
+                            receivingCareSettingCorrectionReason: string | null;
+                            version: number;
+                        } | null;
+                        /** @description The claim-relevant detail the stay-ending event lacks (the final Medicare claim is blocked until it is recorded), or null. */
+                        missing: "place_of_death" | "receiving_care_setting" | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26575,6 +26971,102 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AdmissionsByIdReadmissioncontext: {
+        parameters: {
+            query?: {
+                sequence?: number;
+                startDate?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        previous: {
+                            admissionId: string;
+                            admissionState: string;
+                            startedOn: string | null;
+                            endedOn: string | null;
+                            endKind: "live_discharge" | "revocation" | "transfer_out" | "death" | "unknown";
+                            dischargeType: string | null;
+                            /** @description Ended by a transfer to another hospice (status 50/51). */
+                            transfer: boolean;
+                            lastSequence: number | null;
+                            daysSinceDischarge: number | null;
+                        } | null;
+                        readmission: {
+                            eligible: boolean;
+                            blockers: ("NOT_ENDED" | "ENDED_BY_DEATH" | "OPEN_ADMISSION_EXISTS" | "NEWER_ADMISSION_EXISTS")[];
+                        };
+                        priorElectionClosure: {
+                            admissionId: string;
+                            status: "filed" | "not_filed" | "unknown";
+                            notrFiled: boolean | null;
+                            finalClaimFiled: boolean | null;
+                        } | null;
+                        /** @description True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked. */
+                        noeBlocked: boolean;
+                        suggestion: {
+                            suggestedSequence: number;
+                            basis: "no_history" | "next_after_live_discharge" | "next_after_revocation" | "same_after_transfer" | "next_after_unknown_end";
+                            fromAdmissionId: string | null;
+                            lastKnownSequence: number | null;
+                        };
+                        requirements: {
+                            sequence: number;
+                            periodKind: "ninety_day" | "sixty_day";
+                            lengthDays: number;
+                            /** Format: date */
+                            startDate: string;
+                            /** Format: date */
+                            endDate: string;
+                            certification: {
+                                /** @constant */
+                                hospicePhysician: true;
+                                attendingIfDesignated: boolean;
+                            };
+                            faceToFace: {
+                                required: boolean;
+                                windowStart: string | null;
+                                windowEnd: string | null;
+                                exceptionWindowEnd: string | null;
+                            };
+                            /** @constant */
+                            electionStatementRequired: true;
+                            /** Format: date */
+                            noeDueBy: string;
+                            /** Format: date */
+                            initialAssessmentDueBy: string;
+                            /** Format: date */
+                            comprehensiveAssessmentDueBy: string;
+                            /** Format: date */
+                            hopeAdmissionA0220: string;
+                        };
+                        rhc: {
+                            applies: boolean;
+                            daysSinceDischarge: number | null;
+                            priorHospiceDays: number;
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdmissionsByIdResume: {
         parameters: {
             query?: never;
@@ -26650,10 +27142,16 @@ export interface operations {
                 "application/json": {
                     /** @constant */
                     direction: "in";
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The date the change of hospice is effective. The transferring hospice bills through and including this date and the receiving hospice's transfer notice (TOB 8xC) reports it as the Statement From date (CMS Pub. 100-04 ch. 11 §20.1.3).
+                     */
                     effectiveDate: string;
                     otherHospiceName: string;
+                    /** @description The transferring hospice's CMS Certification Number. Our own CCN is refused (422 TRANSFER_SAME_PROVIDER): a move between locations of one hospice is not a transfer (§20.1.3). The 8xC transfer notice cannot be filed until it is known. */
                     otherHospiceCcn?: string;
+                    /** @description The transferring hospice's NPI (10 digits, check digit validated → 422 TRANSFER_IN_SOURCE_INVALID). */
+                    otherHospiceNpi?: string;
                     priorBenefitPeriodSequence: number;
                     /** Format: date */
                     priorElectionStartDate: string;
@@ -26695,6 +27193,8 @@ export interface operations {
                     effectiveDate: string;
                     otherHospiceName: string;
                     otherHospiceCcn?: string;
+                    /** @description REQUIRED. Where the RECEIVING hospice will care for the patient: "home" or "facility". Sets the Medicare claim's patient discharge status — 50 (discharged to hospice, home) or 51 (discharged to hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid → 422 RECEIVING_CARE_SETTING_REQUIRED. A transfer recorded without it can be completed later with POST /api/v1/transfers/{id}/receiving-care-setting. */
+                    receivingCareSetting: "home" | "facility";
                     narrative: string;
                 };
             };
@@ -31200,6 +31700,7 @@ export interface operations {
                 providerEntityId?: string;
                 patientId?: string;
                 state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "denied" | "replaced" | "voided";
+                attention?: "missing_discharge_details" | "tob_changed";
             };
             header?: never;
             path?: never;
@@ -31230,6 +31731,26 @@ export interface operations {
                             totalChargeCents: number;
                             totalExpectedPaymentCents: number;
                             version: number;
+                            attention?: {
+                                stayEnd: {
+                                    kind: string;
+                                    effectiveDate: string;
+                                } | null;
+                                typeOfBill: {
+                                    stored: string;
+                                    derived: ("811" | "812" | "813" | "814" | "817" | "818") | null;
+                                    changed: boolean;
+                                    remedy: "revalidate" | "await_acknowledgment" | "replace" | "manual" | null;
+                                };
+                                missingDischargeDetail: {
+                                    detail: "place_of_death" | "receiving_care_setting";
+                                    admissionId: string;
+                                    dischargeEventId: string | null;
+                                    transferEventId: string | null;
+                                    fixPath: string;
+                                } | null;
+                                flags: ("missing_discharge_details" | "tob_changed")[];
+                            } | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -31273,6 +31794,26 @@ export interface operations {
                         totalChargeCents: number;
                         totalExpectedPaymentCents: number;
                         version: number;
+                        attention?: {
+                            stayEnd: {
+                                kind: string;
+                                effectiveDate: string;
+                            } | null;
+                            typeOfBill: {
+                                stored: string;
+                                derived: ("811" | "812" | "813" | "814" | "817" | "818") | null;
+                                changed: boolean;
+                                remedy: "revalidate" | "await_acknowledgment" | "replace" | "manual" | null;
+                            };
+                            missingDischargeDetail: {
+                                detail: "place_of_death" | "receiving_care_setting";
+                                admissionId: string;
+                                dischargeEventId: string | null;
+                                transferEventId: string | null;
+                                fixPath: string;
+                            } | null;
+                            flags: ("missing_discharge_details" | "tob_changed")[];
+                        } | null;
                         electionPeriodIdFrom: string;
                         electionPeriodIdTo: string;
                         patientPayerId: string;
@@ -31284,6 +31825,14 @@ export interface operations {
                         latestValidationRunId: string | null;
                         latestSubmissionId: string | null;
                         acknowledgmentDocumentId: string | null;
+                        dischargeCodes: {
+                            patientStatusCode: string | null;
+                            conditionCodes: string[];
+                            occurrenceCodes: {
+                                code: string;
+                                date: string;
+                            }[];
+                        };
                         latestValidation: {
                             validationRunId: string;
                             claimId: string;
@@ -31308,6 +31857,42 @@ export interface operations {
                                 wageIndexFactor: string;
                                 segments: unknown;
                                 calculatedAt: string;
+                                rhcDays1to60: number;
+                                rhcDays61Plus: number;
+                                rhcCarryOver: {
+                                    /** Format: date */
+                                    electionDate: string;
+                                    priorDays: number;
+                                    chainDays: number;
+                                    basis: "internal_only" | "hets_merged" | "hets_stale";
+                                    startsAtDay: number;
+                                    highRateDaysRemaining: number;
+                                    daysSinceLastCare: number | null;
+                                    chain: {
+                                        source: "internal" | "hets";
+                                        kind: "stay" | "sending_hospice" | "election" | "benefit_period";
+                                        /** Format: date */
+                                        start: string;
+                                        /** Format: date */
+                                        end: string;
+                                        endAssumed: boolean;
+                                        countedDays: number;
+                                        hospiceNpi: string | null;
+                                        ref: string | null;
+                                    }[];
+                                    warnings: {
+                                        code: string;
+                                        message: string;
+                                    }[];
+                                    hetsCheck: {
+                                        /** Format: uuid */
+                                        checkId: string;
+                                        /** Format: date-time */
+                                        checkedAt: string;
+                                        ageDays: number;
+                                        stale: boolean;
+                                    } | null;
+                                } | null;
                             } | null;
                             sia: {
                                 windowStart: string;
@@ -31576,10 +32161,11 @@ export interface operations {
                     "application/json": {
                         submissionId: string;
                         providerEntityId: string;
-                        kind: "claim_837i" | "noe" | "notr";
+                        kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
                         claimId: string | null;
                         noeId: string | null;
                         notrId: string | null;
+                        transferNoticeId: string | null;
                         claimControlNumber: string;
                         attemptIndex: number;
                         outcome: "queued" | "generated" | "submitted" | "failed_worker" | "failed_portal";
@@ -31764,7 +32350,7 @@ export interface operations {
                             providerEntityId: string;
                             patientId: string;
                             asOfServiceDate: string;
-                            outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                            outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
                             parsedPayload: {
                                 [key: string]: unknown;
                             };
@@ -31809,6 +32395,101 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingEligibilityHospiceperiods: {
+        parameters: {
+            query: {
+                patientId: string;
+                electionDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "available" | "no_check_on_file" | "hets_not_configured";
+                        hetsConfigured: boolean;
+                        /** Format: uuid */
+                        patientId: string;
+                        checkId: string | null;
+                        asOfServiceDate: string | null;
+                        outcome: ("active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error") | null;
+                        checkedAt: string | null;
+                        staleAt: string | null;
+                        stale: boolean | null;
+                        synthetic: boolean;
+                        hospiceHistoryReturned: boolean;
+                        hospiceElectionOpen: boolean | null;
+                        hospiceHistoryTruncated: boolean | null;
+                        hospicePeriods: {
+                            kind: "election" | "benefit_period";
+                            periodNumber: number | null;
+                            /** Format: date */
+                            startDate: string;
+                            endDate: string | null;
+                            hospiceNpi: string | null;
+                            revocationOrDischargeDate: string | null;
+                            revocationCode: ("0" | "1" | "2" | "3") | null;
+                            daysUsed: number | null;
+                        }[];
+                        nextPeriodNumber: number | null;
+                        nextPeriodBasis: ("computed" | "election_open" | "election_status_uncertain" | "unbilled_election" | "history_truncated") | null;
+                        lastAttempt: {
+                            /** Format: uuid */
+                            checkId: string;
+                            outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
+                            /** Format: date-time */
+                            checkedAt: string;
+                            reason: string | null;
+                        } | null;
+                        rhcCarryOver: {
+                            /** Format: date */
+                            electionDate: string;
+                            priorDays: number;
+                            chainDays: number;
+                            basis: "internal_only" | "hets_merged" | "hets_stale";
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                            daysSinceLastCare: number | null;
+                            chain: {
+                                source: "internal" | "hets";
+                                kind: "stay" | "sending_hospice" | "election" | "benefit_period";
+                                /** Format: date */
+                                start: string;
+                                /** Format: date */
+                                end: string;
+                                endAssumed: boolean;
+                                countedDays: number;
+                                hospiceNpi: string | null;
+                                ref: string | null;
+                            }[];
+                            warnings: {
+                                code: string;
+                                message: string;
+                            }[];
+                            hetsCheck: {
+                                /** Format: uuid */
+                                checkId: string;
+                                /** Format: date-time */
+                                checkedAt: string;
+                                ageDays: number;
+                                stale: boolean;
+                            } | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingEligibilityLatest: {
         parameters: {
             query: {
@@ -31831,7 +32512,7 @@ export interface operations {
                         providerEntityId: string;
                         patientId: string;
                         asOfServiceDate: string;
-                        outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                        outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
                         parsedPayload: {
                             [key: string]: unknown;
                         };
@@ -32764,6 +33445,695 @@ export interface operations {
                         daysUntilSuspension: number | null;
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingTransfernotices: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                patientId?: string;
+                admissionId?: string;
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            transferEventId: string;
+                            action: "original" | "correction" | "void";
+                            supersedesNoticeId: string | null;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                            tob: string;
+                            statementFromDate: string;
+                            originalTransferDate: string | null;
+                            admissionDate: string | null;
+                            benefitPeriodSequence: number;
+                            benefitPeriodStartDate: string | null;
+                            priorHospiceName: string;
+                            priorHospiceCcn: string | null;
+                            priorHospiceNpi: string | null;
+                            providerCcn: string;
+                            priorBillingConfirmedAt: string | null;
+                            priorHospiceThroughDate: string | null;
+                            priorHospicePatientStatus: ("50" | "51") | null;
+                            controlNumber: string;
+                            payerControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestSubmissionOutcome: string | null;
+                            cancelReason: string | null;
+                            blockers: {
+                                code: string;
+                                message: string;
+                                citation: string;
+                            }[];
+                            warnings: {
+                                code: string;
+                                message: string;
+                                citation: string;
+                            }[];
+                            conditionCodes: string[];
+                            occurrenceCodes: {
+                                code: string;
+                                date: string;
+                            }[];
+                            allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                            followUp: {
+                                /** Format: uuid */
+                                transferNoticeId: string;
+                                action: "original" | "correction" | "void";
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingTransfernoticesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdCancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdConfirmpriorbilling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /**
+                     * Format: date
+                     * @description The Through date on the transferring hospice's final claim. It must equal the transfer date, or Medicare rejects the transfer as a gap in care (§20.1.3).
+                     */
+                    priorHospiceThroughDate: string;
+                    /** @description The patient status on that final claim: 50 discharged to hospice (home), 51 to hospice (medical facility). */
+                    priorHospicePatientStatus: "50" | "51";
+                    /** @description The transferring hospice's CCN, when the transfer-in recorded none. */
+                    priorHospiceCcn?: string;
+                    /** @description The transferring hospice's NPI, when the transfer-in recorded none. */
+                    priorHospiceNpi?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdCorrectdate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: date
+                     * @description The correct effective date of the transfer — the corrected notice's From date; the date on file is reported with occurrence code 56 and condition code D0 (§20.1.3).
+                     */
+                    correctedTransferDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdRedraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdSubmit: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        submissionId: string;
+                        jobId: string;
+                        /** @constant */
+                        kind: "transfer_notice";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdVoid: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -39260,6 +40630,98 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DischargesByIdPlaceofdeath: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Where the patient died: "home" (claim patient status 40, expired at home), "facility" (41, expired in a medical facility) or "unknown" (42, expired, place unknown) — CMS Pub. 100-04 Ch. 11 §30.3. */
+                    placeOfDeath: "home" | "facility" | "unknown";
+                    ifVersion: number;
+                    /** @description Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded. */
+                    correctionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The discharge_event or transfer_event id. */
+                        id: string;
+                        admissionId: string;
+                        detail: "place_of_death" | "receiving_care_setting";
+                        value: string;
+                        previousValue: string | null;
+                        changed: boolean;
+                        version: number;
+                        /** @description The claim patient discharge status this value sets (40/41/42 or 50/51). */
+                        claimPatientStatus: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DischargesWorklist: {
+        parameters: {
+            query: {
+                bucket: "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            admissionId: string;
+                            patientId: string;
+                            admissionState: string;
+                            admissionAt: string | null;
+                            dischargedAt: string | null;
+                            /** @description needs_details only: the claim detail the stay-ending record lacks. */
+                            missing: "place_of_death" | "receiving_care_setting" | null;
+                            dischargeEventId: string | null;
+                            transferEventId: string | null;
+                            dischargeType: string | null;
+                            effectiveDate: string | null;
+                            /** @description recently_discharged only: the patient's name and MRN (M5's org-scoped read); null when M5 cannot resolve it. */
+                            patient?: {
+                                firstName: string;
+                                lastName: string;
+                                mrn: string;
+                            } | null;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -54682,6 +56144,18 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -54728,6 +56202,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
                         noeId: string;
                         organizationId: string;
                         providerEntityId: string;
@@ -54776,6 +56262,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdCorrect: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    correctedDate?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        created: boolean;
+                        notice: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            noeId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            electionPeriodId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            electionEffectiveDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            noeControlNumber: string;
+                            payerNoeControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -55005,6 +56559,18 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -55054,6 +56620,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
                         notrId: string;
                         organizationId: string;
                         providerEntityId: string;
@@ -55105,6 +56683,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NotrrecordsByIdCorrect: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    correctedDate?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        created: boolean;
+                        notice: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            notrId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            triggerKind: "revocation" | "transfer_out" | "discharge";
+                            revocationEventId: string | null;
+                            transferEventId: string | null;
+                            dischargeEventId: string | null;
+                            effectiveEndDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            notrControlNumber: string;
+                            payerNotrControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -58823,6 +60472,102 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         requested: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdBenefitperiodplan: {
+        parameters: {
+            query?: {
+                sequence?: number;
+                startDate?: string;
+            };
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        previous: {
+                            admissionId: string;
+                            admissionState: string;
+                            startedOn: string | null;
+                            endedOn: string | null;
+                            endKind: "live_discharge" | "revocation" | "transfer_out" | "death" | "unknown";
+                            dischargeType: string | null;
+                            /** @description Ended by a transfer to another hospice (status 50/51). */
+                            transfer: boolean;
+                            lastSequence: number | null;
+                            daysSinceDischarge: number | null;
+                        } | null;
+                        readmission: {
+                            eligible: boolean;
+                            blockers: ("NOT_ENDED" | "ENDED_BY_DEATH" | "OPEN_ADMISSION_EXISTS" | "NEWER_ADMISSION_EXISTS")[];
+                        };
+                        priorElectionClosure: {
+                            admissionId: string;
+                            status: "filed" | "not_filed" | "unknown";
+                            notrFiled: boolean | null;
+                            finalClaimFiled: boolean | null;
+                        } | null;
+                        /** @description True while the prior election has no NOTR (8xB) or final claim on file — Medicare rejects a new NOE (8xA) until it does (Claims Processing Manual ch. 11 §20.1.6). The admission itself is not blocked. */
+                        noeBlocked: boolean;
+                        suggestion: {
+                            suggestedSequence: number;
+                            basis: "no_history" | "next_after_live_discharge" | "next_after_revocation" | "same_after_transfer" | "next_after_unknown_end";
+                            fromAdmissionId: string | null;
+                            lastKnownSequence: number | null;
+                        };
+                        requirements: {
+                            sequence: number;
+                            periodKind: "ninety_day" | "sixty_day";
+                            lengthDays: number;
+                            /** Format: date */
+                            startDate: string;
+                            /** Format: date */
+                            endDate: string;
+                            certification: {
+                                /** @constant */
+                                hospicePhysician: true;
+                                attendingIfDesignated: boolean;
+                            };
+                            faceToFace: {
+                                required: boolean;
+                                windowStart: string | null;
+                                windowEnd: string | null;
+                                exceptionWindowEnd: string | null;
+                            };
+                            /** @constant */
+                            electionStatementRequired: true;
+                            /** Format: date */
+                            noeDueBy: string;
+                            /** Format: date */
+                            initialAssessmentDueBy: string;
+                            /** Format: date */
+                            comprehensiveAssessmentDueBy: string;
+                            /** Format: date */
+                            hopeAdmissionA0220: string;
+                        };
+                        rhc: {
+                            applies: boolean;
+                            daysSinceDischarge: number | null;
+                            priorHospiceDays: number;
+                            startsAtDay: number;
+                            highRateDaysRemaining: number;
+                        };
                     };
                 };
             };
@@ -65790,6 +67535,7 @@ export interface operations {
                     patientDobAtReceipt?: string;
                     medicareNumberAtReceipt?: string;
                     medicaidNumberAtReceipt?: string;
+                    sexAssignedAtBirth?: "F" | "M" | "O" | "U";
                     referringDxText?: string;
                     referrerName?: string;
                     referrerOrganization?: string;
@@ -65857,6 +67603,7 @@ export interface operations {
                     referrerName?: string;
                     referrerOrganization?: string;
                     referrerPhone?: string;
+                    sexAssignedAtBirth?: "F" | "M" | "O" | "U";
                     ifVersion: number;
                 };
             };
@@ -65890,6 +67637,26 @@ export interface operations {
                     primaryDiagnosisIcd10: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                     ifVersion: number;
                 };
             };
@@ -66035,6 +67802,26 @@ export interface operations {
                     primaryDiagnosisIcd10: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    benefitPeriod?: {
+                        /** @description The benefit period the admission elects into (1 and 2 are 90 days, 3+ are 60). Medicare counts periods per beneficiary across every hospice, so confirm it in HETS / ELGA / ELGH. */
+                        sequence: number;
+                        /** @description "hets_confirmed": checked against HETS / ELGA / ELGH (confirmedOn required). "staff_entered_unverified": entered without that check. "internal_history": our own history's suggestion, accepted as is. */
+                        source: "hets_confirmed" | "staff_entered_unverified" | "internal_history";
+                        /**
+                         * Format: date
+                         * @description The day the period was checked in HETS / ELGA / ELGH (hets_confirmed only).
+                         */
+                        confirmedOn?: string;
+                    };
+                    f2fException?: {
+                        /** @description Period 3+ only — the exceptional circumstance (weekend emergency admission, CMS systems down so the period was unknown) that lets the face-to-face happen within 2 days after admission (MBPM ch. 9 §20.1(5)(d)). */
+                        reason: string;
+                    };
+                    /**
+                     * Format: date
+                     * @description The planned admission / election date; anchors the period-3+ face-to-face window.
+                     */
+                    admissionDate?: string;
                     ifVersion: number;
                 };
             };
@@ -71025,6 +72812,67 @@ export interface operations {
                         dueAt: string;
                         status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingEligibleclinicians: {
+        parameters: {
+            query: {
+                patientId: string;
+                visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                scheduledStartedAt: string;
+                scheduledEndedAt: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        displayName: string;
+                        disciplines: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa")[];
+                        eligible: boolean;
+                        reasonCodes: string[];
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        displayName: string;
+                        discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa") | null;
+                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -76067,6 +77915,51 @@ export interface operations {
                         /** Format: date-time */
                         endsAt: string;
                         state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TransfersByIdReceivingcaresetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Where the RECEIVING hospice cares for the patient: "home" (claim patient status 50, discharged to hospice, home) or "facility" (51, discharged to hospice, medical facility) — CMS Pub. 100-04 Ch. 11 §30.3. */
+                    receivingCareSetting: "home" | "facility";
+                    ifVersion: number;
+                    /** @description Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded. */
+                    correctionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The discharge_event or transfer_event id. */
+                        id: string;
+                        admissionId: string;
+                        detail: "place_of_death" | "receiving_care_setting";
+                        value: string;
+                        previousValue: string | null;
+                        changed: boolean;
+                        version: number;
+                        /** @description The claim patient discharge status this value sets (40/41/42 or 50/51). */
+                        claimPatientStatus: string;
                     };
                 };
             };
