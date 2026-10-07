@@ -108,23 +108,12 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m16",
     kind: "record-only-target",
     reason:
-      "M4 catalogues both legal-hold topics record-only and M39 does the same for `consent.created`: each is published for the audit record and delivered to nobody. M16 wants them to pause a bereavement plan's purge and to seed an outreach consent, but the hold state is a READ at erase time (M34's `hold-discovery` is the working path) rather than an event, so the first consumer on these is M4's and M39's decision to make.",
+      "GAP-130 re-checked all three against the producers' OWN specs and the architecture, which win over M16 §4.5. `m39.consent.created`: M39's own outbox table states its consumers as '(none — drafts are internal)'; M16's §4.5 post-death-grant handler ('enables previously proposed contacts to confirm') is REAL and LIVE on the event that actually carries that fact, `m39.consent.signed` (`buildM16ConsentSignedConsumer`, F-159) — a draft consent confirms nobody. `m4.legal_hold.applied/released`: architecture §24.3 ('retention jobs skip legal_hold records') and M4's own `routes/legal-holds.ts` + `events-by-m4.ts` (M04-F03) make a hold a READ at the point of destruction (`createDrizzleAuditEraserPorts.legalHoldFor`, M34's shred preflight), and propagation to an owning module is a registered `HoldApplier` SEAM, never an outbox subscription (the payload carries no criteria a subscriber could match a plan with). A hold does not change the 13-month program, only erasure, so M16's two dead plan transitions (`legalHoldApplied`/`legalHoldReleased`, no caller anywhere) were removed in the same change rather than left as a control on paper only. Ends only if M4 ships the `HoldApplier` seam and M16 registers one — not an outbox fix.",
     events: ["m39.consent.created", "m4.legal_hold.applied", "m4.legal_hold.released"],
   },
-  {
-    module: "m16",
-    kind: "no-handler",
-    reason:
-      "M16's `consumers/` decides on `m6.bereavement.eligible` and `m6.discharge.cosigned` and nothing else. `m8.encounter.signed` is a §4.5 risk-scoring input with no decider written, and declaring it would defer an event eight other modules are already waiting on rather than produce a handler. Ends with M16-T06's §4.9 workers.",
-    events: ["m8.encounter.signed"],
-  },
-  {
-    module: "m16",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "`m22.document.rendered` is delivered TODAY: all five declared consumers (m11, m12, m13, m21, m33) bind their document back-refs live. M16's own back-ref — the outreach artifact M22 renders for a bereavement plan — has no consumer, so declaring `m16` would stop the event dispatching for the other five as well. The declaration must land in the same change as the binding.",
-    events: ["m22.document.rendered"],
-  },
+  // GAP-130 — the m16 `no-handler` (`m8.encounter.signed`) and `would-defer-a-bound-event`
+  // (`m22.document.rendered`) groups are GONE: both are BOUND (`buildM16EncounterSignedConsumer`,
+  // `buildM16DocumentRenderedConsumer`), with `m16` declared on each producer's catalog in the same change.
   {
     module: "m19",
     kind: "no-handler",

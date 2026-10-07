@@ -153,11 +153,13 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "hope_summary",
   },
   // M16 D14 — the payload names its own template key (`bereavement_welcome_packet`), the M11/M12
-  // `formTemplate` shape. The aggregate is the PLAN, not the contact: one welcome packet per plan, and
-  // filing it against `contactId` would make a second contact's packet a fresh render of a document the
-  // family already has. `outreachId` is legitimately null at plan-open and is not an identity here.
+  // `formTemplate` shape. The aggregate is the OUTREACH when the request names one (GAP-130: a started
+  // card / letter touchpoint — each is its own document, and `bereavement_outreach.rendered_document_id`
+  // is the column waiting for it), else the PLAN: the plan-open welcome packet has `outreachId: null`
+  // (no outreach row exists yet), one packet per plan, and filing it against `contactId` would make a
+  // second contact's packet a fresh render of a document the family already has.
   "m16.bereavement.outreach_artifact_requested": {
-    aggregateIdFields: ["planId"],
+    aggregateIdFields: ["outreachId", "planId"],
     templateKeyField: "templateKey",
     contentField: "payloadJsonb",
   },

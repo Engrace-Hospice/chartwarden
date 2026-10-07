@@ -128,6 +128,10 @@ import type {
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
+/** GAP-130 / D14 — M22's published bereavement-letter template key (`22-documents/seams/renderer.ts`). One
+ *  template for every per-outreach artifact; the outreach kind rides the content blob, not the key. */
+const BEREAVEMENT_LETTER_TEMPLATE_KEY = "bereavement_letter";
+
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const isoN = (d: Date | string | null): string | null => (d === null ? null : iso(d));
@@ -434,7 +438,6 @@ export function buildDrizzleM16WriteService(
         ...(patch.externalSourceMetadata !== undefined
           ? { externalSourceMetadata: patch.externalSourceMetadata }
           : {}),
-        ...(patch.legalHoldId !== undefined ? { legalHoldId: patch.legalHoldId } : {}),
       })
       .where(eq(PLAN.id, plan.id));
   }
@@ -1639,11 +1642,48 @@ export function buildDrizzleM16WriteService(
         const transition = transitionBereavementOutreach(outreach.status, {
           type: "startContact",
           at: at as IsoInstant,
+          kind: outreach.kind,
         });
-        await runEffects(tx, transition.effects, effectCtx(actor, plan, at, {}));
+        // GAP-130 / D14 — a rendering kind queues its M22 render here. `outreachId` is the identity M22
+        // files the document against (so each letter is its own document, not the plan's welcome packet),
+        // and the identity M16's `m22.document.rendered` consumer stamps the back-ref onto.
+        const queuesRender = transition.effects.some(
+          (e) => e.kind === "outbox" && e.event === "m16.bereavement.outreach_artifact_requested",
+        );
+        await runEffects(
+          tx,
+          transition.effects,
+          effectCtx(
+            actor,
+            plan,
+            at,
+            queuesRender
+              ? {
+                  "m16.bereavement.outreach_artifact_requested": {
+                    planId: plan.id,
+                    patientId: plan.patientId,
+                    contactId: outreach.bereavedContactId,
+                    outreachId: outreach.id,
+                    templateKey: BEREAVEMENT_LETTER_TEMPLATE_KEY,
+                    payloadJsonb: {
+                      outreachKind: outreach.kind,
+                      anniversaryMark: outreach.anniversaryMark ?? null,
+                      deathDate: localDate(plan.deathDate),
+                      dueAt: outreach.dueAt.toISOString(),
+                    },
+                  },
+                }
+              : {},
+          ),
+        );
         const [row] = await tx
           .update(OUTREACH)
-          .set({ status: transition.to, startedAt: new Date(at), updatedAt: new Date(at) })
+          .set({
+            status: transition.to,
+            startedAt: new Date(at),
+            updatedAt: new Date(at),
+            ...(queuesRender ? { m22RenderRequestedAt: new Date(at) } : {}),
+          })
           // bereavement_outreach has no version column (GAP-194): the status read above is the guard, so a
           // concurrent transition matches no row instead of being overwritten.
           .where(and(eq(OUTREACH.id, outreachId), eq(OUTREACH.status, outreach.status)))

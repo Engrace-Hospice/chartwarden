@@ -611,6 +611,8 @@ import {
   buildM16ConsentSignedConsumer,
   buildM16DischargeCosignedConsumer,
   buildM16DischargeDeathSecondaryConsumer,
+  buildM16DocumentRenderedConsumer,
+  buildM16EncounterSignedConsumer,
   buildM16IdgDecisionConsumer,
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
@@ -8331,6 +8333,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // F-159 (#248) — the §2.6/D9 patient-level opt-out cascade: honoring a directive the patient
           // already gave (cosign-exempt, unlike the five D7 clinical-judgment closure reasons).
           buildM16PatientOptOutChangedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // GAP-130 — M16 §4.5 / D15 / §7.5: a signed `bereavement_contact` encounter appends the
+          // in-person contact-log row (with `source_encounter_id`) and completes the matched outreach.
+          buildM16EncounterSignedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // GAP-130 — M16 §4.5 / D14 / §7.6: M22's render of a per-outreach card/letter stamps
+          // `bereavement_outreach.rendered_document_id` (+ completes §4.5's three auto-complete kinds).
+          buildM16DocumentRenderedConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),

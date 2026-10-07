@@ -934,6 +934,10 @@ jobs:
           - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
           # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
           - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
+          # GAP-130 — the §4.5 in-person visit completion (m8.encounter.signed) and the D14 outreach
+          # artifact back-ref (m22.document.rendered), both through the real catalog-validating publisher.
+          - { name: "M16 encounter-signed", scripts: "test:m16:encounter-signed:live" }
+          - { name: "M16 document-rendered", scripts: "test:m16:document-rendered:live" }
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }

@@ -17,6 +17,7 @@ import {
   resolveDeathFact,
 } from "../src/modules/16-bereavement/consumers/index";
 import {
+  BEREAVEMENT_PLAN_GRAPH,
   BereavementStateError,
   anniversaryMarksForTier,
   checkDeathDateMatchesAdmission,
@@ -325,20 +326,19 @@ describe("§2.2 bereavement_plan lifecycle", () => {
     );
   });
 
-  it("the legal hold emits NO outbox event and releases back to the closure reason's own state", () => {
-    const held = transitionBereavementPlan("closed_declined", {
-      type: "legalHoldApplied",
-      legalHoldId: "hold-1",
-    });
-    expect(held.to).toBe("closed_legal_hold_extended");
-    // M4 owns the hold-applied event; a second announcement would give consumers two sources of truth.
-    expect(outboxEvents(held.effects)).toEqual([]);
-
-    const released = transitionBereavementPlan("closed_legal_hold_extended", {
-      type: "legalHoldReleased",
-      closureReason: "all_contacts_declined",
-    });
-    expect(released.to).toBe("closed_declined");
+  it("GAP-130 — a closed plan accepts no event at all: legal hold is an erase-time READ, not a transition", () => {
+    // M4's own legal-holds.ts / events-by-m4.ts and architecture §24.3 ("retention jobs skip") make the
+    // hold a check at the point of destruction (`legalHoldFor`, M34 shred preflight). The plan machine
+    // therefore has no hold edge — the two former `legalHoldApplied`/`legalHoldReleased` events had no
+    // caller anywhere and were removed rather than left as a control that exists on paper only.
+    for (const from of [
+      "closed_completed",
+      "closed_declined",
+      "closed_early",
+      "closed_legal_hold_extended",
+    ] as const) {
+      expect(BEREAVEMENT_PLAN_GRAPH[from]).toEqual([]);
+    }
   });
 
   it("closeStateForReason splits the two D9 opt-out reasons deliberately", () => {
@@ -702,6 +702,38 @@ describe("§2.4 bereavement_outreach lifecycle", () => {
         "ILLEGAL_TRANSITION",
       );
     });
+  });
+
+  it("GAP-130 / D14 — starting a rendering kind queues the M22 render; other kinds request nothing", () => {
+    for (const kind of [
+      "sympathy_card",
+      "sympathy_letter",
+      "anniversary_letter",
+      "group_support_invitation",
+      "external_referral",
+    ] as const) {
+      const t = transitionBereavementOutreach("scheduled", {
+        type: "startContact",
+        at: ELIGIBLE_AT,
+        kind,
+      });
+      expect(t.to).toBe("in_progress");
+      expect(outboxEvents(t.effects)).toEqual(["m16.bereavement.outreach_artifact_requested"]);
+    }
+    for (const kind of ["phone_call", "in_person_visit", "email", "portal_message"] as const) {
+      const t = transitionBereavementOutreach("scheduled", {
+        type: "startContact",
+        at: ELIGIBLE_AT,
+        kind,
+      });
+      expect(outboxEvents(t.effects)).toEqual([]);
+    }
+    // No kind supplied (a caller that does not know the row) never asks M22 for anything.
+    const bare = transitionBereavementOutreach("scheduled", {
+      type: "startContact",
+      at: ELIGIBLE_AT,
+    });
+    expect(outboxEvents(bare.effects)).toEqual([]);
   });
 
   it("terminal states accept nothing", () => {

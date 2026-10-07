@@ -246,6 +246,8 @@
     "test:m6:election-cert-view:live": "vitest run apps/backend/__tests__/m6-election-cert-view-conflicts.live.test.ts",
     "test:m16:consent-signed:live": "vitest run apps/backend/__tests__/m16-consent-signed.live.test.ts",
     "test:m16:opt-out-changed:live": "vitest run apps/backend/__tests__/m16-opt-out-changed.live.test.ts",
+    "test:m16:encounter-signed:live": "vitest run apps/backend/__tests__/m16-encounter-signed.live.test.ts",
+    "test:m16:document-rendered:live": "vitest run apps/backend/__tests__/m16-document-rendered.live.test.ts",
     "test:m26:cap-consumer-store:live": "vitest run apps/backend/__tests__/m26-cap-consumer-store.live.test.ts",
     "test:m29:patient-deceased-freeze:live": "vitest run apps/backend/__tests__/m29-patient-deceased-freeze.live.test.ts",
     "test:m29:outbound-dispatch:live": "vitest run apps/backend/__tests__/m29-outbound-dispatch.live.test.ts",

@@ -295,6 +295,27 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.content).toEqual({ deathDate: "2026-08-01" });
   });
 
+  // GAP-130 — a started card/letter touchpoint names its OUTREACH, and that is the identity: each letter
+  // is its own document (`bereavement_outreach.rendered_document_id`), never an idempotent skip of the
+  // plan's welcome packet or of a sibling letter on the same plan.
+  it("reads an M16 per-outreach letter against the OUTREACH, not the plan", () => {
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m16.bereavement.outreach_artifact_requested",
+      organizationId: ORG,
+      payload: {
+        planId: ORDER,
+        patientId: PAT,
+        contactId: DISPATCH,
+        outreachId: "00000000-0000-4000-8000-00000000ab01",
+        templateKey: "bereavement_letter",
+        payloadJsonb: { outreachKind: "sympathy_card" },
+      },
+    });
+    expect(payload.templateKey).toBe("bereavement_letter");
+    expect(payload.aggregateId).toBe("00000000-0000-4000-8000-00000000ab01");
+    expect(payload.patientId).toBe(PAT);
+  });
+
   it("reads M20's incident report, and a STAFF-safety incident renders with no chart", () => {
     const patientHarm = normalizeDocumentRequest({
       eventType: "m20.safety.incident_report_requested",

@@ -142,7 +142,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // GAP-058 — m19 ADDED: M19's own D8 / §2.2.1 name this event as THE trigger that advances a triage call
     // `documented_pending_encounter → documented`; the consumer is `19-oncall/consumers/
     // m8-encounter-signed.ts` (a decider since M19-T05, bound by GAP-058).
-    declaredConsumers: ["m14", "m17", "m18", "m19", "m22", "m24", "m31", "m36"],
+    // GAP-130 — m16 ADDED on the commit that binds it: M16 §4.5 / D15 / §7.5 name this event (filtered to
+    // `encounterType='bereavement_contact'`) as what completes an in-person bereavement outreach; the
+    // consumer is `16-bereavement/outbox-consumers/m8-encounter-signed.ts`.
+    declaredConsumers: ["m14", "m16", "m17", "m18", "m19", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },

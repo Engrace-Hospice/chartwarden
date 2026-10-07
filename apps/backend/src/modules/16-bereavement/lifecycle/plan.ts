@@ -12,9 +12,9 @@
 //     fires it "after the plan is in eligible OR initiating". The narrative is the more specific rule and
 //     the graph here accepts both — the alternative would strand a plan that had a counselor assigned in
 //     the very window the survivor's directive arrived.
-//   • `legalHoldReleased` returns the plan to "closed_completed (or original close-state)". The original
-//     state is NOT stored (the hold overwrote `status`), so it is DERIVED from the closure row's reason via
-//     {@link closeStateForReason} — the closure row is the durable record of why the program ended.
+//   • §2.2's `legalHoldApplied` / `legalHoldReleased` edges are NOT modelled (GAP-130): a legal hold is a
+//     read at erase time, per architecture §24.3 and M4's own legal-hold surface — see the note under
+//     {@link BereavementPlanEvent}.
 //
 // Pure transitions over already-resolved facts; the per-contact machine lives in ./contact, the touchpoint
 // machine in ./outreach, and the D4 schedule materialization in ./schedule.
@@ -112,18 +112,18 @@ export type BereavementPlanEvent =
       /** D4 — `now() >= death_date + 396 days`, decided by `isWithinBereavementWindow` at the caller. */
       readonly windowElapsed: boolean;
       readonly legalHoldActive?: boolean;
-    }
-  | {
-      /** M4 applied a legal-hold tombstone for the `bereavement` retention class. */
-      readonly type: "legalHoldApplied";
-      readonly legalHoldId: string;
-    }
-  | {
-      /** M4 released it — the plan returns to the close state its closure reason implies. */
-      readonly type: "legalHoldReleased";
-      /** The `bereavement_plan_closure.reason` on the plan's closure row (the durable record). */
-      readonly closureReason: BereavementPlanClosureReason;
     };
+
+// GAP-130 — there is deliberately NO legal-hold event. §2.2 drew `legalHoldApplied`/`legalHoldReleased`
+// edges into/out of `closed_legal_hold_extended`, fed by §4.5's `m4.legal_hold.*` subscriptions; both
+// events were written here and called by nothing. The authoritative design (architecture §24.3, "retention
+// jobs skip legal_hold records"; M4's own `routes/legal-holds.ts` + `events-by-m4.ts`, M04-F03) makes a
+// hold a READ at the point of destruction — `createDrizzleAuditEraserPorts.legalHoldFor` and M34's shred
+// preflight — and the `m4.legal_hold.*` payload carries no criteria a subscriber could match a plan with.
+// The program's own clock is unaffected by a hold (the plan still closes; only erasure is refused), so the
+// two dead events were removed rather than left as a control that exists on paper only. The
+// `closed_legal_hold_extended` enum value and `legal_hold_id` column stay (schema, unchanged); a future M4
+// `HoldApplier` seam (M04-F03) is where a plan-level pointer would be written, not an outbox consumer.
 
 export type BereavementPlanTransition = BereavementTransitionResult<
   BereavementPlanLifecycleState,
@@ -148,15 +148,16 @@ export const BEREAVEMENT_PLAN_GRAPH: Readonly<
     "receiveCosign",
   ],
   paused: ["resumePlan", "closeEarly", "closeAt13Months", "receiveCosign"],
-  closed_completed: ["legalHoldApplied"],
-  closed_declined: ["legalHoldApplied"],
-  closed_early: ["legalHoldApplied"],
-  closed_legal_hold_extended: ["legalHoldReleased"],
+  // GAP-130 — terminal. A legal hold is an erase-time read, never a plan transition (see the event union).
+  closed_completed: [],
+  closed_declined: [],
+  closed_early: [],
+  closed_legal_hold_extended: [],
 };
 
 /**
- * §2.2 — which closed state a closure reason lands in. This is also the inverse `legalHoldReleased` uses to
- * restore the pre-hold state, which is why it lives next to the graph rather than inside one transition.
+ * §2.2 — which closed state a closure reason lands in (the closure row is the durable record of why the
+ * program ended, so this is the one place the reason → state mapping lives).
  *
  * `patient_opt_out_pre_death` maps to `closed_completed` (§2.2's `skipPerPatientOptOut` row) while
  * `patient_opt_out_post_creation` maps to `closed_early` (§2.6's automatic, cosign-exempt `closeEarly`) —
@@ -402,20 +403,6 @@ export function transitionBereavementPlan(
         { kind: "cancel_future_outreach", scope: "plan" },
         { kind: "audit" },
         { kind: "outbox", event: "m16.bereavement.plan_closed_completed" },
-      ]);
-    }
-    case "legalHoldApplied": {
-      // §2.2 — NO outbox emit: M4 owns the hold-applied event, and a second announcement from M16 would
-      // give consumers two sources of truth for one fact.
-      return result(from, event.type, "closed_legal_hold_extended", [
-        { kind: "set_legal_hold", legalHoldId: event.legalHoldId },
-        { kind: "audit" },
-      ]);
-    }
-    case "legalHoldReleased": {
-      return result(from, event.type, closeStateForReason(event.closureReason), [
-        { kind: "clear_legal_hold" },
-        { kind: "audit" },
       ]);
     }
   }
