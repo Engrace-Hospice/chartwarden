@@ -14,6 +14,10 @@ type Envelope = {
   error?: Envelope;
 };
 const messageFor = (signal: string, status?: number | null): string => {
+  // The visit no-overlap exclusion constraints answer 409 with `reason: CLINICIAN_SCHEDULE_CONFLICT`
+  // (error-handler.ts): name the two ways out, a different clinician or a different time.
+  if (/CLINICIAN_SCHEDULE_CONFLICT/.test(signal))
+    return "The selected clinician already has a visit during this time. Choose another clinician or a different time.";
   if (/CLINICIAN_CREDENTIAL|clinician_credentials_active/.test(signal))
     return "This clinician does not have an active clinical credential for the selected visit date.";
   if (/CLINICIAN_DISCIPLINE|discipline_matches_visit/.test(signal))

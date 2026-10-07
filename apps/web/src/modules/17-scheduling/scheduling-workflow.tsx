@@ -59,30 +59,6 @@ type EligibleClinician = {
   reasonCodes: string[];
 };
 
-/**
- * API errors are deliberately kept technical at the transport boundary. Translate the
- * scheduling conflicts that a coordinator can resolve into an actionable message here.
- */
-function apiErrorMessage(error: unknown, fallback: string): string {
-  const body = error as {
-    reason?: string;
-    message?: string;
-    detail?: string;
-    error?: {
-      reason?: string;
-      message?: string;
-      detail?: string;
-    };
-  } | null;
-  const reason = body?.reason ?? body?.error?.reason;
-
-  if (reason === "CLINICIAN_SCHEDULE_CONFLICT") {
-    return "The selected clinician already has a visit during this time. Choose another clinician or a different time.";
-  }
-
-  return body?.detail ?? body?.message ?? body?.error?.detail ?? body?.error?.message ?? fallback;
-}
-
 const eligibilityApi = (client: unknown) =>
   client as {
     GET: (path: string, options: unknown) => Promise<{ data?: unknown; error?: unknown }>;
