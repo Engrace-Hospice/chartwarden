@@ -81,9 +81,6 @@ export type BereavementSideEffect =
       readonly kind: "set_external_source_metadata";
       readonly metadata: BereavementExternalSourceMetadata;
     }
-  /** M4 owns the hold; M16 only records/clears the pointer (§2.2 — no outbox emit on either edge). */
-  | { readonly kind: "set_legal_hold"; readonly legalHoldId: string }
-  | { readonly kind: "clear_legal_hold" }
   /** §7.7 — log the M40 external-resource referral behind `flagComplicatedGrief`. */
   | { readonly kind: "log_external_referral"; readonly externalResourceId: string };
 

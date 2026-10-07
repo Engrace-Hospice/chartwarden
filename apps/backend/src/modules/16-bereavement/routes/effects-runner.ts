@@ -42,7 +42,6 @@ export interface EffectPatch {
   assignedVolunteerUserId?: string;
   assignedVolunteerAssignedAt?: Date;
   externalSourceMetadata?: unknown;
-  legalHoldId?: string | null;
 }
 
 /** `set_timestamp.field` (a §3.3 column name) → the patch key it writes. */
@@ -168,12 +167,6 @@ export async function runEffects(
       }
       case "set_external_source_metadata":
         patch.externalSourceMetadata = effect.metadata;
-        break;
-      case "set_legal_hold":
-        patch.legalHoldId = effect.legalHoldId;
-        break;
-      case "clear_legal_hold":
-        patch.legalHoldId = null;
         break;
       default:
         break; // the {@link UNHANDLED_EFFECT_KINDS} set — executed by the calling service

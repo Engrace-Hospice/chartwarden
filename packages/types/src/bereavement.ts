@@ -115,7 +115,9 @@ export type BereavementContactLogOutcome =
   | "returned_undeliverable"
   | "requested_followup"
   | "requested_no_further_contact"
-  | "crisis_referral";
+  | "crisis_referral"
+  /** GAP-130 — system-only: the §4.5 M22 render callback's log row for an auto-completed card/letter. */
+  | "artifact_rendered";
 
 /** The D3 risk tier driving the D4 cadence (mirrors `bereavement_risk_tier`). The deterministic rubric only
  *  reaches `high`; `complicated` is a D8 screen-driven promotion. */
@@ -315,6 +317,9 @@ export const M16_SUBSCRIBED_EVENT_NAMES = [
   "m39.consent.revoked",
   "m39.consent.signed",
   "m5.patient.bereavement_opt_out_changed",
+  // GAP-130 — the D15 in-person visit completion and the D14 outreach artifact back-ref, both bound live.
+  "m8.encounter.signed",
+  "m22.document.rendered",
   // §4.5 subscriptions the catalog does NOT declare `m16` on. Each is registered in
   // `scripts/outbox-subscription-exceptions.ts` with the reason, because the relay routes none of them
   // here and a handler written against these names would never run. `m17.shift_changed` used to sit in
@@ -322,8 +327,6 @@ export const M16_SUBSCRIBED_EVENT_NAMES = [
   // except.
   "m4.legal_hold.applied",
   "m4.legal_hold.released",
-  "m8.encounter.signed",
-  "m22.document.rendered",
   "m39.consent.created",
 ] as const;
 

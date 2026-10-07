@@ -52987,14 +52987,6 @@
                             "type": "string"
                           },
                           {
-                            "const": "set_legal_hold",
-                            "type": "string"
-                          },
-                          {
-                            "const": "clear_legal_hold",
-                            "type": "string"
-                          },
-                          {
                             "const": "log_external_referral",
                             "type": "string"
                           }

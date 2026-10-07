@@ -9,7 +9,7 @@
 // other kind must NOT carry a `source_encounter_id`. Both directions are DB CHECKs on the contact log as
 // well; the guard here is what turns the constraint into a 422 with a code the UI can render instead of a
 // raw PG violation.
-import { requiresSourceEncounter } from "@wardenx/bereavement";
+import { requiresArtifactRender, requiresSourceEncounter } from "@wardenx/bereavement";
 import type {
   BereavementContactLogOutcome,
   BereavementOutreachKind,
@@ -29,6 +29,9 @@ export type BereavementOutreachEvent =
       /** The counselor or volunteer starts the call / opens the M8 draft / queues the M22 letter. */
       readonly type: "startContact";
       readonly at: IsoInstant;
+      /** GAP-130 / D14 — the row's STORED kind. A rendering kind (`requiresArtifactRender`) queues the M22
+       *  render on start (§2.4 "queues the M22 letter"); omitted, nothing is requested. */
+      readonly kind?: BereavementOutreachKind;
     }
   | {
       readonly type: "completeContact";
@@ -143,9 +146,16 @@ export function transitionBereavementOutreach(
 
   switch (event.type) {
     case "startContact": {
+      // GAP-130 / D14 / §4.4 — starting a card / letter / invitation touchpoint IS the counselor's render
+      // request: `outreach_artifact_requested` names this outreach, M22 renders against it, and M16's
+      // `m22.document.rendered` consumer stamps the back-ref (completing §4.5's three auto-complete kinds).
+      const queuesRender = event.kind !== undefined && requiresArtifactRender(event.kind);
       return result(from, event.type, "in_progress", [
         { kind: "set_timestamp", field: "started_at", at: event.at },
         { kind: "audit" },
+        ...(queuesRender
+          ? [{ kind: "outbox", event: "m16.bereavement.outreach_artifact_requested" } as const]
+          : []),
       ]);
     }
     case "completeContact": {

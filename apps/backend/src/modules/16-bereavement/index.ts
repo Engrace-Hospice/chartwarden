@@ -62,6 +62,22 @@ export {
   M16_PATIENT_OPT_OUT_CHANGED_CONSUMER,
   buildM16PatientOptOutChangedConsumer,
 } from "./outbox-consumers/m5-patient-opt-out-changed";
+// GAP-130 — the §4.5 in-person visit completion (`m8.encounter.signed`, D15/§7.5) and the D14 outreach
+// artifact back-ref (`m22.document.rendered`, §7.6).
+export {
+  type EncounterSignedDeps,
+  type OutreachCandidate,
+  M16_ENCOUNTER_SIGNED_CONSUMER,
+  buildM16EncounterSignedConsumer,
+  selectOutreachForSignedEncounter,
+} from "./outbox-consumers/m8-encounter-signed";
+export {
+  type DocumentRenderedDeps,
+  type RenderedBackrefFacts,
+  M16_DOCUMENT_RENDERED_CONSUMER,
+  buildM16DocumentRenderedConsumer,
+  decideRenderedBackref,
+} from "./outbox-consumers/m22-document-rendered";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

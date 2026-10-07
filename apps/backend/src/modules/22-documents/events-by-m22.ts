@@ -80,7 +80,9 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     // `document_access_log` row appended by `mintPortalDownloadUrl` + the route's M4 read-audit.
     // See docs/history/m31-portal-deferrals.md. `m31` is recorded as a `seamConsumers` entry (the F-043 / #103
     // / F-180 shape): a real relationship the outbox does not carry.
-    declaredConsumers: ["m6", "m11", "m12", "m13", "m14", "m21", "m27", "m33"],
+    // GAP-130 — m16 joins on the commit that binds `m16.document-backref` (M16 §4.5 / D14 / §7.6): it
+    // stamps `bereavement_outreach.rendered_document_id` + `m22_rendered_at` for a per-outreach letter.
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m14", "m16", "m21", "m27", "m33"],
     seamConsumers: ["m31"],
     isOutboxOnly: true,
   },

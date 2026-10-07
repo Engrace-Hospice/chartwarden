@@ -33839,7 +33839,7 @@ export interface operations {
                         contactsSeededCount: number;
                         outreachScheduledCount: number;
                         anniversaryRemindersCount: number;
-                        effects: ("audit" | "outbox" | "alert" | "set_timestamp" | "set_assignment" | "insert_closure" | "insert_opt_out" | "rescind_opt_out" | "cancel_future_outreach" | "regenerate_schedule" | "generate_schedule" | "seed_anniversary_reminders" | "recompute_risk" | "set_external_source_metadata" | "set_legal_hold" | "clear_legal_hold" | "log_external_referral")[];
+                        effects: ("audit" | "outbox" | "alert" | "set_timestamp" | "set_assignment" | "insert_closure" | "insert_opt_out" | "rescind_opt_out" | "cancel_future_outreach" | "regenerate_schedule" | "generate_schedule" | "seed_anniversary_reminders" | "recompute_risk" | "set_external_source_metadata" | "log_external_referral")[];
                     };
                 };
             };

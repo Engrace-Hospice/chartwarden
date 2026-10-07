@@ -513,7 +513,7 @@ const AnniversaryMark = Type.Union([
 /** §7.13 — the two confidentiality categories a read can withhold (`disclosure.ts`). */
 const RedactedCategory = Type.Union([Type.Literal("sud"), Type.Literal("clinical_risk")]);
 
-/** The 17 §2.6 side-effect kinds a transition can declare (`lifecycle/effects.ts`). */
+/** The 15 §2.6 side-effect kinds a transition can declare (`lifecycle/effects.ts`). */
 const EffectKind = Type.Union([
   Type.Literal("audit"),
   Type.Literal("outbox"),
@@ -529,8 +529,6 @@ const EffectKind = Type.Union([
   Type.Literal("seed_anniversary_reminders"),
   Type.Literal("recompute_risk"),
   Type.Literal("set_external_source_metadata"),
-  Type.Literal("set_legal_hold"),
-  Type.Literal("clear_legal_hold"),
   Type.Literal("log_external_referral"),
 ]);
 

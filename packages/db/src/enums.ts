@@ -2604,7 +2604,8 @@ export const bereavementOutreachStatus = pgEnum("bereavement_outreach_status", [
 
 /** `bereavement_contact_log_outcome` — what actually happened on a touchpoint. Three consecutive
  *  `no_response` rows drive the §2.3 `markUnreachable` proposal; `requested_no_further_contact` is the
- *  counselor-captured opt-out signal (the opt-out row itself is separate). */
+ *  counselor-captured opt-out signal (the opt-out row itself is separate). `artifact_rendered` (GAP-130,
+ *  mig 0492) is SYSTEM-only: the §4.5 M22 render callback's log row for an auto-completed card/letter. */
 export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outcome", [
   "engaged",
   "brief_acknowledgement",
@@ -2616,6 +2617,7 @@ export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outc
   "requested_followup",
   "requested_no_further_contact",
   "crisis_referral",
+  "artifact_rendered",
 ]);
 
 /** `bereavement_risk_tier` — the D3 deterministic tier that drives the D4 cadence. The rubric itself only
