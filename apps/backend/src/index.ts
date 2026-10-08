@@ -1280,6 +1280,8 @@ import {
   validateModule34Seams,
   wireM34AlertRuleSeed,
   wireM34Tenancy,
+  createDrizzleM34AlertResolverPorts,
+  m34ResolverExtension,
 } from "./modules/34-saas-tenant-platform/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
@@ -1307,6 +1309,7 @@ import {
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
+  createDrizzleRoleSetMembersReader,
   createDrizzleDeliveryDispatchStore,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
@@ -1501,7 +1504,15 @@ export function wireModuleSeams(
   registerMessagingSeams(
     deps.db
       ? {
-          emitter: createDrizzleAlertEmitter(deps.db),
+          // GAP-057 — M34's two recipient resolvers are registered onto the emitter's registry here (M36
+          // cannot import M34); without this every rule naming them would throw/never deliver.
+          emitter: createDrizzleAlertEmitter(deps.db, {
+            extendResolvers: m34ResolverExtension(
+              createDrizzleM34AlertResolverPorts(deps.db, {
+                roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),
+              }),
+            ),
+          }),
           provider: createDbMessagingProvider(deps.db),
         }
       : {},
@@ -5344,11 +5355,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   }
 
   // GAP-098 — the same boot-populate for M34's own platform-default rules, whose header has called this
-  // "the Phase 2D boot UPSERT" since the file was written while nothing performed it. PARTIAL by design:
-  // only rules naming an M36 BUILT-IN resolver are seeded, because M36's registry THROWS on an unknown
-  // resolver name and M34's own two resolvers are implemented but never registered at boot — seeding
-  // those would turn a dormant rule into a failing emit. The skipped count is logged rather than
-  // swallowed so the remaining gap stays visible.
+  // "the Phase 2D boot UPSERT" since the file was written while nothing performed it. GAP-057: complete —
+  // M34's two recipient resolvers are registered on the emitter's registry (see registerMessagingSeams
+  // above), so every rule is seeded; a nonzero skipped count is still logged.
   if (dbHandle) {
     wireM34AlertRuleSeed(dbHandle.db)
       .then((result) => {
@@ -5359,8 +5368,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               skipped: result.skipped,
               resolvers: result.skippedResolvers,
             },
-            "M34 alert_rule seed is PARTIAL — rules naming an unregistered recipient resolver were " +
-              "skipped; they stay dormant until registerM34AlertResolvers is bound at boot",
+            "M34 alert_rule seed skipped rules naming an unregistered recipient resolver",
           );
         }
       })

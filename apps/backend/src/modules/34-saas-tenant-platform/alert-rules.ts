@@ -176,7 +176,7 @@ function floorOf(spec: M34SpecSeverity): M34AlertSeverityFloor {
  * The thirteen §4.8 alert-rule keys (rows below; the multi-audience keys add a `role_set` platform-ops
  * companion so each `alert_rule` row names exactly one resolver, §3.6). Keyed on the `m34.*` outbox
  * `eventType` the engine matches; `compliance_officer_for_tenant` / `platform_security_owner` route
- * to M34's two registered resolvers. UPSERTed as M36 platform-default rows at boot (Phase 2D TODO).
+ * to M34's two registered resolvers. UPSERTed as M36 platform-default rows at boot.
  */
 /** The M3 RBAC role key the platform-ops console gates on (`tenant_lifecycle_platform_ops`). */
 export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
@@ -434,8 +434,8 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // ROUTED AT M36's BUILT-IN `role_set`, NOT at M34's `platform_security_owner`. Two reasons, and the
   // second is the one that decided it:
   //
-  //  1. `registerM34AlertResolvers` (above) is written but NOTHING CALLS IT — its `M34AlertResolverPorts`
-  //     were never bound at boot (the Phase-2D TODO at the foot of this file). M36's registry THROWS
+  //  1. (historical — GAP-057 has since bound `registerM34AlertResolvers` at boot) the resolvers were
+  //     unregistered when this rule was written. M36's registry THROWS
   //     `UnknownRecipientResolverError` on an unknown name, so a rule naming either M34 resolver would
   //     make the emit that matched it fail, not deliver.
   //  2. `platformSecurityOwners` is PLATFORM-scoped by contract ("independent of the alert's emit-org"),
@@ -478,16 +478,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   },
 ];
 
-/**
- * The rules that are SAFE TO SEED today: those whose `recipientResolver` is an M36 built-in. Seeding a
- * rule whose resolver is unregistered does not fail quietly — `resolveRecipients` throws
- * `UnknownRecipientResolverError`, so the emit that matched it FAILS instead of the event being
- * delivered. Every other M34 rule names `compliance_officer_for_tenant` / `platform_security_owner`,
- * which are implemented above but never registered at boot, so seeding them would convert today's
- * silent gap into a thrown one on every tenant-lifecycle emit. They stay unseeded until the boot TODO
- * below binds `registerM34AlertResolvers`, and the boot persister logs how many it skipped so the
- * remaining gap stays visible rather than being assumed closed.
- */
+/** M36's built-in recipient resolvers (the registry's seven names). */
 export const M36_BUILT_IN_RESOLVERS: readonly string[] = [
   "care_team",
   "on_call",
@@ -498,9 +489,13 @@ export const M36_BUILT_IN_RESOLVERS: readonly string[] = [
   "broadcast",
 ];
 
-/** The rules whose resolver is bindable today — what the boot persister UPSERTs. */
-export const seedableM34AlertRules = (): readonly M34AlertRuleSeed[] =>
-  M34_ALERT_RULES.filter((r) => M36_BUILT_IN_RESOLVERS.includes(r.recipientResolver));
+/**
+ * The rules the boot persister UPSERTs (GAP-057): ALL of them. M34's two resolvers are registered onto M36's
+ * recipient-resolver registry at boot (`m34ResolverExtension`, bound in `apps/backend/src/index.ts`), so a rule
+ * naming either resolves instead of throwing `UnknownRecipientResolverError`. Kept as a function so callers
+ * and the seed test have one name for "what gets seeded".
+ */
+export const seedableM34AlertRules = (): readonly M34AlertRuleSeed[] => M34_ALERT_RULES;
 
 /** The fifteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
 export const M34_ALERT_RULE_KEYS = [
@@ -521,18 +516,9 @@ export const M34_ALERT_RULE_KEYS = [
   "feature_flag.platform_emergency_changed",
 ] as const;
 
-// TODO(Phase 2D — boot wiring): the composition root must (1) call `registerM34AlertResolvers(registry,
-//   ports)` against M36's resolver registry AFTER `createRecipientResolverRegistry` runs, binding
-//   `M34AlertResolverPorts` to M2 membership/role lookups (the `compliance_officer` per tenant org +
-//   the platform `platform_security_owner` role) — mirror M36-T06's wiring of the ADR-0024
-//   `registerCompositionResolvers` ports; and (2) UPSERT `M34_ALERT_RULES` as M36 platform-default
-//   `alert_rule` rows (organization_id NULL) alongside M36's own `PLATFORM_DEFAULT_ALERT_RULES` seed
-//   (the M36 boot UPSERT). M34 emits the matching `m34.*` outbox events from its sweeps/lifecycle
-//   service (events-by-m34.ts); M36's `AlertEmitter.emit` matches them to these rows.
-// TODO(M2 seam): there is no generic M2 role-membership resolver seam in the bootstrap registry today
-//   (the M36 built-in `role_set`/`tenant_admins` resolvers bind their `RecipientSourcePorts` directly
-//   at M36-T06). The composition root must provide the same M2 binding for `M34AlertResolverPorts`;
-//   if a shared `RoleMembershipReader` seam is introduced, point both at it.
+// BOOT WIRING (GAP-057, done): `apps/backend/src/index.ts` registers `registerM34AlertResolvers` onto the
+//   emitter's registry (via `AlertEmitterPorts.extendResolvers`, ports from `alert-resolver-ports.ts`) and
+//   `wireM34AlertRuleSeed` UPSERTs every `M34_ALERT_RULES` row as an M36 platform-default `alert_rule`.
 // TODO(M36 severity ladder, D17): the §4.8 `error` tier floors to `critical` on `alert_rule`'s
 //   three-level `alert_severity` pgEnum. `specSeverity` carries the §4.8 value losslessly; if M36
 //   widens the legacy ladder, re-project `severityFloor` from `specSeverity` (drop the `floorOf` fold).
