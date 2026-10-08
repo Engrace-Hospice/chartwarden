@@ -11,7 +11,7 @@ import {
 // apps/admin/src/modules/34-saas-platform — "New tenant" (§4.1 #3, POST /api/v1/platform/tenants). Raw-input provisioning
 // (no signup intent): the server step-up gates it and enqueues `tenant.provision`, answering 202, so the tenant appears in the
 // inventory once the provisioner has run — this form only reports that the request was accepted. A step-up refusal keeps
-// the typed values and offers a Re-verify link back here, never an automatic redirect.
+// the typed values, stashes them across the Re-verify round trip and restores them on return — never an automatic redirect.
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 
@@ -27,6 +27,37 @@ const NAME_MAX = 300;
 const ADMIN_NAME_MAX = 200;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Re-verify leaves the page, so the typed values ride through sessionStorage and are restored once, on return.
+const DRAFT_KEY = "wx-tenant-provision-draft";
+
+interface Draft {
+  legalName: string;
+  billingEmail: string;
+  breachEmail: string;
+  adminEmail: string;
+  adminName: string;
+  plan: PlanLabel;
+}
+
+function takeDraft(): Draft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(DRAFT_KEY);
+    return JSON.parse(raw) as Draft;
+  } catch {
+    return null;
+  }
+}
+
+function stashDraft(draft: Draft): void {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Storage unavailable (private window): the operator retypes after re-verifying.
+  }
+}
+
 type Outcome = { ok: true } | { ok: false; message: string; stepUp: boolean };
 
 export function TenantProvisionDrawer({
@@ -37,13 +68,17 @@ export function TenantProvisionDrawer({
   onAccepted: () => void;
 }): JSX.Element {
   const client = useApiClient();
-  const [legalName, setLegalName] = useState("");
-  const [billingEmail, setBillingEmail] = useState("");
-  const [breachEmail, setBreachEmail] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminName, setAdminName] = useState("");
-  const [plan, setPlan] = useState<PlanLabel>("standard");
+  const [draft] = useState(takeDraft);
+  const [legalName, setLegalName] = useState(draft?.legalName ?? "");
+  const [billingEmail, setBillingEmail] = useState(draft?.billingEmail ?? "");
+  const [breachEmail, setBreachEmail] = useState(draft?.breachEmail ?? "");
+  const [adminEmail, setAdminEmail] = useState(draft?.adminEmail ?? "");
+  const [adminName, setAdminName] = useState(draft?.adminName ?? "");
+  const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
   const [busy, setBusy] = useState(false);
+  // Provisioning is queued, not instant, so the tenant is not in the list yet; locking the form after acceptance stops
+  // a second click from enqueueing a duplicate `tenant.provision`.
+  const [accepted, setAccepted] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const name = legalName.trim();
@@ -57,7 +92,7 @@ export function TenantProvisionDrawer({
 
   async function submit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    if (!valid || busy) return;
+    if (!valid || busy || accepted) return;
     setBusy(true);
     setOutcome(null);
     const { error } = await client.POST("/api/v1/platform/tenants", {
@@ -81,6 +116,7 @@ export function TenantProvisionDrawer({
       });
       return;
     }
+    setAccepted(true);
     setOutcome({ ok: true });
     onAccepted();
   }
@@ -150,21 +186,27 @@ export function TenantProvisionDrawer({
           />
         </section>
         {outcome ? (
-          <div className="flex flex-wrap items-center gap-3" role={outcome.ok ? "status" : "alert"}>
+          <div className="flex flex-wrap items-center gap-3">
             <InlineAlert tone={outcome.ok ? "success" : "error"}>
               {outcome.ok
                 ? "Provisioning requested. The tenant appears in the list once it has been created."
                 : outcome.message}
             </InlineAlert>
-            {!outcome.ok && outcome.stepUp ? <ReverifyLink /> : null}
+            {!outcome.ok && outcome.stepUp ? (
+              <ReverifyLink
+                onNavigate={() =>
+                  stashDraft({ legalName, billingEmail, breachEmail, adminEmail, adminName, plan })
+                }
+              />
+            ) : null}
           </div>
         ) : null}
         <div className="wx-drawer-actions">
-          <Button type="submit" disabled={!valid || busy}>
-            {busy ? "Requesting…" : "Provision tenant"}
+          <Button type="submit" disabled={!valid || busy || accepted}>
+            {busy ? "Requesting…" : accepted ? "Requested" : "Provision tenant"}
           </Button>
           <Button tone="secondary" onClick={onClose}>
-            Cancel
+            {accepted ? "Close" : "Cancel"}
           </Button>
         </div>
       </form>

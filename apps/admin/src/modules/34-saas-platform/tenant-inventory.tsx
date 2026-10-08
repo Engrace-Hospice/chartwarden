@@ -15,7 +15,7 @@ import type { paths } from "@wardenx/ui";
 // The redesign's list + right drawer: a row opens the tenant's summary in the drawer, kept in
 // `?tenant=<orgSlug>`; the drawer links on to the full §5.2 overview at `/tenants/:orgSlug`.
 // Status pills resolve through the shared §6.6 tone map (saas-status.ts).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { lifecycleTone, statusLabel } from "./saas-status";
@@ -62,21 +62,27 @@ export function TenantInventory(): JSX.Element {
   const selectedSlug = params.get("tenant");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  // The text the list was last searched with: typing alone must not refetch, only Enter / Search.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  // A slower earlier response must not overwrite a newer one.
+  const latestRequest = useRef(0);
   const [items, setItems] = useState<TenantSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const request = ++latestRequest.current;
     setLoading(true);
     setError(null);
     const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
       limit: PAGE_LIMIT,
     };
     if (status) query.status = status as typeof query.status;
-    if (search.trim()) query.search = search.trim();
+    if (appliedSearch) query.search = appliedSearch;
     const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
       params: { query },
     });
+    if (request !== latestRequest.current) return;
     if (err) {
       setError("Tenant inventory unavailable.");
       setLoading(false);
@@ -85,7 +91,7 @@ export function TenantInventory(): JSX.Element {
     const page = data as unknown as TenantPage | undefined;
     setItems((page?.items ?? []) as TenantSummary[]);
     setLoading(false);
-  }, [client, status, search]);
+  }, [client, status, appliedSearch]);
 
   // Load on mount + whenever the status filter changes; the search applies on submit (Enter / Search).
   useEffect(() => {
@@ -94,7 +100,9 @@ export function TenantInventory(): JSX.Element {
 
   const onSearch = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    void load();
+    const next = search.trim();
+    if (next === appliedSearch) void load();
+    else setAppliedSearch(next);
   };
 
   const provisioning = selectedSlug === NEW_TENANT;

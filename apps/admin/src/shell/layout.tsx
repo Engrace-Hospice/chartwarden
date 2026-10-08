@@ -133,7 +133,11 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
 
   async function signOut(): Promise<void> {
     setOpen(false);
-    await authClient.signOut();
+    try {
+      await authClient.signOut();
+    } catch {
+      // Fall through to the sign-in page: it re-checks the session, so a failed call never strands the operator.
+    }
     window.location.href = "/login";
   }
 

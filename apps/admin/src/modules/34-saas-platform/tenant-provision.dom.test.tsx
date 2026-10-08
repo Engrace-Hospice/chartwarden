@@ -55,7 +55,10 @@ function fillAll(): void {
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 describe("TenantProvisionDrawer", () => {
   it("keeps Provision disabled until every field is valid", () => {
@@ -88,6 +91,11 @@ describe("TenantProvisionDrawer", () => {
       },
     ]);
     expect(await screen.findByText(/Provisioning requested/)).toBeTruthy();
+    // Queued, not created yet: a second click must not enqueue a duplicate provision.
+    const again = screen.getByRole("button", { name: "Requested" }) as HTMLButtonElement;
+    expect(again.disabled).toBe(true);
+    fireEvent.click(again);
+    expect(calls).toHaveLength(1);
   });
 
   it("a step-up refusal keeps the typed values and offers Re-verify", async () => {
@@ -98,6 +106,23 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
     expect(await screen.findByRole("link", { name: "Re-verify" })).toBeTruthy();
     expect(onAccepted).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("First admin email") as HTMLInputElement).value).toBe(
+      "ada@cedar.example",
+    );
+  });
+
+  it("restores the typed values after the Re-verify round trip", async () => {
+    mount(() =>
+      json(403, { error: { code: "STEP_UP_REQUIRED", message: "step up", correlationId: "c" } }),
+    );
+    fillAll();
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
+    cleanup();
+    mount(() => json(202, {}));
+    expect((screen.getByLabelText("Legal business name") as HTMLInputElement).value).toBe(
+      "  Cedar Ridge Hospice LLC ",
+    );
     expect((screen.getByLabelText("First admin email") as HTMLInputElement).value).toBe(
       "ada@cedar.example",
     );

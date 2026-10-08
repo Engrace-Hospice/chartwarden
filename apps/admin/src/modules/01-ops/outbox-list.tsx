@@ -85,19 +85,24 @@ export function OutboxList(): JSX.Element {
         </header>
 
         {!loading && !error ? (
-          <div className="wx-stat-grid" aria-label="Outbox summary">
-            {counts.map(({ s, n }) => (
-              <div key={s} className="wx-stat-card">
-                <div>
-                  <span className="wx-stat-label">
-                    {s[0]?.toUpperCase()}
-                    {s.slice(1)}
-                  </span>
-                  <span className="wx-stat-value wx-nums">{n}</span>
+          <>
+            <div className="wx-stat-grid" aria-label="Outbox summary">
+              {counts.map(({ s, n }) => (
+                <div key={s} className="wx-stat-card">
+                  <div>
+                    <span className="wx-stat-label">
+                      {s[0]?.toUpperCase()}
+                      {s.slice(1)}
+                    </span>
+                    <span className="wx-stat-value wx-nums">{n}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <p className="wx-row-sub">
+              Counts cover the {rows.length} most recent events in this view, not the whole outbox.
+            </p>
+          </>
         ) : null}
 
         {loading ? (
@@ -171,7 +176,9 @@ export function OutboxList(): JSX.Element {
           </div>
         )}
       </div>
-      {selectedId ? <OutboxEventDrawer id={selectedId} onClose={() => setParams({})} /> : null}
+      {selectedId ? (
+        <OutboxEventDrawer key={selectedId} id={selectedId} onClose={() => setParams({})} />
+      ) : null}
     </div>
   );
 }
