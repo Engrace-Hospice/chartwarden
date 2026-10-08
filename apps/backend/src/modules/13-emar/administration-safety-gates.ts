@@ -40,8 +40,9 @@ export interface GivenDose {
  *    already refused a mismatching body patient), so these rights hold by construction and `route`, `dose`
  *    and `time` are the live ones.
  *  - route: the supplied route, else the order's own (an absent route is not a wrong route).
- *  - dose: enforced when the caller supplied an amount AND the order states a discrete dose. A dose-less
- *    request is not validated (nothing to compare) and a continuous infusion (`discreteDose: false`) has no
+ *  - dose: enforced whenever the order states a positive discrete dose, whether or not the body carries an
+ *    amount -- an administration that omits the amount is refused (422), never waved through. An order with no
+ *    stated dose has nothing to compare, and a continuous infusion (`discreteDose: false`) has no
  *    per-administration dose -- its rate is bounded by the IV-session gate instead.
  *  - time: an `administeredAt` beyond the clock-skew tolerance in the future fails; the past is a late entry.
  *
@@ -57,7 +58,7 @@ export function assertOrderFiveRights(args: {
   readonly discreteDose: boolean;
 }): void {
   const { order, given } = args;
-  const checksDose = args.discreteDose && given.doseAmount != null && (order.doseAmount ?? 0) > 0;
+  const checksDose = args.discreteDose && (order.doseAmount ?? 0) > 0;
   const orderContext: FiveRightsOrderContext = {
     patientId: order.patientId,
     medicationOrderId: args.medicationOrderId,

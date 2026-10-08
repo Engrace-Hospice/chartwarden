@@ -68,10 +68,11 @@ export function evaluateBarcodeScan(
   if (order === null || !order.orderActive) return "no_order_active";
 
   // Right patient — a scanned wristband digest that disagrees with the patient on file. Only a scan that
-  // carries a digest can contradict; a wristband-less scan does not fail this right.
+  // carries a digest can contradict; a wristband-less scan does not fail this right. FAIL CLOSED: a scan that
+  // DOES carry a digest while none is on file cannot be verified, so it is never reported as `match` (that would
+  // claim a patient check that did not happen) - it is refused as `wrong_patient` until a digest is on file.
   if (
     scan.patientWristbandPayloadDigest != null &&
-    patient.wristbandPayloadDigest != null &&
     !sameToken(scan.patientWristbandPayloadDigest, patient.wristbandPayloadDigest)
   ) {
     return "wrong_patient";

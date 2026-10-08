@@ -53,8 +53,15 @@ describe("assertOrderFiveRights", () => {
     expect(() => run({ administeredAt: "2026-10-08T13:00:00.000Z" })).toThrow(violation);
   });
 
-  it("an absent route is not a wrong route, and a dose-less request is not dose-checked", () => {
-    expect(() => run({ given: {} })).not.toThrow();
+  it("an absent route is not a wrong route", () => {
+    expect(() => run({ given: { doseAmount: 5, doseUnit: "mg" } })).not.toThrow();
+  });
+
+  it("refuses an administration that omits the dose or unit when the order states a discrete dose", () => {
+    const violation = expect.objectContaining({ code: "FIVE_RIGHTS_VIOLATION", statusCode: 422 });
+    expect(() => run({ given: {} })).toThrow(violation);
+    expect(() => run({ given: { route: "oral", doseUnit: "mg" } })).toThrow(violation);
+    expect(() => run({ given: { route: "oral", doseAmount: 5 } })).toThrow(violation);
   });
 
   it("a continuous infusion has no per-administration dose to compare", () => {
@@ -96,6 +103,15 @@ describe("barcodeContextsOf — wrong_drug is reachable now that the scan meets 
         { patientWristbandPayloadDigest: "someone-else" },
         ctx.order,
         ctx.patient,
+        asOf,
+      ),
+    ).toBe("wrong_patient");
+    const noDigest = barcodeContextsOf({ ...order, patientWristbandPayloadDigest: null });
+    expect(
+      evaluateBarcodeScan(
+        { patientWristbandPayloadDigest: "digest-pat-1" },
+        noDigest.order,
+        noDigest.patient,
         asOf,
       ),
     ).toBe("wrong_patient");
