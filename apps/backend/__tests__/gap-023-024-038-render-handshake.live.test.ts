@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -34,7 +34,12 @@ import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
-import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
+import {
+  M11_OUTBOX_EVENTS,
+  buildM11DocumentBackrefConsumer,
+  createDrizzleOrderSeamStore,
+  registerOrderSeams,
+} from "../src/modules/11-orders/index";
 import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
@@ -274,6 +279,9 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     const m12Outbox: DoseSpotWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
     };
+    // GAP-018 -- the sign records its signature through M11's OrderSignatureProvider seam (registered here
+    // over the real Drizzle store, exactly as `apps/backend/src/index.ts` does on a db boot).
+    registerOrderSeams({ store: createDrizzleOrderSeamStore(handle.db) });
     meds = createDbDoseSpotBackend(handle.db, m12Outbox, PASSING_M12_SAFETY_GATES);
 
     // The real render path: Drizzle document-row store + the real renderer. Only the OBJECT BYTES are
@@ -470,10 +478,13 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       refillsAuthorized: 0,
     });
     await meds.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
-    await meds.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDisciplines: ["hospice_physician"],
-      signedAtClient: new Date().toISOString(),
-    });
+    // GAP-018 -- the sign records its signature through M11's request-scoped seam.
+    await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+      meds.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        signerDisciplines: ["hospice_physician"],
+        signedAtClient: new Date().toISOString(),
+      }),
+    );
 
     expect((await outboxFor(draft.id)).map((e) => e.type)).toContain(
       "m12.medication_order.document_requested",

@@ -245,6 +245,22 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(edited.refillsRemaining).toBe(2);
   });
 
+  /** GAP-018 -- the sign path records its signature through M11's request-scoped seam, so it needs a request. */
+  const signAsMember = (id: string) =>
+    runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+      svc.signOrder(ORG_A, memberOf[ORG_A], id, {
+        signerDisciplines: ["hospice_physician"],
+        signedAtClient: new Date().toISOString(),
+      }),
+    );
+  const signatureRows = async (id: string) =>
+    (
+      await admin.query(
+        "SELECT signature_kind, target_kind, signer_membership_id, signer_discipline, signed_at FROM order_signature WHERE target_id=$1",
+        [id],
+      )
+    ).rows;
+
   it("F-058: requestSignature → pending_signature; sign → ACTIVE when nothing is e-prescribed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     const pending = await svc.requestSignature(ORG_A, draft.id, "hospice_physician", [
@@ -252,15 +268,25 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     ]);
     expect(pending.status).toBe("pending_signature");
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.signature_requested");
-    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDisciplines: ["hospice_physician"],
-      signedAtClient: new Date().toISOString(),
-    });
+    const signed = await signAsMember(draft.id);
     // This used to assert `signed`, and `signed` is where the order then stayed forever: no transmission
     // worker, no webhook handler, and `signed` had one exit. `dosespot_send_state` defaults to
     // `not_required` — nothing is being e-prescribed — so there is nothing left to wait for.
     expect(signed.status).toBe("active");
     expect(signed.signedAt).not.toBeNull();
+    // GAP-018 -- the signature record exists: who signed, under which discipline, when (server time).
+    const sigs = await signatureRows(draft.id);
+    expect(sigs).toHaveLength(1);
+    expect(sigs[0]).toMatchObject({
+      signature_kind: "signature",
+      target_kind: "medication_order",
+      signer_membership_id: memberOf[ORG_A],
+      signer_discipline: "hospice_physician",
+    });
+    expect(sigs[0].signed_at).toBeInstanceOf(Date);
+    // A replayed sign is refused (the order left pending_signature) and mints no second record.
+    await expect(signAsMember(draft.id)).rejects.toBeDefined();
+    expect(await signatureRows(draft.id)).toHaveLength(1);
     const events = await eventsFor(draft.id);
     expect(events).toContain("m12.medication_order.signed");
     expect(events).toContain("m12.medication_order.active");
@@ -281,10 +307,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     await admin.query("UPDATE medication_order SET dosespot_send_state='queued' WHERE id=$1", [
       draft.id,
     ]);
-    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDisciplines: ["hospice_physician"],
-      signedAtClient: new Date().toISOString(),
-    });
+    const signed = await signAsMember(draft.id);
     expect(signed.status).toBe("signed");
     expect(await eventsFor(draft.id)).not.toContain("m12.medication_order.active");
   });
@@ -528,10 +551,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(verbal.status).toBe("verbal_pending");
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.verbal_received");
     // GAP-035 — the named prescriber is an MDM id; the signer must be the roster member mapped to it.
-    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDisciplines: ["hospice_physician"],
-      signedAtClient: new Date().toISOString(),
-    });
+    const signed = await signAsMember(draft.id);
     // F-058 — the verbal follow-up signature activates too; the drug was already being given under the
     // verbal order (M12 §2.3: a verbal order "is active for clinical execution during this window").
     expect(signed.status).toBe("active");

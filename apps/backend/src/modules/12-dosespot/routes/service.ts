@@ -405,6 +405,7 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     organizationId: string,
     userId: string,
     id: string,
+    args?: { readonly signerDisciplines: readonly string[] },
   ): Promise<MedicationOrderView>;
   recordVerbal(
     organizationId: string,
