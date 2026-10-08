@@ -138,10 +138,19 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "mdm.license_expiring",
       "m30.incident.cap_overdue",
       "mdm.baa_expiring",
+      "mdm.physician_deactivated",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
     }
+  });
+
+  it("seeds a role_set rule with recipients for mdm.physician_deactivated (GAP-068)", () => {
+    const rule = toNewAlertRuleRows().find((r) => r.eventType === "mdm.physician_deactivated");
+    expect(rule).toBeDefined();
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.enabled).toBe(true);
+    expect((rule?.resolverArgs as { roleKeys: string[] }).roleKeys).toContain("org_admin");
   });
 
   it("has no duplicate event types and is valid out of the box", () => {
