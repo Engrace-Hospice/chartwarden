@@ -121,6 +121,21 @@ describe("createDbAuditEraseExecutor (M4 §6 destruction leg)", () => {
     expect(q.params).toContain("compliance_42cfr_part2");
   });
 
+  it("GAP-008 bounds the DELETE to the created-at span the legal-hold check saw", async () => {
+    const { db, probe } = makeFakeDb([{ id: "a" }]);
+    await createDbAuditEraseExecutor(db).performErasure(
+      eraseInput({
+        createdAtFrom: "2026-03-05T00:00:00.000Z",
+        createdAtTo: "2026-03-20T00:00:00.000Z",
+      }),
+    );
+    const q = render(probe.where as SQL);
+    expect(q.sql).toContain('"created_at" >= ');
+    expect(q.sql).toContain('"created_at" < ');
+    expect(q.params).toContain("2026-03-05T00:00:00.000Z");
+    expect(q.params).toContain("2026-03-20T00:00:00.001Z"); // upper bound exclusive of the next ms
+  });
+
   it("reports 0 when nothing matched — never the requested group size", async () => {
     const { db } = makeFakeDb([]);
     await expect(createDbAuditEraseExecutor(db).performErasure(eraseInput())).resolves.toBe(0);

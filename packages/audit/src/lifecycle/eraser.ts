@@ -48,6 +48,13 @@ export interface EraseInput {
    * refused defensively (a Part 2 row should always carry a patient).
    */
   readonly patientId?: string;
+  /**
+   * GAP-008 - the inclusive created-at span (ISO-8601) of the rows this group covers. Legal-hold `dateRange` matching
+   * needs it, and the production executor deletes ONLY inside it, so the span the hold was checked against is exactly
+   * the span destroyed. Absent = unknown: a date-range hold is then assumed to overlap (over-holding is safe).
+   */
+  readonly createdAtFrom?: string;
+  readonly createdAtTo?: string;
 }
 
 /** The exhaustive outcome of erasing one row-group (spec §6 `EraseOutcome`). */

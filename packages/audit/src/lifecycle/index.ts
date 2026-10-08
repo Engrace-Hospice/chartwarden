@@ -6,3 +6,4 @@ export * from "./eraser";
 export * from "./destruction";
 export * from "./drizzle-erase";
 export * from "./ports";
+export * from "./legal-hold-match";
