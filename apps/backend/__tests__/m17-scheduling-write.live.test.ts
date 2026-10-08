@@ -363,6 +363,38 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       startDate: "2026-07-01",
     });
     expect(rec.status).toBe("active");
+    // GAP-026 — the policy the client sent round-trips; nothing is defaulted to 09:00-10:00 UTC.
+    const stored = (
+      await admin.query(
+        `SELECT time_of_day_start, time_of_day_end, time_zone, start_date::text AS start_date,
+                end_date, count, byday FROM recurring_visit WHERE id = $1`,
+        [rec.id],
+      )
+    ).rows[0];
+    expect(stored).toMatchObject({
+      time_of_day_start: "10:00",
+      time_of_day_end: "11:00",
+      time_zone: "America/Los_Angeles",
+      start_date: "2026-07-01",
+      end_date: null,
+      count: null,
+    });
+    await expect(
+      svc.createRecurring(ORG_A, member, {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        assignedMembershipId: member,
+        visitPurpose: "routine_visit",
+        visitSetting: "patient_home",
+        rrule: "FREQ=WEEKLY;BYDAY=MO",
+        timeOfDayStart: "10:00",
+        timeOfDayEnd: "11:00",
+        timeZone: "America/Los_Angeles",
+        startDate: "2026-07-01",
+        endDate: "2026-12-01",
+        count: 4,
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     const disc = await svc.discontinueRecurring(ORG_A, member, rec.id);
     expect(disc.status).toBe("discontinued");
     expect(await eventsFor(rec.id)).toContain("m17.recurring_visit.discontinued");
