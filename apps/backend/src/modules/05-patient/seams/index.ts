@@ -41,6 +41,7 @@ export {
   type CaseloadSeamDeps,
   type SeedAssignment,
   CASELOAD_MEMBERSHIP_PREDICATE,
+  caseloadMembershipPredicate,
   createCaseloadProvider,
   createInMemoryCaseloadStore,
   registerCaseloadSeam,
