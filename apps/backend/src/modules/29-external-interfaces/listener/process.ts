@@ -25,6 +25,8 @@ import type { InboundCipher } from "../inbound/inbound-crypto";
 import { MLLP_READ_TIMEOUT_MS, type MllpConnectionDeps, type MllpIngestSink } from "./connection";
 import { createCredentialLoader } from "./credential-loader";
 import { createDrizzleFeedLoader } from "./feed-loader";
+import { createDrizzleFeedHealthStore } from "./health-store-drizzle";
+import { runFeedHealthTick } from "./health-sweep";
 import { createTlsListenerRegistry } from "./index";
 import { createDrizzleIngestSinkFactory } from "./ingest-sink";
 import {
@@ -39,6 +41,9 @@ import {
 /** The §4.11.1 health-probe tick the reconcile loop shares. */
 export const LISTENER_RECONCILE_INTERVAL_MS = 30_000;
 const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+/** A stalled process must not credit hours of uptime for one gap: cap the elapsed credit per tick. */
+const MAX_HEALTH_CREDIT_MS = 120_000;
 
 /** The slice of M36's `AlertEmitter` this process calls (the `getSeam("AlertEmitter")` shape). */
 export interface ListenerAlertPort {
@@ -103,7 +108,11 @@ export function alertEmitInput(
     // PHI-free: ids + the supervisor's fixed sentence (it names no partner host / port / cert).
     payload: { feedId: alert.feedId, detail: alert.body },
     severity: alert.severity,
-    correlationId: `m29-listener:${kind}:${alert.feedId}:${Math.floor(now.getTime() / DAY_MS)}`,
+    // A down alert fires on a breaker TRANSITION, so its window is the hour (a second outage the same day must
+    // still page); the bind/BAA refusals repeat every tick while unresolved, so they stay windowed per day.
+    correlationId: `m29-listener:${kind}:${alert.feedId}:${Math.floor(
+      now.getTime() / (kind === "external_feed.listener_down" ? HOUR_MS : DAY_MS),
+    )}`,
   };
 }
 
@@ -236,12 +245,50 @@ export async function startListenerProcess(
     return { started, stopped, failed, refused };
   };
 
+  // GAP-043 — the §4.11.1 health probe rides the same tick: after the registry has converged, advance each
+  // feed's circuit breaker and persist the hourly rollup. Best-effort: a health failure never fails the pass.
+  const healthStore = createDrizzleFeedHealthStore({ db: deps.db });
+  let lastHealthTickMs: number | null = null;
+  const healthTick = async (): Promise<void> => {
+    const nowMs = now().getTime();
+    const elapsedSeconds =
+      lastHealthTickMs === null
+        ? 0
+        : Math.min(
+            Math.round((nowMs - lastHealthTickMs) / 1000),
+            Math.round(MAX_HEALTH_CREDIT_MS / 1000),
+          );
+    lastHealthTickMs = nowMs;
+    try {
+      await runFeedHealthTick(
+        {
+          feeds: () => feeds.loadActiveInboundFeeds(),
+          isBound: (feedId) => registry.boundFeedIds().includes(feedId),
+          store: healthStore,
+          dispatchAlert,
+          now,
+          log: deps.log,
+        },
+        elapsedSeconds,
+      );
+    } catch (err) {
+      deps.log("warn", "hl7.listener.health_sweep_failed", {
+        errorName: err instanceof Error ? err.name : "unknown",
+      });
+    }
+  };
+
   // Single-flight: an interval tick never overlaps a slow pass.
   const reconcile = (): Promise<ReconcileSummary> => {
     if (reconciling) return reconciling;
-    reconciling = reconcileOnce().finally(() => {
-      reconciling = null;
-    });
+    reconciling = reconcileOnce()
+      .then(async (summary) => {
+        await healthTick();
+        return summary;
+      })
+      .finally(() => {
+        reconciling = null;
+      });
     return reconciling;
   };
 

@@ -40,7 +40,8 @@ export interface SupervisorAlert {
   readonly kind?:
     | "external_feed.baa_expired"
     | "external_feed.baa_missing"
-    | "external_feed.listener_blocked";
+    | "external_feed.listener_blocked"
+    | "external_feed.listener_down";
   readonly severity: "critical" | "warning";
   readonly channel: "compliance" | "operator_on_call";
   readonly feedId: string;

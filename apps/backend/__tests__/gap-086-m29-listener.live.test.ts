@@ -340,6 +340,23 @@ describe.skipIf(!DB_URL || !hasOpenssl())("GAP-086 M29 listener + parse worker �
   });
 
   // ── real mTLS sockets → ingest sink ────────────────────────────────────────────────────────────────────────────
+  // GAP-043 — the §4.11.1 health probe runs on the reconcile tick: it persists `external_feed_health` (as the real
+  // NOBYPASSRLS app role) and pages `external_feed.listener_down` for an ACTIVE feed whose listener is not serving.
+  it("writes external_feed_health and alerts listener_down for an active-but-unbound silent feed", async () => {
+    const health = await rowsOf(
+      "SELECT feed_id, listener_circuit_state FROM external_feed_health WHERE organization_id=$1",
+      [ORG],
+    );
+    const stateOf = (feedId: string) =>
+      health.find((r) => r.feed_id === feedId)?.listener_circuit_state;
+    expect(stateOf(FEED_BAA)).toBe("open"); // refused by the BAA gate => never bound, never any frame
+    expect(stateOf(FEED_LAB)).toBe("half_open"); // bound and reachable but silent: recovery pending, no page
+    const down = alerts.filter((a) => a.eventType === "external_feed.listener_down");
+    expect(down.some((a) => a.correlationId.includes(FEED_BAA))).toBe(true);
+    expect(down.some((a) => a.correlationId.includes(FEED_LAB))).toBe(false);
+    expect(down.every((a) => a.severity === "critical")).toBe(true);
+  });
+
   it("rejects a client with no certificate and one from an unrelated CA (mTLS), persisting nothing", async () => {
     await expect(send(portLab, oru("NOCERT1", PID), false)).rejects.toThrow();
     await expect(

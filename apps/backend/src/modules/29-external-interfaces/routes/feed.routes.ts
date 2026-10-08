@@ -27,6 +27,11 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
+import {
+  FEED_CONFIG_NO_PHI,
+  FEED_CREDENTIAL_NO_PHI,
+  FEED_HEALTH_NO_PHI,
+} from "./read-audit-configs";
 import type { M29Store } from "./store";
 
 export interface FeedRouteDeps {
@@ -43,6 +48,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
   app.get(
     "/api/admin/external-interfaces/feeds",
     {
+      config: { auditRead: FEED_CONFIG_NO_PHI },
       preHandler: [
         P("external_interfaces.feed.read"),
         ABAC_IN_ORG("external_interfaces.feed.read"),
@@ -64,6 +70,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
   app.get(
     "/api/admin/external-interfaces/feeds/:feedId",
     {
+      config: { auditRead: FEED_CONFIG_NO_PHI },
       preHandler: [
         P("external_interfaces.feed.read"),
         ABAC_FEED_ORG("external_interfaces.feed.read"),
@@ -228,6 +235,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
   app.get(
     "/api/admin/external-interfaces/feeds/:feedId/credentials",
     {
+      config: { auditRead: FEED_CREDENTIAL_NO_PHI },
       preHandler: [
         P("external_interfaces.credential.read"),
         ABAC_FEED_ORG("external_interfaces.credential.read"),
@@ -244,6 +252,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
   app.get(
     "/api/admin/external-interfaces/feeds/:feedId/health",
     {
+      config: { auditRead: FEED_HEALTH_NO_PHI },
       preHandler: [
         P("external_interfaces.feed.read"),
         ABAC_FEED_ORG("external_interfaces.feed.read"),

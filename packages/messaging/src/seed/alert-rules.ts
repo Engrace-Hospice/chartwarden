@@ -769,6 +769,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-043 — an ACTIVE inbound HL7 feed went silent (no frame for the §4.11.5 down-threshold) while its listener is
+  // not serving (`evaluateListenerCircuit` tripped OPEN). Inbound ADT / lab results are not arriving: same audience as
+  // `listener_blocked` — the people who can fix the feed.
+  {
+    eventType: "external_feed.listener_down",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
@@ -1096,6 +1109,82 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["qapi_coordinator", "compliance_officer", "clinical_lead"] },
     channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-049 (M30 spec §4.9) — the quality alerts raised by M36's `quality-alerts` outbox consumer (sentinel / abuse
+  // incident submitted, outbreak opened, threshold breached, CAHPS sample ready) and by the M30
+  // `review_overdue_sweep` cron (mortality review due, CoP re-attestation overdue). Previously rule-less, so no
+  // m30.* event ever reached a person. Payloads are ids / enums / counts only — no PHI.
+  {
+    eventType: "m30.alerts.incident_sentinel",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: ["administrator", "compliance_officer", "medical_director", "qapi_coordinator"],
+    },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.incident_abuse_allegation",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["administrator", "compliance_officer", "medical_director"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.outbreak_detected",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["infection_control_lead", "medical_director", "administrator"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.measure_threshold_breached",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator", "medical_director"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.cahps_sample_ready",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.mortality_review_due",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["medical_director", "qapi_coordinator"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.cop_review_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "administrator"] },
+    channelsOverride: ["in_app", "push"],
     systemLocked: false,
     enabled: true,
   },

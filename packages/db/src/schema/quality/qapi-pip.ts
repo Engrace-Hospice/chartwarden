@@ -55,6 +55,8 @@ export const qapiPip = pgTable(
     closureClosedByMembershipId: uuid("closure_closed_by_membership_id"),
     closureNomineeMembershipId: uuid("closure_nominee_membership_id"),
     closureCosignAttested: boolean("closure_cosign_attested").notNull().default(true),
+    /** 0701 (GAP-046): the PIP outcome the closer proposed, held until the nominee confirms the close. */
+    closureOutcome: text("closure_outcome"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     suspendReason: text("suspend_reason"), // ≥60 chars if status=suspended
     documentId: uuid("document_id"), // populated by M22 back-ref
@@ -63,12 +65,18 @@ export const qapiPip = pgTable(
     version: integer("version").notNull().default(1),
   },
   (t) => ({
+    // 0701 (GAP-046): a closed row needs BOTH slots stamped by two distinct members (NOT VALID in SQL: rows
+    // closed under the 0335 nominee shape stay as history). The pending shape is pinned by the second check.
     closureGuard: check(
       "chk_qapi_pip_closure_cosign", // V-11
       sql`(${t.closedAt} IS NULL)
-        OR (${t.closureCosignAttested} AND ${t.cosignQapiCoordinatorAt} IS NOT NULL AND ${t.cosignMedicalDirectorAt} IS NOT NULL)
-        OR (NOT ${t.closureCosignAttested}
-          AND ${t.closureClosedByMembershipId} IS NOT NULL AND ${t.closureNomineeMembershipId} IS NOT NULL
+        OR (${t.closureCosignAttested} AND ${t.cosignQapiCoordinatorAt} IS NOT NULL AND ${t.cosignMedicalDirectorAt} IS NOT NULL
+          AND ${t.cosignQapiCoordinatorMembershipId} <> ${t.cosignMedicalDirectorMembershipId})`,
+    ),
+    pendingGuard: check(
+      "chk_qapi_pip_close_pending",
+      sql`(${t.closedAt} IS NOT NULL) OR (${t.closureNomineeMembershipId} IS NULL)
+        OR (NOT ${t.closureCosignAttested} AND ${t.closureClosedByMembershipId} IS NOT NULL
           AND ((${t.closureClosedByMembershipId} = ${t.cosignQapiCoordinatorMembershipId} AND ${t.cosignQapiCoordinatorAt} IS NOT NULL
                 AND ${t.closureNomineeMembershipId} = ${t.cosignMedicalDirectorMembershipId} AND ${t.cosignMedicalDirectorAt} IS NULL)
             OR (${t.closureClosedByMembershipId} = ${t.cosignMedicalDirectorMembershipId} AND ${t.cosignMedicalDirectorAt} IS NOT NULL

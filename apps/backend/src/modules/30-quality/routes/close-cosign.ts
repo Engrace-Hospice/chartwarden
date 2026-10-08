@@ -1,23 +1,23 @@
-// apps/backend/src/modules/30-quality/routes/close-cosign.ts — GAP-088: the service-layer two-person guard for
-// the QAPI PIP close (R-31, V-11) and the SRA cycle close (R-47, V-12).
+// apps/backend/src/modules/30-quality/routes/close-cosign.ts — GAP-088 / GAP-046: the service-layer two-person
+// guard for the QAPI PIP close (R-31, V-11) and the SRA cycle close (R-47, V-12).
 //
 // SPEC (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md): D12 (line 3576) — SRA close = Security
 // Officer + Compliance Officer, PIP close = QAPI Coordinator + Medical Director, "distinct individuals",
 // enforced at the application layer AND the DB; §4.7 (lines 2106/2108) — the caller holds one role of the
 // pair and the SECOND co-signer holds the OTHER; line 3804 — both closes require a recent step-up.
 //
-// NOMINEE-BASED ONE-STEP CLOSE (decision on GAP-088): the nominee never authenticates in this request, so
-// only the CLOSER (`actor.membershipId`) is a signer. The other party is a `nominatedCosigner` — validated as
-// an eligible person but NOT recorded as having attested (`cosignerAttested: false`, see
-// `buildCloseAttestation`). A pending-close + nominee-confirmation flow (the nominee signs in their own
-// session) is the logged follow-up; until then no field/label may present the nominee as a signer.
+// PENDING CLOSE + NOMINEE CONFIRMATION (GAP-046): closing is two-step. The closer INITIATES (stamps their own
+// slot, names the nominee; the record stays OPEN). The nominee then CONFIRMS in their OWN authenticated,
+// step-up-fresh session (`resolveCloseConfirmation`), stamps their slot, and only then is `closed_at` written
+// and the `*_closed` event published. Migration 0701 restored the DB CHECK so a closed row needs both signatures.
 //
 // The FIRST signer is the authenticated caller (`actor.membershipId`, server-assembled) — it is never read
-// off the wire. The SECOND signer is the only id the body supplies, and it is validated here against facts
-// the service loads inside its own org-scoped tx (`cosignerRoleKeys`: `null` ⇒ not an ACTIVE membership of
-// this org). The route composes the same rule as a `requireAbac` preHandler; this guard repeats it so a
-// worker/other caller of the service cannot bypass the route.
-import { ForbiddenError, StepUpRequiredError } from "@wardenx/types";
+// off the wire. The SECOND signer is the only id the body supplies at initiation, and it is validated here
+// against facts the service loads inside its own org-scoped tx (`cosignerRoleKeys`: `null` ⇒ not an ACTIVE
+// membership of this org). The route composes the same rule as a `requireAbac` preHandler; this guard repeats
+// it so a worker/other caller of the service cannot bypass the route. The confirmer is never named on the wire:
+// it is the nominee persisted on the row, compared with the session's membership id.
+import { ConflictError, ForbiddenError, StepUpRequiredError } from "@wardenx/types";
 import {
   ROLE_COMPLIANCE_OFFICER,
   ROLE_MEDICAL_DIRECTOR,
@@ -56,66 +56,167 @@ export interface CloseCosigners {
   readonly nomineeRole: string;
 }
 
-/** Who is recorded for a close: the closer signed; the nominee did NOT (nominee-based one-step close). */
-export interface CloseAttestation {
-  readonly closedBy: { readonly membershipId: string; readonly role: string };
-  readonly nominatedCosigner: { readonly membershipId: string; readonly role: string };
-  /** Always `false` today: the nominee does not authenticate in the one-step close. */
-  readonly cosignerAttested: false;
+/** A close that has been initiated and awaits the nominee's own confirmation. */
+export interface PendingClose {
+  readonly closedBy: string;
+  readonly closerRole: string;
+  readonly nominee: string;
+  readonly nomineeRole: string;
 }
 
-/** The honest closure record: the closer is the signer, the second party is only a nominee. */
-export function buildCloseAttestation(signers: CloseCosigners): CloseAttestation {
+/** Who signed a CONFIRMED close: the closer (initiate) and the nominee (confirm, in their own session). */
+export interface CloseAttestation {
+  readonly closedBy: { readonly membershipId: string; readonly role: string };
+  /** The second signer. Kept under its 0335 name so existing event consumers keep parsing the payload. */
+  readonly nominatedCosigner: { readonly membershipId: string; readonly role: string };
+  /** Always `true` on the emitted `*_closed` event: it is only published once the nominee has attested. */
+  readonly cosignerAttested: true;
+}
+
+/** The honest closure record, built ONLY at confirmation, when both parties have authenticated and signed. */
+export function buildConfirmedCloseAttestation(pending: PendingClose): CloseAttestation {
   return {
-    closedBy: { membershipId: signers.first, role: signers.callerRole },
-    nominatedCosigner: { membershipId: signers.second, role: signers.nomineeRole },
-    cosignerAttested: false,
+    closedBy: { membershipId: pending.closedBy, role: pending.closerRole },
+    nominatedCosigner: { membershipId: pending.nominee, role: pending.nomineeRole },
+    cosignerAttested: true,
   };
 }
 
-/** Marker columns shared by both closure tables (migration 0335): who closed, who was only named. */
-interface ClosureMarkerColumns {
+/** Marker columns shared by both closure tables (migrations 0335/0701): who initiated, who must confirm. */
+interface PendingMarkerColumns {
   readonly closureClosedByMembershipId: string;
   readonly closureNomineeMembershipId: string;
   readonly closureCosignAttested: false;
+  readonly closedAt: null;
 }
 
-function closureMarkers(signers: CloseCosigners): ClosureMarkerColumns {
+function pendingMarkers(signers: CloseCosigners): PendingMarkerColumns {
   return {
     closureClosedByMembershipId: signers.first,
     closureNomineeMembershipId: signers.second,
     closureCosignAttested: false,
+    closedAt: null,
   };
 }
 
 /**
- * The `qapi_pip` columns persisted by a nominee close (V-11 as relaxed by 0335): the closer's role slot is
- * stamped at `at`; the nominee's slot carries only the id, its `_at` stays NULL (nomination ≠ attestation).
+ * The `qapi_pip` columns persisted by INITIATING a close (GAP-046): the closer's role slot is stamped at `at`;
+ * the nominee's slot carries only the id and its `_at` stays NULL. `closed_at` stays NULL — the PIP is not
+ * closed until the nominee confirms ({@link buildPipConfirmColumns}).
  */
-export function buildPipClosureColumns(signers: CloseCosigners, at: Date) {
+export function buildPipPendingCloseColumns(signers: CloseCosigners, at: Date) {
   const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
   return {
     cosignQapiCoordinatorMembershipId: callerIsCoordinator ? signers.first : signers.second,
     cosignQapiCoordinatorAt: callerIsCoordinator ? at : null,
     cosignMedicalDirectorMembershipId: callerIsCoordinator ? signers.second : signers.first,
     cosignMedicalDirectorAt: callerIsCoordinator ? null : at,
-    ...closureMarkers(signers),
+    ...pendingMarkers(signers),
   };
 }
 
-/** The `sra_cycle` counterpart of {@link buildPipClosureColumns} (V-12 as relaxed by 0335). */
-export function buildSraClosureColumns(signers: CloseCosigners, at: Date) {
+/** The `sra_cycle` counterpart of {@link buildPipPendingCloseColumns}. */
+export function buildSraPendingCloseColumns(signers: CloseCosigners, at: Date) {
   const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
   return {
     cosignSecurityOfficerMembershipId: callerIsSecurityOfficer ? signers.first : signers.second,
     cosignSecurityOfficerAt: callerIsSecurityOfficer ? at : null,
     cosignComplianceOfficerMembershipId: callerIsSecurityOfficer ? signers.second : signers.first,
     cosignComplianceOfficerAt: callerIsSecurityOfficer ? null : at,
-    ...closureMarkers(signers),
+    ...pendingMarkers(signers),
   };
 }
 
-/** Validate the two-person close; returns the two distinct, authorized signers or throws (403). */
+/** The PIP columns written when the nominee confirms: their slot is stamped, the close becomes attested. */
+export function buildPipConfirmColumns(pending: PendingClose, at: Date) {
+  const nomineeSlot =
+    pending.nomineeRole === ROLE_QAPI_COORDINATOR
+      ? { cosignQapiCoordinatorAt: at }
+      : { cosignMedicalDirectorAt: at };
+  return { ...nomineeSlot, closureCosignAttested: true as const, closedAt: at };
+}
+
+/** The SRA counterpart of {@link buildPipConfirmColumns}. */
+export function buildSraConfirmColumns(pending: PendingClose, at: Date) {
+  const nomineeSlot =
+    pending.nomineeRole === ROLE_SECURITY_OFFICER
+      ? { cosignSecurityOfficerAt: at }
+      : { cosignComplianceOfficerAt: at };
+  return { ...nomineeSlot, closureCosignAttested: true as const, closedAt: at };
+}
+
+/** The persisted facts of a close row needed to recognise a pending close. */
+export interface PendingCloseRow {
+  readonly closedAt: Date | null;
+  readonly closureClosedByMembershipId: string | null;
+  readonly closureNomineeMembershipId: string | null;
+  /** The two role slots in `CloseRolePair` order, each with its persisted membership id. */
+  readonly slotMembershipIds: readonly [string | null, string | null];
+}
+
+/** The pending close recorded on a row, or `null` when there is none (never initiated, or already closed). */
+export function readPendingClose(row: PendingCloseRow, roles: CloseRolePair): PendingClose | null {
+  const closedBy = row.closureClosedByMembershipId;
+  const nominee = row.closureNomineeMembershipId;
+  if (row.closedAt !== null || !closedBy || !nominee) return null;
+  const roleOf = (membershipId: string): string | undefined => {
+    const index = row.slotMembershipIds.indexOf(membershipId);
+    return index === -1 ? undefined : roles[index];
+  };
+  const closerRole = roleOf(closedBy);
+  const nomineeRole = roleOf(nominee);
+  return closerRole && nomineeRole ? { closedBy, closerRole, nominee, nomineeRole } : null;
+}
+
+export interface ConfirmCloseInput {
+  readonly pending: PendingClose | null;
+  /** The authenticated caller's membership id (session-derived — never a body field). */
+  readonly actorMembershipId: string;
+  /** The caller's roles from the session. */
+  readonly actorRoles: readonly string[];
+  /** The caller's live role keys in this org, or `null` when they are not an active member. */
+  readonly actorLiveRoleKeys: readonly string[] | null;
+  readonly recentStepUp: boolean;
+}
+
+/**
+ * GAP-046 — validate the nominee's confirmation. The confirmer must BE the nominee the closer named, authenticate
+ * as themselves with a fresh step-up, and still hold the complementary role. Returns the pending close to complete.
+ */
+export function resolveCloseConfirmation(input: ConfirmCloseInput): PendingClose {
+  if (!input.recentStepUp) throw new StepUpRequiredError();
+  const { pending } = input;
+  if (!pending) throw new ConflictError("no close is pending confirmation");
+  if (!input.actorMembershipId || input.actorMembershipId !== pending.nominee) {
+    throw new ForbiddenError("only the nominated co-signer can confirm this close");
+  }
+  if (input.actorLiveRoleKeys === null) {
+    throw new ForbiddenError("the co-signer must be an active member of this organization");
+  }
+  if (
+    !input.actorRoles.includes(pending.nomineeRole) ||
+    !input.actorLiveRoleKeys.includes(pending.nomineeRole)
+  ) {
+    throw new ForbiddenError(`confirming this close requires the ${pending.nomineeRole} role`);
+  }
+  return pending;
+}
+
+/** The pending-close projection both closure views expose (GAP-046), so a UI can show "awaiting <nominee>". */
+export function pendingCloseView(row: {
+  readonly closedAt: Date | null;
+  readonly closureNomineeMembershipId: string | null;
+  readonly closureCosignAttested: boolean;
+}): { readonly closePending: boolean; readonly closeNomineeMembershipId: string | null } {
+  const pending =
+    row.closedAt === null && row.closureNomineeMembershipId !== null && !row.closureCosignAttested;
+  return {
+    closePending: pending,
+    closeNomineeMembershipId: pending ? row.closureNomineeMembershipId : null,
+  };
+}
+
+/** Validate the two-person close initiation; returns the two distinct, authorized signers or throws (403). */
 export function resolveCloseCosigners(input: CloseCosignInput): CloseCosigners {
   const { actorMembershipId, cosignerMembershipId, cosignerRoleKeys, roles } = input;
   if (!input.recentStepUp) throw new StepUpRequiredError();

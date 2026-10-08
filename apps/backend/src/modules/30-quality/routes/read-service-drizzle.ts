@@ -51,6 +51,7 @@ import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { toCahpsExportJobView } from "../cahps/export-job-store";
 import type { M30ReadActor } from "./actor";
+import { pendingCloseView } from "./close-cosign";
 import { type CursorPage, pageSizeOf, paginate } from "./concurrency";
 import { incidentOwnedBy } from "./incident-ownership";
 import { assertPatientInScope } from "./patient-scope";
@@ -237,6 +238,7 @@ function mapSraCycle(row: schema.SraCycle): SraCycleView {
     ownerMembershipId: row.openedByMembershipId,
     openedAt: isoReq(row.openedAt),
     closedAt: iso(row.closedAt),
+    ...pendingCloseView(row),
   };
 }
 
@@ -730,6 +732,7 @@ export function buildDrizzleM30ReadService(
           charteredByMembershipId: r.cosignQapiCoordinatorMembershipId ?? "",
           outcome: r.conclusionText ?? null,
           closedAt: iso(r.closedAt),
+          ...pendingCloseView(r),
           createdAt: isoReq(r.createdAt),
           id: r.id,
         }));

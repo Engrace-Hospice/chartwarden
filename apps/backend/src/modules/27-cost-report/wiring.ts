@@ -26,6 +26,7 @@ import { DegradedError } from "@wardenx/types";
 // the worker's per-job `withOrgContext` resolves correctly without touching the producer call sites.
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
+import { type DedupeQueueLike, addJobCoalescingInFlight } from "../../bootstrap/queue-dedupe";
 import { M27_QUEUES, M27_QUEUE_PARAMS } from "./jobs/queues";
 import type { RecomputeEnqueuePort } from "./routes/write-service";
 
@@ -130,7 +131,10 @@ export function buildM27RecomputeEnqueue(connection: ConnectionOptions | undefin
       // write-service's dedupe keys are colon-delimited (`${orgId}:${costReportId}[:…]`), so the composite
       // id is sanitized here rather than by touching the (shared, frozen) producer call sites.
       const jobId = `${queueName}__${dedupeKey}`.replace(/:/g, "__");
-      const job = await queueFor(queueName).add(
+      // GAP-042: a finished job with the same id is cleared first, otherwise the retained hash made
+      // every re-trigger a silent no-op. In-flight jobs still coalesce.
+      const job = await addJobCoalescingInFlight(
+        queueFor(queueName) as unknown as DedupeQueueLike,
         queueName,
         { ...payload, organizationId },
         {

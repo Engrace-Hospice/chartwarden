@@ -61,7 +61,7 @@
 | `screens/clinical/WARDENX_UI_FIELD_SAFETY.md` | built | `web/20-field-safety` |  |
 | `screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md` | built | `web/20-field-safety` | incidents |
 | `screens/clinical/WARDENX_UI_HOPE_ASSESSMENT.md` | built | `web/10-hope` |  |
-| `screens/clinical/WARDENX_UI_HQRP_QUALITY.md` | built | `web/30-quality` |  |
+| `screens/clinical/WARDENX_UI_HQRP_QUALITY.md` | partial | `web/30-quality` | Read-only measures hub plus the mortality-review worklist (the only dimension write). Not built: CAHPS vendor binding / export / results ingest / decedent exclusion, SRA cycle + finding + remediation console, infection event capture and outbreak update, CoP citation edit + review, measure recompute, risk-register refresh. |
 | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | built | `web/14-idg` |  |
 | `screens/clinical/WARDENX_UI_IPU_BED_BOARD.md` | built | `web/37-ipu` |  |
 | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` | built | `web/12-dosespot` `web/13-emar` |  |
@@ -109,7 +109,7 @@
 | `screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md` | deferred | — | No breach / security-incident screen; M4 audit holds the evidence and has no incident workflow. |
 | `screens/compliance/WARDENX_UI_BAA_MANAGER.md` | built | `admin/34-saas-platform` | baa-register |
 | `screens/compliance/WARDENX_UI_PATIENT_RIGHTS_GRIEVANCES.md` | deferred | — | No grievance screen; M30 models QAPI incidents and mortality, not patient-rights grievances. |
-| `screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md` | built | `web/30-quality` | qapi-incidents |
+| `screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md` | partial | `web/30-quality` | qapi-incidents: read-only queues; the incident detail panel can submit, resolve, close and reopen. Not built: incident intake form, triage (assignee picker), investigation notes + CAP plan, QAPI program / indicator / governance writes, project charter, PIP create and the two-step PIP close (initiate + nominee confirm). |
 | `screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md` | partial | `web/30-quality` | Quality hub; the chart-audit worklist is not built. |
 | `screens/compliance/WARDENX_UI_ACCREDITATION_SURVEY.md` | deferred | — | No accreditation / survey-readiness screen; surveyor read-only billing views exist but are a different surface. |
 | `screens/compliance/WARDENX_UI_OIG_COMPLIANCE_PROGRAM.md` | deferred | — | No OIG compliance-program screen (exclusion screening, hotline, training attestations); no module owns the data. |
