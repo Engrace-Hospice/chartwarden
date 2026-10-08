@@ -1,19 +1,15 @@
 import {
+  Button,
   CeremonyModal,
-  EmptyState,
-  FilterBar,
   Glyph,
-  GuardChip,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
+  SelectField,
   StatusPill,
-  WorkQueueLayout,
-  cardSurface,
-  t,
+  TextField,
   useApiClient,
 } from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+import type { GlyphName, paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. Matched to the P4 Pencil frame
 // (wardenx-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)
@@ -22,6 +18,8 @@ import type { paths } from "@wardenx/ui";
 // the kill-switch toggle as a confirm-by-typing Guardrail ceremony. The write is step-up-gated server
 // side (feature_flag.kill_switch + passkey_recent_5min, §6/D10); the screen mirrors that gravity with
 // a CeremonyModal that requires the operator to type the flag key to commit. Imports only leaves.
+// Laid out as the redesign's list + right drawer (outbox is the reference): KPI stat grid, filter row,
+// list table, and the selected flag in an `aside.wx-admission-drawer`.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { FLAG_KIND_TONE, statusLabel } from "./saas-status";
@@ -47,6 +45,11 @@ interface FeatureFlagPage {
   nextCursor: string | null;
   hasMore: boolean;
 }
+
+const KIND_OPTIONS = [
+  { value: "", label: "All kinds" },
+  ...FLAG_KINDS.map((k) => ({ value: k, label: statusLabel(k) })),
+];
 
 const scopeLabel = (f: FeatureFlagView): string =>
   f.organizationId ? "Per-tenant" : "Platform-global";
@@ -121,73 +124,71 @@ export function FeatureFlags(): JSX.Element {
   );
 
   return (
-    <>
-      <WorkQueueLayout
-        header={<PageHeader title="Feature Flags" />}
-        kpis={<FlagKpis flags={flags} loadFailed={error !== null} />}
-        filters={
-          <FilterBar
-            actions={
-              <button type="button" onClick={() => void load()}>
-                Refresh
-              </button>
-            }
-          >
-            <select
-              aria-label="Flag kind"
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Feature flags</h1>
+            <p>Platform-global and per-tenant flags, with the step-up-gated kill switch.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" onClick={() => void load()}>
+              <Glyph name="rotate-ccw" size={15} /> Refresh
+            </Button>
+          </div>
+        </header>
+
+        <FlagKpis flags={flags} loadFailed={error !== null} />
+
+        <div className="wx-list-toolbar">
+          <div className="grid w-full gap-3 md:grid-cols-2">
+            <SelectField
+              label="Flag kind"
               value={flagKind}
+              options={KIND_OPTIONS}
               onChange={(e) => setFlagKind(e.target.value as FlagKind | "")}
-            >
-              <option value="">All kinds</option>
-              {FLAG_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {statusLabel(k)}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label="Filter by tenant organization id"
-              placeholder="Tenant organization id (optional)"
+            />
+            <TextField
+              label="Tenant organization id"
+              placeholder="Optional"
               value={orgFilter}
               onChange={(e) => setOrgFilter(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void load();
               }}
             />
-          </FilterBar>
-        }
-        table={
-          <FlagsTable
-            items={flags}
-            loading={loading}
-            error={error}
-            selectedId={selected?.id ?? null}
-            onSelect={setSelected}
-          />
-        }
-        detail={
-          selected ? (
-            <FlagDetail
-              flag={selected}
-              onClose={() => setSelected(null)}
-              onArmKillSwitch={() => setCeremony(selected)}
-            />
-          ) : undefined
-        }
-      />
+          </div>
+        </div>
+
+        <FlagsTable
+          items={flags}
+          loading={loading}
+          error={error}
+          selectedId={selected?.id ?? null}
+          onSelect={setSelected}
+          onRetry={() => void load()}
+        />
+      </div>
+      {selected ? (
+        <FlagDrawer
+          flag={selected}
+          onClose={() => setSelected(null)}
+          onArmKillSwitch={() => setCeremony(selected)}
+        />
+      ) : null}
       {ceremony ? (
         <CeremonyModal
           open
           epcs
           title={ceremony.killSwitchActive ? "Disarm kill switch" : "Arm kill switch"}
           attestation={
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div className="flex flex-col gap-2">
               <div>
                 You are about to <strong>{ceremony.killSwitchActive ? "disarm" : "arm"}</strong> the
                 kill switch for <span className="wx-data-md">{ceremony.flagKey}</span> (
                 {scopeLabel(ceremony).toLowerCase()}).
               </div>
-              <div style={{ fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" }}>
+              <div className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
                 Arming the kill switch immediately disables this capability for every affected
                 tenant and emits a platform-emergency alert.
               </div>
@@ -205,7 +206,7 @@ export function FeatureFlags(): JSX.Element {
           onCancel={() => setCeremony(null)}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -228,60 +229,46 @@ function FlagKpis({
   const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
   const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (
-    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0 1.5rem 0.5rem" }}>
-      <KpiCard label="Total flags" value={total} sub="loaded" />
-      <KpiCard label="Enabled" value={enabled} sub="boolean · on" />
-      <KpiCard label="Kill switches" value={killed} sub="armed" alert={Boolean(killed)} />
-      <KpiCard label="Per-tenant" value={perTenant} sub="org-scoped" />
+    <div className="wx-stat-grid" aria-label="Feature flag summary">
+      <StatCard icon="layout-grid" label="Total flags" value={total} sub="loaded" />
+      <StatCard icon="check-circle" label="Enabled" value={enabled} sub="boolean · on" />
+      <StatCard
+        icon="alert"
+        label="Kill switches"
+        value={killed}
+        sub="armed"
+        alert={Boolean(killed)}
+      />
+      <StatCard icon="building" label="Per-tenant" value={perTenant} sub="org-scoped" />
     </div>
   );
 }
 
-function KpiCard({
+function StatCard({
+  icon,
   label,
   value,
   sub,
   alert,
 }: {
+  icon: GlyphName;
   label: string;
   value: number | null;
-  sub?: string;
+  sub: string;
   alert?: boolean;
 }): JSX.Element {
   return (
-    <div
-      style={{
-        ...cardSurface,
-        flex: "1 1 8rem",
-        minWidth: 0,
-        padding: "0.875rem 1.125rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.3rem",
-      }}
-    >
-      <span
-        style={{
-          fontSize: "0.6875rem",
-          fontWeight: 600,
-          color: t.onSurfaceVariant,
-        }}
-      >
-        {label}
+    <div className="wx-stat-card">
+      <span className="wx-stat-icon" aria-hidden>
+        <Glyph name={icon} size={18} />
       </span>
-      {/* KPI numerals are Inter tabular-nums (DESIGN.md §3). */}
-      <span
-        className="tabular-nums"
-        style={{
-          fontSize: "1.75rem",
-          fontWeight: 600,
-          lineHeight: 1,
-          color: alert ? t.alert : t.onSurface,
-        }}
-      >
-        {value ?? "—"}
-      </span>
-      {sub ? <span style={{ fontSize: "0.72rem", color: t.onSurfaceVariant }}>{sub}</span> : null}
+      <div>
+        <span className="wx-stat-label">{label}</span>
+        <span className={`wx-stat-value wx-nums${alert ? " text-[var(--color-alert)]" : ""}`}>
+          {value ?? "—"}
+        </span>
+        <span className="wx-row-sub">{sub}</span>
+      </div>
     </div>
   );
 }
@@ -292,88 +279,101 @@ function FlagsTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: FeatureFlagView[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (f: FeatureFlagView) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading feature flags…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No flags" description="No feature flags match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="check-circle" size={24} />
+        <span>No feature flags match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Feature flags</caption>
         <thead>
           <tr>
-            <th>Flag key</th>
-            <th>Scope</th>
-            <th>Kind</th>
-            <th>Value</th>
-            <th>Kill switch</th>
+            <th scope="col">Flag key</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Value</th>
+            <th scope="col">Kill switch</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((f) => (
-            <tr
-              key={f.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={f.id === selectedId}
-              onClick={() => onSelect(f)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(f);
+          {items.map((f) => {
+            const isSelected = f.id === selectedId;
+            return (
+              <tr
+                key={f.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: f.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td className="wx-data-md">{f.flagKey}</td>
-              <td>{scopeLabel(f)}</td>
-              <td>
-                <StatusPill
-                  label={statusLabel(f.flagKind)}
-                  tone={FLAG_KIND_TONE[f.flagKind] ?? "neutral"}
-                />
-              </td>
-              <td className="wx-data-md">{renderValue(f)}</td>
-              <td>
-                {f.killSwitchActive ? (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.35rem",
-                      color: "var(--color-alert)",
-                      fontWeight: 600,
-                      fontSize: "0.8125rem",
-                    }}
-                  >
-                    <Glyph name="alert" size={14} label="Kill switch armed" />
-                    Armed
-                  </span>
-                ) : (
-                  <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
-                    Inactive
-                  </span>
-                )}
-              </td>
-            </tr>
-          ))}
+                tabIndex={0}
+                aria-selected={isSelected}
+                onClick={() => onSelect(f)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    onSelect(f);
+                  }
+                }}
+              >
+                <td>
+                  <span className="wx-row-title wx-data-md">{f.flagKey}</span>
+                  <span className="wx-row-sub">{scopeLabel(f)}</span>
+                </td>
+                <td>
+                  <StatusPill
+                    label={statusLabel(f.flagKind)}
+                    tone={FLAG_KIND_TONE[f.flagKind] ?? "neutral"}
+                  />
+                </td>
+                <td className="wx-data-md">{renderValue(f)}</td>
+                <td>
+                  {f.killSwitchActive ? (
+                    <span className="inline-flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--color-alert)]">
+                      <Glyph name="alert" size={14} label="Kill switch armed" />
+                      Armed
+                    </span>
+                  ) : (
+                    <span className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
+                      Inactive
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function FlagDetail({
+function FlagDrawer({
   flag,
   onClose,
   onArmKillSwitch,
@@ -382,58 +382,64 @@ function FlagDetail({
   onClose: () => void;
   onArmKillSwitch: () => void;
 }): JSX.Element {
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
   return (
-    <RightDetailPanel title={flag.flagKey} onClose={onClose}>
-      {row("Scope", scopeLabel(flag))}
-      {flag.organizationId
-        ? row("Tenant organization", <span className="wx-data-md">{flag.organizationId}</span>)
-        : null}
-      {row(
-        "Kind",
-        <StatusPill
-          label={statusLabel(flag.flagKind)}
-          tone={FLAG_KIND_TONE[flag.flagKind] ?? "neutral"}
-        />,
-      )}
-      {row("Value type", statusLabel(flag.valueType))}
-      {row("Value", <span className="wx-data-md">{renderValue(flag)}</span>)}
-      {row(
-        "Rollout",
-        flag.rolloutPercent !== null ? (
-          <span className="tabular-nums">{flag.rolloutPercent}%</span>
-        ) : (
-          "—"
-        ),
-      )}
-      {row(
-        "Updated",
-        <span className="tabular-nums">{new Date(flag.updatedAt).toLocaleString()}</span>,
-      )}
-      <div
-        style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}
-      >
-        <GuardChip
-          reason={
-            flag.killSwitchActive
+    <aside className="wx-admission-drawer" aria-label="Feature flag">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="settings" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2 className="wx-data-md">{flag.flagKey}</h2>
+          <span className="wx-row-sub">{scopeLabel(flag)}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Flag</h3>
+            <StatusPill
+              label={statusLabel(flag.flagKind)}
+              tone={FLAG_KIND_TONE[flag.flagKind] ?? "neutral"}
+            />
+          </div>
+          <dl className="wx-kv">
+            <dt>Scope</dt>
+            <dd>{scopeLabel(flag)}</dd>
+            {flag.organizationId ? (
+              <>
+                <dt>Tenant organization</dt>
+                <dd className="wx-data-md break-words">{flag.organizationId}</dd>
+              </>
+            ) : null}
+            <dt>Value type</dt>
+            <dd>{statusLabel(flag.valueType)}</dd>
+            <dt>Value</dt>
+            <dd className="wx-data-md break-words">{renderValue(flag)}</dd>
+            <dt>Rollout</dt>
+            <dd className="wx-nums">
+              {flag.rolloutPercent !== null ? `${flag.rolloutPercent}%` : "—"}
+            </dd>
+            <dt>Updated</dt>
+            <dd className="wx-nums">{new Date(flag.updatedAt).toLocaleString()}</dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>Kill switch</h3>
+          <InlineAlert tone={flag.killSwitchActive ? "error" : "warning"}>
+            {flag.killSwitchActive
               ? "Kill switch armed — capability disabled tenant-wide"
-              : "Kill switch is a step-up-gated emergency lever"
-          }
-          tone={flag.killSwitchActive ? "error" : "warning"}
-        />
-        <button type="button" onClick={onArmKillSwitch}>
-          {flag.killSwitchActive ? "Disarm kill switch…" : "Arm kill switch…"}
-        </button>
+              : "Kill switch is a step-up-gated emergency lever"}
+          </InlineAlert>
+          <div className="wx-drawer-actions">
+            <Button tone="secondary" onClick={onArmKillSwitch}>
+              {flag.killSwitchActive ? "Disarm kill switch…" : "Arm kill switch…"}
+            </Button>
+          </div>
+        </section>
       </div>
-    </RightDetailPanel>
+    </aside>
   );
 }

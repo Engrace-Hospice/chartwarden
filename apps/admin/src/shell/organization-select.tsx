@@ -1,10 +1,21 @@
-import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
-// apps/admin/src/shell — Organization Select (M1/M34, ADR-0030). Ported verbatim from
+import {
+  Button,
+  CenteredCardLayout,
+  EmptyState,
+  Glyph,
+  InlineAlert,
+  LoadingSpinner,
+  useApiClient,
+} from "@wardenx/ui";
+// apps/admin/src/shell — Organization Select (M1/M34, ADR-0030). Ported from
 // apps/web/src/modules/02-identity/organization-select.tsx: a multi-org platform-ops user picks the
 // org that binds the session. Backed by the real M2 routes GET /api/v1/auth/memberships +
-// POST /api/v1/auth/select-organization via the generated client.
+// POST /api/v1/auth/select-organization via the generated client. Laid out like the console's sign-in and
+// step-up cards (brand lockup above the card); each organization is a row in the shared list-table chrome.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { Link } from "react-router-dom";
+import { BrandLockup } from "./brand-lockup";
 
 type MembershipStatus = "pending" | "active" | "suspended" | "revoked";
 interface MembershipView {
@@ -69,65 +80,56 @@ export function OrganizationSelect(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
-      <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Select organization</h1>
-      {state.kind === "loading" ? <LoadingSpinner /> : null}
-      {state.kind === "error" ? (
-        <EmptyState title="Unavailable" description={state.message} />
-      ) : null}
-      {state.kind === "ready" && state.memberships.length === 0 ? (
-        <EmptyState
-          title="No active organizations"
-          description="Your account has no active membership. Contact your administrator."
-        />
-      ) : null}
-      {state.kind === "ready" && state.memberships.length > 0 ? (
-        <ul
-          style={{
-            listStyle: "none",
-            margin: 0,
-            padding: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.5rem",
-          }}
-        >
-          {state.memberships.map((m) => (
-            <li key={m.membershipId}>
-              <button
-                type="button"
-                onClick={() => select(m.organizationId)}
-                disabled={selecting !== null}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "0.75rem 1rem",
-                  border: "1px solid var(--color-outline-variant)",
-                  borderRadius: "0.5rem",
-                  cursor: "pointer",
-                  background: "var(--color-surface-lowest)",
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{m.organizationName}</span>
-                {m.isAdmin ? (
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      fontSize: "0.75rem",
-                      color: "var(--color-on-surface-variant)",
-                    }}
+    <CenteredCardLayout
+      brand={<BrandLockup />}
+      footer={<Link to="/login">Sign in as someone else</Link>}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="m-0 text-lg font-semibold">Select organization</h1>
+          <p className="m-0 text-sm text-[var(--color-muted)]">
+            Choose the organization this session works in.
+          </p>
+        </div>
+        {state.kind === "loading" ? <LoadingSpinner label="Loading your organizations…" /> : null}
+        {state.kind === "error" ? (
+          <div className="flex flex-col gap-1" role="alert">
+            <strong className="text-sm">Unavailable</strong>
+            <InlineAlert tone="error">{state.message}</InlineAlert>
+          </div>
+        ) : null}
+        {state.kind === "ready" && state.memberships.length === 0 ? (
+          <EmptyState
+            title="No active organizations"
+            description="Your account has no active membership. Contact your administrator."
+          />
+        ) : null}
+        {state.kind === "ready" && state.memberships.length > 0 ? (
+          <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Your organizations">
+            {state.memberships.map((m) => (
+              <li key={m.membershipId}>
+                <div className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-card-border)] px-4 py-3">
+                  <div className="min-w-0">
+                    <span className="wx-row-title">{m.organizationName}</span>
+                    {m.isAdmin ? <span className="wx-row-sub">Admin</span> : null}
+                  </div>
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    loading={selecting === m.organizationId}
+                    disabled={selecting !== null}
+                    aria-label={`Select ${m.organizationName}`}
+                    onClick={() => void select(m.organizationId)}
                   >
-                    admin
-                  </span>
-                ) : null}
-                {selecting === m.organizationId ? (
-                  <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem" }}>…</span>
-                ) : null}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+                    Select
+                    <Glyph name="chevron-right" size={14} />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </CenteredCardLayout>
   );
 }

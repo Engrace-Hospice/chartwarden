@@ -1,22 +1,14 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Tenant usage drill-down (`/admin/usage/:organizationId`,
 // usage.admin.read). The meter-by-meter current-period usage for one tenant over GET
 // /api/admin/usage/:organizationId/current, with used / included / overage and the projected overage cost.
 // An org-id box lets an operator retarget without leaving the screen.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, usageThresholdTone } from "./status";
-import {
-  actionButtonStyle,
-  bodyRow,
-  cell,
-  cellRight,
-  inputStyle,
-  tableStyle,
-  theadRow,
-} from "./ui";
+import { StateEmpty, StateError, StateLoading } from "./ui";
 
 type UsageCurrent =
   operations["getApiAdminUsageByOrganizationIdCurrent"]["responses"][200]["content"]["application/json"];
@@ -53,100 +45,107 @@ export function Usage(): JSX.Element {
     void load();
   }, [load]);
 
+  const view = (e: FormEvent): void => {
+    e.preventDefault();
+    if (orgInput.trim()) navigate(`/admin/usage/${orgInput.trim()}`);
+  };
+
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader
-        title="Tenant usage"
-        breadcrumb="Platform Ops"
-        actions={
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Tenant usage</h1>
+            <p>One tenant's metered usage for the current billing period.</p>
+          </div>
+        </header>
+        <form className="flex max-w-xl items-end gap-2" onSubmit={view}>
+          <div className="min-w-0 flex-1">
+            <TextField
+              label="Organization id"
               value={orgInput}
               onChange={(e) => setOrgInput(e.target.value)}
               placeholder="Organization id"
-              style={{ ...inputStyle, width: "20rem" }}
-              aria-label="Organization id"
             />
-            <button
-              type="button"
-              onClick={() => orgInput.trim() && navigate(`/admin/usage/${orgInput.trim()}`)}
-              disabled={!orgInput.trim()}
-              style={actionButtonStyle(true, !orgInput.trim())}
-            >
-              View
-            </button>
           </div>
-        }
-      />
-      {!organizationId ? (
-        <EmptyState
-          title="Choose an organization"
-          description="Enter an organization id above to see its current-period usage."
-        />
-      ) : loading ? (
-        <LoadingSpinner />
-      ) : error || !usage ? (
-        <EmptyState title="Unavailable" description={error ?? "No usage."} />
-      ) : (
-        <>
-          <p
-            style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}
-            className="tabular-nums"
-          >
-            Current period: {formatDate(usage.periodStart)} — {formatDate(usage.periodEnd)}
-          </p>
-          {usage.meters.length === 0 ? (
-            <EmptyState
-              title="No metered usage"
-              description="This tenant has no metered usage this period."
-            />
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={cell}>Meter</th>
-                  <th style={cellRight}>Used</th>
-                  <th style={cellRight}>Included</th>
-                  <th style={cellRight}>Overage</th>
-                  <th style={cellRight}>$/unit</th>
-                  <th style={cellRight}>Proj. cost</th>
-                  <th style={cell}>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usage.meters.map((m) => (
-                  <tr key={m.eventType} style={bodyRow}>
-                    <td style={cell}>{m.label}</td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.totalQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.inclusiveQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.overageQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {formatCents(m.overageUnitPriceCents)}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {formatCents(m.projectedOverageCostCents)}
-                    </td>
-                    <td style={cell}>
-                      <StatusPill
-                        label={cap(m.thresholdState)}
-                        tone={usageThresholdTone(m.thresholdState)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </>
-      )}
+          <Button type="submit" disabled={!orgInput.trim()}>
+            View
+          </Button>
+        </form>
+        {!organizationId ? (
+          <StateEmpty icon="search">
+            Enter an organization id above to see its current-period usage.
+          </StateEmpty>
+        ) : loading ? (
+          <StateLoading label="Loading usage…" />
+        ) : error || !usage ? (
+          <StateError message={error ?? "No usage."} onRetry={() => void load()} />
+        ) : (
+          <>
+            <p className="wx-source-line wx-nums">
+              Current period: {formatDate(usage.periodStart)} — {formatDate(usage.periodEnd)}
+            </p>
+            {usage.meters.length === 0 ? (
+              <StateEmpty icon="bar-chart">
+                This tenant has no metered usage this period.
+              </StateEmpty>
+            ) : (
+              <UsageTable meters={usage.meters} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UsageTable({ meters }: { meters: UsageCurrent["meters"] }): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Usage this period</caption>
+        <thead>
+          <tr>
+            <th scope="col">Meter</th>
+            <th scope="col" className="wx-num-col">
+              Used
+            </th>
+            <th scope="col" className="wx-num-col">
+              Included
+            </th>
+            <th scope="col" className="wx-num-col">
+              Overage
+            </th>
+            <th scope="col" className="wx-num-col">
+              $/unit
+            </th>
+            <th scope="col" className="wx-num-col">
+              Proj. cost
+            </th>
+            <th scope="col">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {meters.map((m) => (
+            <tr key={m.eventType}>
+              <td>
+                <span className="wx-row-title">{m.label}</span>
+              </td>
+              <td className="wx-num-col wx-nums">{m.totalQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{m.inclusiveQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{m.overageQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{formatCents(m.overageUnitPriceCents)}</td>
+              <td className="wx-num-col wx-nums">{formatCents(m.projectedOverageCostCents)}</td>
+              <td>
+                <StatusPill
+                  label={cap(m.thresholdState)}
+                  tone={usageThresholdTone(m.thresholdState)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

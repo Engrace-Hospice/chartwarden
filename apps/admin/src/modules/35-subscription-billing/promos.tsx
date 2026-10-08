@@ -1,28 +1,61 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
 // Cross-tenant promo catalog over GET /api/admin/promos with redemption counts; create via POST
 // /api/admin/promos and deactivate via POST /api/admin/promos/:id/deactivate (promo.admin.write — step-up +
-// Idempotency-Key). Percent/amount-off + duration are shown per §5.2. Lantern: list + inline create.
+// Idempotency-Key). Percent/amount-off + duration are shown per §5.2. Redesign list + right drawer: a row opens the
+// promo (`?promo=<id>`) with its Deactivate action; "New promo" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
-  Field,
+  DrawerHead,
   type Outcome,
   OutcomeBanner,
-  actionButtonStyle,
-  bodyRow,
-  cell,
-  cellRight,
+  StateEmpty,
+  StateError,
+  StateLoading,
   failureOutcome,
-  inputStyle,
-  tableStyle,
-  theadRow,
+  selectableRowProps,
 } from "./ui";
 
 type Promo =
   operations["getApiAdminPromos"]["responses"][200]["content"]["application/json"][number];
+
+const EMPTY_FORM = {
+  code: "",
+  coupon: "",
+  promotion: "",
+  kind: "percent_off",
+  percent: "",
+  amount: "",
+  duration: "once",
+};
+type PromoForm = typeof EMPTY_FORM;
+
+const KIND_OPTIONS = [
+  { value: "percent_off", label: "Percent off" },
+  { value: "amount_off", label: "Amount off" },
+];
+const DURATION_OPTIONS = [
+  { value: "once", label: "Once" },
+  { value: "repeating", label: "Repeating" },
+  { value: "forever", label: "Forever" },
+];
+
+const discount = (p: Promo): string =>
+  p.percentOff != null
+    ? `${p.percentOff}%`
+    : p.fixedOffCents != null
+      ? formatCents(p.fixedOffCents)
+      : "—";
+
+const durationText = (p: Promo): string =>
+  `${cap(p.duration)}${p.durationInMonths ? ` (${p.durationInMonths}m)` : ""}`;
+
+const redemptionsText = (p: Promo): string =>
+  `${p.redemptionCount.toLocaleString()}${p.maxRedemptions ? ` / ${p.maxRedemptions}` : ""}`;
 
 export function Promos(): JSX.Element {
   const client = useApiClient();
@@ -32,15 +65,9 @@ export function Promos(): JSX.Element {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({
-    code: "",
-    coupon: "",
-    promotion: "",
-    kind: "percent_off",
-    percent: "",
-    amount: "",
-    duration: "once",
-  });
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("promo");
+  const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,15 +109,7 @@ export function Promos(): JSX.Element {
     else {
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
-      setForm({
-        code: "",
-        coupon: "",
-        promotion: "",
-        kind: "percent_off",
-        percent: "",
-        amount: "",
-        duration: "once",
-      });
+      setForm(EMPTY_FORM);
       await load();
     }
     setBusy(false);
@@ -115,165 +134,222 @@ export function Promos(): JSX.Element {
     [client, load],
   );
 
-  if (loading) return <LoadingSpinner />;
-
-  const discount = (p: Promo): string =>
-    p.percentOff != null
-      ? `${p.percentOff}%`
-      : p.fixedOffCents != null
-        ? formatCents(p.fixedOffCents)
-        : "—";
+  const selected = selectedId ? (promos.find((p) => p.id === selectedId) ?? null) : null;
+  const hasDrawer = showCreate || selected !== null;
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader
-        title="Promo codes"
-        breadcrumb="Platform Ops"
-        actions={
-          <button
-            type="button"
-            onClick={() => setShowCreate((s) => !s)}
-            style={actionButtonStyle(true)}
-          >
-            {showCreate ? "Cancel" : "New promo"}
-          </button>
-        }
-      />
-      {outcome ? <OutcomeBanner {...outcome} /> : null}
-      {showCreate ? (
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
-            gap: "0.75rem",
-            maxWidth: "52rem",
-            alignItems: "end",
-          }}
-        >
-          <Field label="Code">
-            <input
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Kind">
-            <select
-              value={form.kind}
-              onChange={(e) => setForm({ ...form, kind: e.target.value })}
-              style={inputStyle}
+    <div className={`wx-list-drawer${hasDrawer ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Promo codes</h1>
+            <p>Discount codes across every tenant, with their redemptions.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button
+              onClick={() => {
+                setParams({});
+                setShowCreate((s) => !s);
+              }}
             >
-              <option value="percent_off">Percent off</option>
-              <option value="amount_off">Amount off</option>
-            </select>
-          </Field>
-          {form.kind === "percent_off" ? (
-            <Field label="Percent">
-              <input
+              {showCreate ? "Cancel" : "New promo"}
+            </Button>
+          </div>
+        </header>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {loading ? (
+          <StateLoading label="Loading promos…" />
+        ) : error ? (
+          <StateError message={error} onRetry={() => void load()} />
+        ) : promos.length === 0 ? (
+          <StateEmpty icon="receipt">No promos yet. Create the first promo code.</StateEmpty>
+        ) : (
+          <PromosTable
+            promos={promos}
+            selectedId={selectedId}
+            onOpen={(id) => {
+              setShowCreate(false);
+              setParams({ promo: id });
+            }}
+          />
+        )}
+      </div>
+      {showCreate ? (
+        <CreatePromoDrawer
+          form={form}
+          busy={busy}
+          onChange={setForm}
+          onCreate={() => void create()}
+          onClose={() => setShowCreate(false)}
+        />
+      ) : selected ? (
+        <PromoDrawer
+          promo={selected}
+          busy={busy}
+          onDeactivate={() => void deactivate(selected.id, selected.code)}
+          onClose={() => setParams({})}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PromosTable({
+  promos,
+  selectedId,
+  onOpen,
+}: {
+  promos: readonly Promo[];
+  selectedId: string | null;
+  onOpen: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Promo codes</caption>
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Discount</th>
+            <th scope="col">Duration</th>
+            <th scope="col" className="wx-num-col">
+              Redemptions
+            </th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {promos.map((p) => (
+            <tr key={p.id} {...selectableRowProps(p.id === selectedId, () => onOpen(p.id))}>
+              <td>
+                <span className="wx-row-title wx-data-md">{p.code}</span>
+              </td>
+              <td className="wx-nums">{discount(p)}</td>
+              <td>{durationText(p)}</td>
+              <td className="wx-num-col wx-nums">{redemptionsText(p)}</td>
+              <td>
+                <StatusPill
+                  label={p.isActive ? "Active" : "Inactive"}
+                  tone={p.isActive ? "success" : "neutral"}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PromoDrawer({
+  promo,
+  busy,
+  onDeactivate,
+  onClose,
+}: {
+  promo: Promo;
+  busy: boolean;
+  onDeactivate: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="Promo code">
+      <DrawerHead icon="receipt" title={promo.code} sub={discount(promo)} onClose={onClose} />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Promo</h3>
+            <StatusPill
+              label={promo.isActive ? "Active" : "Inactive"}
+              tone={promo.isActive ? "success" : "neutral"}
+            />
+          </div>
+          <dl className="wx-kv">
+            <dt>Discount</dt>
+            <dd className="wx-nums">{discount(promo)}</dd>
+            <dt>Duration</dt>
+            <dd>{durationText(promo)}</dd>
+            <dt>Redemptions</dt>
+            <dd className="wx-nums">{redemptionsText(promo)}</dd>
+          </dl>
+          {promo.isActive ? (
+            <div className="wx-drawer-actions">
+              <Button tone="secondary" onClick={onDeactivate} disabled={busy}>
+                Deactivate
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function CreatePromoDrawer({
+  form,
+  busy,
+  onChange,
+  onCreate,
+  onClose,
+}: {
+  form: PromoForm;
+  busy: boolean;
+  onChange: (form: PromoForm) => void;
+  onCreate: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="New promo">
+      <DrawerHead icon="plus" title="New promo" onClose={onClose} />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <TextField
+            label="Code"
+            value={form.code}
+            onChange={(e) => onChange({ ...form, code: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField
+              label="Kind"
+              value={form.kind}
+              options={KIND_OPTIONS}
+              onChange={(e) => onChange({ ...form, kind: e.target.value })}
+            />
+            {form.kind === "percent_off" ? (
+              <TextField
+                label="Percent"
                 value={form.percent}
                 inputMode="numeric"
-                onChange={(e) => setForm({ ...form, percent: e.target.value })}
-                style={inputStyle}
+                onChange={(e) => onChange({ ...form, percent: e.target.value })}
               />
-            </Field>
-          ) : (
-            <Field label="Amount (USD)">
-              <input
+            ) : (
+              <TextField
+                label="Amount (USD)"
                 value={form.amount}
                 inputMode="decimal"
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                style={inputStyle}
+                onChange={(e) => onChange({ ...form, amount: e.target.value })}
               />
-            </Field>
-          )}
-          <Field label="Duration">
-            <select
-              value={form.duration}
-              onChange={(e) => setForm({ ...form, duration: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="once">Once</option>
-              <option value="repeating">Repeating</option>
-              <option value="forever">Forever</option>
-            </select>
-          </Field>
-          <Field label="Stripe coupon id">
-            <input
-              value={form.coupon}
-              onChange={(e) => setForm({ ...form, coupon: e.target.value })}
-              style={inputStyle}
-              placeholder="defaults to code"
-            />
-          </Field>
-          <button
-            type="button"
-            onClick={() => void create()}
-            disabled={busy || !form.code.trim()}
-            style={actionButtonStyle(true, busy || !form.code.trim())}
-          >
-            Create promo
-          </button>
+            )}
+          </div>
+          <SelectField
+            label="Duration"
+            value={form.duration}
+            options={DURATION_OPTIONS}
+            onChange={(e) => onChange({ ...form, duration: e.target.value })}
+          />
+          <TextField
+            label="Stripe coupon id"
+            value={form.coupon}
+            placeholder="defaults to code"
+            onChange={(e) => onChange({ ...form, coupon: e.target.value })}
+          />
+          <div className="wx-drawer-actions">
+            <Button onClick={onCreate} disabled={busy || !form.code.trim()}>
+              Create promo
+            </Button>
+          </div>
         </section>
-      ) : null}
-      {error || promos.length === 0 ? (
-        <EmptyState
-          title={error ?? "No promos"}
-          description={error ? "Retry shortly." : "Create the first promo code."}
-        />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>Code</th>
-              <th style={cell}>Discount</th>
-              <th style={cell}>Duration</th>
-              <th style={cellRight}>Redemptions</th>
-              <th style={cell}>Status</th>
-              <th style={cell} />
-            </tr>
-          </thead>
-          <tbody>
-            {promos.map((p) => (
-              <tr key={p.id} style={bodyRow}>
-                <td style={cell}>
-                  <span style={{ fontWeight: 600 }}>{p.code}</span>
-                </td>
-                <td style={cell} className="tabular-nums">
-                  {discount(p)}
-                </td>
-                <td style={cell}>
-                  {cap(p.duration)}
-                  {p.durationInMonths ? ` (${p.durationInMonths}m)` : ""}
-                </td>
-                <td style={cellRight} className="tabular-nums">
-                  {p.redemptionCount.toLocaleString()}
-                  {p.maxRedemptions ? ` / ${p.maxRedemptions}` : ""}
-                </td>
-                <td style={cell}>
-                  <StatusPill
-                    label={p.isActive ? "Active" : "Inactive"}
-                    tone={p.isActive ? "success" : "neutral"}
-                  />
-                </td>
-                <td style={cell}>
-                  {p.isActive ? (
-                    <button
-                      type="button"
-                      onClick={() => void deactivate(p.id, p.code)}
-                      disabled={busy}
-                      style={actionButtonStyle(false, busy)}
-                    >
-                      Deactivate
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+      </div>
+    </aside>
   );
 }

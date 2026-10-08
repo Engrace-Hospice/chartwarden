@@ -27,7 +27,7 @@ proposals. **If a module or screen spec conflicts with architecture, architectur
 
 [`docs/README.md`](./docs/README.md) is the master index of every document under `docs/`.
 
-Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet.
+Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet. The shell (`wx-shell`, sidebar, header) and the base element defaults live in `app-shell.css` beside it, imported the same way by `apps/web` and `apps/admin`; design tokens stay per app (`apps/admin/src/index.css` keeps a copy of web's `@theme` — keep them in sync).
 
 - **Module specs** → [`docs/modules/`](./docs/modules/) (index: `docs/modules/README.md`). Resolve specs
   there, not the repo root. Module 29 sub-tasks: `docs/modules/module-29-tasks/`.

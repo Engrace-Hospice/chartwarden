@@ -1,45 +1,58 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
 // Cross-tenant plan catalog over GET /api/admin/plans; a draft plan is created via POST /api/admin/plans
-// (plan.admin.write — step-up + Idempotency-Key, enforced server-side). Each row links to the meter/pricing
-// editor. Amounts are integer cents formatted once. Lantern: work-queue-ish list + inline create.
+// (plan.admin.write — step-up + Idempotency-Key, enforced server-side). Amounts are integer cents formatted once.
+// The redesign's list + right drawer: a row opens the plan in the drawer (`?plan=<id>`), whose action leads to the
+// meter/pricing editor (`/admin/plans/:id/edit`); "New plan" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
-  Field,
+  DrawerHead,
   type Outcome,
   OutcomeBanner,
-  actionButtonStyle,
-  bodyRow,
-  cell,
-  cellRight,
+  StateEmpty,
+  StateError,
+  StateLoading,
   failureOutcome,
-  inputStyle,
-  tableStyle,
-  theadRow,
+  selectableRowProps,
 } from "./ui";
 
 type PlanRow =
   operations["getApiAdminPlans"]["responses"][200]["content"]["application/json"][number];
 
+const EMPTY_FORM = {
+  slug: "",
+  name: "",
+  tier: "starter",
+  cadence: "monthly",
+  basePrice: "",
+  trialDays: "0",
+};
+type PlanForm = typeof EMPTY_FORM;
+
+const TIER_OPTIONS = [
+  { value: "starter", label: "Starter" },
+  { value: "professional", label: "Professional" },
+  { value: "enterprise", label: "Enterprise" },
+];
+const CADENCE_OPTIONS = [
+  { value: "monthly", label: "Monthly" },
+  { value: "annual", label: "Annual" },
+];
+
 export function PlansList(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("plan");
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [form, setForm] = useState({
-    slug: "",
-    name: "",
-    tier: "starter",
-    cadence: "monthly",
-    basePrice: "",
-    trialDays: "0",
-  });
+  const [form, setForm] = useState<PlanForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -79,162 +92,219 @@ export function PlansList(): JSX.Element {
     } else {
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
-      setForm({
-        slug: "",
-        name: "",
-        tier: "starter",
-        cadence: "monthly",
-        basePrice: "",
-        trialDays: "0",
-      });
+      setForm(EMPTY_FORM);
       await load();
     }
     setSaving(false);
   }, [client, form, load]);
 
-  if (loading) return <LoadingSpinner />;
+  const selected = selectedId ? (plans.find((p) => p.id === selectedId) ?? null) : null;
+  const hasDrawer = showCreate || selected !== null;
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader
-        title="Plans"
-        breadcrumb="Platform Ops"
-        actions={
-          <button
-            type="button"
-            onClick={() => setShowCreate((s) => !s)}
-            style={actionButtonStyle(true)}
-          >
-            {showCreate ? "Cancel" : "New plan"}
-          </button>
-        }
-      />
-      {outcome ? <OutcomeBanner {...outcome} /> : null}
+    <div className={`wx-list-drawer${hasDrawer ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Plans</h1>
+            <p>The subscription plan catalog every tenant is billed from.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button
+              onClick={() => {
+                setParams({});
+                setShowCreate((s) => !s);
+              }}
+            >
+              {showCreate ? "Cancel" : "New plan"}
+            </Button>
+          </div>
+        </header>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {loading ? (
+          <StateLoading label="Loading plans…" />
+        ) : error ? (
+          <StateError message={error} onRetry={() => void load()} />
+        ) : plans.length === 0 ? (
+          <StateEmpty icon="layout-grid">No plans yet. Create the first plan to begin.</StateEmpty>
+        ) : (
+          <PlansTable
+            plans={plans}
+            selectedId={selectedId}
+            onOpen={(id) => {
+              setShowCreate(false);
+              setParams({ plan: id });
+            }}
+          />
+        )}
+      </div>
       {showCreate ? (
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
-            gap: "0.75rem",
-            maxWidth: "48rem",
-          }}
-        >
-          <Field label="Slug">
-            <input
-              value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              style={inputStyle}
+        <CreatePlanDrawer
+          form={form}
+          saving={saving}
+          onChange={setForm}
+          onCreate={() => void create()}
+          onClose={() => setShowCreate(false)}
+        />
+      ) : selected ? (
+        <PlanDrawer plan={selected} onClose={() => setParams({})} />
+      ) : null}
+    </div>
+  );
+}
+
+function PlansTable({
+  plans,
+  selectedId,
+  onOpen,
+}: {
+  plans: readonly PlanRow[];
+  selectedId: string | null;
+  onOpen: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Plans</caption>
+        <thead>
+          <tr>
+            <th scope="col">Plan</th>
+            <th scope="col">Tier</th>
+            <th scope="col">Cadence</th>
+            <th scope="col" className="wx-num-col">
+              Base price
+            </th>
+            <th scope="col" className="wx-num-col">
+              Trial
+            </th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {plans.map((p) => (
+            <tr key={p.id} {...selectableRowProps(p.id === selectedId, () => onOpen(p.id))}>
+              <td>
+                <span className="wx-row-title">{p.name}</span>
+                <span className="wx-row-sub wx-data-md">{p.slug}</span>
+              </td>
+              <td>{cap(p.tier)}</td>
+              <td>{cap(p.cadence)}</td>
+              <td className="wx-num-col wx-nums">
+                {formatCents(p.basePriceCents, p.currencyCode)}
+              </td>
+              <td className="wx-num-col wx-nums">{p.trialPeriodDays}d</td>
+              <td>
+                <StatusPill
+                  label={p.isActive ? "Active" : "Draft"}
+                  tone={p.isActive ? "success" : "neutral"}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlanDrawer({ plan, onClose }: { plan: PlanRow; onClose: () => void }): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <aside className="wx-admission-drawer" aria-label="Plan">
+      <DrawerHead icon="layout-grid" title={plan.name} sub={plan.slug} onClose={onClose} />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Plan</h3>
+            <StatusPill
+              label={plan.isActive ? "Active" : "Draft"}
+              tone={plan.isActive ? "success" : "neutral"}
             />
-          </Field>
-          <Field label="Name">
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Tier">
-            <select
-              value={form.tier}
-              onChange={(e) => setForm({ ...form, tier: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-          </Field>
-          <Field label="Cadence">
-            <select
-              value={form.cadence}
-              onChange={(e) => setForm({ ...form, cadence: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="monthly">Monthly</option>
-              <option value="annual">Annual</option>
-            </select>
-          </Field>
-          <Field label="Base price (USD)">
-            <input
-              value={form.basePrice}
-              inputMode="decimal"
-              onChange={(e) => setForm({ ...form, basePrice: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Trial days">
-            <input
-              value={form.trialDays}
-              inputMode="numeric"
-              onChange={(e) => setForm({ ...form, trialDays: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <div style={{ display: "flex", alignItems: "flex-end" }}>
-            <button
-              type="button"
-              onClick={() => void create()}
-              disabled={saving || !form.slug || !form.name}
-              style={actionButtonStyle(true, saving || !form.slug || !form.name)}
-            >
-              {saving ? "Creating…" : "Create draft"}
-            </button>
+          </div>
+          <dl className="wx-kv">
+            <dt>Tier</dt>
+            <dd>{cap(plan.tier)}</dd>
+            <dt>Cadence</dt>
+            <dd>{cap(plan.cadence)}</dd>
+            <dt>Base price</dt>
+            <dd className="wx-nums">{formatCents(plan.basePriceCents, plan.currencyCode)}</dd>
+            <dt>Trial</dt>
+            <dd className="wx-nums">{plan.trialPeriodDays} days</dd>
+          </dl>
+          <div className="wx-drawer-actions">
+            <Button onClick={() => navigate(`/admin/plans/${plan.id}/edit`)}>Edit plan</Button>
           </div>
         </section>
-      ) : null}
-      {error || plans.length === 0 ? (
-        <EmptyState
-          title={error ?? "No plans"}
-          description={error ? "Retry shortly." : "Create the first plan to begin."}
-        />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>Plan</th>
-              <th style={cell}>Tier</th>
-              <th style={cell}>Cadence</th>
-              <th style={cellRight}>Base price</th>
-              <th style={cellRight}>Trial</th>
-              <th style={cell}>Status</th>
-              <th style={cell} />
-            </tr>
-          </thead>
-          <tbody>
-            {plans.map((p) => (
-              <tr key={p.id} style={bodyRow}>
-                <td style={cell}>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
-                    {p.slug}
-                  </div>
-                </td>
-                <td style={cell}>{cap(p.tier)}</td>
-                <td style={cell}>{cap(p.cadence)}</td>
-                <td style={cellRight} className="tabular-nums">
-                  {formatCents(p.basePriceCents, p.currencyCode)}
-                </td>
-                <td style={cellRight} className="tabular-nums">
-                  {p.trialPeriodDays}d
-                </td>
-                <td style={cell}>
-                  <StatusPill
-                    label={p.isActive ? "Active" : "Draft"}
-                    tone={p.isActive ? "success" : "neutral"}
-                  />
-                </td>
-                <td style={cell}>
-                  <Link to={`/admin/plans/${p.id}/edit`} style={actionButtonStyle(false)}>
-                    Edit
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+      </div>
+    </aside>
+  );
+}
+
+function CreatePlanDrawer({
+  form,
+  saving,
+  onChange,
+  onCreate,
+  onClose,
+}: {
+  form: PlanForm;
+  saving: boolean;
+  onChange: (form: PlanForm) => void;
+  onCreate: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="New plan">
+      <DrawerHead icon="plus" title="New plan" sub="Created as a draft" onClose={onClose} />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <TextField
+            label="Slug"
+            value={form.slug}
+            onChange={(e) => onChange({ ...form, slug: e.target.value })}
+          />
+          <TextField
+            label="Name"
+            value={form.name}
+            onChange={(e) => onChange({ ...form, name: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField
+              label="Tier"
+              value={form.tier}
+              options={TIER_OPTIONS}
+              onChange={(e) => onChange({ ...form, tier: e.target.value })}
+            />
+            <SelectField
+              label="Cadence"
+              value={form.cadence}
+              options={CADENCE_OPTIONS}
+              onChange={(e) => onChange({ ...form, cadence: e.target.value })}
+            />
+            <TextField
+              label="Base price (USD)"
+              value={form.basePrice}
+              inputMode="decimal"
+              onChange={(e) => onChange({ ...form, basePrice: e.target.value })}
+            />
+            <TextField
+              label="Trial days"
+              value={form.trialDays}
+              inputMode="numeric"
+              onChange={(e) => onChange({ ...form, trialDays: e.target.value })}
+            />
+          </div>
+          <div className="wx-drawer-actions">
+            <Button
+              loading={saving}
+              disabled={saving || !form.slug || !form.name}
+              onClick={onCreate}
+            >
+              Create draft
+            </Button>
+          </div>
+        </section>
+      </div>
+    </aside>
   );
 }

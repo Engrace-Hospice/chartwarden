@@ -1,21 +1,21 @@
 import {
+  Button,
   CeremonyModal,
-  DetailPageLayout,
-  EmptyState,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
   StatusPill,
+  TextField,
   useApiClient,
   useToast,
 } from "@wardenx/ui";
-// apps/web/src/modules/34-saas — M34 SaaS Tenant Platform, the §5.2 single-page-of-truth (R2).
+// apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the §5.2 single-page-of-truth (R2).
 // Spec §5.2 (`/tenants/:orgSlug`) — the tenant overview: a context header (identity + lifecycle pill +
 // action menu) over the FIVE cards. Backed by GET /api/v1/platform/tenants/{orgSlug} (TenantOverview)
 // via the generated typed client; reads run under withPlatformContext server-side (F03/F09 audited).
 // The command CTAs POST the §4.1 enqueue routes; the cryptographic shred is the §10 'critical' tone
 // paired with the Guardrail CeremonyModal confirm-by-typing ceremony (§5.2 Card 1 / §5.3 / §6 D10).
-// Lantern: No-Line cards, mono identifiers (wx-data-md), tabular-nums, CSS-var tokens only.
+// The redesign frame: a page head (identity + lifecycle pill + shred) over the five flat cards.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
@@ -152,57 +152,60 @@ export function TenantOverview(): JSX.Element {
     void load();
   }, [client, orgSlug, load, certId, shredReason, toast, tenant]);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading)
+    return (
+      <div className="wx-list-drawer">
+        <div className="wx-list-drawer-main">
+          <div className="wx-list-state">
+            <LoadingSpinner label="Loading tenant…" />
+          </div>
+        </div>
+      </div>
+    );
   if (error || !tenant)
-    return <EmptyState title="Unavailable" description={error ?? "No tenant."} />;
+    return (
+      <div className="wx-list-drawer">
+        <div className="wx-list-drawer-main">
+          <div className="wx-list-state" role="alert">
+            <InlineAlert tone="error">{error ?? "No tenant."}</InlineAlert>
+            <Button tone="secondary" onClick={() => void load()}>
+              Try again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
 
   const shreddable = tenant.status === "destruction_pending";
 
   return (
-    <>
-      <DetailPageLayout
-        header={
-          <PageHeader
-            title={tenant.legalBusinessName}
-            breadcrumb={
-              <>
-                <span className="wx-data-md">{tenant.orgSlug}</span> · {tenant.planLabel}
-              </>
-            }
-            actions={
-              <>
-                <StatusPill
-                  label={statusLabel(tenant.status)}
-                  tone={lifecycleTone(tenant.status)}
-                />
-                {shreddable ? (
-                  <button
-                    type="button"
-                    onClick={() => setShredOpen(true)}
-                    style={{ color: "var(--color-alert)" }}
-                  >
-                    Cryptographic shred
-                  </button>
-                ) : null}
-              </>
-            }
-          />
-        }
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))",
-            gap: "1rem",
-          }}
-        >
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>{tenant.legalBusinessName}</h1>
+            <p>
+              <span className="wx-data-md">{tenant.orgSlug}</span> · {tenant.planLabel}
+            </p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <StatusPill label={statusLabel(tenant.status)} tone={lifecycleTone(tenant.status)} />
+            {shreddable ? (
+              <Button tone="danger" onClick={() => setShredOpen(true)}>
+                Cryptographic shred
+              </Button>
+            ) : null}
+          </div>
+        </header>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <LifecycleCard tenant={tenant} />
           <OnboardingCard tenant={tenant} />
           <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
           <SupportCard tenant={tenant} />
           <ExportsCard />
         </div>
-      </DetailPageLayout>
+      </div>
 
       {/* §5.2 Card 1 / §6 D10 — the shred is irreversible: confirm-by-typing the legal business name. */}
       <CeremonyModal
@@ -216,38 +219,28 @@ export function TenantOverview(): JSX.Element {
             cryptographically irrecoverable. This cannot be undone.
             {/* The two values the route REQUIRES. They live in the attestation slot rather than in
                 CeremonyModal itself so the shared component (15 other call sites) is untouched. */}
-            <label htmlFor="shred-cert-id" style={ceremonyLabel}>
-              M4 destruction-certificate id
-              <input
+            <div className="mt-3 grid gap-3">
+              <TextField
                 id="shred-cert-id"
+                label="M4 destruction-certificate id"
+                hint="The approved certificate this destruction is recorded against."
                 value={certId}
                 onChange={(e) => setCertId(e.target.value)}
                 placeholder="00000000-0000-0000-0000-000000000000"
                 autoComplete="off"
                 spellCheck={false}
-                aria-describedby="shred-cert-help"
-                style={ceremonyInput}
+                className="wx-data-md"
               />
-            </label>
-            <span id="shred-cert-help" style={ceremonyHelp}>
-              The approved certificate this destruction is recorded against.
-            </span>
-            <label htmlFor="shred-reason" style={ceremonyLabel}>
-              Transition reason
-              <input
+              <TextField
                 id="shred-reason"
+                label="Transition reason"
                 value={shredReason}
                 onChange={(e) => setShredReason(e.target.value)}
                 placeholder="Why this tenant is being shredded now"
                 autoComplete="off"
-                style={ceremonyInput}
               />
-            </label>
-            {shredError ? (
-              <span role="alert" style={ceremonyError}>
-                {shredError}
-              </span>
-            ) : null}
+              {shredError ? <InlineAlert tone="error">{shredError}</InlineAlert> : null}
+            </div>
           </>
         }
         legalText="I confirm the retention period has elapsed, no legal hold is active, and the M4 destruction certificate is approved."
@@ -275,85 +268,9 @@ export function TenantOverview(): JSX.Element {
           setShredError(null);
         }}
       />
-    </>
+    </div>
   );
 }
-
-// ── card shell (No-Line: surface-lowest fill + soft shadow + xl radius, no border) ───────────────────
-function Card({
-  title,
-  cta,
-  children,
-}: { title: ReactNode; cta?: ReactNode; children: ReactNode }): JSX.Element {
-  return (
-    <section
-      style={{
-        background: "var(--color-surface-lowest)",
-        borderRadius: "var(--radius-xl, 1rem)",
-        boxShadow: "var(--shadow-soft)",
-        padding: "1rem 1.25rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.75rem",
-      }}
-    >
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "0.6875rem",
-            fontWeight: 600,
-            color: "var(--color-on-surface-variant)",
-          }}
-        >
-          {title}
-        </h2>
-        {cta}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-const fieldLabel = { fontSize: "0.7rem", color: "var(--color-on-surface-variant)" } as const;
-const fieldValue = { fontSize: "0.9rem", color: "var(--color-on-surface)" } as const;
-const ctaButton: React.CSSProperties = { fontSize: "0.75rem" };
-
-// Ceremony inputs. Tokens only (arch:design-tokens) — no raw colour literals.
-const ceremonyLabel: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.25rem",
-  marginTop: "0.75rem",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface-variant)",
-};
-
-const ceremonyInput: React.CSSProperties = {
-  padding: "0.5rem 0.625rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--color-outline-variant)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.8125rem",
-  fontWeight: 400,
-};
-
-const ceremonyHelp: React.CSSProperties = {
-  display: "block",
-  marginTop: "0.25rem",
-  fontSize: "0.7rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const ceremonyError: React.CSSProperties = {
-  display: "block",
-  marginTop: "0.75rem",
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  color: "var(--color-error)",
-};
 
 /**
  * The server's own message when the envelope carries one, else `fallback`. A shred refusal must say
@@ -365,6 +282,23 @@ function errorMessage(err: unknown, fallback: string): string {
   return typeof message === "string" && message.trim().length > 0 ? message : fallback;
 }
 
+// ── card shell — a flat redesign card: title row (+ optional CTA) over its body ─────────────────────────
+function Card({
+  title,
+  cta,
+  children,
+}: { title: ReactNode; cta?: ReactNode; children: ReactNode }): JSX.Element {
+  return (
+    <section className="wx-drawer-card">
+      <div className="wx-drawer-card-head">
+        <h3>{title}</h3>
+        {cta}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 // ── Card 1 — Lifecycle: current status + last status event + Transition CTA ──────────────────────────
 function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
   const ev = tenant.latestStatusEvent;
@@ -372,32 +306,30 @@ function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
     <Card
       title="Lifecycle"
       cta={
-        <button type="button" style={ctaButton}>
+        <Button tone="secondary" size="sm">
           Transition status
-        </button>
+        </Button>
       }
     >
       <div>
         <StatusPill label={statusLabel(tenant.status)} tone={lifecycleTone(tenant.status)} />
       </div>
-      <div>
-        <div style={fieldLabel}>Last status event</div>
-        {ev ? (
-          <div style={fieldValue}>
-            {statusLabel(ev.toStatus)}{" "}
-            <span className="tabular-nums" style={{ color: "var(--color-on-surface-variant)" }}>
-              · {new Date(ev.occurredAt).toLocaleString()}
-            </span>
-            {ev.reason ? (
-              <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-                {ev.reason}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div style={fieldValue}>—</div>
-        )}
-      </div>
+      <dl className="wx-kv">
+        <dt>Last status event</dt>
+        <dd>
+          {ev ? (
+            <>
+              {statusLabel(ev.toStatus)}{" "}
+              <span className="wx-nums wx-row-sub">
+                · {new Date(ev.occurredAt).toLocaleString()}
+              </span>
+              {ev.reason ? <span className="wx-row-sub">{ev.reason}</span> : null}
+            </>
+          ) : (
+            "—"
+          )}
+        </dd>
+      </dl>
     </Card>
   );
 }
@@ -410,35 +342,32 @@ function OnboardingCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
     <Card
       title="Onboarding"
       cta={
-        <button type="button" style={ctaButton}>
+        <Button tone="secondary" size="sm">
           Open onboarding
-        </button>
+        </Button>
       }
     >
-      <div style={{ ...fieldValue, fontVariantNumeric: "tabular-nums" }}>
+      <span className="wx-nums text-sm">
         {doneTasks} / {totalTasks} steps complete
-      </div>
-      <div
+      </span>
+      <progress
+        value={pct}
+        max={100}
         aria-label={`${pct}% complete`}
-        style={{
-          height: "0.5rem",
-          borderRadius: "9999px",
-          background: "var(--color-surface-container)",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ width: `${pct}%`, height: "100%", background: "var(--color-primary)" }} />
-      </div>
-      {currentStep ? (
-        <div style={fieldLabel}>Current step: {currentStep}</div>
-      ) : (
-        <div style={fieldLabel}>{totalTasks === 0 ? "Not started" : "All steps complete"}</div>
-      )}
+        className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
+      />
+      <span className="wx-row-sub">
+        {currentStep
+          ? `Current step: ${currentStep}`
+          : totalTasks === 0
+            ? "Not started"
+            : "All steps complete"}
+      </span>
     </Card>
   );
 }
 
-// ── Card 3 — Key Ring: DEK version + last rotated + Rotate CTA / "DEK destroyed" state ────────────────
+// ── Card 3 — Key ring: DEK version + last rotated + Rotate CTA / "DEK destroyed" state ────────────────
 function KeyRingCard({
   tenant,
   onRotate,
@@ -447,130 +376,106 @@ function KeyRingCard({
   const destroyed = Boolean(kr?.destroyedAt);
   return (
     <Card
-      title="Key Ring"
+      title="Key ring"
       cta={
         kr && !destroyed ? (
-          <button type="button" style={ctaButton} onClick={onRotate}>
+          <Button tone="secondary" size="sm" onClick={onRotate}>
             Rotate DEK
-          </button>
+          </Button>
         ) : undefined
       }
     >
       {!kr ? (
-        <div style={fieldValue}>No key ring provisioned.</div>
+        <span className="text-sm">No key ring provisioned.</span>
       ) : destroyed ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            color: "var(--color-on-surface-variant)",
-          }}
-        >
+        <p className="wx-source-line">
           <Glyph name="lock" size={16} label="DEK destroyed" />
-          <span style={fieldValue}>
+          <span className="wx-source-text">
             DEK destroyed{" "}
-            <span className="tabular-nums">
-              {new Date(kr.destroyedAt as string).toLocaleString()}
-            </span>
+            <span className="wx-nums">{new Date(kr.destroyedAt as string).toLocaleString()}</span>
           </span>
-        </div>
+        </p>
       ) : (
-        <>
-          <div>
-            <div style={fieldLabel}>Current DEK version</div>
-            <div style={fieldValue} className="wx-data-md">
-              {kr.currentDekVersion}
-            </div>
-          </div>
-          <div>
-            <div style={fieldLabel}>Last rotated</div>
-            <div style={fieldValue} className="tabular-nums">
-              {kr.dekLastRotatedAt ? new Date(kr.dekLastRotatedAt).toLocaleString() : "Never"}
-            </div>
-          </div>
-        </>
+        <dl className="wx-kv">
+          <dt>Current DEK version</dt>
+          <dd className="wx-data-md">{kr.currentDekVersion}</dd>
+          <dt>Last rotated</dt>
+          <dd className="wx-nums">
+            {kr.dekLastRotatedAt ? new Date(kr.dekLastRotatedAt).toLocaleString() : "Never"}
+          </dd>
+        </dl>
       )}
     </Card>
   );
 }
 
-// ── Card 4 — Support & Compliance: active grants + sessions + BAA + Start-session CTA ─────────────────
+// ── Card 4 — Support & compliance: active grants + sessions + BAA + Start-session CTA ─────────────────
 function SupportCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
   const canStart = tenant.activeGrants > 0;
   return (
     <Card
-      title="Support & Compliance"
+      title="Support & compliance"
       cta={
-        <button
-          type="button"
-          style={ctaButton}
+        <Button
+          tone="secondary"
+          size="sm"
           disabled={!canStart}
           title={canStart ? undefined : "No active consent grant"}
         >
           Start support session
-        </button>
+        </Button>
       }
     >
-      <div style={{ display: "flex", gap: "1.5rem" }}>
-        <div>
-          <div style={fieldLabel}>Active grants</div>
-          <div style={{ ...fieldValue, fontVariantNumeric: "tabular-nums" }}>
-            {tenant.activeGrants}
-          </div>
-        </div>
-        <div>
-          <div style={fieldLabel}>Active sessions</div>
-          <div style={{ ...fieldValue, fontVariantNumeric: "tabular-nums" }}>
-            {tenant.activeSessions}
-          </div>
-        </div>
-      </div>
-      <div>
-        <div style={fieldLabel}>BAA status</div>
-        {tenant.baa ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <StatusPill
-              label={cap(tenant.baa.status)}
-              tone={BAA_TONE[tenant.baa.status] ?? "neutral"}
-            />
-            {tenant.baa.expiresOn ? (
-              <span
-                className="tabular-nums"
-                style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}
-              >
-                expires {new Date(tenant.baa.expiresOn).toLocaleDateString()}
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <div style={fieldValue}>No BAA on record.</div>
-        )}
-      </div>
+      <dl className="wx-kv">
+        <dt>Active grants</dt>
+        <dd className="wx-nums">{tenant.activeGrants}</dd>
+        <dt>Active sessions</dt>
+        <dd className="wx-nums">{tenant.activeSessions}</dd>
+        <dt>BAA status</dt>
+        <dd>
+          {tenant.baa ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusPill
+                label={cap(tenant.baa.status)}
+                tone={BAA_TONE[tenant.baa.status] ?? "neutral"}
+              />
+              {tenant.baa.expiresOn ? (
+                <span className="wx-nums wx-row-sub">
+                  expires {new Date(tenant.baa.expiresOn).toLocaleDateString()}
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            "No BAA on record."
+          )}
+        </dd>
+      </dl>
     </Card>
   );
 }
 
-// ── Card 5 — Exports & Activity: recent DSAR/export + Request CTAs ────────────────────────────────────
+// ── Card 5 — Exports & activity: recent DSAR/export + Request CTAs ────────────────────────────────────
 function ExportsCard(): JSX.Element {
   return (
     <Card
-      title="Exports & Activity"
+      title="Exports & activity"
       cta={
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button type="button" style={ctaButton}>
+        <div className="wx-drawer-actions">
+          <Button tone="secondary" size="sm">
             Request DSAR
-          </button>
-          <button type="button" style={ctaButton}>
+          </Button>
+          <Button tone="secondary" size="sm">
             Request export
-          </button>
+          </Button>
         </div>
       }
     >
-      <div style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-        Recent DSAR and tenant-export jobs appear here. Platform-ops requests are recorded with{" "}
-        <span className="wx-data-md">actor_kind=platform_ops_initiated_for_tenant</span>.
-      </div>
+      <p className="wx-source-line">
+        <span className="wx-source-text">
+          Recent DSAR and tenant-export jobs appear here. Platform-ops requests are recorded with{" "}
+          <span className="wx-data-md">actor_kind=platform_ops_initiated_for_tenant</span>.
+        </span>
+      </p>
     </Card>
   );
 }

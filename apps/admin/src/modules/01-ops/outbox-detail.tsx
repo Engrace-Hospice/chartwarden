@@ -1,11 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
-// apps/admin/src/modules/01-ops — Outbox event detail (`/admin/ops/outbox/:id`, WX-PR-020/OPS-004).
+import { Button, Glyph, InlineAlert, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+// apps/admin/src/modules/01-ops — one outbox event in the Outbox screen's right drawer (WX-PR-020/OPS-004), opened by
+// `?event=<id>`; the old detail route `/admin/ops/outbox/:id` redirects there.
 import { useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
-import { Link, useParams } from "react-router-dom";
+import type { JSX } from "react";
+import { type OutboxStatus, outboxStatusTone } from "./outbox-status";
 
-type OutboxStatus = "pending" | "dispatching" | "dispatched" | "failed";
-interface OutboxDetail {
+interface OutboxEvent {
   id: string;
   eventType: string;
   aggregateKind: string;
@@ -19,34 +19,30 @@ interface OutboxDetail {
   nextAttemptAt: string | null;
 }
 
-function toneFor(status: OutboxStatus): "success" | "progress" | "warning" | "error" {
-  if (status === "dispatched") return "success";
-  if (status === "dispatching") return "progress";
-  if (status === "failed") return "error";
-  return "warning";
+function when(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString() : "—";
 }
 
-export function OutboxDetail(): JSX.Element {
-  const { id } = useParams<{ id: string }>();
+export function OutboxEventDrawer({
+  id,
+  onClose,
+}: { id: string; onClose: () => void }): JSX.Element {
   const client = useApiClient();
-  const [event, setEvent] = useState<OutboxDetail | null>(null);
+  const [event, setEvent] = useState<OutboxEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
     let active = true;
+    setLoading(true);
+    setError(null);
     (async () => {
       const { data, error: err } = await client.GET("/api/v1/ops/outbox/{id}", {
         params: { path: { id } },
       });
       if (!active) return;
-      if (err || !data) {
-        setError("Outbox event not found.");
-        setLoading(false);
-        return;
-      }
-      setEvent(data as unknown as OutboxDetail);
+      if (err || !data) setError("This outbox event could not be found.");
+      else setEvent(data as unknown as OutboxEvent);
       setLoading(false);
     })();
     return () => {
@@ -55,94 +51,59 @@ export function OutboxDetail(): JSX.Element {
   }, [id, client]);
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title="Outbox event"
-        breadcrumb="Platform Ops"
-        actions={
-          <Link to="/admin/ops/outbox" style={ghostBtn}>
-            Back to outbox
-          </Link>
-        }
-      />
-      {loading ? (
-        <LoadingSpinner />
-      ) : error || !event ? (
-        <EmptyState title={error ?? "Not found"} description="This event may not exist." />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-            <StatusPill label={event.status} tone={toneFor(event.status)} />
-            <span style={{ fontWeight: 600 }}>{event.eventType}</span>
-          </div>
-          <dl style={dlStyle}>
-            <dt style={dtStyle}>Aggregate</dt>
-            <dd style={ddStyle}>
-              {event.aggregateKind} · {event.aggregateId}
-            </dd>
-            <dt style={dtStyle}>Attempts</dt>
-            <dd style={ddStyle}>{event.attemptCount}</dd>
-            <dt style={dtStyle}>Created</dt>
-            <dd style={ddStyle}>{new Date(event.createdAt).toLocaleString()}</dd>
-            <dt style={dtStyle}>Dispatched</dt>
-            <dd style={ddStyle}>
-              {event.dispatchedAt ? new Date(event.dispatchedAt).toLocaleString() : "—"}
-            </dd>
-            <dt style={dtStyle}>Next attempt</dt>
-            <dd style={ddStyle}>
-              {event.nextAttemptAt ? new Date(event.nextAttemptAt).toLocaleString() : "—"}
-            </dd>
-          </dl>
-          {event.lastError ? (
-            <div>
-              <h2 style={h2Style}>Last error</h2>
-              <pre style={preStyle}>{event.lastError}</pre>
-            </div>
-          ) : null}
-          <div>
-            <h2 style={h2Style}>Payload</h2>
-            <pre style={preStyle}>{JSON.stringify(event.payload, null, 2)}</pre>
-          </div>
+    <aside className="wx-admission-drawer" aria-label="Outbox event">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="send" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>{event?.eventType ?? "Outbox event"}</h2>
+          <span className="wx-row-sub wx-data-md">{id}</span>
         </div>
-      )}
-    </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        {loading ? (
+          <LoadingSpinner label="Loading event…" />
+        ) : error || !event ? (
+          <InlineAlert tone="error">{error ?? "This outbox event could not be found."}</InlineAlert>
+        ) : (
+          <>
+            <section className="wx-drawer-card">
+              <div className="wx-drawer-card-head">
+                <h3>Delivery</h3>
+                <StatusPill label={event.status} tone={outboxStatusTone(event.status)} />
+              </div>
+              <dl className="wx-kv">
+                <dt>Aggregate</dt>
+                <dd>
+                  {event.aggregateKind} · <span className="wx-data-md">{event.aggregateId}</span>
+                </dd>
+                <dt>Attempts</dt>
+                <dd className="wx-nums">{event.attemptCount}</dd>
+                <dt>Created</dt>
+                <dd className="wx-nums">{when(event.createdAt)}</dd>
+                <dt>Dispatched</dt>
+                <dd className="wx-nums">{when(event.dispatchedAt)}</dd>
+                <dt>Next attempt</dt>
+                <dd className="wx-nums">{when(event.nextAttemptAt)}</dd>
+              </dl>
+            </section>
+            {event.lastError ? (
+              <section className="wx-drawer-card">
+                <h3>Last error</h3>
+                <pre className="wx-code-block">{event.lastError}</pre>
+              </section>
+            ) : null}
+            <section className="wx-drawer-card">
+              <h3>Payload</h3>
+              <pre className="wx-code-block">{JSON.stringify(event.payload, null, 2)}</pre>
+            </section>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
-
-const columnStyle: CSSProperties = {
-  padding: "1.5rem 1.75rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  maxWidth: "48rem",
-};
-const dlStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "8rem 1fr",
-  rowGap: "0.4rem",
-  fontSize: "0.85rem",
-  margin: 0,
-};
-const dtStyle: CSSProperties = { color: "var(--color-on-surface-variant)", fontWeight: 600 };
-const ddStyle: CSSProperties = { margin: 0 };
-const h2Style: CSSProperties = { fontSize: "0.85rem", fontWeight: 700, margin: "0 0 0.4rem" };
-const preStyle: CSSProperties = {
-  background: "var(--color-surface-container)",
-  borderRadius: "var(--radius-md)",
-  padding: "0.75rem",
-  fontSize: "0.78rem",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-  margin: 0,
-};
-const ghostBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "0.5rem 1rem",
-  borderRadius: "9999px",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  textDecoration: "none",
-};

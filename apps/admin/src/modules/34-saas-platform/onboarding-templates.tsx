@@ -1,25 +1,23 @@
 import {
-  EmptyState,
-  FilterBar,
+  Button,
   Glyph,
   GuardChip,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
   StatusPill,
-  WorkQueueLayout,
+  TextField,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/34-saas — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
+// apps/admin/src/modules/34-saas-platform — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /onboarding/templates. The platform-ops onboarding-step floor — the 11 canonical platform-seed
 // templates plus tenant additions (SD-036 pattern-2). Backed by GET /api/v1/platform/onboarding-templates
 // (cursor-paginated). canonical=true is migration-only: those rows are READ-ONLY here (the write route
 // refuses isCanonical=true), so the editor surfaces a GuardChip on a canonical selection and an inline
-// edit/add form for non-canonical ones, POSTing /api/v1/platform/onboarding-templates (step-up gated
+// edit/add form for non-canonical ones in the right drawer (`?template=<id>` or `?template=new`), POSTing /api/v1/platform/onboarding-templates (step-up gated
 // server-side). requiredPermission: `onboarding_template.list`. Mirrors the M40/M36 R1 exemplars.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { cap } from "./saas-status";
+import { useSearchParams } from "react-router-dom";
 
 // The onboarding-template view (mirrors the backend OnboardingTemplateViewSchema).
 interface OnboardingTemplate {
@@ -38,20 +36,25 @@ interface TemplateListPage {
 
 type OriginFilter = "" | "canonical" | "tenant";
 
+const LIST_LIMIT = 100;
+const ORDER_MIN = 0;
+const ORDER_MAX = 1000;
+const NEW_TEMPLATE = "new";
+
 export function OnboardingTemplates(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const drawerParam = params.get("template");
   const [items, setItems] = useState<OnboardingTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [origin, setOrigin] = useState<OriginFilter>("");
-  const [selected, setSelected] = useState<OnboardingTemplate | null>(null);
-  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/onboarding-templates", {
-      params: { query: { limit: 100 } },
+      params: { query: { limit: LIST_LIMIT } },
     });
     if (err) {
       setError("Could not load onboarding templates.");
@@ -74,66 +77,57 @@ export function OnboardingTemplates(): JSX.Element {
     return sorted;
   }, [items, origin]);
 
-  const onSelect = (t: OnboardingTemplate) => {
-    setAdding(false);
-    setSelected(t);
-  };
+  const adding = drawerParam === NEW_TEMPLATE;
+  const selected = drawerParam && !adding ? items.find((t) => t.id === drawerParam) : undefined;
+  const closeDrawer = (): void => setParams({});
   const onSaved = () => {
-    setSelected(null);
-    setAdding(false);
+    closeDrawer();
     void load();
   };
 
   return (
-    <WorkQueueLayout
-      header={<PageHeader title="Onboarding Templates" breadcrumb="Onboarding · Step catalog" />}
-      filters={
-        <FilterBar
-          actions={
-            <button
-              type="button"
-              onClick={() => {
-                setSelected(null);
-                setAdding(true);
-              }}
+    <div className={`wx-list-drawer${adding || selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Onboarding templates</h1>
+            <p>The onboarding step catalog: the canonical platform steps plus tenant additions.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <select
+              aria-label="Filter by origin"
+              value={origin}
+              onChange={(e) => setOrigin(e.target.value as OriginFilter)}
             >
-              Add template
-            </button>
-          }
-        >
-          <select
-            aria-label="Filter by origin"
-            value={origin}
-            onChange={(e) => setOrigin(e.target.value as OriginFilter)}
-          >
-            <option value="">All templates</option>
-            <option value="canonical">Canonical (platform)</option>
-            <option value="tenant">Tenant additions</option>
-          </select>
-        </FilterBar>
-      }
-      table={
+              <option value="">All templates</option>
+              <option value="canonical">Canonical (platform)</option>
+              <option value="tenant">Tenant additions</option>
+            </select>
+            <Button onClick={() => setParams({ template: NEW_TEMPLATE })}>Add template</Button>
+          </div>
+        </header>
+
         <TemplateTable
           items={visible}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={onSelect}
+          onSelect={(t) => setParams({ template: t.id })}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        adding ? (
-          <TemplateEditor mode="add" onClose={() => setAdding(false)} onSaved={onSaved} />
-        ) : selected ? (
-          <TemplateEditor
-            mode="edit"
-            template={selected}
-            onClose={() => setSelected(null)}
-            onSaved={onSaved}
-          />
-        ) : undefined
-      }
-    />
+      </div>
+      {adding ? (
+        <TemplateEditor key={NEW_TEMPLATE} mode="add" onClose={closeDrawer} onSaved={onSaved} />
+      ) : selected ? (
+        <TemplateEditor
+          key={selected.id}
+          mode="edit"
+          template={selected}
+          onClose={closeDrawer}
+          onSaved={onSaved}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -143,70 +137,93 @@ function TemplateTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: OnboardingTemplate[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (t: OnboardingTemplate) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading onboarding templates…" />
+      </div>
+    );
   if (items.length === 0)
     return (
-      <EmptyState title="No templates" description="No onboarding templates match this filter." />
+      <div className="wx-list-state">
+        <Glyph name="clipboard-list" size={24} />
+        <span>No onboarding templates match this filter.</span>
+      </div>
     );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Onboarding templates</caption>
         <thead>
           <tr>
-            <th>Order</th>
-            <th>Key</th>
-            <th>Title</th>
-            <th>Origin</th>
+            <th scope="col" className="wx-num-col">
+              Order
+            </th>
+            <th scope="col">Template</th>
+            <th scope="col">Origin</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((t) => (
-            <tr
-              key={t.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={t.id === selectedId}
-              onClick={() => onSelect(t)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(t);
+          {items.map((t) => {
+            const isSelected = t.id === selectedId;
+            const open = (): void => onSelect(t);
+            return (
+              <tr
+                key={t.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: t.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td className="tabular-nums">{t.canonicalOrder}</td>
-              <td className="wx-data-md">{t.key}</td>
-              <td>{t.title}</td>
-              <td>
-                {t.isCanonical ? (
-                  <StatusPill label="Canonical" tone="neutral" />
-                ) : (
-                  <StatusPill label="Tenant" tone="progress" />
-                )}
-              </td>
-            </tr>
-          ))}
+                tabIndex={0}
+                aria-selected={isSelected}
+                onClick={open}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    open();
+                  }
+                }}
+              >
+                <td className="wx-num-col wx-nums">{t.canonicalOrder}</td>
+                <td>
+                  <span className="wx-row-title">{t.title}</span>
+                  <span className="wx-row-sub wx-data-md">{t.key}</span>
+                </td>
+                <td>
+                  {t.isCanonical ? (
+                    <StatusPill label="Canonical" tone="neutral" />
+                  ) : (
+                    <StatusPill label="Tenant" tone="progress" />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-// Inline add/edit form. Canonical templates are migration-only (the write route refuses isCanonical=true),
-// so an edit on a canonical row is read-only and surfaces a GuardChip explaining why.
+// Add/edit form in the drawer. Canonical templates are migration-only (the write route refuses
+// isCanonical=true), so an edit on a canonical row is read-only and surfaces a GuardChip explaining why.
 function TemplateEditor({
   mode,
   template,
@@ -249,96 +266,63 @@ function TemplateEditor({
     onSaved();
   }
 
-  const fieldStyle = {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "0.25rem",
-    marginBottom: "0.75rem",
-  };
-  const labelStyle = { fontSize: "0.7rem", color: "var(--color-on-surface-variant)" };
-
   return (
-    <RightDetailPanel
-      title={
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+    <aside className="wx-admission-drawer" aria-label="Onboarding template">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
           <Glyph name="check-circle" size={16} />
-          {mode === "add" ? "New Template" : "Edit Template"}
         </span>
-      }
-      onClose={onClose}
-    >
-      {readOnly ? (
-        <div style={{ marginBottom: "0.75rem" }}>
-          <GuardChip reason="Canonical templates are platform-seed (migration-only) and cannot be edited." />
+        <div className="wx-drawer-head-main">
+          <h2>{mode === "add" ? "New template" : "Edit template"}</h2>
+          {template ? <span className="wx-row-sub wx-data-md">{template.id}</span> : null}
         </div>
-      ) : null}
-
-      <div style={fieldStyle}>
-        <label htmlFor="tmpl-key" style={labelStyle}>
-          Key
-        </label>
-        <input
-          id="tmpl-key"
-          className="wx-data-md"
-          value={key}
-          disabled={readOnly || mode === "edit"}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="e.g. baa_signed"
-        />
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          {readOnly ? (
+            <GuardChip reason="Canonical templates are platform-seed (migration-only) and cannot be edited." />
+          ) : null}
+          <TextField
+            id="tmpl-key"
+            label="Key"
+            className="wx-data-md"
+            value={key}
+            disabled={readOnly || mode === "edit"}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="e.g. baa_signed"
+          />
+          <TextField
+            id="tmpl-title"
+            label="Title"
+            value={title}
+            disabled={readOnly}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Human-readable step title"
+          />
+          <TextField
+            id="tmpl-order"
+            label="Step order"
+            className="wx-nums"
+            type="number"
+            min={ORDER_MIN}
+            max={ORDER_MAX}
+            value={order}
+            disabled={readOnly}
+            onChange={(e) => setOrder(e.target.value)}
+          />
+          {saveError ? <InlineAlert tone="error">{saveError}</InlineAlert> : null}
+          {!readOnly ? (
+            <div className="wx-drawer-actions">
+              <Button disabled={!canSave || saving} onClick={() => void save()}>
+                {saving ? "Saving…" : mode === "add" ? "Add template" : "Save changes"}
+              </Button>
+            </div>
+          ) : null}
+        </section>
       </div>
-
-      <div style={fieldStyle}>
-        <label htmlFor="tmpl-title" style={labelStyle}>
-          Title
-        </label>
-        <input
-          id="tmpl-title"
-          value={title}
-          disabled={readOnly}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Human-readable step title"
-        />
-      </div>
-
-      <div style={fieldStyle}>
-        <label htmlFor="tmpl-order" style={labelStyle}>
-          Step order
-        </label>
-        <input
-          id="tmpl-order"
-          className="tabular-nums"
-          type="number"
-          min={0}
-          max={1000}
-          value={order}
-          disabled={readOnly}
-          onChange={(e) => setOrder(e.target.value)}
-        />
-      </div>
-
-      {template ? (
-        <div
-          style={{
-            fontSize: "0.7rem",
-            color: "var(--color-on-surface-variant)",
-            marginBottom: "0.75rem",
-          }}
-        >
-          Template id <span className="wx-data-md">{template.id}</span>
-        </div>
-      ) : null}
-
-      {saveError ? (
-        <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
-          {saveError}
-        </div>
-      ) : null}
-
-      {!readOnly ? (
-        <button type="button" disabled={!canSave || saving} onClick={() => void save()}>
-          {saving ? "Saving…" : mode === "add" ? "Add template" : "Save changes"}
-        </button>
-      ) : null}
-    </RightDetailPanel>
+    </aside>
   );
 }

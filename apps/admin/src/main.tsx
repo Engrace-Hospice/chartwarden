@@ -1,4 +1,4 @@
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient, initTheme } from "@wardenx/ui";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/inter";
 import "./index.css"; // Tailwind v4 Preflight + the admin app's Lantern token layer (global styles)
@@ -19,6 +19,8 @@ import { subscriptionAdminScreens } from "./modules/35-subscription-billing";
 import { adminAuthScreens } from "./shell/auth-screens";
 import { createAdminRegistry } from "./shell/registry";
 import { adminSystemScreens } from "./shell/system-pages";
+
+initTheme(); // the stored light/dark choice (shared with the clinical app), applied before the first paint
 
 const registry = createAdminRegistry();
 const client = createApiClient();

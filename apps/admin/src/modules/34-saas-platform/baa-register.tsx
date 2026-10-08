@@ -1,11 +1,11 @@
 import {
-  EmptyState,
-  FilterBar,
+  Button,
+  Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
+  SelectField,
   StatusPill,
-  WorkQueueLayout,
+  TextField,
   useApiClient,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
@@ -14,7 +14,8 @@ import type { paths } from "@wardenx/ui";
 // Lists the platform→tenant Business Associate Agreement records across tenants (DISTINCT from M40's
 // tenant→external register) via GET /api/v1/platform/baa-register, by tenant / addendum version /
 // status / expiration, with BAA-status pills. Read-only here; execution/attestation are separate
-// command surfaces. Imports only leaves (@wardenx/ui) + the shared M34 tone maps.
+// command surfaces. Imports only leaves (@wardenx/ui) + the shared M34 tone maps. Laid out as the
+// redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
@@ -22,6 +23,11 @@ import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
 // §3.8 wire enum (platform-typebox `BAA_STATUS`) — the UI owns its copy.
 const BAA_STATUSES = ["executed", "pending", "terminated", "missing"] as const;
 type BaaStatus = (typeof BAA_STATUSES)[number];
+
+const STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  ...BAA_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
+];
 
 // The `BaaRecordViewSchema` read shape the route serves (CursorPageOf<BaaRecordView>).
 interface BaaRecordView {
@@ -80,52 +86,63 @@ export function BaaRegister(): JSX.Element {
   }, [load]);
 
   return (
-    <WorkQueueLayout
-      header={<PageHeader title="BAA Register" />}
-      filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => void load()}>
-              Refresh
-            </button>
-          }
-        >
-          <select
-            aria-label="BAA status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as BaaStatus | "")}
-          >
-            <option value="">All statuses</option>
-            {BAA_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
-          <input
-            aria-label="Filter by tenant account id"
-            placeholder="Tenant account id (optional)"
-            value={tenantFilter}
-            onChange={(e) => setTenantFilter(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void load();
-            }}
-          />
-        </FilterBar>
-      }
-      table={
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>BAA register</h1>
+            <p>Platform-to-tenant business associate agreements, by addendum, status and expiry.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" onClick={() => void load()}>
+              <Glyph name="rotate-ccw" size={15} /> Refresh
+            </Button>
+          </div>
+        </header>
+
+        <div className="wx-list-toolbar">
+          <div className="grid w-full gap-3 md:grid-cols-2">
+            <SelectField
+              label="BAA status"
+              value={status}
+              options={STATUS_OPTIONS}
+              onChange={(e) => setStatus(e.target.value as BaaStatus | "")}
+            />
+            <TextField
+              label="Tenant account id"
+              placeholder="Optional"
+              value={tenantFilter}
+              onChange={(e) => setTenantFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void load();
+              }}
+            />
+          </div>
+        </div>
+
         <RegisterTable
           items={records}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
           onSelect={setSelected}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        selected ? <RecordDetail record={selected} onClose={() => setSelected(null)} /> : undefined
-      }
-    />
+      </div>
+      {selected ? <RecordDrawer record={selected} onClose={() => setSelected(null)} /> : null}
+    </div>
+  );
+}
+
+/** A date-only expiry, flagged in the error colour once it has passed. */
+function ExpiresOn({ record }: { record: BaaRecordView }): JSX.Element {
+  if (!record.expiresOn) return <>—</>;
+  const expired = isExpired(record);
+  return (
+    <span className={expired ? "wx-nums text-[var(--color-error)]" : "wx-nums"}>
+      {record.expiresOn}
+      {expired ? " (expired)" : ""}
+    </span>
   );
 }
 
@@ -135,39 +152,60 @@ function RegisterTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: BaaRecordView[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (r: BaaRecordView) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading the BAA register…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No BAA records" description="No agreements match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="file-check" size={24} />
+        <span>No agreements match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Business associate agreements</caption>
         <thead>
           <tr>
-            <th>Tenant account</th>
-            <th>Addendum</th>
-            <th>Status</th>
-            <th>Effective</th>
-            <th>Expires</th>
+            <th scope="col">Tenant account</th>
+            <th scope="col">Status</th>
+            <th scope="col">Effective</th>
+            <th scope="col">Expires</th>
           </tr>
         </thead>
         <tbody>
           {items.map((r) => {
-            const expired = isExpired(r);
+            const isSelected = r.id === selectedId;
             return (
               <tr
                 key={r.id}
-                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                role="button"
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
+                }
                 tabIndex={0}
-                aria-pressed={r.id === selectedId}
+                aria-selected={isSelected}
                 onClick={() => onSelect(r)}
                 onKeyDown={(ev) => {
                   if (ev.key === "Enter" || ev.key === " ") {
@@ -175,29 +213,22 @@ function RegisterTable({
                     onSelect(r);
                   }
                 }}
-                style={{
-                  cursor: "pointer",
-                  background: r.id === selectedId ? "var(--color-primary-tint)" : undefined,
-                }}
               >
-                <td className="wx-data-md">{r.tenantAccountId}</td>
-                <td className="wx-data-md">{r.addendumVersion}</td>
+                <td>
+                  <span className="wx-row-title wx-data-md">{r.tenantAccountId}</span>
+                  <span className="wx-row-sub">
+                    Addendum <span className="wx-data-md">{r.addendumVersion}</span>
+                  </span>
+                </td>
                 <td>
                   <StatusPill
                     label={statusLabel(r.baaStatus)}
                     tone={PLATFORM_BAA_TONE[r.baaStatus] ?? "neutral"}
                   />
                 </td>
-                <td className="tabular-nums">{r.effectiveOn ?? "—"}</td>
-                <td className="tabular-nums">
-                  {r.expiresOn ? (
-                    <span style={{ color: expired ? "var(--color-error)" : undefined }}>
-                      {r.expiresOn}
-                      {expired ? " (expired)" : ""}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
+                <td className="wx-nums">{r.effectiveOn ?? "—"}</td>
+                <td>
+                  <ExpiresOn record={r} />
                 </td>
               </tr>
             );
@@ -208,66 +239,67 @@ function RegisterTable({
   );
 }
 
-function RecordDetail({
+function RecordDrawer({
   record,
   onClose,
 }: {
   record: BaaRecordView;
   onClose: () => void;
 }): JSX.Element {
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
   return (
-    <RightDetailPanel title={`Addendum ${record.addendumVersion}`} onClose={onClose}>
-      {row("Tenant account", <span className="wx-data-md">{record.tenantAccountId}</span>)}
-      {row("Organization", <span className="wx-data-md">{record.organizationId}</span>)}
-      {row(
-        "Status",
-        <StatusPill
-          label={statusLabel(record.baaStatus)}
-          tone={PLATFORM_BAA_TONE[record.baaStatus] ?? "neutral"}
-        />,
-      )}
-      {row("Executed", <span className="tabular-nums">{record.executedOn ?? "—"}</span>)}
-      {row("Effective", <span className="tabular-nums">{record.effectiveOn ?? "—"}</span>)}
-      {row(
-        "Expires",
-        record.expiresOn ? (
-          <span
-            className="tabular-nums"
-            style={{ color: isExpired(record) ? "var(--color-error)" : undefined }}
-          >
-            {record.expiresOn}
-            {isExpired(record) ? " (expired)" : ""}
-          </span>
-        ) : (
-          "—"
-        ),
-      )}
-      {row(
-        "Document",
-        record.documentId ? (
-          <span className="wx-data-md">{record.documentId}</span>
-        ) : (
-          "— (none linked)"
-        ),
-      )}
-      {row(
-        "Attested",
-        record.attestedAt ? (
-          <span className="tabular-nums">{new Date(record.attestedAt).toLocaleString()}</span>
-        ) : (
-          "— (not attested)"
-        ),
-      )}
-    </RightDetailPanel>
+    <aside className="wx-admission-drawer" aria-label="BAA record">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="file-check" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>Addendum {record.addendumVersion}</h2>
+          <span className="wx-row-sub wx-data-md">{record.tenantAccountId}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Agreement</h3>
+            <StatusPill
+              label={statusLabel(record.baaStatus)}
+              tone={PLATFORM_BAA_TONE[record.baaStatus] ?? "neutral"}
+            />
+          </div>
+          <dl className="wx-kv">
+            <dt>Tenant account</dt>
+            <dd className="wx-data-md break-words">{record.tenantAccountId}</dd>
+            <dt>Organization</dt>
+            <dd className="wx-data-md break-words">{record.organizationId}</dd>
+            <dt>Executed</dt>
+            <dd className="wx-nums">{record.executedOn ?? "—"}</dd>
+            <dt>Effective</dt>
+            <dd className="wx-nums">{record.effectiveOn ?? "—"}</dd>
+            <dt>Expires</dt>
+            <dd>
+              <ExpiresOn record={record} />
+            </dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>Evidence</h3>
+          <dl className="wx-kv">
+            <dt>Document</dt>
+            <dd className={record.documentId ? "wx-data-md break-words" : undefined}>
+              {record.documentId ?? "— (none linked)"}
+            </dd>
+            <dt>Attested</dt>
+            <dd className={record.attestedAt ? "wx-nums" : undefined}>
+              {record.attestedAt
+                ? new Date(record.attestedAt).toLocaleString()
+                : "— (not attested)"}
+            </dd>
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }

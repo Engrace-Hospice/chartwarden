@@ -1,4 +1,4 @@
-import { CenteredCardLayout, PageHeader, useApiClient } from "@wardenx/ui";
+import { Button, Panel, TextAreaField, TextField, useApiClient } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Pause subscription (`/admin/subscriptions/:id/pause`,
 // subscription.admin.write). A gated action: an optional until-date over POST /api/admin/subscriptions/:id/pause
 // (step-up + Idempotency-Key, enforced server-side). A stale step-up surfaces as a first-class error outcome.
@@ -6,14 +6,7 @@ import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import {
-  Field,
-  type Outcome,
-  OutcomeBanner,
-  actionButtonStyle,
-  failureOutcome,
-  inputStyle,
-} from "./ui";
+import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
 
 export function SubscriptionPause(): JSX.Element {
   const client = useApiClient();
@@ -45,59 +38,48 @@ export function SubscriptionPause(): JSX.Element {
   }, [client, id, until, navigate]);
 
   return (
-    <CenteredCardLayout>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "1rem",
-          padding: "1.5rem",
-          maxWidth: "30rem",
-        }}
-      >
-        <PageHeader title="Pause subscription" breadcrumb="Platform Ops / Subscriptions" />
-        <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)", margin: 0 }}>
-          Pausing halts billing until resumed (or the until-date). This is a step-up-gated platform
-          action.
-        </p>
-        <Field label="Paused until (optional)" htmlFor="paused-until">
-          <input
-            id="paused-until"
-            type="date"
-            value={until}
-            onChange={(e) => setUntil(e.target.value)}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="Reason (for your ops record)" htmlFor="pause-reason">
-          <textarea
-            id="pause-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical" }}
-            placeholder="Why is this subscription being paused?"
-          />
-        </Field>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
-            type="button"
-            onClick={() => navigate(`/admin/subscriptions/${id}`)}
-            style={actionButtonStyle(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={busy}
-            style={actionButtonStyle(true, busy)}
-          >
-            {busy ? "Pausing…" : "Pause subscription"}
-          </button>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Pause subscription</h1>
+            <p>
+              Pausing halts billing until resumed (or the until-date). This is a step-up-gated
+              platform action.
+            </p>
+          </div>
+        </header>
+        <div className="max-w-xl">
+          <Panel title="Pause" icon="clock">
+            <div className="grid gap-4">
+              <TextField
+                id="paused-until"
+                label="Paused until (optional)"
+                type="date"
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
+              />
+              <TextAreaField
+                id="pause-reason"
+                label="Reason (for your ops record)"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                placeholder="Why is this subscription being paused?"
+              />
+              {outcome ? <OutcomeBanner {...outcome} /> : null}
+              <div className="wx-action-row is-end">
+                <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
+                  Cancel
+                </Button>
+                <Button loading={busy} onClick={() => void submit()}>
+                  Pause subscription
+                </Button>
+              </div>
+            </div>
+          </Panel>
         </div>
       </div>
-    </CenteredCardLayout>
+    </div>
   );
 }

@@ -2,10 +2,7 @@ import {
   Button,
   EmptyState,
   InlineAlert,
-  KpiCard,
-  KpiStrip,
   Modal,
-  PageHeader,
   Panel,
   ReverifyLink,
   SelectField,
@@ -103,36 +100,58 @@ export function WageIndexLoad(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col pb-8">
-      <PageHeader title="Wage index load" breadcrumb="Platform Ops / Medicare billing">
-        Load the annual CMS hospice wage index into the platform table claim assembly prices from.
-        The whole file loads in one transaction — one bad row loads nothing.
-      </PageHeader>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Wage index load</h1>
+            <p>
+              Load the annual CMS hospice wage index into the platform table claim assembly prices
+              from. The whole file loads in one transaction — one bad row loads nothing.
+            </p>
+          </div>
+        </header>
 
-      <KpiStrip>
-        <KpiCard
-          icon="calendar-check"
-          label="Fiscal year"
-          value={fiscalYearLabel(fy)}
-          detail={`Oct ${fy} – Sep ${fy + 1}`}
-        />
-        <KpiCard
-          icon="clipboard-list"
-          label="Rows ready"
-          value={parsed.rows.length.toLocaleString("en-US")}
-          detail="Up to 7,000 per load"
-          tone={parsed.rows.length > 0 && parsed.problems.length === 0 ? "success" : "neutral"}
-        />
-        <KpiCard
-          icon="alert-circle"
-          label="Problems"
-          value={parsed.problems.length.toLocaleString("en-US")}
-          detail="Fix every one before loading"
-          tone={parsed.problems.length > 0 ? "danger" : "neutral"}
-        />
-      </KpiStrip>
+        <div className="wx-stat-grid grid-cols-1 md:grid-cols-3" aria-label="Load summary">
+          <div className="wx-stat-card">
+            <div>
+              <span className="wx-stat-label">Fiscal year</span>
+              <span className="wx-stat-value">{fiscalYearLabel(fy)}</span>
+              <span className="wx-row-sub">{`Oct ${fy} – Sep ${fy + 1}`}</span>
+            </div>
+          </div>
+          <div className="wx-stat-card">
+            <div>
+              <span className="wx-stat-label">Rows ready</span>
+              <span
+                className={
+                  parsed.rows.length > 0 && parsed.problems.length === 0
+                    ? "wx-stat-value wx-nums text-[var(--color-success)]"
+                    : "wx-stat-value wx-nums"
+                }
+              >
+                {parsed.rows.length.toLocaleString("en-US")}
+              </span>
+              <span className="wx-row-sub">Up to 7,000 per load</span>
+            </div>
+          </div>
+          <div className="wx-stat-card">
+            <div>
+              <span className="wx-stat-label">Problems</span>
+              <span
+                className={
+                  parsed.problems.length > 0
+                    ? "wx-stat-value wx-nums text-[var(--color-error)]"
+                    : "wx-stat-value wx-nums"
+                }
+              >
+                {parsed.problems.length.toLocaleString("en-US")}
+              </span>
+              <span className="wx-row-sub">Fix every one before loading</span>
+            </div>
+          </div>
+        </div>
 
-      <div className="flex flex-col gap-4 px-6">
         {draft ? (
           <InlineAlert tone="info">
             Restored the table, fiscal year and source reference from before you re-verified.
@@ -260,23 +279,27 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
         />
       ) : (
         <div className="wx-list-table-wrap">
-          <table className="wx-list-table">
-            <caption className="sr-only">Wage-index rows to load</caption>
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">Wage-index rows to load</caption>
             <thead>
               <tr>
-                <th scope="col">Line</th>
+                <th scope="col" className="wx-num-col">
+                  Line
+                </th>
                 <th scope="col">CCN</th>
                 <th scope="col">CBSA</th>
-                <th scope="col">Wage index</th>
+                <th scope="col" className="wx-num-col">
+                  Wage index
+                </th>
               </tr>
             </thead>
             <tbody>
               {shown.map((row, i) => (
                 <tr key={row.ccn + String(parsed.sourceLines[i])}>
-                  <td className="tabular-nums">{parsed.sourceLines[i]}</td>
+                  <td className="wx-nums wx-num-col">{parsed.sourceLines[i]}</td>
                   <td className="wx-data-md">{row.ccn}</td>
-                  <td className="tabular-nums">{row.cbsaCode ?? "—"}</td>
-                  <td className="tabular-nums">{row.factorDecimal}</td>
+                  <td className="wx-nums">{row.cbsaCode ?? "—"}</td>
+                  <td className="wx-nums wx-num-col">{row.factorDecimal}</td>
                 </tr>
               ))}
             </tbody>
@@ -344,14 +367,14 @@ function ConfirmLoadModal({
 
   return (
     <Modal open onClose={busy ? undefined : onClose} ariaLabel="Load wage index" width="32rem">
-      <div className="flex flex-col gap-3 p-6">
-        <h2 className="m-0 text-lg font-semibold">Load wage index</h2>
-        <p className="m-0">
+      <div className="wx-modal-body">
+        <h2>Load wage index</h2>
+        <p>
           Load {plural(count, "row")} into the platform wage index for{" "}
           <strong>{fiscalYearLabel(fiscalYearStarting)}</strong>. An existing value for the same CCN
           and fiscal year is replaced; every tenant's next claim assembly uses the new values.
         </p>
-        <p className="m-0 text-sm">Source: {sourceReference}</p>
+        <p>Source: {sourceReference}</p>
         {failure ? (
           <InlineAlert tone="error">
             <strong>{failure.title}</strong>
@@ -370,7 +393,7 @@ function ConfirmLoadModal({
             <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
           </div>
         ) : null}
-        <div className="flex justify-end gap-3">
+        <div className="wx-modal-actions">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>

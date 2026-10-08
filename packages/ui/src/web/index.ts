@@ -133,3 +133,5 @@ export type { SharedTailwindConfig } from "./theme/tailwind.config";
 // deviation is what pushed it under the WCAG AA floor. A shared helper nothing can import is a
 // shared helper that gets re-implemented slightly differently.
 export { cardSurface, ghostBorder, t, tint } from "./theme/tokens";
+export { applyTheme, initTheme, resolvedTheme, useTheme } from "./theme/theme-mode";
+export type { ThemeMode } from "./theme/theme-mode";

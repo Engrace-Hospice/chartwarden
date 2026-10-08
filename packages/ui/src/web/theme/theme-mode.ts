@@ -1,4 +1,4 @@
-// apps/web/src/shell — Lantern theme controller (light ⇄ twilight dark). DESIGN.md §11 uses a class
+// @wardenx/ui — the light ⇄ dark theme controller shared by apps/web and apps/admin. DESIGN.md §11 uses a class
 // strategy: `.dark` on <html> flips every --color-* CSS var. The chosen mode persists in localStorage
 // (a UI preference, NOT PHI — safe under the no-PHI-in-browser-storage rule); absent a stored choice we
 // honor the OS `prefers-color-scheme`. Applied imperatively so the very first paint is correct (no flash).

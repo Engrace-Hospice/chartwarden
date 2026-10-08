@@ -1,25 +1,25 @@
-import { PlatformOpsShell } from "@wardenx/admin-ui-shell";
-import type { PlatformNavItem } from "@wardenx/admin-ui-shell";
 import type { ScreenRegistry } from "@wardenx/types";
 import {
   ApiClientProvider,
   CorrelationIdProvider,
   ErrorBoundary,
+  Glyph,
   LoadingSpinner,
   ToastProvider,
-  t,
 } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 // apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The WardenX-staff control-plane
 // analogue of apps/web/src/shell + apps/portal's shell: it composes the cross-cutting providers around a
-// react-router router built from the admin screen registry, framed by the @wardenx/admin-ui-shell
-// PlatformOpsShell chrome (top bar + nav rail). The shell reads the registry but imports NO module slice
+// react-router router built from the admin screen registry, framed by the console layout (shell/layout.tsx —
+// the clinical app's sidebar + top bar). The shell reads the registry but imports NO module slice
 // directly — slices register at composition (main.tsx), the same discipline the M1 web shell keeps.
 import { Suspense, createElement, useMemo } from "react";
-import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, Outlet, RouterProvider, createBrowserRouter, useLocation } from "react-router-dom";
+import type { JSX, ReactNode } from "react";
+import { Link, RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
-import type { AdminScreen, AdminScreenDescriptor } from "./shell/registry";
+import { type AdminNavSection, buildAdminNav } from "./shell/admin-nav";
+import { AdminLayout } from "./shell/layout";
+import type { AdminScreen } from "./shell/registry";
 import { RequireChrome } from "./shell/require-chrome";
 import { ActorSessionProvider } from "./shell/session";
 import type { Session } from "./shell/session";
@@ -30,63 +30,39 @@ function newCorrelationId(): string {
   return "cid-admin";
 }
 
-/** SPA nav-link styling — primary-tint selected row, No-Line — mirroring the shell's default anchors. */
-function navLinkStyle(active: boolean): CSSProperties {
-  return {
-    display: "block",
-    padding: "0.5rem 0.625rem",
-    borderRadius: t.radiusMd,
-    textDecoration: "none",
-    fontFamily: t.fontSans,
-    fontSize: "0.9rem",
-    fontWeight: active ? 600 : 500,
-    background: active ? t.primaryTint : "transparent",
-    color: active ? t.primary : t.onSurface,
-  };
-}
-
-/** Derive the nav rail from the registered chromed, non-parameterised screens (one row per surface). */
-function buildNav(screens: AdminScreenDescriptor[]): PlatformNavItem[] {
-  return screens
-    .filter((s) => s.chrome !== false && !s.path.includes(":"))
-    .map((s) => ({ key: s.id, label: s.title, to: s.path }));
-}
-
-/** The pre-slice landing shown at "/" before a platform-module surface is selected. */
-function AdminHome(): JSX.Element {
+/** The console landing at "/": every surface, grouped as in the sidebar. */
+function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.Element {
+  const groups = sections.filter((s) => s.label !== null);
   return (
-    <div style={{ padding: "1.5rem 1.75rem", color: t.onSurface }}>
-      <h1 style={{ fontFamily: t.fontDisplay, fontSize: "1.4rem", fontWeight: 600, margin: 0 }}>
-        Platform Operations
-      </h1>
-      <p style={{ color: t.onSurfaceVariant, marginTop: "0.5rem", maxWidth: "40rem" }}>
-        Select a surface from the nav rail. Platform modules contribute their screens into this
-        shell.
-      </p>
-    </div>
-  );
-}
-
-/** The authenticated console frame: PlatformOpsShell chrome (top bar + rail) around the active screen. */
-function AdminFrame({ nav }: { nav: readonly PlatformNavItem[] }): JSX.Element {
-  const location = useLocation();
-  const activeKey = nav.find(
-    (n) => n.to === location.pathname || location.pathname.startsWith(`${n.to}/`),
-  )?.key;
-  return (
-    <PlatformOpsShell
-      nav={nav}
-      activeKey={activeKey}
-      renderNavLink={(item, active) => (
-        <Link to={item.to} style={navLinkStyle(active)} aria-current={active ? "page" : undefined}>
-          {item.label}
-        </Link>
-      )}
-    >
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <Outlet />
+    <div className="wx-admin-home">
+      <div className="wx-page-head">
+        <div>
+          <h1>Platform operations</h1>
+          <p>Tenants, compliance, subscription billing, AI safety and platform health.</p>
+        </div>
       </div>
-    </PlatformOpsShell>
+      <div className="wx-admin-home-grid">
+        {groups.map((section) => (
+          <section
+            key={section.label}
+            className="wx-admin-home-group"
+            aria-label={section.label ?? ""}
+          >
+            <h2>{section.label}</h2>
+            <ul>
+              {section.entries.map((entry) => (
+                <li key={entry.key}>
+                  <Link to={entry.to}>
+                    <Glyph name={entry.icon} size={18} strokeWidth={1.75} />
+                    <span>{entry.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -122,7 +98,7 @@ export function AdminApp({
     const screens = registry.screens();
     const chromeless = screens.filter((s) => s.chrome === false);
     const chromed = screens.filter((s) => s.chrome !== false);
-    const nav = buildNav(chromed);
+    const nav = buildAdminNav(chromed);
     const routes: RouteObject[] = [
       ...chromeless.map((s) => ({ path: s.path, element: withSuspense(createElement(s.screen)) })),
       {
@@ -130,11 +106,11 @@ export function AdminApp({
         // gated on an authenticated, platform_ops-holding session (RequireChrome).
         element: (
           <RequireChrome>
-            <AdminFrame nav={nav} />
+            <AdminLayout sections={nav} />
           </RequireChrome>
         ),
         children: [
-          { index: true, element: <AdminHome /> },
+          { index: true, element: <AdminHome sections={nav} /> },
           ...chromed.map((s) => ({
             path: s.path.replace(/^\//, ""),
             element: withSuspense(createElement(s.screen)),

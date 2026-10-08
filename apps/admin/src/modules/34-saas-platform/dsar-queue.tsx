@@ -1,14 +1,13 @@
 import {
+  Button,
   CountdownChip,
-  EmptyState,
-  FilterBar,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
   MaskedIdentifier,
-  PageHeader,
-  RightDetailPanel,
+  SelectField,
   StatusPill,
-  WorkQueueLayout,
+  TextField,
   useApiClient,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
@@ -18,8 +17,8 @@ import type { paths } from "@wardenx/ui";
 // glance. Backed by GET /api/v1/tenant/dsar-export-jobs (the tenant-scoped DSAR surface; there is no
 // platform-wide DSAR list route — §164.524 is tenant/org-scoped, D9). Filters by patient + status.
 // requiredPermission: `dsar_export.list_own`. Mirrors the M40/M36 R1 work-queue exemplars exactly:
-// useApiClient + client.GET, @wardenx/ui primitives, No-Line table, primary-tint selected rows, mono
-// identifiers (wx-data-md), tabular numerics, CSS-var tokens only (zero hardcoded hex).
+// useApiClient + client.GET, @wardenx/ui primitives, mono identifiers (wx-data-md), tabular numerics,
+// laid out as the redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { DSAR_TONE, cap } from "./saas-status";
@@ -53,6 +52,13 @@ const STATUSES = [
   "extended",
 ] as const;
 type Status = (typeof STATUSES)[number];
+const STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  ...STATUSES.map((s) => ({ value: s, label: cap(s) })),
+];
+// §164.524 SLA chip thresholds: amber inside a week, red inside two days.
+const SLA_WARN_HOURS = 7 * 24;
+const SLA_ALERT_HOURS = 2 * 24;
 
 // A job is still "open" (the SLA clock is live) until it reaches a terminal state.
 const isOpen = (s: DsarExportJob["status"]): boolean => s !== "fulfilled" && s !== "denied";
@@ -94,51 +100,61 @@ export function DsarQueue(): JSX.Element {
   }, [load]);
 
   return (
-    <WorkQueueLayout
-      header={<PageHeader title="DSAR Queue" breadcrumb="Exports · §164.524 Right of Access" />}
-      filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => void load()}>
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>DSAR exports</h1>
+            <p>§164.524 right-of-access export jobs, with the 30-day fulfilment clock.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" onClick={() => void load()}>
               Apply
-            </button>
-          }
-        >
-          <input
-            aria-label="Filter by patient id"
-            placeholder="Patient id"
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void load();
-            }}
-          />
-          <select
-            aria-label="Filter by status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as Status | "")}
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {cap(s)}
-              </option>
-            ))}
-          </select>
-        </FilterBar>
-      }
-      table={
+            </Button>
+          </div>
+        </header>
+
+        <div className="wx-list-toolbar">
+          <div className="grid w-full gap-3 md:grid-cols-2">
+            <TextField
+              label="Patient id"
+              placeholder="Patient id"
+              value={patientId}
+              onChange={(e) => setPatientId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void load();
+              }}
+            />
+            <SelectField
+              label="Status"
+              value={status}
+              options={STATUS_OPTIONS}
+              onChange={(e) => setStatus(e.target.value as Status | "")}
+            />
+          </div>
+        </div>
+
         <DsarTable
           items={items}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
           onSelect={setSelected}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        selected ? <DsarDetail job={selected} onClose={() => setSelected(null)} /> : undefined
-      }
+      </div>
+      {selected ? <DsarDrawer job={selected} onClose={() => setSelected(null)} /> : null}
+    </div>
+  );
+}
+
+function SlaChip({ job }: { job: DsarExportJob }): JSX.Element {
+  return (
+    <CountdownChip
+      dueAt={effectiveDue(job)}
+      label="SLA"
+      warnWithinHours={SLA_WARN_HOURS}
+      alertWithinHours={SLA_ALERT_HOURS}
     />
   );
 }
@@ -149,137 +165,162 @@ function DsarTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: DsarExportJob[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (j: DsarExportJob) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading the DSAR queue…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No requests" description="No DSAR export jobs match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="check-circle" size={24} />
+        <span>No DSAR export jobs match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">DSAR export jobs</caption>
         <thead>
           <tr>
-            <th>Patient</th>
-            <th>Source</th>
-            <th>Status</th>
-            <th>Requested</th>
-            <th>30-day SLA</th>
+            <th scope="col">Patient</th>
+            <th scope="col">Status</th>
+            <th scope="col">Requested</th>
+            <th scope="col">30-day SLA</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((j) => (
-            <tr
-              key={j.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={j.id === selectedId}
-              onClick={() => onSelect(j)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(j);
+          {items.map((j) => {
+            const isSelected = j.id === selectedId;
+            return (
+              <tr
+                key={j.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: j.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td>
-                <MaskedIdentifier value={j.patientId} label="Patient" />
-              </td>
-              <td>{cap(j.requestSource.replace(/_/g, " "))}</td>
-              <td>
-                <StatusPill label={cap(j.status)} tone={DSAR_TONE[j.status] ?? "neutral"} />
-              </td>
-              <td className="tabular-nums">{new Date(j.requestedAt).toLocaleDateString()}</td>
-              <td>
-                {isOpen(j.status) ? (
-                  <CountdownChip
-                    dueAt={effectiveDue(j)}
-                    label="SLA"
-                    warnWithinHours={7 * 24}
-                    alertWithinHours={2 * 24}
-                  />
-                ) : (
-                  <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+                tabIndex={0}
+                aria-selected={isSelected}
+                onClick={() => onSelect(j)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    onSelect(j);
+                  }
+                }}
+              >
+                <td>
+                  <span className="wx-row-title">
+                    <MaskedIdentifier value={j.patientId} label="Patient" />
+                  </span>
+                  <span className="wx-row-sub">{cap(j.requestSource.replace(/_/g, " "))}</span>
+                </td>
+                <td>
+                  <StatusPill label={cap(j.status)} tone={DSAR_TONE[j.status] ?? "neutral"} />
+                </td>
+                <td className="wx-nums">{new Date(j.requestedAt).toLocaleDateString()}</td>
+                <td>
+                  {isOpen(j.status) ? (
+                    <SlaChip job={j} />
+                  ) : (
+                    <span className="text-[var(--color-on-surface-variant)]">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function DsarDetail({ job, onClose }: { job: DsarExportJob; onClose: () => void }): JSX.Element {
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.6rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", color: "var(--color-on-surface)", wordBreak: "break-word" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
+function DsarDrawer({ job, onClose }: { job: DsarExportJob; onClose: () => void }): JSX.Element {
   return (
-    <RightDetailPanel
-      title={
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+    <aside className="wx-admission-drawer" aria-label="DSAR request">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
           <Glyph name="shield" size={16} />
-          DSAR Request
         </span>
-      }
-      onClose={onClose}
-    >
-      {row("Job id", <span className="wx-data-md">{job.id}</span>)}
-      {row("Patient", <MaskedIdentifier value={job.patientId} label="Patient" />)}
-      {row("Request source", cap(job.requestSource.replace(/_/g, " ")))}
-      {row(
-        "Status",
-        <StatusPill label={cap(job.status)} tone={DSAR_TONE[job.status] ?? "neutral"} />,
-      )}
-      {row(
-        "Requested at",
-        <span className="tabular-nums">{new Date(job.requestedAt).toLocaleString()}</span>,
-      )}
-      {row(
-        "§164.524 SLA due",
-        isOpen(job.status) ? (
-          <CountdownChip
-            dueAt={effectiveDue(job)}
-            label="SLA"
-            warnWithinHours={7 * 24}
-            alertWithinHours={2 * 24}
-          />
-        ) : (
-          <span style={{ color: "var(--color-on-surface-variant)" }}>
-            {new Date(effectiveDue(job)).toLocaleDateString()}
-          </span>
-        ),
-      )}
-      {job.extendedUntil
-        ? row(
-            "Extended until",
-            <span className="tabular-nums">{new Date(job.extendedUntil).toLocaleString()}</span>,
-          )
-        : null}
-      {job.fulfilledAt
-        ? row(
-            "Fulfilled at",
-            <span className="tabular-nums">{new Date(job.fulfilledAt).toLocaleString()}</span>,
-          )
-        : null}
-      {job.deniedReason ? row("Denied reason", cap(job.deniedReason.replace(/_/g, " "))) : null}
-    </RightDetailPanel>
+        <div className="wx-drawer-head-main">
+          <h2>DSAR request</h2>
+          <span className="wx-row-sub wx-data-md">{job.id}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Request</h3>
+            <StatusPill label={cap(job.status)} tone={DSAR_TONE[job.status] ?? "neutral"} />
+          </div>
+          <dl className="wx-kv">
+            <dt>Job id</dt>
+            <dd className="wx-data-md break-words">{job.id}</dd>
+            <dt>Patient</dt>
+            <dd>
+              <MaskedIdentifier value={job.patientId} label="Patient" />
+            </dd>
+            <dt>Request source</dt>
+            <dd>{cap(job.requestSource.replace(/_/g, " "))}</dd>
+            <dt>Requested at</dt>
+            <dd className="wx-nums">{new Date(job.requestedAt).toLocaleString()}</dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>§164.524 SLA</h3>
+          <dl className="wx-kv">
+            <dt>SLA due</dt>
+            <dd>
+              {isOpen(job.status) ? (
+                <SlaChip job={job} />
+              ) : (
+                <span className="wx-nums text-[var(--color-on-surface-variant)]">
+                  {new Date(effectiveDue(job)).toLocaleDateString()}
+                </span>
+              )}
+            </dd>
+            {job.extendedUntil ? (
+              <>
+                <dt>Extended until</dt>
+                <dd className="wx-nums">{new Date(job.extendedUntil).toLocaleString()}</dd>
+              </>
+            ) : null}
+            {job.fulfilledAt ? (
+              <>
+                <dt>Fulfilled at</dt>
+                <dd className="wx-nums">{new Date(job.fulfilledAt).toLocaleString()}</dd>
+              </>
+            ) : null}
+            {job.deniedReason ? (
+              <>
+                <dt>Denied reason</dt>
+                <dd>{cap(job.deniedReason.replace(/_/g, " "))}</dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }

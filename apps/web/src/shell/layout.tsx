@@ -1,5 +1,5 @@
 import { createWardenxAuthClient } from "@wardenx/auth/client";
-import { DegradedBanner, EmptyState, Glyph, setSearchTerm } from "@wardenx/ui";
+import { DegradedBanner, EmptyState, Glyph, setSearchTerm, useTheme } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui + @wardenx/auth/client (leaves) + react-router — never a
@@ -19,7 +19,6 @@ import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
-import { useTheme } from "./theme";
 
 const authClient = createWardenxAuthClient();
 

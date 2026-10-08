@@ -1,15 +1,19 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
-import { CenteredStatusLayout, Glyph, useCorrelationId } from "@wardenx/ui";
+import { Button, CenteredStatusLayout, Glyph, useCorrelationId } from "@wardenx/ui";
 // apps/admin/src/shell — System / Utility Pages (M1 cross-cutting, ADR-0030). Ported from
 // apps/web/src/shell/system-pages.tsx, trimmed to the three states this app's guard actually
 // produces (RequireChrome → /login, /403, /error — no idle-lock/maintenance-banner machinery here).
 // PHI-free, always a forward action. Registered chromeless — `*` is the global not-found catch-all,
-// so a bad URL never falls through to React Router's raw default error UI.
+// so a bad URL never falls through to React Router's raw default error UI. The forward action is the kit
+// Button (the console's new-style chrome), not a bare link.
 import type { JSX } from "react";
 import type { ComponentType } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-const GoHome = (): JSX.Element => <Link to="/">Go home</Link>;
+function GoHome(): JSX.Element {
+  const navigate = useNavigate();
+  return <Button onClick={() => navigate("/")}>Go home</Button>;
+}
 
 export function NotFound(): JSX.Element {
   return (

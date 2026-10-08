@@ -36,7 +36,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.tenant-overview",
       path: "/tenants/:orgSlug",
-      title: "Tenant Overview",
+      title: "Tenant overview",
       navGroup: "Platform",
       requiredPermission: "tenant.read_platform",
       screen: TenantOverview,
@@ -44,7 +44,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.support-sessions",
       path: "/support/sessions",
-      title: "Support Sessions",
+      title: "Support sessions",
       navGroup: "Platform",
       requiredPermission: "support_session.list_platform",
       screen: SupportSessions,
@@ -52,7 +52,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.dsar-queue",
       path: "/exports/dsar",
-      title: "DSAR Exports",
+      title: "DSAR exports",
       navGroup: "Platform",
       // §164.524 is tenant/org-scoped (D9) — there is no platform-wide DSAR list route, so the
       // queue gates on the tenant-scoped list-own key the backing route enforces.
@@ -62,7 +62,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.tenant-export-queue",
       path: "/exports/tenant",
-      title: "Tenant Exports",
+      title: "Tenant exports",
       navGroup: "Platform",
       requiredPermission: "tenant_export.list_own",
       screen: TenantExportQueue,
@@ -70,7 +70,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.onboarding-templates",
       path: "/onboarding/templates",
-      title: "Onboarding Templates",
+      title: "Onboarding templates",
       navGroup: "Platform",
       requiredPermission: "onboarding_template.list",
       screen: OnboardingTemplates,
@@ -78,7 +78,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.feature-flags",
       path: "/feature-flags",
-      title: "Feature Flags",
+      title: "Feature flags",
       navGroup: "Platform",
       requiredPermission: "feature_flag.read_platform",
       screen: FeatureFlags,
@@ -86,7 +86,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.baa-register",
       path: "/baa",
-      title: "BAA Register",
+      title: "BAA register",
       navGroup: "Platform",
       requiredPermission: "platform_tenant_baa.read_platform",
       screen: BaaRegister,
@@ -94,7 +94,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.signups",
       path: "/signups",
-      title: "Signup Intents",
+      title: "Signup intents",
       navGroup: "Platform",
       requiredPermission: "signup_intent.list_platform",
       screen: Signups,
@@ -102,7 +102,7 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "saas.key-rings",
       path: "/key-rings",
-      title: "Key Rings",
+      title: "Key rings",
       navGroup: "Platform",
       // The §3.5 key-ring metadata read reuses the tenant platform-read key (§4.1/§4.5).
       requiredPermission: "tenant.read_platform",

@@ -1,13 +1,12 @@
 import {
+  Button,
   CeremonyModal,
-  DetailPageLayout,
-  EmptyState,
-  FilterBar,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
   StatusPill,
   type StatusTone,
+  TextField,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Key Rings dashboard (M34 Phase-3, §4.1 platform-ops; §3.5 DEK
@@ -16,6 +15,7 @@ import {
 // Rotate-DEK CTA (POST .../{orgSlug}/dek-rotate, a §10 step-up ceremony) + the destroyed state.
 // The route keys by org slug; there is no cross-tenant list, so the operator resolves one tenant at
 // a time. Live-wired over the typed client; imports only @wardenx/ui leaves + the Foundation map.
+// Laid out in the redesign's page frame (wx-page-head, a lookup row, the metadata as flat cards).
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { KEY_RING_TONE, cap } from "./saas-status";
@@ -34,6 +34,11 @@ interface KeyRingMetadataView {
   destructionCertificateId: string | null;
 }
 
+interface Banner {
+  tone: "success" | "error";
+  text: string;
+}
+
 // The view carries no status enum; the §3.5 lifecycle state is derived from the metadata.
 function deriveStatus(m: KeyRingMetadataView): string {
   return m.destroyedAt ? "destroyed" : "active";
@@ -50,7 +55,7 @@ export function KeyRings(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null);
 
   const load = useCallback(async () => {
     const slug = orgSlug.trim();
@@ -74,7 +79,7 @@ export function KeyRings(): JSX.Element {
   // The Rotate-DEK ceremony attests the §4.1 manual rotation: it enqueues `tenant.dek_rotate` under a
   // fresh passkey step-up. A rotation reason is required by the route; the ceremony's attestation
   // carries it and the step-up credential rides the POST.
-  async function rotateDek(stepUpValue?: string): Promise<void> {
+  async function rotateDek(_stepUpValue?: string): Promise<void> {
     const slug = orgSlug.trim();
     setCeremonyOpen(false);
     if (!slug) return;
@@ -84,17 +89,75 @@ export function KeyRings(): JSX.Element {
       body: { reason: "Manual DEK rotation via platform console" },
     });
     if (err) {
-      setBanner("DEK rotation request failed — the step-up was rejected.");
+      setBanner({ tone: "error", text: "DEK rotation request failed — the step-up was rejected." });
       return;
     }
-    setBanner(stepUpValue ? "DEK rotation enqueued." : "DEK rotation enqueued.");
+    setBanner({ tone: "success", text: "DEK rotation enqueued." });
     void load();
   }
 
   const destroyed = ring ? Boolean(ring.destroyedAt) : false;
 
   return (
-    <>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Key rings</h1>
+            <p>Per-tenant data-encryption key metadata. Key material is never shown.</p>
+          </div>
+        </header>
+
+        <div className="wx-list-toolbar">
+          <div className="flex w-full flex-wrap items-end gap-3">
+            <div className="min-w-0 flex-[1_1_18rem]">
+              <TextField
+                label="Tenant org slug"
+                placeholder="Tenant org slug"
+                value={orgSlug}
+                onChange={(e) => setOrgSlug(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void load();
+                }}
+              />
+            </div>
+            <Button tone="primary" onClick={() => void load()} disabled={!orgSlug.trim()}>
+              Load
+            </Button>
+          </div>
+        </div>
+
+        {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
+
+        {loading ? (
+          <div className="wx-list-state">
+            <LoadingSpinner label="Loading key ring…" />
+          </div>
+        ) : error ? (
+          <div className="wx-list-state" role="alert">
+            <InlineAlert tone="error">{error}</InlineAlert>
+            <Button tone="secondary" onClick={() => void load()}>
+              Try again
+            </Button>
+          </div>
+        ) : !searched ? (
+          <div className="wx-list-state">
+            <Glyph name="search" size={24} />
+            <span>Enter a tenant org slug to view its DEK metadata.</span>
+          </div>
+        ) : !ring ? (
+          <div className="wx-list-state">
+            <Glyph name="lock" size={24} />
+            <span>No key-ring metadata for this tenant.</span>
+          </div>
+        ) : (
+          <KeyRingDashboard
+            ring={ring}
+            destroyed={destroyed}
+            onRotate={() => setCeremonyOpen(true)}
+          />
+        )}
+      </div>
       <CeremonyModal
         open={ceremonyOpen}
         title="Rotate tenant DEK"
@@ -113,54 +176,7 @@ export function KeyRings(): JSX.Element {
         onCommit={(v) => void rotateDek(v)}
         onCancel={() => setCeremonyOpen(false)}
       />
-      <DetailPageLayout
-        header={
-          <PageHeader title="Key Rings">
-            <FilterBar
-              actions={
-                <button type="button" onClick={() => void load()} disabled={!orgSlug.trim()}>
-                  Load
-                </button>
-              }
-            >
-              <input
-                aria-label="Tenant org slug"
-                placeholder="Tenant org slug"
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void load();
-                }}
-              />
-              {banner ? (
-                <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-                  {banner}
-                </span>
-              ) : null}
-            </FilterBar>
-          </PageHeader>
-        }
-      >
-        {loading ? (
-          <LoadingSpinner />
-        ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
-        ) : !searched ? (
-          <EmptyState
-            title="Resolve a tenant"
-            description="Enter a tenant org slug to view its DEK metadata."
-          />
-        ) : !ring ? (
-          <EmptyState title="Not found" description="No key-ring metadata for this tenant." />
-        ) : (
-          <KeyRingDashboard
-            ring={ring}
-            destroyed={destroyed}
-            onRotate={() => setCeremonyOpen(true)}
-          />
-        )}
-      </DetailPageLayout>
-    </>
+    </div>
   );
 }
 
@@ -170,89 +186,60 @@ function KeyRingDashboard({
   onRotate,
 }: { ring: KeyRingMetadataView; destroyed: boolean; onRotate: () => void }): JSX.Element {
   const status = deriveStatus(ring);
-  const field = (label: string, value: JSX.Element | string) => (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.2rem",
-        padding: "0.75rem 0",
-        borderBottom: "1px solid var(--color-outline-variant)",
-      }}
-    >
-      <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
-      <span
-        style={{ fontSize: "0.875rem", color: "var(--color-on-surface)", wordBreak: "break-word" }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-
   return (
-    <div style={{ maxWidth: "42rem" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          marginBottom: "0.5rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <Glyph name="lock" size={18} label="Key ring" />
+    <div className="grid max-w-2xl gap-3">
+      <section className="wx-drawer-card">
+        <div className="wx-drawer-card-head">
+          <h3>
+            <Glyph name="lock" size={16} label="Key ring" /> Data-encryption key
+          </h3>
           <StatusPill label={cap(status)} tone={ringTone(status)} />
         </div>
+        <dl className="wx-kv">
+          <dt>Key-ring id</dt>
+          <dd className="wx-data-md break-words">{ring.id}</dd>
+          <dt>Tenant account</dt>
+          <dd className="wx-data-md break-words">{ring.tenantAccountId}</dd>
+          <dt>Current DEK version</dt>
+          <dd className="wx-data-md break-words">{ring.currentDekVersion}</dd>
+          <dt>KEK id</dt>
+          <dd className="wx-data-md break-words">{ring.currentDekKekId}</dd>
+          <dt>Prior DEK versions</dt>
+          <dd className="wx-nums">{ring.priorDekVersionCount}</dd>
+          <dt>DEK created</dt>
+          <dd className="wx-nums">{new Date(ring.dekCreatedAt).toLocaleString()}</dd>
+          <dt>Last rotated</dt>
+          <dd className={ring.dekLastRotatedAt ? "wx-nums" : undefined}>
+            {ring.dekLastRotatedAt
+              ? new Date(ring.dekLastRotatedAt).toLocaleString()
+              : "— never rotated"}
+          </dd>
+        </dl>
         {destroyed ? (
-          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-            DEK destroyed — no actions available
-          </span>
+          <p className="wx-source-line">DEK destroyed — no actions available</p>
         ) : (
-          <button type="button" onClick={onRotate}>
-            Rotate DEK
-          </button>
+          <div className="wx-drawer-actions">
+            <Button tone="secondary" onClick={onRotate}>
+              Rotate DEK
+            </Button>
+          </div>
         )}
-      </div>
-
-      {field("Key-ring id", <span className="wx-data-md">{ring.id}</span>)}
-      {field("Tenant account", <span className="wx-data-md">{ring.tenantAccountId}</span>)}
-      {field("Current DEK version", <span className="wx-data-md">{ring.currentDekVersion}</span>)}
-      {field("KEK id", <span className="wx-data-md">{ring.currentDekKekId}</span>)}
-      {field(
-        "Prior DEK versions",
-        <span className="tabular-nums">{ring.priorDekVersionCount}</span>,
-      )}
-      {field(
-        "DEK created",
-        <span className="tabular-nums">{new Date(ring.dekCreatedAt).toLocaleString()}</span>,
-      )}
-      {field(
-        "Last rotated",
-        ring.dekLastRotatedAt ? (
-          <span className="tabular-nums">{new Date(ring.dekLastRotatedAt).toLocaleString()}</span>
-        ) : (
-          "— never rotated"
-        ),
-      )}
-      {destroyed
-        ? field(
-            "Destroyed at",
-            <span className="tabular-nums">
+      </section>
+      {destroyed ? (
+        <section className="wx-drawer-card">
+          <h3>Destruction</h3>
+          <dl className="wx-kv">
+            <dt>Destroyed at</dt>
+            <dd className="wx-nums">
               {ring.destroyedAt ? new Date(ring.destroyedAt).toLocaleString() : "—"}
-            </span>,
-          )
-        : null}
-      {destroyed
-        ? field(
-            "Destruction certificate",
-            ring.destructionCertificateId ? (
-              <span className="wx-data-md">{ring.destructionCertificateId}</span>
-            ) : (
-              "—"
-            ),
-          )
-        : null}
+            </dd>
+            <dt>Destruction certificate</dt>
+            <dd className={ring.destructionCertificateId ? "wx-data-md break-words" : undefined}>
+              {ring.destructionCertificateId ?? "—"}
+            </dd>
+          </dl>
+        </section>
+      ) : null}
     </div>
   );
 }

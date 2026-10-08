@@ -1,4 +1,4 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
@@ -19,13 +19,10 @@ import {
   LoadMore,
   type Outcome,
   OutcomeBanner,
-  actionButtonStyle,
-  bodyRow,
-  cell,
+  StateEmpty,
+  StateError,
+  StateLoading,
   failureOutcome,
-  inputStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type DunningPage =
@@ -96,96 +93,117 @@ export function Dunning(): JSX.Element {
   );
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader
-        title="Dunning"
-        breadcrumb="Platform Ops"
-        actions={
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-            style={inputStyle}
-            aria-label="Filter by stage"
-          >
-            <option value="">All stages</option>
-            {DUNNING_STAGES.map((s) => (
-              <option key={s} value={s}>
-                {cap(s)}
-              </option>
-            ))}
-          </select>
-        }
-      />
-      {outcome ? <OutcomeBanner {...outcome} /> : null}
-      {loading && rows.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No subscriptions in dunning"
-          description="Every subscription is current."
-        />
-      ) : (
-        <>
-          <table style={tableStyle}>
-            <thead>
-              <tr style={theadRow}>
-                <th style={cell}>Organization</th>
-                <th style={cell}>Plan</th>
-                <th style={cell}>Stage</th>
-                <th style={cell}>Entered</th>
-                <th style={cell}>Next attempt</th>
-                <th style={cell} />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.subscriptionId}
-                  style={bodyRow}
-                  {...(isCriticalDunningStage(r.stage) ? { role: "alert" } : {})}
-                >
-                  <td style={cell}>{orgLabel(r.organizationName, r.organizationId)}</td>
-                  <td style={cell}>{r.planName}</td>
-                  <td style={cell}>
-                    <StatusPill label={cap(r.stage)} tone={dunningTone(r.stage)} />
-                  </td>
-                  <td style={cell} className="tabular-nums">
-                    {formatDate(r.enteredAt)}
-                  </td>
-                  <td style={cell} className="tabular-nums">
-                    {formatDate(r.nextAttemptAt)}
-                  </td>
-                  <td style={cell}>
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => void override(r.subscriptionId, "skip_stage")}
-                        disabled={busyId === r.subscriptionId}
-                        style={actionButtonStyle(false, busyId === r.subscriptionId)}
-                      >
-                        Skip stage
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void override(r.subscriptionId, "reset")}
-                        disabled={busyId === r.subscriptionId}
-                        style={actionButtonStyle(false, busyId === r.subscriptionId)}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Dunning</h1>
+            <p>
+              Subscriptions in an open dunning stage. Overrides apply one subscription at a time.
+            </p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              aria-label="Filter by stage"
+            >
+              <option value="">All stages</option>
+              {DUNNING_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {cap(s)}
+                </option>
               ))}
-            </tbody>
-          </table>
-          <LoadMore hasMore={hasMore} loading={loading} onMore={() => void load(cursor, true)} />
-        </>
-      )}
+            </select>
+          </div>
+        </header>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {loading && rows.length === 0 ? (
+          <StateLoading label="Loading dunning queue…" />
+        ) : error ? (
+          <StateError message={error} onRetry={() => void load(null, false)} />
+        ) : rows.length === 0 ? (
+          <StateEmpty>No subscriptions in dunning. Every subscription is current.</StateEmpty>
+        ) : (
+          <>
+            <DunningTable
+              rows={rows}
+              busyId={busyId}
+              onOverride={(id, action) => void override(id, action)}
+            />
+            <LoadMore hasMore={hasMore} loading={loading} onMore={() => void load(cursor, true)} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DunningTable({
+  rows,
+  busyId,
+  onOverride,
+}: {
+  rows: readonly DunningRow[];
+  busyId: string | null;
+  onOverride: (subscriptionId: string, action: "skip_stage" | "reset") => void;
+}): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Subscriptions in dunning</caption>
+        <thead>
+          <tr>
+            <th scope="col">Organization</th>
+            <th scope="col">Stage</th>
+            <th scope="col">Entered</th>
+            <th scope="col">Next attempt</th>
+            <th scope="col">
+              <span className="wx-sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.subscriptionId}
+              {...(isCriticalDunningStage(r.stage) ? { role: "alert" } : {})}
+            >
+              <td>
+                <span className="wx-row-title">
+                  {orgLabel(r.organizationName, r.organizationId)}
+                </span>
+                <span className="wx-row-sub">{r.planName}</span>
+              </td>
+              <td>
+                <StatusPill label={cap(r.stage)} tone={dunningTone(r.stage)} />
+              </td>
+              <td className="wx-nums">{formatDate(r.enteredAt)}</td>
+              <td className="wx-nums">{formatDate(r.nextAttemptAt)}</td>
+              <td>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => onOverride(r.subscriptionId, "skip_stage")}
+                    disabled={busyId === r.subscriptionId}
+                  >
+                    Skip stage
+                  </Button>
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => onOverride(r.subscriptionId, "reset")}
+                    disabled={busyId === r.subscriptionId}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

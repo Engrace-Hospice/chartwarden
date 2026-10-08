@@ -1,26 +1,25 @@
 import {
+  Button,
   CeremonyModal,
   CountdownChip,
-  EmptyState,
-  FilterBar,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
   StatusPill,
   type StatusTone,
-  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/34-saas — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
+// apps/admin/src/modules/34-saas-platform — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
 // Spec: docs/modules/... §5.1 screen inventory. The tenant-consented break-glass control surface:
 //   • /support/sessions — the active+recent session queue (GET /api/v1/platform/support-sessions),
-//   • session detail — the surveyor event ledger (GET .../{id}/events),
+//   • session detail — the surveyor event ledger (GET .../{id}/events) in the right drawer, kept in
+//     `?session=<id>`,
 //   • Start-session CTA + the §10 step-up ceremony for start / elevate-PHI-read.
 // Live-wired over the generated typed client (useApiClient); imports only @wardenx/ui leaves + the
 // Foundation tone map. Every cross-tenant read is an audited platform-ops read on the server.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SUPPORT_SESSION_TONE, cap } from "./saas-status";
 
 // §3.6 wire vocab mirror — the route returns `open | expired | closed`. An OPEN session is the active
@@ -69,15 +68,21 @@ const STATUS_FILTERS: readonly (SupportSessionStatus | "all")[] = [
   "closed",
 ];
 
+interface Banner {
+  tone: "success" | "error";
+  text: string;
+}
+
 export function SupportSessions(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("session");
   const [sessions, setSessions] = useState<SupportSessionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SupportSessionStatus | "all">("all");
-  const [selected, setSelected] = useState<SupportSessionView | null>(null);
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,18 +112,25 @@ export function SupportSessions(): JSX.Element {
       body: { supportConsentGrantId: "" },
     });
     if (err) {
-      setBanner("Start session failed — the step-up or consent grant was rejected.");
+      setBanner({
+        tone: "error",
+        text: "Start session failed — the step-up or consent grant was rejected.",
+      });
       return;
     }
-    setBanner(stepUpValue ? "Support session started." : "Support session started.");
+    setBanner({
+      tone: "success",
+      text: stepUpValue ? "Support session started." : "Support session started.",
+    });
     void load();
   }
 
   const visible =
     statusFilter === "all" ? sessions : sessions.filter((s) => s.status === statusFilter);
+  const selected = selectedId ? sessions.find((s) => s.id === selectedId) : undefined;
 
   return (
-    <>
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
       <CeremonyModal
         open={ceremonyOpen}
         title="Start support session"
@@ -136,89 +148,41 @@ export function SupportSessions(): JSX.Element {
         onCommit={(v) => void startSession(v)}
         onCancel={() => setCeremonyOpen(false)}
       />
-      <SupportSessionsLayout
-        banner={banner}
-        loading={loading}
-        error={error}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        onStart={() => setCeremonyOpen(true)}
-        visible={visible}
-        selected={selected}
-        setSelected={setSelected}
-      />
-    </>
-  );
-}
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Support sessions</h1>
+            <p>Tenant-consented break-glass sessions, with every action on the surveyor ledger.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <select
+              aria-label="Session status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
+            >
+              {STATUS_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  {s === "all" ? "All statuses" : cap(s)}
+                </option>
+              ))}
+            </select>
+            <Button onClick={() => setCeremonyOpen(true)}>Start session</Button>
+          </div>
+        </header>
 
-function SupportSessionsLayout({
-  banner,
-  loading,
-  error,
-  statusFilter,
-  setStatusFilter,
-  onStart,
-  visible,
-  selected,
-  setSelected,
-}: {
-  banner: string | null;
-  loading: boolean;
-  error: string | null;
-  statusFilter: SupportSessionStatus | "all";
-  setStatusFilter: (s: SupportSessionStatus | "all") => void;
-  onStart: () => void;
-  visible: SupportSessionView[];
-  selected: SupportSessionView | null;
-  setSelected: (s: SupportSessionView | null) => void;
-}): JSX.Element {
-  return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Support Sessions"
-          actions={
-            <button type="button" onClick={onStart}>
-              Start session
-            </button>
-          }
-        />
-      }
-      filters={
-        <FilterBar>
-          <select
-            aria-label="Session status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {s === "all" ? "All statuses" : cap(s)}
-              </option>
-            ))}
-          </select>
-          {banner ? (
-            <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-              {banner}
-            </span>
-          ) : null}
-        </FilterBar>
-      }
-      table={
+        {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
+
         <SessionTable
           items={visible}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(s) => setParams({ session: s.id })}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        selected ? (
-          <SessionDetail session={selected} onClose={() => setSelected(null)} />
-        ) : undefined
-      }
-    />
+      </div>
+      {selected ? <SessionDrawer session={selected} onClose={() => setParams({})} /> : null}
+    </div>
   );
 }
 
@@ -228,80 +192,95 @@ function SessionTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: SupportSessionView[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (s: SupportSessionView) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading support sessions…" />
+      </div>
+    );
   if (items.length === 0)
     return (
-      <EmptyState
-        title="No support sessions"
-        description="No active or recent tenant-consented sessions."
-      />
+      <div className="wx-list-state">
+        <Glyph name="shield" size={24} />
+        <span>No active or recent tenant-consented sessions.</span>
+      </div>
     );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Support sessions</caption>
         <thead>
           <tr>
-            <th>Session</th>
-            <th>Tenant</th>
-            <th>Started</th>
-            <th>Expires</th>
-            <th>Status</th>
+            <th scope="col">Session</th>
+            <th scope="col">Tenant</th>
+            <th scope="col">Started</th>
+            <th scope="col">Expires</th>
+            <th scope="col">Status</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((s) => (
-            <tr
-              key={s.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={s.id === selectedId}
-              onClick={() => onSelect(s)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(s);
+          {items.map((s) => {
+            const isSelected = s.id === selectedId;
+            const open = (): void => onSelect(s);
+            return (
+              <tr
+                key={s.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: s.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td className="wx-data-md">{s.id}</td>
-              <td className="wx-data-md">
-                {s.tenantAccountId ?? (
-                  <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
-                )}
-              </td>
-              <td className="tabular-nums">{new Date(s.startedAt).toLocaleString()}</td>
-              <td>
-                {s.status === "open" ? (
-                  <CountdownChip dueAt={s.expiresAt} label="expires" />
-                ) : (
-                  <span className="tabular-nums">{new Date(s.expiresAt).toLocaleString()}</span>
-                )}
-              </td>
-              <td>
-                <StatusPill label={cap(s.status)} tone={sessionTone(s.status)} />
-              </td>
-            </tr>
-          ))}
+                tabIndex={0}
+                aria-selected={isSelected}
+                onClick={open}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    open();
+                  }
+                }}
+              >
+                <td className="wx-data-md">{s.id}</td>
+                <td className="wx-data-md">
+                  {s.tenantAccountId ?? <span className="wx-row-sub">—</span>}
+                </td>
+                <td className="wx-nums">{new Date(s.startedAt).toLocaleString()}</td>
+                <td>
+                  {s.status === "open" ? (
+                    <CountdownChip dueAt={s.expiresAt} label="expires" />
+                  ) : (
+                    <span className="wx-nums">{new Date(s.expiresAt).toLocaleString()}</span>
+                  )}
+                </td>
+                <td>
+                  <StatusPill label={cap(s.status)} tone={sessionTone(s.status)} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function SessionDetail({
+function SessionDrawer({
   session,
   onClose,
 }: { session: SupportSessionView; onClose: () => void }): JSX.Element {
@@ -331,99 +310,79 @@ function SessionDetail({
     };
   }, [client, session.id]);
 
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-
   return (
-    <RightDetailPanel title="Support session" onClose={onClose}>
-      {row("Session id", <span className="wx-data-md">{session.id}</span>)}
-      {row("Status", <StatusPill label={cap(session.status)} tone={sessionTone(session.status)} />)}
-      {row("Consent grant", <span className="wx-data-md">{session.supportConsentGrantId}</span>)}
-      {row("Actor membership", <span className="wx-data-md">{session.actorMembershipId}</span>)}
-      {row(
-        "Tenant",
-        session.tenantAccountId ? (
-          <span className="wx-data-md">{session.tenantAccountId}</span>
-        ) : (
-          "—"
-        ),
-      )}
-      {row(
-        "Window",
-        <span className="tabular-nums">
-          {new Date(session.startedAt).toLocaleString()} →{" "}
-          {new Date(session.expiresAt).toLocaleString()}
-        </span>,
-      )}
-      <div
-        style={{
-          marginTop: "1rem",
-          borderTop: "1px solid var(--color-outline-variant)",
-          paddingTop: "0.75rem",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            fontSize: "0.75rem",
-            fontWeight: 600,
-            color: "var(--color-on-surface-variant)",
-            marginBottom: "0.5rem",
-          }}
-        >
-          <Glyph name="shield" size={14} label="Surveyor ledger" /> Surveyor event ledger
+    <aside className="wx-admission-drawer" aria-label="Support session">
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="shield" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>Support session</h2>
+          <span className="wx-row-sub wx-data-md">{session.id}</span>
         </div>
-        {error ? (
-          <EmptyState title="Unavailable" description={error} />
-        ) : events === null ? (
-          <LoadingSpinner />
-        ) : events.length === 0 ? (
-          <EmptyState title="No events" description="No ledger entries recorded yet." />
-        ) : (
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem",
-            }}
-          >
-            {events.map((ev) => (
-              <li key={ev.id} style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>
-                <div style={{ fontWeight: 600 }}>{cap(ev.eventKind)}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
-                  <span className="tabular-nums">{new Date(ev.occurredAt).toLocaleString()}</span>
-                  {ev.resourceKind ? (
-                    <>
-                      {" · "}
-                      {ev.resourceKind}
-                      {ev.resourceId ? (
-                        <>
-                          {" "}
-                          <span className="wx-data-md">{ev.resourceId}</span>
-                        </>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {ev.actorIp ? <> · {ev.actorIp}</> : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Session</h3>
+            <StatusPill label={cap(session.status)} tone={sessionTone(session.status)} />
+          </div>
+          <dl className="wx-kv">
+            <dt>Session id</dt>
+            <dd className="wx-data-md break-words">{session.id}</dd>
+            <dt>Consent grant</dt>
+            <dd className="wx-data-md break-words">{session.supportConsentGrantId}</dd>
+            <dt>Actor membership</dt>
+            <dd className="wx-data-md break-words">{session.actorMembershipId}</dd>
+            <dt>Tenant</dt>
+            <dd className="wx-data-md break-words">{session.tenantAccountId ?? "—"}</dd>
+            <dt>Window</dt>
+            <dd className="wx-nums">
+              {new Date(session.startedAt).toLocaleString()} →{" "}
+              {new Date(session.expiresAt).toLocaleString()}
+            </dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>
+            <Glyph name="shield" size={14} label="Surveyor ledger" /> Surveyor event ledger
+          </h3>
+          {error ? (
+            <InlineAlert tone="error">{error}</InlineAlert>
+          ) : events === null ? (
+            <LoadingSpinner label="Loading ledger…" />
+          ) : events.length === 0 ? (
+            <span className="wx-row-sub">No ledger entries recorded yet.</span>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {events.map((ev) => (
+                <li key={ev.id}>
+                  <span className="wx-row-title">{cap(ev.eventKind)}</span>
+                  <span className="wx-row-sub">
+                    <span className="wx-nums">{new Date(ev.occurredAt).toLocaleString()}</span>
+                    {ev.resourceKind ? (
+                      <>
+                        {" · "}
+                        {ev.resourceKind}
+                        {ev.resourceId ? (
+                          <>
+                            {" "}
+                            <span className="wx-data-md">{ev.resourceId}</span>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {ev.actorIp ? <> · {ev.actorIp}</> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-    </RightDetailPanel>
+    </aside>
   );
 }

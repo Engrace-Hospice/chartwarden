@@ -1,73 +1,16 @@
 // apps/admin/src/modules/35-subscription-billing — shared presentational bits for the §5.2 console screens.
-// Small, token-only helpers (no raw hex — the design-tokens gate forbids it in render code) the 14 screens
-// reuse so table/field/button chrome is written once. Anything richer composes the @wardenx/ui layout kit.
-import { ReverifyLink, StatusPill, isStepUpRequired } from "@wardenx/ui";
-import type { CSSProperties, JSX, ReactNode } from "react";
-
-export const cell: CSSProperties = { padding: "0.6rem 0.75rem" };
-export const cellRight: CSSProperties = { ...cell, textAlign: "right" };
-
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-};
-export const theadRow: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-};
-export const bodyRow: CSSProperties = { borderTop: "1px solid var(--color-outline-variant)" };
-
-export const inputStyle: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  borderRadius: "var(--radius-md, 0.5rem)",
-  border: "1px solid var(--color-outline)",
-  background: "var(--color-surface-lowest)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.9rem",
-};
-
-export function actionButtonStyle(primary: boolean, disabled = false): CSSProperties {
-  return {
-    padding: "0.55rem 1.1rem",
-    borderRadius: "var(--radius-md, 0.5rem)",
-    border: primary ? "none" : "1px solid var(--color-outline)",
-    background: primary ? "var(--color-primary)" : "transparent",
-    color: primary ? "var(--color-on-primary)" : "var(--color-primary)",
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    textDecoration: "none",
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-  };
-}
-
-/** A label→value stack for the detail asides. */
-export function Kv({ label, children }: { label: string; children: ReactNode }): JSX.Element {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
-      <span style={{ fontSize: "0.9rem", color: "var(--color-on-surface)" }}>{children}</span>
-    </div>
-  );
-}
-
-/** A form field: label + control. */
-export function Field({
-  label,
-  htmlFor,
-  children,
-}: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
-  return (
-    <label
-      htmlFor={htmlFor}
-      style={{ display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.85rem" }}
-    >
-      <span style={{ fontWeight: 500 }}>{label}</span>
-      {children}
-    </label>
-  );
-}
+// The redesign's list + right drawer chrome lives in the shared `wx-*` classes (packages/ui list-chrome.css);
+// these helpers only compose it with the @wardenx/ui kit so the 14 screens write it once. No inline styles.
+import {
+  Button,
+  Glyph,
+  type GlyphName,
+  InlineAlert,
+  LoadingSpinner,
+  ReverifyLink,
+  isStepUpRequired,
+} from "@wardenx/ui";
+import type { JSX, KeyboardEvent, ReactNode } from "react";
 
 /** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */
 export interface Outcome {
@@ -96,13 +39,10 @@ export function failureOutcome(error: unknown, fallback: string): Outcome {
  */
 export function OutcomeBanner({ ok, message, stepUp = false }: Outcome): JSX.Element {
   return (
-    <output
-      aria-live="polite"
-      style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}
-    >
-      <StatusPill label={message} tone={ok ? "success" : "error"} />
+    <div className="flex flex-wrap items-center gap-3">
+      <InlineAlert tone={ok ? "success" : "error"}>{message}</InlineAlert>
       {stepUp ? <ReverifyLink /> : null}
-    </output>
+    </div>
   );
 }
 
@@ -114,15 +54,104 @@ export function LoadMore({
 }: { hasMore: boolean; loading: boolean; onMore: () => void }): JSX.Element | null {
   if (!hasMore) return null;
   return (
-    <div style={{ padding: "0.75rem", textAlign: "center" }}>
-      <button
-        type="button"
-        onClick={onMore}
-        disabled={loading}
-        style={actionButtonStyle(false, loading)}
-      >
-        {loading ? "Loading…" : "Load more"}
-      </button>
+    <div className="flex justify-center">
+      <Button tone="secondary" loading={loading} onClick={onMore}>
+        Load more
+      </Button>
     </div>
+  );
+}
+
+/** The loading state of a list or page body. */
+export function StateLoading({ label }: { label: string }): JSX.Element {
+  return (
+    <div className="wx-list-state">
+      <LoadingSpinner label={label} />
+    </div>
+  );
+}
+
+/** The error state of a list or page body, with a retry. */
+export function StateError({
+  message,
+  onRetry,
+}: { message: string; onRetry?: () => void }): JSX.Element {
+  return (
+    <div className="wx-list-state" role="alert">
+      <InlineAlert tone="error">{message}</InlineAlert>
+      {onRetry ? (
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The empty state of a list or page body. */
+export function StateEmpty({
+  icon = "check-circle",
+  children,
+}: { icon?: GlyphName; children: ReactNode }): JSX.Element {
+  return (
+    <div className="wx-list-state">
+      <Glyph name={icon} size={24} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/** Props for a selectable list row that opens the right drawer (click, Enter or Space). */
+export function selectableRowProps(
+  isSelected: boolean,
+  open: () => void,
+): {
+  className: string;
+  tabIndex: number;
+  "aria-selected": boolean;
+  onClick: () => void;
+  onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => void;
+} {
+  return {
+    className: isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive",
+    tabIndex: 0,
+    "aria-selected": isSelected,
+    onClick: open,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
+      }
+    },
+  };
+}
+
+/** The right drawer's header: icon, title + sub line, and a Close button. */
+export function DrawerHead({
+  icon,
+  title,
+  sub,
+  onClose,
+}: {
+  icon: GlyphName;
+  title: ReactNode;
+  sub?: ReactNode;
+  onClose?: () => void;
+}): JSX.Element {
+  return (
+    <header className="wx-drawer-head">
+      <span className="wx-rail-icon" aria-hidden>
+        <Glyph name={icon} size={16} />
+      </span>
+      <div className="wx-drawer-head-main">
+        <h2>{title}</h2>
+        {sub ? <span className="wx-row-sub">{sub}</span> : null}
+      </div>
+      {onClose ? (
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      ) : null}
+    </header>
   );
 }

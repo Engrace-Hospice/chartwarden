@@ -1,4 +1,4 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.7 evaluation runs (`/admin/ai-platform/evaluations`,
 // `ai.capability.read`). D10's evidence ledger: which run backs which lifecycle gate.
@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { evalTone } from "./status";
-import { bodyRow, cap, cell, formatDate, inputStyle, pageStyle, tableStyle, theadRow } from "./ui";
+import { EmptyListState, ErrorState, LoadingState, PageHead, cap, formatDate } from "./ui";
 
 type EvaluationPage =
   operations["getApiV1AiEvaluations"]["responses"][200]["content"]["application/json"];
@@ -91,15 +91,15 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
   }, [load]);
 
   return (
-    <div style={pageStyle}>
-      <PageHeader
-        title="Evaluation runs"
-        breadcrumb="AI Platform"
-        actions={
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Evaluation runs"
+          description="The evidence ledger: which evaluation run backs which lifecycle gate."
+        >
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            style={inputStyle}
             aria-label="Filter by status"
           >
             <option value="">All statuses</option>
@@ -109,63 +109,62 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
               </option>
             ))}
           </select>
-        }
-      />
-      {loading && runs.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : runs.length === 0 ? (
-        <EmptyState
-          title="No evaluation runs"
-          description="No run has been recorded for these filters."
-        />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>Capability</th>
-              <th style={cell}>Stage</th>
-              <th style={cell}>Status</th>
-              <th style={cell}>Started</th>
-              <th style={cell}>Duration</th>
-              <th style={cell}>Golden set</th>
-              <th style={cell}>Metrics</th>
-              <th style={cell}>MLflow</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((r) => (
-              <tr key={r.id} style={bodyRow}>
-                <td style={cell}>
-                  <Link to={`/admin/ai-platform/capabilities/${r.capabilityId}`}>
-                    <code>{capabilityKeys.get(r.capabilityId) ?? r.capabilityId}</code>
-                  </Link>
-                </td>
-                <td style={cell}>{cap(r.stage)}</td>
-                <td style={cell}>
-                  <StatusPill label={cap(r.status)} tone={evalTone(r.status)} />
-                </td>
-                <td style={cell} className="tabular-nums">
-                  {formatDate(r.startedAt)}
-                </td>
-                <td style={cell} className="tabular-nums">
-                  {duration(r.startedAt ?? null, r.completedAt ?? null)}
-                </td>
-                <td style={cell}>
-                  <code>{r.datasetVersionRef}</code>
-                </td>
-                <td style={{ ...cell, fontSize: "0.78rem" }}>
-                  {summarizeMetrics(r.summaryMetrics)}
-                </td>
-                <td style={cell}>
-                  <code>{r.mlflowRunId}</code>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+        </PageHead>
+        {loading && runs.length === 0 ? (
+          <LoadingState label="Loading evaluation runs…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : runs.length === 0 ? (
+          <EmptyListState
+            glyph="clipboard-check"
+            title="No evaluation runs"
+            description="No run has been recorded for these filters."
+          />
+        ) : (
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table wx-list-table-static">
+              <caption className="wx-sr-only">Evaluation runs</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Capability</th>
+                  <th scope="col">Stage</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Started</th>
+                  <th scope="col">Duration</th>
+                  <th scope="col">Golden set</th>
+                  <th scope="col">Metrics</th>
+                  <th scope="col">MLflow</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <Link
+                        className="wx-data-md"
+                        to={`/admin/ai-platform/capabilities/${r.capabilityId}`}
+                      >
+                        {capabilityKeys.get(r.capabilityId) ?? r.capabilityId}
+                      </Link>
+                    </td>
+                    <td>{cap(r.stage)}</td>
+                    <td>
+                      <StatusPill label={cap(r.status)} tone={evalTone(r.status)} />
+                    </td>
+                    <td className="wx-nums">{formatDate(r.startedAt)}</td>
+                    <td className="wx-nums">
+                      {duration(r.startedAt ?? null, r.completedAt ?? null)}
+                    </td>
+                    <td className="wx-data-md">{r.datasetVersionRef}</td>
+                    <td className="text-xs">{summarizeMetrics(r.summaryMetrics)}</td>
+                    <td className="wx-data-md">{r.mlflowRunId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
