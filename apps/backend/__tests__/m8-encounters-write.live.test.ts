@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import {
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
@@ -34,6 +35,7 @@ import {
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
 import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
+import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
@@ -1455,5 +1457,162 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     });
     const { encounters } = await svc.listEncounters(ORG_B);
     expect(encounters.every((e) => e.id !== id)).toBe(true);
+  });
+
+  // ── GAP-069 / GAP-070 — the M8 seam store runs on the REAL tables, as `wardenx_app` under RLS ─────────
+  describe("seam store over the real tables (GAP-069 / GAP-070)", () => {
+    const REQ = { organizationId: ORG_A, userId: USER } as never;
+    const seamStore = () =>
+      createDrizzleEncounterReaderStore(handle.db, {
+        outbox: {
+          publish: (tx, e) =>
+            buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS])).publish(
+              tx as never,
+              { ...e, callerModule: "m8" },
+            ),
+        },
+        narrativeCipher: CIPHERS.narrative,
+      });
+
+    it("EncounterCreator writes a real draft row (no phantom id) and emits m8.encounter.created", async () => {
+      const { encounterId } = await runWithRequestContext(REQ, () =>
+        seamStore().insertDraftEncounter({
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          encounterType: "telephonic" as never,
+          discipline: "rn" as never,
+          serviceDate: SERVICE_DATE as never,
+          authorMembershipId: membershipOf[ORG_A],
+          visitId: null,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT status, organization_id, provider_entity_id, location_id FROM encounter WHERE id=$1",
+        [encounterId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe("draft");
+      expect(rows[0].organization_id).toBe(ORG_A);
+      expect(rows[0].provider_entity_id).toBe(SITING_A.providerEntityId);
+      expect(await eventsFor(encounterId)).toContain("m8.encounter.created");
+    });
+
+    it("MileagePayrollReader returns the signed encounter's authoritative miles; a draft's are not payable", async () => {
+      const signedId = await draft("routine_visit", "rn");
+      await svc.captureMileage(ORG_A, signedId, {
+        odometerStart: 2000,
+        odometerEnd: 2018,
+        source: "odometer",
+      });
+      await svc.finalize(ORG_A, signedId, SERVICE_DATE as never);
+      await svc.sign(ORG_A, signedId, ACTOR_A, { at: SERVICE_DATE as never });
+      const draftId = await draft("routine_visit", "rn");
+      await svc.captureMileage(ORG_A, draftId, {
+        odometerStart: 3000,
+        odometerEnd: 3050,
+        source: "odometer",
+      });
+      const rows = await runWithRequestContext(REQ, () =>
+        seamStore().mileageForClinician(membershipOf[ORG_A], {
+          from: SERVICE_DATE as never,
+          to: SERVICE_DATE as never,
+        }),
+      );
+      const forSigned = rows.find((r) => r.encounterId === signedId);
+      expect(forSigned?.milesDriven).toBe(18);
+      expect(rows.some((r) => r.encounterId === draftId)).toBe(false);
+      // RLS: org B's request context sees none of org A's mileage.
+      const other = await runWithRequestContext(
+        { organizationId: ORG_B, userId: USER } as never,
+        () =>
+          seamStore().mileageForClinician(membershipOf[ORG_A], {
+            from: SERVICE_DATE as never,
+            to: SERVICE_DATE as never,
+          }),
+      );
+      expect(other).toEqual([]);
+    });
+
+    it("SignedEncountersReader.renderPayloadFor opens the pinned narrative of a signed encounter", async () => {
+      const id = await draft("routine_visit", "rn");
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      const viaRoute = await svc.renderPayload(ORG_A, id);
+      const viaSeam = await runWithRequestContext(REQ, () => seamStore().renderPayload(id));
+      expect(viaSeam?.final).toBe(viaRoute.final);
+      expect(viaSeam?.final.length).toBeGreaterThan(0);
+      expect(viaSeam?.addenda).toEqual([]);
+    });
+
+    it("a visit with an M18 bracket signs evv_present, PERSISTS it, and the reader reports it (HVLDL numerator)", async () => {
+      const visitId = randomUUID();
+      registerSeam("EvvBracketResolver", {
+        resolveBracket: async () => ({
+          checkInEventId: randomUUID(),
+          checkOutEventId: randomUUID(),
+          startedAt: "2026-01-15T14:00:00.000Z",
+          endedAt: "2026-01-15T15:00:00.000Z",
+          bracketState: "evv_present",
+        }),
+      } as never);
+      const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit" as never,
+        discipline: "rn" as never,
+        serviceDate: SERVICE_DATE as never,
+        visitId,
+      });
+      await svc.updateSelections(
+        ORG_A,
+        d.id,
+        0,
+        requiredSectionSelections("routine_visit" as never, "rn" as never),
+      );
+      const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
+      await svc.sign(ORG_A, d.id, ACTOR_A, { at: SERVICE_DATE as never });
+
+      const { rows } = await admin.query(
+        "SELECT evv_bracket_state, evv_check_in_event_id, started_at, ended_at FROM encounter WHERE id=$1",
+        [d.id],
+      );
+      expect(rows[0].evv_bracket_state).toBe("evv_present");
+      expect(rows[0].evv_check_in_event_id).not.toBeNull();
+      const digests = await seamStore().signedEncountersForPatientSince(
+        ORG_A,
+        PATIENT,
+        "2026-01-01T00:00:00.000Z",
+      );
+      const mine = digests.find((x) => x.encounterId === d.id);
+      expect(mine?.evvBracketState).toBe("evv_present");
+      expect(mine?.durationMinutes).toBe(60);
+      const { rows: ev } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m8.encounter.signed'",
+        [d.id],
+      );
+      expect(ev[0].payload.evvBracketState).toBe("evv_present");
+    });
+
+    it("an encounter with no resolvable bracket signs evv_missing_documented in the event AND the reader (one NULL rule)", async () => {
+      registerSeam("EvvBracketResolver", { resolveBracket: async () => null } as never);
+      const id = await draft("routine_visit", "rn");
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      const { rows: ev } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m8.encounter.signed'",
+        [id],
+      );
+      expect(ev[0].payload.evvBracketState).toBe("evv_missing_documented");
+      const digests = await seamStore().signedEncountersForPatientSince(
+        ORG_A,
+        PATIENT,
+        "2026-01-01T00:00:00.000Z",
+      );
+      expect(digests.find((x) => x.encounterId === id)?.evvBracketState).toBe(
+        "evv_missing_documented",
+      );
+    });
   });
 });

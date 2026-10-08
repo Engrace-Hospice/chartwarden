@@ -32,6 +32,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
+  type EvvBracketResolution,
   ForbiddenError,
   type LocalDate,
   NotFoundError,
@@ -99,7 +100,13 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections, buildTemplateMenu } from "./routes/service";
-import { getCarePlanReader, getCareTeamProvider, getLatestAssessmentProvider } from "./seams/index";
+import { deriveEvvAtSign } from "./evv-at-sign";
+import {
+  getCarePlanReader,
+  getCareTeamProvider,
+  getEvvBracketResolver,
+  getLatestAssessmentProvider,
+} from "./seams/index";
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -803,6 +810,30 @@ export function createDbEncounterRouteService(
       organizationId: org,
       recordedAt: signedAt.toISOString(),
     });
+  }
+
+  /** GAP-070 — the M18 bracket for the encounter's visit, or null (no visit / nothing bracketed / M18
+   *  unreachable). Unreachable reads as "not resolved": EVV is never a sign gate (ADR-0008), and an
+   *  unresolved bracket reports `evv_missing_documented`, so it can never count as EVV-verified. */
+  async function resolveEvvBracketFor(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<EvvBracketResolution | null> {
+    const row = await loadRow(organizationId, encounterId);
+    if (!row?.visitId) return null;
+    try {
+      return await getEvvBracketResolver().resolveBracket({
+        organizationId,
+        visitId: row.visitId,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /** The encounter columns sign writes when it newly resolved an EVV bracket (empty otherwise). */
+  function evvPersistence(evv: ReturnType<typeof deriveEvvAtSign>): Partial<typeof ENC.$inferInsert> {
+    return evv.persist ?? {};
   }
 
   /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
@@ -1847,6 +1878,9 @@ export function createDbEncounterRouteService(
 
     // ── Sign (§2.3 — the LOCKED clinical-record trigger; §7.4 D1 F2F dual-write + LPN/CHHA cosign) ──────
     async sign(organizationId, encounterId, actor, args) {
+      // GAP-070 — the M18 bracket is resolved BEFORE the write tx (the resolver opens its own tenant
+      // context; nesting it would bind the GUC on an already-bound connection).
+      const evvResolution = await resolveEvvBracketFor(organizationId, encounterId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -1882,9 +1916,8 @@ export function createDbEncounterRouteService(
         // The REAL caller signs, not the encounter's author (that was the pre-fix bug — see the
         // module-header compromise list above, item (2)).
         const signedByMembershipId = actor.membershipId;
-        const evvBracketState = (r.evvBracketState ?? "evv_present") as
-          | "evv_present"
-          | "evv_missing_documented";
+        const evvAtSign = deriveEvvAtSign(r.evvBracketState, evvResolution);
+        const evvBracketState = evvAtSign.state;
         const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
         if (!r.providerEntityId || !r.locationId) {
           throw new EncounterStateError(
@@ -1917,7 +1950,13 @@ export function createDbEncounterRouteService(
           });
           await t
             .update(ENC)
-            .set({ status: plan.encounter.to, signedAt: now, updatedAt: now, ...lateColumns })
+            .set({
+              status: plan.encounter.to,
+              signedAt: now,
+              updatedAt: now,
+              ...lateColumns,
+              ...evvPersistence(evvAtSign),
+            })
             .where(eq(ENC.id, encounterId));
           await t.insert(SIG).values({
             organizationId,
@@ -1972,7 +2011,13 @@ export function createDbEncounterRouteService(
         const requiresCosign = trans.to === "cosign_pending";
         await t
           .update(ENC)
-          .set({ status: trans.to, signedAt: now, updatedAt: now, ...lateColumns })
+          .set({
+            status: trans.to,
+            signedAt: now,
+            updatedAt: now,
+            ...lateColumns,
+            ...evvPersistence(evvAtSign),
+          })
           .where(eq(ENC.id, encounterId));
         await t.insert(SIG).values({
           organizationId,

@@ -9,21 +9,22 @@
 // withOrgContext — its own pooled connection carries no ambient RLS context (the consumer's withOrgContext is
 // on a different connection). `encounterFacts` is now live too (F-122, #251) — it had been left on the
 // in-memory fallback's empty default since this file was written, which zeroed `BillableEncounterReader.
-// billability` for EVERY caller (not only M23), the F-093/F-100/F-103 shape again. The remaining
-// EncounterReaderStore methods (renderPayload / mileageForClinician / insertDraftEncounter) are still NOT
-// ported to Drizzle — they keep the in-memory slice's safe defaults (null / mint) so this change does not
-// regress their consumers; each awaits its own Drizzle impl. Below the store factory, two standalone
+// billability` for EVERY caller (not only M23), the F-093/F-100/F-103 shape again. The other
+// EncounterReaderStore methods (renderPayload / mileageForClinician / insertDraftEncounter) live in
+// ./drizzle-store-ops.ts (GAP-069) — no method of this store runs on an in-memory default. Below the store factory, two standalone
 // ORG-EXPLICIT functions (`billableEncountersInRangeForOrg`, `signedEncounterSnapshotsInRangeForOrg`) are
 // the M8 read-surface additions #251 named for M23's still-unbound `billableEncounters`/`signedEncounters`
 // seams — the `admissionSchedulingContextForOrg` (M6) shape, for the same reason: M23's boot-time seam
 // adapters have no ambient request context to read.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { EncounterBillability, EvvBracketState, SignedEncounterDigest } from "@wardenx/types";
+import type { EncounterBillability, SignedEncounterDigest } from "@wardenx/types";
 import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { evvStateOrMissing } from "../evv-at-sign";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
 import { deriveBillability } from "./readers";
-import { type EncounterReaderStore, createInMemoryEncounterReaderStore } from "./store";
+import { type EncounterStoreOpsDeps, createEncounterStoreOps } from "./drizzle-store-ops";
+import type { EncounterReaderStore } from "./store";
 
 const E = schema.encounters;
 
@@ -62,13 +63,16 @@ const ENCOUNTER_READER_SYSTEM_USER_ID = "";
  * the second wall) and projects signed/cosigned rows to {@link SignedEncounterDigest} (the signer is the
  * authoring clinician — encounters are self-signed; cosign is a separate timestamp). evvBracketState is null
  * only for an un-finalized row (a signed row should carry it) — coalesced to the non-present state so it never
- * counts toward an EVV-verified measure. The other methods delegate to the in-memory slice (their Drizzle ports
- * are follow-ups).
+ * counts toward an EVV-verified measure.
  */
-export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReaderStore {
-  const fallback = createInMemoryEncounterReaderStore().store;
+export function createDrizzleEncounterReaderStore(
+  db: DbClient,
+  deps: EncounterStoreOpsDeps = {},
+): EncounterReaderStore {
   return {
-    ...fallback,
+    // GAP-069 — render / mileage / draft-insert are real too. NO in-memory fallback is spread in, so a
+    // method missing here is a type error rather than a silent empty default.
+    ...createEncounterStoreOps(db, deps),
     /**
      * F-122 (#251) — `BillableEncounterReader.billability` has been LIVE-REGISTERED since M8-T08
      * (`registerEncounterSeams` in `apps/backend/src/index.ts`) while this one method stayed on the
@@ -267,7 +271,7 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
               signedByMembershipId: r.authoredByMembershipId,
               lateEntryTier: r.lateEntryTier,
               status: r.status,
-              evvBracketState: (r.evvBracketState ?? "evv_missing_documented") as EvvBracketState,
+              evvBracketState: evvStateOrMissing(r.evvBracketState),
               durationMinutes: bracketMinutes(r.startedAt, r.endedAt),
             }),
           );

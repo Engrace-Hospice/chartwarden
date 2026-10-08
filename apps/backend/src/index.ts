@@ -1628,8 +1628,22 @@ export function wireModuleSeams(
   // M8 — back the §4.7 reader seams with the Drizzle store when a db is present (#107): the live
   // SignedEncountersReader.signedEncountersForPatientSince over the real encounter table (the prior in-memory
   // default returned empty, zeroing M30's HVLDL numerator). Slice/tests keep the in-memory store.
+  // GAP-069 — the store's render / mileage / draft-insert are real (no in-memory fallback). The draft insert
+  // emits `m8.encounter.created` through the same caller-bound publisher the route service uses, and the
+  // pinned narrative opens through the lazily-resolved tenant key ring (M34 binds after the seams wire).
   registerEncounterSeams(
-    deps.db ? { store: createDrizzleEncounterReaderStore(deps.db), db: deps.db } : {},
+    deps.db
+      ? {
+          store: createDrizzleEncounterReaderStore(deps.db, {
+            ...(deps.outboxPublisher
+              ? { outbox: bindCallerModule(deps.outboxPublisher, "m8") }
+              : {}),
+            narrativeCipher: createHearthnoteCiphers(lazyTenantKeys(getTenantKeyProvider))
+              .narrative,
+          }),
+          db: deps.db,
+        }
+      : {},
   );
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the

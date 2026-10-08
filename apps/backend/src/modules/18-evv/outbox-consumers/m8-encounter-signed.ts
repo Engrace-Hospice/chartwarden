@@ -107,12 +107,12 @@ export function buildM18EncounterSignedConsumer(deps: EncounterSignedConsumerDep
       if (facts.visitId === null) return; // no EVV bracket was ever in play for this encounter
       if (facts.evvBracketState !== "evv_missing_documented") return; // evv_present — nothing to document
       if (facts.evvMissingReason === null || facts.evvMissingReason.trim().length === 0) {
-        // The catalog contract (F-146) guarantees this is present whenever evvBracketState is
-        // 'evv_missing_documented' — a violation here is a producer-side contract break, not a
-        // legitimate no-op, so it dead-letters for a human rather than silently doing nothing.
-        throw new Error(
-          `${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: evvBracketState is 'evv_missing_documented' but evvMissingReason is absent`,
-        );
+        // GAP-070 — M8 now reports `evv_missing_documented` for an encounter whose visit carries no EVV
+        // bracket AND no clinician-documented reason (the one NULL-handling rule shared with the
+        // SignedEncountersReader). With no reason there is nothing to close a resolution WITH: the open
+        // `missing_resolution` row stays open for the documented-missing workflow rather than being
+        // dead-lettered as a contract break.
+        return;
       }
       const organizationId = event.organizationId;
       const visitId = facts.visitId;
