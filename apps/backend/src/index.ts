@@ -482,6 +482,7 @@ import {
   buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
   buildM11LabCancellationConsumer,
+  buildM11LabResultsApplierConsumer,
   buildM11LabTransmissionApplierConsumer,
   buildM11OrmRequestedPorts,
   buildM11RecoveryAlertConsumer,
@@ -9202,6 +9203,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // Drives `order_record.transmission_status` per D16 and re-publishes M11's own decisive
           // `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
           buildM11LabTransmissionApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // GAP-016 — `LabResultsApplier`: the returned-lab half of the M29 handshake. Flips
+          // `order_record.results_status` -> `results_received`, stamps `results_first_received_at`, and
+          // emits `m11.order.results_received` (M22's `lab_results_pdf` render below) / `_critical`.
+          buildM11LabResultsApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           // F-187 (#248) — a lab order discontinued/replaced after its ORM may already be at the laboratory:
           // nothing withdraws the ORM (T-29.08 defines no outbound cancel), so this raises the M36 alert that
           // tells the care team to cancel it with the lab. The M11-side self-consumption of

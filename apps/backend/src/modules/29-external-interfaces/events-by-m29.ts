@@ -363,7 +363,8 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m29.lab_observation.attached",
     moduleOwner: "m29",
     description:
-      "A lab_observation was attached to its patient (and order, when the OBR-2 placer resolved one).",
+      "A lab_observation was attached to its patient (and order, when the OBR-2 placer resolved one). " +
+      "GAP-016: M11's `LabResultsApplier` consumes it to flip the order's `results_status` and emit `m11.order.results_received`.",
     payloadSchema: Type.Object({
       observationId: Type.String({ minLength: 1 }),
       organizationId: Type.String({ minLength: 1 }),
@@ -373,7 +374,7 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
       abnormalFlag: Type.Union([Type.String(), Type.Null()]),
       observationDatetime: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
