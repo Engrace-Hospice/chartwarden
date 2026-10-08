@@ -24,22 +24,26 @@ function sanitizeSegment(segment: string): string {
  * distinct, individually-auditable key (§4.16).
  */
 export function deriveIdempotencyKey(
-  event: Pick<StripeDispatchEvent, "operation" | "businessKey" | "attemptIndex">,
+  event: Pick<
+    StripeDispatchEvent,
+    "operation" | "businessKey" | "attemptIndex" | "idempotencyAttemptIndex"
+  >,
 ): string {
+  const attempt = event.idempotencyAttemptIndex ?? event.attemptIndex;
   if (event.businessKey.length === 0) {
     throw new Error(
       "deriveIdempotencyKey: empty businessKey (a dispatch event must carry a stable identity)",
     );
   }
-  if (!Number.isInteger(event.attemptIndex) || event.attemptIndex < 0) {
+  if (!Number.isInteger(attempt) || attempt < 0) {
     throw new Error(
-      `deriveIdempotencyKey: attemptIndex must be a non-negative integer, got ${event.attemptIndex}`,
+      `deriveIdempotencyKey: attemptIndex must be a non-negative integer, got ${attempt}`,
     );
   }
   return [
     STRIPE_IDEMPOTENCY_PREFIX,
     sanitizeSegment(event.operation),
     sanitizeSegment(event.businessKey),
-    String(event.attemptIndex),
+    String(attempt),
   ].join("-");
 }

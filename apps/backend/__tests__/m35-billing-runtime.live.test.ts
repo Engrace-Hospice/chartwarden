@@ -404,8 +404,10 @@ describe.skipIf(!DB_URL)("M35 billing runtime - LIVE Postgres", () => {
 
       const retryId = await approvedRefund("in_exec_retry", 900);
       let attempt = 0;
+      const sentKeys: string[] = [];
       const flaky = {
-        async execute() {
+        async execute(_req: unknown, opts?: { idempotencyKey?: string }) {
+          sentKeys.push(opts?.idempotencyKey ?? "");
           attempt += 1;
           if (attempt === 1) {
             throw Object.assign(new Error("rate limited"), { statusCode: 429, retryable: true });
@@ -428,14 +430,18 @@ describe.skipIf(!DB_URL)("M35 billing runtime - LIVE Postgres", () => {
         (await admin.query("SELECT status, stripe_refund_id FROM refund WHERE id=$1", [retryId]))
           .rows[0],
       ).toMatchObject({ status: "executed_success", stripe_refund_id: "re_second_try" });
-      // The two attempts used two distinct idempotency keys.
+      // Both attempts used ONE idempotency key: a retry under a new key could refund twice if attempt 1 timed
+      // out after Stripe created the refund. The attempt count lives on the single audit row.
+      expect(sentKeys).toEqual([
+        `stripe-idem-refund.create-${retryId}-0`,
+        `stripe-idem-refund.create-${retryId}-0`,
+      ]);
       const keys = await admin.query(
-        "SELECT stripe_idempotency_key FROM stripe_api_call_audit WHERE stripe_idempotency_key LIKE $1 ORDER BY 1",
+        "SELECT stripe_idempotency_key, attempt_index FROM stripe_api_call_audit WHERE stripe_idempotency_key LIKE $1 ORDER BY 1",
         [`stripe-idem-refund.create-${retryId}-%`],
       );
-      expect(keys.rows.map((r) => r.stripe_idempotency_key)).toEqual([
-        `stripe-idem-refund.create-${retryId}-0`,
-        `stripe-idem-refund.create-${retryId}-1`,
+      expect(keys.rows).toEqual([
+        { stripe_idempotency_key: `stripe-idem-refund.create-${retryId}-0`, attempt_index: 1 },
       ]);
     });
   });

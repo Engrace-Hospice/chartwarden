@@ -9,7 +9,12 @@
 //   - success            -> refund `executed_success` + `stripe_refund_id`, `m35.refund.executed`
 //   - permanent failure  -> refund `executed_failed` + failure code, `m35.refund.failed`
 //   - retryable failure  -> the dispatcher rethrows; the row stays `approved` and the next tick retries with
-//                           `attemptIndex + 1` (a distinct, auditable key) until STRIPE_MAX_ATTEMPTS
+//                           `attemptIndex + 1` until STRIPE_MAX_ATTEMPTS. The Stripe idempotency key is STABLE per
+//                           refund (attempt segment pinned to 0): a timeout that lost the response of a refund Stripe
+//                           DID create leaves no 2xx on record, and a fresh key per attempt would refund twice
+//                           (partial refunds have no over-refund guard). Same key => Stripe replays the first result,
+//                           and two instances racing one refund are serialised by Stripe on that key. The retry
+//                           count lives on the single audit row's `attempt_index` (bumped on each re-use).
 //   - re-drain after a Stripe 2xx whose mirror write was lost -> `noop` from the dispatcher; the mirror is
 //                           re-applied from the audited 2xx response, never by calling Stripe again
 //
@@ -50,6 +55,7 @@ export interface RefundSweepResult {
 /** `stripe_api_call_audit` writes through the platform runner (the table has no tenant grant). */
 export function createDrizzleStripeAuditStore(
   platformRunner: PlatformRunner,
+  options: { readonly bumpAttemptOnReuse?: boolean } = {},
 ): StripeApiCallAuditStore {
   const A = schema.stripeApiCallAudit;
   return {
@@ -71,18 +77,22 @@ export function createDrizzleStripeAuditStore(
     },
     async insertCall(input) {
       return platformRunner(async (tx) => {
-        const inserted = await tx
-          .insert(A)
-          .values({
-            stripeIdempotencyKey: input.stripeIdempotencyKey,
-            operation: input.operation,
-            targetResourceId: input.targetResourceId,
-            organizationId: input.organizationId,
-            requestEnvelopeRedacted: input.requestEnvelopeRedacted,
-            attemptIndex: input.attemptIndex,
-          })
-          .onConflictDoNothing({ target: A.stripeIdempotencyKey })
-          .returning({ id: A.id });
+        const insert = tx.insert(A).values({
+          stripeIdempotencyKey: input.stripeIdempotencyKey,
+          operation: input.operation,
+          targetResourceId: input.targetResourceId,
+          organizationId: input.organizationId,
+          requestEnvelopeRedacted: input.requestEnvelopeRedacted,
+          attemptIndex: input.attemptIndex,
+        });
+        // A re-used key (stable-key operations) records the new attempt on the existing row.
+        const inserted = await (options.bumpAttemptOnReuse
+          ? insert.onConflictDoUpdate({
+              target: A.stripeIdempotencyKey,
+              set: { attemptIndex: input.attemptIndex, calledAt: sql`now()` },
+            })
+          : insert.onConflictDoNothing({ target: A.stripeIdempotencyKey })
+        ).returning({ id: A.id });
         const row =
           inserted[0] ??
           (
@@ -150,16 +160,20 @@ async function loadApproved(deps: RefundExecutorDeps): Promise<readonly Approved
   );
 }
 
-/** Attempts already made for this refund = audit rows under its key prefix. */
+/**
+ * The next attempt number: one past the highest `attempt_index` on this refund's audit row(s); 0 when no call has
+ * been made. (Refunds executed before the key was made stable may have one row per attempt - max covers both.)
+ */
 async function nextAttemptIndex(deps: RefundExecutorDeps, refundId: string): Promise<number> {
   const A = schema.stripeApiCallAudit;
   const rows = await deps.platformRunner((tx) =>
     tx
-      .select({ n: sql<number>`count(*)::int` })
+      .select({ last: sql<number | null>`max(${A.attemptIndex})` })
       .from(A)
       .where(like(A.stripeIdempotencyKey, `stripe-idem-${REFUND_OPERATION}-${refundId}-%`)),
   );
-  return Number(rows[0]?.n ?? 0);
+  const last = rows[0]?.last;
+  return last === null || last === undefined ? 0 : Number(last) + 1;
 }
 
 async function emitRefundEvent(
@@ -280,12 +294,16 @@ export async function runRefundExecutionSweep(
         refundId: refund.id,
       },
       attemptIndex,
+      // One Stripe key per refund, whatever the attempt (see the header): never re-issue a refund under a new key.
+      idempotencyAttemptIndex: 0,
     };
     try {
       const outcome = await dispatchStripeCall(
         {
           client: deps.client,
-          auditStore: createDrizzleStripeAuditStore(deps.platformRunner),
+          auditStore: createDrizzleStripeAuditStore(deps.platformRunner, {
+            bumpAttemptOnReuse: true,
+          }),
           mirror,
           nowMs: () => (deps.now ?? (() => new Date()))().getTime(),
         },

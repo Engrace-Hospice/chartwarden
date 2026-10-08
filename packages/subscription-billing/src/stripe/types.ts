@@ -111,6 +111,13 @@ export interface StripeDispatchEvent {
   readonly payload: Readonly<Record<string, unknown>>;
   /** The BullMQ attempt index (0-based); folded into the idempotency key so each attempt is auditable. */
   readonly attemptIndex: number;
+  /**
+   * Overrides the attempt segment of the Stripe idempotency key. Set it (to 0) for an operation that is NOT safe
+   * to repeat under a fresh key - a refund: if attempt N timed out after Stripe created the refund, no 2xx is on
+   * record, and a retry under a NEW key would create a second one. With a key stable per business key, Stripe
+   * replays the first result instead. `attemptIndex` still drives the retry ceiling and the audit row.
+   */
+  readonly idempotencyAttemptIndex?: number;
 }
 
 /** The append-only `stripe_api_call_audit` writes the dispatcher performs (§4.13). The impl (T06) owns the
