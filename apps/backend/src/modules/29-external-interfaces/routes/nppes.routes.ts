@@ -20,6 +20,7 @@ import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
 import { type M29Store, M29StoreError } from "./store";
+import { NPPES_NO_PHI } from "./read-audit-configs";
 
 /** The §4.1.4 manual-trigger port (nppes/cron-workers.ts `NppesManualSyncTrigger`), restated locally so
  *  the route layer takes no import edge on bullmq. */
@@ -43,6 +44,7 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
   app.get(
     "/api/admin/external-interfaces/nppes/providers/:npi",
     {
+      config: { auditRead: NPPES_NO_PHI },
       preHandler: [
         P("external_interfaces.nppes.read"),
         ABAC_IN_ORG("external_interfaces.nppes.read"),
@@ -61,6 +63,7 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
   app.get(
     "/api/admin/external-interfaces/nppes/sync-runs",
     {
+      config: { auditRead: NPPES_NO_PHI },
       preHandler: [
         P("external_interfaces.nppes.read"),
         ABAC_IN_ORG("external_interfaces.nppes.read"),

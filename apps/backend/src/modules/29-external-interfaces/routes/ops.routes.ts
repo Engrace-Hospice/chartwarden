@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import { ABAC_IN_ORG, P } from "./guards";
 import type { M29Store } from "./store";
+import { FEED_HEALTH_NO_PHI } from "./read-audit-configs";
 
 export interface OpsRouteDeps {
   readonly store: M29Store;
@@ -21,6 +22,7 @@ export function registerOpsRoutes(app: FastifyInstance, deps: OpsRouteDeps): voi
   app.get(
     "/api/admin/external-interfaces/health/aggregate",
     {
+      config: { auditRead: FEED_HEALTH_NO_PHI },
       preHandler: [
         P("external_interfaces.feed.read"),
         ABAC_IN_ORG("external_interfaces.feed.read"),
@@ -36,6 +38,7 @@ export function registerOpsRoutes(app: FastifyInstance, deps: OpsRouteDeps): voi
   app.get(
     "/api/admin/external-interfaces/metrics/listener-status",
     {
+      config: { auditRead: FEED_HEALTH_NO_PHI },
       preHandler: [
         P("external_interfaces.feed.read"),
         ABAC_IN_ORG("external_interfaces.feed.read"),

@@ -19,6 +19,7 @@ import {
   parseQuery,
 } from "./m29-typebox";
 import type { M29Store } from "./store";
+import { PROPOSAL_AUDIT, PROPOSAL_LIST_AUDIT } from "./read-audit-configs";
 
 export interface ProposalRouteDeps {
   readonly store: M29Store;
@@ -31,6 +32,7 @@ export function registerProposalRoutes(app: FastifyInstance, deps: ProposalRoute
   app.get(
     "/api/admin/external-interfaces/inbound-proposals",
     {
+      config: { auditRead: PROPOSAL_LIST_AUDIT },
       preHandler: [
         P("external_interfaces.proposal.read"),
         ABAC_IN_ORG("external_interfaces.proposal.read"),
@@ -54,6 +56,7 @@ export function registerProposalRoutes(app: FastifyInstance, deps: ProposalRoute
   app.get(
     "/api/admin/external-interfaces/inbound-proposals/:proposalId",
     {
+      config: { auditRead: PROPOSAL_AUDIT },
       preHandler: [
         P("external_interfaces.proposal.read"),
         ABAC_PROPOSAL_OWNER("external_interfaces.proposal.read"),

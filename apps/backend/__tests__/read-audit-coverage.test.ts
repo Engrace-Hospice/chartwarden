@@ -17,6 +17,7 @@ import {
 } from "../src/bootstrap/plugins/read-audit";
 import type { M26RouteServices } from "../src/modules/26-cap/routes/index";
 import { mountM26Routes } from "../src/modules/26-cap/routes/mount";
+import { createInMemoryM29Store, mountM29Routes } from "../src/modules/29-external-interfaces/routes";
 import { mountConsentRoutes } from "../src/modules/39-consent/index";
 
 const PREFIXES = ["/api/v1/patients"];
@@ -228,5 +229,45 @@ describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
     expect(isGovernedReadRoute("GET", "/fhir/r4/Patient/:id", DEFAULT_READ_AUDIT_PREFIXES)).toBe(
       false,
     );
+  });
+
+  // GAP-044 / GAP-045 — lab results and inbound ADT proposals were outside the allowlist, so their GETs
+  // emitted no read event and an undeclared new route booted fine.
+  it("governs M29's /api/clinical lab reads and /api/admin/external-interfaces reads", () => {
+    for (const url of [
+      "/api/clinical/labs/observations",
+      "/api/clinical/labs/observations/:observationId",
+      "/api/admin/external-interfaces/inbound-proposals",
+    ]) {
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
+    }
+  });
+
+  it("refuses an undeclared GET under /api/clinical", () => {
+    const app = buildServer({ security: { rateLimitEnabled: false } });
+    expect(() => app.get("/api/clinical/labs/observations", async () => ({}))).toThrow(
+      ReadAuditCoverageError,
+    );
+  });
+
+  it("mounts the REAL M29 surface under the default prefixes, and the lab/proposal reads EMIT with patient attribution", () => {
+    const app = buildServer({ security: { rateLimitEnabled: false } });
+    const configs = new Map<string, unknown>();
+    app.addHook("onRoute", (route) => {
+      if (route.method === "GET") configs.set(route.url, route.config?.auditRead);
+    });
+    expect(() => mountM29Routes(app, { store: createInMemoryM29Store() })).not.toThrow();
+    expect(configs.get("/api/clinical/labs/observations/:observationId")).toMatchObject({
+      resourceKind: "lab_observation",
+      resourceIdParam: "observationId",
+      patientIdPayloadPath: "observation.patientId",
+    });
+    expect(configs.get("/api/clinical/labs/observations")).toMatchObject({
+      list: true,
+      patientIdQueryParam: "patientId",
+    });
+    expect(
+      configs.get("/api/admin/external-interfaces/inbound-proposals/:proposalId"),
+    ).toMatchObject({ patientIdPayloadPath: "proposal.matchedPatientId" });
   });
 });

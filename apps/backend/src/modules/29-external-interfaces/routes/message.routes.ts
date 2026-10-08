@@ -12,6 +12,7 @@ import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import { InboundMessageListQuery, OutboundMessageListQuery, parseQuery } from "./m29-typebox";
 import { type M29Store, M29StoreError } from "./store";
+import { INBOUND_MESSAGE_AUDIT, INBOUND_MESSAGE_LIST_AUDIT, OUTBOUND_MESSAGE_AUDIT, OUTBOUND_MESSAGE_LIST_AUDIT } from "./read-audit-configs";
 
 export interface MessageRouteDeps {
   readonly store: M29Store;
@@ -24,6 +25,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
   app.get(
     "/api/admin/external-interfaces/messages/inbound",
     {
+      config: { auditRead: INBOUND_MESSAGE_LIST_AUDIT },
       preHandler: [
         P("external_interfaces.message.read"),
         ABAC_IN_ORG("external_interfaces.message.read"),
@@ -47,6 +49,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
   app.get(
     "/api/admin/external-interfaces/messages/inbound/:messageId",
     {
+      config: { auditRead: INBOUND_MESSAGE_AUDIT },
       preHandler: [
         P("external_interfaces.message.read"),
         ABAC_IN_ORG("external_interfaces.message.read"),
@@ -111,6 +114,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
   app.get(
     "/api/admin/external-interfaces/messages/outbound",
     {
+      config: { auditRead: OUTBOUND_MESSAGE_LIST_AUDIT },
       preHandler: [
         P("external_interfaces.message.read"),
         ABAC_IN_ORG("external_interfaces.message.read"),
@@ -133,6 +137,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
   app.get(
     "/api/admin/external-interfaces/messages/outbound/:messageId",
     {
+      config: { auditRead: OUTBOUND_MESSAGE_AUDIT },
       preHandler: [
         P("external_interfaces.message.read"),
         ABAC_IN_ORG("external_interfaces.message.read"),

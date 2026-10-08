@@ -25,6 +25,7 @@ import {
   parseQuery,
 } from "./m29-typebox";
 import type { M29Store } from "./store";
+import { LAB_OBSERVATION_AUDIT, LAB_OBSERVATION_LIST_AUDIT, LAB_UNMATCHED_LIST_AUDIT } from "./read-audit-configs";
 
 export interface LabRouteDeps {
   readonly store: M29Store;
@@ -37,6 +38,7 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
   app.get(
     "/api/clinical/labs/observations",
     {
+      config: { auditRead: LAB_OBSERVATION_LIST_AUDIT },
       preHandler: [P("external_interfaces.lab.read"), ABAC_IN_ORG("external_interfaces.lab.read")],
     },
     async (request) => {
@@ -59,6 +61,7 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
   app.get(
     "/api/clinical/labs/observations/unmatched",
     {
+      config: { auditRead: LAB_UNMATCHED_LIST_AUDIT },
       preHandler: [
         P("external_interfaces.lab.review_unmatched"),
         ABAC_IN_ORG("external_interfaces.lab.review_unmatched"),
@@ -78,6 +81,7 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
   app.get(
     "/api/clinical/labs/observations/:observationId",
     {
+      config: { auditRead: LAB_OBSERVATION_AUDIT },
       preHandler: [
         P("external_interfaces.lab.read"),
         ABAC_LAB_CASELOAD("external_interfaces.lab.read"),
