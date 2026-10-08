@@ -64,6 +64,7 @@ import {
 } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import { deriveEvvAtSign } from "./evv-at-sign";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -100,7 +101,6 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections, buildTemplateMenu } from "./routes/service";
-import { deriveEvvAtSign } from "./evv-at-sign";
 import {
   getCarePlanReader,
   getCareTeamProvider,
@@ -832,7 +832,9 @@ export function createDbEncounterRouteService(
   }
 
   /** The encounter columns sign writes when it newly resolved an EVV bracket (empty otherwise). */
-  function evvPersistence(evv: ReturnType<typeof deriveEvvAtSign>): Partial<typeof ENC.$inferInsert> {
+  function evvPersistence(
+    evv: ReturnType<typeof deriveEvvAtSign>,
+  ): Partial<typeof ENC.$inferInsert> {
     return evv.persist ?? {};
   }
 

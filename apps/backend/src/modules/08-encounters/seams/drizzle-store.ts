@@ -22,8 +22,8 @@ import type { EncounterBillability, SignedEncounterDigest } from "@wardenx/types
 import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { evvStateOrMissing } from "../evv-at-sign";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
-import { deriveBillability } from "./readers";
 import { type EncounterStoreOpsDeps, createEncounterStoreOps } from "./drizzle-store-ops";
+import { deriveBillability } from "./readers";
 import type { EncounterReaderStore } from "./store";
 
 const E = schema.encounters;

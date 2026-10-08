@@ -3,7 +3,7 @@
  * `textTransform: "uppercase"` / `uppercase` utility class in a UI source tree fails here unless it
  * is listed in ALLOWLIST with a reason (e.g. an acronym or code display).
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 

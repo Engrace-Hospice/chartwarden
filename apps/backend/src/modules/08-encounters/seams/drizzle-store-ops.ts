@@ -81,7 +81,9 @@ export function createEncounterStoreOps(db: DbClient, deps: EncounterStoreOpsDep
         if (!pinned) return null;
         const cipher = deps.narrativeCipher;
         if (!cipher) {
-          throw new Error("renderPayload: the encounter narrative is pinned but no cipher is bound");
+          throw new Error(
+            "renderPayload: the encounter narrative is pinned but no cipher is bound",
+          );
         }
         const final = await cipher.open(enc.organizationId, pinned.finalCipher);
         const addendumRows = await tx

@@ -18,12 +18,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
 import {
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   narrativeVocabReleaseById,
 } from "@wardenx/narrative-vocab";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -35,13 +35,13 @@ import {
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
 import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
-import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
+import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 

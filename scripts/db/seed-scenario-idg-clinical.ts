@@ -242,6 +242,7 @@ async function seedEncounter(
     }
     const fin = await who.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: enc.id } },
+      body: {},
     });
     const finCode = (fin.error as { error?: { code?: string } } | undefined)?.error?.code;
     if (finCode === "HEARTHNOTE_CIPHER_UNBOUND") {

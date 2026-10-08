@@ -2,9 +2,9 @@
 // in-memory default, and the EVV bracket state has ONE NULL-handling rule.
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { describe, expect, it, vi } from "vitest";
+import { registerSeam } from "../src/bootstrap/index";
 import { deriveEvvAtSign, evvStateOrMissing } from "../src/modules/08-encounters/evv-at-sign";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
-import { registerSeam } from "../src/bootstrap/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -24,7 +24,11 @@ function fakeDb(results: unknown[][]) {
             const rows = next();
             return (res: (v: unknown) => unknown) => res(rows);
           }
-          if (prop === "values") return (v: unknown) => (record?.(v), chain());
+          if (prop === "values")
+            return (v: unknown) => {
+              record?.(v);
+              return chain();
+            };
           return () => chain(record);
         },
       },

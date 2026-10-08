@@ -394,6 +394,7 @@ async function main(): Promise<void> {
 
     const fin = await rn.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: encData.id } },
+      body: {},
     });
     // A second encounter left in draft, for realism (not every visit note is finalized same-day).
     const enc2 = await rn.client.POST("/api/v1/encounters", {

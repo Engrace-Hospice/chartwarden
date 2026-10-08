@@ -316,11 +316,12 @@ export async function captureMileage(
 export async function finalizeEncounter(
   client: ApiClient,
   encounterId: string,
+  lateEntryReason?: string,
 ): Promise<WriteResult<{ status: string; version: number }>> {
-  // No body: `FinalizeEncounterSchema` is `Type.Object({})`, and the emitted contract carries no
-  // requestBody for it — so openapi-fetch types `body` as `undefined` and passing `{}` will not compile.
+  // GAP-013: `lateEntryReason` is required server-side only when the note is documented > 24h after the visit.
   const { data, error, response } = await client.POST("/api/v1/encounters/{encounterId}/finalize", {
     params: { path: { encounterId } },
+    body: { lateEntryReason },
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as { status: string; version: number });
