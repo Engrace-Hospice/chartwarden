@@ -5,7 +5,7 @@
 // approaching cap reached nobody. Kept in its own file so the main seed stays reviewable; spliced into
 // `PLATFORM_DEFAULT_ALERT_RULES` there. The `alert-code-seed-coverage` test fails when an emit site gains a
 // code with no rule here.
-import type { PlatformAlertRuleSeed } from "./alert-rules";
+import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
 type Audience = Pick<PlatformAlertRuleSeed, "recipientResolver" | "resolverArgs">;
 
