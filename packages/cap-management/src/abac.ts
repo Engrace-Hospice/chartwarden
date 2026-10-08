@@ -8,7 +8,7 @@ export const M26_ABAC_PREDICATES = [
   "cap_period_in_settlement",
   // cap_period.status='settled' AND cap_settlement.status='final' (reopen route)
   "cap_period_settled",
-  // cap_period.methodology IS NULL AND status='open' (methodology-lock route)
+  // cap_period.methodology IS NULL AND status<>'settled' (methodology-lock route; GAP-039)
   "cap_period_methodology_unlocked",
   // the actor holds the platform_admin role (all /v1/platform/cap/* routes)
   "cap_platform_admin",

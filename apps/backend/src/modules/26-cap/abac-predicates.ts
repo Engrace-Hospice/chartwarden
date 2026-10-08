@@ -9,7 +9,7 @@
 //   cap_period_open                  — status IN ('open','active','reopened') — accrual-eligible (recompute).
 //   cap_period_in_settlement         — status='in_settlement' AND a proposed settlement exists (propose/finalize).
 //   cap_period_settled               — status='settled' AND settlement.status='final' (reopen).
-//   cap_period_methodology_unlocked  — methodology IS NULL AND status='open' (methodology-lock).
+//   cap_period_methodology_unlocked  — methodology IS NULL AND status<>'settled' (methodology-lock; GAP-039).
 //   cap_platform_admin               — the actor holds the platform_admin role (all /v1/platform/cap/* routes).
 //
 // Default-deny throughout: a missing/cross-tenant row or an un-suppliable target id resolves to deny. No PHI
@@ -144,7 +144,11 @@ export function buildM26AbacPredicates(
     },
     cap_period_methodology_unlocked: async (context, target) => {
       const period = await periodOf(context, target);
-      return !!period && period.methodology === null && period.status === "open";
+      // GAP-039 — the lock is a one-time FIRST set (methodology IS NULL), not a change, so it stays reachable
+      // until the period is settled: `recompute()` promotes open → active on the first accrual even when no
+      // methodology was chosen at open, and `proposeSettlement` refuses a null methodology — gating on
+      // status='open' alone deadlocked such a period forever.
+      return !!period && period.methodology === null && period.status !== "settled";
     },
     cap_platform_admin: async (context) =>
       M26_PLATFORM_ADMIN_ROLE_KEYS.some((r) => context.roles.includes(r)),
