@@ -58,6 +58,21 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "A tenant step-up policy override was removed (the platform floor applies again).",
   ),
   compliance("m2.funeral.invited", "A per-deceased funeral-home magic-link was issued."),
+  // GAP-115 follow-up — redemption of a collaborator / funeral-home link, and portal invitee sign-in. Ids only: the
+  // token, the hash and the invitee's address never enter a payload.
+  compliance("m2.link.redeemed", "A collaborator / funeral-home link was redeemed into a scoped session."),
+  compliance(
+    "m2.link.redemption_refused",
+    "A redemption of a known collaborator / funeral-home link was refused (expired, spent, revoked or no longer eligible).",
+  ),
+  compliance(
+    "m2.portal.session_established",
+    "A pre-org session was bound to a portal account (portal invitee sign-in).",
+  ),
+  compliance(
+    "m2.portal.session_refused",
+    "A portal sign-in bind was refused for a known portal account (suspended, unverified, no live grant, ...).",
+  ),
   // ADR-0023 D2 / SecHardening §12.4 — device attestation. The FAILED event is as load-bearing as the
   // passing one: §12.4 names the server-side audit as the complement to on-device detection, and a
   // handset that repeatedly fails the posture check is exactly the pattern it is asking to surface.

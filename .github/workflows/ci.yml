@@ -691,6 +691,10 @@ jobs:
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
           - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }
           - { name: "GAP-158 portal invitation link", scripts: "test:gap-158-invitation:live" }
+          # Portal invitee sign-in (magic link -> pre-org session -> portal session, M2 definer read + atomic bind) and
+          # the collaborator / funeral-home link redemption (durable hash-only single-use link -> Better Auth session).
+          - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
+          - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }

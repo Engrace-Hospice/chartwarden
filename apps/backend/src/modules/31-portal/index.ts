@@ -18,6 +18,7 @@ export * from "./read-surfaces/index";
 export * from "./telehealth/index";
 export * from "./write-paths/index";
 export * from "./seams/index";
+export * from "./sign-in";
 export * from "./eraser";
 // M31-T07 — the §4.1 route surface, the §4.6 permission keys, and the six §4.7 ABAC predicates.
 export * from "./permission-keys";

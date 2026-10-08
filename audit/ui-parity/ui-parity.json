@@ -2565,6 +2565,38 @@
       "app": "portal",
       "module": "31-portal",
       "moduleId": 31,
+      "id": "portal.signed-in",
+      "path": "/signed-in",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.link-redeem-funeral",
+      "path": "/funeral/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.link-redeem-collaborator",
+      "path": "/collaborator/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.funeral-case",
+      "path": "/funeral/case",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
       "id": "portal.patient-picker",
       "path": "/patient-picker",
       "permission": "portal.session.read_own"

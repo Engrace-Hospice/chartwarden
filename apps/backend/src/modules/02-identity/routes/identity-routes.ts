@@ -36,8 +36,6 @@ import {
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
-  auditCollaboratorInvited,
-  auditCollaboratorSessionStarted,
   auditInvitationRescinded,
   auditMembershipAccepted,
   auditMembershipRevoked,
@@ -46,10 +44,8 @@ import {
   auditUserDeactivated,
   auditUserInvited,
 } from "../audit/identity-audit";
-import { auditFuneralInvited } from "../audit/org-admin-audit";
 import {
   type Actor,
-  FUNERAL_LINK_TTL_SEC,
   type IdentityRouteDeps,
   type InvitationDetail,
   LinkError,
@@ -57,8 +53,15 @@ import {
   type MembershipStatus,
   type MembershipView,
 } from "../identity-ports";
-
-const DEFAULT_COLLAB_TTL_SEC = 8 * 3600; // §7.6 — up to 8h
+import { registerLinkRoutes } from "./link-routes";
+import {
+  auditContextFor,
+  linkErrorToHttp,
+  publishM2,
+  readString,
+  resolveActor,
+  unavailable,
+} from "./route-helpers";
 
 /** Spec §4.2 / §7.12 domain errors carried in the standard envelope (code + status). */
 const noActiveMembership = () =>
@@ -79,7 +82,6 @@ const invitationEmailMismatch = () =>
     "this invitation was issued to a different email address than the signed-in account",
     403,
   );
-const unavailable = (code: string, message: string) => new WardenXError(code, message, 503);
 const lastAdminLockout = () =>
   new WardenXError(
     "LAST_ADMIN",
@@ -87,22 +89,7 @@ const lastAdminLockout = () =>
     409,
   );
 
-/** Map a store LinkError to the spec's HTTP code (§4.2 collaborators/consume, §7.12). */
-function linkErrorToHttp(err: LinkError): WardenXError {
-  if (err.kind === "used") return new WardenXError("LINK_ALREADY_USED", err.message, 409);
-  if (err.kind === "verification_required")
-    return new WardenXError("VERIFICATION_REQUIRED", err.message, 401);
-  return new WardenXError("LINK_EXPIRED", err.message, 410);
-}
-
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
-
-/** Resolve the authenticated actor or fail closed (401 envelope). */
-async function resolveActor(deps: IdentityRouteDeps, request: FastifyRequest): Promise<Actor> {
-  const actor = await deps.actors.resolve(request);
-  if (!actor) throw new UnauthorizedError();
-  return actor;
-}
 
 /**
  * The org's display name, for the invitation the invitee actually reads (TASK-030).
@@ -130,40 +117,6 @@ async function organizationNameFor(
   return membership?.organizationName || undefined;
 }
 
-/** Build the audit context for an identity event from the request + scope. */
-function auditContextFor(
-  request: FastifyRequest,
-  scope: {
-    organizationId: string | null;
-    userId: string | null;
-    actorKind?: AuditContext["actorKind"];
-  },
-): AuditContext {
-  return {
-    organizationId: scope.organizationId,
-    userId: scope.userId,
-    actorKind: scope.actorKind ?? "user",
-    correlationId: request.context.correlationId,
-    requestId: String(request.id),
-    sourceIp: request.context.ip,
-    userAgent: request.context.userAgent,
-  };
-}
-
-/** Publish through `deps.outbox` if bound — record-only until a consumer is declared. */
-function publishM2(
-  deps: IdentityRouteDeps,
-  input: {
-    eventName: string;
-    payload: Record<string, unknown>;
-    organizationId: string | null;
-    aggregateKind: string;
-    aggregateId: string;
-  },
-): Promise<void> {
-  return deps.outbox?.publish(input) ?? Promise.resolve();
-}
-
 const toView = (r: MembershipRecord): MembershipView => ({
   membershipId: r.membershipId,
   userId: r.userId,
@@ -177,17 +130,6 @@ const toView = (r: MembershipRecord): MembershipView => ({
   lastLoginAt: r.lastLoginAt ?? null,
   accountStatus: r.accountStatus ?? null,
 });
-
-/** Read a required string field from a request body (flat VALIDATION_FAILED on miss). */
-function readString(body: unknown, field: string): string {
-  const value = (body as Record<string, unknown> | null)?.[field];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new ValidationError(`invalid ${field}`, [
-      { field, code: "REQUIRED", message: `${field} is required` },
-    ]);
-  }
-  return value;
-}
 
 /** Read an optional string[] field (defaults to []). */
 function readStringArray(body: unknown, field: string): string[] {
@@ -239,8 +181,6 @@ async function deliverInvite(
 }
 
 export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRouteDeps): void {
-  const collabTtlSec = deps.collaboratorSessionTtlSec ?? DEFAULT_COLLAB_TTL_SEC;
-
   // --- §7.2 Traveling nurse: list memberships, then bind exactly one org ------------------
   app.get("/api/v1/auth/memberships", async (request) => {
     const actor = await resolveActor(deps, request);
@@ -855,134 +795,6 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     return reply.code(200).send({ deactivated: true });
   });
 
-  // --- §7.6 External collaborator: mint a per-patient link, then consume it ---------------
-  app.post("/api/v1/collaborators/invite", async (request, reply) => {
-    // staff-class session; the patient must be on the actor's caseload (§4.7 collaborator.invite,
-    // ABAC: caseload_membership). The predicate is M3-owned and resolves through the M5/M17
-    // CaseloadProvider seam (deny-by-default until that provider registers at boot).
-    await requireSession()(request);
-    await requireAbac("collaborator.invite", "caseload_membership", {
-      getTarget: (req) => {
-        const patientId = (req.body as { patientId?: unknown } | null)?.patientId;
-        return typeof patientId === "string" ? { patientId } : {};
-      },
-    })(request);
-    const actor = await resolveActor(deps, request);
-    if (!actor.organizationId || !actor.membershipId) {
-      throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);
-    }
-    const patientId = readString(request.body, "patientId");
-
-    const link = await deps.collaborators.create({
-      organizationId: actor.organizationId,
-      patientId,
-      invitedByMembershipId: actor.membershipId,
-    });
-    await auditCollaboratorInvited(
-      deps.audit,
-      auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
-      { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-    );
-    await publishM2(deps, {
-      eventName: "m2.collaborator.invited",
-      payload: { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-      organizationId: actor.organizationId,
-      aggregateKind: "collaborator_link",
-      aggregateId: link.linkId,
-    });
-    // Token delivered out-of-band (email/SMS via the transactional sender) — never in body.
-    return reply.code(201).send({ linkId: link.linkId, expiresAt: link.expiresAt });
-  });
-
-  app.post("/api/v1/collaborators/consume", async (request, reply: FastifyReply) => {
-    // Auth column `none`: the collaborator presents the one-time token (§4.2).
-    const token = readString(request.body, "token");
-    let scope: Awaited<ReturnType<typeof deps.collaborators.consume>>;
-    try {
-      scope = await deps.collaborators.consume(token);
-    } catch (err) {
-      if (err instanceof LinkError) throw linkErrorToHttp(err);
-      throw err;
-    }
-
-    const sessionId = crypto.randomUUID();
-    const sessionTtlSec = scope.kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : collabTtlSec;
-    const expiresAt = new Date(Date.now() + sessionTtlSec * 1000).toISOString();
-    await auditCollaboratorSessionStarted(
-      deps.audit,
-      auditContextFor(request, {
-        organizationId: scope.organizationId,
-        userId: null,
-        actorKind: "external_collaborator",
-      }),
-      { sessionId, organizationId: scope.organizationId, patientId: scope.patientId },
-    );
-    await publishM2(deps, {
-      eventName: "m2.collaborator.session_started",
-      payload: { sessionId, organizationId: scope.organizationId, patientId: scope.patientId },
-      organizationId: scope.organizationId,
-      aggregateKind: "session",
-      aggregateId: sessionId,
-    });
-    // Production sets the external_collaborator session cookie here; scope is exactly 1 patient.
-    return reply.code(200).send({
-      sessionClass: scope.kind ?? "external_collaborator",
-      scope: { patientId: scope.patientId },
-      expiresAt,
-    });
-  });
-
-  // --- GAP-115 (M2 §4.1, §3.6) Funeral home: mint a per-deceased link --------------------------
-  // The same one-time link store as the collaborator link, with the funeral-home session class and its 72 h
-  // lifetime. Gated like the collaborator link (session + the `caseload_membership` ABAC on the patient) and
-  // FAIL-CLOSED on the one fact only M5 owns: the patient must be deceased. With no deceased-status reader bound
-  // the route refuses (503) rather than minting disposition access for a living patient.
-  app.post("/api/v1/funeral/invite", async (request, reply) => {
-    await requireSession()(request);
-    await requirePermission("funeral.invite")(request); // RBAC first; `requireAbac` below is ABAC only
-    await requireAbac("funeral.invite", "caseload_membership", {
-      getTarget: (req) => {
-        const patientId = (req.body as { patientId?: unknown } | null)?.patientId;
-        return typeof patientId === "string" ? { patientId } : {};
-      },
-    })(request);
-    const actor = await resolveActor(deps, request);
-    if (!actor.organizationId || !actor.membershipId) {
-      throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);
-    }
-    const patientId = readString(request.body, "patientId");
-    if (!deps.deceasedPatients) {
-      throw unavailable(
-        "DECEASED_STATUS_UNAVAILABLE",
-        "the deceased-status reader is not bound; a funeral-home link cannot be minted until it is",
-      );
-    }
-    if (!(await deps.deceasedPatients.isDeceased(actor.organizationId, patientId))) {
-      throw new WardenXError(
-        "PATIENT_NOT_DECEASED",
-        "a funeral-home link can only be issued for a deceased patient",
-        409,
-      );
-    }
-    const link = await deps.collaborators.create({
-      organizationId: actor.organizationId,
-      patientId,
-      invitedByMembershipId: actor.membershipId,
-      kind: "funeral_home",
-    });
-    await auditFuneralInvited(
-      deps.audit,
-      auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
-      { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-    );
-    await publishM2(deps, {
-      eventName: "m2.funeral.invited",
-      payload: { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-      organizationId: actor.organizationId,
-      aggregateKind: "funeral_link",
-      aggregateId: link.linkId,
-    });
-    // Token delivered out-of-band — never in the body (same as the collaborator link).
-    return reply.code(201).send({ linkId: link.linkId, expiresAt: link.expiresAt });
-  });
+  // §7.6 / GAP-115 - the per-patient external-collaborator and funeral-home links: invite, redeem, read.
+  registerLinkRoutes(app, deps);
 }

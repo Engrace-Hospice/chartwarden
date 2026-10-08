@@ -148,6 +148,11 @@ export interface PortalOwnedTableOps {
   accountById(orgId: string, id: string): Promise<PortalAccountDigest | null>;
   /** Per-tenant account roster (§4.1 admin). */
   accountList(orgId: string): Promise<PortalAccountDigest[]>;
+  /**
+   * Portal sign-in — stamp `last_login_at` / `last_active_at` on the account a session was just bound to. Matches on
+   * id AND an active/bereaved status; `false` ⇒ no such live account in this org (nothing was written).
+   */
+  recordLogin(orgId: string, portalAccountId: string, at: Date): Promise<boolean>;
   /** Per-account grant roster (§4.1 admin), active + revoked. */
   grantsForAccount(orgId: string, portalAccountId: string): Promise<PortalAccessGrantDigest[]>;
   /** The ACTIVE grant pairing an account with a patient (the §4.7 predicate read). */
@@ -492,6 +497,22 @@ export function buildDrizzlePortalStore(db: DbClient, events?: M31EventEmitter):
           .where(eq(portalAccounts.id, id))
           .limit(1);
         return row ? toAccountDigest(row) : null;
+      });
+    },
+    async recordLogin(orgId, portalAccountId, at) {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const rows = await tx
+          .update(portalAccounts)
+          .set({ lastLoginAt: at, lastActiveAt: at, updatedAt: at })
+          .where(
+            and(
+              eq(portalAccounts.id, portalAccountId),
+              eq(portalAccounts.organizationId, orgId),
+              sql`${portalAccounts.status} IN ('active', 'bereaved')`,
+            ),
+          )
+          .returning({ id: portalAccounts.id });
+        return rows.length === 1;
       });
     },
     async accountList(orgId) {

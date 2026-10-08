@@ -5,13 +5,13 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 1467/1467 routes enriched (100%) · **1/835 mutating routes read a body they publish none for** · 8/598 GETs carry no response schema
+**Totals:** 1471/1471 routes enriched (100%) · **1/836 mutating routes read a body they publish none for** · 8/601 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
 | Module | Routes | Enriched | Deficit | Mutating | Mut. unpublished body | GET | GET no resp |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| 02-identity | 42 | 42 (100%) | 0 | 25 | 0 | 13 | 0 |
+| 02-identity | 43 | 43 (100%) | 0 | 25 | 0 | 14 | 0 |
 | 03-authorization | 17 | 17 (100%) | 0 | 9 | 0 | 6 | 0 |
 | 04-audit | 13 | 13 (100%) | 0 | 5 | 0 | 8 | 0 |
 | 05-patient | 39 | 39 (100%) | 0 | 22 | 0 | 17 | 4 |
@@ -40,7 +40,7 @@
 | 28-fhir | 35 | 35 (100%) | 0 | 18 | 0 | 16 | 0 |
 | 29-external-interfaces | 33 | 33 (100%) | 0 | 16 | 0 | 17 | 0 |
 | 30-quality | 61 | 61 (100%) | 0 | 36 | 0 | 25 | 0 |
-| 31-portal | 55 | 55 (100%) | 0 | 27 | 0 | 28 | 0 |
+| 31-portal | 58 | 58 (100%) | 0 | 28 | 0 | 30 | 0 |
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 42 | 42 (100%) | 0 | 22 | 0 | 20 | 0 |
 | 34-saas-tenant-platform | 56 | 56 (100%) | 0 | 33 | 0 | 22 | 0 |

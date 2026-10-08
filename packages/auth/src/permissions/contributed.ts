@@ -57,6 +57,14 @@ export const CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_membership",
   },
+  // GAP-115 follow-up — `GET /funeral/case`: the ONE read a redeemed funeral-home session holds. It is a property of
+  // the `funeral_home` session class (rbac/session-class-permissions.ts), never of a role: no staff role carries it.
+  "funeral.case_read": {
+    resource: "funeral",
+    action: "case_read",
+    category: "external",
+    abac: "funeral_session_pinned_patient",
+  },
   // Per-patient collaborator magic-link — clinician on the patient's caseload (ABAC), or
   // org_admin. The default ABAC predicate is `caseload_membership` (M5/M17 provider seam).
   "collaborator.invite": {

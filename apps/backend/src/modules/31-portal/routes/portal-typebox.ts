@@ -76,6 +76,38 @@ export const PortalSessionCurrentResponse = Type.Object({
   relationship: LayStr,
   status: LayStr,
 });
+// ── invitee SIGN-IN (pre-org session -> portal session) ───────────────────────────────────────────────────
+/** Names the portal account to sign in to when the user holds several (omitted when exactly one is eligible). */
+export const PortalSignInEstablishRequest = Type.Object({ portalAccountId: Type.Optional(Uuid) });
+export const PortalSignInEstablishResponse = Type.Object({
+  portalAccountId: Uuid,
+  organizationName: LayStr,
+  sessionClass: LayStr,
+  replayed: Type.Boolean(),
+});
+export const PortalSignInAccountsResponse = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      portalAccountId: Uuid,
+      organizationName: LayStr,
+      relationship: LayStr,
+      /** `null` when the account can sign in; otherwise the typed reason code. */
+      blockedReason: Type.Union([LayStr, Type.Null()]),
+    }),
+  ),
+});
+/** The patients the signed-in account holds a LIVE grant for (the patient-select screen, D2). */
+export const PortalSessionPatientsResponse = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      patientId: Uuid,
+      grantId: Uuid,
+      grantKind: LayStr,
+      scopeSet: Type.Array(LayStr),
+      layPatientLabel: LayStr,
+    }),
+  ),
+});
 export const StepUpRequest = Type.Object({
   totpCode: Type.String({ minLength: 6, maxLength: 10 }),
 });

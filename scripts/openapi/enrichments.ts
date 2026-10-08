@@ -80,6 +80,7 @@ import {
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
 import {
+  FuneralCaseResponseSchema as M2FuneralCaseResponseSchema,
   FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
   FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
   LocationCreateRequestSchema as M2LocationCreateRequestSchema,
@@ -1788,6 +1789,10 @@ import {
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
+  PortalSessionPatientsResponse as M31PortalSessionPatientsResponse,
+  PortalSignInAccountsResponse as M31PortalSignInAccountsResponse,
+  PortalSignInEstablishRequest as M31PortalSignInEstablishRequest,
+  PortalSignInEstablishResponse as M31PortalSignInEstablishResponse,
   SelectPatientRequest as M31SelectPatientRequest,
   SelectPatientResponse as M31SelectPatientResponse,
   StartRecordingRequest as M31StartRecordingRequest,
@@ -3393,6 +3398,22 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/portal/sessions/current": {
     summary: "Current portal session context (account, active patient, scope set)",
     response: M31PortalSessionCurrentResponse,
+  },
+  "GET /api/v1/portal/sessions/patients": {
+    summary:
+      "The patients this portal account holds a live grant for (the patient-select screen, D2)",
+    response: M31PortalSessionPatientsResponse,
+  },
+  "GET /api/v1/portal/sign-in/accounts": {
+    summary:
+      "Pre-org: the portal accounts the signed-in user holds and whether each can sign in (no PHI, own accounts only)",
+    response: M31PortalSignInAccountsResponse,
+  },
+  "POST /api/v1/portal/sign-in/establish": {
+    summary:
+      "Pre-org: bind the authenticated session to one of the user's portal accounts (org + portal session class); idempotent, throttled, audited",
+    body: M31PortalSignInEstablishRequest,
+    response: M31PortalSignInEstablishResponse,
   },
   "POST /api/v1/portal/sessions/step-up": {
     summary: "TOTP step-up for high-PHI portal actions",
@@ -6139,8 +6160,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M2AuditorRedeemRequestSchema,
     response: M2AuditorRedeemResponseSchema,
   },
+  "GET /api/v1/funeral/case": {
+    summary:
+      "A redeemed funeral-home session reads the ONE decedent's minimum facts (legal name, date of death); session-pinned, audited",
+    response: M2FuneralCaseResponseSchema,
+  },
   "POST /api/v1/collaborators/consume": {
-    summary: "Consume the link → scoped external-collaborator session (§7.6)",
+    summary:
+      "Redeem a single-use link → scoped external-collaborator / funeral-home session (sets the session cookie; replay and expiry refused)",
     body: M2CollaboratorConsumeRequestSchema,
     response: M2CollaboratorConsumeResponseSchema,
   },

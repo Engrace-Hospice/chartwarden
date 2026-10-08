@@ -64,6 +64,8 @@ describe("M3-T10 contributed permission keys (M1/M2 back-fill)", () => {
         // GAP-115
         "step_up_override.manage",
         "funeral.invite",
+        // GAP-115 follow-up: the redeemed funeral-home session's one read (a session-CLASS permission)
+        "funeral.case_read",
       ].sort(),
     );
   });

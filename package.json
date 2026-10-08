@@ -450,6 +450,8 @@
     "test:gap-155:live": "vitest run apps/backend/__tests__/gap-155-m30-cap-overdue.live.test.ts",
     "test:gap-158:live": "vitest run apps/backend/__tests__/gap-158-caregiver-grief.live.test.ts",
     "test:gap-158-invitation:live": "vitest run apps/backend/__tests__/gap-158-portal-invitation-link.live.test.ts",
+    "test:m31:portal-signin:live": "vitest run apps/backend/__tests__/m31-portal-signin.live.test.ts",
+    "test:m2:link-redemption:live": "vitest run apps/backend/__tests__/m2-link-redemption.live.test.ts",
     "test:gap-161:live": "vitest run apps/backend/__tests__/gap-161-m32-events.live.test.ts",
     "test:gap-164:live": "vitest run apps/backend/__tests__/gap-164-m34-ops.live.test.ts",
     "test:m39:consent-lifecycle:live": "vitest run apps/backend/__tests__/m39-consent-lifecycle.live.test.ts",

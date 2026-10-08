@@ -5782,7 +5782,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Consume the link → scoped external-collaborator session (§7.6) */
+        /** Redeem a single-use link → scoped external-collaborator / funeral-home session (sets the session cookie; replay and expiry refused) */
         post: operations["postApiV1CollaboratorsConsume"];
         delete?: never;
         options?: never;
@@ -9310,6 +9310,23 @@ export interface paths {
         };
         /** Read a specific template version */
         get: operations["getApiV1FormtemplatesByKeyVersionsByVersionId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/funeral/case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A redeemed funeral-home session reads the ONE decedent's minimum facts (legal name, date of death); session-pinned, audited */
+        get: operations["getApiV1FuneralCase"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15794,6 +15811,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/sessions/patients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patients this portal account holds a live grant for (the patient-select screen, D2) */
+        get: operations["getApiV1PortalSessionsPatients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/sessions/select-patient": {
         parameters: {
             query?: never;
@@ -15822,6 +15856,40 @@ export interface paths {
         put?: never;
         /** TOTP step-up for high-PHI portal actions */
         post: operations["postApiV1PortalSessionsStepup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/sign-in/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-org: the portal accounts the signed-in user holds and whether each can sign in (no PHI, own accounts only) */
+        get: operations["getApiV1PortalSigninAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/sign-in/establish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pre-org: bind the authenticated session to one of the user's portal accounts (org + portal session class); idempotent, throttled, audited */
+        post: operations["postApiV1PortalSigninEstablish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -38878,6 +38946,7 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    recipientEmail?: string;
                 };
             };
         };
@@ -48481,6 +48550,32 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1FuneralCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        decedentName: string;
+                        dateOfDeath: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1FuneralInvite: {
         parameters: {
             query?: never;
@@ -48492,6 +48587,7 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    recipientEmail?: string;
                 };
             };
         };
@@ -67530,6 +67626,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PortalSessionsPatients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            grantId: string;
+                            grantKind: string;
+                            scopeSet: string[];
+                            layPatientLabel: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PortalSessionsSelectpatient: {
         parameters: {
             query?: never;
@@ -67591,6 +67719,71 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSigninAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            portalAccountId: string;
+                            organizationName: string;
+                            relationship: string;
+                            blockedReason: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSigninEstablish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    portalAccountId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        portalAccountId: string;
+                        organizationName: string;
+                        sessionClass: string;
+                        replayed: boolean;
                     };
                 };
             };

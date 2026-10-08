@@ -11,6 +11,8 @@ import { PortalAmendments } from "./amendments";
 import { PortalBereavement } from "./bereavement";
 import { PortalCarePlanView } from "./care-plan";
 import { PortalDocumentList } from "./documents";
+import { PortalFuneralCase } from "./funeral-case";
+import { PortalLinkRedeem } from "./funeral-redeem";
 import { PORTAL_SCREEN_MANIFEST } from "./manifest";
 import { PortalMedicationList } from "./medications";
 import { PortalMessages } from "./messages";
@@ -18,6 +20,7 @@ import { PortalPatientDashboard } from "./patient-dashboard";
 import { PortalPatientPicker } from "./patient-picker";
 import { PortalNotificationPreferences } from "./preferences";
 import { PortalSignIn } from "./sign-in";
+import { PortalSignedIn } from "./signed-in";
 import { TelehealthWaitingRoom } from "./telehealth-waiting-room";
 import { PortalVisitList } from "./visits";
 
@@ -27,6 +30,10 @@ export type PortalScreen = ComponentType;
 const COMPONENTS: Record<string, PortalScreen> = {
   "portal.sign-in": PortalSignIn,
   "portal.accept-invitation": PortalAcceptInvitation,
+  "portal.signed-in": PortalSignedIn,
+  "portal.link-redeem-funeral": PortalLinkRedeem,
+  "portal.link-redeem-collaborator": PortalLinkRedeem,
+  "portal.funeral-case": PortalFuneralCase,
   "portal.patient-picker": PortalPatientPicker,
   "portal.dashboard": PortalPatientDashboard,
   "portal.care-plan": PortalCarePlanView,

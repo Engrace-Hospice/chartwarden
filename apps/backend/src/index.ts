@@ -21,6 +21,7 @@ import {
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
   createInMemoryFailedLoginStore,
+  createLinkSessionMinter,
   getIdentitySession,
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
@@ -230,7 +231,10 @@ import {
   buildM2ConsentRevokedConsumer,
   createAuditorLinkEmailDelivery,
   createDrizzleIdentityEraserStore,
+  createLinkDelivery,
+  createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
+  createPortalSignInStore,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -303,6 +307,7 @@ import {
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
   dosespotSyncDemographicsForOrg,
+  funeralCaseForOrg,
   getCaseloadProvider,
   getPatientCoverageReader,
   getPatientReader,
@@ -3638,6 +3643,35 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     process.env.WEB_APP_URL ??
     process.env.BETTER_AUTH_URL ??
     (process.env.NODE_ENV === "production" ? undefined : "http://localhost:5173");
+  // GAP-115 follow-up / M31 sign-in - the §5.3.1 failed-attempt budgets for the two NEW unauthenticated-or-pre-org
+  // doors (link redemption, portal session establishment). Same store as the login throttle (Valkey when REDIS_URL is
+  // set, per-replica otherwise), each under its OWN key prefix so a run against one door cannot lock out another.
+  const doorFailureStore = rateLimitRedisClient
+    ? createRedisFailedLoginStore(rateLimitRedisClient)
+    : createInMemoryFailedLoginStore();
+  const onThrottleStoreError = (err: unknown) =>
+    process.stderr.write(
+      `[throttle] failed-attempt store unavailable - failing open: ${String(err)}\n`,
+    );
+  const linkRedeemThrottle = createCredentialThrottle(doorFailureStore, {
+    keyPrefix: "link-redeem",
+    onStoreError: onThrottleStoreError,
+  });
+  const portalSignInThrottle = createCredentialThrottle(doorFailureStore, {
+    keyPrefix: "portal-signin",
+    onStoreError: onThrottleStoreError,
+  });
+  // EXTERNAL BLOCKER (named): the production transactional-email PROVIDER (Postmark/SES adapter in M36's
+  // `selectTransactionalEmailTransport` `provider` slot) is not wired, so production DROPS every email. A collaborator /
+  // funeral-home link nobody can receive must not be minted, so in production the delivery port stays UNBOUND (the
+  // invite routes answer 503 LINK_DELIVERY_UNAVAILABLE) until a provider is bound; dev/test log the link via the
+  // console transport. Flip this to `true` in the same change that passes `provider` to the selector above.
+  const transactionalEmailProviderBound = false;
+  const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
+  const linkDelivery =
+    linkLandingBaseUrl && (process.env.NODE_ENV !== "production" || transactionalEmailProviderBound)
+      ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
+      : undefined;
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
@@ -3825,21 +3859,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               isDeceased: (organizationId, patientId) =>
                 patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
             },
+            // GAP-115 follow-up - the DURABLE collaborator / funeral link store (migration 0521): M6's siting of the
+            // patient (the ARCH-011 columns), the server-only Better Auth session mint a redemption ends in, the
+            // delivery channel (UNBOUND in production until the email provider is - see above), the redemption
+            // throttle and M5's minimum decedent read for `GET /funeral/case`.
+            linkPatientSite: {
+              siteForPatient: (organizationId, patientId) =>
+                patientSiteForOrg(dbHandle.db, organizationId, patientId),
+            },
+            ...(auth ? { linkSessions: createLinkSessionMinter(auth) } : {}),
+            ...(linkDelivery ? { linkDelivery } : {}),
+            linkRedeemThrottle,
+            funeralCases: {
+              read: (organizationId, patientId) =>
+                funeralCaseForOrg(dbHandle.db, organizationId, patientId),
+            },
           });
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
           // overrides). The tax-id envelope cipher is NOT bound: it is the KMS-backed key ring (the same
           // unbound port M8/M20/M32 refuse on), so `POST /provider-entities` answers 503 TAX_ID_CIPHER_UNBOUND
           // until it is — an EIN is never stored in the clear.
           mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher });
-          // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
-          // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
-          // on one replica only and dies with the process.
-          noteInMemoryBinding({
-            kind: "route-dep",
-            label:
-              "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
-            task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
-          });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
           // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
@@ -4890,6 +4930,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             },
             store: buildDrizzlePortalStore(dbHandle.db, m31Events),
             events: m31Events,
+            // M31 invitee sign-in - M2's cross-tenant own-account read + the atomic session bind (migration 0520),
+            // and the failed-bind throttle. Without these two routes would answer 503, never fake a sign-in.
+            signIn: createPortalSignInStore(dbHandle.db, createOrgScopedAuditExecutor(dbHandle.db)),
+            signInThrottle: portalSignInThrottle,
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
             // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
             // per-tenant DEK envelope for the two vendor-room columns. The vendor adapter stays UNBOUND above,

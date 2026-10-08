@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1456,
-    "coveredRoutes": 1456,
-    "directRoutesReferenced": 1400
+    "routes": 1460,
+    "coveredRoutes": 1460,
+    "directRoutesReferenced": 1404
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 42,
+      "routes": 43,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -25,12 +25,15 @@
         "apps/backend/__tests__/gap-115-m2-step-up-overrides.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
+        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
+        "apps/backend/__tests__/m2-link-redemption.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
+        "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 41
+      "directRoutesReferenced": 42
     },
     {
       "module": "03-authorization",
@@ -70,6 +73,7 @@
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
+        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
@@ -94,6 +98,7 @@
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
+        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
@@ -404,14 +409,16 @@
     },
     {
       "module": "31-portal",
-      "routes": 55,
+      "routes": 58,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
+        "apps/backend/__tests__/m31-portal-signin-decision.test.ts",
+        "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 55
+      "directRoutesReferenced": 58
     },
     {
       "module": "32-ai-platform",

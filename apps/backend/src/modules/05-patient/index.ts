@@ -118,6 +118,8 @@ export {
 export { PATIENT_IDS_PAGE_MAX, patientIdsPageForOrg } from "./seams/patient-ids-page-for-org";
 // GAP-115 — the deceased-status fact M2's funeral-home link needs, injected into M2 as a port.
 export { patientIsDeceasedForOrg } from "./seams/patient-deceased-for-org";
+// GAP-115 follow-up — the minimum decedent facts (legal name + date of death) a redeemed funeral-home session reads.
+export { type FuneralCase, funeralCaseForOrg } from "./seams/funeral-case-for-org";
 
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {

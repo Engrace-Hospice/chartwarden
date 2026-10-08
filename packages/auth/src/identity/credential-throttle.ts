@@ -129,9 +129,16 @@ export function createCredentialThrottle(
   opts: {
     policy?: CredentialThrottlePolicy;
     onStoreError?: (err: unknown) => void;
+    /**
+     * Namespace of the counters (default `login`). A second surface that wants the same §5.3.1 shape but its OWN
+     * budget (portal session establishment, link redemption) passes a distinct prefix, so a stuffing run against
+     * one door cannot lock the other.
+     */
+    keyPrefix?: string;
   } = {},
 ): CredentialThrottle {
   const policy = opts.policy ?? CREDENTIAL_THROTTLE_POLICY;
+  const prefix = opts.keyPrefix ?? "login";
   const retryAfter = Math.ceil(policy.windowMs / 1000);
   const guard = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
     try {
@@ -147,8 +154,8 @@ export function createCredentialThrottle(
       const [userCount, ipCount] = await Promise.all([
         username === null
           ? Promise.resolve(0)
-          : guard(() => store.failureCount(`login:user:${credentialKey(username)}`), 0),
-        guard(() => store.failureCount(`login:ip:${ip}`), 0),
+          : guard(() => store.failureCount(`${prefix}:user:${credentialKey(username)}`), 0),
+        guard(() => store.failureCount(`${prefix}:ip:${ip}`), 0),
       ]);
       if (userCount >= policy.perUsernameLimit || ipCount >= policy.perIpLimit) {
         throw new CredentialThrottleError(retryAfter);
@@ -161,17 +168,18 @@ export function createCredentialThrottle(
         // Clear only the USERNAME counter. The per-IP budget deliberately survives a success: one
         // valid credential in a stuffing run is exactly when an attacker would want the slate wiped.
         if (username !== null)
-          await guard(() => store.clear(`login:user:${credentialKey(username)}`), undefined);
+          await guard(() => store.clear(`${prefix}:user:${credentialKey(username)}`), undefined);
         return;
       }
       await Promise.all([
         username === null
           ? Promise.resolve(0)
           : guard(
-              () => store.recordFailure(`login:user:${credentialKey(username)}`, policy.windowMs),
+              () =>
+                store.recordFailure(`${prefix}:user:${credentialKey(username)}`, policy.windowMs),
               0,
             ),
-        guard(() => store.recordFailure(`login:ip:${ip}`, policy.windowMs), 0),
+        guard(() => store.recordFailure(`${prefix}:ip:${ip}`, policy.windowMs), 0),
       ]);
     },
   };

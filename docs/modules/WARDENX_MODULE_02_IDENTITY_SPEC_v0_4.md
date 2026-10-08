@@ -743,7 +743,8 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | POST | `/api/v1/collaborators/consume` | none | — | yes | consume magic-link → scoped session |
 | POST | `/api/v1/auditors/redeem` | none | — | single-use token | redeem the emailed auditor link → scoped read-only `auditor` session (served by M2: session mechanics; the link is minted by M3's `POST /engagements/:id/auditors`). Single-use, expiring, tenant-scoped, rate-limited, audited (`m2.auditor_link.redeemed` / `.refused`); 409 `LINK_ALREADY_USED`, 410 `LINK_EXPIRED` / `LINK_INVALID`, 403 `ENGAGEMENT_NOT_OPEN` / `ENGAGEMENT_NOT_ACTIVE`, 409 `AUDITOR_IDENTITY_IS_MEMBER`. **DEFERRED (unbuilt):** the per-auditor 2FA enrolment and BAA acceptance of §7.7 — the session carries no step-up. |
 | ~~POST~~ | ~~`/api/v1/auditors/invite`~~ | — | — | — | **Served by Module 3, not M2** — moved to M3 with the `auditor_engagement` entity (D4 / §4.7). M2 only exposes the boot-validated `AuditorSessionMinter` that M3 calls. |
-| POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) **DEFERRED (unbuilt):** no route; funeral-home magic links are not built. |
+| POST | `/api/v1/funeral/invite` | staff | `funeral.invite` | yes | mint funeral-home magic-link (per-deceased; 409 unless deceased; body `recipientEmail` required on a durable deployment; 503 `LINK_DELIVERY_UNAVAILABLE` while the email provider is unbound) |
+| GET | `/api/v1/funeral/case` | funeral_home | `funeral.case_read` (class permission) | n/a | the redeemed funeral-home session's ONE read: the pinned decedent's legal name + date of death |
 
 > **As-built `/api/v1/*` routes not in the table (GAP-184):** `GET /api/v1/auth/context`; `POST /api/v1/sessions/step-up` + `/initiate` (and the portal twins under `/api/v1/portal/sessions/*`); `GET/POST /api/v1/devices/attestation` (+ `/challenge`, `/:id/revoke`); `GET /api/v1/invitations/:token`; `GET /api/v1/orgs/:id/invitations` + `POST …/:invId/resend`; `GET/POST /api/v1/orgs/:id/members/:mId/elevated-approvals` + `DELETE …/:kind`; `POST /api/v1/platform/organizations/:organizationId/status`. The `/api/auth/*` rows above are mounted by Better Auth, not registered as Fastify routes.
 | POST | `/api/v1/orgs/:id/invitations` | admin | `org_admin` | yes (by email) | invite user to org |
@@ -771,9 +772,13 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 > (§11 D19) and tenant provisioning stays M34's.
 > **Blocked, exactly:** (1) `POST /provider-entities` answers `503 TAX_ID_CIPHER_UNBOUND` until the KMS-backed
 > envelope cipher for `provider_entity.tax_id_encrypted` is bound at the composition root (an EIN is never stored
-> in the clear; every other route works); (2) the collaborator/funeral magic-link store is still process-local
-> (no M2 token table) and `POST /collaborators/consume` does not yet mint a `session` row, so a funeral link —
-> like the collaborator link before it — is issued, audited and one-time but not yet redeemable end to end;
+> in the clear; every other route works); (2) **resolved** — the collaborator/funeral link store is the durable,
+> hash-only, bounded-use `collaborator_link` table (migration 0521) and `POST /collaborators/consume` now claims the use
+> atomically, mints a real `session` row + cookie through Better Auth's server-only link-session mint, and refuses
+> replay / expiry / revocation / cross-tenant; the redeemed funeral session reads only `GET /funeral/case`. What remains
+> external: the production transactional-email provider is unbound, so in production the invite routes answer
+> `503 LINK_DELIVERY_UNAVAILABLE` (no link is minted that nobody can receive) — see
+> `docs/history/portal-signin-and-link-redemption.md`;
 > (3) the spec's HearthNote opt-in flag has no settings key and no reader in any module, so it is not built.
 > Session list/revoke and screen-unlock remain path drift (Better Auth's default endpoints plus a client-side
 > re-sign-in), not `/me/session[...]` routes.

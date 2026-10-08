@@ -302,6 +302,9 @@ function createFakePortalStore(): {
     async accountList() {
       return [...accounts.values()];
     },
+    async recordLogin(_orgId, id) {
+      return accounts.has(id);
+    },
     async grantsForAccount(_orgId, portalAccountId) {
       return [...grants.values()].filter((g) => g.portalAccountId === portalAccountId);
     },

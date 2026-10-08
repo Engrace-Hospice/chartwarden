@@ -1,41 +1,70 @@
-import { CenteredCardLayout, t } from "@wardenx/ui";
-// @wardenx/portal — §5.1 Landing / sign-in (`/`). Magic-link entry is the primary path (M31-T03 invite +
-// session lifecycle); an established account may fall back to password, and a step-up prompt appears when
-// the server demands TOTP. This surface holds NO PHI and issues no read — it only requests the link that the
-// backend mails; the account bind happens on the `/setup/:inviteToken` acceptance the link points at.
+import { Button, CenteredCardLayout, InlineAlert, TextField, t } from "@wardenx/ui";
+// @wardenx/portal — §5.1 Landing / sign-in (`/`). The invitee authenticates through M2 (Better Auth); this screen
+// holds NO PHI and issues no portal read. Two ways in, matching the spec (§7.1: the invitation's magic link sets the
+// account up; later sign-ins are a link, or a password plus an authenticator code):
+//   • "Email me a sign-in link" — the primary path; the same single-use link primitive the auditor / CAHPS links use.
+//   • "Use a password instead" — an established account; a second factor prompt follows when the server demands it.
+// A passkey sign-in is NOT offered here yet (the WebAuthn ceremony needs the auth client bundle; it is enrolled and
+// used from the account page once built) — nothing on this screen pretends otherwise.
+// Either way the browser ends up at `/signed-in`, where the portal account is bound to the new session.
 import { useState } from "react";
-import type { CSSProperties, FormEvent, JSX } from "react";
+import type { FormEvent, JSX } from "react";
+import { useNavigate } from "react-router-dom";
+import { type SignInOutcome, requestMagicLink, signInWithPassword, verifyTotp } from "../auth-http";
 
-const field: CSSProperties = {
-  width: "100%",
-  padding: "0.6rem 0.7rem",
-  borderRadius: "0.5rem",
-  border: `1px solid ${t.surfaceContainer}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.95rem",
-};
-const button: CSSProperties = {
-  width: "100%",
-  padding: "0.65rem 0.9rem",
-  borderRadius: "0.5rem",
-  border: "none",
-  background: t.primary,
-  color: t.onPrimary,
-  fontWeight: 600,
-  cursor: "pointer",
-};
+type Step = "email" | "link_sent" | "password" | "code";
+
+const FAILED = "We couldn't sign you in. Check your details and try again.";
+const THROTTLED = "Too many attempts. Please wait a few minutes and try again.";
+
+function messageFor(outcome: SignInOutcome | "sent" | "rate_limited" | "failed"): string | null {
+  if (outcome === "rate_limited") return THROTTLED;
+  if (outcome === "failed") return FAILED;
+  return null;
+}
 
 export function PortalSignIn(): JSX.Element {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const linkProblem =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("link");
 
-  function onSubmit(e: FormEvent): void {
+  async function onLink(e: FormEvent): Promise<void> {
     e.preventDefault();
-    // The link is minted + mailed by the M2 magic-link invite path; the portal only records that the
-    // caregiver asked, and shows the same acknowledgement whether or not the address maps to an account
-    // (no account enumeration — architecture §G).
-    setSent(true);
+    setBusy(true);
+    setError(null);
+    const outcome = await requestMagicLink(email.trim(), window.location.origin);
+    setBusy(false);
+    // The same acknowledgement whether or not the address maps to an account (no account enumeration).
+    if (outcome === "sent") setStep("link_sent");
+    else setError(messageFor(outcome));
+  }
+
+  async function onPassword(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const outcome = await signInWithPassword(email.trim(), password);
+    setBusy(false);
+    setPassword("");
+    if (outcome === "ok") navigate("/signed-in");
+    else if (outcome === "two_factor") setStep("code");
+    else setError(messageFor(outcome));
+  }
+
+  async function onCode(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const outcome = await verifyTotp(code.trim());
+    setBusy(false);
+    if (outcome === "ok") navigate("/signed-in");
+    else setError(messageFor(outcome));
   }
 
   return (
@@ -52,47 +81,96 @@ export function PortalSignIn(): JSX.Element {
       }
       footer={<a href="/help">Need help signing in?</a>}
     >
-      {sent ? (
-        // biome-ignore lint/a11y/useSemanticElements: <output> can't hold the h1/p block children this needs
-        <div role="status" aria-live="polite">
-          <h1 style={{ margin: "0 0 0.5rem", fontSize: "1.15rem" }}>Check your email</h1>
-          <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.9rem" }}>
-            If an account exists for {email || "that address"}, a secure sign-in link is on its way.
-            The link expires shortly for your protection.
-          </p>
+      {step === "link_sent" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
+          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Check your email</h1>
+          <InlineAlert tone="success">
+            If a family portal account exists for {email || "that address"}, a secure sign-in link
+            is on its way. It can be used once and expires shortly.
+          </InlineAlert>
+          <Button tone="tertiary" onClick={() => setStep("email")}>
+            Use a different address
+          </Button>
         </div>
-      ) : (
-        <form onSubmit={onSubmit} aria-label="Sign in">
-          <h1 style={{ margin: "0 0 0.75rem", fontSize: "1.15rem" }}>Sign in</h1>
-          <label
-            htmlFor="portal-email"
-            style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}
-          >
-            Email address
-          </label>
-          <input
-            id="portal-email"
-            type="email"
+      ) : step === "code" ? (
+        <form
+          onSubmit={onCode}
+          aria-label="Authenticator code"
+          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
+        >
+          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Enter your code</h1>
+          <TextField
+            label="Authenticator code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
             required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ ...field, marginBottom: "0.9rem" }}
+            value={code}
+            onChange={(ev) => setCode(ev.target.value)}
           />
-          <button type="submit" style={button}>
+          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+          <Button type="submit" loading={busy} disabled={code.trim().length < 6}>
+            Continue
+          </Button>
+        </form>
+      ) : step === "password" ? (
+        <form
+          onSubmit={onPassword}
+          aria-label="Sign in with a password"
+          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
+        >
+          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Sign in with your password</h1>
+          <TextField
+            label="Email address"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+          />
+          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+          <Button type="submit" loading={busy} disabled={!email || !password}>
+            Sign in
+          </Button>
+          <Button tone="tertiary" onClick={() => setStep("email")}>
+            Email me a sign-in link instead
+          </Button>
+        </form>
+      ) : (
+        <form
+          onSubmit={onLink}
+          aria-label="Sign in"
+          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
+        >
+          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Sign in</h1>
+          {linkProblem ? (
+            <InlineAlert tone="error">
+              That sign-in link can't be used. It may have expired or been used already. Request a
+              new one below.
+            </InlineAlert>
+          ) : null}
+          <TextField
+            label="Email address"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+          />
+          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+          <Button type="submit" loading={busy} disabled={!email}>
             Email me a sign-in link
-          </button>
-          <p
-            style={{
-              margin: "0.9rem 0 0",
-              fontSize: "0.8rem",
-              color: t.onSurfaceVariant,
-              textAlign: "center",
-            }}
-          >
-            Have a password already? You'll be prompted for it — and a one-time code — after the
-            link.
-          </p>
+          </Button>
+          <Button tone="tertiary" onClick={() => setStep("password")}>
+            Use a password instead
+          </Button>
         </form>
       )}
     </CenteredCardLayout>
