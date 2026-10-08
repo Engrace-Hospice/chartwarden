@@ -6,7 +6,14 @@ import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { Field, OutcomeBanner, actionButtonStyle, inputStyle } from "./ui";
+import {
+  Field,
+  type Outcome,
+  OutcomeBanner,
+  actionButtonStyle,
+  failureOutcome,
+  inputStyle,
+} from "./ui";
 
 export function SubscriptionPause(): JSX.Element {
   const client = useApiClient();
@@ -15,7 +22,7 @@ export function SubscriptionPause(): JSX.Element {
   const [until, setUntil] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = useCallback(async () => {
     if (!id) return;
@@ -28,14 +35,7 @@ export function SubscriptionPause(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error) {
-      const code = (res.error as { code?: string })?.code;
-      setOutcome({
-        ok: false,
-        message:
-          code === "STEP_UP_REQUIRED"
-            ? "Step-up re-authentication required — re-verify and retry."
-            : "Could not pause the subscription.",
-      });
+      setOutcome(failureOutcome(res.error, "Could not pause the subscription."));
       setBusy(false);
       return;
     }
@@ -79,7 +79,7 @@ export function SubscriptionPause(): JSX.Element {
             placeholder="Why is this subscription being paused?"
           />
         </Field>
-        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
             type="button"

@@ -15,7 +15,18 @@ import {
   isCriticalDunningStage,
   orgLabel,
 } from "./status";
-import { LoadMore, actionButtonStyle, bodyRow, cell, inputStyle, tableStyle, theadRow } from "./ui";
+import {
+  LoadMore,
+  type Outcome,
+  OutcomeBanner,
+  actionButtonStyle,
+  bodyRow,
+  cell,
+  failureOutcome,
+  inputStyle,
+  tableStyle,
+  theadRow,
+} from "./ui";
 
 type DunningPage =
   operations["getApiAdminDunning"]["responses"][200]["content"]["application/json"];
@@ -30,7 +41,7 @@ export function Dunning(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const load = useCallback(
     async (nextCursor: string | null, append: boolean) => {
@@ -71,14 +82,7 @@ export function Dunning(): JSX.Element {
         headers: { "Idempotency-Key": idempotencyKey() },
       });
       if (res.error) {
-        const c = (res.error as { code?: string })?.code;
-        setOutcome({
-          ok: false,
-          message:
-            c === "STEP_UP_REQUIRED"
-              ? "Step-up required — re-verify and retry."
-              : `Could not ${action.replace("_", " ")}.`,
-        });
+        setOutcome(failureOutcome(res.error, `Could not ${action.replace("_", " ")}.`));
       } else {
         setOutcome({
           ok: true,
@@ -114,11 +118,7 @@ export function Dunning(): JSX.Element {
           </select>
         }
       />
-      {outcome ? (
-        <output aria-live="polite">
-          <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
-        </output>
-      ) : null}
+      {outcome ? <OutcomeBanner {...outcome} /> : null}
       {loading && rows.length === 0 ? (
         <LoadingSpinner />
       ) : error ? (

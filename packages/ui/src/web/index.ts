@@ -54,6 +54,15 @@ export { NavGroup, NavLink, groupByNavGroup } from "./components/nav-link";
 export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
 export type { InfoRow, PanelProps } from "./components/panel";
 export type { NavGroupProps, NavLinkProps } from "./components/nav-link";
+export { StepUpCard, safeReturnTo } from "./components/step-up-card";
+export type { StepUpCardProps } from "./components/step-up-card";
+export {
+  ReverifyLink,
+  STEP_UP_REQUIRED_CODE,
+  isStepUpRequired,
+  stepUpPath,
+} from "./components/step-up-link";
+export type { ReverifyLinkProps } from "./components/step-up-link";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
 export { WorkflowStepper } from "./components/workflow-stepper";

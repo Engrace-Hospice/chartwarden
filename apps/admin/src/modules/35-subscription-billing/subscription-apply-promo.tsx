@@ -7,7 +7,14 @@ import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { Field, OutcomeBanner, actionButtonStyle, inputStyle } from "./ui";
+import {
+  Field,
+  type Outcome,
+  OutcomeBanner,
+  actionButtonStyle,
+  failureOutcome,
+  inputStyle,
+} from "./ui";
 
 export function SubscriptionApplyPromo(): JSX.Element {
   const client = useApiClient();
@@ -15,7 +22,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = useCallback(async () => {
     const promoCode = code.trim();
@@ -28,14 +35,9 @@ export function SubscriptionApplyPromo(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error) {
-      const c = (res.error as { code?: string })?.code;
-      setOutcome({
-        ok: false,
-        message:
-          c === "STEP_UP_REQUIRED"
-            ? "Step-up re-authentication required — re-verify and retry."
-            : "That promo could not be applied to this subscription.",
-      });
+      setOutcome(
+        failureOutcome(res.error, "That promo could not be applied to this subscription."),
+      );
       setBusy(false);
       return;
     }
@@ -70,7 +72,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
             style={inputStyle}
           />
         </Field>
-        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
             type="button"

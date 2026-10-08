@@ -10,11 +10,13 @@ import { Link } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
   Field,
+  type Outcome,
   OutcomeBanner,
   actionButtonStyle,
   bodyRow,
   cell,
   cellRight,
+  failureOutcome,
   inputStyle,
   tableStyle,
   theadRow,
@@ -29,7 +31,7 @@ export function PlansList(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [form, setForm] = useState({
     slug: "",
     name: "",
@@ -73,7 +75,7 @@ export function PlansList(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error) {
-      setOutcome({ ok: false, message: "Could not create the plan (check step-up + fields)." });
+      setOutcome(failureOutcome(res.error, "Could not create the plan (check the fields)."));
     } else {
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
@@ -109,7 +111,7 @@ export function PlansList(): JSX.Element {
           </button>
         }
       />
-      {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+      {outcome ? <OutcomeBanner {...outcome} /> : null}
       {showCreate ? (
         <section
           style={{

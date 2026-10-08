@@ -124,6 +124,8 @@ export interface LoadErrorView {
   readonly message: string;
   /** Per-row problems from a 422, mapped back to the operator's line numbers. */
   readonly details: readonly string[];
+  /** The refusal was STEP_UP_REQUIRED: the screen offers a Re-verify link to /step-up (and back). */
+  readonly stepUp?: boolean;
 }
 
 interface EnvelopeError {
@@ -162,6 +164,7 @@ export function loadErrorView(
       message:
         "Loading the platform wage index needs a fresh step-up. Re-verify your identity, then load again — nothing was loaded.",
       details: [],
+      stepUp: true,
     };
   if (status === 403)
     return {

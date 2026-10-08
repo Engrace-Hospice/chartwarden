@@ -6,6 +6,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 import type { ComponentType } from "react";
 import { Login } from "./login";
 import { OrganizationSelect } from "./organization-select";
+import { AdminStepUp } from "./step-up";
 
 export const adminAuthScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 1,
@@ -18,6 +19,14 @@ export const adminAuthScreens: ScreenRegistryModule<ComponentType> = {
       title: "Select organization",
       chrome: false,
       screen: OrganizationSelect,
+    },
+    // Re-verify the CURRENT session for a step-up-gated action (403 STEP_UP_REQUIRED), then return.
+    {
+      id: "auth.step-up",
+      path: "/step-up",
+      title: "Confirm it’s you",
+      chrome: false,
+      screen: AdminStepUp,
     },
   ],
 };

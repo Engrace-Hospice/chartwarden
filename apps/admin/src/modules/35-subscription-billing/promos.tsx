@@ -9,11 +9,13 @@ import type { JSX } from "react";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
   Field,
+  type Outcome,
   OutcomeBanner,
   actionButtonStyle,
   bodyRow,
   cell,
   cellRight,
+  failureOutcome,
   inputStyle,
   tableStyle,
   theadRow,
@@ -27,7 +29,7 @@ export function Promos(): JSX.Element {
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -76,7 +78,7 @@ export function Promos(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error)
-      setOutcome({ ok: false, message: "Could not create the promo (check step-up + fields)." });
+      setOutcome(failureOutcome(res.error, "Could not create the promo (check the fields)."));
     else {
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
@@ -104,7 +106,7 @@ export function Promos(): JSX.Element {
       });
       setOutcome(
         res.error
-          ? { ok: false, message: "Could not deactivate (check step-up)." }
+          ? failureOutcome(res.error, "Could not deactivate this promo.")
           : { ok: true, message: `Promo "${code}" deactivated.` },
       );
       if (!res.error) await load();
@@ -139,7 +141,7 @@ export function Promos(): JSX.Element {
           </button>
         }
       />
-      {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+      {outcome ? <OutcomeBanner {...outcome} /> : null}
       {showCreate ? (
         <section
           style={{
