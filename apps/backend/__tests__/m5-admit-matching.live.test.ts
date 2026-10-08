@@ -16,7 +16,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
+import { type AdmitResult, M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -127,7 +127,7 @@ describe.skipIf(!DB_URL)("GAP-009/010 M5 admit matching + bypass audit — LIVE 
       STAFF,
     );
     expect(out.outcome).toBe("soft_review");
-    expect((out as { matchReviewIds: string[] }).matchReviewIds.length).toBe(1);
+    expect((out as Extract<AdmitResult, { outcome: "soft_review" }>).matchReviewIds.length).toBe(1);
     expect(await patientCount()).toBe(before + 1);
     const reviews = await admin.query(
       "SELECT status FROM patient_match_review WHERE new_patient_id=$1",
