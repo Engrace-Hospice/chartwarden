@@ -9,17 +9,18 @@
 //   2. asks M3's access port whether the engagement is still live and the identity may hold the auditor
 //      role (an existing staff member is refused: an auditor session must not inherit staff permissions);
 //   3. consumes the link (single-use: matched on id AND the live predicate, RETURNING asserted);
-//   4. verifies the emailed mailbox (the link was delivered to that address only), ensures an `active`
-//      membership and has M3 grant the one least-privilege `external_auditor` role, expiring with the window;
+//   4. verifies the emailed mailbox (the link was delivered to that address only) and ensures an `active`
+//      membership (it holds NO role yet);
 //   5. enforces "no concurrent auditor sessions" (the user's other auditor sessions are deleted) and mints
-//      the session through Better Auth (cookie signed as Better Auth signs it);
+//      an ENROLMENT-stage session through Better Auth (cookie signed as Better Auth signs it);
 //   6. audits the redemption (M4) in the same transaction.
+// The enrolment-stage session can reach ONLY the enrolment routes (auditor-enrolment.ts): the auditor must
+// accept the versioned BAA / engagement terms and prove a second factor (enrol TOTP the first time, present a
+// code or a recovery code afterwards). Only then is the least-privilege `external_auditor` role granted and the
+// session upgraded to the read-only `active` stage - so possession of the emailed link alone reads nothing.
 // A REFUSAL is audited and COMMITTED, then thrown by the caller: throwing inside the transaction would roll
 // the refusal's audit row back with everything else.
 //
-// NOT DONE HERE (named, not faked): the spec's per-auditor 2FA enrollment and BAA acceptance ceremony. The
-// redeemed session carries no step-up (`last_step_up_at` NULL), so any route that demands a fresh step-up
-// stays closed to an auditor; the only thing an auditor can do is the single read permission below.
 import { type AuditContext, audit } from "@wardenx/audit";
 import { isUserStatusBlocked } from "@wardenx/auth";
 import type { AuditorSessionIssuer, IssuedAuditorSession } from "@wardenx/auth";
@@ -303,14 +304,6 @@ export async function redeemAuditorLink(
           if (!created) throw new Error("auditor membership insert returned no row");
           membershipId = created.id;
         }
-
-        await deps.access.grant(tx, {
-          organizationId: req.organizationId,
-          engagementId: link.engagementId,
-          membershipId,
-          userId,
-          expiresAt: link.expiresAt,
-        });
 
         // "No concurrent auditor sessions" (§2.2.4): the newest redemption wins.
         await db

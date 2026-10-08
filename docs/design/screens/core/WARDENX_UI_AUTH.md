@@ -51,9 +51,16 @@ Centered Card
 - **Auditor access link** (`/auditor/redeem?org=…#token=…`) — the emailed single-use link of an audit
   engagement. The token rides the URL fragment (never sent to a server) and is scrubbed from the address
   bar; nothing is redeemed until the auditor presses *Start auditor session*, so a mail scanner that follows
-  the link cannot burn it. Success starts a read-only `auditor` session bound to ONE engagement (10-min idle,
-  ends at the engagement window); replay, expiry, revocation and a not-yet-open window are refused with a
-  plain explanation. Per-auditor 2FA enrolment and BAA acceptance (M2 §7.7) are not part of this screen yet.
+  the link cannot burn it. Success starts an enrolment-stage `auditor` session bound to ONE engagement and
+  hands over to *Auditor enrolment*; replay, expiry, revocation and a not-yet-open window are refused with a
+  plain explanation.
+- **Auditor enrolment** (`/auditor/enrol`) — M2 §7.7. Two steps on one card, in the redesign kit: (1) read the
+  versioned BAA / engagement terms in a scrollable read-only field, type your full name, tick the box and
+  *Accept terms*; (2) *Set up an authenticator* the first time (manual key + code, then ten recovery codes shown
+  ONCE behind a "saved" acknowledgement) or enter the authenticator / a recovery code on later engagements. Five
+  wrong codes lock entry for 15 minutes (the card says when). When both are done the session becomes the
+  read-only engagement session (10-min idle, ends at the engagement window) and *Continue* opens it. SMS is
+  never offered.
 - **Screen-lock overlay** — after 5 minutes idle; soft re-auth (password / biometric /
   passkey); session stays alive until absolute timeout.
 - **Step-up challenge** (full-page chrome-less route `/step-up` — deliberately outside the app shell, not a modal) — triggered by privileged actions; WebAuthn or TOTP only

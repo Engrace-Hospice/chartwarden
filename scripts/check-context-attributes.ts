@@ -130,6 +130,11 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
       "authenticate hook — `ResolvedActor.engagementId`, the `auditor_engagement` an `auditor`-class session was minted for, read from `session.scope.engagementId` through `sessionEngagementId` (class- AND window-gated: a staff session carrying a stray key, or an auditor row missing its `engagement_start/end`, stamps nothing). Stamped only when `sessionClass === 'auditor'`, from server-side session state — never a header or the route, because M31's `portal_engagement_scope` compares it against the engagement the ROUTE names (GAP-093). The write side (M2 stamping `scope.engagementId` on the session at auditor magic-link consumption) is not built yet, so until it is no live session carries one and the auditor route denies everyone — fail closed.",
   },
 
+  auditorEnrolmentEngagementId: {
+    producer:
+      "authenticate hook — the `auditor`-class session's OWN engagement (`ResolvedActor.engagementId`, class- and window-gated by `sessionEngagementId`), stamped for BOTH auditor stages so the enrolment routes can be bound to it. Unlike `engagementId` it names no READ scope: an enrolment-stage session (M2 §7.7, `auditorStage !== 'active'`) gets only this key, so M31's `portal_engagement_scope` still denies it. Read only by M2's `auditor_enrolment_session` predicate, which compares it with the engagement the enrolment guard hands it (the same session-derived value).",
+  },
+
   externalActorId: {
     producer:
       "authenticate hook — `ResolvedActor.externalActorId`, the `external_triage_vendor` row an M19 answering-service session acts for, resolved through `sessionExternalActorId` so the CLASS decides and a staff session carrying a stray `scope.externalActorId` stamps nothing (it is the authorization SUBJECT of `external_triage_actor`, so any other route to it would reach a vendor-scoped triage call). Written at mint by M2's `VendorSessionBinder`, which M19's vendor-binding route calls; migration 0223 makes `scope.externalActorId` a `session_scope_chk` requirement of both vendor classes, so a vendor session with no vendor cannot be written at all.",

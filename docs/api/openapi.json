@@ -38763,13 +38763,601 @@
         }
       }
     },
+    "/api/v1/auditors/enrolment/baa": {
+      "post": {
+        "operationId": "postApiV1AuditorsEnrolmentBaa",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Accept the versioned BAA / engagement terms (version + sha-256 of the exact text; stale terms refused; idempotent) — upgrades the session once a second factor is also proven (§7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "engagementId",
+                    "terms",
+                    "baaAccepted",
+                    "secondFactor",
+                    "totpPending",
+                    "lockedUntil",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "enrolment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "engagementId": {
+                      "type": "string"
+                    },
+                    "terms": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "title",
+                        "text",
+                        "sha256"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "baaAccepted": {
+                      "type": "boolean"
+                    },
+                    "secondFactor": {
+                      "anyOf": [
+                        {
+                          "const": "enrol",
+                          "type": "string"
+                        },
+                        {
+                          "const": "challenge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totpPending": {
+                      "type": "boolean"
+                    },
+                    "lockedUntil": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "termsVersion",
+                  "termsSha256",
+                  "acceptedName"
+                ],
+                "properties": {
+                  "termsVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "termsSha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "acceptedName": {
+                    "minLength": 2,
+                    "maxLength": 120,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auditors/enrolment/state": {
+      "get": {
+        "operationId": "getApiV1AuditorsEnrolmentState",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Where the auditor is in the enrolment ceremony: the terms to read, BAA acceptance, second-factor status and lockout (§7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "engagementId",
+                    "terms",
+                    "baaAccepted",
+                    "secondFactor",
+                    "totpPending",
+                    "lockedUntil",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "enrolment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "engagementId": {
+                      "type": "string"
+                    },
+                    "terms": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "title",
+                        "text",
+                        "sha256"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "baaAccepted": {
+                      "type": "boolean"
+                    },
+                    "secondFactor": {
+                      "anyOf": [
+                        {
+                          "const": "enrol",
+                          "type": "string"
+                        },
+                        {
+                          "const": "challenge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totpPending": {
+                      "type": "boolean"
+                    },
+                    "lockedUntil": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auditors/enrolment/totp/begin": {
+      "post": {
+        "operationId": "postApiV1AuditorsEnrolmentTotpBegin",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "First engagement only: start authenticator (TOTP) setup — a fresh unconfirmed secret as an otpauth URI and a manual-entry key (409 when a factor is already enrolled) (§7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "otpauthUri",
+                    "manualEntryKey"
+                  ],
+                  "properties": {
+                    "otpauthUri": {
+                      "type": "string"
+                    },
+                    "manualEntryKey": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auditors/enrolment/totp/confirm": {
+      "post": {
+        "operationId": "postApiV1AuditorsEnrolmentTotpConfirm",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "First engagement only: confirm the first authenticator code — the factor becomes real and ten single-use recovery codes are returned ONCE (stored hashed); wrong codes count toward a lockout (§7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "recoveryCodes",
+                    "state"
+                  ],
+                  "properties": {
+                    "recoveryCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "state": {
+                      "type": "object",
+                      "required": [
+                        "stage",
+                        "engagementId",
+                        "terms",
+                        "baaAccepted",
+                        "secondFactor",
+                        "totpPending",
+                        "lockedUntil",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "stage": {
+                          "anyOf": [
+                            {
+                              "const": "enrolment",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "engagementId": {
+                          "type": "string"
+                        },
+                        "terms": {
+                          "type": "object",
+                          "required": [
+                            "version",
+                            "title",
+                            "text",
+                            "sha256"
+                          ],
+                          "properties": {
+                            "version": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            },
+                            "sha256": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "baaAccepted": {
+                          "type": "boolean"
+                        },
+                        "secondFactor": {
+                          "anyOf": [
+                            {
+                              "const": "enrol",
+                              "type": "string"
+                            },
+                            {
+                              "const": "challenge",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "totpPending": {
+                          "type": "boolean"
+                        },
+                        "lockedUntil": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "expiresAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auditors/enrolment/verify": {
+      "post": {
+        "operationId": "postApiV1AuditorsEnrolmentVerify",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Later engagements: present the enrolled factor — a TOTP code (a spent step cannot be replayed) or a single-use recovery code; five wrong codes lock the factor for 15 minutes (429) (§7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "engagementId",
+                    "terms",
+                    "baaAccepted",
+                    "secondFactor",
+                    "totpPending",
+                    "lockedUntil",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "enrolment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "engagementId": {
+                      "type": "string"
+                    },
+                    "terms": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "title",
+                        "text",
+                        "sha256"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "baaAccepted": {
+                      "type": "boolean"
+                    },
+                    "secondFactor": {
+                      "anyOf": [
+                        {
+                          "const": "enrol",
+                          "type": "string"
+                        },
+                        {
+                          "const": "challenge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totpPending": {
+                      "type": "boolean"
+                    },
+                    "lockedUntil": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "totpCode": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  },
+                  "recoveryCode": {
+                    "pattern": "^[A-Za-z0-9 -]{16,32}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auditors/redeem": {
       "post": {
         "operationId": "postApiV1AuditorsRedeem",
         "tags": [
           "02-identity"
         ],
-        "summary": "Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7)",
+        "summary": "Redeem an emailed auditor link into a single-use, ENROLMENT-stage auditor session that reaches only the enrolment routes until the BAA terms are accepted and a second factor is proven (§2.2.4, §7.7)",
         "parameters": [],
         "responses": {
           "200": {
@@ -38780,6 +39368,7 @@
                   "type": "object",
                   "required": [
                     "sessionClass",
+                    "stage",
                     "organizationId",
                     "engagementId",
                     "expiresAt"
@@ -38787,6 +39376,10 @@
                   "properties": {
                     "sessionClass": {
                       "const": "auditor",
+                      "type": "string"
+                    },
+                    "stage": {
+                      "const": "enrolment",
                       "type": "string"
                     },
                     "organizationId": {

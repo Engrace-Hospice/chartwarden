@@ -35,6 +35,41 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "m2.auditor_link.refused",
     "Redemption of an auditor magic link was refused (replayed, expired, revoked, engagement not live, identity is a member, ...).",
   ),
+  // M2 §7.7 - the auditor enrolment ceremony (BAA / engagement terms + second factor) between link redemption
+  // and the read-only session. Never carries a code, a secret or a recovery code - only the step and its outcome.
+  compliance(
+    "m2.auditor_enrolment.baa_accepted",
+    "An auditor accepted the versioned BAA / engagement terms (version and sha-256 recorded).",
+  ),
+  compliance("m2.auditor_enrolment.totp_started", "An auditor began authenticator (TOTP) setup."),
+  compliance(
+    "m2.auditor_enrolment.totp_enrolled",
+    "An auditor confirmed an authenticator and was issued recovery codes (shown once, stored hashed).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.factor_verified",
+    "An auditor proved an enrolled second factor (TOTP code or single-use recovery code).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.recovery_code_used",
+    "An auditor spent a single-use recovery code.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.factor_failed",
+    "An auditor presented a wrong or replayed second-factor code.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.locked",
+    "An auditor's second factor locked after consecutive wrong codes.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.refused",
+    "An enrolment step was refused (stale terms, locked factor, engagement no longer live, ...).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.activated",
+    "An auditor session completed enrolment: the least-privilege role was granted and the session became the read-only engagement session.",
+  ),
   compliance("m2.session.step_up.completed", "A step-up (re-auth) challenge was completed."),
   compliance("m2.session.step_up.failed", "A step-up (re-auth) challenge failed."),
   compliance(

@@ -19,6 +19,20 @@ export {
   redeemAuditorLink,
 } from "./auditor-redemption";
 export {
+  type AuditorEnrolment,
+  type AuditorEnrolmentDeps,
+  type EnrolmentActor,
+  type EnrolmentResult,
+  type EnrolmentState,
+  createAuditorEnrolment,
+  enrolmentRefusalError,
+} from "./auditor-enrolment";
+export { CURRENT_AUDITOR_TERMS, type AuditorTerms, isCurrentTerms } from "./auditor-terms";
+export {
+  type AuditorEnrolmentRouteDeps,
+  registerAuditorEnrolmentRoutes,
+} from "./routes/auditor-enrolment";
+export {
   type AuditorLinkEmailTransport,
   buildAuditorRedeemUrl,
   createAuditorLinkEmailDelivery,

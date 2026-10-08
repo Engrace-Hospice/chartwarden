@@ -257,6 +257,8 @@ export interface SessionScopeFields {
     externalActorId?: string;
     /** The `auditor_engagement` an auditor session was minted for (GAP-093(c)). */
     engagementId?: string;
+    /** The auditor enrolment stage (`enrolment` | `active`). */
+    auditorStage?: string;
   } | null;
   readonly engagementStart?: Date | string | null;
   readonly engagementEnd?: Date | string | null;
@@ -338,6 +340,23 @@ export function sessionEngagementId(fields: SessionScopeFields): string | null {
   if (fields.engagementStart == null || fields.engagementEnd == null) return null;
   const id = fields.scope?.engagementId;
   return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/** The auditor session stages (M2 §7.7): `enrolment` reaches only the enrolment routes; `active` reads. */
+export const AUDITOR_STAGE_ENROLMENT = "enrolment";
+export const AUDITOR_STAGE_ACTIVE = "active";
+export type AuditorSessionStage = typeof AUDITOR_STAGE_ENROLMENT | typeof AUDITOR_STAGE_ACTIVE;
+
+/**
+ * The stage of an auditor session, or null on every other class. FAIL CLOSED: anything that is not exactly
+ * `active` (an absent key — a session minted before the enrolment ceremony existed — or an unknown value)
+ * reads `enrolment`, so a session can only ever be upgraded by the enrolment service, never by omission.
+ */
+export function sessionAuditorStage(fields: SessionScopeFields): AuditorSessionStage | null {
+  if (!SESSION_CLASS_DESCRIPTORS[fields.sessionClass].requiresEngagementWindow) return null;
+  return fields.scope?.auditorStage === AUDITOR_STAGE_ACTIVE
+    ? AUDITOR_STAGE_ACTIVE
+    : AUDITOR_STAGE_ENROLMENT;
 }
 
 /** Whether a class permits concurrent sessions (auditor: never). */

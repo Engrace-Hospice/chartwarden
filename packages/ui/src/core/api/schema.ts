@@ -3416,6 +3416,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auditors/enrolment/baa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept the versioned BAA / engagement terms (version + sha-256 of the exact text; stale terms refused; idempotent) — upgrades the session once a second factor is also proven (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentBaa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where the auditor is in the enrolment ceremony: the terms to read, BAA acceptance, second-factor status and lockout (§7.7) */
+        get: operations["getApiV1AuditorsEnrolmentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/totp/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** First engagement only: start authenticator (TOTP) setup — a fresh unconfirmed secret as an otpauth URI and a manual-entry key (409 when a factor is already enrolled) (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentTotpBegin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/totp/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** First engagement only: confirm the first authenticator code — the factor becomes real and ten single-use recovery codes are returned ONCE (stored hashed); wrong codes count toward a lockout (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentTotpConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Later engagements: present the enrolled factor — a TOTP code (a spent step cannot be replayed) or a single-use recovery code; five wrong codes lock the factor for 15 minutes (429) (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auditors/redeem": {
         parameters: {
             query?: never;
@@ -3425,7 +3510,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7) */
+        /** Redeem an emailed auditor link into a single-use, ENROLMENT-stage auditor session that reaches only the enrolment routes until the BAA terms are accepted and a second factor is proven (§2.2.4, §7.7) */
         post: operations["postApiV1AuditorsRedeem"];
         delete?: never;
         options?: never;
@@ -31660,6 +31745,203 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AuditorsEnrolmentBaa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    termsVersion: string;
+                    termsSha256: string;
+                    acceptedName: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditorsEnrolmentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentTotpBegin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        otpauthUri: string;
+                        manualEntryKey: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentTotpConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        recoveryCodes: string[];
+                        state: {
+                            stage: "enrolment" | "active";
+                            engagementId: string;
+                            terms: {
+                                version: string;
+                                title: string;
+                                text: string;
+                                sha256: string;
+                            };
+                            baaAccepted: boolean;
+                            secondFactor: "enrol" | "challenge" | "verified";
+                            totpPending: boolean;
+                            lockedUntil: string | null;
+                            /** Format: date-time */
+                            expiresAt: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    totpCode?: string;
+                    recoveryCode?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AuditorsRedeem: {
         parameters: {
             query?: never;
@@ -31685,6 +31967,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         sessionClass: "auditor";
+                        /** @constant */
+                        stage: "enrolment";
                         organizationId: string;
                         engagementId: string;
                         /** Format: date-time */

@@ -59,6 +59,8 @@ export interface SessionContextRecord {
   readonly externalActorId?: string | null;
   /** The engagement an auditor session was minted for; null on every other class (GAP-093(c)). */
   readonly engagementId?: string | null;
+  /** An auditor session's enrolment stage (M2 §7.7); null on every other class. Absent reads as null. */
+  readonly auditorStage?: "enrolment" | "active" | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -103,6 +105,7 @@ export function createSessionContextResolver(
         deviceAttestation: row.deviceAttestation ?? null,
         externalActorId: row.externalActorId ?? null,
         engagementId: row.engagementId ?? null,
+        auditorStage: row.auditorStage ?? null,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {

@@ -3,14 +3,16 @@
 // The page an emailed auditor link opens: `/auditor/redeem?org=<organizationId>#token=<token>`. The one-time
 // token rides the URL FRAGMENT (never sent to a server, so absent from access logs and `Referer`); this page
 // reads it, scrubs it from the address bar, and only redeems when the auditor presses the button — a mail
-// scanner that merely follows the link therefore cannot burn the single-use token. Redemption starts a
-// read-only, engagement-scoped session (the session cookie is set by the response).
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+// scanner that merely follows the link therefore cannot burn the single-use token. Redemption starts an
+// ENROLMENT-stage session (the session cookie is set by the response) and hands over to /auditor/enrol, where
+// the auditor accepts the BAA terms and proves a second factor before anything can be read (M2 §7.7).
+import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@wardenx/ui";
 import { useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { BrandLockup } from "./brand-lockup";
 
-type Phase = "ready" | "redeeming" | "started" | "failed" | "invalid";
+type Phase = "ready" | "redeeming" | "failed" | "invalid";
 
 const TOKEN_FROM_HASH = /^#token=([A-Za-z0-9_-]{43})$/;
 
@@ -45,7 +47,6 @@ export function AuditorRedeem(): JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("ready");
   const [error, setError] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
   // Take the token out of the fragment ONCE and remove it from the address bar / history entry.
   useEffect(() => {
@@ -70,71 +71,55 @@ export function AuditorRedeem(): JSX.Element {
       setError(failureMessage(err));
       return;
     }
-    setExpiresAt(data.expiresAt);
-    setPhase("started");
+    navigate("/auditor/enrol", { replace: true });
   }
 
   if (phase === "invalid") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
-        <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Auditor access</h1>
-        <p style={{ color: "var(--color-error)" }}>
+      <CenteredCardLayout brand={<BrandLockup />}>
+        <h1 style={titleStyle}>Auditor access</h1>
+        <InlineAlert tone="error">
           This auditor link is incomplete. Open the link from your email again, or ask the
           organization to send you a new one.
-        </p>
-      </CenteredCardLayout>
-    );
-  }
-
-  if (phase === "started") {
-    return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
-        <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Auditor access</h1>
-        <output
-          style={{ display: "block", color: "var(--color-on-surface-variant)", margin: "1em 0" }}
-        >
-          Your read-only auditor session is active
-          {expiresAt ? <> until {new Date(expiresAt).toLocaleString()}</> : null}. It ends
-          automatically when the engagement window closes, and after 10 minutes of inactivity.
-        </output>
-        <button type="button" onClick={() => navigate("/")} style={primaryBtn}>
-          Continue
-        </button>
+        </InlineAlert>
       </CenteredCardLayout>
     );
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
-      <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Auditor access</h1>
-      <p style={{ color: "var(--color-on-surface-variant)" }}>
-        You have been granted time-limited, read-only access for an audit engagement. The link can
-        be used once.
-      </p>
-      {error ? (
-        <p role="alert" style={{ color: "var(--color-error)" }}>
-          {error}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        onClick={startSession}
-        disabled={phase === "redeeming" || !token || phase === "failed"}
-        style={primaryBtn}
-      >
-        {phase === "redeeming" ? "Starting session…" : "Start auditor session"}
-      </button>
+    <CenteredCardLayout brand={<BrandLockup />}>
+      <div style={{ display: "flex", flexDirection: "column", gap: t.space4 }}>
+        <div>
+          <h1 style={titleStyle}>Auditor access</h1>
+          <p style={mutedStyle}>
+            You have been granted time-limited, read-only access for an audit engagement. The link
+            can be used once. Next you will accept the engagement terms and set up a second factor.
+          </p>
+        </div>
+        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+        <Button
+          size="lg"
+          style={{ width: "100%" }}
+          loading={phase === "redeeming"}
+          disabled={!token || phase === "failed"}
+          onClick={startSession}
+        >
+          {phase === "redeeming" ? "Starting session…" : "Start auditor session"}
+        </Button>
+      </div>
     </CenteredCardLayout>
   );
 }
 
-const primaryBtn = {
-  width: "100%",
-  padding: "0.625rem 1rem",
-  border: "none",
-  borderRadius: "0.5rem",
-  background: "var(--color-primary)",
-  color: "var(--color-surface-lowest)",
-  cursor: "pointer",
-  fontWeight: 600,
-} as const;
+const titleStyle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1.25rem",
+  color: t.onSurface,
+};
+const mutedStyle: CSSProperties = {
+  margin: `${t.space2} 0 0`,
+  color: t.onSurfaceVariant,
+  fontSize: "0.85rem",
+};

@@ -63,6 +63,7 @@ export * from "./membership-roles";
 // window for external auditors (§7.5).
 export * from "./break-glass";
 export * from "./auditor-engagements";
+export * from "./auditor-baa-acceptance";
 export * from "./auditor-magic-links";
 export * from "./collaborator-links";
 // M4-T04 — Audit lifecycle / integrity / catalog tables (M4 spec §3.5). legal_hold,

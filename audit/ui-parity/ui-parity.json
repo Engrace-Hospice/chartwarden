@@ -125,6 +125,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.auditor-enrolment",
+      "path": "/auditor/enrol",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.security-passkeys",
       "path": "/security/passkeys",
       "permission": "(none)"

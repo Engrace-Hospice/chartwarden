@@ -40,6 +40,14 @@ import {
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
 import {
+  AcceptTermsRequestSchema as M2AuditorAcceptTermsRequestSchema,
+  BeginTotpResponseSchema as M2AuditorBeginTotpResponseSchema,
+  ConfirmTotpRequestSchema as M2AuditorConfirmTotpRequestSchema,
+  ConfirmTotpResponseSchema as M2AuditorConfirmTotpResponseSchema,
+  EnrolmentStateSchema as M2AuditorEnrolmentStateSchema,
+  VerifyFactorRequestSchema as M2AuditorVerifyFactorRequestSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/auditor-enrolment";
+import {
   AuditorRedeemRequestSchema as M2AuditorRedeemRequestSchema,
   AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
@@ -6156,9 +6164,37 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/auditors/redeem": {
     summary:
-      "Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7)",
+      "Redeem an emailed auditor link into a single-use, ENROLMENT-stage auditor session that reaches only the enrolment routes until the BAA terms are accepted and a second factor is proven (§2.2.4, §7.7)",
     body: M2AuditorRedeemRequestSchema,
     response: M2AuditorRedeemResponseSchema,
+  },
+  "GET /api/v1/auditors/enrolment/state": {
+    summary:
+      "Where the auditor is in the enrolment ceremony: the terms to read, BAA acceptance, second-factor status and lockout (§7.7)",
+    response: M2AuditorEnrolmentStateSchema,
+  },
+  "POST /api/v1/auditors/enrolment/baa": {
+    summary:
+      "Accept the versioned BAA / engagement terms (version + sha-256 of the exact text; stale terms refused; idempotent) — upgrades the session once a second factor is also proven (§7.7)",
+    body: M2AuditorAcceptTermsRequestSchema,
+    response: M2AuditorEnrolmentStateSchema,
+  },
+  "POST /api/v1/auditors/enrolment/totp/begin": {
+    summary:
+      "First engagement only: start authenticator (TOTP) setup — a fresh unconfirmed secret as an otpauth URI and a manual-entry key (409 when a factor is already enrolled) (§7.7)",
+    response: M2AuditorBeginTotpResponseSchema,
+  },
+  "POST /api/v1/auditors/enrolment/totp/confirm": {
+    summary:
+      "First engagement only: confirm the first authenticator code — the factor becomes real and ten single-use recovery codes are returned ONCE (stored hashed); wrong codes count toward a lockout (§7.7)",
+    body: M2AuditorConfirmTotpRequestSchema,
+    response: M2AuditorConfirmTotpResponseSchema,
+  },
+  "POST /api/v1/auditors/enrolment/verify": {
+    summary:
+      "Later engagements: present the enrolled factor — a TOTP code (a spent step cannot be replayed) or a single-use recovery code; five wrong codes lock the factor for 15 minutes (429) (§7.7)",
+    body: M2AuditorVerifyFactorRequestSchema,
+    response: M2AuditorEnrolmentStateSchema,
   },
   "GET /api/v1/funeral/case": {
     summary:
