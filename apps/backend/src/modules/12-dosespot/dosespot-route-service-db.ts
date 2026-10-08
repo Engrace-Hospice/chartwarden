@@ -45,7 +45,19 @@ import {
   WardenXError,
   assertCoverageDetermination,
 } from "@wardenx/types";
-import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
 import {
@@ -82,7 +94,7 @@ import type {
   RefillInboxPolicyView,
   RefillRequestView,
 } from "./routes/service";
-import { MEDICATION_ORDER_LIST_LIMIT } from "./routes/service";
+import { MEDICATION_ORDER_LIST_LIMIT, RX_BENEFIT_UNKNOWN } from "./routes/service";
 import { enqueueTransmissionIfBound } from "./transmission-enqueue";
 
 const MO = schema.medicationOrders;
@@ -90,6 +102,7 @@ const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
 const MHR = schema.medicationHistoryRecords;
+const RXB = schema.rxBenefitCache;
 
 /** ACTIVE roster rows that carry an MDM id (the valid verbal-order named prescribers). RLS scopes the org. */
 async function activeNamedPrescribers(tx: DbClient): Promise<NamedPrescriberView[]> {
@@ -1460,8 +1473,33 @@ export function createDbDoseSpotBackend(
         return { status: "denied" as const };
       });
     },
-    async rxBenefitLookup(_organizationId, _patientId, _rxnormRxcui) {
-      return { covered: true, copayCents: null };
+    async rxBenefitLookup(organizationId, patientId, rxnormRxcui) {
+      // GAP-019 -- a CACHED lookup, tenant-scoped (RLS) and patient-scoped. The cache is filled only from a
+      // real vendor RxBenefit response (jobs/rx-benefit-prewarm.ts); with no fresh row the honest answer is
+      // `unknown`, never `covered: true`.
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(RXB)
+          .where(
+            and(
+              eq(RXB.organizationId, organizationId),
+              eq(RXB.patientId, patientId),
+              eq(RXB.rxnormRxcui, rxnormRxcui),
+              gt(RXB.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        if (!row) return RX_BENEFIT_UNKNOWN;
+        return {
+          status: row.covered ? ("covered" as const) : ("not_covered" as const),
+          covered: row.covered,
+          copayCents: null,
+          copayTier: row.copayTier ?? null,
+          priorAuthRequired: row.priorAuthRequired,
+          lookedUpAt: row.lookedUpAt.toISOString(),
+        };
+      });
     },
 
     // ── Prescriber roster (§2.4) ─────────────────────────────────────────────────────────────────────

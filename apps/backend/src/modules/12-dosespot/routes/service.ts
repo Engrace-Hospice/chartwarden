@@ -339,6 +339,29 @@ export interface OrderListScope {
   readonly sessionPatientId?: string | null;
 }
 
+/**
+ * GAP-019 -- the RxBenefit lookup answer. Read from the per-(patient, drug) `rx_benefit_cache` only; with no
+ * fresh cached row the answer is `unknown` (covered: null), never a fabricated `covered: true`.
+ */
+export interface RxBenefitLookupView {
+  readonly status: "covered" | "not_covered" | "unknown";
+  readonly covered: boolean | null;
+  readonly copayCents: number | null;
+  readonly copayTier: string | null;
+  readonly priorAuthRequired: boolean | null;
+  readonly lookedUpAt: string | null;
+}
+
+/** The "no cached answer" lookup result (shared by the DB backend and the in-memory slice). */
+export const RX_BENEFIT_UNKNOWN: RxBenefitLookupView = {
+  status: "unknown",
+  covered: null,
+  copayCents: null,
+  copayTier: null,
+  priorAuthRequired: null,
+  lookedUpAt: null,
+};
+
 export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
   listOrders(
     organizationId: string,
@@ -513,7 +536,7 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     organizationId: string,
     patientId: string,
     rxnormRxcui: string,
-  ): Promise<{ covered: boolean; copayCents: number | null }>;
+  ): Promise<RxBenefitLookupView>;
   listPrescribers(organizationId: string): Promise<{ prescribers: PrescriberRosterView[] }>;
   /** Active roster rows with an MDM id — the choices for a verbal order's `namedPrescriberMdmId`. */
   listNamedPrescribers(organizationId: string): Promise<{ prescribers: NamedPrescriberView[] }>;
@@ -1297,7 +1320,7 @@ export function createInMemoryDoseSpotBackend(
       return { status: "denied" };
     },
     async rxBenefitLookup(_organizationId, _patientId, _rxnormRxcui) {
-      return { covered: true, copayCents: null };
+      return RX_BENEFIT_UNKNOWN;
     },
     async listPrescribers(organizationId) {
       const all = [...prescribers.values()].filter((p) => p.organizationId === organizationId);

@@ -1043,4 +1043,47 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       expect(await statusOf(draft.id)).toBe("draft");
     });
   });
+  describe("GAP-019 — RxBenefit lookup reads the cache and never fabricates coverage", () => {
+    const RXCUI = "161";
+    const seedCache = (org: string, patient: string, covered: boolean, expiresInMs: number) =>
+      admin.query(
+        `INSERT INTO rx_benefit_cache (organization_id, patient_id, rxnorm_rxcui, covered, copay_tier,
+           prior_auth_required, looked_up_at, expires_at)
+         VALUES ($1,$2,$3,$4,'tier-2',true, now() - interval '1 hour', now() + ($5 || ' milliseconds')::interval)`,
+        [org, patient, RXCUI, covered, String(expiresInMs)],
+      );
+
+    it("with no cached row the answer is UNKNOWN (covered: null), not covered: true", async () => {
+      expect(await svc.rxBenefitLookup(ORG_A, PATIENT, RXCUI)).toEqual({
+        status: "unknown",
+        covered: null,
+        copayCents: null,
+        copayTier: null,
+        priorAuthRequired: null,
+        lookedUpAt: null,
+      });
+    });
+
+    it("a fresh cached row is served; an expired one is unknown again; another tenant sees nothing", async () => {
+      await seedCache(ORG_A, PATIENT, false, 3_600_000);
+      const hit = await svc.rxBenefitLookup(ORG_A, PATIENT, RXCUI);
+      expect(hit).toMatchObject({
+        status: "not_covered",
+        covered: false,
+        copayTier: "tier-2",
+        priorAuthRequired: true,
+      });
+      expect(hit.lookedUpAt).not.toBeNull();
+      // A different drug for the same patient is still unknown.
+      expect((await svc.rxBenefitLookup(ORG_A, PATIENT, "999999")).status).toBe("unknown");
+      // RLS: org B cannot read org A's cached coverage for the same patient id.
+      expect((await svc.rxBenefitLookup(ORG_B, PATIENT, RXCUI)).status).toBe("unknown");
+      // Expiry: the same row, aged past its TTL, is no longer served.
+      await admin.query(
+        "UPDATE rx_benefit_cache SET expires_at = now() - interval '1 minute', looked_up_at = now() - interval '2 days' WHERE organization_id=$1",
+        [ORG_A],
+      );
+      expect((await svc.rxBenefitLookup(ORG_A, PATIENT, RXCUI)).status).toBe("unknown");
+    });
+  });
 });
