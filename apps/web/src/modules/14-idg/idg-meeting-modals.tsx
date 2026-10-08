@@ -35,6 +35,7 @@ import {
   submitAmendment,
 } from "./idg-api";
 import { attendanceDisciplineLabel } from "./idg-disciplines";
+import "./idg-lifecycle.css";
 
 const ATTENDANCE_STATUSES = [
   "present",
@@ -70,30 +71,39 @@ const footer = { display: "flex", gap: "0.5rem", justifyContent: "flex-end" } as
 function useCeremony<T>(open: boolean, onDone: (v: T) => void, onClose: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // F-081 — the refusal's STATUS, not just its copy. 412 is the D13 step-up, and the difference between
-  // telling someone to re-authenticate and taking them somewhere they can is the whole of this field.
+  // F-081 — retain status + code: both step-up and stale-version refusals can be 412, but their recovery
+  // actions are intentionally different.
   const [status, setStatus] = useState<number | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
     setBusy(false);
     setError(null);
     setStatus(null);
+    setErrorCode(null);
   }, [open]);
   const run = async (fn: () => Promise<WriteResult<T>>): Promise<void> => {
     setBusy(true);
     setError(null);
     setStatus(null);
-    const res = await fn();
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.message);
-      setStatus(res.status);
-      return;
+    setErrorCode(null);
+    try {
+      const res = await fn();
+      setBusy(false);
+      if (!res.ok) {
+        setError(res.message);
+        setStatus(res.status);
+        setErrorCode(res.code);
+        return;
+      }
+      onDone(res.value);
+      onClose();
+    } catch {
+      setBusy(false);
+      setError("The network request did not complete. Check your connection and try again.");
     }
-    onDone(res.value);
-    onClose();
   };
-  return { busy, error, status, run };
+  return { busy, error, status, errorCode, run };
 }
 
 // ── §2.7 attendance check-in ───────────────────────────────────────────────────────────────────────────
@@ -507,7 +517,13 @@ export interface LifecycleModalProps {
   readonly action: LifecycleAction;
   readonly meetingId: string;
   /** Rendered in the adjourn dialog so the coordinator sees what the commit point is about to commit. */
-  readonly pending?: { readonly decisions: number; readonly patients: number };
+  readonly pending?: {
+    readonly scheduledStart?: string;
+    readonly decisions: number;
+    readonly patients: number;
+    readonly quorumMet?: boolean | null;
+    readonly packetCount?: number | null;
+  };
   readonly onClose: () => void;
   readonly onDone: (meeting: MeetingView) => void;
 }
@@ -523,16 +539,18 @@ export function LifecycleModal({
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { busy, error, status, run } = useCeremony<MeetingView>(open, onDone, onClose);
+  const { busy, error, status, errorCode, run } = useCeremony<MeetingView>(open, onDone, onClose);
   const [reason, setReason] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setReason("");
     setStart("");
     setEnd("");
+    setConfirmed(false);
   }, [open]);
 
   if (!open) return null;
@@ -545,7 +563,8 @@ export function LifecycleModal({
         : "Reschedule the meeting";
   const blocked =
     (action !== "adjourn" && reason.trim().length === 0) ||
-    (action === "reschedule" && (start === "" || end === ""));
+    (action === "reschedule" && (start === "" || end === "")) ||
+    (action === "adjourn" && !confirmed);
 
   return (
     <Modal
@@ -560,17 +579,62 @@ export function LifecycleModal({
 
         {action === "adjourn" ? (
           <>
+            <div className="wx-idg-finalize-summary" aria-label="Finalization summary">
+              <div>
+                <span>Meeting</span>
+                <strong>
+                  {pending?.scheduledStart
+                    ? new Date(pending.scheduledStart).toLocaleString("en-US", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })
+                    : "Date unavailable"}
+                </strong>
+              </div>
+              <div>
+                <span>Patients</span>
+                <strong>{pending ? pending.patients : "Unavailable"}</strong>
+              </div>
+              <div>
+                <span>Open decisions</span>
+                <strong>{pending ? pending.decisions : "Unavailable"}</strong>
+              </div>
+              <div>
+                <span>Quorum</span>
+                <strong>
+                  {pending?.quorumMet === true
+                    ? "Met"
+                    : pending?.quorumMet === false
+                      ? "Not met"
+                      : "Unavailable"}
+                </strong>
+              </div>
+              <div>
+                <span>Packets</span>
+                <strong>
+                  {pending?.packetCount == null
+                    ? "Unavailable"
+                    : `${pending.packetCount} available`}
+                </strong>
+              </div>
+            </div>
             <p style={meta}>
-              Adjourning is the §2.2 commit point. It emits{" "}
-              {pending ? `${pending.decisions} open decision(s)` : "every open decision"} to the
-              downstream modules, freezes the packets, resets the 15-day review floor for{" "}
-              {pending ? `${pending.patients} patient(s)` : "each included patient"} (42 CFR
-              418.56(d)), and finalizes the minutes — which are immutable afterwards.
+              Finalizing emits the open decisions, freezes the packets, updates each included
+              patient's review date, and signs an immutable minutes snapshot. Historical attendance,
+              agenda and decisions cannot then be edited through ordinary workflows.
             </p>
             <p style={meta}>
               It requires a fresh re-authentication (D13). If your session has gone stale the server
               refuses and says so; re-authenticate and adjourn again.
             </p>
+            <label className="wx-idg-finalize-confirm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(event) => setConfirmed(event.target.checked)}
+              />
+              <span>I understand that this finalizes the meeting record and minutes.</span>
+            </label>
           </>
         ) : (
           <TextAreaField
@@ -611,7 +675,7 @@ export function LifecycleModal({
             button next to every commit point would train people to re-authenticate before they are
             asked, which is the opposite of what a freshness window is for.
           */}
-          {status === 412 ? (
+          {errorCode === "STEP_UP_REQUIRED" ? (
             <Button
               tone="secondary"
               onClick={() =>
@@ -621,6 +685,11 @@ export function LifecycleModal({
               }
             >
               Re-authenticate
+            </Button>
+          ) : null}
+          {(status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED")) ? (
+            <Button tone="secondary" onClick={() => navigate(0)} disabled={busy}>
+              Refresh meeting
             </Button>
           ) : null}
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
@@ -646,7 +715,7 @@ export function LifecycleModal({
             {busy
               ? "Working…"
               : action === "adjourn"
-                ? "Adjourn"
+                ? "Finalize & Adjourn"
                 : action === "cancel"
                   ? "Cancel meeting"
                   : "Reschedule"}

@@ -250,6 +250,8 @@ describe("M2-T06 identity route inventory", () => {
         organizationId: string;
         membershipId: string;
         roles: string[];
+        locationIds: string[];
+        orgWidePatientScope: boolean;
         isAdmin: boolean;
         permissions: string[];
       };
@@ -257,6 +259,8 @@ describe("M2-T06 identity route inventory", () => {
       expect(body.organizationId).toBe("org_a");
       expect(body.membershipId).toBe("adm_1");
       expect(body.roles).toContain("org_admin");
+      expect(body.locationIds).toEqual([]);
+      expect(body.orgWidePatientScope).toBe(false);
       expect(body.isAdmin).toBe(true);
       // Permissions are the M3-resolved effective set (the SAME resolver requirePermission gates on).
       expect(body.permissions).toContain("member.invite");
@@ -275,11 +279,15 @@ describe("M2-T06 identity route inventory", () => {
         organizationId: string | null;
         membershipId: string | null;
         roles: string[];
+        locationIds: string[];
+        orgWidePatientScope: boolean;
         permissions: string[];
       };
       expect(body.organizationId).toBeNull();
       expect(body.membershipId).toBeNull();
       expect(body.roles).toEqual([]);
+      expect(body.locationIds).toEqual([]);
+      expect(body.orgWidePatientScope).toBe(false);
       expect(body.permissions).toEqual([]);
       await app.close();
     });

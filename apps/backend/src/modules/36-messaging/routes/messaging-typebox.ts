@@ -89,6 +89,10 @@ export const OpenDmBodySchema = Type.Object({
   userId: Id, // the peer user to open/find a DM with
 });
 
+export const DmStaffSearchQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 100 })),
+});
+
 export const AddMemberBodySchema = Type.Object({
   userId: Id,
   role: Type.Optional(MemberRoleSchema),
@@ -238,6 +242,15 @@ export const EditMessageResponseSchema = Type.Object({
 export const OpenDmResponseSchema = Type.Object({
   channelId: Type.String(),
   created: Type.Boolean(),
+});
+export const DmStaffSearchResponseSchema = Type.Object({
+  staff: Type.Array(
+    Type.Object({
+      userId: Id,
+      displayName: Type.String(),
+      roles: Type.Array(Type.String()),
+    }),
+  ),
 });
 
 // ── notification preferences & endpoints ─────────────────────────────────────────────────────

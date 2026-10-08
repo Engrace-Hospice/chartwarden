@@ -9,7 +9,7 @@ export const MEETING_TONE: Record<string, StatusTone> = {
   packets_building: "progress",
   packets_ready: "success",
   live: "progress",
-  adjourned: "neutral",
+  adjourned: "success",
   cancelled: "error",
   rescheduled: "neutral",
 };

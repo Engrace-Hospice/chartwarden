@@ -37,6 +37,7 @@ import {
   AlertRulePatchSchema,
   AnnounceBodySchema,
   ChannelParamsSchema,
+  DmStaffSearchQuerySchema,
   EditMessageBodySchema,
   EndpointParamsSchema,
   ListMessagesQuerySchema,
@@ -240,6 +241,16 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const body = parse(OpenDmBodySchema, request.body);
     const result = await service.openDm(organizationId, userId, body.userId);
     return reply.code(result.created ? 201 : 200).send(result);
+  });
+
+  // Minimum-necessary directory for the DM picker. Organization and actor are server-derived;
+  // suspended/revoked/foreign memberships are excluded by the service.
+  app.get("/api/v1/messaging/dm/staff", { preHandler: [DM] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { q } = parse(DmStaffSearchQuerySchema, request.query);
+    return {
+      staff: await service.searchDmEligibleStaff(organizationId, userId, q?.trim() ?? ""),
+    };
   });
 
   // --- add a manual member (admin override on auto channels — audited) -----------------------

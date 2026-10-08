@@ -76,6 +76,13 @@ export function createDbMessagingProvider(
 
   return {
     async openChannel(orgId, spec) {
+      if (spec.kind === "dm") {
+        throw new WardenXError(
+          "DM_REQUIRES_PARTICIPANT",
+          "direct messages must be opened through the membership-validating DM workflow",
+          422,
+        );
+      }
       const shape = channelShape(spec.kind);
       if (spec.kind === "bereavement") {
         // bereavement needs a pre-computed archives_at (M16 plan), so it is opened via the M16 sync hook.

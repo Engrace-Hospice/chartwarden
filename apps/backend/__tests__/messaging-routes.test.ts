@@ -76,6 +76,19 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
   const service = createInMemoryMessagingService({
     now: () => new Date("2026-06-15T12:00:00Z"),
     seed: {
+      eligibleStaff: [
+        { orgId: ORG, userId: "rn_1", displayName: "Nurse One", roles: ["Registered Nurse"] },
+        { orgId: ORG, userId: "rn_2", displayName: "Nurse Two", roles: ["Registered Nurse"] },
+        { orgId: ORG, userId: "admin_1", displayName: "Admin One", roles: ["Org Admin"] },
+        {
+          orgId: ORG,
+          userId: "suspended_1",
+          displayName: "Suspended User",
+          roles: ["Registered Nurse"],
+          status: "suspended",
+        },
+        { orgId: "org_b", userId: "foreign_1", displayName: "Foreign User", roles: [] },
+      ],
       channels: [
         {
           channelId: CT,
@@ -281,6 +294,20 @@ describe("M36-T07 messaging route inventory", () => {
   });
 
   describe("§4.2 DM (idempotent)", () => {
+    it("searches only active staff in the bound organization and excludes self", async () => {
+      const { app } = makeServer();
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/dm/staff?q=Nurse",
+        headers: RN1,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().staff).toEqual([
+        { userId: "rn_2", displayName: "Nurse Two", roles: ["Registered Nurse"] },
+      ]);
+      await app.close();
+    });
+
     it("opens a DM (201) then finds the same one (200)", async () => {
       const { app } = makeServer();
       const open = await app.inject({
@@ -300,6 +327,21 @@ describe("M36-T07 messaging route inventory", () => {
       });
       expect(again.statusCode).toBe(200);
       expect(again.json().channelId).toBe(channelId);
+      await app.close();
+    });
+
+    it("does not reveal or open DMs with suspended or foreign-tenant users", async () => {
+      const { app } = makeServer();
+      for (const userId of ["suspended_1", "foreign_1"]) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/api/v1/messaging/dm",
+          headers: RN1,
+          payload: { userId },
+        });
+        expect(response.statusCode).toBe(404);
+        expect(response.json().code).toBe("NOT_FOUND");
+      }
       await app.close();
     });
   });
@@ -337,6 +379,14 @@ describe("M36-T07 messaging route inventory", () => {
         headers: ADMIN,
       });
       expect(remove.statusCode).toBe(204);
+
+      const suspended = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${CT}/members`,
+        headers: ADMIN,
+        payload: { userId: "suspended_1" },
+      });
+      expect(suspended.statusCode).toBe(404);
       await app.close();
     });
 

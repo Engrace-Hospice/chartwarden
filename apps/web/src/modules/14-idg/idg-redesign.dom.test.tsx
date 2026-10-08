@@ -61,7 +61,7 @@ function mount(path: string, element: JSX.Element, route: string): void {
           organizationId: "org-1",
           membershipId: "m",
           roles: ["idg_coordinator"],
-          permissions: [],
+          permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide", "idg.schedule"],
           isAdmin: false,
         }}
       >

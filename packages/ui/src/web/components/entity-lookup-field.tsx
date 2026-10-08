@@ -10,6 +10,8 @@ export interface EntityLookupOption {
   label: ReactNode;
   searchLabel: string;
   description?: ReactNode;
+  /** Optional opaque identifiers needed by a consuming workflow; never rendered by the lookup. */
+  metadata?: Readonly<Record<string, string>>;
 }
 
 export interface EntityLookupLoadInput {
