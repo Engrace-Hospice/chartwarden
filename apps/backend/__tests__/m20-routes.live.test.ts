@@ -348,6 +348,80 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
       expect(res.statusCode).toBe(400);
     });
 
+    describe("GAP-030 schedule binding", () => {
+      async function policyVersionFor(owner: string): Promise<string> {
+        const o = actors[owner] as Actor;
+        const existing = await admin.query(
+          "SELECT safety_policy_version_id FROM safety_check_in WHERE organization_id = $1 LIMIT 1",
+          [o.org],
+        );
+        if (existing.rows[0]) return existing.rows[0].safety_policy_version_id as string;
+        await call("POST", "/api/v1/safety/check-ins", owner, { kind: "ad_hoc", status: "ok" });
+        const created = await admin.query(
+          "SELECT safety_policy_version_id FROM safety_check_in WHERE organization_id = $1 LIMIT 1",
+          [o.org],
+        );
+        return created.rows[0].safety_policy_version_id as string;
+      }
+
+      async function seedSchedule(owner: string, state: string): Promise<string> {
+        const o = actors[owner] as Actor;
+        const versionId = await policyVersionFor(owner);
+        const detected = state === "proposed" ? null : new Date();
+        const inserted = await admin.query(
+          `INSERT INTO safety_check_in_schedule
+             (organization_id, provider_entity_id, location_id, clinician_membership_id, kind,
+              expected_at, window_minutes, state, overdue_detected_at, safety_policy_version_id)
+           VALUES ($1,$2,$3,$4,'between_visits', now() - interval '20 minutes', 15, $5, $6, $7)
+           RETURNING id`,
+          [o.org, o.pe, o.location, o.membership, state, detected, versionId],
+        );
+        return inserted.rows[0].id as string;
+      }
+
+      const scheduleState = async (id: string): Promise<string> =>
+        (await admin.query("SELECT state FROM safety_check_in_schedule WHERE id = $1", [id]))
+          .rows[0].state as string;
+
+      it("a clinician cannot close another clinician's schedule row", async () => {
+        const scheduleId = await seedSchedule("rn", "overdue");
+        const res = await call("POST", "/api/v1/safety/check-ins", "rn2", {
+          kind: "between_visits",
+          status: "ok",
+          scheduleId,
+        });
+        expect(res.statusCode).toBe(404);
+        expect(await scheduleState(scheduleId)).toBe("overdue");
+      });
+
+      it("the owner closes her own schedule row and scheduleClosed is true", async () => {
+        const scheduleId = await seedSchedule("rn", "overdue");
+        const res = await call("POST", "/api/v1/safety/check-ins", "rn", {
+          kind: "between_visits",
+          status: "ok",
+          scheduleId,
+        });
+        expect(res.statusCode).toBe(201);
+        expect(res.json().scheduleClosed).toBe(true);
+        expect(await scheduleState(scheduleId)).toBe("recorded");
+      });
+
+      it("a schedule row that is no longer actionable is not closed again", async () => {
+        const scheduleId = await seedSchedule("rn", "overdue");
+        await call("POST", "/api/v1/safety/check-ins", "rn", {
+          kind: "between_visits",
+          status: "ok",
+          scheduleId,
+        });
+        const again = await call("POST", "/api/v1/safety/check-ins", "rn", {
+          kind: "between_visits",
+          status: "ok",
+          scheduleId,
+        });
+        expect(again.statusCode).toBe(404);
+      });
+    });
+
     it("RBAC/ABAC: no permission is 403; another clinician's check-in is 404; her supervisor-less peer cannot amend it", async () => {
       const created = (
         await call("POST", "/api/v1/safety/check-ins", "rn", { kind: "ad_hoc", status: "ok" })
@@ -558,14 +632,35 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
       expect(
         (await call("POST", `/api/v1/safety/sos/${raised.id}/cancel`, "rn2", {})).statusCode,
       ).toBe(403);
-      const cancelled = await call("POST", `/api/v1/safety/sos/${raised.id}/cancel`, "rn", {
-        biometricVerificationToken: "device-attested",
-      });
+      // GAP-031 — the verdict is the SERVER-verified step-up on the session, never the client's token.
+      const cancelled = await call(
+        "POST",
+        `/api/v1/safety/sos/${raised.id}/cancel`,
+        "rn",
+        { biometricVerificationToken: "device-attested" },
+        { "x-test-stepup": "1" },
+      );
       expect(cancelled.statusCode).toBe(200);
       expect(cancelled.json()).toMatchObject({
         cancelStatus: "cancelled_in_window",
         lifecycleState: "cancelled_in_window",
       });
+    });
+
+    it("GAP-031: an arbitrary biometric token without a fresh step-up does NOT cancel the SOS", async () => {
+      const raised = (await call("POST", "/api/v1/safety/sos", "rn", {})).json();
+      const attempt = await call("POST", `/api/v1/safety/sos/${raised.id}/cancel`, "rn", {
+        biometricVerificationToken: "any-string-the-client-likes",
+      });
+      expect(attempt.statusCode).toBe(200);
+      expect(attempt.json()).toMatchObject({
+        cancelStatus: "cancel_attempted_but_rejected",
+        lifecycleState: "cancel_window_open",
+      });
+      const row = await admin.query("SELECT lifecycle_state FROM safety_sos_alert WHERE id = $1", [
+        raised.id,
+      ]);
+      expect(row.rows[0].lifecycle_state).toBe("cancel_window_open");
     });
 
     it("a role outside the field disciplines cannot press SOS (field_eligible_for_sos → 403)", async () => {
