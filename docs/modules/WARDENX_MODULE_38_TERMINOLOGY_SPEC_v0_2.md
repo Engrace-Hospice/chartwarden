@@ -19,6 +19,7 @@
 
 ## Changelog
 
+- **2026-10-07 — GAP-086: `sud_test_loinc` is seeded (migration 0500).** M29's inbound lab gate (D15) classifies a result as 42 CFR Part 2 SUD-class only when its LOINC is a member of the platform value set `sud_test_loinc` (platform members plus the calling tenant's own `value_set_tenant_extension` rows). Nothing created that value set, so `isMemberOf` was false for every code and no SUD result was ever redacted. Decisions: (1) **it is platform data, in the database** — `PLATFORM_VALUE_SETS` / `PLATFORM_VALUE_SET_MEMBERS` (`packages/terminology/src/seed/`) are pure data that nothing inserts at migrate time, so the set is also inserted by DML-only migration `0500_terminology_sud_test_loinc_value_set.sql` (idempotent `ON CONFLICT DO NOTHING`; scope `platform`; system `loinc`; `member_effective` 1970-01-01 so an old-dated observation still classifies; `annotations` carry the LOINC long common name and whether LOINC marks the code deprecated). The TS list `sud-test-loinc.ts` is the source of truth and a unit test asserts the migration matches it code-for-code and name-for-name. (2) **Conservative by design (redact on doubt):** every LOINC test whose component is a substance-use analyte, in a patient specimen, at any property/method (screen and confirmation, cutoff and creatinine-ratio variants), plus the drug-screen / drugs-of-abuse panels and "drugs identified/tested for" tests; retired ("Deprecated ...") codes are kept because a lab can still send them. (3) **Left out on purpose:** tobacco (cotinine/nicotine — no spec classes it as SUD), tramadol/meperidine/tapentadol, carisoprodol/meprobamate, ketamine, propoxyphene, methaqualone, LSD, GHB, xylazine, kratom, phenobarbital/mephobarbital (anticonvulsant monitoring), generic volatiles/toxicology panels, questionnaires (AUDIT/DAST/TAPS), and neonatal/post-mortem matrices; a tenant that wants any of them adds them through `value_set_tenant_extension`. (4) **Clinical + compliance review of the list is REQUIRED before it is relied on** — see `docs/history/m29-m38-sud-test-loinc-seed.md`. Proven live (`test:m29:sud-loinc-seed:live`): the real M29 adapter over the real M38 provider flags seeded codes and leaves glucose alone, as `wardenx_app` under RLS, and a tenant extension adds a code for that tenant only.
 - **2026-10-06 — GAP-108: the terminology loader and the nine §4.3 jobs are built (migration 0364).** Decisions the spec left open, in one place:
   - **Pipeline (`packages/terminology-loader`, §3.1).** Pure per-system parsers (`bytes -> rows`, strict: a row it cannot read fails the load), sha256 checksum, stage-and-diff, activate/supersede, failed-load cleanup, resume-from-staged, deprecation mapping, refresh-expansions, refresh-embeddings. The package imports no DB driver/queue/object-store client; the backend binds its ports (`apps/backend/src/modules/38-terminology/jobs/`). The F-238 ICD-10-CM parsers moved into it and `scripts/db/lib/icd10cm-release.ts` re-exports them.
   - **Staging is a table, not a flag (§2.4.2).** The provider reads concept tables by effective date with no version-status filter, so "staged rows in the concept table" would be visible to clinical lookups. `concept_staging` (loader-only; `wardenx_app` has no grant) holds parsed rows (`kind = 'concept'`) and parser-supplied successor detail (`kind = 'deprecation'`); activation copies it into the concept table in ONE transaction and empties it; failure empties it and marks the version `failed`. A `loading` version restarts staging from scratch; a `staged` version is never re-parsed (resume). Re-registering a `failed` (system, version) resets it to `loading` (so a wrong checksum can be corrected); every other duplicate stays 409.
@@ -834,6 +835,15 @@ INSERT INTO value_set (id, name, description, scope) VALUES
   ('advance_directive_type',
    'Advance directive types',
    'living will, DPOA-HC, POLST/MOLST, code status',
+   'platform');
+
+-- added 2026-10-07 (GAP-086, migration 0500): the 42 CFR Part 2 SUD lab-test LOINC set M29 D15 reads.
+-- Unlike the definitions above, its MEMBERS are curated and inserted by the same migration (a generated list of
+-- LOINC long common names; see packages/terminology/src/seed/sud-test-loinc.ts).
+INSERT INTO value_set (id, name, description, scope) VALUES
+  ('sud_test_loinc',
+   '42 CFR Part 2 substance-use-disorder laboratory tests (LOINC)',
+   'Drug-screen / drugs-of-abuse panels, individual drug and metabolite screens and confirmations, alcohol biomarkers; a match marks an inbound lab SUD-class (M29 D15). Tenants extend via value_set_tenant_extension.',
    'platform');
 ```
 

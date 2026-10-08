@@ -20,6 +20,12 @@ export {
   type PlatformValueSetMemberSeed,
 } from "./value-set-members";
 
+export {
+  SUD_TEST_LOINC_ENTRIES,
+  SUD_TEST_LOINC_VALUE_SET_ID,
+  type SudTestLoincEntry,
+} from "./sud-test-loinc";
+
 import { PLATFORM_VALUE_SET_MEMBERS } from "./value-set-members";
 import { PLATFORM_VALUE_SETS } from "./value-sets";
 

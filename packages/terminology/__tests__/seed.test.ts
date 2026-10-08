@@ -48,9 +48,9 @@ describe("PLATFORM_CODE_SYSTEMS — the Phase-1 code_system catalog (§3.9)", ()
 
 // ── §3.9 value-set definitions ────────────────────────────────────────────────────────
 describe("PLATFORM_VALUE_SETS — Phase-1 value-set definitions (§3.9)", () => {
-  it("seeds the ten platform value sets with unique slugs and valid scopes", () => {
-    expect(PLATFORM_VALUE_SETS).toHaveLength(10);
-    expect(new Set(PLATFORM_VALUE_SETS.map((v) => v.id)).size).toBe(10);
+  it("seeds the eleven platform value sets with unique slugs and valid scopes", () => {
+    expect(PLATFORM_VALUE_SETS).toHaveLength(11);
+    expect(new Set(PLATFORM_VALUE_SETS.map((v) => v.id)).size).toBe(11);
     for (const v of PLATFORM_VALUE_SETS) {
       expect(VALID_SCOPES.has(v.scope)).toBe(true);
       expect(v.name.length).toBeGreaterThan(0);
