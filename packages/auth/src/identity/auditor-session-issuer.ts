@@ -84,15 +84,15 @@ export function signSessionCookieValue(token: string, secret: string): string {
 function serializeCookie(
   name: string,
   value: string,
-  attributes: CookieAttributes,
+  cookieOptions: CookieAttributes,
   maxAgeSec: number,
 ): string {
-  const parts = [`${name}=${value}`, `Max-Age=${maxAgeSec}`, `Path=${attributes.path ?? "/"}`];
-  if (attributes.domain) parts.push(`Domain=${attributes.domain}`);
-  if (attributes.httpOnly !== false) parts.push("HttpOnly");
-  if (attributes.secure) parts.push("Secure");
-  if (attributes.sameSite) {
-    const s = attributes.sameSite.toLowerCase();
+  const parts = [`${name}=${value}`, `Max-Age=${maxAgeSec}`, `Path=${cookieOptions.path ?? "/"}`];
+  if (cookieOptions.domain) parts.push(`Domain=${cookieOptions.domain}`);
+  if (cookieOptions.httpOnly !== false) parts.push("HttpOnly");
+  if (cookieOptions.secure) parts.push("Secure");
+  if (cookieOptions.sameSite) {
+    const s = cookieOptions.sameSite.toLowerCase();
     parts.push(`SameSite=${s.charAt(0).toUpperCase()}${s.slice(1)}`);
   }
   return parts.join("; ");
