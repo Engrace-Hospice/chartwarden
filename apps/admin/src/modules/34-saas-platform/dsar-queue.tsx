@@ -8,7 +8,11 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDebouncedValue,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — DSAR queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -68,32 +72,40 @@ const effectiveDue = (j: DsarExportJob): string => j.extendedUntil ?? j.slaDueAt
 export function DsarQueue(): JSX.Element {
   const client = useApiClient();
   const [patientId, setPatientId] = useState("");
+  // Typing must not refetch per keystroke; Apply / Enter load the raw text immediately.
+  const debouncedPatientId = useDebouncedValue(patientId);
+  const guard = useRequestGuard();
   const [status, setStatus] = useState<Status | "">("");
   const [items, setItems] = useState<DsarExportJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DsarExportJob | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setSelected(null);
-    const query: NonNullable<
-      paths["/api/v1/tenant/dsar-export-jobs"]["get"]["parameters"]["query"]
-    > = { limit: 50 };
-    if (patientId.trim()) query.patientId = patientId.trim();
-    if (status) query.status = status as typeof query.status;
-    const { data, error: err } = await client.GET("/api/v1/tenant/dsar-export-jobs", {
-      params: { query },
-    });
-    if (err) {
-      setError("Could not load the DSAR queue.");
+  const load = useCallback(
+    async (patient: string = debouncedPatientId) => {
+      const isCurrent = guard();
+      setLoading(true);
+      setError(null);
+      setSelected(null);
+      const query: NonNullable<
+        paths["/api/v1/tenant/dsar-export-jobs"]["get"]["parameters"]["query"]
+      > = { limit: 50 };
+      if (patient.trim()) query.patientId = patient.trim();
+      if (status) query.status = status as typeof query.status;
+      const { data, error: err } = await client.GET("/api/v1/tenant/dsar-export-jobs", {
+        params: { query },
+      });
+      if (!isCurrent()) return;
+      if (err) {
+        setError("Could not load the DSAR queue.");
+        setLoading(false);
+        return;
+      }
+      setItems(((data as DsarListPage | undefined)?.items ?? []) as DsarExportJob[]);
       setLoading(false);
-      return;
-    }
-    setItems(((data as DsarListPage | undefined)?.items ?? []) as DsarExportJob[]);
-    setLoading(false);
-  }, [client, patientId, status]);
+    },
+    [client, guard, debouncedPatientId, status],
+  );
 
   useEffect(() => {
     void load();
@@ -108,7 +120,7 @@ export function DsarQueue(): JSX.Element {
             <p>§164.524 right-of-access export jobs, with the 30-day fulfilment clock.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button tone="secondary" onClick={() => void load()}>
+            <Button tone="secondary" onClick={() => void load(patientId)}>
               Apply
             </Button>
           </div>
@@ -122,7 +134,7 @@ export function DsarQueue(): JSX.Element {
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void load();
+                if (e.key === "Enter") void load(patientId);
               }}
             />
             <SelectField
@@ -211,21 +223,14 @@ function DsarTable({
         <tbody>
           {items.map((j) => {
             const isSelected = j.id === selectedId;
+            const open = (): void => onSelect(j);
             return (
               <tr
                 key={j.id}
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={() => onSelect(j)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(j);
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title">
@@ -254,8 +259,9 @@ function DsarTable({
 }
 
 function DsarDrawer({ job, onClose }: { job: DsarExportJob; onClose: () => void }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="DSAR request">
+    <aside className="wx-admission-drawer" aria-label="DSAR request" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="shield" size={16} />

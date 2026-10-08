@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
@@ -39,15 +39,18 @@ export function Dunning(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (nextCursor: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
       setError(null);
       const query: Record<string, string> = {};
       if (stage) query.stage = stage;
       if (nextCursor) query.cursor = nextCursor;
       const res = await client.GET("/api/admin/dunning", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Dunning queue unavailable.");
         setLoading(false);
@@ -59,7 +62,7 @@ export function Dunning(): JSX.Element {
       setHasMore(page.hasMore);
       setLoading(false);
     },
-    [client, stage],
+    [client, stage, guard],
   );
 
   useEffect(() => {

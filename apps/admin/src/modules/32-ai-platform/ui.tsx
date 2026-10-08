@@ -85,26 +85,17 @@ export function OutcomeBanner({ ok, message }: { ok: boolean; message: string })
  */
 export function StandingNotice({
   tone,
+  urgent = tone === "critical" || tone === "error",
   children,
-}: { tone: StatusTone; children: ReactNode }): JSX.Element {
+}: { tone: StatusTone; urgent?: boolean; children: ReactNode }): JSX.Element {
+  // A plain role="note" is never announced. Urgent notices interrupt (alert); the rest are polite (status).
+  // Deliberately a <div>, not an <output>, and it must not sit inside another live region.
   return (
-    <div role="note" className="wx-drawer-card flex items-center gap-3">
+    <div role={urgent ? "alert" : "status"} className="wx-drawer-card flex items-center gap-3">
       <StatusPill label={tone === "success" ? "OK" : "Notice"} tone={tone} />
       <span className="text-sm">{children}</span>
     </div>
   );
-}
-
-/** Enter/Space activates a selectable table row, as a click does. */
-export function onRowKey(
-  open: () => void,
-): (e: { key: string; preventDefault: () => void }) => void {
-  return (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      open();
-    }
-  };
 }
 
 const ACRONYMS = new Set(["ai", "zdr", "sla", "phi", "hitl", "pr", "id"]);

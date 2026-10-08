@@ -6,7 +6,10 @@ import {
   Modal,
   SelectField,
   TextAreaField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.3 kill-switch dashboard
@@ -42,7 +45,6 @@ import {
   StandingNotice,
   cap,
   formatDate,
-  onRowKey,
 } from "./ui";
 
 type KillSwitchPage =
@@ -88,14 +90,17 @@ export function KillSwitches(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   const [activating, setActivating] = useState(false);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const [switches, caps] = await Promise.all([
       client.GET("/api/v1/ai/kill-switches", {}),
       client.GET("/api/v1/ai/capabilities", { params: { query: {} } }),
     ]);
+    if (!isCurrent()) return;
     if (switches.error || caps.error) {
       setError("Kill-switch state unavailable.");
       setLoading(false);
@@ -104,7 +109,7 @@ export function KillSwitches(): JSX.Element {
     setRows(switches.data.killSwitches);
     setCapabilities(caps.data.capabilities);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -146,10 +151,7 @@ export function KillSwitches(): JSX.Element {
                   className={
                     isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                   }
-                  tabIndex={0}
-                  aria-selected={isSelected}
-                  onClick={open}
-                  onKeyDown={onRowKey(open)}
+                  {...interactiveRowProps(open, isSelected)}
                 >
                   <td>
                     <span className="wx-row-title wx-data-md">{keyOf(k.capabilityId)}</span>
@@ -390,6 +392,7 @@ function KillSwitchDrawer({
   onDone: (message: string, ok: boolean) => void;
 }): JSX.Element {
   const client = useApiClient();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const [narrative, setNarrative] = useState("");
   const [actorKind, setActorKind] = useState<string>("ai_safety_owner");
   const [busy, setBusy] = useState(false);
@@ -407,7 +410,7 @@ function KillSwitchDrawer({
   }
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Kill switch">
+    <aside className="wx-admission-drawer" aria-label="Kill switch" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="block" size={16} />

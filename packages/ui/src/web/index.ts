@@ -121,7 +121,13 @@ export type { ModalProps } from "./system/modal";
 // by keyboard, not only by pointer.
 export { interactiveRowProps } from "./system/interactive-row";
 export type { InteractiveRowProps } from "./system/interactive-row";
-export { ToastProvider, useToast } from "./system/toast";
+export { ToastProvider, useOptionalToast, useToast } from "./system/toast";
+export { useDrawerA11y } from "./hooks/use-drawer-a11y";
+export type { DrawerA11yProps } from "./hooks/use-drawer-a11y";
+export { DEFAULT_DEBOUNCE_MS, useDebouncedValue } from "./hooks/use-debounced-value";
+export { useRequestGuard } from "./hooks/use-request-guard";
+export { STALE_SELECTION_MESSAGE, useStaleSelection } from "./hooks/use-stale-selection";
+export type { StaleSelectionOptions } from "./hooks/use-stale-selection";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 
 // Theme — web-only Tailwind seed (consumes core color tokens)

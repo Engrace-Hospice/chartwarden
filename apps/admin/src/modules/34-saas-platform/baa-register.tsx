@@ -6,7 +6,11 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDebouncedValue,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Platform-tenant BAA register (M34, §3.8 / D11, platform-ops surface).
@@ -56,30 +60,39 @@ export function BaaRegister(): JSX.Element {
   const client = useApiClient();
   const [status, setStatus] = useState<BaaStatus | "">("");
   const [tenantFilter, setTenantFilter] = useState("");
+  // Typing must not refetch per keystroke; Enter applies the raw text immediately.
+  const debouncedTenant = useDebouncedValue(tenantFilter);
+  const guard = useRequestGuard();
   const [records, setRecords] = useState<BaaRecordView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<BaaRecordView | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const query: NonNullable<paths["/api/v1/platform/baa-register"]["get"]["parameters"]["query"]> =
-      { limit: 50 };
-    if (status) query.status = status as typeof query.status;
-    if (tenantFilter.trim()) query.tenantAccountId = tenantFilter.trim();
-    const { data, error: err } = await client.GET("/api/v1/platform/baa-register", {
-      params: { query },
-    });
-    if (err) {
-      setError("Could not load the BAA register.");
+  const load = useCallback(
+    async (tenant: string = debouncedTenant) => {
+      const isCurrent = guard();
+      setLoading(true);
+      setError(null);
+      const query: NonNullable<
+        paths["/api/v1/platform/baa-register"]["get"]["parameters"]["query"]
+      > = { limit: 50 };
+      if (status) query.status = status as typeof query.status;
+      if (tenant.trim()) query.tenantAccountId = tenant.trim();
+      const { data, error: err } = await client.GET("/api/v1/platform/baa-register", {
+        params: { query },
+      });
+      if (!isCurrent()) return;
+      if (err) {
+        setError("Could not load the BAA register.");
+        setLoading(false);
+        return;
+      }
+      const page = data as BaaRegisterPage | undefined;
+      setRecords(page?.items ?? []);
       setLoading(false);
-      return;
-    }
-    const page = data as BaaRegisterPage | undefined;
-    setRecords(page?.items ?? []);
-    setLoading(false);
-  }, [client, status, tenantFilter]);
+    },
+    [client, guard, status, debouncedTenant],
+  );
 
   useEffect(() => {
     void load();
@@ -94,7 +107,7 @@ export function BaaRegister(): JSX.Element {
             <p>Platform-to-tenant business associate agreements, by addendum, status and expiry.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button tone="secondary" onClick={() => void load()}>
+            <Button tone="secondary" onClick={() => void load(tenantFilter)}>
               <Glyph name="rotate-ccw" size={15} /> Refresh
             </Button>
           </div>
@@ -114,7 +127,7 @@ export function BaaRegister(): JSX.Element {
               value={tenantFilter}
               onChange={(e) => setTenantFilter(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void load();
+                if (e.key === "Enter") void load(tenantFilter);
               }}
             />
           </div>
@@ -198,21 +211,14 @@ function RegisterTable({
         <tbody>
           {items.map((r) => {
             const isSelected = r.id === selectedId;
+            const open = (): void => onSelect(r);
             return (
               <tr
                 key={r.id}
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={() => onSelect(r)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(r);
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title wx-data-md">{r.tenantAccountId}</span>
@@ -246,8 +252,9 @@ function RecordDrawer({
   record: BaaRecordView;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="BAA record">
+    <aside className="wx-admission-drawer" aria-label="BAA record" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="file-check" size={16} />

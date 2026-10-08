@@ -1,4 +1,12 @@
-import { Button, InlineAlert, Panel, StatusPill, TextAreaField, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  InlineAlert,
+  Panel,
+  StatusPill,
+  TextAreaField,
+  useApiClient,
+  useRequestGuard,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
 // refund.approve). THE sensitive path: approval carries a step-up AND the §4.8 four-eyes rule (the approver
@@ -49,7 +57,9 @@ export function RefundApprove(): JSX.Element {
   const [denyReason, setDenyReason] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No refund selected.");
       setLoading(false);
@@ -58,6 +68,7 @@ export function RefundApprove(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/refunds/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Refund unavailable.");
       setLoading(false);
@@ -65,7 +76,7 @@ export function RefundApprove(): JSX.Element {
     }
     setRefund(res.data);
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();

@@ -1,4 +1,14 @@
-import { Button, Glyph, InlineAlert, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  StatusPill,
+  TextField,
+  interactiveRowProps,
+  useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.4 invocation search (`/admin/ai-platform/invocations`,
 // `ai.invocation.read`). Also embedded, pre-filtered, as the capability detail's Invocations tab.
@@ -35,7 +45,6 @@ import {
   cap,
   formatDate,
   formatInt,
-  onRowKey,
 } from "./ui";
 
 type InvocationPage =
@@ -67,9 +76,11 @@ export function InvocationSearch({
   const [phiMasked, setPhiMasked] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (before: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
       setError(null);
       const query: Record<string, string | number> = { limit: 50 };
@@ -81,6 +92,7 @@ export function InvocationSearch({
       const upper = before ?? (to ? new Date(to).toISOString() : null);
       if (upper) query.to = upper;
       const res = await client.GET("/api/v1/ai/invocations", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Invocation log unavailable.");
         setLoading(false);
@@ -91,7 +103,7 @@ export function InvocationSearch({
       setPhiMasked(res.data.phiMasked);
       setLoading(false);
     },
-    [client, capabilityId, status, from, to],
+    [client, guard, capabilityId, status, from, to],
   );
 
   useEffect(() => {
@@ -165,10 +177,7 @@ export function InvocationSearch({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={open}
-                onKeyDown={onRowKey(open)}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td className="wx-nums">{formatDate(r.invokedAt)}</td>
                 <td>
@@ -269,8 +278,9 @@ function InvocationDrawer({
   invocation,
   onClose,
 }: { id: string; invocation: Invocation | null; onClose: () => void }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Invocation detail">
+    <aside className="wx-admission-drawer" aria-label="Invocation detail" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="cpu" size={16} />

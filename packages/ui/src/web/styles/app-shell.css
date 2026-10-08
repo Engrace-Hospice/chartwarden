@@ -512,14 +512,19 @@
       width: 85vw;
       max-width: 18rem;
       transform: translateX(-100%);
-      transition: transform 0.2s ease;
+      /* Hidden once off-screen so its links leave the tab order and the accessibility tree; the delay lets the slide finish. */
+      visibility: hidden;
+      transition: transform 0.2s ease, visibility 0s linear 0.2s;
       box-shadow: var(--shadow-float);
     }
     .wx-sidebar.wx-nav-open {
       transform: translateX(0);
+      visibility: visible;
+      transition: transform 0.2s ease, visibility 0s;
     }
     @media (prefers-reduced-motion: reduce) {
-      .wx-sidebar {
+      .wx-sidebar,
+      .wx-sidebar.wx-nav-open {
         transition: none;
       }
     }

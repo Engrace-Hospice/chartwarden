@@ -11,6 +11,9 @@ import { authClient } from "./auth-client";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
+const NAV_FOCUS_ATTEMPTS = 8;
+const NAV_FOCUS_RETRY_MS = 40;
+
 function initials(name: string): string {
   const parts = name
     .trim()
@@ -27,6 +30,9 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
   // Below 768px the sidebar is an off-canvas drawer toggled by the header's menu button (app-shell.css).
   const [navOpen, setNavOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const wasNavOpen = useRef(false);
   const { pathname } = useLocation();
   // `.wx-main` is the scroll container, so a route change would otherwise keep the previous page's scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the intentional trigger, not read in the body.
@@ -34,6 +40,38 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
     mainRef.current?.scrollTo(0, 0);
   }, [pathname]);
   const activeKey = activeAdminEntry(sections, pathname);
+
+  // Opening the off-canvas nav moves focus into it; closing it (Escape, backdrop, a link) hands focus back to the toggle.
+  useEffect(() => {
+    if (!navOpen) {
+      if (wasNavOpen.current) toggleRef.current?.focus();
+      wasNavOpen.current = false;
+      return;
+    }
+    wasNavOpen.current = true;
+    // The sidebar is `visibility: hidden` until the open class has been styled, and a hidden element cannot take focus,
+    // so the first attempt can land too early: retry for a few frames until focus is inside.
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function focusFirstLink(): void {
+      const sidebar = sidebarRef.current;
+      sidebar?.querySelector<HTMLElement>("a")?.focus();
+      attempts += 1;
+      if (sidebar && !sidebar.contains(document.activeElement) && attempts < NAV_FOCUS_ATTEMPTS) {
+        timer = setTimeout(focusFirstLink, NAV_FOCUS_RETRY_MS);
+      }
+    }
+    timer = setTimeout(focusFirstLink, 0);
+    return () => clearTimeout(timer);
+  }, [navOpen]);
+  useEffect(() => {
+    if (!navOpen) return;
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setNavOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [navOpen]);
 
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
     if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
@@ -48,6 +86,8 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: closes the mobile nav when a (keyboard-reachable) nav link is
           clicked; the aside itself is not a control. */}
       <aside
+        id="wx-admin-sidebar"
+        ref={sidebarRef}
         className={navOpen ? "wx-sidebar wx-nav-open" : "wx-sidebar"}
         onClick={closeNavOnLinkClick}
       >
@@ -95,12 +135,13 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
       <div className="wx-shell-column">
         <header className="wx-header">
           <button
+            ref={toggleRef}
             type="button"
             className="wx-icon-btn wx-nav-toggle"
             onClick={() => setNavOpen((open) => !open)}
             aria-label={navOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={navOpen}
-            aria-controls="wx-admin-nav"
+            aria-controls="wx-admin-sidebar"
           >
             <Glyph name={navOpen ? "close" : "menu"} size={18} />
           </button>
@@ -122,13 +163,24 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     if (!open) return;
     function onPointerDown(ev: PointerEvent): void {
       if (!ref.current?.contains(ev.target as Node)) setOpen(false);
     }
+    function onKeyDown(ev: KeyboardEvent): void {
+      if (ev.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   async function signOut(): Promise<void> {
@@ -147,10 +199,10 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   return (
     <div className="wx-actor" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
         aria-expanded={open}
       >
         <span className="wx-actor-avatar" aria-hidden>
@@ -163,13 +215,8 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         <Glyph name="chevron-down" size={16} strokeWidth={1.75} />
       </button>
       {open ? (
-        <div className="wx-actor-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="wx-actor-menu-item"
-            onClick={() => void signOut()}
-          >
+        <div className="wx-actor-menu">
+          <button type="button" className="wx-actor-menu-item" onClick={() => void signOut()}>
             Sign out
           </button>
         </div>

@@ -6,6 +6,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.2 capability detail
@@ -46,6 +47,19 @@ type ActivePrompt =
 const TABS = ["Overview", "Lifecycle", "Calibration", "Prompts", "Invocations", "Drift"] as const;
 type Tab = (typeof TABS)[number];
 
+const TAB_PANEL_ID = "cap-tabpanel";
+const tabId = (name: Tab): string => `cap-tab-${name}`;
+
+/** Arrow keys / Home / End move between tabs (WAI-ARIA tabs pattern, automatic activation); anything else is not ours. */
+function nextTab(current: Tab, key: string): Tab | null {
+  const i = TABS.indexOf(current);
+  if (key === "ArrowRight") return TABS[(i + 1) % TABS.length] ?? null;
+  if (key === "ArrowLeft") return TABS[(i - 1 + TABS.length) % TABS.length] ?? null;
+  if (key === "Home") return TABS[0] ?? null;
+  if (key === "End") return TABS[TABS.length - 1] ?? null;
+  return null;
+}
+
 const ACTOR_ROLES = [
   "ai_safety_owner",
   "clinical_reviewer",
@@ -53,9 +67,15 @@ const ACTOR_ROLES = [
   "privacy_officer",
 ] as const;
 
+/** Keyed by id: going from one capability to another remounts, so the previous capability, tab and outcome never linger. */
 export function CapabilityDetail(): JSX.Element {
   const { capabilityId = "" } = useParams<{ capabilityId: string }>();
+  return <CapabilityDetailBody key={capabilityId} capabilityId={capabilityId} />;
+}
+
+function CapabilityDetailBody({ capabilityId }: { capabilityId: string }): JSX.Element {
   const client = useApiClient();
+  const guard = useRequestGuard();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
   const [loading, setLoading] = useState(true);
@@ -64,11 +84,13 @@ export function CapabilityDetail(): JSX.Element {
   const [transitioning, setTransitioning] = useState(false);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/v1/ai/capabilities/{capabilityId}", {
       params: { path: { capabilityId } },
     });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Capability unavailable.");
       setLoading(false);
@@ -76,7 +98,7 @@ export function CapabilityDetail(): JSX.Element {
     }
     setDetail(res.data);
     setLoading(false);
-  }, [client, capabilityId]);
+  }, [client, capabilityId, guard]);
 
   useEffect(() => {
     void load();
@@ -138,14 +160,28 @@ export function CapabilityDetail(): JSX.Element {
         )}
 
         <div className="wx-list-toolbar">
-          <div className="flex flex-wrap gap-1" role="tablist" aria-label="Capability sections">
+          <div
+            className="flex flex-wrap gap-1"
+            role="tablist"
+            aria-label="Capability sections"
+            onKeyDown={(event) => {
+              const next = nextTab(tab, event.key);
+              if (!next) return;
+              event.preventDefault();
+              setTab(next);
+              document.getElementById(tabId(next))?.focus();
+            }}
+          >
             {TABS.map((name) => (
               <Button
                 key={name}
+                id={tabId(name)}
                 role="tab"
                 size="sm"
                 tone={tab === name ? "secondary" : "tertiary"}
                 aria-selected={tab === name}
+                aria-controls={TAB_PANEL_ID}
+                tabIndex={tab === name ? 0 : -1}
                 onClick={() => setTab(name)}
               >
                 {name}
@@ -154,19 +190,21 @@ export function CapabilityDetail(): JSX.Element {
           </div>
         </div>
 
-        {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
-        {tab === "Lifecycle" ? <LifecycleTab detail={detail} /> : null}
-        {tab === "Calibration" ? <CalibrationTab detail={detail} /> : null}
-        {tab === "Prompts" ? <PromptsTab capabilityKey={c.capabilityKey} /> : null}
-        {tab === "Invocations" ? <InvocationSearch capabilityId={c.id} embedded /> : null}
-        {tab === "Drift" ? (
-          <StandingNotice tone="warning">
-            Per-capability drift series are not served by the API — the drift feed is run-shaped,
-            not a time series. See the{" "}
-            <Link to="/admin/ai-platform/drift">platform drift overview</Link> for this capability's
-            most recent drift-response run.
-          </StandingNotice>
-        ) : null}
+        <div id={TAB_PANEL_ID} role="tabpanel" aria-labelledby={tabId(tab)} className="grid gap-4">
+          {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
+          {tab === "Lifecycle" ? <LifecycleTab detail={detail} /> : null}
+          {tab === "Calibration" ? <CalibrationTab detail={detail} /> : null}
+          {tab === "Prompts" ? <PromptsTab capabilityKey={c.capabilityKey} /> : null}
+          {tab === "Invocations" ? <InvocationSearch capabilityId={c.id} embedded /> : null}
+          {tab === "Drift" ? (
+            <StandingNotice tone="warning">
+              Per-capability drift series are not served by the API — the drift feed is run-shaped,
+              not a time series. See the{" "}
+              <Link to="/admin/ai-platform/drift">platform drift overview</Link> for this
+              capability's most recent drift-response run.
+            </StandingNotice>
+          ) : null}
+        </div>
       </div>
 
       {transitioning ? (
@@ -446,13 +484,7 @@ function TransitionDialog({
   }
 
   return (
-    <Modal
-      open
-      ariaLabel="Transition capability"
-      role="alertdialog"
-      onClose={onClose}
-      width="34rem"
-    >
+    <Modal open ariaLabel="Transition capability" onClose={onClose} width="34rem">
       <div className="wx-modal-body">
         <h2>
           Transition <span className="wx-data-md">{detail.capability.capabilityKey}</span>

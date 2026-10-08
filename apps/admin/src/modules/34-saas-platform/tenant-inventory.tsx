@@ -5,7 +5,11 @@ import {
   LoadingSpinner,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the MARQUEE platform-ops inventory (R2).
@@ -15,7 +19,7 @@ import type { paths } from "@wardenx/ui";
 // The redesign's list + right drawer: a row opens the tenant's summary in the drawer, kept in
 // `?tenant=<orgSlug>`; the drawer links on to the full §5.2 overview at `/tenants/:orgSlug`.
 // Status pills resolve through the shared §6.6 tone map (saas-status.ts).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { lifecycleTone, statusLabel } from "./saas-status";
@@ -65,13 +69,14 @@ export function TenantInventory(): JSX.Element {
   // The text the list was last searched with: typing alone must not refetch, only Enter / Search.
   const [appliedSearch, setAppliedSearch] = useState("");
   // A slower earlier response must not overwrite a newer one.
-  const latestRequest = useRef(0);
+  const guard = useRequestGuard();
   const [items, setItems] = useState<TenantSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const request = ++latestRequest.current;
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
@@ -82,16 +87,18 @@ export function TenantInventory(): JSX.Element {
     const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
       params: { query },
     });
-    if (request !== latestRequest.current) return;
+    if (!isCurrent()) return;
     if (err) {
       setError("Tenant inventory unavailable.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     const page = data as unknown as TenantPage | undefined;
     setItems((page?.items ?? []) as TenantSummary[]);
+    setLoaded(true);
     setLoading(false);
-  }, [client, status, appliedSearch]);
+  }, [client, guard, status, appliedSearch]);
 
   // Load on mount + whenever the status filter changes; the search applies on submit (Enter / Search).
   useEffect(() => {
@@ -108,6 +115,12 @@ export function TenantInventory(): JSX.Element {
   const provisioning = selectedSlug === NEW_TENANT;
   const selected =
     selectedSlug && !provisioning ? items.find((t) => t.orgSlug === selectedSlug) : undefined;
+  useStaleSelection({
+    param: "tenant",
+    ready: loaded,
+    found: selected !== undefined,
+    ignore: [NEW_TENANT],
+  });
 
   return (
     <div className={`wx-list-drawer${selected || provisioning ? " has-drawer" : ""}`}>
@@ -225,15 +238,7 @@ function TenantTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={open}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    open();
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title">{tenant.legalBusinessName}</span>
@@ -264,8 +269,9 @@ function TenantDrawer({
   onClose: () => void;
 }): JSX.Element {
   const navigate = useNavigate();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Tenant">
+    <aside className="wx-admission-drawer" aria-label="Tenant" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="building" size={16} />

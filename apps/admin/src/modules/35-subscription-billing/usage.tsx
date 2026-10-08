@@ -1,4 +1,4 @@
-import { Button, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Tenant usage drill-down (`/admin/usage/:organizationId`,
 // usage.admin.read). The meter-by-meter current-period usage for one tenant over GET
@@ -22,7 +22,9 @@ export function Usage(): JSX.Element {
   const [loading, setLoading] = useState(Boolean(organizationId));
   const [error, setError] = useState<string | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!organizationId) {
       setLoading(false);
       return;
@@ -32,6 +34,7 @@ export function Usage(): JSX.Element {
     const res = await client.GET("/api/admin/usage/{organizationId}/current", {
       params: { path: { organizationId } },
     });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Usage unavailable for this organization.");
       setLoading(false);
@@ -39,7 +42,7 @@ export function Usage(): JSX.Element {
     }
     setUsage(res.data);
     setLoading(false);
-  }, [client, organizationId]);
+  }, [client, organizationId, guard]);
 
   useEffect(() => {
     void load();

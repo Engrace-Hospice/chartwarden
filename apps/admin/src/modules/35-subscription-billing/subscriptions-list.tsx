@@ -1,4 +1,12 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  StatusPill,
+  interactiveRowProps,
+  useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscriptions list (`/admin/subscriptions`,
 // subscription.admin.read). The cross-tenant subscription roster over GET /api/admin/subscriptions, filtered
@@ -9,14 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SUBSCRIPTION_STATUSES, cap, dunningTone, orgLabel, subscriptionTone } from "./status";
-import {
-  DrawerHead,
-  LoadMore,
-  StateEmpty,
-  StateError,
-  StateLoading,
-  selectableRowProps,
-} from "./ui";
+import { DrawerHead, LoadMore, StateEmpty, StateError, StateLoading } from "./ui";
 
 type SubscriptionsPage =
   operations["getApiAdminSubscriptions"]["responses"][200]["content"]["application/json"];
@@ -32,15 +33,20 @@ export function SubscriptionsList(): JSX.Element {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (nextCursor: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
+      setLoaded(false);
       setError(null);
       const query: Record<string, string> = {};
       if (status) query.status = status;
       if (nextCursor) query.cursor = nextCursor;
       const res = await client.GET("/api/admin/subscriptions", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Subscriptions unavailable.");
         setLoading(false);
@@ -50,9 +56,10 @@ export function SubscriptionsList(): JSX.Element {
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);
+      setLoaded(true);
       setLoading(false);
     },
-    [client, status],
+    [client, status, guard],
   );
 
   useEffect(() => {
@@ -60,6 +67,7 @@ export function SubscriptionsList(): JSX.Element {
   }, [load]);
 
   const selected = selectedId ? (rows.find((r) => r.id === selectedId) ?? null) : null;
+  useStaleSelection({ param: "subscription", ready: loaded, found: selected !== null });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -136,7 +144,15 @@ function SubscriptionsTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} {...selectableRowProps(r.id === selectedId, () => onOpen(r.id))}>
+            <tr
+              key={r.id}
+              className={
+                r.id === selectedId
+                  ? "is-selected wx-data-row-interactive"
+                  : "wx-data-row-interactive"
+              }
+              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId)}
+            >
               <td>
                 <span className="wx-row-title">
                   {orgLabel(r.organizationName, r.organizationId)}
@@ -163,8 +179,9 @@ function SubscriptionsTable({
 
 function SubscriptionDrawer({ sub, onClose }: { sub: AdminSub; onClose: () => void }): JSX.Element {
   const navigate = useNavigate();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Subscription">
+    <aside className="wx-admission-drawer" aria-label="Subscription" {...drawer}>
       <DrawerHead
         icon="receipt"
         title={orgLabel(sub.organizationName, sub.organizationId)}

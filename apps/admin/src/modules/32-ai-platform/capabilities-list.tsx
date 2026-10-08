@@ -1,4 +1,10 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  StatusPill,
+  interactiveRowProps,
+  useApiClient,
+  useRequestGuard,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.1 capability registry overview
 // (`/admin/ai-platform/capabilities`, `ai.capability.read`). The AI Safety Owner's front door: every
@@ -16,15 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { lifecycleTone, riskTierTone } from "./status";
-import {
-  EmptyListState,
-  ErrorState,
-  LoadingState,
-  PageHead,
-  cap,
-  formatDate,
-  onRowKey,
-} from "./ui";
+import { EmptyListState, ErrorState, LoadingState, PageHead, cap, formatDate } from "./ui";
 
 type CapabilityPage =
   operations["getApiV1AiCapabilities"]["responses"][200]["content"]["application/json"];
@@ -51,8 +49,10 @@ export function CapabilitiesList(): JSX.Element {
   const [hotPhase1, setHotPhase1] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const query: Record<string, string | boolean> = {};
@@ -60,6 +60,7 @@ export function CapabilitiesList(): JSX.Element {
     if (riskTier) query.riskTier = riskTier;
     if (hotPhase1) query.hotPhase1 = true;
     const res = await client.GET("/api/v1/ai/capabilities", { params: { query } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Capability registry unavailable.");
       setLoading(false);
@@ -67,7 +68,7 @@ export function CapabilitiesList(): JSX.Element {
     }
     setRows(res.data.capabilities);
     setLoading(false);
-  }, [client, lifecycleState, riskTier, hotPhase1]);
+  }, [client, guard, lifecycleState, riskTier, hotPhase1]);
 
   useEffect(() => {
     void load();
@@ -155,10 +156,7 @@ export function CapabilitiesList(): JSX.Element {
                     <tr
                       key={c.id}
                       className="wx-data-row-interactive"
-                      tabIndex={0}
-                      aria-label={`Open ${c.displayName}`}
-                      onClick={open}
-                      onKeyDown={onRowKey(open)}
+                      {...interactiveRowProps(open, false)}
                     >
                       <td>
                         <span className="wx-row-title">{c.displayName}</span>

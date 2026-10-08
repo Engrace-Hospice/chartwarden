@@ -7,6 +7,7 @@ import {
   StatusPill,
   TextField,
   useApiClient,
+  useRequestGuard,
   useToast,
 } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the §5.2 single-page-of-truth (R2).
@@ -76,12 +77,15 @@ export function TenantOverview(): JSX.Element {
   const [shredError, setShredError] = useState<string | null>(null);
   const [shredBusy, setShredBusy] = useState(false);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
       params: { path: { orgSlug } },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Tenant not found.");
       setLoading(false);
@@ -89,7 +93,7 @@ export function TenantOverview(): JSX.Element {
     }
     setTenant(data as unknown as TenantOverview);
     setLoading(false);
-  }, [client, orgSlug]);
+  }, [client, guard, orgSlug]);
 
   useEffect(() => {
     void load();

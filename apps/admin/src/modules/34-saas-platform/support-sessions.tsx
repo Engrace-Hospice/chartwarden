@@ -7,7 +7,11 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
 // Spec: docs/modules/... §5.1 screen inventory. The tenant-consented break-glass control surface:
@@ -79,24 +83,30 @@ export function SupportSessions(): JSX.Element {
   const selectedId = params.get("session");
   const [sessions, setSessions] = useState<SupportSessionView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SupportSessionStatus | "all">("all");
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/support-sessions");
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load support sessions.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     const page = (data ?? null) as CursorPage<SupportSessionView> | null;
     setSessions(page?.items ?? []);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -128,6 +138,7 @@ export function SupportSessions(): JSX.Element {
   const visible =
     statusFilter === "all" ? sessions : sessions.filter((s) => s.status === statusFilter);
   const selected = selectedId ? sessions.find((s) => s.id === selectedId) : undefined;
+  useStaleSelection({ param: "session", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -246,15 +257,7 @@ function SessionTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={open}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    open();
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td className="wx-data-md">{s.id}</td>
                 <td className="wx-data-md">
@@ -287,6 +290,7 @@ function SessionDrawer({
   const client = useApiClient();
   const [events, setEvents] = useState<SupportSessionEventView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
 
   useEffect(() => {
     let active = true;
@@ -311,7 +315,7 @@ function SessionDrawer({
   }, [client, session.id]);
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Support session">
+    <aside className="wx-admission-drawer" aria-label="Support session" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="shield" size={16} />

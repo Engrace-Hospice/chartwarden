@@ -1,4 +1,4 @@
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -24,10 +24,13 @@ export function Revenue(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const cur = await client.GET("/api/admin/revenue/current");
+    if (!isCurrent()) return;
     if (cur.error) {
       setError("Revenue unavailable.");
       setLoading(false);
@@ -35,9 +38,10 @@ export function Revenue(): JSX.Element {
     }
     setCurrent(cur.data);
     const snaps = await client.GET("/api/admin/revenue/snapshots", { params: { query: {} } });
+    if (!isCurrent()) return;
     setSnapshots(snaps.error ? [] : snaps.data.items);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();

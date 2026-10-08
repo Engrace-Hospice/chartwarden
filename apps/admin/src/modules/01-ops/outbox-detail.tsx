@@ -1,4 +1,12 @@
-import { Button, Glyph, InlineAlert, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  LoadingSpinner,
+  StatusPill,
+  useApiClient,
+  useDrawerA11y,
+} from "@wardenx/ui";
 // apps/admin/src/modules/01-ops — one outbox event in the Outbox screen's right drawer (WX-PR-020/OPS-004), opened by
 // `?event=<id>`; the old detail route `/admin/ops/outbox/:id` redirects there.
 import { useEffect, useState } from "react";
@@ -28,6 +36,7 @@ export function OutboxEventDrawer({
   onClose,
 }: { id: string; onClose: () => void }): JSX.Element {
   const client = useApiClient();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const [event, setEvent] = useState<OutboxEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +60,7 @@ export function OutboxEventDrawer({
   }, [id, client]);
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Outbox event">
+    <aside className="wx-admission-drawer" aria-label="Outbox event" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="send" size={16} />

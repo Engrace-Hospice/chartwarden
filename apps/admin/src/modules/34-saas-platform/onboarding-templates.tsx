@@ -6,7 +6,11 @@ import {
   LoadingSpinner,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /onboarding/templates. The platform-ops onboarding-step floor — the 11 canonical platform-seed
@@ -47,23 +51,29 @@ export function OnboardingTemplates(): JSX.Element {
   const drawerParam = params.get("template");
   const [items, setItems] = useState<OnboardingTemplate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [origin, setOrigin] = useState<OriginFilter>("");
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/onboarding-templates", {
       params: { query: { limit: LIST_LIMIT } },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load onboarding templates.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     setItems(((data as TemplateListPage | undefined)?.items ?? []) as OnboardingTemplate[]);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -79,6 +89,12 @@ export function OnboardingTemplates(): JSX.Element {
 
   const adding = drawerParam === NEW_TEMPLATE;
   const selected = drawerParam && !adding ? items.find((t) => t.id === drawerParam) : undefined;
+  useStaleSelection({
+    param: "template",
+    ready: loaded,
+    found: selected !== undefined,
+    ignore: [NEW_TEMPLATE],
+  });
   const closeDrawer = (): void => setParams({});
   const onSaved = () => {
     closeDrawer();
@@ -191,15 +207,7 @@ function TemplateTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={open}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    open();
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td className="wx-num-col wx-nums">{t.canonicalOrder}</td>
                 <td>
@@ -236,6 +244,7 @@ function TemplateEditor({
   onSaved: () => void;
 }): JSX.Element {
   const client = useApiClient();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const readOnly = mode === "edit" && (template?.isCanonical ?? false);
   const [key, setKey] = useState(template?.key ?? "");
   const [title, setTitle] = useState(template?.title ?? "");
@@ -267,7 +276,7 @@ function TemplateEditor({
   }
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Onboarding template">
+    <aside className="wx-admission-drawer" aria-label="Onboarding template" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="check-circle" size={16} />

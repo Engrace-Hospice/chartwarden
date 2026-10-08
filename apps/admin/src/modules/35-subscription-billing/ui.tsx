@@ -10,7 +10,7 @@ import {
   ReverifyLink,
   isStepUpRequired,
 } from "@wardenx/ui";
-import type { JSX, KeyboardEvent, ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 
 /** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */
 export interface Outcome {
@@ -77,7 +77,7 @@ export function StateError({
   onRetry,
 }: { message: string; onRetry?: () => void }): JSX.Element {
   return (
-    <div className="wx-list-state" role="alert">
+    <div className="wx-list-state">
       <InlineAlert tone="error">{message}</InlineAlert>
       {onRetry ? (
         <Button tone="secondary" onClick={onRetry}>
@@ -99,31 +99,6 @@ export function StateEmpty({
       <span>{children}</span>
     </div>
   );
-}
-
-/** Props for a selectable list row that opens the right drawer (click, Enter or Space). */
-export function selectableRowProps(
-  isSelected: boolean,
-  open: () => void,
-): {
-  className: string;
-  tabIndex: number;
-  "aria-selected": boolean;
-  onClick: () => void;
-  onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => void;
-} {
-  return {
-    className: isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive",
-    tabIndex: 0,
-    "aria-selected": isSelected,
-    onClick: open,
-    onKeyDown: (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        open();
-      }
-    },
-  };
 }
 
 /** The right drawer's header: icon, title + sub line, and a Close button. */

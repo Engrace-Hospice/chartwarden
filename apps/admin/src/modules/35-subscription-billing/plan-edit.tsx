@@ -1,4 +1,4 @@
-import { Button, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
 // Hydrates from GET /api/admin/plans/:id (M35A-T03 detail GET), then manages the plan's usage meters
@@ -38,7 +38,9 @@ export function PlanEdit(): JSX.Element {
     threshold: "80",
   });
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No plan selected.");
       setLoading(false);
@@ -47,6 +49,7 @@ export function PlanEdit(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/plans/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Plan unavailable.");
       setLoading(false);
@@ -54,7 +57,7 @@ export function PlanEdit(): JSX.Element {
     }
     setPlan(res.data);
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();

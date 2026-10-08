@@ -1,4 +1,14 @@
-import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  SelectField,
+  StatusPill,
+  TextField,
+  interactiveRowProps,
+  useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
 // Cross-tenant promo catalog over GET /api/admin/promos with redemption counts; create via POST
@@ -6,7 +16,7 @@ import type { operations } from "@wardenx/ui";
 // Idempotency-Key). Percent/amount-off + duration are shown per §5.2. Redesign list + right drawer: a row opens the
 // promo (`?promo=<id>`) with its Deactivate action; "New promo" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
@@ -17,7 +27,6 @@ import {
   StateError,
   StateLoading,
   failureOutcome,
-  selectableRowProps,
 } from "./ui";
 
 type Promo =
@@ -68,19 +77,25 @@ export function Promos(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("promo");
   const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
+    setLoaded(false);
     setError(null);
     const res = await client.GET("/api/admin/promos");
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Promos unavailable.");
       setLoading(false);
       return;
     }
     setPromos(res.data);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -135,6 +150,12 @@ export function Promos(): JSX.Element {
   );
 
   const selected = selectedId ? (promos.find((p) => p.id === selectedId) ?? null) : null;
+  useStaleSelection({
+    param: "promo",
+    ready: loaded,
+    found: selected !== null,
+    ignore: ["new"],
+  });
   const hasDrawer = showCreate || selected !== null;
 
   return (
@@ -220,7 +241,15 @@ function PromosTable({
         </thead>
         <tbody>
           {promos.map((p) => (
-            <tr key={p.id} {...selectableRowProps(p.id === selectedId, () => onOpen(p.id))}>
+            <tr
+              key={p.id}
+              className={
+                p.id === selectedId
+                  ? "is-selected wx-data-row-interactive"
+                  : "wx-data-row-interactive"
+              }
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+            >
               <td>
                 <span className="wx-row-title wx-data-md">{p.code}</span>
               </td>
@@ -252,8 +281,9 @@ function PromoDrawer({
   onDeactivate: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Promo code">
+    <aside className="wx-admission-drawer" aria-label="Promo code" {...drawer}>
       <DrawerHead icon="receipt" title={promo.code} sub={discount(promo)} onClose={onClose} />
       <div className="wx-drawer-body">
         <section className="wx-drawer-card">
@@ -298,11 +328,17 @@ function CreatePromoDrawer({
   onCreate: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
+  const canSubmit = !busy && form.code.trim() !== "";
+  const submit = (e: FormEvent): void => {
+    e.preventDefault();
+    if (canSubmit) onCreate();
+  };
   return (
-    <aside className="wx-admission-drawer" aria-label="New promo">
+    <aside className="wx-admission-drawer" aria-label="New promo" {...drawer}>
       <DrawerHead icon="plus" title="New promo" onClose={onClose} />
       <div className="wx-drawer-body">
-        <section className="wx-drawer-card">
+        <form className="wx-drawer-card" onSubmit={submit} noValidate>
           <TextField
             label="Code"
             value={form.code}
@@ -344,11 +380,11 @@ function CreatePromoDrawer({
             onChange={(e) => onChange({ ...form, coupon: e.target.value })}
           />
           <div className="wx-drawer-actions">
-            <Button onClick={onCreate} disabled={busy || !form.code.trim()}>
+            <Button type="submit" disabled={!canSubmit}>
               Create promo
             </Button>
           </div>
-        </section>
+        </form>
       </div>
     </aside>
   );

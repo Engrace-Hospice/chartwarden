@@ -7,7 +7,11 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDebouncedValue,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { GlyphName, paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
@@ -64,6 +68,9 @@ export function FeatureFlags(): JSX.Element {
   const client = useApiClient();
   const [flagKind, setFlagKind] = useState<FlagKind | "">("");
   const [orgFilter, setOrgFilter] = useState("");
+  // Typing must not refetch per keystroke; Enter applies the raw text immediately.
+  const debouncedOrg = useDebouncedValue(orgFilter);
+  const guard = useRequestGuard();
   const [flags, setFlags] = useState<FeatureFlagView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,26 +78,31 @@ export function FeatureFlags(): JSX.Element {
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const query: NonNullable<
-      paths["/api/v1/platform/feature-flags"]["get"]["parameters"]["query"]
-    > = { limit: 50 };
-    if (flagKind) query.flagKind = flagKind as typeof query.flagKind;
-    if (orgFilter.trim()) query.organizationId = orgFilter.trim();
-    const { data, error: err } = await client.GET("/api/v1/platform/feature-flags", {
-      params: { query },
-    });
-    if (err) {
-      setError("Could not load feature flags.");
+  const load = useCallback(
+    async (org: string = debouncedOrg) => {
+      const isCurrent = guard();
+      setLoading(true);
+      setError(null);
+      const query: NonNullable<
+        paths["/api/v1/platform/feature-flags"]["get"]["parameters"]["query"]
+      > = { limit: 50 };
+      if (flagKind) query.flagKind = flagKind as typeof query.flagKind;
+      if (org.trim()) query.organizationId = org.trim();
+      const { data, error: err } = await client.GET("/api/v1/platform/feature-flags", {
+        params: { query },
+      });
+      if (!isCurrent()) return;
+      if (err) {
+        setError("Could not load feature flags.");
+        setLoading(false);
+        return;
+      }
+      const page = data as FeatureFlagPage | undefined;
+      setFlags(page?.items ?? []);
       setLoading(false);
-      return;
-    }
-    const page = data as FeatureFlagPage | undefined;
-    setFlags(page?.items ?? []);
-    setLoading(false);
-  }, [client, flagKind, orgFilter]);
+    },
+    [client, guard, flagKind, debouncedOrg],
+  );
 
   useEffect(() => {
     void load();
@@ -132,7 +144,7 @@ export function FeatureFlags(): JSX.Element {
             <p>Platform-global and per-tenant flags, with the step-up-gated kill switch.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button tone="secondary" onClick={() => void load()}>
+            <Button tone="secondary" onClick={() => void load(orgFilter)}>
               <Glyph name="rotate-ccw" size={15} /> Refresh
             </Button>
           </div>
@@ -154,7 +166,7 @@ export function FeatureFlags(): JSX.Element {
               value={orgFilter}
               onChange={(e) => setOrgFilter(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void load();
+                if (e.key === "Enter") void load(orgFilter);
               }}
             />
           </div>
@@ -325,21 +337,14 @@ function FlagsTable({
         <tbody>
           {items.map((f) => {
             const isSelected = f.id === selectedId;
+            const open = (): void => onSelect(f);
             return (
               <tr
                 key={f.id}
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={() => onSelect(f)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(f);
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title wx-data-md">{f.flagKey}</span>
@@ -382,8 +387,9 @@ function FlagDrawer({
   onClose: () => void;
   onArmKillSwitch: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Feature flag">
+    <aside className="wx-admission-drawer" aria-label="Feature flag" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="settings" size={16} />

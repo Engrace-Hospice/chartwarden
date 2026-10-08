@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
@@ -31,14 +31,17 @@ export function Webhooks(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (nextCursor: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
       setError(null);
       const query: Record<string, string> = {};
       if (nextCursor) query.cursor = nextCursor;
       const res = await client.GET("/api/admin/webhooks/stripe/recent", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Webhook receipts unavailable.");
         setLoading(false);
@@ -50,7 +53,7 @@ export function Webhooks(): JSX.Element {
       setHasMore(page.hasMore);
       setLoading(false);
     },
-    [client],
+    [client, guard],
   );
 
   useEffect(() => {

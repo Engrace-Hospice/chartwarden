@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.7 evaluation runs (`/admin/ai-platform/evaluations`,
 // `ai.capability.read`). D10's evidence ledger: which run backs which lifecycle gate.
@@ -64,8 +64,10 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
   const [capabilityKeys, setCapabilityKeys] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const query: Record<string, string> = {};
@@ -75,6 +77,7 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
       client.GET("/api/v1/ai/evaluations", { params: { query } }),
       client.GET("/api/v1/ai/capabilities", { params: { query: {} } }),
     ]);
+    if (!isCurrent()) return;
     if (r.error || caps.error) {
       setError("Evaluation runs unavailable.");
       setLoading(false);
@@ -84,7 +87,7 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
     const page = caps.data as CapabilityPage;
     setCapabilityKeys(new Map(page.capabilities.map((c) => [c.id, c.capabilityKey])));
     setLoading(false);
-  }, [client, capabilityId, status]);
+  }, [client, guard, capabilityId, status]);
 
   useEffect(() => {
     void load();

@@ -1,4 +1,14 @@
-import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  SelectField,
+  StatusPill,
+  TextField,
+  interactiveRowProps,
+  useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
 // Cross-tenant plan catalog over GET /api/admin/plans; a draft plan is created via POST /api/admin/plans
@@ -6,7 +16,7 @@ import type { operations } from "@wardenx/ui";
 // The redesign's list + right drawer: a row opens the plan in the drawer (`?plan=<id>`), whose action leads to the
 // meter/pricing editor (`/admin/plans/:id/edit`); "New plan" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
@@ -17,7 +27,6 @@ import {
   StateError,
   StateLoading,
   failureOutcome,
-  selectableRowProps,
 } from "./ui";
 
 type PlanRow =
@@ -32,6 +41,28 @@ const EMPTY_FORM = {
   trialDays: "0",
 };
 type PlanForm = typeof EMPTY_FORM;
+
+/** Dollars typed by the operator to integer cents; null unless it is a finite number >= 0 ("abc" is not a $0 plan). */
+export function parsePriceCents(raw: string): number | null {
+  const text = raw.trim();
+  if (text === "") return null;
+  const dollars = Number(text);
+  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : null;
+}
+
+/** Whole trial days >= 0; null for anything else. */
+export function parseTrialDays(raw: string): number | null {
+  const text = raw.trim();
+  if (text === "") return null;
+  const days = Number(text);
+  return Number.isInteger(days) && days >= 0 ? days : null;
+}
+
+const canCreatePlan = (form: PlanForm): boolean =>
+  form.slug.trim() !== "" &&
+  form.name.trim() !== "" &&
+  parsePriceCents(form.basePrice) !== null &&
+  parseTrialDays(form.trialDays) !== null;
 
 const TIER_OPTIONS = [
   { value: "starter", label: "Starter" },
@@ -54,25 +85,34 @@ export function PlansList(): JSX.Element {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [form, setForm] = useState<PlanForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
+    setLoaded(false);
     setError(null);
     const res = await client.GET("/api/admin/plans");
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Plans unavailable.");
       setLoading(false);
       return;
     }
     setPlans(res.data);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const create = useCallback(async () => {
+    const basePriceCents = parsePriceCents(form.basePrice);
+    const trialPeriodDays = parseTrialDays(form.trialDays);
+    if (basePriceCents === null || trialPeriodDays === null) return;
     setSaving(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/plans", {
@@ -81,9 +121,9 @@ export function PlansList(): JSX.Element {
         name: form.name.trim(),
         tier: form.tier as "starter" | "professional" | "enterprise",
         cadence: form.cadence as "monthly" | "annual",
-        basePriceCents: Math.round(Number(form.basePrice) * 100) || 0,
+        basePriceCents,
         currencyCode: "USD",
-        trialPeriodDays: Number(form.trialDays) || 0,
+        trialPeriodDays,
       },
       headers: { "Idempotency-Key": idempotencyKey() },
     });
@@ -99,6 +139,12 @@ export function PlansList(): JSX.Element {
   }, [client, form, load]);
 
   const selected = selectedId ? (plans.find((p) => p.id === selectedId) ?? null) : null;
+  useStaleSelection({
+    param: "plan",
+    ready: loaded,
+    found: selected !== null,
+    ignore: ["new"],
+  });
   const hasDrawer = showCreate || selected !== null;
 
   return (
@@ -182,7 +228,15 @@ function PlansTable({
         </thead>
         <tbody>
           {plans.map((p) => (
-            <tr key={p.id} {...selectableRowProps(p.id === selectedId, () => onOpen(p.id))}>
+            <tr
+              key={p.id}
+              className={
+                p.id === selectedId
+                  ? "is-selected wx-data-row-interactive"
+                  : "wx-data-row-interactive"
+              }
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+            >
               <td>
                 <span className="wx-row-title">{p.name}</span>
                 <span className="wx-row-sub wx-data-md">{p.slug}</span>
@@ -209,8 +263,9 @@ function PlansTable({
 
 function PlanDrawer({ plan, onClose }: { plan: PlanRow; onClose: () => void }): JSX.Element {
   const navigate = useNavigate();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Plan">
+    <aside className="wx-admission-drawer" aria-label="Plan" {...drawer}>
       <DrawerHead icon="layout-grid" title={plan.name} sub={plan.slug} onClose={onClose} />
       <div className="wx-drawer-body">
         <section className="wx-drawer-card">
@@ -253,11 +308,17 @@ function CreatePlanDrawer({
   onCreate: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
+  const canSubmit = canCreatePlan(form);
+  const submit = (e: FormEvent): void => {
+    e.preventDefault();
+    if (canSubmit && !saving) onCreate();
+  };
   return (
-    <aside className="wx-admission-drawer" aria-label="New plan">
+    <aside className="wx-admission-drawer" aria-label="New plan" {...drawer}>
       <DrawerHead icon="plus" title="New plan" sub="Created as a draft" onClose={onClose} />
       <div className="wx-drawer-body">
-        <section className="wx-drawer-card">
+        <form className="wx-drawer-card" onSubmit={submit} noValidate>
           <TextField
             label="Slug"
             value={form.slug}
@@ -295,15 +356,11 @@ function CreatePlanDrawer({
             />
           </div>
           <div className="wx-drawer-actions">
-            <Button
-              loading={saving}
-              disabled={saving || !form.slug || !form.name}
-              onClick={onCreate}
-            >
+            <Button type="submit" loading={saving} disabled={saving || !canSubmit}>
               Create draft
             </Button>
           </div>
-        </section>
+        </form>
       </div>
     </aside>
   );

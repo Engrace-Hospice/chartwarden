@@ -8,6 +8,7 @@ import {
   type StatusTone,
   TextField,
   useApiClient,
+  useRequestGuard,
 } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Key Rings dashboard (M34 Phase-3, §4.1 platform-ops; §3.5 DEK
 // lifecycle). Spec: docs/modules/... §5.1 screen inventory. The READ-ONLY per-tenant DEK-metadata
@@ -50,6 +51,7 @@ function ringTone(status: string): StatusTone {
 export function KeyRings(): JSX.Element {
   const client = useApiClient();
   const [orgSlug, setOrgSlug] = useState("");
+  const guard = useRequestGuard();
   const [ring, setRing] = useState<KeyRingMetadataView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export function KeyRings(): JSX.Element {
   const load = useCallback(async () => {
     const slug = orgSlug.trim();
     if (!slug) return;
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     setRing(null);
@@ -67,6 +70,7 @@ export function KeyRings(): JSX.Element {
     const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}/key-ring", {
       params: { path: { orgSlug: slug } },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load the key-ring for this tenant.");
       setLoading(false);
@@ -74,7 +78,7 @@ export function KeyRings(): JSX.Element {
     }
     setRing((data ?? null) as KeyRingMetadataView | null);
     setLoading(false);
-  }, [client, orgSlug]);
+  }, [client, guard, orgSlug]);
 
   // The Rotate-DEK ceremony attests the §4.1 manual rotation: it enqueues `tenant.dek_rotate` under a
   // fresh passkey step-up. A rotation reason is required by the route; the ceremony's attestation

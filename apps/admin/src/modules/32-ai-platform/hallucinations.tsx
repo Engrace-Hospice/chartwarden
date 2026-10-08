@@ -6,7 +6,10 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.5 hallucination triage queue
@@ -40,7 +43,6 @@ import {
   StandingNotice,
   cap,
   formatDate,
-  onRowKey,
 } from "./ui";
 
 type ReportPage =
@@ -67,14 +69,17 @@ export function HallucinationQueue(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const [rep, caps] = await Promise.all([
       client.GET("/api/v1/ai/hallucination-reports", { params: { query: {} } }),
       client.GET("/api/v1/ai/capabilities", { params: { query: {} } }),
     ]);
+    if (!isCurrent()) return;
     if (rep.error || caps.error) {
       setError("Triage queue unavailable.");
       setLoading(false);
@@ -84,7 +89,7 @@ export function HallucinationQueue(): JSX.Element {
     const page = caps.data as CapabilityPage;
     setCapabilityKeys(new Map(page.capabilities.map((c) => [c.id, c.capabilityKey])));
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -119,7 +124,7 @@ export function HallucinationQueue(): JSX.Element {
         </PageHead>
         {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
         {breaching > 0 ? (
-          <StandingNotice tone="warning">
+          <StandingNotice tone="warning" urgent>
             {`${breaching} report${breaching === 1 ? "" : "s"} past the 48h triage SLA`}
           </StandingNotice>
         ) : null}
@@ -169,10 +174,7 @@ export function HallucinationQueue(): JSX.Element {
                             ? "is-selected wx-data-row-interactive"
                             : "wx-data-row-interactive"
                         }
-                        tabIndex={0}
-                        aria-selected={isSelected}
-                        onClick={open}
-                        onKeyDown={onRowKey(open)}
+                        {...interactiveRowProps(open, isSelected)}
                       >
                         <td>
                           <span className="wx-row-title wx-data-md">{keyOf(r.capabilityId)}</span>
@@ -238,8 +240,9 @@ function TriageDrawer({
   onClose: () => void;
   onDone: (message: string, ok: boolean) => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Triage hallucination report">
+    <aside className="wx-admission-drawer" aria-label="Triage hallucination report" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="alert-circle" size={16} />

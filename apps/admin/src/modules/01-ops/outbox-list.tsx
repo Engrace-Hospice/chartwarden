@@ -1,4 +1,13 @@
-import { Button, Glyph, InlineAlert, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  LoadingSpinner,
+  StatusPill,
+  interactiveRowProps,
+  useApiClient,
+  useRequestGuard,
+} from "@wardenx/ui";
 // apps/admin/src/modules/01-ops — Outbox status (`/admin/ops/outbox`, WX-PR-020/OPS-004). The M1
 // operator recovery view over `outbox_event` (apps/backend/src/bootstrap/routes/ops-outbox.ts) —
 // read-only: the dispatcher already retries on its own backoff clock, so this is for diagnosing
@@ -36,12 +45,16 @@ export function OutboxList(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const guard = useRequestGuard();
+
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/ops/outbox", {
       params: { query: status ? { status } : {} },
     });
+    if (!isCurrent()) return;
     if (err || !data) {
       setError("Could not load outbox status.");
       setLoading(false);
@@ -49,7 +62,7 @@ export function OutboxList(): JSX.Element {
     }
     setRows(data.data as OutboxRow[]);
     setLoading(false);
-  }, [client, status]);
+  }, [client, status, guard]);
 
   useEffect(() => {
     void load();
@@ -147,15 +160,7 @@ export function OutboxList(): JSX.Element {
                           ? "is-selected wx-data-row-interactive"
                           : "wx-data-row-interactive"
                       }
-                      tabIndex={0}
-                      aria-selected={isSelected}
-                      onClick={open}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          open();
-                        }
-                      }}
+                      {...interactiveRowProps(open, isSelected)}
                     >
                       <td>
                         <span className="wx-row-title">{r.eventType}</span>

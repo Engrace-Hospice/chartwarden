@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.8 drift overview (`/admin/ai-platform/drift`,
 // `ai.capability.read`).
@@ -54,13 +54,16 @@ export function DriftOverview(): JSX.Element {
   const [withinHours, setWithinHours] = useState<number>(168);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/v1/ai/drift/recent", {
       params: { query: { withinHours } },
     });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Drift feed unavailable.");
       setLoading(false);
@@ -69,7 +72,7 @@ export function DriftOverview(): JSX.Element {
     setFindings(res.data.findings);
     setSource(res.data.source);
     setLoading(false);
-  }, [client, withinHours]);
+  }, [client, guard, withinHours]);
 
   useEffect(() => {
     void load();

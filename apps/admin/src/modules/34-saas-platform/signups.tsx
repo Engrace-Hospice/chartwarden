@@ -7,7 +7,11 @@ import {
   StatusPill,
   type StatusTone,
   TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
 // Spec: docs/modules/... §5.1 screen inventory. The pre-provision intake funnel a platform-ops actor
@@ -80,24 +84,30 @@ export function Signups(): JSX.Element {
   const selectedId = params.get("intent");
   const [intents, setIntents] = useState<SignupIntentView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SignupIntentStatus | "all">("all");
   const [banner, setBanner] = useState<Banner | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/signup-intents");
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load signup intents.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     const page = (data ?? null) as CursorPage<SignupIntentView> | null;
     setIntents(page?.items ?? []);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -146,6 +156,7 @@ export function Signups(): JSX.Element {
   const visible =
     statusFilter === "all" ? intents : intents.filter((i) => i.intentStatus === statusFilter);
   const selected = selectedId ? intents.find((i) => i.id === selectedId) : undefined;
+  useStaleSelection({ param: "intent", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -256,15 +267,7 @@ function IntentTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={open}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    open();
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title">{i.legalBusinessName}</span>
@@ -297,11 +300,12 @@ function IntentDrawer({
   onQualify: (firstAdminFullName: string, planLabel: PlanLabel) => void;
   onReject: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const actionable = intent.intentStatus === "new";
   const [firstAdminFullName, setFirstAdminFullName] = useState("");
   const [planLabel, setPlanLabel] = useState<PlanLabel>("standard");
   return (
-    <aside className="wx-admission-drawer" aria-label="Signup intent">
+    <aside className="wx-admission-drawer" aria-label="Signup intent" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="user-plus" size={16} />

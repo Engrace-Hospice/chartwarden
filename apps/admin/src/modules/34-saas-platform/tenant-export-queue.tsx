@@ -5,7 +5,10 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -70,10 +73,12 @@ export function TenantExportQueue(): JSX.Element {
   const [purpose, setPurpose] = useState<Purpose | "">("");
   const [items, setItems] = useState<TenantExportJob[]>([]);
   const [loading, setLoading] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TenantExportJob | null>(null);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     setSelected(null);
@@ -84,6 +89,7 @@ export function TenantExportQueue(): JSX.Element {
     const { data, error: err } = await client.GET("/api/v1/tenant/tenant-export-jobs", {
       params: { query },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load the tenant-export queue.");
       setLoading(false);
@@ -91,7 +97,7 @@ export function TenantExportQueue(): JSX.Element {
     }
     setItems(((data as TenantExportListPage | undefined)?.items ?? []) as TenantExportJob[]);
     setLoading(false);
-  }, [client, status]);
+  }, [client, guard, status]);
 
   useEffect(() => {
     void load();
@@ -204,21 +210,14 @@ function ExportTable({
         <tbody>
           {items.map((j) => {
             const isSelected = j.id === selectedId;
+            const open = (): void => onSelect(j);
             return (
               <tr
                 key={j.id}
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={() => onSelect(j)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(j);
-                  }
-                }}
+                {...interactiveRowProps(open, isSelected)}
               >
                 <td>
                   <span className="wx-row-title">{purposeLabel(j.requestedPurpose)}</span>
@@ -248,8 +247,9 @@ function ExportDrawer({
   job,
   onClose,
 }: { job: TenantExportJob; onClose: () => void }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Export job">
+    <aside className="wx-admission-drawer" aria-label="Export job" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="package" size={16} />

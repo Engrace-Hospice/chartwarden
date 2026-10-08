@@ -1,4 +1,4 @@
-import { Button, Glyph, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, Glyph, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
@@ -37,7 +37,9 @@ export function SubscriptionDetail(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No subscription selected.");
       setLoading(false);
@@ -46,6 +48,7 @@ export function SubscriptionDetail(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/subscriptions/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Subscription unavailable.");
       setLoading(false);
@@ -57,12 +60,14 @@ export function SubscriptionDetail(): JSX.Element {
     const usageRes = await client.GET("/api/admin/usage/{organizationId}/current", {
       params: { path: { organizationId: s.organizationId } },
     });
+    if (!isCurrent()) return;
     setUsage(usageRes.error ? [] : usageRes.data.meters);
     const refundRes = await client.GET("/api/admin/refunds", { params: { query: {} } });
+    if (!isCurrent()) return;
     const allRefunds = refundRes.error ? [] : refundRes.data.items;
     setRefunds(allRefunds.filter((r) => r.organizationId === s.organizationId));
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();

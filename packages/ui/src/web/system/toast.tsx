@@ -110,6 +110,11 @@ function toneColor(tone: ToastTone): string {
   return t.primary;
 }
 
+/** Like `useToast`, but `null` outside a `ToastProvider` — for helpers that report best-effort and must not crash a bare mount. */
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
+}
+
 /** Must be called under a `ToastProvider` (mounted once at the app-shell composition root). */
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);

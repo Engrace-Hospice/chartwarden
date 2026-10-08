@@ -1,4 +1,12 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  StatusPill,
+  interactiveRowProps,
+  useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund queue (`/admin/refunds`, refund.read). The
 // cross-tenant refund roster over GET /api/admin/refunds, filtered by state (requested/approved/executed/
@@ -9,14 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
-import {
-  DrawerHead,
-  LoadMore,
-  StateEmpty,
-  StateError,
-  StateLoading,
-  selectableRowProps,
-} from "./ui";
+import { DrawerHead, LoadMore, StateEmpty, StateError, StateLoading } from "./ui";
 
 type RefundPage = operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"];
 type Refund = RefundPage["items"][number];
@@ -40,14 +41,19 @@ export function RefundsQueue(): JSX.Element {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (nextCursor: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
+      setLoaded(false);
       setError(null);
       const query: Record<string, string> = {};
       if (nextCursor) query.cursor = nextCursor;
       const res = await client.GET("/api/admin/refunds", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Refunds unavailable.");
         setLoading(false);
@@ -57,9 +63,10 @@ export function RefundsQueue(): JSX.Element {
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);
+      setLoaded(true);
       setLoading(false);
     },
-    [client],
+    [client, guard],
   );
 
   useEffect(() => {
@@ -72,6 +79,7 @@ export function RefundsQueue(): JSX.Element {
   );
 
   const selected = selectedId ? (rows.find((r) => r.id === selectedId) ?? null) : null;
+  useStaleSelection({ param: "refund", ready: loaded, found: selected !== null });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -146,7 +154,15 @@ function RefundsTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} {...selectableRowProps(r.id === selectedId, () => onOpen(r.id))}>
+            <tr
+              key={r.id}
+              className={
+                r.id === selectedId
+                  ? "is-selected wx-data-row-interactive"
+                  : "wx-data-row-interactive"
+              }
+              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId)}
+            >
               <td>
                 <span className="wx-row-title">
                   {orgLabel(r.organizationName, r.organizationId)}
@@ -169,8 +185,9 @@ function RefundsTable({
 
 function RefundDrawer({ refund, onClose }: { refund: Refund; onClose: () => void }): JSX.Element {
   const navigate = useNavigate();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label="Refund">
+    <aside className="wx-admission-drawer" aria-label="Refund" {...drawer}>
       <DrawerHead
         icon="rotate-ccw"
         title={formatCents(refund.amountCents)}

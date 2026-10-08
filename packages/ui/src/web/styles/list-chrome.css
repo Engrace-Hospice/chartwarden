@@ -275,6 +275,10 @@
     background: var(--color-surface-lowest);
     overflow: hidden;
   }
+  /* Focus lands on the drawer itself when it opens (use-drawer-a11y); it is a container, not a control, so no ring. */
+  .wx-admission-drawer:focus {
+    outline: none;
+  }
   .wx-drawer-head {
     display: flex;
     align-items: flex-start;

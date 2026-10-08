@@ -7,6 +7,7 @@ import {
   TextField,
   isStepUpRequired,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/admin/src/modules/34-saas-platform — "New tenant" (§4.1 #3, POST /api/v1/platform/tenants). Raw-input provisioning
 // (no signup intent): the server step-up gates it and enqueues `tenant.provision`, answering 202, so the tenant appears in the
@@ -68,6 +69,7 @@ export function TenantProvisionDrawer({
   onAccepted: () => void;
 }): JSX.Element {
   const client = useApiClient();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const [draft] = useState(takeDraft);
   const [legalName, setLegalName] = useState(draft?.legalName ?? "");
   const [billingEmail, setBillingEmail] = useState(draft?.billingEmail ?? "");
@@ -122,7 +124,7 @@ export function TenantProvisionDrawer({
   }
 
   return (
-    <aside className="wx-admission-drawer" aria-label="New tenant">
+    <aside className="wx-admission-drawer" aria-label="New tenant" {...drawer}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="building" size={16} />

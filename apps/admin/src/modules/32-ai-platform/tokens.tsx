@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.6 token ledger + forecast
 // (`/admin/ai-platform/tokens`, `ai.tokens.read`).
@@ -56,14 +56,17 @@ export function TokenLedger(): JSX.Element {
   const [windowOutput, setWindowOutput] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const [f, l] = await Promise.all([
       client.GET("/api/v1/ai/tokens/forecast", { params: { query: {} } }),
       client.GET("/api/v1/ai/tokens/ledger", { params: { query: { limit: 100 } } }),
     ]);
+    if (!isCurrent()) return;
     if (f.error || l.error) {
       setError("Token ledger unavailable.");
       setLoading(false);
@@ -74,7 +77,7 @@ export function TokenLedger(): JSX.Element {
     setWindowInput(l.data.windowInputTokens);
     setWindowOutput(l.data.windowOutputTokens);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
