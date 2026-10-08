@@ -49,7 +49,7 @@ import {
   requireIdempotencyKey,
   requireIfMatch,
 } from "./concurrency";
-import type { CarePlanRouteService } from "./service";
+import type { CarePlanRouteService, CarePlanSignActor } from "./service";
 
 export interface CarePlanRouteDeps {
   service: CarePlanRouteService;
@@ -114,8 +114,14 @@ const SCOPE_BY_QUERY_PATIENT = (action: string): PreHandler =>
     }),
   }) as PreHandler;
 
+// GAP-011: the predicate sees the CLAIMED slot (body.signerRole) as well as the version, so the edge
+// agrees with the service: the caller must hold the very role they sign as, not just any slot's role.
 const SIGNER_MATCH = requireAbac("care_plan.sign", "signer_role_match", {
   notFoundOnDeny: true,
+  getTarget: (request) => ({
+    versionId: (request.params as { versionId?: unknown } | undefined)?.versionId,
+    signerRole: (request.body as { signerRole?: unknown } | null | undefined)?.signerRole,
+  }),
 }) as PreHandler;
 const SIGN_STEP_UP = requireStepUp("care_plan.sign") as PreHandler;
 
@@ -131,11 +137,11 @@ const DISCIPLINE_SCOPE = requireAbac("care_plan.author", "discipline_scope", {
 const planIdOf = (request: FastifyRequest): string =>
   parse(PlanParamsSchema, request.params).planId;
 
-function signingActorOf(request: FastifyRequest): { userId: string; membershipId: string } {
+function signingActorOf(request: FastifyRequest): CarePlanSignActor {
   const ctx = request.context;
   const membershipId = membershipIdOf(ctx);
   if (!ctx?.userId || !membershipId) throw new UnauthorizedError();
-  return { userId: ctx.userId, membershipId };
+  return { userId: ctx.userId, membershipId, roles: ctx.roles ?? [] };
 }
 
 export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRouteDeps): void {

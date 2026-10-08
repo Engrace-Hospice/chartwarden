@@ -54,6 +54,7 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 /** A recent-but-past service date (the encounter_service_date_not_future CHECK forbids the future). */
 const SERVICE_DATE = "2026-01-15";
+const LIVE_NOW = "2026-01-16T17:00:00Z"; // org-local (America/New_York) 2026-01-16, one day after SERVICE_DATE
 // `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
 const SESSION_A = "66666666-6666-6666-6666-666666666666";
 /** The patient's RN case manager (#124): a DIFFERENT user from the signer, with their own membership —
@@ -180,7 +181,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await admin.query(
       `INSERT INTO admission (id, organization_id, provider_entity_id, location_id, patient_id, status, admission_at, activated_at)
        VALUES ($1,$2,$3,$4,$5,'active',$6,$6)`,
-      [ADMISSION, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, PATIENT, SERVICE_DATE],
+      // activated before the earliest late-entry fixture date (GAP-013: service dates back to 2025-12-20)
+      [ADMISSION, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, PATIENT, "2025-12-01"],
     );
     ACTOR_A = { membershipId: membershipOf[ORG_A], sessionId: SESSION_A };
     const sessions = createInMemorySessionContextStore([
@@ -280,8 +282,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     };
     // Cipher-bound, as production is: the composition root always constructs the envelopes (only the KEY
     // resolve is deny-stubbed). `noCipherSvc` is the same service with none, for the §3.6 refusal cases.
-    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS);
-    noCipherSvc = createDbEncounterRouteService(handle.db, outbox);
+    // GAP-013: the late-entry tier is measured against the org-local day, so the clock is pinned to the
+    // day after SERVICE_DATE — every case below that is not about lateness stays in the `normal` tier.
+    const liveClock = () => new Date(LIVE_NOW);
+    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock);
+    noCipherSvc = createDbEncounterRouteService(handle.db, outbox, undefined, liveClock);
   }, 120_000);
 
   afterAll(async () => {
@@ -295,6 +300,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     discipline: string,
     extra: {
       faceToFaceEncounterId?: string;
+      serviceDate?: string;
       document?: boolean;
       captureVitals?: boolean;
     } = {},
@@ -304,7 +310,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       admissionId: ADMISSION,
       encounterType: encounterType as never,
       discipline: discipline as never,
-      serviceDate: SERVICE_DATE as never,
+      serviceDate: (extra.serviceDate ?? SERVICE_DATE) as never,
       ...(extra.faceToFaceEncounterId
         ? { faceToFaceEncounterId: extra.faceToFaceEncounterId }
         : {}),
@@ -408,6 +414,102 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         { at: SERVICE_DATE as never },
       ),
     ).rejects.toMatchObject({ statusCode: 412 });
+  });
+
+  describe("GAP-013 — late-entry tier is computed, reified, and gated", () => {
+    const REASON =
+      "Documentation delayed: the tablet was offline for the whole visit and sync failed";
+    const OVERRIDE_REASON =
+      "Supervisor reviewed the visit record and confirms the late documentation is valid";
+    const ADMIN_REASON =
+      "Director review: the visit was real and billable, the clinician was on approved leave and the note could not be completed earlier";
+    const tierOf = async (id: string) =>
+      (
+        await admin.query("SELECT late_entry_tier, late_entry_reason FROM encounter WHERE id=$1", [
+          id,
+        ])
+      ).rows[0] as { late_entry_tier: string; late_entry_reason: string | null };
+    const signedTier = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m8.encounter.signed'",
+          [id],
+        )
+      ).rows[0]?.payload.lateEntryTier as string | undefined;
+
+    it("a same-/next-day note finalizes and signs as normal with no reason", async () => {
+      const id = await draft("routine_visit", "rn");
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect((await tierOf(id)).late_entry_tier).toBe("normal");
+      expect(await signedTier(id)).toBe("normal");
+    });
+
+    it("3 days late: finalize needs the reason (422), then reifies late_entry and signs carrying it", async () => {
+      const id = await draft("routine_visit", "rn", { serviceDate: "2026-01-13" });
+      await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+        statusCode: 422,
+        code: "LATE_ENTRY_REASON_REQUIRED",
+      });
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never, { lateEntryReason: REASON });
+      expect(await tierOf(id)).toEqual({
+        late_entry_tier: "late_entry",
+        late_entry_reason: REASON,
+      });
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect(await signedTier(id)).toBe("late_entry");
+    });
+
+    it("6 days late: sign is refused until a Clinical Supervisor override is recorded", async () => {
+      const id = await draft("routine_visit", "rn", { serviceDate: "2026-01-10" });
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never, { lateEntryReason: REASON });
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ code: "SIGNIFICANT_LATE_ENTRY_OVERRIDE_REQUIRED" });
+      // the administrative route is the wrong tier for 6 days
+      await expect(
+        svc.administrativeOverride(ORG_A, id, {
+          actorMembershipId: membershipOf[ORG_A],
+          reason: ADMIN_REASON,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "LATE_ENTRY_TIER_MISMATCH" });
+      await svc.lateEntryOverride(ORG_A, id, {
+        actorMembershipId: membershipOf[ORG_A],
+        reason: OVERRIDE_REASON,
+      });
+      const overridden = await tierOf(id);
+      expect(overridden.late_entry_tier).toBe("significant_late_entry");
+      expect(overridden.late_entry_reason).toBe(REASON); // the author's own reason is kept
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect(await signedTier(id)).toBe("significant_late_entry");
+      const override = (
+        await admin.query(
+          "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m8.encounter.late_entry_override'",
+          [id],
+        )
+      ).rows[0];
+      expect(override.payload.daysLate).toBe(6);
+    });
+
+    it("27 days late: only the director's administrative override clears the sign", async () => {
+      const id = await draft("routine_visit", "rn", { serviceDate: "2025-12-20" });
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never, { lateEntryReason: REASON });
+      await expect(
+        svc.lateEntryOverride(ORG_A, id, {
+          actorMembershipId: membershipOf[ORG_A],
+          reason: OVERRIDE_REASON,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "LATE_ENTRY_TIER_MISMATCH" });
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ code: "ADMINISTRATIVE_LATE_OVERRIDE_REQUIRED" });
+      await svc.administrativeOverride(ORG_A, id, {
+        actorMembershipId: membershipOf[ORG_A],
+        reason: ADMIN_REASON,
+      });
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect(await signedTier(id)).toBe("administrative_override");
+    });
   });
 
   it("LPN sign routes to cosign_pending; acknowledge → cosign signs the encounter (§2.4/§7.2)", async () => {

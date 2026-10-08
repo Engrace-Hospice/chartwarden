@@ -99,6 +99,9 @@ describe("GAP-016 — M5 DB route service publishes m5.patient.* through the out
   it("admit publishes nothing on a hard_block", async () => {
     const h = harness([
       [{ id: "pat-0", lastName: "Doe", firstName: "Jane", dob: "1950-01-01", mbi: "1EG4TE5MK73" }],
+      [], // GAP-010: primary addresses
+      [], // primary phones
+      [], // primary emails
     ]);
     const out = await h.service.admit(
       ORG,

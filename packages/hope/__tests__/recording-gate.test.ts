@@ -11,6 +11,7 @@ import {
   assertCaptureAllowed,
   assertRfaMatchesSchedule,
   assertSectionQForDischarge,
+  captureInstantOf,
 } from "../src/recording/timepoint-gate";
 import { windowFor } from "../src/scheduling/window-calculator";
 
@@ -86,6 +87,43 @@ describe("assertCaptureAllowed — D2/D12 soft-window + late-reason gate", () =>
       assertCaptureAllowed("2026-06-09T12:00:00.000Z", w, { lateReasonCode: "hospitalization" }),
     ).toEqual({ wasLate: true, lateReasonCode: "hospitalization" });
     expect(LATE_COMPLETION_REASON_CODES).toContain("hospitalization");
+  });
+});
+
+describe("assertCaptureAllowed — GAP-015 server-time judgement", () => {
+  it("a late filer cannot dodge the hard cutoff with an in-window targetDate", () => {
+    // targetDate 06-03 is in-window, but the write happens 06-20 (past the deadline): expired.
+    expect(() =>
+      assertCaptureAllowed("2026-06-03T12:00:00.000Z", w, { nowIso: "2026-06-20T12:00:00.000Z" }),
+    ).toThrowError(expect.objectContaining({ code: "M10_TIMEPOINT_EXPIRED", statusCode: 409 }));
+  });
+  it("a late filer cannot get was_late=false with an in-window targetDate", () => {
+    // written in the grace span (06-09): late, so the typed reason is mandatory, whatever targetDate says.
+    expect(() =>
+      assertCaptureAllowed("2026-06-03T12:00:00.000Z", w, { nowIso: "2026-06-09T12:00:00.000Z" }),
+    ).toThrowError(expect.objectContaining({ code: "M10_LATE_REASON_REQUIRED" }));
+    expect(
+      assertCaptureAllowed("2026-06-03T12:00:00.000Z", w, {
+        nowIso: "2026-06-09T12:00:00.000Z",
+        lateReasonCode: "pto",
+      }),
+    ).toEqual({ wasLate: true, lateReasonCode: "pto" });
+  });
+  it("a capture written inside the window stays on time; a backdated-before-open date is still refused", () => {
+    expect(
+      assertCaptureAllowed("2026-06-03T12:00:00.000Z", w, { nowIso: "2026-06-04T12:00:00.000Z" }),
+    ).toEqual({ wasLate: false, lateReasonCode: null });
+    expect(() =>
+      assertCaptureAllowed("2026-05-30T12:00:00.000Z", w, { nowIso: "2026-06-04T12:00:00.000Z" }),
+    ).toThrowError(expect.objectContaining({ code: "M10_TIMEPOINT_NOT_OPEN" }));
+  });
+  it("captureInstantOf is the later of the two instants", () => {
+    expect(captureInstantOf("2026-06-03T00:00:00.000Z", "2026-06-09T00:00:00.000Z")).toBe(
+      "2026-06-09T00:00:00.000Z",
+    );
+    expect(captureInstantOf("2026-06-09T00:00:00.000Z", "2026-06-03T00:00:00.000Z")).toBe(
+      "2026-06-09T00:00:00.000Z",
+    );
   });
 });
 

@@ -20,6 +20,13 @@ const ORG_B = "org_b";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "33333333-3333-4333-8333-333333333333";
 
+/** GAP-011: the signer is the authenticated actor; one distinct membership per role, holding that role. */
+const actorFor = (role: string) => ({
+  userId: `user-${role}`,
+  membershipId: `membership-${role}`,
+  roles: [role],
+});
+
 /** Bootstrap a plan and add one terminal problem; return the backend + the plan/version/problem ids. */
 async function planWithProblem() {
   const backend = createInMemoryCarePlanBackend();
@@ -46,6 +53,7 @@ async function activePlanWithProblem() {
     2,
     "hospice_physician",
     "2026-06-21T12:00:00Z",
+    actorFor("hospice_physician"),
   );
   await svc.signVersion(
     ORG,
@@ -54,6 +62,7 @@ async function activePlanWithProblem() {
     3,
     "rn_case_manager",
     "2026-06-21T12:00:00Z",
+    actorFor("rn_case_manager"),
   );
   return ctx;
 }
@@ -71,6 +80,7 @@ describe("M7-T09 §7 workflow acceptance", () => {
       2,
       "hospice_physician",
       "2026-06-21T12:00:00Z",
+      actorFor("hospice_physician"),
     )) as {
       status: string;
     };
@@ -82,6 +92,7 @@ describe("M7-T09 §7 workflow acceptance", () => {
       3,
       "rn_case_manager",
       "2026-06-21T12:00:00Z",
+      actorFor("rn_case_manager"),
     )) as {
       status: string;
     };
@@ -116,6 +127,7 @@ describe("M7-T09 §7 workflow acceptance", () => {
         ifVersion,
         role,
         "2026-07-06T12:00:00Z",
+        actorFor(role),
       )) as { status: string };
       ifVersion += 1;
     }

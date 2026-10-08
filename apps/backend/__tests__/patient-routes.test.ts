@@ -29,6 +29,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.attributes.stepUpRecent = request.headers["x-test-step-up"] === "true";
 }
 
 const ORG = "org_a";
@@ -49,6 +50,11 @@ const existing: PatientView & MatchCandidate = {
 
 const PERMISSION_SEED = [
   { userId: "admit_1", permissions: ["patient.create", "patient.read"] },
+  // GAP-009 — the only holder of the dedicated bypass key (patient.create is not enough).
+  {
+    userId: "bypass_1",
+    permissions: ["patient.create", "patient.create_bypass_match", "patient.read"],
+  },
   { userId: "edit_1", permissions: ["patient.edit", "patient.read"] },
   // GAP-017 — coverage writes are `patient.edit_payers` (caseload-scoped), not `patient.edit`.
   { userId: "payer_1", permissions: ["patient.edit_payers", "patient.read"] },
@@ -110,6 +116,10 @@ function makeServer() {
     },
   });
   registerPredicateIdempotent("caseload_or_scope", predicates.caseload_or_scope);
+  registerPredicateIdempotent(
+    "step_up_recent",
+    async (context) => context.attributes.stepUpRecent === true,
+  );
   // F-096 — the CENSUS narrowing reads the same caseload through M5's own `CaseloadProvider` seam
   // (`caseloadPatientIds`, the `patient_id = ANY(:ids)` set) rather than through the predicate, because
   // a preHandler can refuse a collection but cannot filter one. Seeded from the SAME `CASELOAD` set the
@@ -137,6 +147,7 @@ function makeServer() {
 }
 
 const ADMIT = { "x-test-user": "admit_1", "x-test-org": ORG, "x-test-roles": "admissions" };
+const BYPASS = { "x-test-user": "bypass_1", "x-test-org": ORG, "x-test-roles": "admissions" };
 const EDIT = { "x-test-user": "edit_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const AMEND = { "x-test-user": "amend_1", "x-test-org": ORG, "x-test-roles": "compliance" };
 const PAYER = { "x-test-user": "payer_1", "x-test-org": ORG, "x-test-roles": "billing" };
@@ -195,6 +206,66 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     expect(res.json().outcome).toBe("created");
     expect(res.json().patientId).toBeTruthy();
     await app.close();
+  });
+
+  // GAP-009 — bypassMatchReview skips the whole §7.1 duplicate pipeline, so it is its own permission +
+  // a fresh step-up + a recorded justification; `patient.create` alone must never reach it.
+  describe("GAP-009 — bypassMatchReview is gated by patient.create_bypass_match + step-up", () => {
+    const DUP_BODY = {
+      lastName: "Lovelace",
+      firstName: "Ada",
+      dob: "1990-01-01",
+      administrativeSex: "F",
+      mbi: "1EG4-TE5-MK73",
+      bypassMatchReview: true,
+      bypassJustification: "Legitimate twin admission, confirmed with registrar",
+    };
+    const post = (
+      app: ReturnType<typeof makeServer>["app"],
+      headers: Record<string, string>,
+      payload: object,
+    ) => app.inject({ method: "POST", url: "/api/v1/patients", headers, payload });
+
+    it("a plain patient.create holder sending the flag is a 403 and no row is created", async () => {
+      const { app, events } = makeServer();
+      const res = await post(app, { ...ADMIT, "x-test-step-up": "true" }, DUP_BODY);
+      expect(res.statusCode).toBe(403);
+      expect(events).not.toContain("m5.patient.created");
+      await app.close();
+    });
+
+    it("the bypass-permission holder without a fresh step-up is refused", async () => {
+      const { app, events } = makeServer();
+      const res = await post(app, BYPASS, DUP_BODY);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+      expect(events).not.toContain("m5.patient.created");
+      await app.close();
+    });
+
+    it("the bypass-permission holder with a fresh step-up but no justification is a 422", async () => {
+      const { app } = makeServer();
+      const { bypassJustification: _drop, ...noReason } = DUP_BODY;
+      const res = await post(app, { ...BYPASS, "x-test-step-up": "true" }, noReason);
+      expect(res.statusCode).toBe(422);
+      await app.close();
+    });
+
+    it("the bypass-permission holder with step-up and a justification creates despite the duplicate", async () => {
+      const { app } = makeServer();
+      const res = await post(app, { ...BYPASS, "x-test-step-up": "true" }, DUP_BODY);
+      expect(res.statusCode).toBe(201);
+      expect(res.json().outcome).toBe("created");
+      await app.close();
+    });
+
+    it("the same duplicate WITHOUT the flag is still a 409 for the plain holder", async () => {
+      const { app } = makeServer();
+      const { bypassMatchReview: _b, bypassJustification: _j, ...plain } = DUP_BODY;
+      const res = await post(app, ADMIT, plain);
+      expect(res.statusCode).toBe(409);
+      await app.close();
+    });
   });
 
   it("§7.1 a hard-duplicate admit (same MBI) is BLOCKED with 409, no row created", async () => {

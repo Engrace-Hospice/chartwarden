@@ -69,6 +69,11 @@ const PERMISSION_SEED = [
     ],
   },
   { userId: "chap_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
+  // GAP-015 — the platform-admin deadline override is its own key; RN (hope.timepoint.write) does not hold it.
+  {
+    userId: "admin_1",
+    permissions: [...READ_KEYS, ...WRITE_KEYS, "hope.admin.late_deadline_override"],
+  },
   { userId: "viewer_1", permissions: ["hope.schedule.read"] },
   { userId: "md_1", permissions: [...READ_KEYS] },
   { userId: "compliance_1", permissions: SUB_KEYS },
@@ -203,6 +208,12 @@ function makeServer(
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
+const ADMIN_OVERRIDER = {
+  "x-test-user": "admin_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn",
+  "x-test-pe": "pe_1",
+};
 const MEDICAL_DIRECTOR = {
   "x-test-user": "md_1",
   "x-test-org": ORG,
@@ -897,20 +908,53 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
     await app.close();
   });
 
-  it("an admin override extends the hard cutoff but still demands the late reason", async () => {
+  it("GAP-015 an RN with only hope.timepoint.write cannot self-declare adminOverride (403)", async () => {
     const { app } = makeServer();
-    const withoutReason = await record(app, {
+    const res = await record(app, {
       targetDate: "2026-07-01T12:00:00.000Z",
       adminOverride: true,
+      adminOverrideJustification: "Outage during the window; approved by the compliance lead",
+      lateCompletionReasonCode: "admin_override",
     });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("GAP-015 an override request without a justification is a 422, even for the permitted admin", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: ADMIN_OVERRIDER,
+      payload: huv1Body({
+        targetDate: "2026-07-01T12:00:00.000Z",
+        adminOverride: true,
+        lateCompletionReasonCode: "admin_override",
+      }),
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("an admin override extends the hard cutoff but still demands the late reason", async () => {
+    const { app } = makeServer();
+    const post = (over: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+        headers: ADMIN_OVERRIDER,
+        payload: huv1Body({
+          targetDate: "2026-07-01T12:00:00.000Z",
+          adminOverride: true,
+          adminOverrideJustification: "Outage during the window; approved by the compliance lead",
+          ...over,
+        }),
+      });
+    const withoutReason = await post({});
     expect(withoutReason.statusCode).toBe(400);
     expect(codeOf(withoutReason)).toBe("M10_LATE_REASON_REQUIRED");
 
-    const withReason = await record(app, {
-      targetDate: "2026-07-01T12:00:00.000Z",
-      adminOverride: true,
-      lateCompletionReasonCode: "admin_override",
-    });
+    const withReason = await post({ lateCompletionReasonCode: "admin_override" });
     expect(withReason.statusCode).toBe(201);
     expect(withReason.json<{ wasLate: boolean }>().wasLate).toBe(true);
     await app.close();

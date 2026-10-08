@@ -54,6 +54,12 @@ export const LATE_COMPLETION_REASON_CODES = [
 /** A late-completion reason code (D12). */
 export type LateCompletionReasonCode = (typeof LATE_COMPLETION_REASON_CODES)[number];
 
+/** GAP-015 — the instant a capture is judged at: the later of the client's `targetDate` and the server's now. */
+export function captureInstantOf(targetDate: IsoInstant, nowIso?: IsoInstant): IsoInstant {
+  if (nowIso === undefined) return targetDate;
+  return (Date.parse(nowIso) > Date.parse(targetDate) ? nowIso : targetDate) as IsoInstant;
+}
+
 /** The capture verdict the service applies after {@link assertCaptureAllowed} (drives `was_late`). */
 export interface CaptureDecision {
   readonly wasLate: boolean;
@@ -77,9 +83,19 @@ export function assertCaptureAllowed(
   options: {
     readonly lateReasonCode?: string | null;
     readonly adminOverride?: boolean;
+    /** GAP-015: the SERVER's clock at the write. `targetDate` is a client-supplied clinical date, so
+     *  lateness and the hard cutoff are judged on the later of the two — a late filer cannot send an
+     *  in-window `targetDate` and be recorded as on time. Omitted only by pure unit callers. */
+    readonly nowIso?: IsoInstant;
   } = {},
 ): CaptureDecision {
-  const verdict = classifyCapture(targetDate, window);
+  // A capture dated before the window opens is refused on its own date (it cannot be completed early).
+  require_(
+    classifyCapture(targetDate, window) !== "before_open",
+    "M10_TIMEPOINT_NOT_OPEN",
+    `target_date ${targetDate} is before the timepoint window opens (${window.windowOpensAt}).`,
+  );
+  const verdict = classifyCapture(captureInstantOf(targetDate, options.nowIso), window);
   require_(
     verdict !== "before_open",
     "M10_TIMEPOINT_NOT_OPEN",

@@ -28,7 +28,13 @@ import {
   redactedSudProblemIds,
 } from "../authoring/index";
 import { CarePlanStateError } from "../lifecycle/errors";
-import { decideRecordSignature, resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
+import {
+  assertActorHoldsSignerRole,
+  assertMembershipNotAlreadySigned,
+  decideRecordSignature,
+  resolveRequiredSignerSet,
+  resolveTightenedSignerSet,
+} from "../lifecycle/required-signer-set";
 import {
   checkGoalReferencesProblem,
   checkInterventionFrequency,
@@ -63,7 +69,7 @@ interface VersionRecord {
   status: "draft" | "in_review" | "signed" | "superseded";
   idgMeetingId: string | null;
   requiredSignerSet: RequiredSignerSet;
-  signatures: { signerRole: CarePlanSignerRole; signedAt: string }[];
+  signatures: { signerRole: CarePlanSignerRole; signedAt: string; membershipId?: string }[];
   signedAt: string | null;
   stateSnapshot?: unknown;
   patientUnderstandingText?: string | null;
@@ -194,7 +200,7 @@ export interface CarePlanRouteService {
     ifVersion: number,
     signerRole: CarePlanSignerRole,
     at: string,
-    actor?: CarePlanSignActor,
+    actor: CarePlanSignActor,
     patientUnderstandingText?: string | null,
   ): Promise<unknown>;
   returnVersionToDraft(
@@ -257,6 +263,8 @@ export interface CarePlanRouteService {
 export interface CarePlanSignActor {
   readonly userId: string;
   readonly membershipId: string;
+  /** The authenticated actor's role keys (server-side; never a body field) — GAP-011. */
+  readonly roles: readonly string[];
 }
 
 export interface CreateProblemInput {
@@ -695,15 +703,8 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       }
       requireReadyToFinalize(v);
       if (set) {
-        // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5).
-        const floor = resolveRequiredSignerSet(v.kind);
-        if (set.length < floor.length) {
-          throw new CarePlanStateError(
-            "REQUIRED_SIGNER_SET_UNMET",
-            "the Required Signer Set may not loosen the floor quorum",
-          );
-        }
-        v.requiredSignerSet = set;
+        // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5) — GAP-012.
+        v.requiredSignerSet = [...resolveTightenedSignerSet(resolveRequiredSignerSet(v.kind), set)];
       }
       v.status = "in_review";
       v.stateSnapshot = {
@@ -764,7 +765,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       ifVersion,
       signerRole,
       at,
-      _actor,
+      actor,
       patientUnderstandingText,
     ) {
       const p = plan(org, planId);
@@ -784,12 +785,21 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           terminalProblemBlocker,
         ]);
       }
+      // GAP-011 — bind the claimed slot to the authenticated actor (role held; one slot per membership).
+      assertActorHoldsSignerRole(actor.roles, signerRole);
+      assertMembershipNotAlreadySigned(
+        v.signatures.map((s) => s.membershipId ?? null),
+        actor.membershipId,
+      );
       if (patientUnderstandingText !== undefined) {
         v.patientUnderstandingText = patientUnderstandingText;
       }
       const alreadySigned = v.signatures.map((s) => s.signerRole);
       const decision = decideRecordSignature(v.requiredSignerSet, alreadySigned, signerRole);
-      v.signatures = [...v.signatures, { signerRole, signedAt: at }];
+      v.signatures = [
+        ...v.signatures,
+        { signerRole, signedAt: at, membershipId: actor.membershipId },
+      ];
       if (decision.quorumMet) {
         if (p.activeVersionId && p.activeVersionId !== v.id) {
           const previous = versions.get(p.activeVersionId);

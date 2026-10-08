@@ -21,7 +21,7 @@
 // /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
 // this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
 import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -121,6 +121,33 @@ const READ_SUBMISSION = P("hope.submission.read");
 const SUBMISSION_MANAGE = P("hope.submission.manage");
 const DASHBOARD_READ = P("hope.dashboard.read");
 const ADMIN_REGEN = P("hope.admin.regenerate_schedules");
+const ADMIN_LATE_OVERRIDE = P("hope.admin.late_deadline_override");
+
+// GAP-015 — `adminOverride` used to be a body boolean any `hope.timepoint.write` holder could set, and it
+// lifts the HQRP hard cutoff (`M10_TIMEPOINT_EXPIRED` / `M10_SFV_PAST_DUE`). The catalog defined the gating
+// permission `hope.admin.late_deadline_override` and nothing referenced it. Now a request that asks for the
+// override must hold that permission (403 otherwise) AND state a justification (422) — which the service
+// records on a critical audit event when the override is actually used. The flag only ever ADDS a gate.
+const adminOverrideRequested = (body: unknown): boolean =>
+  (body as { adminOverride?: unknown } | null | undefined)?.adminOverride === true;
+const LATE_OVERRIDE_GATE: PreHandler = async (request, reply) => {
+  if (!adminOverrideRequested(request.body)) return;
+  await ADMIN_LATE_OVERRIDE(request, reply);
+};
+function requireOverrideJustification(body: {
+  readonly adminOverride?: boolean;
+  readonly adminOverrideJustification?: string;
+}): void {
+  if (body.adminOverride === true && !body.adminOverrideJustification) {
+    throw new ValidationError("an admin deadline override needs a justification", [
+      {
+        field: "adminOverrideJustification",
+        code: "REQUIRED",
+        message: "adminOverrideJustification is required with adminOverride",
+      },
+    ]);
+  }
+}
 
 // §4.7 — the three ABAC predicates M10 owns (discipline is read from session context, not the body).
 const noTarget = (): AbacTarget => ({});
@@ -268,11 +295,12 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 4 — record a new HOPE timepoint (draft); RN/NP/MD-only author (§4.7); idempotent via Idempotency-Key.
   app.post(
     "/api/v1/admissions/:admissionId/hope/timepoints",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
+    { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordTimepointSchema, request.body);
+      requireOverrideJustification(body);
       const res = await service.recordTimepoint(organizationId, userId, admissionId, {
         rfaKind: body.rfaKind,
         targetDate: body.targetDate,
@@ -282,6 +310,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         dischargeReason: body.dischargeReason,
         lateCompletionReasonCode: body.lateCompletionReasonCode,
         adminOverride: body.adminOverride,
+        adminOverrideJustification: body.adminOverrideJustification,
         scheduleId: body.scheduleId,
       });
       return reply.code(201).send(res);
@@ -291,17 +320,19 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 5 — record an SFV completion (RFA 04); RN/NP-only author (§4.7); matches an open SFV row.
   app.post(
     "/api/v1/admissions/:admissionId/hope/sfv",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
+    { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordSfvSchema, request.body);
+      requireOverrideJustification(body);
       const res = await service.recordSfv(organizationId, userId, admissionId, {
         triggeringAssessmentId: body.triggeringAssessmentId,
         targetDate: body.targetDate,
         authorDiscipline: body.authorDiscipline,
         data: body.data,
         adminOverride: body.adminOverride,
+        adminOverrideJustification: body.adminOverrideJustification,
       });
       return reply.code(201).send(res);
     },

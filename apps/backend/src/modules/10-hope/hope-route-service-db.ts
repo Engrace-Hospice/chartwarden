@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
 //
@@ -27,6 +28,7 @@ import {
   type CaptureDecision,
   assertCaptureAllowed,
   assertRfaMatchesSchedule,
+  captureInstantOf,
   planSfvCompletion,
   require_,
 } from "@wardenx/hope";
@@ -268,7 +270,35 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
 export function createDbHopeBackend(
   db: DbClient,
   outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
+  /** GAP-015: the SERVER clock the capture gate judges lateness / the hard cutoff on (injectable for tests). */
+  clock: () => Date = () => new Date(),
 ): HopeRouteService {
+  /**
+   * GAP-015 — record a CRITICAL audit event when a platform admin's deadline override actually lifted the
+   * hard cutoff, on the same transaction as the row it let through. The route has already required the
+   * `hope.admin.late_deadline_override` permission and a justification.
+   */
+  async function auditDeadlineOverride(
+    t: DbClient,
+    organizationId: string,
+    membershipId: string,
+    resource: { kind: string; id: string },
+    context: Record<string, unknown>,
+  ): Promise<void> {
+    // M10's acting id is the MEMBERSHIP id (not a user id), so it rides in the context, not `actor_user_id`.
+    await audit(
+      t as never,
+      { organizationId, userId: null, correlationId: `hope-late-deadline-override:${resource.id}` },
+      {
+        eventType: "hope.late_deadline_override",
+        resourceKind: resource.kind,
+        resourceId: resource.id,
+        outcome: "success",
+        severity: "critical",
+        context: { ...context, byMembershipId: membershipId },
+      },
+    );
+  }
   const answerService = createHopeAssessmentAnswerService(db, {
     // §2.4 / §4.9 — the SFV obligation opens while the draft's J2050/J2051 answers are patched, so
     // `m10.hope.sfv_created` (M36's SFV-obligation alert) is emitted on THAT tx, beside the row.
@@ -1194,11 +1224,13 @@ export function createDbHopeBackend(
           }
         }
         let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
+        let overrideLifted = false;
         if (sched) {
           assertRfaMatchesSchedule(args.rfaKind, {
             rfaKind: sched.rfaKind,
             generatedBy: sched.generatedBy,
           });
+          const nowIso = clock().toISOString();
           capture = assertCaptureAllowed(
             args.targetDate,
             {
@@ -1209,8 +1241,12 @@ export function createDbHopeBackend(
             {
               lateReasonCode: args.lateCompletionReasonCode,
               adminOverride: args.adminOverride,
+              nowIso,
             },
           );
+          overrideLifted =
+            args.adminOverride === true &&
+            Date.parse(captureInstantOf(args.targetDate, nowIso)) > sched.lateDeadlineAt.getTime();
         }
         const row = firstOrThrow(
           await t
@@ -1239,6 +1275,20 @@ export function createDbHopeBackend(
             .returning(),
           "hope_assessment insert returned no row",
         );
+        if (overrideLifted) {
+          await auditDeadlineOverride(
+            t,
+            organizationId,
+            userId,
+            { kind: "hope_assessment", id: row.id },
+            {
+              rfaKind: args.rfaKind,
+              scheduleId: sched?.id ?? null,
+              targetDate: args.targetDate,
+              justification: args.adminOverrideJustification ?? null,
+            },
+          );
+        }
         await answerWriter.writeDerivedControlAnswers(t, {
           organizationId,
           providerEntityId: row.providerEntityId,
@@ -1301,7 +1351,10 @@ export function createDbHopeBackend(
           "M10_SFV_NO_TRIGGER",
           `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`,
         );
-        const at = new Date();
+        const at = clock();
+        // GAP-015: completion is judged on the later of the client's `targetDate` and the SERVER's now, so a
+        // late filer cannot send an in-window date to dodge `M10_SFV_PAST_DUE`.
+        const completedAtIso = captureInstantOf(args.targetDate, at.toISOString());
         // Insert the signed RFA-04 row, then complete the open SFV (the §4.4 guards live in planSfvCompletion).
         const row = firstOrThrow(
           await t
@@ -1332,9 +1385,26 @@ export function createDbHopeBackend(
             dueAt: iso(sfv.dueAt) ?? at.toISOString(),
           },
           row.id,
-          args.targetDate,
+          completedAtIso,
           { adminOverride: args.adminOverride },
         );
+        if (
+          args.adminOverride === true &&
+          Date.parse(completedAtIso) > Date.parse(iso(sfv.dueAt) ?? at.toISOString())
+        ) {
+          await auditDeadlineOverride(
+            t,
+            organizationId,
+            userId,
+            { kind: "hope_assessment", id: row.id },
+            {
+              sfvId: sfv.id,
+              triggeringAssessmentId: args.triggeringAssessmentId,
+              targetDate: args.targetDate,
+              justification: args.adminOverrideJustification ?? null,
+            },
+          );
+        }
         await t
           .update(SFV)
           .set({

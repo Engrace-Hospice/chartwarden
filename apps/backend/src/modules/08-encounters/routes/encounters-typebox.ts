@@ -184,7 +184,11 @@ export const EvvReconcileSchema = Type.Object({
   evvMissingReason: Type.String({ minLength: 20, maxLength: 4000 }),
 });
 
-export const FinalizeEncounterSchema = Type.Object({});
+// GAP-013: a note documented > 24h after the visit must carry the clinician's own late-entry reason
+// (>= 40 chars, §2.5/§2.7). The TIER is never a field — the server computes it from service_date.
+export const FinalizeEncounterSchema = Type.Object({
+  lateEntryReason: Type.Optional(Text(40)),
+});
 
 export const HearthnoteEnhanceSchema = Type.Object({
   style: Type.Object({
@@ -205,6 +209,8 @@ export const ModificationDecisionSchema = Type.Object({
 // real "I attest" client confirmation, independent of how the signature is cryptographically proven.
 export const SignEncounterSchema = Type.Object({
   attestationConfirmed: Type.Literal(true),
+  // GAP-013: supplied here only when the note slipped into a later tier between finalize and sign.
+  lateEntryReason: Type.Optional(Text(40)),
 });
 
 export const LateEntryOverrideSchema = Type.Object({

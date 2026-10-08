@@ -46,7 +46,7 @@ import {
   requirePermission,
   requireStepUp,
 } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -119,6 +119,18 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 
 const READ = requirePermission("patient.read") as PreHandler;
 const CREATE = requirePermission("patient.create") as PreHandler;
+
+// GAP-009 (§2.3 / §4.2): `bypassMatchReview` skips the whole §7.1 duplicate pipeline, so it is not a
+// `patient.create` act. When the body asks for it the actor must ALSO hold the dedicated
+// `patient.create_bypass_match` key and prove a fresh step-up; a plain `patient.create` holder is a 403.
+// The decision reads the PARSED body (the flag arrives as a client value, so it can only ever add a gate).
+const BYPASS_PERMISSION = requirePermission("patient.create_bypass_match") as PreHandler;
+const BYPASS_STEP_UP = requireStepUp("patient.create_bypass_match") as PreHandler;
+const CREATE_BYPASS_GATE: PreHandler = async (request, reply) => {
+  if (parse(AdmitBodySchema, request.body).bypassMatchReview !== true) return;
+  await BYPASS_PERMISSION(request, reply);
+  await BYPASS_STEP_UP(request, reply);
+};
 const EDIT = requirePermission("patient.edit") as PreHandler;
 const EDIT_PAYERS = requirePermission("patient.edit_payers") as PreHandler;
 const AMEND_RECORD = requirePermission("patient.amend_request_record") as PreHandler;
@@ -353,21 +365,34 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   );
 
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
-  app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(AdmitBodySchema, request.body);
-    const result = await service.admit(organizationId, body, userId);
-    if (result.outcome === "hard_block") {
-      // §7.1: no patient row created; surface the existing chart for "Open existing patient".
-      throw new WardenXError(
-        "DUPLICATE_OF",
-        `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
-        409,
-        [{ field: "existingPatientId", code: "DUPLICATE_OF", message: result.existingPatientId }],
-      );
-    }
-    return reply.code(201).send(result);
-  });
+  app.post(
+    "/api/v1/patients",
+    { preHandler: [CREATE, CREATE_BYPASS_GATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdmitBodySchema, request.body);
+      if (body.bypassMatchReview === true && !body.bypassJustification) {
+        throw new ValidationError("a bypass of the duplicate-match review needs a justification", [
+          {
+            field: "bypassJustification",
+            code: "REQUIRED",
+            message: "bypassJustification is required with bypassMatchReview",
+          },
+        ]);
+      }
+      const result = await service.admit(organizationId, body, userId);
+      if (result.outcome === "hard_block") {
+        // §7.1: no patient row created; surface the existing chart for "Open existing patient".
+        throw new WardenXError(
+          "DUPLICATE_OF",
+          `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
+          409,
+          [{ field: "existingPatientId", code: "DUPLICATE_OF", message: result.existingPatientId }],
+        );
+      }
+      return reply.code(201).send(result);
+    },
+  );
 
   // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
   app.get(

@@ -38,7 +38,13 @@ import {
 } from "./authoring/index";
 import { CarePlanStateError } from "./lifecycle/errors";
 import { computeNextReviewDueAt, warningOpensAt } from "./lifecycle/gate-clock";
-import { decideRecordSignature, resolveRequiredSignerSet } from "./lifecycle/required-signer-set";
+import {
+  assertActorHoldsSignerRole,
+  assertMembershipNotAlreadySigned,
+  decideRecordSignature,
+  resolveRequiredSignerSet,
+  resolveTightenedSignerSet,
+} from "./lifecycle/required-signer-set";
 import {
   checkGoalReferencesProblem,
   checkInterventionFrequency,
@@ -60,6 +66,25 @@ import {
   type PatchInterventionInput,
   type PatchProblemInput,
 } from "./routes/service";
+
+const SIGNER_SLOT_UNIQUE_CONSTRAINT = "care_plan_signature_version_membership_uq";
+const PG_UNIQUE_VIOLATION = "23505";
+
+/** A Postgres 23505 from migration 0620's one-slot-per-membership trigger (Drizzle wraps it in `.cause`). */
+function isSignerSlotCollision(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+    cause?: { code?: string; constraint?: string; message?: string };
+  };
+  if ((e?.code ?? e?.cause?.code) !== PG_UNIQUE_VIOLATION) return false;
+  return (
+    (e?.constraint ?? e?.cause?.constraint) === SIGNER_SLOT_UNIQUE_CONSTRAINT ||
+    String(e?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT) ||
+    String(e?.cause?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT)
+  );
+}
 
 const CP = schema.carePlans;
 const CPV = schema.carePlanVersions;
@@ -1129,15 +1154,9 @@ export function createDbCarePlanRouteService(
         await requireReadyToFinalize(t, v);
         let requiredSignerSet = v.requiredSignerSet;
         if (set) {
-          // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5).
-          const floor = resolveRequiredSignerSet(v.kind);
-          if (set.length < floor.length) {
-            throw new CarePlanStateError(
-              "REQUIRED_SIGNER_SET_UNMET",
-              "the Required Signer Set may not loosen the floor quorum",
-            );
-          }
-          requiredSignerSet = set;
+          // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5) — GAP-012:
+          // the requested set must COVER every floor slot, not merely be as long.
+          requiredSignerSet = [...resolveTightenedSignerSet(resolveRequiredSignerSet(v.kind), set)];
         }
         const updated = firstOrThrow(
           await t
@@ -1172,122 +1191,141 @@ export function createDbCarePlanRouteService(
       ifVersion,
       signerRole,
       at,
-      actor?: CarePlanSignActor,
+      actor: CarePlanSignActor,
       patientUnderstandingText?: string | null,
     ) {
-      return withOrgContext(
-        db,
-        { organizationId: org, userId: actor?.userId ?? "" },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const plan = await loadPlan(t, planId);
-          ensurePlanWritable(plan);
-          const v = await loadVersion(t, planId, versionId);
-          checkOptimisticConcurrency(ifVersion, Number(v.version));
-          if (v.status !== "in_review") {
-            throw new CarePlanStateError(
-              "ILLEGAL_TRANSITION",
-              `version cannot be signed from '${v.status}'`,
-            );
-          }
-          await requireReadyToSign(t, v);
-          const existing = await sigsFor(t, versionId);
-          const decision = decideRecordSignature(
-            v.requiredSignerSet as Parameters<typeof decideRecordSignature>[0],
-            existing.map((s) => s.signerRole) as Parameters<typeof decideRecordSignature>[1],
-            signerRole,
+      return withOrgContext(db, { organizationId: org, userId: actor.userId }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const plan = await loadPlan(t, planId);
+        ensurePlanWritable(plan);
+        const v = await loadVersion(t, planId, versionId);
+        checkOptimisticConcurrency(ifVersion, Number(v.version));
+        if (v.status !== "in_review") {
+          throw new CarePlanStateError(
+            "ILLEGAL_TRANSITION",
+            `version cannot be signed from '${v.status}'`,
           );
+        }
+        await requireReadyToSign(t, v);
+        // GAP-011 — bind the claimed slot (a BODY field) to the authenticated actor: they must hold the
+        // role, and one membership fills at most one slot per version.
+        assertActorHoldsSignerRole(actor.roles, signerRole);
+        const signedBy = await t
+          .select({ membershipId: SIG.membershipId })
+          .from(SIG)
+          .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
+        assertMembershipNotAlreadySigned(
+          signedBy.map((r) => r.membershipId),
+          actor.membershipId,
+        );
+        const existing = await sigsFor(t, versionId);
+        const decision = decideRecordSignature(
+          v.requiredSignerSet as Parameters<typeof decideRecordSignature>[0],
+          existing.map((s) => s.signerRole) as Parameters<typeof decideRecordSignature>[1],
+          signerRole,
+        );
+        try {
           await t.insert(SIG).values({
             organizationId: org,
             carePlanVersionId: versionId,
             providerEntityId: v.providerEntityId,
             locationId: v.locationId,
-            membershipId: actor?.membershipId ?? null,
+            membershipId: actor.membershipId,
             signerRole,
             signatureMethod: "password_step_up",
             signedAt: new Date(at),
           });
-          let idgApplied: { applicationCount: number; changeCount: number } | null = null;
-          if (decision.quorumMet && v.kind === "idg_review") {
-            idgApplied = await applyIdgProposalChanges(t, {
-              org,
-              plan,
-              version: v,
-              at: new Date(at),
-            });
+        } catch (err) {
+          // Two concurrent signs by one membership both pass the app-level check above; migration
+          // 0620's trigger is the backstop — surface it as the same 409, not a 500.
+          if (isSignerSlotCollision(err)) {
+            throw new CarePlanStateError(
+              "SIGNER_ALREADY_SIGNED",
+              "this membership has already signed a slot of this version",
+            );
           }
-          const updated = firstOrThrow(
+          throw err;
+        }
+        let idgApplied: { applicationCount: number; changeCount: number } | null = null;
+        if (decision.quorumMet && v.kind === "idg_review") {
+          idgApplied = await applyIdgProposalChanges(t, {
+            org,
+            plan,
+            version: v,
+            at: new Date(at),
+          });
+        }
+        const updated = firstOrThrow(
+          await t
+            .update(CPV)
+            .set({
+              status: decision.quorumMet ? "signed" : "in_review",
+              signedAt: decision.quorumMet ? new Date(at) : null,
+              patientUnderstandingText:
+                patientUnderstandingText === undefined ? undefined : patientUnderstandingText,
+              version: sql`${CPV.version} + 1`,
+            })
+            .where(eq(CPV.id, versionId))
+            .returning(),
+          "version sign matched no row",
+        );
+        if (decision.quorumMet) {
+          if (plan.activeVersionId && plan.activeVersionId !== versionId) {
             await t
               .update(CPV)
               .set({
-                status: decision.quorumMet ? "signed" : "in_review",
-                signedAt: decision.quorumMet ? new Date(at) : null,
-                patientUnderstandingText:
-                  patientUnderstandingText === undefined ? undefined : patientUnderstandingText,
+                status: "superseded",
+                supersededAt: new Date(at),
                 version: sql`${CPV.version} + 1`,
               })
-              .where(eq(CPV.id, versionId))
-              .returning(),
-            "version sign matched no row",
-          );
-          if (decision.quorumMet) {
-            if (plan.activeVersionId && plan.activeVersionId !== versionId) {
-              await t
-                .update(CPV)
-                .set({
-                  status: "superseded",
-                  supersededAt: new Date(at),
-                  version: sql`${CPV.version} + 1`,
-                })
-                .where(and(eq(CPV.id, plan.activeVersionId), eq(CPV.status, "signed")));
-            }
-            // The last required signature activates the plan and pins the active version (§2.2.2).
-            // TASK-040D (mig 0161) — gate-clock.ts's own doc comment says computeNextReviewDueAt is
-            // "called on every version_signed (initial and each IDG review) so the review clock re-arms
-            // from the most recent signature", but nothing ever called it — nextReviewDueAt stayed NULL
-            // forever, silently no-opping the §7.2 review-gate cron scan regardless of whether it runs.
-            // Recomputing it here on EVERY sign (not just review) + resetting the two emission markers is
-            // what makes planReviewGateScan (jobs/index.ts) do anything once TASK-040D's worker is live.
-            await t
-              .update(CP)
-              .set({
-                status: "active",
-                activeVersionId: versionId,
-                version: sql`${CP.version} + 1`,
-                updatedAt: new Date(),
-                nextReviewDueAt: new Date(computeNextReviewDueAt(at)),
-                reviewDueEmitted: false,
-                reviewOverdueEmitted: false,
-                ...(v.kind === "initial" ? { initialSignedAt: new Date(at) } : {}),
-              })
-              .where(eq(CP.id, planId));
-            await emit(t, org, "m7.care_plan.version_signed", "care_plan_version", versionId, {
-              planId,
-              versionId,
-              patientId: plan.patientId,
-              admissionId: plan.admissionId,
-              kind: v.kind,
-              snapshotRef: versionId,
-            });
-            if (idgApplied) {
-              await emit(
-                t,
-                org,
-                "m7.care_plan.idg_proposal_applied",
-                "care_plan_version",
-                versionId,
-                {
-                  planId,
-                  versionId,
-                  appliedProposalCount: idgApplied.applicationCount,
-                  appliedChangeCount: idgApplied.changeCount,
-                },
-              );
-            }
+              .where(and(eq(CPV.id, plan.activeVersionId), eq(CPV.status, "signed")));
           }
-          return versionDto(updated, await sigsFor(t, versionId));
-        },
-      );
+          // The last required signature activates the plan and pins the active version (§2.2.2).
+          // TASK-040D (mig 0161) — gate-clock.ts's own doc comment says computeNextReviewDueAt is
+          // "called on every version_signed (initial and each IDG review) so the review clock re-arms
+          // from the most recent signature", but nothing ever called it — nextReviewDueAt stayed NULL
+          // forever, silently no-opping the §7.2 review-gate cron scan regardless of whether it runs.
+          // Recomputing it here on EVERY sign (not just review) + resetting the two emission markers is
+          // what makes planReviewGateScan (jobs/index.ts) do anything once TASK-040D's worker is live.
+          await t
+            .update(CP)
+            .set({
+              status: "active",
+              activeVersionId: versionId,
+              version: sql`${CP.version} + 1`,
+              updatedAt: new Date(),
+              nextReviewDueAt: new Date(computeNextReviewDueAt(at)),
+              reviewDueEmitted: false,
+              reviewOverdueEmitted: false,
+              ...(v.kind === "initial" ? { initialSignedAt: new Date(at) } : {}),
+            })
+            .where(eq(CP.id, planId));
+          await emit(t, org, "m7.care_plan.version_signed", "care_plan_version", versionId, {
+            planId,
+            versionId,
+            patientId: plan.patientId,
+            admissionId: plan.admissionId,
+            kind: v.kind,
+            snapshotRef: versionId,
+          });
+          if (idgApplied) {
+            await emit(
+              t,
+              org,
+              "m7.care_plan.idg_proposal_applied",
+              "care_plan_version",
+              versionId,
+              {
+                planId,
+                versionId,
+                appliedProposalCount: idgApplied.applicationCount,
+                appliedChangeCount: idgApplied.changeCount,
+              },
+            );
+          }
+        }
+        return versionDto(updated, await sigsFor(t, versionId));
+      });
     },
 
     async returnVersionToDraft(org, planId, versionId, ifVersion) {
