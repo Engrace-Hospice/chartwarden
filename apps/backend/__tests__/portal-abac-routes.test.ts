@@ -128,6 +128,36 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
     expect(await noGrant.portal_grant_active_for_patient(ctx(), target)).toBe(false);
   });
 
+  it("GAP-050: a suspended account is denied by every account-bound predicate even with a live grant + consent", async () => {
+    const suspended = resolver({
+      async loadAccount() {
+        return { portalAccountId: ACCOUNT, userId: "user-1", status: "suspended" };
+      },
+    });
+    const p = buildPortalAbacPredicates({ resolver: suspended, ports: ports(true) });
+    expect(await p.portal_grant_active_for_patient(ctx(), target)).toBe(false);
+    expect(await p.portal_caregiver_is_primary_or_dpoa(ctx(), target)).toBe(false);
+    expect(await p.bereaved_portal_window_open(ctx(), target)).toBe(false);
+
+    const unloadable = resolver({
+      async loadAccount() {
+        throw new Error("db down");
+      },
+    });
+    const q = buildPortalAbacPredicates({ resolver: unloadable, ports: ports(true) });
+    expect(await q.portal_grant_active_for_patient(ctx(), target)).toBe(false);
+  });
+
+  it("GAP-050: a bereaved account keeps its grant (still a live account)", async () => {
+    const bereaved = resolver({
+      async loadAccount() {
+        return { portalAccountId: ACCOUNT, userId: "user-1", status: "bereaved" };
+      },
+    });
+    const p = buildPortalAbacPredicates({ resolver: bereaved, ports: ports(true) });
+    expect(await p.portal_grant_active_for_patient(ctx(), target)).toBe(true);
+  });
+
   it("a non-portal session class denies every portal predicate", async () => {
     const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
     const staff = ctx({

@@ -35,6 +35,7 @@ import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
+import { buildPortalDisclosureReader } from "../src/modules/22-documents/access-log/portal-disclosures";
 import {
   createDrizzleDocumentReaderStore,
   createDrizzlePortalAccessLog,
@@ -322,6 +323,20 @@ describe.skipIf(!DB_URL)("F-225 portal document access log — LIVE Postgres", (
       [ORG_A],
     );
     expect(trig.rows[0].n).toBe(1);
+
+    // GAP-052: the §164.528 accounting reader returns that ledger row for the patient (and none for another org)
+    const window = [new Date(Date.now() - 3_600_000), new Date(Date.now() + 3_600_000)] as const;
+    const reader = buildPortalDisclosureReader(handle.db);
+    const lines = await reader(ORG_A, PATIENT_1, ...window);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      portalAccountId: ACCOUNT,
+      patientId: PATIENT_1,
+      documentId: d.documentId,
+      accessKind: "portal_view",
+    });
+    expect(await reader(ORG_B, PATIENT_1, ...window)).toHaveLength(0);
+    expect(await reader(ORG_A, PATIENT_2, ...window)).toHaveLength(0);
 
     // M4 route read-audit: one row, resource = the DOCUMENT, patient = the session patient
     const m4 = await m4Rows();

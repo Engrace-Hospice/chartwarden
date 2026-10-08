@@ -9,6 +9,7 @@ import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
 import { readError } from "./portal-format";
 import { PortalCard, PortalPage } from "./portal-page";
+import { TELEHEALTH_FRAME_ALLOW, telehealthEmbedUrl } from "./telehealth-embed";
 
 interface JoinTicket {
   vendor: string;
@@ -63,6 +64,7 @@ export function TelehealthWaitingRoom(): JSX.Element {
   }
 
   if (ticket) {
+    const embedUrl = telehealthEmbedUrl(ticket);
     return (
       <PortalPage title="Video visit" subtitle="You're connected to your care team.">
         <PortalCard heading="In the visit">
@@ -74,25 +76,35 @@ export function TelehealthWaitingRoom(): JSX.Element {
               <StatusPill tone="neutral" label="Not recording" />
             )}
           </p>
-          {/* The vendor SDK mounts here in the running app; the join URL + token are held, never shown as a
-              clickable link that would bypass our PHI boundary. */}
-          <div
-            aria-label="Video area"
-            style={{
-              height: "16rem",
-              borderRadius: "0.6rem",
-              background: t.surfaceLowest,
-              border: `1px solid ${t.surfaceContainer}`,
-              display: "grid",
-              placeItems: "center",
-              color: t.onSurfaceVariant,
-              fontSize: "0.85rem",
-            }}
-          >
-            {ticket.audioOnlyFallbackActive
-              ? "Audio-only mode (limited connection)"
-              : "Video connected"}
-          </div>
+          {/* GAP-053: the vendor's hosted room runs in a frame; the token travels in the frame url and the
+              join url is never rendered as a link that would bypass our PHI boundary. The vendor room carries the
+              mute / camera / chat / participant controls. */}
+          {embedUrl ? (
+            <iframe
+              title="Video visit"
+              aria-label="Video area"
+              src={embedUrl}
+              allow={TELEHEALTH_FRAME_ALLOW}
+              referrerPolicy="no-referrer"
+              style={{
+                width: "100%",
+                height: "28rem",
+                borderRadius: "0.6rem",
+                border: `1px solid ${t.surfaceContainer}`,
+                background: t.surfaceLowest,
+              }}
+            />
+          ) : (
+            <p role="alert" style={{ color: t.error, fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
+              The video room could not be opened. Leave and try joining again, or call your care
+              team.
+            </p>
+          )}
+          {ticket.audioOnlyFallbackActive ? (
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
+              Audio-only mode is on because of a limited connection.
+            </p>
+          ) : null}
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
             <button type="button" style={ghostBtn} onClick={() => void leave()}>
               Leave visit

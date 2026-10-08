@@ -823,6 +823,7 @@ import {
   buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
+  buildPortalDisclosureReader,
   buildPortalUploadIntakePort,
   createCandidateValueCipher,
   createCodingTerminology,
@@ -1160,6 +1161,7 @@ import {
 import {
   M31_OUTBOX_EVENTS,
   bindM31EventEmitter,
+  buildDailyTelehealthAdapter,
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
   createM31EventEmitter,
@@ -1912,7 +1914,11 @@ export function wireModuleSeams(
   // consent must refuse). The subject facts load through the Drizzle store over M31's three owned tables when
   // a DB client is present; without one the deny-stub resolver stands.
   if (deps.db) {
-    const portalStore = buildDrizzlePortalStore(deps.db);
+    const portalStore = buildDrizzlePortalStore(
+      deps.db,
+      undefined,
+      buildPortalDisclosureReader(deps.db),
+    );
     registerM31PublishedSeams({ registerSeam }, createM31PublishedSeamImpls(portalStore));
     registerPortalAbacPredicates({
       resolver: buildPortalAbacResolverFromStore(portalStore),
@@ -4400,6 +4406,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             buildDrizzleM33ExportDrilldownService({
               db: dbHandle.db,
               outbox: m33OutboxPublisher,
+              tenantKeys: { dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId) },
             }).service,
           );
           // M30 (HQRP & Quality) — mount the nine §4.1 route plugins (measures / CAHPS / risk-register /
@@ -4940,10 +4947,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             }),
           });
           // M31 (Patient/Family Portal & Telehealth) — mount the forty-seven §4.1 routes over the Drizzle
-          // store (the three owned tables) + the injected video adapter. The telehealth adapter is left
-          // UNBOUND here (a fail-closed NOOP): no per-tenant Daily.co API-key vault is wired yet, so the
-          // Record button denies and join mints an empty token rather than reaching a vendor with an
-          // unconfigured key. Every lay READ route composes the upstream portal-summary seams and fails
+          // store (the three owned tables) + the injected video adapter. GAP-051: the Daily.co adapter
+          // is bound from TELEHEALTH_DAILY_* config (see telehealth/vendor-adapter.ts); with any of the three secrets
+          // missing it stays UNBOUND (a fail-closed NOOP: join/record 503, webhooks 401) rather than reaching a
+          // vendor with a half-configured key. Every lay READ route composes the upstream portal-summary seams and fails
           // CLOSED; the owned-table reads/writes (accounts, grants, telehealth lifecycle) are live over RLS.
           // The reason cipher seals the operator's suspend/reinstate reason (#117); it composes over the
           // SAME M34 key ring M39's consent notes use, which is live on a DB boot (`registerLiveM34Seams`);
@@ -4982,6 +4989,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // outreach); the scope read names which contact(s) the portal account is.
           const portalAuditQuery = createDbAuditQuery(dbHandle.db);
           mountM31Routes(app, {
+            telehealth: buildDailyTelehealthAdapter(process.env),
             provisioning: portalProvisioning,
             bereavementOptOut: {
               async optOut({ organizationId, userId, portalAccountId }) {
@@ -5906,6 +5914,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         auditBypass: m34PlatformBypassAuditor,
         outboxPublisher: m33OutboxPublisher,
         lagProbeRedis: m33LagProbeRedis,
+        tenantKeys: { dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId) },
         mvRefreshEnqueue: m33MvRefreshEnqueue.enqueue,
       }),
     );

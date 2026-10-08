@@ -45,6 +45,8 @@ export {
   createPortalRoomCipher,
 } from "./routes/index";
 export { mountM31Routes } from "./routes/mount";
+// GAP-051 - the config-driven Daily.co binding for the telehealth routes.
+export { buildDailyTelehealthAdapter } from "./telehealth/vendor-adapter";
 // GAP-092 — account and grant provisioning, encrypted upload staging, notification preferences.
 export {
   type PortalProvisioning,
