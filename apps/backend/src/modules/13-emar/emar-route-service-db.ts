@@ -39,20 +39,25 @@
 //       activated an order — arming it then would have refused every administration the system could
 //       produce. F-058 fixed the producer side (a signed order that is not being e-prescribed activates
 //       on signature; a verbal order is administrable per M12 §2.3), so the verdict now separates "ready
-//       to give" from "discontinued / replaced / never signed" instead of refusing everything. The §5.11
-//       five-rights validation against the order projection remains open. A supplied barcodeScan is
-//       evaluated + persisted against a permissive order context (an honest scan reads `match`; an
-//       expired scan still hard-blocks);
+//       to give" from "discontinued / replaced / never signed" instead of refusing everything.
+//       [CLOSED, GAP-020] the §5.11 five-rights validation (route / over-dose / unit / future instant) and
+//       the §2.9 BCMA scan (against the ORDER's RxCUI/NDC and active state) run on the clinician and the
+//       caregiver path against the order projection (`administration-safety-gates.ts`). Still open: no
+//       patient wristband digest is on file anywhere, so the `wrong_patient` BCMA arm has nothing to
+//       compare a scanned wristband with (the port carries `patientWristbandPayloadDigest`, always null);
 //   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
 //       still pass an explicit encounterId);
 //   (5) [CLOSED, TASK-008] the witness-attestation secret is externalized via `M13_WITNESS_SIGNING_KEY`
 //       (bootstrap/env.ts, prod fail-closed) and the single-use burn is enforced via a unique index on
 //       `administration_witness.attestation_token_digest` (mig 0160) — Postgres, not an optional Valkey
 //       dependency, so it holds cluster-wide without a Redis requirement this deployment doesn't have;
-//   (6) the PRN wrapper row (`prn_administration`) is materialized by M9's reassessment consumer in prod —
-//       the write path emits `m13.prn_administration_recorded` with a fresh id (the in-mem posture);
-//   (7) the reconciliation worksheet stores no expected-line count, so `finalize` requires ≥1 recorded
-//       decision rather than the in-mem's all-lines-decided gate (the per-line completeness set is deferred).
+//   (6) [CLOSED, GAP-021/022] the PRN wrapper row (`prn_administration`) is written in the SAME transaction as
+//       the administration (`prn-administration.ts`), after the §2.4 D3 minimum-interval gate; the event
+//       names the real row id. The reassessment window is the tenant default and the scale defaults to
+//       `esas_r` (the order carries no clinical category yet);
+//   (7) [CLOSED, GAP-023] `finalize` requires every ACTIVE M12 order line decided (the expected set comes
+//       from the `activeMedicationOrderIds` port) plus at least one decision, and the worksheet is
+//       terminal once finalized / voided (no decision, line, finalize or void reopens it).
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
@@ -67,6 +72,7 @@ import {
   composeIvSession,
   deriveIvSessionState,
   evaluateBarcodeScan,
+  finalizeReconciliationWorksheet,
   planIvSegment,
   planReconciliationDecision,
   resolveLateEntryTier,
@@ -82,12 +88,14 @@ import type {
   EmarScopeRefKind,
   WitnessAbacFacts,
 } from "./abac-predicates";
+import { assertOrderFiveRights, barcodeContextsOf } from "./administration-safety-gates";
 import {
   type EmarIvOverlayPort,
   UNBOUND_IV_OVERLAY,
   evaluateIvOverlayGate,
 } from "./iv-overlay-gate";
 import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "./order-consistency";
+import { insertPrn, planPrn } from "./prn-administration";
 import type {
   AdministrationPolicyView,
   AdministrationView,
@@ -212,7 +220,30 @@ export interface EmarMedicationOrderPort {
      * copy; it was never written before.
      */
     readonly isSudTreatment: boolean;
+    /**
+     * GAP-020 -- the order facts the §5.11 five-rights check and the §2.9 BCMA scan are verified against.
+     * Optional only so an older port binding still compiles: ABSENT means "the order states nothing", and
+     * the corresponding right is then not checked (the production adapter always supplies them).
+     */
+    readonly doseAmount?: number | null;
+    readonly doseUnit?: string | null;
+    readonly rxnormRxcui?: string | null;
+    readonly ndc?: string | null;
+    /** GAP-021 -- the order's PRN minimum interval in minutes (`sigStructured.prnPolicy`); null = none stated. */
+    readonly prnMinimumIntervalMinutes?: number | null;
+    /** The patient's on-file wristband payload digest; null/absent = none on file. */
+    readonly patientWristbandPayloadDigest?: string | null;
   } | null>;
+  /**
+   * GAP-023 -- the ids of the patient's CURRENTLY ACTIVE medication orders: the m12_active lines a
+   * reconciliation worksheet must decide before it can be finalized. Optional: an unbound port (or an older
+   * binding) cannot state the expected line set, and `finalize` then falls back to "at least one decision
+   * recorded" rather than pretending the worksheet is complete.
+   */
+  activeMedicationOrderIds?(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<readonly string[]>;
 }
 
 /**
@@ -394,6 +425,18 @@ export function createDbEmarBackend(
     if (!w) throw new NotFoundError("reconciliation worksheet not found");
     return w;
   }
+  /**
+   * GAP-023 -- a worksheet accepts decisions / lines / finalize / void only while it is open
+   * (`pending` | `in_progress`). `finalized` and `voided` are terminal: a decision written to one would
+   * silently reopen (or rewrite) a closed clinical record.
+   */
+  function assertWorksheetOpen(w: typeof WS.$inferSelect, action: string): void {
+    if (w.status === "pending" || w.status === "in_progress") return;
+    throw new AdministrationStateError(
+      "ILLEGAL_RECONCILIATION_TRANSITION",
+      `a worksheet in '${w.status}' cannot ${action}`,
+    );
+  }
   /** Re-read one worksheet (post-write) as the wire view (with its decision lines). */
   async function readWorksheet(tx: DbClient, id: string): Promise<WorksheetView> {
     const w = await loadWorksheet(tx, id);
@@ -547,6 +590,17 @@ export function createDbEmarBackend(
           .where(eq(table.col, id))
           .limit(1);
         return r?.patientId ?? null;
+      });
+    },
+    // GAP-024 — the order a scheduled dose belongs to (read under RLS: a cross-tenant id is simply absent).
+    async loadScheduledDoseOrderId(orgId, scheduledDoseId) {
+      return withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ medicationOrderId: SD.medicationOrderId })
+          .from(SD)
+          .where(eq(SD.id, scheduledDoseId))
+          .limit(1);
+        return r?.medicationOrderId ?? null;
       });
     },
     // GAP-005 — the administering-clinician matrix keys on the ORDER's class.
@@ -836,6 +890,17 @@ export function createDbEmarBackend(
         }
         const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
         const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;
+        // GAP-020 -- §5.11 five-rights against the ORDER, before any state mutation. Route, over-dose,
+        // unit and a future instant are refused with 422 FIVE_RIGHTS_VIOLATION (a late entry is not).
+        assertOrderFiveRights({
+          order: identity,
+          medicationOrderId: args.medicationOrderId,
+          patientId,
+          given: { route: args.route, doseAmount: args.doseAmount, doseUnit: args.doseUnit },
+          administeredAt: args.administeredAt,
+          nowIso: recordedAt.toISOString(),
+          discreteDose: !ADMINISTRATION_MODE_CATALOG[args.mode].isIvContinuous,
+        });
 
         // ── §2.11 D11 — the IV-continuous session (F-031/#134) ────────────────────────────────────────
         //
@@ -989,14 +1054,17 @@ export function createDbEmarBackend(
           witnessDigest = verify.digest;
         }
 
-        // §2.9 BCMA — evaluate the scan against a permissive order context (compromise #3); a wrong/expired
-        // scan still hard-blocks. Persisted after the administration row (it back-refs the new id).
+        // §2.9 BCMA — evaluate the scan against the order + patient context; a wrong/expired scan
+        // hard-blocks. Persisted after the administration row (it back-refs the new id).
         let barcodeMatchResult: BarcodeMatchResult | null = null;
         if (args.barcodeScan) {
+          // GAP-020 -- the REAL order/patient context (it used to be an empty one, under which only
+          // `expired` could fire and wrong_drug / wrong_patient were structurally unreachable).
+          const scanContext = barcodeContextsOf(identity);
           barcodeMatchResult = evaluateBarcodeScan(
             args.barcodeScan,
-            { orderActive: true, rxnormRxcui: null, ndc: null },
-            { wristbandPayloadDigest: null },
+            scanContext.order,
+            scanContext.patient,
             args.administeredAt.slice(0, 10),
           );
           if (barcodeScanBlocks(barcodeMatchResult))
@@ -1005,6 +1073,18 @@ export function createDbEmarBackend(
               `barcode verification failed: ${barcodeMatchResult}`,
             );
         }
+
+        // GAP-021 -- the §2.4 D3 PRN minimum-interval gate runs BEFORE the administration row exists, so a
+        // violation leaves nothing behind. The minimum comes from the ORDER, never the body.
+        const prnPlan = args.prn
+          ? await planPrn(tx, {
+              medicationOrderId: args.medicationOrderId,
+              patientId,
+              administeredAt: args.administeredAt,
+              minimumIntervalMinutes: identity.prnMinimumIntervalMinutes ?? null,
+              prn: args.prn,
+            })
+          : null;
 
         const inserted = (
           await tx
@@ -1129,7 +1209,21 @@ export function createDbEmarBackend(
             },
           );
         }
-        if (args.prn)
+        if (args.prn && prnPlan) {
+          // GAP-022 -- the wrapper row is written in the SAME transaction as the administration, and the
+          // event names it (it used to carry a random uuid with no row behind it).
+          await insertPrn(tx, {
+            organizationId: orgId,
+            administrationRecordId: inserted.id,
+            providerEntityId: sched?.providerEntityId ?? null,
+            locationId: sched?.locationId ?? null,
+            patientId,
+            admissionId,
+            medicationOrderId: args.medicationOrderId,
+            actorMembershipId: userId,
+            prn: args.prn,
+            plan: prnPlan,
+          });
           await emit(
             tx,
             orgId,
@@ -1137,17 +1231,16 @@ export function createDbEmarBackend(
             "administration_record",
             inserted.id,
             {
-              prnAdministrationId: randomUUID(),
+              prnAdministrationId: prnPlan.prnAdministrationId,
               administrationRecordId: inserted.id,
               patientId,
               medicationOrderId: args.medicationOrderId,
               administeredAt: args.administeredAt,
-              reassessmentDueAt: new Date(
-                Date.parse(args.administeredAt) + 60 * 60000,
-              ).toISOString(),
-              recommendedReassessmentScale: "esas_r",
+              reassessmentDueAt: prnPlan.reassessmentDueAt.toISOString(),
+              recommendedReassessmentScale: prnPlan.recommendedReassessmentScale,
             },
           );
+        }
 
         // §2.2 — the pure `@wardenx/emar` machine (`administration-record.ts`'s `commit` case) has
         // declared `{kind: "request_document"} + {kind: "outbox", event: "m13.administration_record
@@ -1236,8 +1329,8 @@ export function createDbEmarBackend(
       args: RecordCaregiverAttestedArgs,
     ): Promise<AdministrationView> {
       // §2.9 D10 — the caregiver path records pending_caregiver_review (requires_rn_review=true); the double-
-      // witness rule does not apply and encounter_id stays null (D9). The M12 five-rights gate is skipped
-      // (compromise #3, no order projection threaded).
+      // witness rule does not apply and encounter_id stays null (D9). The D6 verdict + §5.11 five-rights +
+      // BCMA gates run against the order (GAP-020).
       return withOrg(orgId, async (tx) => {
         // GAP-004 — the caregiver names the patient; the order must be that patient's own.
         const identity = await medOrder().administrationIdentity({
@@ -1251,18 +1344,50 @@ export function createDbEmarBackend(
           identity.patientId,
           "the caregiver attestation names a different patient than the order",
         );
+        // GAP-020 -- the caregiver path runs the SAME order gates as the clinician path (§2.9 D10): M12's
+        // D6 verdict, then the §5.11 five-rights check. A caregiver-reported dose the order does not
+        // authorise is refused (and echoed back through M31) rather than filed for review.
+        if (!identity.allowAdministration)
+          throw new AdministrationStateError(
+            "ADMINISTRATION_BLOCKED",
+            `the medication order is not administrable: ${identity.blockedReasons.join(", ") || "not_active"}`,
+          );
+        assertOrderFiveRights({
+          order: identity,
+          medicationOrderId: args.medicationOrderId,
+          patientId: args.patientId,
+          given: { route: args.route, doseAmount: args.doseAmount, doseUnit: args.doseUnit },
+          administeredAt: args.administeredAt,
+          nowIso: new Date().toISOString(),
+          discreteDose: true,
+        });
+        let barcodeMatchResult: BarcodeMatchResult | null = null;
+        if (args.barcodeScan) {
+          const scanContext = barcodeContextsOf(identity);
+          barcodeMatchResult = evaluateBarcodeScan(
+            args.barcodeScan,
+            scanContext.order,
+            scanContext.patient,
+            args.administeredAt.slice(0, 10),
+          );
+          if (barcodeScanBlocks(barcodeMatchResult))
+            throw new AdministrationStateError(
+              "BARCODE_VERIFICATION_FAILED",
+              `barcode verification failed: ${barcodeMatchResult}`,
+            );
+        }
         const inserted = (
           await tx
             .insert(ADM)
             .values({
               organizationId: orgId,
               patientId: args.patientId,
-              admissionId: ADMISSION_SENTINEL,
+              admissionId: identity.admissionId,
               medicationOrderId: args.medicationOrderId,
               mode: "single_dose",
               status: "pending_caregiver_review",
               data: {},
-              drugNameSnapshot: "",
+              drugNameSnapshot: identity.drugName,
               isSudTreatment: identity.isSudTreatment,
               routeSnapshot: args.route,
               doseAmountSnapshot: String(args.doseAmount),
@@ -1288,7 +1413,17 @@ export function createDbEmarBackend(
             requiresRnReview: true,
           },
         );
-        return toAdminView(inserted, null);
+        if (args.barcodeScan)
+          await tx.insert(BSE).values({
+            organizationId: orgId,
+            administrationRecordId: inserted.id,
+            scannedNdc: args.barcodeScan.scannedNdc ?? null,
+            scannedRxnormRxcui: args.barcodeScan.scannedRxnormRxcui ?? null,
+            scannedExpirationDate: args.barcodeScan.scannedExpirationDate ?? null,
+            patientWristbandPayloadDigest: args.barcodeScan.patientWristbandPayloadDigest ?? null,
+            matchResult: barcodeMatchResult ?? "match",
+          });
+        return toAdminView(inserted, barcodeMatchResult);
       });
     },
 
@@ -1509,17 +1644,69 @@ export function createDbEmarBackend(
     },
 
     // ── scheduled / missed dose writes ────────────────────────────────────────────────────────────────
-    async intentionalHold(orgId, userId, id): Promise<ScheduledDoseView> {
+    async intentionalHold(orgId, userId, id, reason): Promise<ScheduledDoseView> {
       return withOrg(orgId, async (tx) => {
         const [s] = await tx.select().from(SD).where(eq(SD.id, id)).limit(1);
         if (!s) throw new NotFoundError("scheduled dose not found");
-        await tx.update(SD).set({ status: "intentionally_held" }).where(eq(SD.id, id));
+        // GAP-024 -- a hold is a decision about a dose that is still OPEN: only a pending dose can be held
+        // (an administered, missed, cancelled or already-held dose must not be overwritten), and only
+        // before the grace window lapses (after that the sweep owns it as a missed dose, §2.5 D4).
+        if (s.status !== "pending")
+          throw new AdministrationStateError(
+            "ILLEGAL_ADMINISTRATION_TRANSITION",
+            `a scheduled dose in '${s.status}' cannot be intentionally held`,
+          );
+        const graceEndsAt = s.dueAt.getTime() + s.graceWindowMinutes * 60_000;
+        if (Date.now() >= graceEndsAt)
+          throw new AdministrationStateError(
+            "ILLEGAL_ADMINISTRATION_TRANSITION",
+            "the grace window has expired; the dose can no longer be intentionally held",
+          );
+        // The controlled flag is the ORDER's (M12), never assumed; an unresolvable order refuses.
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: s.medicationOrderId,
+        });
+        if (identity === null) throw unresolvedOrder();
+        const missed = (
+          await tx
+            .insert(MD)
+            .values({
+              organizationId: orgId,
+              providerEntityId: s.providerEntityId,
+              locationId: s.locationId,
+              scheduledDoseId: s.id,
+              patientId: s.patientId,
+              admissionId: s.admissionId,
+              medicationOrderId: s.medicationOrderId,
+              missedKind: "intentionally_held",
+              missedReason: reason?.trim() ? reason.trim() : null,
+              recordedByMembershipId: userId,
+              isControlledSubstance:
+                identity.isControlledSubstance || identity.medClass === "controlled_substance",
+            })
+            .returning({ id: MD.id })
+        )[0]!;
+        // Status-predicated: a concurrent administration / sweep that won leaves zero rows -> 409.
+        const flipped = await tx
+          .update(SD)
+          .set({ status: "intentionally_held", missedDoseId: missed.id })
+          .where(and(eq(SD.id, id), eq(SD.status, "pending")))
+          .returning({ id: SD.id });
+        if (flipped.length === 0)
+          throw new AdministrationStateError(
+            "ILLEGAL_ADMINISTRATION_TRANSITION",
+            "the scheduled dose changed state concurrently",
+          );
+        // The reason is denylisted free text (audit scrubs it): it lives on `missed_dose.missed_reason`,
+        // not in the outbox payload.
         await emit(tx, orgId, "m13.scheduled_dose.intentionally_held", "scheduled_dose", id, {
           scheduledDoseId: id,
+          missedDoseId: missed.id,
           recordedBy: userId,
           missedKind: "intentionally_held",
         });
-        return toScheduledView({ ...s, status: "intentionally_held" });
+        return toScheduledView({ ...s, status: "intentionally_held", missedDoseId: missed.id });
       });
     },
 
@@ -1562,6 +1749,7 @@ export function createDbEmarBackend(
     async recordDecision(orgId, userId, id, args: RecordDecisionArgs): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
         const worksheet = await loadWorksheet(tx, id);
+        assertWorksheetOpen(worksheet, "take a decision");
         // Plan BEFORE inserting: a decision that cannot legally produce its M12-handshake event (an
         // m12_medhx carry_forward with no medhx projection to source content from, or a non-active
         // carry_forward/new_order with no supplied drug content) throws and the whole transaction rolls
@@ -1593,7 +1781,11 @@ export function createDbEmarBackend(
             })
             .returning({ id: RD.id })
         )[0]!;
-        await tx.update(WS).set({ status: "in_progress" }).where(eq(WS.id, id));
+        // Only a PENDING worksheet moves to in_progress; the predicate keeps this from reopening anything.
+        await tx
+          .update(WS)
+          .set({ status: "in_progress" })
+          .where(and(eq(WS.id, id), eq(WS.status, "pending")));
         if (plan.draftOrderRequested)
           await emit(
             tx,
@@ -1640,7 +1832,7 @@ export function createDbEmarBackend(
       resultingMedicationOrderId,
     ): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
-        await loadWorksheet(tx, id);
+        assertWorksheetOpen(await loadWorksheet(tx, id), "change a decision");
         const updated = await tx
           .update(RD)
           .set({
@@ -1657,19 +1849,20 @@ export function createDbEmarBackend(
       });
     },
 
-    async addCaregiverReportedLine(orgId, id, drugName): Promise<WorksheetView> {
+    async addCaregiverReportedLine(orgId, userId, id, drugName): Promise<WorksheetView> {
       // A caregiver-reported home med becomes a decision line. The DB decision row is NOT NULL on
       // decision_kind, so it records as `document_only` (a recorded-but-no-action placeholder) until a
       // clinician updates it (compromise #7 — no separate undecided-line state).
       return withOrg(orgId, async (tx) => {
-        await loadWorksheet(tx, id);
+        assertWorksheetOpen(await loadWorksheet(tx, id), "take a caregiver-reported line");
         await tx.insert(RD).values({
           organizationId: orgId,
           worksheetId: id,
           lineKind: "caregiver_reported",
           caregiverReportedSnapshot: { drugName },
           decisionKind: "document_only",
-          decisionMadeByMembershipId: PATIENT_SENTINEL,
+          // The actor of a clinical decision is the CALLER, never a placeholder id.
+          decisionMadeByMembershipId: userId,
         });
         return readWorksheet(tx, id);
       });
@@ -1678,20 +1871,71 @@ export function createDbEmarBackend(
     async finalizeReconciliation(orgId, userId, id): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
         const w = await loadWorksheet(tx, id);
-        const decisions = await tx.select({ id: RD.id }).from(RD).where(eq(RD.worksheetId, id));
-        if (decisions.length === 0)
+        const decisions = await tx
+          .select({
+            id: RD.id,
+            decisionKind: RD.decisionKind,
+            orderId: RD.m12MedicationOrderId,
+            resultingMedicationOrderId: RD.resultingMedicationOrderId,
+          })
+          .from(RD)
+          .where(eq(RD.worksheetId, id));
+        // GAP-023 -- "finalized when every line has a decision" (D17). The worksheet stores no line set
+        // (a line exists only once decided), so the EXPECTED set is the patient's currently active orders
+        // (M12, through the port). An unbound port cannot state it: fall back to "at least one decision"
+        // rather than treat an unknown set as complete.
+        const activeOrderIds = await medOrder().activeMedicationOrderIds?.({
+          organizationId: orgId,
+          patientId: w.patientId,
+        });
+        const decidedOrderIds = new Set(decisions.map((d) => d.orderId).filter(Boolean));
+        const undecided = (activeOrderIds ?? []).filter((oid) => !decidedOrderIds.has(oid));
+        // A worksheet with no recorded decision at all is never complete (that was the old rule and it
+        // stays: an empty reconciliation attests nothing), whether or not the expected set is known.
+        const incomplete = undecided.length > 0 || decisions.length === 0;
+        if (incomplete)
           throw new ValidationError("reconciliation incomplete", [
             {
               field: "decisions",
               code: "RECONCILIATION_INCOMPLETE",
-              message: "no reconciliation decision recorded",
+              message:
+                undecided.length > 0
+                  ? `${undecided.length} active medication line(s) have no reconciliation decision`
+                  : "no reconciliation decision recorded",
             },
           ]);
         const finalizedAt = new Date();
-        await tx
+        // The spec-correct pure finalizer decides the terminal-state guard (a finalized / voided
+        // worksheet -> ILLEGAL_RECONCILIATION_TRANSITION, 409) and builds the completed signal.
+        const plan = finalizeReconciliationWorksheet(
+          {
+            worksheetId: w.id as never,
+            status: w.status,
+            triggerKind: w.triggerKind,
+            patientId: w.patientId as never,
+            admissionId: w.admissionId as never,
+            lineCount: decisions.length + undecided.length,
+            decidedLineCount: decisions.length,
+            finalizedByMembershipId: userId,
+            finalizedAt: finalizedAt.toISOString() as never,
+          },
+          decisions.map((d) => ({
+            lineId: d.id,
+            kind: d.decisionKind,
+            medicationOrderId: (d.resultingMedicationOrderId ?? d.orderId ?? null) as never,
+          })),
+        );
+        // Status-predicated: a concurrent finalize / void that won leaves zero rows -> 409.
+        const flipped = await tx
           .update(WS)
-          .set({ status: "finalized", finalizedAt, finalizedByMembershipId: userId })
-          .where(eq(WS.id, id));
+          .set({ status: plan.statusAfter, finalizedAt, finalizedByMembershipId: userId })
+          .where(and(eq(WS.id, id), inArray(WS.status, ["pending", "in_progress"])))
+          .returning({ id: WS.id });
+        if (flipped.length === 0)
+          throw new AdministrationStateError(
+            "ILLEGAL_RECONCILIATION_TRANSITION",
+            "the worksheet changed state concurrently",
+          );
         await emit(tx, orgId, "m13.reconciliation.completed", "reconciliation_worksheet", id, {
           worksheetId: id,
           triggerKind: w.triggerKind,
@@ -1699,7 +1943,10 @@ export function createDbEmarBackend(
           admissionId: w.admissionId,
           finalizedAt: finalizedAt.toISOString(),
           finalizedBy: userId,
-          lineSummary: {},
+          lineSummary: {
+            lineCount: plan.completedSignal.decisions.length,
+            decisions: plan.completedSignal.decisions,
+          },
         });
         await emit(
           tx,
@@ -1727,8 +1974,17 @@ export function createDbEmarBackend(
 
     async voidWorksheet(orgId, userId, id, reason): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
-        await loadWorksheet(tx, id);
-        await tx.update(WS).set({ status: "voided", voidReason: reason }).where(eq(WS.id, id));
+        assertWorksheetOpen(await loadWorksheet(tx, id), "be voided");
+        const voided = await tx
+          .update(WS)
+          .set({ status: "voided", voidReason: reason })
+          .where(and(eq(WS.id, id), inArray(WS.status, ["pending", "in_progress"])))
+          .returning({ id: WS.id });
+        if (voided.length === 0)
+          throw new AdministrationStateError(
+            "ILLEGAL_RECONCILIATION_TRANSITION",
+            "the worksheet changed state concurrently",
+          );
         await emit(tx, orgId, "m13.reconciliation.voided", "reconciliation_worksheet", id, {
           worksheetId: id,
           voidReason: reason,

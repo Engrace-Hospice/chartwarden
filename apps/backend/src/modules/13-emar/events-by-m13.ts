@@ -335,6 +335,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       "The intentional-hold route recorded a clinician-held dose before the grace window expired.",
     payloadSchema: Type.Object({
       scheduledDoseId: id,
+      // GAP-024 -- the `missed_dose` row the hold wrote (the denylisted reason lives there, not on the wire).
+      missedDoseId: Type.Optional(id),
       recordedBy: id,
       missedKind: Type.Literal("intentionally_held"),
     }),

@@ -327,6 +327,12 @@ export interface SigStructuredDto {
   readonly asNeeded: boolean;
   readonly asNeededReasonCode?: string;
   /**
+   * M13 §2.4 D3 -- the PRN minimum interval between doses (`sigStructured.prnPolicy.minimumIntervalMinutes`,
+   * e.g. "no more than every 4 hours"). ABSENT means the order states no minimum (nothing to enforce), not
+   * that doses may be unbounded. Read by M13's PRN-interval gate at the PRN administration write.
+   */
+  readonly prnMinimumIntervalMinutes?: number;
+  /**
    * §2.11 D11 — the titration bounds a CONTINUOUS INFUSION order authorises, read by M13's
    * `assertIvRateBounds` before it commits an `iv_continuous_rate_change`. @wardenx/emar's IV core has
    * always named this path (`sigStructured.ivContinuousPolicy.[minRate, maxRate]`) and the DTO never

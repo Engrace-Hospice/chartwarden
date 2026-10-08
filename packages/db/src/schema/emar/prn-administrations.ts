@@ -29,12 +29,12 @@ export const prnAdministrations = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // Nullable (mig 0640): an ad-hoc PRN dose names no scheduled dose and so has no siting to copy; this
+    // mirrors `administration_record` (mig 0133), whose row this one wraps.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
 
     administrationRecordId: uuid("administration_record_id").notNull(), // 1:1 with administration_record (no FK — partitioned)
 

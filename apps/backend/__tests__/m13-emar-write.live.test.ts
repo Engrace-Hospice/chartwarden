@@ -45,6 +45,8 @@ const BLOCKED_MED_ORDER = "6b6b6b6b-6b6b-4b6b-8b6b-6b6b6b6b6b6b";
 /** GAP-004 — a second patient on the same tenant, with an order of its own. */
 const OTHER_PATIENT = "4e4e4e4e-4e4e-4e4e-8e4e-4e4e4e4e4e4e";
 const OTHER_MED_ORDER = "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e";
+/** GAP-021 -- a PRN order with a 4h (240 min) minimum interval between doses. */
+const PRN_MED_ORDER = "6f6f6f6f-6f6f-4f6f-8f6f-6f6f6f6f6f6f";
 
 describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", () => {
   let admin: Client;
@@ -54,6 +56,8 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   const member2Of: Record<string, string> = {};
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
+  /** GAP-023 -- the patient's active M12 orders the stub reports; [] by default so older cases are unaffected. */
+  let activeOrderIds: string[] = [];
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -222,7 +226,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
             isControlledSubstance: false,
             isSudTreatment: false,
           };
-        const known = [MED_ORDER, CONTROLLED_MED_ORDER, OTHER_MED_ORDER];
+        const known = [MED_ORDER, CONTROLLED_MED_ORDER, OTHER_MED_ORDER, PRN_MED_ORDER];
         if (!known.includes(medicationOrderId)) return null;
         const controlled = medicationOrderId === CONTROLLED_MED_ORDER;
         return {
@@ -240,7 +244,16 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
           // GAP-036 follow-up — the controlled order stands in for an SUD-treatment (methadone) order, so the
           // flag M12 now writes is proven to reach the administration row (portal redaction + M28 Part 2 gate).
           isSudTreatment: controlled,
+          // GAP-020 -- the order states 5 mg oral, RxNorm/NDC identities, and (PRN) a 240 min minimum.
+          doseAmount: 5,
+          doseUnit: "mg",
+          rxnormRxcui: "rx-morphine",
+          ndc: "ndc-morphine",
+          prnMinimumIntervalMinutes: medicationOrderId === PRN_MED_ORDER ? 240 : null,
         };
+      },
+      async activeMedicationOrderIds() {
+        return activeOrderIds;
       },
     };
     svc = createDbEmarBackend(handle.db, outbox, undefined, () => medicationOrder);
@@ -856,7 +869,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(await eventsFor(ws)).not.toContain("m13.reconciliation.draft_order_requested");
     const lineId = afterCarry.decisions[0].lineId;
     await svc.updateDecision(ORG_A, memberOf[ORG_A], ws, lineId, "discontinue");
-    await svc.addCaregiverReportedLine(ORG_A, ws, "home aspirin 81mg");
+    await svc.addCaregiverReportedLine(ORG_A, memberOf[ORG_A], ws, "home aspirin 81mg");
     const withDraft = await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
       lineKind: "caregiver_reported",
       sourceId: "home-aspirin-1",
@@ -986,6 +999,310 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(facts).toMatchObject({
       witnessMembershipId: suspendedMember,
       witnessMembershipActive: false,
+    });
+  });
+
+  // ── GAP-020 — five-rights + BCMA against the real order context ──────────────────────────────────────
+  it("GAP-020: a wrong-route administration is refused 422 FIVE_RIGHTS_VIOLATION and nothing is written", async () => {
+    const before = (await admin.query("SELECT count(*)::int AS n FROM administration_record"))
+      .rows[0].n;
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ route: "IM" })),
+    ).rejects.toMatchObject({ code: "FIVE_RIGHTS_VIOLATION", statusCode: 422 });
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM administration_record")).rows[0].n,
+    ).toBe(before);
+  });
+
+  it("GAP-020: an over-dose, a wrong unit and a future administeredAt are each refused", async () => {
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ doseAmount: 50 })),
+    ).rejects.toMatchObject({ code: "FIVE_RIGHTS_VIOLATION" });
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ doseUnit: "mcg" })),
+    ).rejects.toMatchObject({ code: "FIVE_RIGHTS_VIOLATION" });
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ administeredAt: new Date(Date.now() + 3_600_000).toISOString() }),
+      ),
+    ).rejects.toMatchObject({ code: "FIVE_RIGHTS_VIOLATION" });
+    // A partial dose at or below the order is clinically legitimate.
+    const half = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ doseAmount: 2.5 }),
+    );
+    expect(half.status).toBe("committed");
+  });
+
+  it("GAP-020: a BCMA scan is verified against the ORDER's drug (wrong_drug reaches the write path)", async () => {
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ barcodeScan: { scannedRxnormRxcui: "rx-some-other-drug" } }),
+      ),
+    ).rejects.toMatchObject({ code: "BARCODE_VERIFICATION_FAILED", statusCode: 422 });
+    const ok = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ barcodeScan: { scannedRxnormRxcui: "rx-morphine" } }),
+    );
+    expect(ok.barcodeMatchResult).toBe("match");
+  });
+
+  it("GAP-020: the caregiver path runs the same five-rights gate (wrong route -> 422), and files the real admission", async () => {
+    const base = {
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      administeredAt: new Date().toISOString(),
+      caregiverSessionId: "9c9c9c9c-9c9c-4c9c-8c9c-9c9c9c9c9c9c",
+      route: "oral",
+      doseAmount: 5,
+      doseUnit: "mg",
+    };
+    await expect(
+      svc.recordCaregiverAttested(ORG_A, { ...base, route: "IM" }),
+    ).rejects.toMatchObject({ code: "FIVE_RIGHTS_VIOLATION" });
+    const ok = await svc.recordCaregiverAttested(ORG_A, base);
+    expect(ok.status).toBe("pending_caregiver_review");
+    expect(ok.admissionId).toBe(ADMISSION);
+  });
+
+  // ── GAP-021 / GAP-022 — PRN interval gate + the wrapper row ───────────────────────────────────────────
+  it("GAP-021/022: a PRN dose writes its prn_administration row; a second inside the minimum interval is refused", async () => {
+    const t0 = Date.now() - 6 * 3_600_000;
+    const prn = { triggeringPrnReason: "breakthrough pain", requestedByKind: "clinician_observed" };
+    const first = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        medicationOrderId: PRN_MED_ORDER,
+        administeredAt: new Date(t0).toISOString(),
+        prn,
+      }),
+    );
+    // GAP-022 -- the wrapper row exists, tied 1:1 to the administration, with the policy window.
+    const { rows } = await admin.query(
+      "SELECT id, patient_id, reassessment_window_minutes, reassessment_due_at, prn_interval_override FROM prn_administration WHERE administration_record_id=$1",
+      [first.id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].patient_id).toBe(PATIENT);
+    expect(rows[0].prn_interval_override).toBe(false);
+    const event = (
+      await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m13.prn_administration_recorded'",
+        [first.id],
+      )
+    ).rows[0];
+    expect(event.payload.prnAdministrationId).toBe(rows[0].id);
+
+    // GAP-021 -- 1h after the first dose, inside the 4h minimum: 422, and NOTHING is written.
+    const before = (await admin.query("SELECT count(*)::int AS n FROM prn_administration")).rows[0]
+      .n;
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({
+          medicationOrderId: PRN_MED_ORDER,
+          administeredAt: new Date(t0 + 3_600_000).toISOString(),
+          prn,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "PRN_INTERVAL_VIOLATION", statusCode: 422 });
+    expect((await admin.query("SELECT count(*)::int AS n FROM prn_administration")).rows[0].n).toBe(
+      before,
+    );
+
+    // Past the minimum interval it records.
+    const later = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        medicationOrderId: PRN_MED_ORDER,
+        administeredAt: new Date(t0 + 5 * 3_600_000).toISOString(),
+        prn,
+      }),
+    );
+    expect(later.status).toBe("committed");
+  });
+
+  it("GAP-021: a supervisor override needs the permission and a 40+ char reason, and is persisted", async () => {
+    const t0 = Date.now() - 2 * 3_600_000;
+    const base = { triggeringPrnReason: "severe pain", requestedByKind: "clinician_observed" };
+    const args = (prn: object) =>
+      recordArgs({
+        medicationOrderId: PRN_MED_ORDER,
+        administeredAt: new Date(t0).toISOString(),
+        prn,
+      });
+    // The previous case left a PRN dose at now-1h, so a dose requested at now-2h is inside the window.
+    const reason =
+      "Patient in uncontrolled pain; medical director approved an early dose by phone.";
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        args({ ...base, intervalOverride: { hasPermission: false, reason } }),
+      ),
+    ).rejects.toMatchObject({ code: "PRN_INTERVAL_OVERRIDE_NOT_PERMITTED", statusCode: 403 });
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        args({ ...base, intervalOverride: { hasPermission: true, reason: "too short" } }),
+      ),
+    ).rejects.toMatchObject({ code: "PRN_INTERVAL_OVERRIDE_REASON_TOO_SHORT" });
+    const ok = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      args({ ...base, intervalOverride: { hasPermission: true, reason } }),
+    );
+    const { rows } = await admin.query(
+      "SELECT prn_interval_override, prn_interval_override_by FROM prn_administration WHERE administration_record_id=$1",
+      [ok.id],
+    );
+    expect(rows[0].prn_interval_override).toBe(true);
+    expect(rows[0].prn_interval_override_by).toBe(memberOf[ORG_A]);
+  });
+
+  // ── GAP-023 — reconciliation completeness + terminal-state guards ─────────────────────────────────────
+  it("GAP-023: finalize requires EVERY active order line decided; a closed worksheet cannot be reopened", async () => {
+    const ws = await seedWorksheet(ORG_A, 3);
+    activeOrderIds = [MED_ORDER, CONTROLLED_MED_ORDER];
+    try {
+      await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+        lineKind: "m12_active",
+        sourceId: MED_ORDER,
+        decision: "carry_forward",
+      });
+      // One of two active lines undecided -> 422 RECONCILIATION_INCOMPLETE (not finalizable yet).
+      await expect(svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws)).rejects.toMatchObject({
+        statusCode: 422,
+      });
+      await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+        lineKind: "m12_active",
+        sourceId: CONTROLLED_MED_ORDER,
+        decision: "carry_forward",
+      });
+      const done = await svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws);
+      expect(done.status).toBe("finalized");
+      const completed = (
+        await admin.query(
+          "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m13.reconciliation.completed'",
+          [ws],
+        )
+      ).rows[0].payload;
+      expect(completed.lineSummary.decisions).toHaveLength(2);
+      // Terminal: nothing reopens or rewrites it.
+      const closed = { statusCode: 409, code: "ILLEGAL_RECONCILIATION_TRANSITION" };
+      await expect(svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws)).rejects.toMatchObject(
+        closed,
+      );
+      await expect(
+        svc.voidWorksheet(ORG_A, memberOf[ORG_A], ws, "trying to void a finalized worksheet"),
+      ).rejects.toMatchObject(closed);
+      await expect(
+        svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+          lineKind: "m12_active",
+          sourceId: MED_ORDER,
+          decision: "discontinue",
+        }),
+      ).rejects.toMatchObject(closed);
+      await expect(
+        svc.updateDecision(ORG_A, memberOf[ORG_A], ws, done.decisions[0]!.lineId, "hold"),
+      ).rejects.toMatchObject(closed);
+      await expect(
+        svc.addCaregiverReportedLine(ORG_A, memberOf[ORG_A], ws, "late add"),
+      ).rejects.toMatchObject(closed);
+      expect(
+        (
+          await admin.query("SELECT status FROM medication_reconciliation_worksheet WHERE id=$1", [
+            ws,
+          ])
+        ).rows[0].status,
+      ).toBe("finalized");
+    } finally {
+      activeOrderIds = [];
+    }
+  });
+
+  it("GAP-023: a caregiver-reported line is attributed to the caller, and a voided worksheet stays voided", async () => {
+    const ws = await seedWorksheet(ORG_A, 4);
+    await svc.addCaregiverReportedLine(ORG_A, member2Of[ORG_A], ws, "home melatonin");
+    const { rows } = await admin.query(
+      "SELECT decision_made_by_membership_id FROM medication_reconciliation_decision WHERE worksheet_id=$1",
+      [ws],
+    );
+    expect(rows[0].decision_made_by_membership_id).toBe(member2Of[ORG_A]);
+    await svc.voidWorksheet(ORG_A, memberOf[ORG_A], ws, "re-triggered by a transfer correction");
+    await expect(
+      svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+        lineKind: "m12_active",
+        sourceId: MED_ORDER,
+        decision: "carry_forward",
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(
+      (
+        await admin.query("SELECT status FROM medication_reconciliation_worksheet WHERE id=$1", [
+          ws,
+        ])
+      ).rows[0].status,
+    ).toBe("voided");
+  });
+
+  // ── GAP-024 — intentional hold ────────────────────────────────────────────────────────────────────────
+  it("GAP-024: a hold records a missed_dose row with the reason; held / administered / lapsed doses are refused", async () => {
+    const sched = await seedScheduledDose(ORG_A);
+    const held = await svc.intentionalHold(
+      ORG_A,
+      memberOf[ORG_A],
+      sched,
+      "patient actively vomiting; hold per RN judgement",
+    );
+    expect(held.status).toBe("intentionally_held");
+    const { rows } = await admin.query(
+      "SELECT missed_kind, missed_reason, recorded_by_membership_id, patient_id FROM missed_dose WHERE scheduled_dose_id=$1",
+      [sched],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].missed_kind).toBe("intentionally_held");
+    expect(rows[0].missed_reason).toContain("vomiting");
+    expect(rows[0].recorded_by_membership_id).toBe(memberOf[ORG_A]);
+    const link = (
+      await admin.query("SELECT missed_dose_id FROM scheduled_dose WHERE id=$1", [sched])
+    ).rows[0].missed_dose_id;
+    expect(link).toBeTruthy();
+    // Already held -> 409 (no overwrite, no second missed_dose row).
+    await expect(svc.intentionalHold(ORG_A, memberOf[ORG_A], sched)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    // An administered dose cannot be flipped to held.
+    const given = await seedScheduledDose(ORG_A);
+    await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ scheduledDoseId: given }));
+    await expect(svc.intentionalHold(ORG_A, memberOf[ORG_A], given)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(
+      (await admin.query("SELECT status FROM scheduled_dose WHERE id=$1", [given])).rows[0].status,
+    ).toBe("administered");
+    // Past the grace window the sweep owns it: 409.
+    const lapsed = (
+      await admin.query(
+        `INSERT INTO scheduled_dose (organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, medication_order_id, due_at, grace_window_minutes, expected_dose_amount,
+           expected_dose_unit, expected_route, materialization_sequence)
+         VALUES ($1,$2,$3,$4,$5,$6, now() - interval '3 hours', 30, 5.0000, 'mg', 'oral', 9) RETURNING id`,
+        [ORG_A, providerOf[ORG_A], locationOf[ORG_A], PATIENT, ADMISSION, MED_ORDER],
+      )
+    ).rows[0].id as string;
+    await expect(svc.intentionalHold(ORG_A, memberOf[ORG_A], lapsed)).rejects.toMatchObject({
+      statusCode: 409,
     });
   });
 
