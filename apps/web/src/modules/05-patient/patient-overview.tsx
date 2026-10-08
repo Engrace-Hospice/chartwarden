@@ -12,6 +12,7 @@ import {
   ageYears,
   t,
   useApiClient,
+  useDisclosureDismiss,
 } from "@wardenx/ui";
 
 // apps/web/src/modules/05-patient — the patient chart's header + Overview tab (2026-09-25 redesign,
@@ -22,7 +23,7 @@ import {
 
 // fabricated, and an empty source renders an honest empty line in its panel.
 
-import { type JSX, type ReactNode, useEffect, useRef, useState } from "react";
+import { type JSX, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Link } from "react-router-dom";
 
@@ -661,17 +662,17 @@ function ChartActions({
 
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
+  // The kit Button does not forward a ref, so Escape finds the trigger inside the container to hand focus back to it.
+  const triggerRef = useMemo(
+    () => ({
+      get current(): HTMLElement | null {
+        return ref.current?.querySelector("button") ?? null;
+      },
+    }),
+    [],
+  );
 
-    const onDown = (ev: PointerEvent): void => {
-      if (!ref.current?.contains(ev.target as Node)) setOpen(false);
-    };
-
-    document.addEventListener("pointerdown", onDown);
-
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [open]);
+  useDisclosureDismiss(open, () => setOpen(false), ref, triggerRef);
 
   const hopeAvailable = admission?.state === "active";
 
@@ -750,24 +751,17 @@ function ChartActions({
   return (
     <>
       <div ref={ref} style={{ position: "relative" }}>
-        <Button
-          tone="secondary"
-          onClick={() => setOpen((o) => !o)}
-          aria-haspopup="menu"
-          aria-expanded={open}
-        >
+        <Button tone="secondary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           Actions
           <Glyph name="chevron-down" size={16} />
         </Button>
 
         {open ? (
-          <div className="wx-actor-menu" role="menu" style={{ minWidth: "15rem" }}>
+          <div className="wx-actor-menu" style={{ minWidth: "15rem" }}>
             {items.map((it) =>
               it.disabled ? (
                 <span
                   key={it.to}
-                  role="menuitem"
-                  tabIndex={-1}
                   aria-disabled="true"
                   className="wx-actor-menu-item"
                   title={it.hint}
@@ -779,7 +773,6 @@ function ChartActions({
                 <Link
                   key={it.to}
                   to={it.to}
-                  role="menuitem"
                   className="wx-actor-menu-item"
                   onClick={() => setOpen(false)}
                 >

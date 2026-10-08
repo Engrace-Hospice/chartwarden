@@ -309,7 +309,7 @@ function ActivateDialog({
   }
 
   return (
-    <Modal open ariaLabel="Activate kill switch" role="alertdialog" onClose={onClose} width="34rem">
+    <Modal open ariaLabel="Activate kill switch" onClose={onClose} width="34rem">
       <div className="wx-modal-body">
         <h2>Activate kill switch</h2>
         <SelectField

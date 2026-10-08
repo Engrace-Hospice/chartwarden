@@ -8,6 +8,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admissions (M6 §5.2.12 entry, Track B / ADR-0030; 2026-09-25
 // redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md.
@@ -532,6 +533,7 @@ function AdmissionDrawer({
   onClose: () => void;
   onOpen: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const [readiness, setReadiness] = useState<Readiness | null | undefined>(undefined);
   useEffect(() => {
@@ -560,7 +562,7 @@ function AdmissionDrawer({
   const address = detail?.serviceAddressSnapshot;
 
   return (
-    <aside className="wx-admission-drawer" aria-label={`Admission for ${name}`}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={`Admission for ${name}`}>
       <header className="wx-drawer-head">
         <Avatar name={name} size="lg" />
         <div style={{ flex: 1, minWidth: 0 }}>

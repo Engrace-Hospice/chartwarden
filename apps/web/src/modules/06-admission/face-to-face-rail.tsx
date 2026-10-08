@@ -13,6 +13,7 @@ import {
   LoadingSpinner,
   StatusPill,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -70,6 +71,7 @@ export function FaceToFaceRail({
   onClose,
   onChanged,
 }: FaceToFaceRailProps): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const api = useMemo(() => createElectionCertificationApi(client), [client]);
   const [detail, setDetail] = useState<FaceToFaceDetail | null | undefined>(undefined);
@@ -97,7 +99,7 @@ export function FaceToFaceRail({
   const location = snapshot.encounterLocation ?? null;
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Face-to-Face details">
+    <aside className="wx-admission-drawer" {...drawer} aria-label="Face-to-Face details">
       <header className="wx-drawer-head">
         <span className="wx-rail-icon wx-f2f-icon" aria-hidden>
           <Glyph name="stethoscope" size={16} />

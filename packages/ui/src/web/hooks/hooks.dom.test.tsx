@@ -8,12 +8,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { type JSX, useState } from "react";
+import { type JSX, useRef, useState } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../system/toast";
 import { useDebouncedValue } from "./use-debounced-value";
+import { useDisclosureDismiss } from "./use-disclosure-dismiss";
 import { useDrawerA11y } from "./use-drawer-a11y";
+import { useOffCanvasNav } from "./use-off-canvas-nav";
 import { useRequestGuard } from "./use-request-guard";
 import { useStaleSelection } from "./use-stale-selection";
 
@@ -148,5 +150,69 @@ describe("useStaleSelection", () => {
     cleanup();
     mountStale("/tenants?tenant=new", { ready: true, found: false });
     expect(screen.getByTestId("where").textContent).toBe("?tenant=new");
+  });
+});
+
+function Popover(): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useDisclosureDismiss(open, () => setOpen(false), container, trigger);
+  return (
+    <div>
+      <div ref={container}>
+        <button type="button" ref={trigger} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          menu
+        </button>
+        {open ? <button type="button">inside</button> : null}
+      </div>
+      <button type="button">outside</button>
+    </div>
+  );
+}
+
+describe("useDisclosureDismiss", () => {
+  it("closes on Escape with focus back on the trigger, and on a press outside", () => {
+    render(<Popover />);
+    const trigger = screen.getByRole("button", { name: "menu" });
+    fireEvent.click(trigger);
+    screen.getByRole("button", { name: "inside" }).focus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "inside" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "inside" }));
+    expect(screen.getByRole("button", { name: "inside" })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "outside" }));
+    expect(screen.queryByRole("button", { name: "inside" })).toBeNull();
+  });
+});
+
+function Nav(): JSX.Element {
+  const { navOpen, setNavOpen, sidebarRef, toggleRef } = useOffCanvasNav();
+  return (
+    <div>
+      <button type="button" ref={toggleRef} onClick={() => setNavOpen((o) => !o)}>
+        toggle
+      </button>
+      <aside ref={sidebarRef} data-open={navOpen}>
+        <a href="/first">first</a>
+      </aside>
+    </div>
+  );
+}
+
+describe("useOffCanvasNav", () => {
+  it("focuses the first link on open, and Escape closes it back to the toggle", async () => {
+    render(<Nav />);
+    const toggle = screen.getByRole("button", { name: "toggle" });
+    toggle.focus();
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("link", { name: "first" })),
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(toggle));
   });
 });

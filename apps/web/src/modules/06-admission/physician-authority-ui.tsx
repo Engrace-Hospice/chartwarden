@@ -14,6 +14,7 @@ import {
   SelectField,
   StatusPill,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
@@ -204,8 +205,9 @@ export function AuthorityDrawer({
   onClose: () => void;
   children: ReactNode;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label={title}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={title}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon wx-pa-head-icon" aria-hidden>
           <Glyph name={icon} size={16} />

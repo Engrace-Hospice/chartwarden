@@ -122,12 +122,12 @@ export function SecurityPasskeys(): JSX.Element {
       filters={
         <div style={filterShellStyle}>
           {registered && returnTo ? (
-            <div role="status" style={inlineClusterStyle}>
+            <output style={inlineClusterStyle}>
               <Glyph name="check" size={16} />
               <span>
                 Passkey registered. <Link to={returnTo}>Continue where you left off</Link>
               </span>
-            </div>
+            </output>
           ) : null}
           {error ? (
             <div role="alert" style={errorBannerStyle}>

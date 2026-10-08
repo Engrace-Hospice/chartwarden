@@ -1,4 +1,4 @@
-import { Glyph, useTheme } from "@wardenx/ui";
+import { Glyph, useDisclosureDismiss, useOffCanvasNav, useTheme } from "@wardenx/ui";
 // apps/admin/src/shell — the Platform-Ops console frame in the clinical app's 2026-09-25 redesign: a full-height
 // sidebar (brand + grouped nav, admin-nav.ts) beside a column holding the top bar and the routed screen. The markup
 // and `wx-shell` classes match apps/web/src/shell/layout.tsx; the rules live in packages/ui/src/web/styles/app-shell.css,
@@ -10,9 +10,6 @@ import { type AdminNavSection, activeAdminEntry } from "./admin-nav";
 import { authClient } from "./auth-client";
 import type { Session } from "./session";
 import { useSession } from "./session";
-
-const NAV_FOCUS_ATTEMPTS = 8;
-const NAV_FOCUS_RETRY_MS = 40;
 
 function initials(name: string): string {
   const parts = name
@@ -28,11 +25,8 @@ function initials(name: string): string {
 export function AdminLayout({ sections }: { sections: readonly AdminNavSection[] }): JSX.Element {
   const session = useSession();
   // Below 768px the sidebar is an off-canvas drawer toggled by the header's menu button (app-shell.css).
-  const [navOpen, setNavOpen] = useState(false);
+  const { navOpen, setNavOpen, sidebarRef, toggleRef } = useOffCanvasNav();
   const mainRef = useRef<HTMLElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const wasNavOpen = useRef(false);
   const { pathname } = useLocation();
   // `.wx-main` is the scroll container, so a route change would otherwise keep the previous page's scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the intentional trigger, not read in the body.
@@ -40,38 +34,6 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
     mainRef.current?.scrollTo(0, 0);
   }, [pathname]);
   const activeKey = activeAdminEntry(sections, pathname);
-
-  // Opening the off-canvas nav moves focus into it; closing it (Escape, backdrop, a link) hands focus back to the toggle.
-  useEffect(() => {
-    if (!navOpen) {
-      if (wasNavOpen.current) toggleRef.current?.focus();
-      wasNavOpen.current = false;
-      return;
-    }
-    wasNavOpen.current = true;
-    // The sidebar is `visibility: hidden` until the open class has been styled, and a hidden element cannot take focus,
-    // so the first attempt can land too early: retry for a few frames until focus is inside.
-    let attempts = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    function focusFirstLink(): void {
-      const sidebar = sidebarRef.current;
-      sidebar?.querySelector<HTMLElement>("a")?.focus();
-      attempts += 1;
-      if (sidebar && !sidebar.contains(document.activeElement) && attempts < NAV_FOCUS_ATTEMPTS) {
-        timer = setTimeout(focusFirstLink, NAV_FOCUS_RETRY_MS);
-      }
-    }
-    timer = setTimeout(focusFirstLink, 0);
-    return () => clearTimeout(timer);
-  }, [navOpen]);
-  useEffect(() => {
-    if (!navOpen) return;
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") setNavOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [navOpen]);
 
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
     if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
@@ -165,23 +127,7 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
 
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(ev: PointerEvent): void {
-      if (!ref.current?.contains(ev.target as Node)) setOpen(false);
-    }
-    function onKeyDown(ev: KeyboardEvent): void {
-      if (ev.key !== "Escape") return;
-      setOpen(false);
-      triggerRef.current?.focus();
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDisclosureDismiss(open, () => setOpen(false), ref, triggerRef);
 
   async function signOut(): Promise<void> {
     setOpen(false);

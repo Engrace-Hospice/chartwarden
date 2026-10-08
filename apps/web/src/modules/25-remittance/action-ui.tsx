@@ -1,7 +1,7 @@
 // apps/web/src/modules/25-remittance — the small presentation kit the M25 write panels share (GAP-074): one
 // right-rail chrome (the admissions drawer pattern), one modal chrome, one label/value fact list, one reason
 // box with the server's length floor shown, one alert. Flat sections; tokens and kit components only.
-import { Button, Glyph, InlineAlert, Modal, TextAreaField } from "@wardenx/ui";
+import { Button, Glyph, InlineAlert, Modal, TextAreaField, useDrawerA11y } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 
 export interface ActionModalProps {
@@ -34,8 +34,9 @@ export function ActionRail({
   onClose,
   children,
 }: Omit<ActionModalProps, "width">): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label={ariaLabel}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={ariaLabel}>
       <header className="wx-drawer-head">
         <h2>{ariaLabel}</h2>
         <button type="button" className="wx-icon-link" aria-label="Dismiss panel" onClick={onClose}>

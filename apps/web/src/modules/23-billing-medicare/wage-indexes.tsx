@@ -12,6 +12,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE WAGE INDEX (M23 F-211; GAP-125). The tenant-entered CMS hospice
 // wage index `POST /claims/assemble` prices from, per CCN + federal fiscal year. Built on the Hospice Rates screen's
@@ -351,9 +352,10 @@ function WageIndexDrawer({
   onSupersede: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const title = `CCN ${v.ccn} · ${fiscalYearLabel(v.fiscalYearStarting)}`;
   return (
-    <aside className="wx-admission-drawer" aria-label={title}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={title}>
       <DrawerHead
         icon="receipt"
         title={title}
@@ -422,6 +424,7 @@ function WageIndexEntryDrawer({
   onClose: () => void;
   onSaved: (saved: SavedValue) => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const [draft, setDraft] = useState<WageIndexDraft>(
     supersedes ? draftFrom(supersedes) : EMPTY_DRAFT,
@@ -465,7 +468,7 @@ function WageIndexEntryDrawer({
 
   const title = supersedes ? "Supersede wage index" : "Enter wage index";
   return (
-    <aside className="wx-admission-drawer" aria-label={title}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={title}>
       <DrawerHead
         icon="pencil"
         title={title}
