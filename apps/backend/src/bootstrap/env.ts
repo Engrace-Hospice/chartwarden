@@ -65,6 +65,20 @@ export function withM24LaunchGatewayDefault(env: EnvLike): EnvLike {
   return { ...env, [M24_LAUNCH_GATEWAY_ENABLED_ENV]: "true" };
 }
 
+/**
+ * Transactional email (Postmark, M36). Optional as a whole: with none of the credential vars set the provider
+ * stays unbound and the link-delivery routes answer 503 (fail closed). But a PARTIAL configuration (a token with
+ * no verified From, say) is a deploy mistake that would silently leave email unbound, so once any credential var
+ * is set all three become required and shape-checked.
+ */
+const POSTMARK_CREDENTIAL_KEYS = [
+  "POSTMARK_SERVER_TOKEN",
+  "POSTMARK_FROM_ADDRESS",
+  "POSTMARK_SENDER_VERIFIED",
+] as const;
+const postmarkConfigured = (env: EnvLike): boolean =>
+  POSTMARK_CREDENTIAL_KEYS.some((k) => (env[k]?.trim() ?? "") !== "");
+
 const REQUIREMENTS: readonly Requirement[] = [
   { key: "DATABASE_URL" },
   {
@@ -153,6 +167,28 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "FHIR_TOKEN_ENDPOINT_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
     when: (env) => integrationEnabled(env, FHIR_TOKEN_ENDPOINT_ENABLED_ENV),
+  },
+  {
+    key: "POSTMARK_SERVER_TOKEN",
+    rule: (v) => (v.length < 16 ? "must be the Postmark server API token" : null),
+    when: postmarkConfigured,
+  },
+  {
+    key: "POSTMARK_FROM_ADDRESS",
+    rule: (v) => {
+      if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v)) return "must be a bare email address";
+      const domain = v.slice(v.indexOf("@") + 1);
+      return isReservedPlaceholderHost(domain)
+        ? `must not use an RFC 2606 reserved domain (${domain}) - a sender on it can never be verified`
+        : null;
+    },
+    when: postmarkConfigured,
+  },
+  {
+    // The operator's attestation that the From address has a verified sender signature / domain in Postmark.
+    key: "POSTMARK_SENDER_VERIFIED",
+    rule: (v) => (v === "true" ? null : "must be 'true' once the sender signature is verified"),
+    when: postmarkConfigured,
   },
   {
     // GAP-096 — declares a single-tenant deployment, where M32 lets a tenant `clinical_safety_lead` act as

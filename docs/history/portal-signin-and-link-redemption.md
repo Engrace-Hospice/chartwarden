@@ -47,7 +47,7 @@ no organization). M31 owns the account binding. What was missing was the bind an
   (`/signed-in`: binds, chooses between several accounts, plain-language refusals), `patient-picker.tsx` lists the grants.
 
 **Not built / blocked.**
-- **Production email.** M36's `selectTransactionalEmailTransport` has no provider bound (Postmark/SES adapter), so in
+- **Production email.** (Adapter now built: see [`m36-transactional-email-provider.md`](./m36-transactional-email-provider.md); only the operator steps remain.) M36's `selectTransactionalEmailTransport` has no provider bound (Postmark/SES adapter), so in
   production the magic-link email is **dropped**. Password + TOTP works; the link works in dev (console transport).
   Binding the provider is the single remaining step (also unblocks item 2).
 - **Passkey sign-in** from the portal (WebAuthn needs the auth client bundle); passkeys remain enrol/use via the account page
@@ -85,8 +85,7 @@ session.
   throttled per IP (429 + `Retry-After`).
 - **UI** — `apps/portal`: `/funeral/redeem` (reads and clears the fragment, POSTs once), `/collaborator/redeem`, `/funeral/case`.
 
-**Blocked externally.** The production email provider (above). `transactionalEmailProviderBound = false` in `index.ts`
-keeps the delivery port **unbound in production**, so funeral/collaborator invites answer 503 there until a provider is
+**Blocked externally.** The production email provider (above). `transactionalEmailProviderBound` (now derived from the Postmark adapter being bound) keeps the delivery port **unbound in production while unconfigured**, so funeral/collaborator invites answer 503 there until a provider is
 bound; dev/test deliver via the console transport. The external-collaborator session has no read surface yet (no
 collaborator permission exists), so `/collaborator/redeem` only confirms the session.
 
