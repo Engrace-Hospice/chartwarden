@@ -18092,8 +18092,16 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "me",
+                  "type": "string"
+                },
+                {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              ]
             }
           },
           {
@@ -39453,6 +39461,8 @@
                     "membershipId",
                     "displayName",
                     "roles",
+                    "locationIds",
+                    "orgWidePatientScope",
                     "isAdmin",
                     "permissions"
                   ],
@@ -39505,6 +39515,15 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "locationIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "orgWidePatientScope": {
+                      "type": "boolean"
                     },
                     "isAdmin": {
                       "type": "boolean"

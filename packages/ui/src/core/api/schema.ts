@@ -32002,6 +32002,8 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
+                        locationIds: string[];
+                        orgWidePatientScope: boolean;
                         isAdmin: boolean;
                         permissions: string[];
                     };

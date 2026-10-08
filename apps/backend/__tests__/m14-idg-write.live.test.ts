@@ -680,7 +680,11 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const started = await svc.updateActionItem(ORG_A, MEMBER, item.id, "in_progress");
     expect(started.status).toBe("in_progress");
     expect(await eventsFor(item.id)).toContain("m14.action_item.status_changed");
-    const worklist = await svc.listActionItems(ORG_A, MEMBER, { assignee: "me" });
+    const worklist = await svc.listActionItems(
+      ORG_A,
+      {},
+      { assigneeMembershipId: MEMBER, locationIds: null, patientIds: null },
+    );
     expect(worklist.some((i) => i.id === item.id)).toBe(true);
     const removed = await svc.removeActionItem(ORG_A, MEMBER, item.id);
     expect(removed.removed).toBe(true);

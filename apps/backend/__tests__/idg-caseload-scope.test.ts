@@ -8,6 +8,8 @@ import { createInMemoryIdgBackend } from "../src/modules/14-idg/index";
 import {
   assertIdgPatientInScope,
   filterIdgPatientsInScope,
+  filterNullableIdgPatientsInScope,
+  resolveIdgPatientIdsInScope,
 } from "../src/modules/14-idg/routes/caseload-scope";
 
 const ORG = "org_a";
@@ -55,6 +57,21 @@ describe("per-patient caseload scope (GAP-128)", () => {
     const rows = [{ patientId: P_ON }, { patientId: P_OFF }];
     expect(await filterIdgPatientsInScope(facts(), ORG, rows, caseload)).toEqual([
       { patientId: P_ON },
+    ]);
+  });
+
+  it("keeps meeting-level rows, filters nullable patient rows, and fails closed when the seam is unavailable", async () => {
+    const rows = [{ patientId: null }, { patientId: P_ON }, { patientId: P_OFF }];
+    expect(await filterNullableIdgPatientsInScope(facts(), ORG, rows, caseload)).toEqual([
+      { patientId: null },
+      { patientId: P_ON },
+    ]);
+    const down = async () => {
+      throw new Error("CaseloadProvider unavailable");
+    };
+    expect(await resolveIdgPatientIdsInScope(facts(), ORG, down)).toEqual([]);
+    expect(await filterNullableIdgPatientsInScope(facts(), ORG, rows, down)).toEqual([
+      { patientId: null },
     ]);
   });
 });

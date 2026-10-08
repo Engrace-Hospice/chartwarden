@@ -57,12 +57,12 @@ const PATIENT = "22222222-2222-4222-8222-222222222222";
 const SESSION_FRESH = "sess-fresh";
 const SESSION_STALE = "sess-stale";
 
-function h(user: string, opts: { session?: string } = {}) {
+function h(user: string, opts: { session?: string; locations?: string; roles?: string } = {}) {
   return {
     "x-test-user": user,
     "x-test-org": ORG,
-    "x-test-roles": "idg_coordinator",
-    "x-test-locations": LOC,
+    "x-test-roles": opts.roles ?? "idg_coordinator",
+    "x-test-locations": opts.locations ?? LOC,
     ...(opts.session ? { "x-test-session": opts.session } : {}),
   };
 }
@@ -88,7 +88,20 @@ function makeServer() {
       orgId: ORG,
       userId: "coordinator",
       grants: [
-        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["idg.schedule"] },
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [
+            "idg.read",
+            "idg.attend",
+            "idg.act",
+            "idg.coordinate",
+            "idg.decide",
+            "idg.schedule",
+            "idg.amend_minutes",
+          ],
+        },
       ],
     },
     {
@@ -99,8 +112,15 @@ function makeServer() {
           roleKey: "seed",
           enabled: true,
           expiresAt: null,
-          permissionKeys: ["idg.schedule", "idg.override_review_floor"],
+          permissionKeys: ["idg.read", "idg.coordinate", "idg.schedule", "idg.override_review_floor"],
         },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "member",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["idg.read", "idg.act"] },
       ],
     },
   ]);
@@ -144,7 +164,7 @@ function makeServer() {
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerIdgRoutes(app, { service: backend });
+  registerIdgRoutes(app, { service: backend, caseload: async () => [PATIENT] });
   return { app, backend };
 }
 
@@ -218,4 +238,198 @@ describe("GAP-091 — idg.override_review_floor + step-up wired end-to-end on ca
     });
     await app.close();
   });
+});
+
+describe("M14 Lot 1 — list scope", () => {
+  it("returns schedule rows only for a requested authorized location and preserves multi-location access", async () => {
+    const { app } = makeServer();
+    const from = "2026-06-01T00:00:00.000Z";
+    const to = "2026-07-01T00:00:00.000Z";
+    const allowed = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/schedule?location=${LOC}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      headers: h("coordinator", { locations: `${LOC},55555555-5555-4555-8555-555555555555` }),
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toHaveLength(1);
+
+    const denied = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/schedule?location=66666666-6666-4666-8666-666666666666&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      headers: h("coordinator"),
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const orgWide = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/schedule?location=${LOC}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      headers: h("coordinator", { locations: "", roles: "medical_director" }),
+    });
+    expect(orgWide.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("applies the same location scope to recurring-policy creation and updates", async () => {
+    const { app, backend } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/idg/recurring-policies",
+      headers: h("coordinator"),
+      payload: { locationId: LOC, cadenceDays: 14, active: true },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const deniedCreate = await app.inject({
+      method: "POST",
+      url: "/api/v1/idg/recurring-policies",
+      headers: h("coordinator"),
+      payload: {
+        locationId: "99999999-9999-4999-8999-999999999999",
+        cadenceDays: 14,
+        active: true,
+      },
+    });
+    expect(deniedCreate.statusCode).toBe(404);
+
+    backend.recurringPolicyLocationId = async () => LOC;
+    const deniedMove = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/idg/recurring-policies/88888888-8888-4888-8888-888888888888",
+      headers: { ...h("coordinator"), "if-match": "0", "idempotency-key": "policy-scope" },
+      payload: {
+        locationId: "99999999-9999-4999-8999-999999999999",
+        cadenceDays: 14,
+        active: true,
+      },
+    });
+    expect(deniedMove.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("defaults action-items to the authenticated membership and restricts third-party reads to coordinators", async () => {
+    const { app, backend } = makeServer();
+    const other = "77777777-7777-4777-8777-777777777777";
+    await backend.createActionItem(ORG, "coordinator", MTG, {
+      patientId: PATIENT,
+      assignedToMembershipId: "coordinator",
+      dueDate: "2026-06-29T00:00:00.000Z",
+    });
+    await backend.createActionItem(ORG, "coordinator", MTG, {
+      patientId: PATIENT,
+      assignedToMembershipId: other,
+      dueDate: "2026-06-30T00:00:00.000Z",
+    });
+    await backend.createActionItem(ORG, "coordinator", MTG, {
+      patientId: PATIENT,
+      assignedToMembershipId: "member",
+      dueDate: "2026-07-01T00:00:00.000Z",
+    });
+
+    const own = await app.inject({
+      method: "GET",
+      url: "/api/v1/idg/action-items",
+      headers: h("coordinator"),
+    });
+    expect(own.statusCode).toBe(200);
+    expect(own.json()).toHaveLength(1);
+    expect(own.json()[0].assignedToMembershipId).toBe("coordinator");
+
+    const explicitMe = await app.inject({
+      method: "GET",
+      url: "/api/v1/idg/action-items?assignee=me",
+      headers: h("coordinator"),
+    });
+    expect(explicitMe.statusCode).toBe(200);
+    expect(explicitMe.json()).toEqual(own.json());
+
+    const ordinaryOwn = await app.inject({
+      method: "GET",
+      url: "/api/v1/idg/action-items?assignee=me",
+      headers: h("member", { roles: "rn_case_manager" }),
+    });
+    expect(ordinaryOwn.statusCode).toBe(200);
+    expect(ordinaryOwn.json()).toHaveLength(1);
+    expect(ordinaryOwn.json()[0].assignedToMembershipId).toBe("member");
+
+    const another = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/action-items?assignee=${other}`,
+      headers: h("coordinator"),
+    });
+    expect(another.statusCode).toBe(200);
+    expect(another.json()).toHaveLength(1);
+
+    const refused = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/action-items?assignee=${other}`,
+      headers: h("member", { roles: "rn_case_manager" }),
+    });
+    expect(refused.statusCode).toBe(403);
+
+    const outsideCoordinatorLocation = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/action-items?assignee=${other}`,
+      headers: h("coordinator", { locations: "99999999-9999-4999-8999-999999999999" }),
+    });
+    expect(outsideCoordinatorLocation.statusCode).toBe(200);
+    expect(outsideCoordinatorLocation.json()).toEqual([]);
+
+    const invalidAssignee = await app.inject({
+      method: "GET",
+      url: "/api/v1/idg/action-items?assignee=not-a-membership",
+      headers: h("coordinator"),
+    });
+    expect(invalidAssignee.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("M14 Lot 1 — child resource scope", () => {
+  it.each([
+    ["PATCH", "/api/v1/idg/agenda/88888888-8888-4888-8888-888888888888", { noteText: "x" }],
+    [
+      "PATCH",
+      "/api/v1/idg/attendance/88888888-8888-4888-8888-888888888888",
+      { status: "tardy" },
+    ],
+    [
+      "PATCH",
+      "/api/v1/idg/decisions/88888888-8888-4888-8888-888888888888",
+      { payload: { kind: "team_note", noteText: "x" } },
+    ],
+    [
+      "PATCH",
+      "/api/v1/idg/action-items/88888888-8888-4888-8888-888888888888",
+      { status: "in_progress" },
+    ],
+    [
+      "PATCH",
+      "/api/v1/idg/discipline-notes/88888888-8888-4888-8888-888888888888",
+      { bodyText: "x" },
+    ],
+    [
+      "POST",
+      "/api/v1/idg/minutes/88888888-8888-4888-8888-888888888888/amendments",
+      { amendmentReason: "Correct the recorded attribution." },
+    ],
+  ])(
+    "returns non-leaking 404 for %s %s when the parent meeting is outside location scope",
+    async (method, url, payload) => {
+      const { app, backend } = makeServer();
+      backend.scopedChildFacts = async () => ({
+        meetingId: MTG,
+        locationId: "99999999-9999-4999-8999-999999999999",
+        patientId: PATIENT,
+        assignedToMembershipId: "another-member",
+      });
+      const res = await app.inject({
+        method: method as "PATCH" | "POST",
+        url,
+        headers: { ...h("coordinator"), "if-match": "0", "idempotency-key": "lot-1-child" },
+        payload,
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    },
+  );
 });

@@ -117,7 +117,9 @@ export const ScheduleQuerySchema = Type.Object({
   to: Type.String({ format: "date-time" }),
 });
 export const ActionItemListQuerySchema = Type.Object({
-  assignee: Type.Optional(Type.String({ maxLength: 64 })),
+  assignee: Type.Optional(
+    Type.Union([Type.Literal("me"), Type.String({ format: "uuid" })]),
+  ),
   status: Type.Optional(ACTION_ITEM_STATUS),
 });
 

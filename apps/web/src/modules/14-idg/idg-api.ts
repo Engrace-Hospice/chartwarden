@@ -159,29 +159,39 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
 
+/** Read failures must never collapse into a successful empty ledger. */
+export class IdgReadError extends Error {
+  constructor(readonly status: number | null) {
+    super("IDG read failed");
+  }
+}
+
 // ── the meeting-conduct reads (F-062 — six writes had no reader at all) ────────────────────────────────
 
 /** The §2.7 attendance roster, in check-in order. */
 export async function loadAttendance(client: ApiClient, id: string): Promise<AttendanceView[]> {
-  const { data } = await client.GET("/api/v1/idg/meetings/{id}/attendance", {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/attendance", {
     params: { path: { id } },
   });
+  if (error) throw new IdgReadError(response?.status ?? null);
   return (data ?? []) as AttendanceView[];
 }
 
 /** The meeting's agenda, in `sort_order`. */
 export async function loadAgenda(client: ApiClient, id: string): Promise<AgendaItemView[]> {
-  const { data } = await client.GET("/api/v1/idg/meetings/{id}/agenda", {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/agenda", {
     params: { path: { id } },
   });
+  if (error) throw new IdgReadError(response?.status ?? null);
   return (data ?? []) as AgendaItemView[];
 }
 
 /** The meeting's decision ledger, newest first. Metadata only — the D4 payload stays server-side. */
 export async function loadDecisions(client: ApiClient, id: string): Promise<DecisionView[]> {
-  const { data } = await client.GET("/api/v1/idg/meetings/{id}/decisions", {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/decisions", {
     params: { path: { id } },
   });
+  if (error) throw new IdgReadError(response?.status ?? null);
   return (data ?? []) as DecisionView[];
 }
 

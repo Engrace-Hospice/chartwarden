@@ -24,12 +24,20 @@ const items = [
 ];
 
 const calls: string[] = [];
+let getFailure: number | null = null;
+let responseItems = items;
 const stubFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const req = input instanceof Request ? input : null;
   const url = req ? req.url : String(input);
   const method = (init?.method ?? req?.method ?? "GET").toUpperCase();
   calls.push(`${method} ${new URL(url).pathname}${new URL(url).search}`);
-  const body = method === "GET" ? items : items[0];
+  const body = method === "GET" ? responseItems : items[0];
+  if (method === "GET" && getFailure !== null) {
+    return new Response(JSON.stringify({ error: { code: "FORBIDDEN", message: "hidden" } }), {
+      status: getFailure,
+      headers: { "content-type": "application/json" },
+    });
+  }
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "content-type": "application/json" },
@@ -41,14 +49,14 @@ const SESSION = {
   organizationId: "org-1",
   membershipId: "membership-1",
   roles: ["clinician"],
-  permissions: [],
+  permissions: ["idg.read", "idg.act"],
   isAdmin: false,
 };
 
-function mount() {
+function mount(session = SESSION) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <SessionProvider session={SESSION}>
+      <SessionProvider session={session}>
         <ToastProvider>
           <MemoryRouter>
             <MyActionItems />
@@ -61,6 +69,8 @@ function mount() {
 
 afterEach(() => {
   calls.length = 0;
+  getFailure = null;
+  responseItems = items;
 });
 
 describe("My Action Items queue", () => {
@@ -85,5 +95,28 @@ describe("My Action Items queue", () => {
     await waitFor(() =>
       expect(calls).toContain("PATCH /api/v1/idg/action-items/item-overdue-open"),
     );
+  });
+
+  it("shows a forbidden work-queue state without converting it to an empty list", async () => {
+    getFailure = 403;
+    mount();
+    expect(await screen.findByText("Work queue unavailable")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("No action items")).toBeNull();
+    expect(screen.queryByText("hidden")).toBeNull();
+  });
+
+  it("shows a useful empty state when no tasks are assigned", async () => {
+    responseItems = [];
+    mount();
+    expect(await screen.findByText("No action items")).toBeTruthy();
+    expect(screen.getByText(/no IDG action items assigned/i)).toBeTruthy();
+  });
+
+  it("does not render mutation controls for a read-only actor", async () => {
+    mount({ ...SESSION, permissions: ["idg.read"] });
+    await waitFor(() => expect(screen.getAllByRole("row").length).toBe(4));
+    expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
   });
 });

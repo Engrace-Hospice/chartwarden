@@ -60,7 +60,22 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
 import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
 import {
@@ -80,6 +95,8 @@ import type {
   DisciplineAddendumRenderEntry,
   DisciplineNoteSnapshotEntry,
   DisciplineNoteView,
+  IdgScopedChildFacts,
+  IdgScopedChildKind,
   IdgRouteService,
   MeetingScheduleView,
   MeetingView,
@@ -920,18 +937,28 @@ export function createDbIdgBackend(
     },
 
     // ── action-item worklist ───────────────────────────────────────────────────────────────────────────
-    async listActionItems(orgId, userId, q): Promise<ActionItemView[]> {
-      const assignee = q.assignee === "me" ? userId : q.assignee;
+    async listActionItems(orgId, q, scope): Promise<ActionItemView[]> {
       return withOrg(orgId, async (tx) => {
         const filters = [
-          assignee !== undefined ? eq(ACT.assignedToMembershipId, assignee) : undefined,
+          eq(ACT.assignedToMembershipId, scope.assigneeMembershipId),
+          scope.locationIds === null
+            ? undefined
+            : scope.locationIds.length === 0
+              ? sql`false`
+              : inArray(MTG.locationId, [...scope.locationIds]),
+          scope.patientIds === null
+            ? undefined
+            : scope.patientIds.length === 0
+              ? isNull(ACT.patientId)
+              : or(isNull(ACT.patientId), inArray(ACT.patientId, [...scope.patientIds])),
           q.status !== undefined ? eq(ACT.status, q.status) : undefined,
         ].filter((f): f is NonNullable<typeof f> => f !== undefined);
         const rows = await tx
-          .select()
+          .select({ actionItem: ACT })
           .from(ACT)
-          .where(filters.length ? and(...filters) : undefined);
-        return rows.map(toActionItemView);
+          .innerJoin(MTG, eq(MTG.id, ACT.idgMeetingId))
+          .where(and(...filters));
+        return rows.map((row) => toActionItemView(row.actionItem));
       });
     },
 
@@ -1858,6 +1885,95 @@ export function createDbIdgBackend(
           .where(eq(DEC.id, id))
           .limit(1);
         return row?.meetingId ?? null;
+      });
+    },
+
+    async scopedChildFacts(
+      orgId,
+      kind: IdgScopedChildKind,
+      id,
+    ): Promise<IdgScopedChildFacts | null> {
+      return withOrg(orgId, async (tx) => {
+        if (kind === "agenda_item") {
+          const [row] = await tx
+            .select({
+              meetingId: AGD.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: AGD.patientId,
+            })
+            .from(AGD)
+            .innerJoin(MTG, eq(MTG.id, AGD.idgMeetingId))
+            .where(eq(AGD.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        if (kind === "attendance") {
+          const [row] = await tx
+            .select({ meetingId: ATT.idgMeetingId, locationId: MTG.locationId })
+            .from(ATT)
+            .innerJoin(MTG, eq(MTG.id, ATT.idgMeetingId))
+            .where(eq(ATT.id, id))
+            .limit(1);
+          return row ? { ...row, patientId: null, assignedToMembershipId: null } : null;
+        }
+        if (kind === "decision") {
+          const [row] = await tx
+            .select({
+              meetingId: DEC.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: DEC.patientId,
+            })
+            .from(DEC)
+            .innerJoin(MTG, eq(MTG.id, DEC.idgMeetingId))
+            .where(eq(DEC.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        if (kind === "action_item") {
+          const [row] = await tx
+            .select({
+              meetingId: ACT.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: ACT.patientId,
+              assignedToMembershipId: ACT.assignedToMembershipId,
+            })
+            .from(ACT)
+            .innerJoin(MTG, eq(MTG.id, ACT.idgMeetingId))
+            .where(eq(ACT.id, id))
+            .limit(1);
+          return row ?? null;
+        }
+        if (kind === "discipline_note") {
+          const [row] = await tx
+            .select({
+              meetingId: NOTE.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: NOTE.patientId,
+            })
+            .from(NOTE)
+            .innerJoin(MTG, eq(MTG.id, NOTE.idgMeetingId))
+            .where(eq(NOTE.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        const [row] = await tx
+          .select({ meetingId: MIN.idgMeetingId, locationId: MTG.locationId })
+          .from(MIN)
+          .innerJoin(MTG, eq(MTG.id, MIN.idgMeetingId))
+          .where(eq(MIN.id, id))
+          .limit(1);
+        return row ? { ...row, patientId: null, assignedToMembershipId: null } : null;
+      });
+    },
+
+    async recurringPolicyLocationId(orgId, id): Promise<string | null> {
+      return withOrg(orgId, async (tx) => {
+        const [row] = await tx
+          .select({ locationId: POL.locationId })
+          .from(POL)
+          .where(eq(POL.id, id))
+          .limit(1);
+        return row?.locationId ?? null;
       });
     },
 

@@ -4,6 +4,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  ErrorState,
   Glyph,
   type GlyphName,
   InfoRows,
@@ -57,6 +58,7 @@ import {
   type AttendanceView,
   type DecisionView,
   type DisciplineNoteView,
+  IdgReadError,
   type MeetingView,
   type PacketDigestView,
   excuseAttendance,
@@ -199,6 +201,9 @@ export function LiveMeeting(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const session = useSession();
+  const canAttend = session?.permissions?.includes("idg.attend") ?? false;
+  const canCoordinate = session?.permissions?.includes("idg.coordinate") ?? false;
+  const canDecide = session?.permissions?.includes("idg.decide") ?? false;
   const { id } = useParams<{ id: string }>();
   const [meeting, setMeeting] = useState<MeetingView | null>(null);
   const [packets, setPackets] = useState<PacketDigestView[]>([]);
@@ -206,11 +211,12 @@ export function LiveMeeting(): JSX.Element {
   const [agenda, setAgenda] = useState<AgendaItemView[]>([]);
   const [decisions, setDecisions] = useState<DecisionView[]>([]);
   const [actionItems, setActionItems] = useState<ActionItemView[]>([]);
+  const [actionItemsUnavailable, setActionItemsUnavailable] = useState(false);
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [locationName, setLocationName] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ forbidden: boolean; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const [recert, setRecert] = useState<RecertState>({ state: "loading" });
@@ -282,10 +288,15 @@ export function LiveMeeting(): JSX.Element {
     if (!id) return;
     try {
       const r = await client.GET("/api/v1/idg/action-items", { params: { query: {} } });
+      if (r.error) {
+        setActionItemsUnavailable(true);
+        return;
+      }
       const rows = Array.isArray(r.data) ? (r.data as ActionItemView[]) : [];
       setActionItems(keep(rows.filter((a) => a.meetingId === id)));
+      setActionItemsUnavailable(false);
     } catch {
-      setActionItems([]);
+      setActionItemsUnavailable(true);
     }
   }, [client, id]);
 
@@ -295,28 +306,44 @@ export function LiveMeeting(): JSX.Element {
     setError(null);
     void loadRecert();
     void loadNotes();
-    const [m, p] = await Promise.all([
-      client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
-      client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
-    ]);
-    if (m.error || p.error) {
-      setError("Could not load the live meeting surface.");
+    try {
+      const [m, p, att, agd, dec] = await Promise.all([
+        client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
+        client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
+        loadAttendance(client, id),
+        loadAgenda(client, id),
+        loadDecisions(client, id),
+      ]);
+      if (m.error || p.error) {
+        const status = m.error ? m.response.status : p.response.status;
+        setError({
+          forbidden: status === 403 || status === 404,
+          message:
+            status === 403 || status === 404
+              ? "This meeting is not available in your current access scope."
+              : "Could not load the live meeting surface.",
+        });
+        setLoading(false);
+        return;
+      }
+      setMeeting(keep((m.data ?? null) as MeetingView | null));
+      setPackets(keep((p.data ?? []) as PacketDigestView[]));
+      setRoster(keep(att));
+      setAgenda(keep(agd));
+      setDecisions(keep(dec));
       setLoading(false);
-      return;
+      setLoadedAt(Date.now());
+      void loadActionItems();
+    } catch (err) {
+      const forbidden = err instanceof IdgReadError && (err.status === 403 || err.status === 404);
+      setError({
+        forbidden,
+        message: forbidden
+          ? "This meeting is not available in your current access scope."
+          : "Could not load all required live meeting data.",
+      });
+      setLoading(false);
     }
-    setMeeting(keep((m.data ?? null) as MeetingView | null));
-    setPackets(keep((p.data ?? []) as PacketDigestView[]));
-    const [att, agd, dec] = await Promise.all([
-      loadAttendance(client, id),
-      loadAgenda(client, id),
-      loadDecisions(client, id),
-    ]);
-    setRoster(keep(att));
-    setAgenda(keep(agd));
-    setDecisions(keep(dec));
-    setLoading(false);
-    setLoadedAt(Date.now());
-    void loadActionItems();
   }, [client, id, loadActionItems, loadNotes, loadRecert]);
 
   /** One live poll: every ledger re-read with the abort signal; rejects when a core read fails (→ backoff). */
@@ -569,13 +596,13 @@ export function LiveMeeting(): JSX.Element {
       header: <span className="wx-sr-only">Actions</span>,
       cell: (d) => (
         <span className="wx-idg-live-cell-actions">
-          <Button
+          {canCoordinate ? <Button
             tone="tertiary"
             size="sm"
             onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
           >
             Assign follow-up
-          </Button>
+          </Button> : null}
           {/* No Supersede action here on purpose. The server records the successor in a LATER, live, quorate
               meeting (POST /idg/decisions/:id/supersede takes that TARGET meeting id), and this row's decision
               belongs to the meeting being viewed, so offering it here could only ever 409/422. Follow-up: a
@@ -632,44 +659,49 @@ export function LiveMeeting(): JSX.Element {
               </p>
             ) : null}
           </div>
-          {meeting ? (
+          {meeting && (canAttend || canCoordinate || canDecide) ? (
             <div className="wx-idg-live-actions">
-              <Button
+              {canAttend ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "attendance" })}
                 disabled={closed}
               >
                 Check in
-              </Button>
-              <Button
+              </Button> : null}
+              {canCoordinate ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "agenda" })}
                 disabled={closed}
               >
                 Add agenda item
-              </Button>
-              <Button onClick={() => setDialog({ kind: "decision" })} disabled={!isLive}>
+              </Button> : null}
+              {canDecide ? <Button onClick={() => setDialog({ kind: "decision" })} disabled={!isLive}>
                 Record decision
-              </Button>
-              <Button
+              </Button> : null}
+              {canCoordinate ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "adjourn" })}
                 disabled={!isLive}
               >
                 Adjourn
-              </Button>
+              </Button> : null}
             </div>
           ) : null}
         </header>
 
         {error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <ErrorState
+            title={error.forbidden ? "Meeting unavailable" : "Live meeting unavailable"}
+            description={error.message}
+            onRetry={() => void load()}
+            action={<Link to="/idg/schedule">Back to schedule</Link>}
+          />
         ) : loading && meeting === null ? (
           <LoadingSpinner />
         ) : (
           <>
             {notice ? (
-              <output className="wx-idg-alert" data-tone="info">
+              <output className="wx-idg-alert" data-tone="info" aria-live="polite">
                 <Glyph name="check-circle" size={16} />
                 <span>{notice}</span>
               </output>
@@ -706,7 +738,7 @@ export function LiveMeeting(): JSX.Element {
               />
               <StatCard
                 icon="check-circle"
-                label="Action items"
+                label="My action items"
                 value={actionItems.length}
                 hint={`${openActionItems} open`}
               />
@@ -893,10 +925,8 @@ export function LiveMeeting(): JSX.Element {
                     }
                     roster={roster}
                     callerMembershipId={session?.membershipId ?? null}
-                    canEditAny={
-                      Boolean(session?.isAdmin) ||
-                      (coordinatorId !== undefined && coordinatorId === session?.membershipId)
-                    }
+                    canWrite={canAttend || canCoordinate}
+                    canEditAny={canCoordinate}
                     who={who}
                   />
                 ) : null}
@@ -917,14 +947,14 @@ export function LiveMeeting(): JSX.Element {
                 action={
                   <>
                     <CountBadge count={decisions.length} tone="primary" />
-                    <Button
+                    {canDecide ? <Button
                       tone="secondary"
                       size="sm"
                       onClick={() => setDialog({ kind: "decision" })}
                       disabled={!isLive}
                     >
                       Record for this patient
-                    </Button>
+                    </Button> : null}
                   </>
                 }
               >
@@ -1010,7 +1040,7 @@ export function LiveMeeting(): JSX.Element {
                           tone={ATTENDANCE_TONE[r.status] ?? "neutral"}
                         />
                       </div>
-                      <div className="wx-idg-rail-tools">
+                      {canCoordinate ? <div className="wx-idg-rail-tools">
                         <select
                           className="wx-select"
                           aria-label={`Attendance status for ${who(r.membershipId)}`}
@@ -1029,7 +1059,7 @@ export function LiveMeeting(): JSX.Element {
                             Excuse
                           </Button>
                         ) : null}
-                      </div>
+                      </div> : null}
                     </li>
                   ))}
                 </ul>
@@ -1038,14 +1068,18 @@ export function LiveMeeting(): JSX.Element {
           </Region>
 
           {/* ── Action items ─────────────────────────────────────────────────────── */}
-          <Region title="Action items">
+          <Region title="My action items">
             <Panel
-              title="Action items"
+              title="My action items"
               icon="check-circle"
               action={<CountBadge count={actionItems.length} tone="primary" />}
             >
-              {actionItems.length === 0 ? (
-                <p className="wx-row-sub">No follow-ups assigned from this meeting.</p>
+              {actionItemsUnavailable ? (
+                <p className="wx-row-sub" role="status">
+                  Your action items could not be refreshed. Other meeting data remains available.
+                </p>
+              ) : actionItems.length === 0 ? (
+                <p className="wx-row-sub">No follow-ups from this meeting are assigned to you.</p>
               ) : (
                 <ul className="wx-idg-rail-list">
                   {actionItems.map((a) => (
