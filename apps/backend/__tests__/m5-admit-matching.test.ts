@@ -14,7 +14,9 @@ import { createDbPatientRouteService } from "../src/modules/05-patient/patient-r
 
 const ADDRESS = { line1: "1 Main St", city: "Austin", state: "TX", postalCode: "78701" };
 
-const existing = [{ id: "pat-0", lastName: "Doe", firstName: "Jane", dob: "1950-01-01", mbi: null }];
+const existing = [
+  { id: "pat-0", lastName: "Doe", firstName: "Jane", dob: "1950-01-01", mbi: null },
+];
 
 describe("GAP-010 — match candidates carry contact signals", () => {
   const incomingBase = { lastName: "Doe", firstName: "Jane", dob: "1950-01-01" };
@@ -99,7 +101,11 @@ describe("GAP-009 — the bypass is audited CRITICAL on the write transaction", 
         {
           get(_t, prop) {
             if (prop === "then") return (resolve: (v: unknown) => void) => resolve(value);
-            if (prop === "values") return (row: unknown) => (inserted.push(row), chain(value));
+            if (prop === "values")
+              return (row: unknown) => {
+                inserted.push(row);
+                return chain(value);
+              };
             return () => chain(value);
           },
         },

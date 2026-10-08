@@ -20,7 +20,6 @@
 // Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
   enhanceNarrative,
@@ -28,6 +27,7 @@ import {
   requiredScalesFor,
 } from "@wardenx/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type AdmissionSummary,
@@ -56,12 +56,6 @@ import {
 } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import {
-  decideAdministrativeLateOverride,
-  decideSignificantLateOverride,
-} from "./late-entry/override";
-import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-entry/resolve";
-import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
-import {
   assertAtLeastOneCarePlanRef,
   planF2fDualWrite,
   planMileageCapture,
@@ -77,6 +71,12 @@ import {
   runEncounterComplianceGate,
 } from "./gate/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import {
+  decideAdministrativeLateOverride,
+  decideSignificantLateOverride,
+} from "./late-entry/override";
+import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-entry/resolve";
+import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
 import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";

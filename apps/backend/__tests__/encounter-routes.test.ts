@@ -463,7 +463,11 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
 });
 
 describe("GAP-014 — override routes compose D13 step-up and caseload scope", () => {
-  const OVERRIDER = { "x-test-user": "ovr_1", "x-test-org": ORG, "x-test-roles": "clinical_director" };
+  const OVERRIDER = {
+    "x-test-user": "ovr_1",
+    "x-test-org": ORG,
+    "x-test-roles": "clinical_director",
+  };
   const STALE = {
     sessionId: "ovr_1",
     userId: "ovr_1",

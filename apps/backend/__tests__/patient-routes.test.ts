@@ -220,8 +220,11 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
       bypassMatchReview: true,
       bypassJustification: "Legitimate twin admission, confirmed with registrar",
     };
-    const post = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>, payload: object) =>
-      app.inject({ method: "POST", url: "/api/v1/patients", headers, payload });
+    const post = (
+      app: ReturnType<typeof makeServer>["app"],
+      headers: Record<string, string>,
+      payload: object,
+    ) => app.inject({ method: "POST", url: "/api/v1/patients", headers, payload });
 
     it("a plain patient.create holder sending the flag is a 403 and no row is created", async () => {
       const { app, events } = makeServer();

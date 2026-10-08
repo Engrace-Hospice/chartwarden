@@ -365,30 +365,34 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   );
 
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
-  app.post("/api/v1/patients", { preHandler: [CREATE, CREATE_BYPASS_GATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(AdmitBodySchema, request.body);
-    if (body.bypassMatchReview === true && !body.bypassJustification) {
-      throw new ValidationError("a bypass of the duplicate-match review needs a justification", [
-        {
-          field: "bypassJustification",
-          code: "REQUIRED",
-          message: "bypassJustification is required with bypassMatchReview",
-        },
-      ]);
-    }
-    const result = await service.admit(organizationId, body, userId);
-    if (result.outcome === "hard_block") {
-      // §7.1: no patient row created; surface the existing chart for "Open existing patient".
-      throw new WardenXError(
-        "DUPLICATE_OF",
-        `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
-        409,
-        [{ field: "existingPatientId", code: "DUPLICATE_OF", message: result.existingPatientId }],
-      );
-    }
-    return reply.code(201).send(result);
-  });
+  app.post(
+    "/api/v1/patients",
+    { preHandler: [CREATE, CREATE_BYPASS_GATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdmitBodySchema, request.body);
+      if (body.bypassMatchReview === true && !body.bypassJustification) {
+        throw new ValidationError("a bypass of the duplicate-match review needs a justification", [
+          {
+            field: "bypassJustification",
+            code: "REQUIRED",
+            message: "bypassJustification is required with bypassMatchReview",
+          },
+        ]);
+      }
+      const result = await service.admit(organizationId, body, userId);
+      if (result.outcome === "hard_block") {
+        // §7.1: no patient row created; surface the existing chart for "Open existing patient".
+        throw new WardenXError(
+          "DUPLICATE_OF",
+          `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
+          409,
+          [{ field: "existingPatientId", code: "DUPLICATE_OF", message: result.existingPatientId }],
+        );
+      }
+      return reply.code(201).send(result);
+    },
+  );
 
   // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
   app.get(

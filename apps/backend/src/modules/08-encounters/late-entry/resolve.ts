@@ -45,7 +45,10 @@ export function resolveLateEntry(input: {
   return { tier, daysLate: daysLate(input.serviceDate, input.asOfDate), reason };
 }
 
-const OVERRIDE_TIERS: ReadonlyArray<LateEntryTier> = ["significant_late_entry", "administrative_override"];
+const OVERRIDE_TIERS: ReadonlyArray<LateEntryTier> = [
+  "significant_late_entry",
+  "administrative_override",
+];
 
 /**
  * The tier to WRITE to `encounter.late_entry_tier`. The two override tiers are only valid on the row once
@@ -60,5 +63,7 @@ export function reifiableTier(current: LateEntryTier, computed: LateEntryTier): 
 
 /** Keep the author's own late-entry reason when it already satisfies the >= 40 char CHECK; else use the override's. */
 export function keepOrReplaceReason(existing: string | null, overrideReason: string): string {
-  return (existing?.trim().length ?? 0) >= TEXT_MINIMUMS.lateEntryReason ? (existing as string) : overrideReason;
+  return (existing?.trim().length ?? 0) >= TEXT_MINIMUMS.lateEntryReason
+    ? (existing as string)
+    : overrideReason;
 }

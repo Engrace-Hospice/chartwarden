@@ -1,15 +1,12 @@
+import { REQUIRED_SIGNER_SET_IDG_REVIEW, REQUIRED_SIGNER_SET_INITIAL } from "@wardenx/types";
 // GAP-011 / GAP-012 — care-plan sign-off is bound to the AUTHENTICATED actor, and the Required Signer Set
 // can be tightened but never loosened.
 //   011: a one-role user cannot stamp another seat (SIGNER_ROLE_MISMATCH 403) and one membership cannot
 //        fill a second slot (SIGNER_ALREADY_SIGNED 409).
 //   012: finalize's `requiredSignerSet` must COVER the floor; equal LENGTH is not enough.
 import { describe, expect, it } from "vitest";
-import {
-  REQUIRED_SIGNER_SET_IDG_REVIEW,
-  REQUIRED_SIGNER_SET_INITIAL,
-} from "@wardenx/types";
-import { resolveTightenedSignerSet } from "../src/modules/07-care-plan/lifecycle/required-signer-set";
 import { createInMemoryCarePlanBackend } from "../src/modules/07-care-plan/index";
+import { resolveTightenedSignerSet } from "../src/modules/07-care-plan/lifecycle/required-signer-set";
 
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";

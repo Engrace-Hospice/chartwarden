@@ -425,10 +425,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       "Director review: the visit was real and billable, the clinician was on approved leave and the note could not be completed earlier";
     const tierOf = async (id: string) =>
       (
-        await admin.query(
-          "SELECT late_entry_tier, late_entry_reason FROM encounter WHERE id=$1",
-          [id],
-        )
+        await admin.query("SELECT late_entry_tier, late_entry_reason FROM encounter WHERE id=$1", [
+          id,
+        ])
       ).rows[0] as { late_entry_tier: string; late_entry_reason: string | null };
     const signedTier = async (id: string) =>
       (
@@ -453,7 +452,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         code: "LATE_ENTRY_REASON_REQUIRED",
       });
       await svc.finalize(ORG_A, id, SERVICE_DATE as never, { lateEntryReason: REASON });
-      expect(await tierOf(id)).toEqual({ late_entry_tier: "late_entry", late_entry_reason: REASON });
+      expect(await tierOf(id)).toEqual({
+        late_entry_tier: "late_entry",
+        late_entry_reason: REASON,
+      });
       await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
       expect(await signedTier(id)).toBe("late_entry");
     });

@@ -15,10 +15,12 @@ const REASON = "Documentation delayed because the device was offline during the 
 
 describe("GAP-013 — resolveLateEntry", () => {
   it("same day and next day are normal with no reason needed", () => {
-    expect(resolveLateEntry({ ...base, asOfDate: "2026-06-20" as never, requireOverride: true }))
-      .toMatchObject({ tier: "normal", daysLate: 0 });
-    expect(resolveLateEntry({ ...base, asOfDate: "2026-06-21" as never, requireOverride: true }))
-      .toMatchObject({ tier: "normal", daysLate: 1 });
+    expect(
+      resolveLateEntry({ ...base, asOfDate: "2026-06-20" as never, requireOverride: true }),
+    ).toMatchObject({ tier: "normal", daysLate: 0 });
+    expect(
+      resolveLateEntry({ ...base, asOfDate: "2026-06-21" as never, requireOverride: true }),
+    ).toMatchObject({ tier: "normal", daysLate: 1 });
   });
 
   it("2-3 days late is late_entry and needs a >= 40 char reason (422 LATE_ENTRY_REASON_REQUIRED)", () => {
@@ -48,9 +50,10 @@ describe("GAP-013 — resolveLateEntry", () => {
     expect(() => resolveLateEntry(input)).toThrowError(
       expect.objectContaining({ code: "SIGNIFICANT_LATE_ENTRY_OVERRIDE_REQUIRED" }),
     );
-    expect(
-      resolveLateEntry({ ...input, significantOverridePresent: true }),
-    ).toMatchObject({ tier: "significant_late_entry", daysLate: 5 });
+    expect(resolveLateEntry({ ...input, significantOverridePresent: true })).toMatchObject({
+      tier: "significant_late_entry",
+      daysLate: 5,
+    });
   });
 
   it("20 days late is administrative: a significant override does not satisfy it", () => {
@@ -64,9 +67,10 @@ describe("GAP-013 — resolveLateEntry", () => {
     expect(() => resolveLateEntry(input)).toThrowError(
       expect.objectContaining({ code: "ADMINISTRATIVE_LATE_OVERRIDE_REQUIRED" }),
     );
-    expect(
-      resolveLateEntry({ ...input, administrativeOverridePresent: true }),
-    ).toMatchObject({ tier: "administrative_override", daysLate: 20 });
+    expect(resolveLateEntry({ ...input, administrativeOverridePresent: true })).toMatchObject({
+      tier: "administrative_override",
+      daysLate: 20,
+    });
   });
 
   it("finalize (requireOverride=false) enforces the reason but not the override", () => {

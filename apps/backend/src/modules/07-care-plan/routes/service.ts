@@ -796,7 +796,10 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       }
       const alreadySigned = v.signatures.map((s) => s.signerRole);
       const decision = decideRecordSignature(v.requiredSignerSet, alreadySigned, signerRole);
-      v.signatures = [...v.signatures, { signerRole, signedAt: at, membershipId: actor.membershipId }];
+      v.signatures = [
+        ...v.signatures,
+        { signerRole, signedAt: at, membershipId: actor.membershipId },
+      ];
       if (decision.quorumMet) {
         if (p.activeVersionId && p.activeVersionId !== v.id) {
           const previous = versions.get(p.activeVersionId);

@@ -64,7 +64,9 @@ export const AdmitBodySchema = Type.Object({
         line2: Type.Optional(Type.Union([Type.String(), Type.Null()])),
         city: Type.String(),
         // GAP-010: persisting the address needs the state (patient_address_us_state_required).
-        state: Type.Optional(Type.Union([Type.String({ minLength: 2, maxLength: 2 }), Type.Null()])),
+        state: Type.Optional(
+          Type.Union([Type.String({ minLength: 2, maxLength: 2 }), Type.Null()]),
+        ),
         postalCode: Type.String(),
       }),
       Type.Null(),

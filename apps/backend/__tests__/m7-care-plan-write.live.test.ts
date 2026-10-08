@@ -50,7 +50,10 @@ const SIGNER_ROLES = [
 const signerIds = (role: string) => {
   const n = SIGNER_ROLES.indexOf(role as (typeof SIGNER_ROLES)[number]) + 1;
   const tail = String(n).padStart(12, "0");
-  return { userId: `5555555${n}-5555-4555-8555-${tail}`, membershipId: `6666666${n}-6666-4666-8666-${tail}` };
+  return {
+    userId: `5555555${n}-5555-4555-8555-${tail}`,
+    membershipId: `6666666${n}-6666-4666-8666-${tail}`,
+  };
 };
 const signerFor = (role: string) => ({ ...signerIds(role), roles: [role] });
 
@@ -110,7 +113,10 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     );
     for (const role of SIGNER_ROLES) {
       const { userId, membershipId } = signerIds(role);
-      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [userId, `${role}@m7.test`]);
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+        userId,
+        `${role}@m7.test`,
+      ]);
       await admin.query(
         "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
         [membershipId, userId, ORG_A],
@@ -687,7 +693,15 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     let version = review.version + 1;
     const signerRoles = ["rn_case_manager", "msw", "chaplain", "medical_director"] as const;
     for (const role of signerRoles.slice(0, -1)) {
-      await svc.signVersion(ORG_A, boot.id, review.id, version, role, "2026-06-22T12:00:00.000Z", signerFor(role));
+      await svc.signVersion(
+        ORG_A,
+        boot.id,
+        review.id,
+        version,
+        role,
+        "2026-06-22T12:00:00.000Z",
+        signerFor(role),
+      );
       version++;
     }
     await admin.query(

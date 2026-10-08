@@ -1246,8 +1246,7 @@ export function createDbHopeBackend(
           );
           overrideLifted =
             args.adminOverride === true &&
-            Date.parse(captureInstantOf(args.targetDate, nowIso)) >
-              sched.lateDeadlineAt.getTime();
+            Date.parse(captureInstantOf(args.targetDate, nowIso)) > sched.lateDeadlineAt.getTime();
         }
         const row = firstOrThrow(
           await t
