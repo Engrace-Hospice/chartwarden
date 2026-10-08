@@ -177,3 +177,20 @@ Closed as spec drift (architecture wins, ADR-0005 — the entities the queues op
 `portal_document_upload` table; the upload routes are stubs until the M22 intake handoff exists),
 `m31.telehealth-recording-finalize` (no recording table; needs the vendor webhook mapping and byte pull),
 `m31.disclosure-accounting-rotate` (no `portal_audit_view` table to partition).
+
+## GAP-050..056 batch (portal / telehealth / AI / reporting)
+
+- **GAP-050** A suspend flips `portal_account.status` only and leaves the grant row live, so `portal_grant_active_for_patient`
+  (the one account/grant guard on every PHI route) now also loads the account and requires `active`/`bereaved`; the
+  caregiver-attest and bereavement predicates do the same. Reinstate restores access with no re-grant. No M2 session revoke.
+- **GAP-051** The Daily.co adapter is bound from `TELEHEALTH_DAILY_API_KEY` / `_WEBHOOK_SECRET` / `TELEHEALTH_ROOM_NAME_SECRET`
+  (platform-level, not a per-tenant key store; unset = the fail-closed NOOP). The webhooks parse the body as a raw string so
+  the HMAC is checked over the bytes the vendor signed. Vendor field names are unverified against a Daily.co sandbox.
+  The webhook still only verifies the signature; mapping `meeting.ended` / recording payloads is the unbuilt finalize step.
+- **GAP-052** `PortalDisclosureAccountingProvider` returns the portal-accessor rows of `document_access_log` through an M22-owned
+  reader (`buildPortalDisclosureReader`) bound at the composition root. The patient-facing access-log route and the export
+  stay unbuilt (they need a new permission key and OpenAPI enrichment).
+- **GAP-053/054** The portal waiting room frames the Daily room from the join ticket; `apps/web/src/modules/31-portal` adds the
+  staff portal-access roster (suspend / reinstate) and the clinician telehealth visit list with join / leave / end. Invite,
+  grant-issue, recording start/stop and halt-recording, collaborator / funeral invites and the auditor engagement view still
+  have no staff screen.
