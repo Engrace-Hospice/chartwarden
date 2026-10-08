@@ -1,6 +1,7 @@
 import { isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
 import {
   Button,
+  CodeSearchInput,
   DetailPageLayout,
   EmptyState,
   LoadingSpinner,
@@ -604,14 +605,13 @@ export function ReferralDetail(): JSX.Element {
                 </Button>
               ) : (
                 <div style={stack}>
-                  <label style={label}>
-                    Primary ICD-10
-                    <input
-                      value={primaryDiagnosisIcd10}
-                      onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
-                      placeholder="C34.90"
-                    />
-                  </label>
+                  <CodeSearchInput
+                    label="Primary ICD-10"
+                    system="icd10cm"
+                    value={primaryDiagnosisIcd10}
+                    onChange={(code) => setPrimaryDiagnosisIcd10(code)}
+                    placeholder="Search ICD-10-CM, e.g. C34.90"
+                  />
                   <Button
                     tone="primary"
                     disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}

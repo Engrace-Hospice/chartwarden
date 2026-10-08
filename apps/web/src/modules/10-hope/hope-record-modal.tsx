@@ -1,5 +1,6 @@
 import {
   Button,
+  CodeSearchInput,
   Modal,
   SelectField,
   StatusPill,
@@ -424,11 +425,12 @@ export function HopeRecordModal({
         ) : null}
 
         <h3 style={sectionTitle}>Section I — Active diagnoses</h3>
-        <TextField
+        <CodeSearchInput
           label="Primary terminal diagnosis (ICD-10-CM)"
+          system="icd10cm"
           value={primaryDiagnosisIcd10}
-          onChange={(e) => setPrimaryDiagnosisIcd10(e.target.value)}
-          placeholder="C34.90"
+          onChange={(code) => setPrimaryDiagnosisIcd10(code)}
+          placeholder="Search ICD-10-CM, e.g. C34.90"
         />
 
         <h3 style={sectionTitle}>Section J — Health conditions</h3>

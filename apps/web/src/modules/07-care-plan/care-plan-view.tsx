@@ -1,5 +1,6 @@
 import {
   Button,
+  CodeSearchInput,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -93,11 +94,6 @@ const DISCIPLINES = [
   "music_therapy",
   "dietitian",
 ] as const;
-
-interface TerminologyConcept {
-  code: string;
-  display?: string;
-}
 
 function hasPerm(perms: string[] | undefined, key: string): boolean {
   return perms?.includes(key) ?? false;
@@ -1267,8 +1263,8 @@ function RevisionPanel({
             <div>
               <h3 style={smallTitle}>Hospice physician review & signature</h3>
               <p style={muted}>
-                Candidate content is frozen while the hospice physician reviews it. Return to draft only
-                when clinical edits are required before physician signature.
+                Candidate content is frozen while the hospice physician reviews it. Return to draft
+                only when clinical edits are required before physician signature.
               </p>
             </div>
             <div style={actionsRow}>
@@ -1777,75 +1773,7 @@ function ProblemForm({
   const [source, setSource] = useState(state.problem?.source ?? "clinical");
   const [icd10Code, setIcd10Code] = useState(state.problem?.icd10Code ?? "");
   const [snomedCode, setSnomedCode] = useState(state.problem?.snomedCode ?? "");
-  const [snomedSuggestions, setSnomedSuggestions] = useState<TerminologyConcept[]>([]);
-  const [terminologyStatus, setTerminologyStatus] = useState<
-    "idle" | "loading" | "empty" | "error"
-  >("idle");
   const [sudRelated, setSudRelated] = useState(state.problem?.sudRelated ?? false);
-
-  useEffect(() => {
-    const code = icd10Code.trim().toUpperCase();
-    if (code.length < 3) {
-      setSnomedSuggestions([]);
-      setTerminologyStatus("idle");
-      return;
-    }
-
-    let cancelled = false;
-    setTerminologyStatus("loading");
-
-    async function loadSnomedSuggestions(): Promise<void> {
-      try {
-        const lookup = await client.GET("/api/v1/terminology/{system}/{code}", {
-          params: {
-            path: {
-              system: "icd10cm",
-              code,
-            },
-          },
-        } as never);
-
-        const concept = lookup.data as TerminologyConcept | undefined;
-        const query = concept?.display?.trim() || description.trim() || code;
-        const search = await client.GET("/api/v1/terminology/{system}/search", {
-          params: {
-            path: {
-              system: "snomed",
-            },
-            query: {
-              q: query,
-              mode: "fuzzy",
-              limit: 5,
-            },
-          },
-        } as never);
-
-        if (cancelled) return;
-        if (search.error) {
-          setSnomedSuggestions([]);
-          setTerminologyStatus("error");
-          return;
-        }
-
-        const results = (
-          (search.data as { results?: TerminologyConcept[] } | undefined)?.results ?? []
-        ).filter((item) => item.code);
-        setSnomedSuggestions(results);
-        setTerminologyStatus(results.length ? "idle" : "empty");
-      } catch {
-        if (!cancelled) {
-          setSnomedSuggestions([]);
-          setTerminologyStatus("error");
-        }
-      }
-    }
-
-    const timer = window.setTimeout(() => void loadSnomedSuggestions(), 350);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [client, description, icd10Code]);
 
   return (
     <form
@@ -1917,29 +1845,26 @@ function ProblemForm({
 
       <FormSection
         title="Clinical coding"
-        description="Add coding when available. SNOMED suggestions are based on the ICD-10 code."
+        description="Add coding when available. Search by code or description."
       >
         <div style={fieldGrid2}>
-          <TextField
+          <CodeSearchInput
             label="ICD-10 code"
+            system="icd10cm"
             value={icd10Code}
-            onChange={(value) => setIcd10Code(value.toUpperCase())}
-            placeholder="e.g. I50.84"
+            onChange={(code) => setIcd10Code(code)}
+            placeholder="Search ICD-10-CM, e.g. I50.84 or heart failure"
             error={fieldError(error, "icd10Code")}
           />
-          <TextField
+          <CodeSearchInput
             label="SNOMED code"
+            system="snomed"
             value={snomedCode}
-            onChange={setSnomedCode}
-            placeholder="Optional"
+            onChange={(code) => setSnomedCode(code)}
+            placeholder="Optional. Search SNOMED CT by code or description"
             error={fieldError(error, "snomedCode")}
           />
         </div>
-        <SnomedSuggestionList
-          status={terminologyStatus}
-          suggestions={snomedSuggestions}
-          onSelect={(code) => setSnomedCode(code)}
-        />
       </FormSection>
 
       {!state.problem ? (
@@ -1970,58 +1895,6 @@ function ProblemForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function SnomedSuggestionList({
-  status,
-  suggestions,
-  onSelect,
-}: {
-  status: "idle" | "loading" | "empty" | "error";
-  suggestions: TerminologyConcept[];
-  onSelect: (code: string) => void;
-}): JSX.Element | null {
-  if (status === "idle" && suggestions.length === 0) return null;
-
-  if (status === "loading") {
-    return <p style={muted}>Looking for SNOMED suggestions...</p>;
-  }
-
-  if (status === "error") {
-    return (
-      <p style={muted}>
-        SNOMED suggestions are unavailable. You can enter the SNOMED code manually.
-      </p>
-    );
-  }
-
-  if (status === "empty") {
-    return (
-      <p style={muted}>
-        No SNOMED match was found for this ICD-10 code. You can enter the SNOMED code manually.
-      </p>
-    );
-  }
-
-  return (
-    <div style={suggestionPanel}>
-      <span style={fieldLabel}>SNOMED suggestions</span>
-      <div style={lineWrap}>
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion.code}
-            type="button"
-            style={suggestionBtn}
-            onClick={() => onSelect(suggestion.code)}
-            title={suggestion.display}
-          >
-            <span>{suggestion.code}</span>
-            {suggestion.display ? <small style={suggestionText}>{suggestion.display}</small> : null}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -3123,36 +2996,6 @@ const emptyInline: CSSProperties = {
   padding: "0.6rem 0",
   color: t.onSurfaceVariant,
   fontSize: "0.78rem",
-};
-const suggestionPanel: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  padding: t.space3,
-  border: ghostBorder,
-  borderRadius: t.radiusMd,
-  background: t.surfaceContainer,
-};
-const suggestionBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: t.space2,
-  maxWidth: "100%",
-  padding: "0.42rem 0.65rem",
-  border: ghostBorder,
-  borderRadius: t.radiusSm,
-  background: t.surface,
-  color: t.onSurface,
-  cursor: "pointer",
-  fontWeight: 650,
-  fontSize: "0.78rem",
-};
-const suggestionText: CSSProperties = {
-  color: t.onSurfaceVariant,
-  fontWeight: 500,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
 };
 const menuWrap: CSSProperties = { position: "relative" };
 const menuButton: CSSProperties = {

@@ -1,4 +1,13 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  CodeSearchInput,
+  Modal,
+  SelectField,
+  TextAreaField,
+  TextField,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — the §2 problem / goal / intervention authoring ceremonies (#91).
 //
 // The IPOC is a document made of three element kinds, and the module could display all three and author
@@ -333,11 +342,12 @@ export function CarePlanElementModal({
                   onChange={(e) => setProblemSource(e.target.value as ProblemSource)}
                   options={PROBLEM_SOURCES.map((k) => ({ value: k, label: label(k) }))}
                 />
-                <TextField
+                <CodeSearchInput
                   label="ICD-10 code (optional)"
+                  system="icd10cm"
                   value={icd10Code}
                   disabled={busy}
-                  onChange={(e) => setIcd10Code(e.target.value)}
+                  onChange={(code) => setIcd10Code(code)}
                 />
                 <label style={checkRow}>
                   <input

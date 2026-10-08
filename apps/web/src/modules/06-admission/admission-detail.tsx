@@ -1,6 +1,7 @@
 import {
   type ApiClient,
   CeremonyModal,
+  CodeSearchInput,
   DetailPageLayout,
   EmptyState,
   type GateItem,
@@ -1741,15 +1742,12 @@ export function AdmissionDetail({
                 onChange={(ev) => setElectionEffectiveDate(ev.target.value)}
                 style={inputStyle}
               />
-              <label htmlFor="election-diagnosis" style={fieldLabel}>
-                Primary diagnosis ICD-10
-              </label>
-              <input
-                id="election-diagnosis"
+              <CodeSearchInput
+                label="Primary diagnosis ICD-10"
+                system="icd10cm"
                 value={primaryDiagnosisIcd10}
-                onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
-                style={inputStyle}
-                placeholder="C00.0"
+                onChange={(code) => setPrimaryDiagnosisIcd10(code)}
+                placeholder="Search ICD-10-CM, e.g. C34.90"
               />
               <ProviderEntityLookupField
                 label="Elected hospice provider"
@@ -1862,15 +1860,12 @@ export function AdmissionDetail({
                 label="Certifying Hospice Physician"
                 value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
               />
-              <label htmlFor="cti-diagnosis" style={fieldLabel}>
-                Terminal diagnosis ICD-10
-              </label>
-              <input
-                id="cti-diagnosis"
+              <CodeSearchInput
+                label="Terminal diagnosis ICD-10"
+                system="icd10cm"
                 value={ctiDiagnosisIcd10}
-                onChange={(ev) => setCtiDiagnosisIcd10(ev.target.value)}
-                style={inputStyle}
-                placeholder="C00.0"
+                onChange={(code) => setCtiDiagnosisIcd10(code)}
+                placeholder="Search ICD-10-CM, e.g. C34.90"
               />
               <label htmlFor="cti-secondary-diagnoses" style={fieldLabel}>
                 Secondary diagnoses
