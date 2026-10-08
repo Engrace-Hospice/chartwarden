@@ -26,6 +26,7 @@ export {
   parseNormalizedCsv,
   parseRxnorm,
   parseSnomed,
+  parseX12CodeListHtml,
   toNdc11,
 } from "./parsers/index";
 export * from "./in-memory";

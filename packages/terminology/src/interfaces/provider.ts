@@ -75,8 +75,21 @@ export interface SearchOptions {
   readonly mode?: "exact" | "fuzzy" | "semantic";
   readonly asOf?: Date;
   readonly limit?: number;
+  /**
+   * Restrict to codes usable on a claim today. ICD-10-CM: `status = active` AND the billable-leaf flag. Every other
+   * system has no billable flag of its own, so the filter means `status = active` (a deprecated/retired code is not
+   * billable); it is never a silent no-op.
+   */
   readonly billableOnly?: boolean;
+  /**
+   * Restrict to members of this value set (platform `value_set_member` rows covering `asOf`, plus — when `orgId` is
+   * given — that tenant's live `value_set_tenant_extension` rows). An unknown value set id is a NOT_FOUND, not an
+   * empty result. A member whose code has no row in the system's concept table (e.g. `sud_test_loinc` LOINC codes
+   * while `concept_loinc` is not loaded) is still searchable via its `annotations.display`.
+   */
   readonly inValueSet?: string;
+  /** The searching tenant (server-side, from the request context): scopes `inValueSet` tenant extensions. */
+  readonly orgId?: string;
 }
 
 /**

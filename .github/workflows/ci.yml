@@ -520,6 +520,9 @@ jobs:
           # residue, resume from staged, two versions coexisting, the licence-attestation gate for
           # snomed/loinc/rxnorm, per-tenant deprecation-scan isolation, and a real BullMQ run over Valkey.
           - { name: "M38 terminology loader + jobs", scripts: "test:m38:loader:live" }
+          # M38 search filters: `inValueSet` (platform members + the caller's tenant extensions under RLS) and
+          # `billableOnly` for every system, driven through the REAL search route as NOBYPASSRLS wardenx_app.
+          - { name: "M38 terminology search", scripts: "test:m38:search:live" }
           # GAP-098: the SEC-052 oversized-hold DISCOVERY surface — the cross-tenant platform-ops list
           # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
           # promised in its doc comment and never emitted. Held-ness is derived from the newest ledger

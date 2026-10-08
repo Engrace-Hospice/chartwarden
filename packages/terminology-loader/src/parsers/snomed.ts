@@ -4,8 +4,11 @@
 //   sct2_Concept_Snapshot*.txt       required — active concepts (header + tab-delimited rows)
 //   sct2_Description_Snapshot*.txt   required — the active Fully Specified Name per concept
 //   sct2_Relationship_Snapshot*.txt  optional — `Is a` (116680003) edges → `hierarchyPath` (root → parent)
-// Display is the FSN with its trailing "(semantic tag)" removed; the tag is kept as `semanticTag`. The preferred
-// synonym needs the language reference set, which this loader does not read — a stated limitation, not a guess.
+//   der2_cRefset_Language*Snapshot*.txt  optional — the language reference set: with it, display is the concept's
+//                                        PREFERRED SYNONYM (what clinicians actually type and read), US English
+//                                        (900000000000509007) when that refset is present, else any English refset.
+// Without the language refset (or for a concept it gives no preferred synonym) display falls back to the FSN with its
+// trailing "(semantic tag)" removed; the tag is always kept as `semanticTag` and the FSN as `fullySpecifiedName`.
 // Inactive concepts are not loaded: the diff against the prior version retires them with a deprecation mapping.
 import { findEntry, iterLines, requireEntry } from "../bytes";
 import { LoaderDataError } from "../errors";
@@ -48,6 +51,59 @@ function readParents(bytes: Uint8Array): Map<string, string> {
     if (cur === undefined || dst < cur) parents.set(src, dst); // deterministic first parent
   }
   return parents;
+}
+
+const SYNONYM_TYPE = "900000000000013009";
+const PREFERRED = "900000000000548007";
+const US_ENGLISH_REFSET = "900000000000509007";
+
+/** Active description ids the language refset marks PREFERRED, grouped by refset id. */
+function readPreferredDescriptionIds(bundle: SourceBundle): Map<string, Set<string>> {
+  const byRefset = new Map<string, Set<string>>();
+  for (const name of bundle.names.filter((n) =>
+    /der2_cRefset_Language.*Snapshot.*\.txt$/i.test(n),
+  )) {
+    for (const f of rows(bundle.read(name), 7, "Language refset")) {
+      if (f[2] !== "1" || f[6] !== PREFERRED) continue;
+      const set = byRefset.get(f[4] as string) ?? new Set<string>();
+      set.add(f[5] as string);
+      byRefset.set(f[4] as string, set);
+    }
+  }
+  return byRefset;
+}
+
+/** conceptId → latest active English synonym whose description id is in `preferredIds`. */
+function readPreferredTerms(
+  descFile: Uint8Array,
+  preferredIds: ReadonlySet<string>,
+): Map<string, string> {
+  const best = new Map<string, { term: string; at: string }>();
+  for (const f of rows(descFile, 9, "Description")) {
+    if (f[2] !== "1" || f[6] !== SYNONYM_TYPE || f[5] !== "en") continue;
+    if (!preferredIds.has(f[0] as string)) continue;
+    const id = f[4] as string;
+    const prior = best.get(id);
+    if (!prior || (f[1] as string) > prior.at)
+      best.set(id, { term: f[7] as string, at: f[1] as string });
+  }
+  return new Map([...best].map(([id, v]) => [id, v.term]));
+}
+
+/** The preferred-synonym map for the bundle, or an empty map (and a warning) when no language refset is present. */
+function preferredSynonyms(
+  bundle: SourceBundle,
+  descFile: Uint8Array,
+  warnings: string[],
+): Map<string, string> {
+  const byRefset = readPreferredDescriptionIds(bundle);
+  if (byRefset.size === 0) {
+    warnings.push("Language refset absent: display falls back to the FSN without its semantic tag");
+    return new Map();
+  }
+  const us = byRefset.get(US_ENGLISH_REFSET);
+  const ids = us ?? new Set([...byRefset.values()].flatMap((s) => [...s]));
+  return readPreferredTerms(descFile, ids);
 }
 
 function pathOf(
@@ -93,6 +149,10 @@ export function parseSnomed(bundle: SourceBundle): ParsedSource {
       fsn.set(id, { term: f[7] as string, at: f[1] as string });
   }
 
+  const warnings: string[] = relName
+    ? []
+    : ["Relationship snapshot absent: hierarchy paths not derived"];
+  const preferred = preferredSynonyms(bundle, descFile, warnings);
   const memo = new Map<string, string[]>();
   const out = [];
   for (const f of rows(conceptsFile, 5, "Concept")) {
@@ -107,7 +167,7 @@ export function parseSnomed(bundle: SourceBundle): ParsedSource {
       );
     const m = FSN_TAG.exec(name.term);
     out.push(
-      concept(id, (m?.[1] ?? name.term).trim(), "active", {
+      concept(id, (preferred.get(id) ?? m?.[1] ?? name.term).trim(), "active", {
         effectiveDate: parseDate(f[1], `concept ${id} effectiveTime`),
         properties: {
           fullySpecifiedName: name.term,
@@ -117,9 +177,5 @@ export function parseSnomed(bundle: SourceBundle): ParsedSource {
       }),
     );
   }
-  return finish(
-    "snomed",
-    out,
-    relName ? [] : ["Relationship snapshot absent: hierarchy paths not derived"],
-  );
+  return finish("snomed", out, warnings);
 }
