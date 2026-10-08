@@ -245,10 +245,11 @@ describe.skipIf(!DB_URL)("M3 role-template materialization, LIVE Postgres", () =
         "INSERT INTO membership_role (organization_id,membership_id,role_id,scope,expires_at) VALUES ($1,$2,$3,$4::jsonb,$5)",
         [ORG_B, membershipId, roleId, JSON.stringify(scope), expiresAt],
       );
-    const read = () =>
-      createDbActorEnrichmentReader(handle.db).read({ orgId: ORG_B }, userId) as Promise<{
-        locationIds: string[];
-      }>;
+    const read = async () => {
+      const actor = await createDbActorEnrichmentReader(handle.db).read({ orgId: ORG_B }, userId);
+      if (!actor) throw new Error("no active membership resolved");
+      return actor;
+    };
     const ctx = (locationIds: readonly string[]) =>
       ({ locationIds, providerEntityIds: [] }) as never;
 
