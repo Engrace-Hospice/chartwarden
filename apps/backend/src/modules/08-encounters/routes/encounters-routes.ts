@@ -621,10 +621,16 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 15 — significant late-entry tier override (supervisor).
+  // 15 — significant late-entry tier override (supervisor). GAP-014: D13 step-up + caseload scope.
   app.post(
     "/api/v1/encounters/:encounterId/late-entry-override",
-    { preHandler: [LATE_OVERRIDE] },
+    {
+      preHandler: [
+        LATE_OVERRIDE,
+        SCOPE_FOR("encounter.late_entry_override"),
+        STEP_UP("encounter.late_entry_override"),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(LateEntryOverrideSchema, request.body);
@@ -638,7 +644,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 16 — administrative >14-day override (director).
   app.post(
     "/api/v1/encounters/:encounterId/administrative-override",
-    { preHandler: [ADMIN_OVERRIDE] },
+    {
+      preHandler: [ADMIN_OVERRIDE, STEP_UP("encounter.administrative_override")],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(AdministrativeOverrideSchema, request.body);
@@ -713,7 +721,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 21 — supervisor releases past the 48h hard cap.
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/supervisor-release",
-    { preHandler: [COSIGN_RELEASE] },
+    {
+      preHandler: [
+        COSIGN_RELEASE,
+        SCOPE_FOR("encounter.cosign_supervisor_release"),
+        STEP_UP("encounter.cosign_supervisor_release"),
+      ],
+    },
     async (request) => {
       const { organizationId, roles } = actorOf(request);
       const body = parse(SupervisorReleaseSchema, request.body);
