@@ -23,6 +23,7 @@ import type {
   OrgScope,
 } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import { effectiveReach } from "../roles/grant-scope";
 import { roleConfersKey } from "../roles/platform-reserved";
 import { setEffectivePermissionResolver } from "./require-role";
 import {
@@ -164,35 +165,42 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
             roleCategory: schema.roles.category,
             enabled: schema.roles.enabled,
             expiresAt: schema.membershipRoles.expiresAt,
+            scope: schema.membershipRoles.scope,
           })
           .from(schema.membershipRoles)
           .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
           .where(eq(schema.membershipRoles.membershipId, membership.id));
 
         const now = Date.now();
-        const roles = [
-          ...new Set(
-            roleRows
-              .filter((r) => r.enabled && (r.expiresAt === null || r.expiresAt.getTime() > now))
-              // GAP-003/GAP-096: a tenant-owned row never confers platform authority (`platform_*` or
-              // `ai_safety_owner` key, `platform_staff` category) — only a platform-owned row does.
-              .filter((r) =>
-                roleConfersKey({
-                  organizationId: r.roleOrganizationId,
-                  key: r.roleKey,
-                  category: r.roleCategory,
-                }),
-              )
-              .map((r) => r.roleKey),
-          ),
-        ];
+        const liveGrants = roleRows
+          .filter((r) => r.enabled && (r.expiresAt === null || r.expiresAt.getTime() > now))
+          // GAP-003/GAP-096: a tenant-owned row never confers platform authority (`platform_*` or
+          // `ai_safety_owner` key, `platform_staff` category) — only a platform-owned row does.
+          .filter((r) =>
+            roleConfersKey({
+              organizationId: r.roleOrganizationId,
+              key: r.roleKey,
+              category: r.roleCategory,
+            }),
+          );
+        const roles = [...new Set(liveGrants.map((r) => r.roleKey))];
+        // GAP-007 — a grant's `scope` NARROWS the member's default reach (see roles/grant-scope.ts): the PE /
+        // location ids stamped on the request context, which `provider_entity_scope` / `location_scope` and every
+        // module's own scope predicate read, are the union of the live roles' reach, never wider than the defaults.
+        const reach = effectiveReach(
+          {
+            providerEntityIds: membership.defaultProviderEntityId
+              ? [membership.defaultProviderEntityId]
+              : [],
+            locationIds: locationIdsOf(membership.defaultLocationIds),
+          },
+          liveGrants,
+        );
         return {
           membershipId: membership.id,
           roles,
-          providerEntityIds: membership.defaultProviderEntityId
-            ? [membership.defaultProviderEntityId]
-            : [],
-          locationIds: locationIdsOf(membership.defaultLocationIds),
+          providerEntityIds: [...reach.providerEntityIds],
+          locationIds: [...reach.locationIds],
         };
       });
     },

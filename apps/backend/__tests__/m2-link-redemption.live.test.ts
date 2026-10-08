@@ -50,6 +50,7 @@ import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
+import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { funeralSessionPinnedPatientPredicate } from "../src/modules/02-identity/abac-predicates";
 import {
@@ -66,6 +67,10 @@ import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import { createLinkDelivery } from "../src/modules/02-identity/link-delivery";
 import { registerLinkRoutes } from "../src/modules/02-identity/routes/link-routes";
 import { createDbSessionWriter } from "../src/modules/02-identity/session-writer-db";
+import {
+  caseloadMembershipPredicate,
+  createCaseloadProvider,
+} from "../src/modules/05-patient/seams/caseload-provider";
 import { funeralCaseForOrg } from "../src/modules/05-patient/seams/funeral-case-for-org";
 import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient-deceased-for-org";
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
@@ -286,8 +291,18 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     resetAbacRegistry();
     registerDbEffectivePermissionResolver(handle.db as never);
     const registry = createPredicateRegistry();
-    // The caseload predicate is M5/M17's and is not under test: staff are on every caseload here.
-    registry.register("caseload_membership", async () => true);
+    // GAP-001: the REAL M5 `caseload_membership` predicate body (not an allow-all stub) over the real
+    // CaseloadProvider contract, so an M2<->M5 target-key mismatch cannot hide. Staff are assigned
+    // to every patient of their own org (assignment rows are M5's and not under test).
+    registerSeam(
+      "CaseloadProvider",
+      createCaseloadProvider({
+        isAssigned: async (org, user) =>
+          (user === staffA?.userId && org === ORG_A) || (user === staffB?.userId && org === ORG_B),
+        assignedPatientIds: async () => [],
+      }),
+    );
+    registry.register("caseload_membership", caseloadMembershipPredicate);
     registry.register(
       "funeral_session_pinned_patient",
       funeralSessionPinnedPatientPredicate as never,

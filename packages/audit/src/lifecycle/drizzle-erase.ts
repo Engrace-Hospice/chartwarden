@@ -29,7 +29,7 @@
 // group size — so a certificate line can only certify what left the database.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import type { EraseInput, EraserPorts } from "./eraser";
 
 const A = schema.auditEvents;
@@ -66,6 +66,12 @@ export function createDbAuditEraseExecutor(db: DbClient): AuditEraseExecutor {
                   and(isNull(A.resourceId), eq(A.id, input.resourceId)),
                 ),
                 sql`${A.retentionClass}::text = ${input.retentionClass}`,
+                // GAP-008: inside the span the legal-hold check ran against - never wider (see EraseInput).
+                input.createdAtFrom ? gte(A.createdAt, new Date(input.createdAtFrom)) : undefined,
+                // Exclusive of the NEXT millisecond: the span came from JS Dates (ms) but created_at is microsecond.
+                input.createdAtTo
+                  ? lt(A.createdAt, new Date(Date.parse(input.createdAtTo) + 1))
+                  : undefined,
               ),
             )
             .returning({ id: A.id });

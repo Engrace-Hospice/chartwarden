@@ -29,6 +29,26 @@ export {
   createDbPasskeyCredentialStore,
 } from "./webauthn-verifier";
 export {
+  PASSKEY_REQUIRED_ROLE_KEYS,
+  evaluateMfa,
+  mfaRequirementFor,
+  mfaSatisfied,
+  resolveMfaEnforcement,
+  sessionClassRequiresMfa,
+  type MfaFactorState,
+  type MfaRequirement,
+  type MfaVerdict,
+} from "./mfa-policy";
+export {
+  AUTH_AUDIT_EVENTS,
+  buildAuthAuditEvent,
+  buildPasswordResetEvent,
+  type AuthAuditActor,
+  type AuthAuditEvent,
+  type AuthAuditEventType,
+  type AuthAuditSink,
+} from "./auth-audit";
+export {
   registerIdentityAuth,
   type MountableAuth,
   type RegisterIdentityAuthOptions,

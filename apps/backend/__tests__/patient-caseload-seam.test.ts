@@ -4,6 +4,7 @@
 // validateSeams() passes with the real impl, and the resolver enforces §7.5 caseload narrowing
 // (an RN sees ONLY her assigned patients; a third patient is not in caseload). Fail-closed baseline
 // (unregistered ⇒ deny-stub throws) is asserted too.
+import { abacRegistry } from "@wardenx/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
@@ -88,5 +89,15 @@ describe("M5-T07 — CaseloadProvider closes the M3 boot-gate (§4.1, §7.5)", (
       await getCaseloadProvider().isInCaseload({ organizationId: ORG, userId: RN, patientId: P1 }),
     ).toBe(false);
     await app.close();
+  });
+
+  it("GAP-001 the registered caseload_membership predicate accepts {id} AND {patientId} targets", async () => {
+    registerPatientSeams({ caseload: { store: seededStore() } });
+    validateSeams();
+    const ctx = { organizationId: ORG, userId: RN } as never;
+    expect(await abacRegistry.evaluate("caseload_membership", ctx, { id: P1 })).toBe(true);
+    expect(await abacRegistry.evaluate("caseload_membership", ctx, { patientId: P1 })).toBe(true);
+    expect(await abacRegistry.evaluate("caseload_membership", ctx, { patientId: P3 })).toBe(false);
+    expect(await abacRegistry.evaluate("caseload_membership", ctx, {})).toBe(false);
   });
 });

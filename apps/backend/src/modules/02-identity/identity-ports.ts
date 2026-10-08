@@ -674,6 +674,18 @@ export interface IdentityRouteDeps {
   /** §11 D19 — omitted → `select-organization` skips the active-org check (a no-db slice boot has no
    *  organization-lifecycle writer to read back). See {@link OrganizationStatusReader}. */
   organizations?: OrganizationStatusReader;
+  /**
+   * GAP-005 - the MFA matrix gate (M2 section 2.3). Present: `select-organization` refuses to bind an organization
+   * whose roles require a second factor the user has not enrolled (403 MFA_ENROLMENT_REQUIRED). Omitted (slice
+   * boots, unit tests) means no enforcement at bind time; the authenticate hook is the second, independent gate.
+   */
+  mfaGate?: {
+    forMembership(input: {
+      userId: string;
+      organizationId: string;
+      membershipId: string;
+    }): Promise<{ satisfied: boolean; requirement: string }>;
+  };
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------

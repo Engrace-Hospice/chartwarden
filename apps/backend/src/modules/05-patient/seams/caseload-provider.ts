@@ -47,6 +47,29 @@ export interface CaseloadSeamDeps {
 export const CASELOAD_MEMBERSHIP_PREDICATE = "caseload_membership";
 
 /**
+ * The `caseload_membership` predicate body. Platform targets name the patient as `id` (M5/M8
+ * routes) or `patientId` (M2 link invites, GAP-001); anything else denies. Resolves through the
+ * registered CaseloadProvider at call time.
+ */
+export const caseloadMembershipPredicate: Parameters<typeof registerPredicate>[1] = async (
+  context,
+  target,
+) => {
+  const patientId =
+    typeof target.id === "string"
+      ? target.id
+      : typeof target.patientId === "string"
+        ? target.patientId
+        : null;
+  if (!patientId || !context.organizationId || !context.userId) return false;
+  return getCaseloadProvider().isInCaseload({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    patientId,
+  });
+};
+
+/**
  * Register M5's `CaseloadProvider` into the M1 registry AND wire the `caseload_membership` ABAC
  * predicate to resolve through it (M5-T07; before validateSeams()). The predicate denies (fail
  * closed) when the context lacks an org/user or the target carries no patient id.
@@ -58,15 +81,7 @@ export function registerCaseloadSeam(deps: CaseloadSeamDeps = {}): void {
   // The predicate is single-owner in the shared ABAC registry (§4.2) and the registry has no clear,
   // so register it ONCE — guard with `has` so a re-boot (tests) re-points the seam without throwing.
   if (!abacRegistry.has(CASELOAD_MEMBERSHIP_PREDICATE)) {
-    registerPredicate(CASELOAD_MEMBERSHIP_PREDICATE, async (context, target) => {
-      const patientId = typeof target.id === "string" ? target.id : null;
-      if (!patientId || !context.organizationId || !context.userId) return false;
-      return getCaseloadProvider().isInCaseload({
-        organizationId: context.organizationId,
-        userId: context.userId,
-        patientId,
-      });
-    });
+    registerPredicate(CASELOAD_MEMBERSHIP_PREDICATE, caseloadMembershipPredicate);
   }
 }
 

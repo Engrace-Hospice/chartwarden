@@ -25,6 +25,8 @@ import {
   createDbAuditQuery,
   createInMemoryEraserPorts,
   eraseAuditRows,
+  firstCoveringHold,
+  widenSpan,
 } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -98,6 +100,7 @@ export function createDrizzleAuditEraserStore(db: DbClient): AuditEraserStore {
   return {
     async rowsForSubject(scope, subjectId) {
       const groups = new Map<string, EraseInput>();
+      const spans = new Map<string, { from: string; to: string }>();
       let cursor: string | undefined;
       do {
         const page = await query.searchEvents(scope.orgId, {
@@ -110,6 +113,9 @@ export function createDrizzleAuditEraserStore(db: DbClient): AuditEraserStore {
           // under a shared blank key would let one legal hold shadow unrelated events.
           const resourceId = r.resourceId ?? r.id;
           const key = `${r.retentionClass}|${r.resourceKind}|${resourceId}`;
+          // GAP-008: the group's created-at span rides on the EraseInput so a dateRange hold can be evaluated
+          // against it and the executor deletes only inside it.
+          spans.set(key, widenSpan(spans.get(key), r.createdAt));
           if (groups.has(key)) continue;
           groups.set(key, {
             retentionClass: r.retentionClass,
@@ -122,7 +128,10 @@ export function createDrizzleAuditEraserStore(db: DbClient): AuditEraserStore {
         }
         cursor = page.nextCursor ?? undefined;
       } while (cursor);
-      return [...groups.values()];
+      return [...groups].map(([key, group]) => {
+        const span = spans.get(key);
+        return span ? { ...group, createdAtFrom: span.from, createdAtTo: span.to } : group;
+      });
     },
   };
 }
@@ -145,11 +154,13 @@ export interface DrizzleAuditEraserPortsOptions {
  * The Drizzle-backed `EraserPorts` (TASK-003 / ARCH-007): the guards are LIVE; the erase leg binds
  * to the packages/audit executor only when a destruction-granted client is injected.
  *
- *   • `legalHoldFor` reads the org's ACTIVE `legal_hold` rows (M4-owned) and matches
- *     conservatively — a hold whose free-form `criteria` jsonb mentions the row-group's resource
- *     id or patient anywhere holds the group (the M39 consent-eraser precedent). Over-matching is
- *     the safe direction: a wrongly-held row is merely refused; a wrongly-released one is erased
- *     against a hold (§10.6 supremacy).
+ *   • `legalHoldFor` reads the org's ACTIVE `legal_hold` rows (M4-owned) at the moment of erasure
+ *     and matches them STRUCTURALLY (packages/audit `holdCoversGroup`, GAP-008): every selector the
+ *     hold names (patientIds, resourceKinds, dateRange overlap with the group's created-at span)
+ *     must match. A hold applied after a certificate was approved is therefore honoured here, at
+ *     execution - the approve-time check is only the first gate. Over-matching is the safe
+ *     direction: a wrongly-held row is merely refused; a wrongly-released one is erased against a
+ *     hold (§10.6 supremacy).
  *   • `loadPatient` reads the M5 `patient` status + deceased_date under org RLS for the §6
  *     lifetime window (the M39 "fail-closed deceased proof" read). Any non-deceased status maps
  *     to `active` — only a proven death date can open the 6-year window.
@@ -178,16 +189,9 @@ export function createDrizzleAuditEraserPorts(
             .select({ id: HOLD.id, criteria: HOLD.criteria })
             .from(HOLD)
             .where(eq(HOLD.status, "active"));
-          for (const h of holds) {
-            const text = JSON.stringify(h.criteria ?? {});
-            if (
-              text.includes(input.resourceId) ||
-              (input.patientId !== undefined && text.includes(input.patientId))
-            ) {
-              return h.id;
-            }
-          }
-          return null;
+          // GAP-008: STRUCTURAL matching (patient / resource kind / date-range overlap), not a substring of the
+          // criteria JSON - a hold with only a dateRange or resourceKinds names no id and used to match nothing.
+          return firstCoveringHold(holds, input);
         },
       );
     },

@@ -26,6 +26,7 @@ import {
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
+  resolveMfaEnforcement,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
@@ -171,6 +172,15 @@ import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+import {
+  type AuthAuditDb,
+  createAuthAuditSink,
+} from "./modules/02-identity/audit/auth-event-audit";
+import {
+  createDbActiveMembershipLister,
+  createMfaEnrolmentGate,
+} from "./modules/02-identity/mfa-enrolment-gate";
+import { createDbMfaEnrollmentReader } from "./modules/02-identity/step-up-adapters-db";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -197,6 +207,8 @@ function m18CoordsKeys(): EvvCoordsKeyProvider {
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
 // GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
 const M28_BAA_COVERAGE_JOB_ID = "m28-baa-coverage";
+// GAP-006 — boot-time backfill that materializes the tenant-assignable ROLE_TEMPLATES into every existing org.
+const M3_ROLE_TEMPLATE_BACKFILL_JOB_ID = "m3-role-template-backfill";
 // AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
@@ -259,6 +271,8 @@ import {
   createMembershipsHoldingRoleKeyReader,
   createProposedRoleGuard,
   createTenantAuditExecutor,
+  materializeRoleTemplatesForOrg,
+  materializeRoleTemplatesInTx,
   membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
@@ -1479,6 +1493,15 @@ export function wireModuleSeams(
     sessions: deps.sessionContextStore,
     db: deps.db,
     organizationDb: deps.organizationDb,
+    // GAP-006 — the tenant-provisioning confirm also materializes the org's roles (M3's writer, injected: M2 may
+    // not import M3). Runs on the tenant pool under the new org's RLS scope, never the platform pool.
+    ...(deps.db
+      ? {
+          onTenantOrganizationAvailable: async (organizationId: string) => {
+            await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
+          },
+        }
+      : {}),
   }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
@@ -2740,12 +2763,31 @@ function buildFirstAdminAcceptanceService(deps: {
               }
               if (!membership) throw new Error("first-admin membership creation failed");
 
-              const [orgAdmin] = await tx
+              // GAP-006 — nothing in production used to create `role` rows, so this threw on every fresh tenant.
+              // Materialize the org's roles (create-only, idempotent) in THIS transaction, then take the org's
+              // OWN org_admin row; a platform-owned template row, if one ever exists, is only a fallback.
+              await materializeRoleTemplatesInTx(tx, invitation.organizationId);
+              const [ownOrgAdmin] = await tx
                 .select()
                 .from(schema.roles)
-                .where(and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")))
+                .where(
+                  and(
+                    eq(schema.roles.organizationId, invitation.organizationId),
+                    eq(schema.roles.key, "org_admin"),
+                  ),
+                )
                 .limit(1);
-              if (!orgAdmin) throw new Error("org_admin role template is unavailable");
+              const [templateOrgAdmin] = ownOrgAdmin
+                ? []
+                : await tx
+                    .select()
+                    .from(schema.roles)
+                    .where(
+                      and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")),
+                    )
+                    .limit(1);
+              const orgAdmin = ownOrgAdmin ?? templateOrgAdmin;
+              if (!orgAdmin) throw new Error("org_admin role is unavailable after materialization");
               await tx
                 .insert(schema.membershipRoles)
                 .values({
@@ -2964,6 +3006,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M3_ROLE_TEMPLATE_BACKFILL_JOB_ID);
   // GAP-062 — the M21 §4.6 par-monitor / unreturned-kit-monitor / supply-request-monitor active-org fan-out.
   if (platformDbHandle) registerPlatformJob(M21_PLATFORM_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
@@ -3681,15 +3724,47 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
       : undefined;
+  // GAP-002/GAP-004 — M2 §8.1 authentication audit trail (login, failure, lockout, logout, 2FA, passkey,
+  // session revoke, password reset). Audit-write loss is logged loudly but never fails the auth request.
+  const authAuditSink = dbHandle
+    ? createAuthAuditSink({ db: dbHandle.db as unknown as AuthAuditDb })
+    : undefined;
+  const authAuditErrorLogger = (err: unknown, event: { eventType: string }) =>
+    app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
+  // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
+  // M3's tables), factors from M2's enrolment reader. Enforced in production by default
+  // (`WARDENX_MFA_ENFORCEMENT` overrides); see resolveMfaEnforcement.
+  const mfaGate = dbHandle
+    ? createMfaEnrolmentGate({
+        enforced: resolveMfaEnforcement(process.env),
+        factors: createDbMfaEnrollmentReader(dbHandle.db),
+        roleKeysForMembership: async ({ organizationId, membershipId }) =>
+          (await membershipRoleKeysForOrg(dbHandle.db, organizationId, [membershipId])).get(
+            membershipId,
+          ) ?? [],
+        activeMembershipsOf: createDbActiveMembershipLister(dbHandle.db),
+      })
+    : undefined;
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
+        // GAP-002 — the password-reset leg of the M2 §8.1 authentication trail (the rest is the bridge's).
+        auditSink: authAuditSink,
+        onAuditError: authAuditErrorLogger,
       })
     : undefined;
   const authenticate = auth
     ? createSessionAuthenticate({
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => getSeam("SessionContextResolver"),
+        // GAP-003 — hold an org-bound staff session at the MFA-enrolment stage until the role's factor exists.
+        ...(mfaGate
+          ? {
+              mfaEnrolment: {
+                check: ({ userId, roleKeys }) => mfaGate.forRoles({ userId, roleKeys }),
+              },
+            }
+          : {}),
         // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
         ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
@@ -3882,6 +3957,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(auth ? { linkSessions: createLinkSessionMinter(auth) } : {}),
             ...(linkDelivery ? { linkDelivery } : {}),
             linkRedeemThrottle,
+            ...(mfaGate ? { mfaGate } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -5253,6 +5329,34 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       },
     );
   }
+  // GAP-006 — backfill: every ACTIVE org that predates the materializer (or was provisioned while it was unbound)
+  // gets its roles. Create-only and idempotent, so it is safe on every boot; fire-and-forget like the probe above
+  // (a failure is logged per org and never blocks boot - the first-admin accept re-materializes on demand).
+  if (dbHandle && platformDbHandle) {
+    const roleBackfillOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M3_ROLE_TEMPLATE_BACKFILL_JOB_ID,
+      reason: "GAP-006 role-template backfill: active-org list",
+    });
+    void roleBackfillOrgs
+      .listActiveOrgs()
+      .then(async (orgs) => {
+        for (const { organizationId } of orgs) {
+          try {
+            const result = await materializeRoleTemplatesForOrg(dbHandle.db, organizationId);
+            if (result.rolesCreated.length > 0)
+              app.log.info(
+                { organizationId, roles: result.rolesCreated, grants: result.grantsCreated },
+                "role templates materialized",
+              );
+          } catch (err) {
+            app.log.error({ err, organizationId }, "role-template materialization failed");
+          }
+        }
+      })
+      .catch((err) => app.log.error({ err }, "role-template backfill could not list orgs"));
+  }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
@@ -5276,6 +5380,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // named account — the credential-stuffing shape §5.3.1 actually names. Cluster-wide over Valkey
     // when REDIS_URL is set; per-replica otherwise. Usernames are hashed before they become keys.
     registerIdentityAuth(app, auth, {
+      ...(authAuditSink ? { auditSink: authAuditSink, onAuditError: authAuditErrorLogger } : {}),
+      // GAP-005 — M2 §7.4: `two-factor/disable` is refused while the MFA matrix would no longer be met.
+      ...(mfaGate
+        ? {
+            guard: async ({ relativePath, actor }) => {
+              if (relativePath !== "/two-factor/disable" || !actor) return;
+              const verdict = await mfaGate.forUserWithoutTotp(actor.userId);
+              if (!verdict.satisfied)
+                throw new WardenXError(
+                  "MFA_REQUIRED_FOR_ROLE",
+                  "your role requires a second factor; it cannot be disabled",
+                  403,
+                );
+            },
+          }
+        : {}),
       credentialThrottle: createCredentialThrottle(
         rateLimitRedisClient
           ? createRedisFailedLoginStore(rateLimitRedisClient)

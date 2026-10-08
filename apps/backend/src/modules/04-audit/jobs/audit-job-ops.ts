@@ -31,6 +31,7 @@ import {
   renderAuditExport,
   runExecuteDestruction,
   runRetentionScan,
+  widenSpan,
 } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -369,12 +370,17 @@ export async function runDestructionSweepForOrg(
       to: cert.dateRangeEnd.toISOString(),
     });
     const groups = new Map<string, EraseInput>();
+    const spans = new Map<string, { from: string; to: string }>();
     for (const r of rows) {
       if (r.retentionClass !== retentionClass) continue;
       const resourceId = r.resourceId ?? r.id;
       const patientId =
         typeof r.context?.patientId === "string" ? (r.context.patientId as string) : undefined;
-      groups.set(`${r.resourceKind}|${resourceId}`, {
+      const key = `${r.resourceKind}|${resourceId}`;
+      // GAP-008: the group's created-at span, so a dateRange legal hold can be evaluated against it and the
+      // executor destroys only inside it (never rows outside the span the hold check saw).
+      spans.set(key, widenSpan(spans.get(key), r.createdAt));
+      groups.set(key, {
         retentionClass,
         resourceKind: r.resourceKind,
         resourceId,
@@ -382,6 +388,10 @@ export async function runDestructionSweepForOrg(
         destructionCertificateId: cert.id,
         ...(patientId ? { patientId } : {}),
       });
+    }
+    for (const [key, group] of groups) {
+      const span = spans.get(key);
+      if (span) groups.set(key, { ...group, createdAtFrom: span.from, createdAtTo: span.to });
     }
     await runExecuteDestruction(
       {

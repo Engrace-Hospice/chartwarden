@@ -260,6 +260,12 @@ export {
 // Org-explicit BATCHED role-key read (keys only), injected into other modules' route layers as a port at the composition
 // root (e.g. M14's attendance trust: validating a discipline against the target member's real roles).
 export {
+  type MaterializerTx,
+  type RoleTemplateMaterialization,
+  materializeRoleTemplatesForOrg,
+  materializeRoleTemplatesInTx,
+} from "./role-template-materializer";
+export {
   MEMBERSHIP_ROLE_KEYS_MAX_IDS,
   membershipRoleKeysForOrg,
 } from "./membership-role-keys-for-org";
