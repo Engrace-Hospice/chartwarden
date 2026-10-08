@@ -8,6 +8,7 @@ import type { DbClient } from "@wardenx/db";
 import type { SafetyPolicyProvider } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import type { SosTerminusPort } from "./terminus-port";
 
 /** The system actor id every M20 cron stamps on its per-org `withOrgContext` tx. Empty, not a real UUID:
  *  the M4 write-audit trigger on the safety tables reads the ambient acting-user variable and casts it to
@@ -32,6 +33,9 @@ export interface M20WorkerDeps {
   readonly outbox: WriteOutboxPort;
   readonly policy: SafetyPolicyProvider;
   readonly alerts?: AlertPort;
+  /** GAP-032 — the platform page to WardenX ops. Unbound => the watchdog still refuses the terminus rung
+   *  (it will not record a terminus nobody was paged for) and logs `sosTerminusUnsupported`. */
+  readonly terminus?: SosTerminusPort;
   readonly activeOrgs?: ActiveOrgListPort;
   /** The location's IANA timezone, read through M1's `FoundationSiteReader` (M20 reads no M1 table). Null =
    *  the id does not resolve. Unbound/null makes the overdue detector's `afterHours` default to true. */
