@@ -171,6 +171,14 @@ export interface CreateRecurringInput {
   readonly visitPurpose: VisitPurpose;
   readonly visitSetting: VisitSetting;
   readonly rrule: string;
+  readonly timeOfDayStart: string;
+  readonly timeOfDayEnd: string;
+  readonly timeZone: string;
+  readonly startDate: string;
+  readonly endDate?: string;
+  readonly count?: number;
+  readonly byday?: readonly string[];
+  readonly patientAddressId?: string;
 }
 export interface RequestTimeOffInput {
   readonly membershipId: string;

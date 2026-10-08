@@ -283,12 +283,16 @@ describe.skipIf(!DB_URL)("GAP-052 — M17 reassignment scan + caregiver reminder
     expect(ev.map((e) => e.aggregate_id)).toEqual([due]);
     expect(ev[0]?.payload.channel).toBe("email");
 
-    expect((await svc.emitCaregiverRemindersForOrg(ORG_A, M17_SYSTEM_USER_ID, { now })).remindersEmitted).toBe(0);
+    expect(
+      (await svc.emitCaregiverRemindersForOrg(ORG_A, M17_SYSTEM_USER_ID, { now })).remindersEmitted,
+    ).toBe(0);
     expect(await events(ORG_A, "m17.caregiver_reminder_due")).toHaveLength(1);
 
     // org B was not touched by org A's run, and still gets its own when its turn comes.
     expect(await events(ORG_B, "m17.caregiver_reminder_due")).toHaveLength(0);
-    expect((await svc.emitCaregiverRemindersForOrg(ORG_B, M17_SYSTEM_USER_ID, { now })).remindersEmitted).toBe(1);
+    expect(
+      (await svc.emitCaregiverRemindersForOrg(ORG_B, M17_SYSTEM_USER_ID, { now })).remindersEmitted,
+    ).toBe(1);
     expect((await events(ORG_B, "m17.caregiver_reminder_due"))[0]?.aggregate_id).toBe(dueB);
   });
 

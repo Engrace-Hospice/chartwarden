@@ -319,6 +319,10 @@ describe("M17-T09 §7 workflow acceptance", () => {
       visitPurpose: "routine_visit",
       visitSetting: "patient_home",
       rrule: "FREQ=WEEKLY;BYDAY=MO,WE,FR",
+      timeOfDayStart: "10:00",
+      timeOfDayEnd: "11:00",
+      timeZone: "America/Los_Angeles",
+      startDate: "2026-07-01",
     });
     expect(recurring.status).toBe("active");
 

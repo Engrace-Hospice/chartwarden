@@ -555,6 +555,14 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
         visitPurpose: b.visitPurpose,
         visitSetting: b.visitSetting,
         rrule: b.rrule,
+        timeOfDayStart: b.timeOfDayStart,
+        timeOfDayEnd: b.timeOfDayEnd,
+        timeZone: b.timeZone,
+        startDate: b.startDate,
+        ...(b.endDate !== undefined ? { endDate: b.endDate } : {}),
+        ...(b.count !== undefined ? { count: b.count } : {}),
+        ...(b.byday !== undefined ? { byday: b.byday } : {}),
+        ...(b.patientAddressId !== undefined ? { patientAddressId: b.patientAddressId } : {}),
       });
       return reply.code(201).send(res);
     },

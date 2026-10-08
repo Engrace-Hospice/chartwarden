@@ -357,6 +357,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       visitPurpose: "routine_visit",
       visitSetting: "patient_home",
       rrule: "FREQ=WEEKLY;BYDAY=MO,WE,FR",
+      timeOfDayStart: "10:00",
+      timeOfDayEnd: "11:00",
+      timeZone: "America/Los_Angeles",
+      startDate: "2026-07-01",
     });
     expect(rec.status).toBe("active");
     const disc = await svc.discontinueRecurring(ORG_A, member, rec.id);
