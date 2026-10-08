@@ -18,6 +18,7 @@ import {
   nextTier,
 } from "../domain";
 import type { M25WriteActor } from "./actor";
+import { loadAppealPacketPayload } from "./appeal-packet-payload";
 import { VersionConflictError } from "./concurrency";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
 import type {
@@ -306,6 +307,7 @@ export function buildDrizzleM25WriteService(
     },
 
     async submitAppeal(actor, id, input: AppealSubmitInput, ifMatch) {
+      const submittedAt = new Date();
       return transitionAppeal(
         actor,
         id,
@@ -328,21 +330,28 @@ export function buildDrizzleM25WriteService(
               appealCaseId: id,
               denialCaseId: cur.denialCaseId,
               tier: cur.tier,
-              submittedAt: new Date(0).toISOString(),
+              submittedAt: submittedAt.toISOString(),
             },
           });
+          // GAP-036 - the typed packet payload (narrative, document index, claim / remit refs), built from
+          // the appeal + denial rows under RLS; M22 validates it before drawing the letter.
           await outbox.publish(tx, {
             eventName: "m25.appeal_packet.render_requested",
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: { appealCaseId: id, tier: cur.tier, payload: {} },
+            payload: {
+              appealCaseId: id,
+              tier: cur.tier,
+              payload: await loadAppealPacketPayload(tx, { id, ...cur }, input, submittedAt),
+            },
           });
         },
       );
     },
 
     async submitAppealLateGoodCause(actor, id, input: AppealLateGoodCauseInput, ifMatch) {
+      const submittedAt = new Date();
       return transitionAppeal(
         actor,
         id,
@@ -368,7 +377,7 @@ export function buildDrizzleM25WriteService(
               appealCaseId: id,
               denialCaseId: cur.denialCaseId,
               tier: cur.tier,
-              submittedAt: new Date().toISOString(),
+              submittedAt: submittedAt.toISOString(),
               lateGoodCauseFiling: true,
             },
           });
@@ -377,7 +386,11 @@ export function buildDrizzleM25WriteService(
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: { appealCaseId: id, tier: cur.tier, payload: { lateGoodCauseFiling: true } },
+            payload: {
+              appealCaseId: id,
+              tier: cur.tier,
+              payload: await loadAppealPacketPayload(tx, { id, ...cur }, input, submittedAt),
+            },
           });
         },
         (cur) => {

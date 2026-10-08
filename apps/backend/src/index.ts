@@ -929,6 +929,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
 // medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
@@ -1314,6 +1315,7 @@ import {
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
+import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
@@ -1339,6 +1341,7 @@ import {
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
+import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
@@ -4715,6 +4718,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 const ccn = rows.length === 1 ? rows[0]?.ccn : null;
                 return typeof ccn === "string" && /^\d{6}$/.test(ccn) ? ccn : null;
               },
+              // GAP-038 — M23's rate table supplies the inpatient-overage recoupment differential.
+              (tx, organizationId, capYear, mix) =>
+                resolveInpatientCapDifferential(
+                  tx as Parameters<typeof resolveInpatientCapDifferential>[0],
+                  organizationId,
+                  capYear,
+                  mix,
+                ),
             ),
           });
           if (m26PsrEnqueuer)
@@ -6290,7 +6301,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             eventType: alertCode,
             payload,
             severity,
-            correlationId: `m27-cron:${alertCode}`,
+            correlationId: cronAlertCorrelationId("m27-cron", alertCode, payload),
           });
         },
       },
@@ -6406,12 +6417,20 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // seam (the M27 `WX-PR-013` pattern).
       alerts: {
         dispatch: async ({ alertCode, severity, organizationId, payload }) => {
-          await m23AlertEmitter.emit(organizationId, {
-            eventType: alertCode,
-            payload,
-            severity,
-            correlationId: `m23-cron:${alertCode}`,
-          });
+          // Platform-status alerts (MAC portal up/down) carry no tenant (organizationId ""): fan out once per
+          // active org so each tenant's admins hear about it instead of an org-less alert reaching nobody.
+          const targetOrgs =
+            organizationId === ""
+              ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
+              : [organizationId];
+          for (const orgId of targetOrgs) {
+            await m23AlertEmitter.emit(orgId, {
+              eventType: alertCode,
+              payload,
+              severity,
+              correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
+            });
+          }
         },
       },
       activeOrgs: m23ActiveOrgs,
@@ -6728,7 +6747,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           eventType: alertCode,
           payload,
           severity,
-          correlationId: `m25-cron:${alertCode}`,
+          correlationId: cronAlertCorrelationId("m25-cron", alertCode, payload),
         });
       },
     };
@@ -6770,7 +6789,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           eventType: alertCode,
           payload,
           severity,
-          correlationId: `m26-cron:${alertCode}`,
+          correlationId: cronAlertCorrelationId("m26-cron", alertCode, payload),
         });
       },
     };
@@ -6779,7 +6798,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       db: dbHandle.db,
       activeOrgs: m26ActiveOrgs,
       alerts: m26Alerts,
-      ...(m26PsrFiles ? { psrFiles: m26PsrFiles, outbox: m26OutboxPublisher } : {}),
+      // GAP-041 — the outbox is bound unconditionally: the nightly projection and the year-close cron publish
+      // projection_updated / threshold_crossed / year_closing through it (they were lost to a no-op publisher).
+      outbox: m26OutboxPublisher,
+      ...(m26PsrFiles ? { psrFiles: m26PsrFiles } : {}),
     });
     attachDlqAlertsToAll(m26Workers, "m26");
     app.addHook("onClose", async () => {
@@ -8822,6 +8844,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-118 — M5's §164.526 amendment-SLA events (due soon / overdue) page the privacy officer + compliance.
           buildM36AmendmentSlaAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-040 — M26's `m26.cap.threshold_crossed` band escalations page finance leads (breach: + compliance).
+          buildM36CapThresholdAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
@@ -9836,7 +9860,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   eventType: alertCode,
                   payload,
                   severity,
-                  correlationId: `m23-taxonomy:${alertCode}`,
+                  correlationId: cronAlertCorrelationId("m23-taxonomy", alertCode, payload),
                 });
               },
             },

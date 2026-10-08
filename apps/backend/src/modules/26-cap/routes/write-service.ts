@@ -72,7 +72,12 @@ export interface M26WriteService {
   ): Promise<PeriodView>;
   closePeriod(actor: M26WriteActor, periodId: string): Promise<PeriodView>;
   reopenPeriod(actor: M26WriteActor, periodId: string, input: ReopenInput): Promise<PeriodView>;
-  recompute(actor: M26WriteActor, periodId: string): Promise<ProjectionView[]>;
+  /** `trigger` stamps how the snapshots were produced (`manual_recompute` by default; the cron passes `nightly_batch`). */
+  recompute(
+    actor: M26WriteActor,
+    periodId: string,
+    trigger?: "nightly_batch" | "remittance_trigger" | "manual_recompute",
+  ): Promise<ProjectionView[]>;
   acknowledgeEvent(actor: M26WriteActor, eventId: string, input: AcknowledgeInput): Promise<void>;
   importPsr(
     actor: M26WriteActor,

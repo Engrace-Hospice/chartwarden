@@ -657,13 +657,13 @@ jobs:
           # m18.evv.aggregator_rejected.
           - {
               name: "M25 denial-worklist seed consumers",
-              scripts: "test:m25:denial-seed-consumers:live",
+              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live",
             }
           # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
           - {
               name: "M26 Cap Management",
-              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live test:m26:projections-alerts:live",
             }
           - {
               name: "M30 HQRP & Quality",
@@ -973,7 +973,10 @@ jobs:
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           # M23 §4.4 — HETS 270/271 eligibility (sandbox transport) + hospice-periods read + MBI non-persistence.
-          - { name: "M23 HETS eligibility", scripts: "test:m23:hets-eligibility:live" }
+          - {
+              name: "M23 HETS eligibility",
+              scripts: "test:m23:hets-eligibility:live test:m23:eligibility-read-audit:live",
+            }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # The receiving hospice's transfer notice (TOB 8xC): drafted on transfer-in, held until the
           # transferring hospice's billing is confirmed, submitted, acked; same-CCN / once-per-period refusals.

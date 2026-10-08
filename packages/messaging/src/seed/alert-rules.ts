@@ -8,28 +8,12 @@
 // resolution engine lives, M36-T04) so the §7.4 invariants are unit-assertable without live infra
 // and the boot slice can UPSERT it. The `severityFloor` here is the legacy `alert_severity`
 // ladder on `alert_rule` (§3.2), distinct from the `alert_payload_severity` catalog ladder (§3.11).
-import type {
-  AlertCategory,
-  AlertRecipientResolver,
-  AlertSeverity,
-  NotificationChannel,
-} from "../interfaces/kinds";
+import type { AlertCategory, AlertRecipientResolver, AlertSeverity } from "../interfaces/kinds";
 import type { ResolverArgs } from "../resolution";
+import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
+import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
 
-/** One platform-default `alert_rule` (organization_id IS NULL). Typed against the §3.2 enum
- *  unions so `tsc` rejects an invalid category/severity/resolver/channel at authoring time. */
-export interface PlatformAlertRuleSeed {
-  readonly eventType: string;
-  readonly category: AlertCategory;
-  readonly severityFloor: AlertSeverity;
-  readonly recipientResolver: AlertRecipientResolver;
-  readonly resolverArgs: ResolverArgs;
-  /** null ⇒ use recipient preferences (no channel override, §3.6). */
-  readonly channelsOverride: readonly NotificationChannel[] | null;
-  /** true ⇒ tenants cannot disable or loosen this rule (§7.4). */
-  readonly systemLocked: boolean;
-  readonly enabled: boolean;
-}
+export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
 /**
  * The platform-default alert rules (§3.10). Each org's effective catalog is the union of these
@@ -670,6 +654,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
       enabled: true,
     }),
   ),
+  // GAP-035 — the M23 window/ack crons, M25 denial/appeal crons, M26 cap crons and M27 filing-deadline tiers.
+  ...BILLING_CAP_ALERT_RULES,
   {
     eventType: "cap.approaching",
     category: "administrative",

@@ -3,14 +3,36 @@
 // and the 20% cap and M27's inpatient days read 0 for every tenant.
 //
 // A claim_line is "finalized" when the 835 pays its claim (the claim lands in PAID / PARTIAL_PAID — see
-// `m25-remittance.ts`, which calls this inside the same transaction as the state transition). Only the
-// inpatient revenue codes the cap counts are emitted (0655 IRC, 0656 GIP, D13); the day count is the line's
-// own `unit_count` (per-diem lines carry days). Pure — the caller owns the transaction and the publish.
+// `m25-remittance.ts`, which calls this inside the same transaction as the state transition). Every hospice
+// level-of-care revenue code is emitted (GAP-038): 0655 IRC + 0656 GIP are the 20% cap's numerator (D13), and
+// 0651 RHC + 0652 CHC complete its denominator (total hospice days) — without them the inpatient utilisation
+// read 0%. The day count is the line's own `unit_count` for per-diem lines (0651/0655/0656); a continuous-
+// home-care line (0652) bills hourly units, so its days are the inclusive service-date span. Pure — the
+// caller owns the transaction and the publish.
 import type { schema } from "@wardenx/db";
 import type { OutboxEmitInput } from "../services/claim-state-service";
 
-/** The revenue codes the 20% inpatient cap counts (42 CFR 418.309(b)). */
+/** The revenue codes the 20% inpatient cap's NUMERATOR counts (42 CFR 418.309(b)). */
 export const INPATIENT_CAP_REVENUE_CODES: ReadonlySet<string> = new Set(["0655", "0656"]);
+/** Every hospice level-of-care code: the numerator codes plus RHC (0651) and CHC (0652), the denominator. */
+export const HOSPICE_LOC_REVENUE_CODES: ReadonlySet<string> = new Set([
+  "0651",
+  "0652",
+  "0655",
+  "0656",
+]);
+const CHC_REVENUE_CODE = "0652";
+const MS_PER_DAY = 86_400_000;
+
+/** Billable hospice days on a line: per-diem units, except CHC (hourly units) = the inclusive date span. */
+function lineDays(line: ClaimLineFacts): number {
+  if (line.revenueCode !== CHC_REVENUE_CODE) return line.unitCount;
+  const from = Date.parse(`${line.serviceDateFrom}T00:00:00Z`);
+  const to = Date.parse(`${line.serviceDateTo}T00:00:00Z`);
+  return Number.isFinite(from) && Number.isFinite(to)
+    ? Math.floor((to - from) / MS_PER_DAY) + 1
+    : 0;
+}
 
 type ClaimLineFacts = Pick<
   schema.ClaimLine,
@@ -26,7 +48,7 @@ export function buildClaimLineFinalizedEmissions(args: {
   readonly finalizedAt: string;
 }): readonly OutboxEmitInput[] {
   return args.lines
-    .filter((line) => INPATIENT_CAP_REVENUE_CODES.has(line.revenueCode) && line.unitCount > 0)
+    .filter((line) => HOSPICE_LOC_REVENUE_CODES.has(line.revenueCode) && lineDays(line) > 0)
     .map((line) => ({
       eventName: "m23.claim.line_finalized",
       organizationId: args.organizationId,
@@ -40,7 +62,7 @@ export function buildClaimLineFinalizedEmissions(args: {
         serviceFrom: line.serviceDateFrom,
         serviceTo: line.serviceDateTo,
         serviceDate: line.serviceDateFrom,
-        days: line.unitCount,
+        days: lineDays(line),
         finalizedAt: args.finalizedAt,
       },
     }));

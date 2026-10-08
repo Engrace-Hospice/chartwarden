@@ -20,7 +20,7 @@ import { deriveObjectKey, deriveTenantBucket } from "../lifecycle/storage";
 import {
   DEFAULT_PDF_RENDERERS,
   type PdfRendererRegistry,
-  renderRegisteredPdf,
+  renderPdfForTemplate,
 } from "../render-pdf";
 import type { DocumentSeamStore, ObjectStorePort } from "./store";
 
@@ -426,26 +426,20 @@ export type ShortIdFn = () => string;
 const realShortId: ShortIdFn = () =>
   Array.from({ length: 12 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 
-/** Deterministic stand-in for the §7.2 step-4 PDF render. The real react-pdf/puppeteer adapter is injected
- * in a later task; this produces stable bytes from the template key + payload so the handshake (key shape,
- * version chain, immutability) is testable with no PDF library. */
-function standInBytes(templateKey: string, payload: unknown): Uint8Array {
-  const json = JSON.stringify({ templateKey, payload });
-  return new TextEncoder().encode(`%PDF-1.7\n% wardenx-render\n${json}\n`);
-}
-
-/** §7.2 step 4. A template with a registered real renderer (../render-pdf/registry.ts — today `idg_minutes`
- * and `idg_patient_packet`) yields a real, valid, byte-deterministic PDF; every other key keeps the
- * deterministic stand-in above, so registering one template never changes another's bytes. */
+/** §7.2 step 4. Every template yields a real, valid, byte-deterministic PDF (GAP-033): a registered bespoke
+ * layout (../render-pdf/registry.ts) or, for a template without one, its payload rendered through the
+ * structured generic builder. The old JSON-behind-a-"%PDF"-header stand-in is gone, so registering one
+ * template never changes another's bytes and no render writes a file a PDF reader cannot open. */
 function renderBytes(
   templateKey: string,
   payload: unknown,
   registry: PdfRendererRegistry,
+  defaultTitle: string,
 ): Uint8Array {
-  return renderRegisteredPdf(templateKey, payload, registry) ?? standInBytes(templateKey, payload);
+  return renderPdfForTemplate(templateKey, payload, defaultTitle, registry);
 }
 
-/** Every current template resolves through {@link renderBytes}' PDF stand-in (GAP-095). */
+/** Every template resolves through {@link renderBytes} to application/pdf. */
 const RENDER_MIME_TYPE = "application/pdf";
 
 export interface DocumentRendererDeps {
@@ -454,8 +448,8 @@ export interface DocumentRendererDeps {
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   readonly now?: NowClock;
   readonly shortId?: ShortIdFn;
-  /** Template key -> real-PDF document builder. Defaults to {@link DEFAULT_PDF_RENDERERS}; pass `{}` to force
-   *  the stand-in for every template. */
+  /** Template key -> bespoke document builder. Defaults to {@link DEFAULT_PDF_RENDERERS}; pass `{}` to force the
+   *  structured generic layout for every template. */
   readonly pdfRenderers?: PdfRendererRegistry;
 }
 
@@ -489,7 +483,7 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
       const bucket = deriveTenantBucket(organizationId);
 
       // §7.2 step 4: render the bytes (real PDF for registered templates, the stand-in otherwise).
-      const bytes = renderBytes(templateKey, payload, pdfRenderers);
+      const bytes = renderBytes(templateKey, payload, pdfRenderers, descriptor.defaultTitle);
 
       // §7.2 step 5 / D11: derive the PHI-free per-version key, then write the bytes BEFORE the row exists
       // (a failed write never leaves an orphan `document` row). The documentId is not yet known on a

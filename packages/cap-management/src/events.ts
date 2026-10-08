@@ -53,6 +53,12 @@ export const ThresholdCrossedPayload = Type.Object({
   bandFrom: Type.String({ minLength: 1 }),
   bandTo: Type.String({ minLength: 1 }),
   eventId: id,
+  // GAP-040 — the figures the M36 alert consumer renders, so it needs no M26 read. All optional: events
+  // published before these fields existed still validate.
+  capYear: Type.Optional(Type.String({ pattern: "^FY\\d{4}$" })),
+  pctOfCap: Type.Optional(Type.Number()),
+  paidYtdCents: Type.Optional(cents),
+  capAmountCents: Type.Optional(cents),
 });
 
 export const YearOpenedPayload = Type.Object({

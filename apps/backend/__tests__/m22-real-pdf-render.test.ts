@@ -585,7 +585,7 @@ describe("renderer registry wiring", () => {
       shortId: () => "abcdef012345",
       ...extra,
     });
-  it("real PDF for M14 templates, unchanged stand-in for every other template, PHI-free keys", async () => {
+  it("real PDF for M14 templates, a generic real PDF for every other template, PHI-free keys", async () => {
     await make().render({ orgId: "11111111-1111-4111-8111-111111111111" }, "idg_minutes", {
       ...minutesPayload,
       aggregateId: "min-1",
@@ -601,21 +601,22 @@ describe("renderer registry wiring", () => {
         .toString("latin1")
         .startsWith("%PDF-1.4"),
     ).toBe(true);
-    expect(Buffer.from((other as { bytes: Uint8Array }).bytes).toString("latin1")).toContain(
-      "% wardenx-render",
-    );
+    // GAP-033 - a template with no bespoke layout is still a REAL, parseable PDF (never JSON behind a header).
+    const generic = parsePdf((other as { bytes: Uint8Array }).bytes);
+    expect(generic.raw).not.toContain("wardenx-render");
+    expect(generic.text.join("\n")).toContain("Consent");
     expect((minutes as { objectKey: string }).objectKey).not.toContain("Sunrise");
     expect(captured[0]?.mimeType).toBe("application/pdf");
   });
-  it("pdfRenderers: {} forces the stand-in", async () => {
+  it("pdfRenderers: {} forces the generic layout (still a real PDF)", async () => {
     written.length = 0;
     await make({ pdfRenderers: {} }).render(
       { orgId: "11111111-1111-4111-8111-111111111111" },
       "idg_minutes",
       { aggregateId: "min-2", patientId: null },
     );
-    expect(Buffer.from((written[0] as { bytes: Uint8Array }).bytes).toString("latin1")).toContain(
-      "% wardenx-render",
-    );
+    const parsed = parsePdf((written[0] as { bytes: Uint8Array }).bytes);
+    expect(parsed.raw).not.toContain("wardenx-render");
+    expect(parsed.pages).toBeGreaterThanOrEqual(1);
   });
 });

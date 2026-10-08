@@ -125,7 +125,7 @@ export async function runDenialAgingCron(deps: M25WorkerDeps): Promise<void> {
       for (const a of result.alerts) {
         await alerts.dispatch({
           alertCode: a.kind,
-          severity: a.kind === "denial.high_value" ? "high" : "warn",
+          severity: a.kind === "denial.high_value" ? "critical" : "warn",
           organizationId,
           payload: a.detail,
         });

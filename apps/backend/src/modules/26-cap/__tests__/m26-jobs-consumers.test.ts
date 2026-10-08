@@ -106,7 +106,7 @@ describe("M26 §4.4 consumer dispatch", () => {
     });
   });
 
-  it("routes claim.line_finalized rev 0656 → recordInpatientDay; ignores non-inpatient rev codes", async () => {
+  it("routes claim.line_finalized hospice LOC rev codes → recordInpatientDay; ignores any other rev code", async () => {
     const store: CapConsumerStore = {
       ...createInMemoryCapConsumerStore(),
       recordInpatientDay: vi.fn(async () => ({ recorded: true })),
@@ -135,7 +135,7 @@ describe("M26 §4.4 consumer dispatch", () => {
           organizationId: "o1",
           patientId: "p1",
           claimLineId: "cl2",
-          revenueCode: "0651",
+          revenueCode: "0250",
           days: 3,
           serviceFrom: "2025-01-01",
           serviceTo: "2025-01-03",
@@ -145,6 +145,27 @@ describe("M26 §4.4 consumer dispatch", () => {
       store,
     );
     expect(other.handled).toBe(false);
+    // GAP-038 — a routine-home-care day is the cap denominator, so it IS recorded.
+    const rhc = await dispatchM26UpstreamEvent(
+      {
+        topic: "m23.claim.line_finalized",
+        payload: {
+          organizationId: "o1",
+          patientId: "p1",
+          claimLineId: "cl3",
+          revenueCode: "0651",
+          days: 30,
+          serviceFrom: "2025-01-01",
+          serviceTo: "2025-01-30",
+          finalizedAt: "2025-02-01T00:00:00Z",
+        },
+      },
+      store,
+    );
+    expect(rhc.handled).toBe(true);
+    expect(store.recordInpatientDay).toHaveBeenLastCalledWith(
+      expect.objectContaining({ revCode: "0651", days: 30 }),
+    );
   });
 
   it("routes m5.patient.deceased → freezePatient", async () => {
