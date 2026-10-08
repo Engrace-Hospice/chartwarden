@@ -2792,8 +2792,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: AddQapiPipBodySchema,
   },
   "POST /api/v1/quality/qapi/pips/:pipId/close": {
-    summary: "Close a PIP",
+    summary: "Initiate a PIP close (first of two steps; the nominee confirms)",
     body: CloseQapiPipBodySchema,
+  },
+  "POST /api/v1/quality/qapi/pips/:pipId/close/confirm": {
+    summary: "Confirm a pending PIP close as the nominated co-signer",
   },
   "POST /api/v1/quality/qapi/governance": {
     summary: "Record QAPI governance minutes",
@@ -2835,8 +2838,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: UpdateSraRemediationBodySchema,
   },
   "POST /api/v1/quality/sra/cycles/:cycleId/close": {
-    summary: "Close an SRA cycle (two-person close)",
+    summary: "Initiate an SRA cycle close (first of two steps; the nominee confirms)",
     body: CloseSraCycleBodySchema,
+  },
+  "POST /api/v1/quality/sra/cycles/:cycleId/close/confirm": {
+    summary: "Confirm a pending SRA cycle close as the nominated co-signer",
   },
 
   // ── M23 Billing — Medicare (§4.1 route surface) ──────────────────────────────────────────────────────
