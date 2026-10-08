@@ -23,6 +23,7 @@ import {
   createDrizzleAlertEmitter,
   createDrizzleRoleSetMembersReader,
 } from "../src/modules/36-messaging/alert-emitter-drizzle";
+import { wireAlertRuleSeed } from "../src/modules/36-messaging/alert-rule-seed-persister";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -34,6 +35,7 @@ const PLATFORM_ORG = "22222222-2222-4222-8222-222222222222";
 const U_OFFICER = "a0000000-0000-4000-8000-000000000001";
 const U_OWNER = "a0000000-0000-4000-8000-000000000002";
 const U_SQUATTER = "a0000000-0000-4000-8000-000000000003";
+const U_ADMIN = "a0000000-0000-4000-8000-000000000004";
 
 describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => {
   let admin: Client;
@@ -83,8 +85,8 @@ describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => 
       [TENANT, PLATFORM_ORG],
     );
     await admin.query(
-      `INSERT INTO "user" (id,email) VALUES ($1,'officer@m34res.test'),($2,'owner@m34res.test'),($3,'squatter@m34res.test')`,
-      [U_OFFICER, U_OWNER, U_SQUATTER],
+      `INSERT INTO "user" (id,email) VALUES ($1,'officer@m34res.test'),($2,'owner@m34res.test'),($3,'squatter@m34res.test'),($4,'admin@m34res.test')`,
+      [U_OFFICER, U_OWNER, U_SQUATTER, U_ADMIN],
     );
 
     // A tenant compliance officer (tenant-owned role).
@@ -95,6 +97,13 @@ describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => 
       )
     ).rows[0].id as string;
     await bind(TENANT, await membership(U_OFFICER, TENANT), officerRole);
+    const adminRole = (
+      await admin.query(
+        "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'org_admin','OA','clinical_staff',true) RETURNING id",
+        [TENANT],
+      )
+    ).rows[0].id as string;
+    await bind(TENANT, await membership(U_ADMIN, TENANT), adminRole);
 
     // The platform security owner: a PLATFORM-OWNED role row (organization_id NULL), bound in the platform org.
     const platformRole = (
@@ -173,5 +182,16 @@ describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => 
       correlationId: "gap-057-officer",
     });
     expect(await recipientsOf(alertId)).toContain(U_OFFICER);
+  });
+
+  it("GAP-068: an mdm.physician_deactivated alert now resolves a recipient (the tenant admin)", async () => {
+    await wireAlertRuleSeed(handle.db);
+    const { alertId } = await emitter.emit(TENANT, {
+      eventType: "mdm.physician_deactivated",
+      payload: { canonicalId: "c1", npi: "1234567893", kind: "physician", deepLink: "/mdm" },
+      severity: "warn",
+      correlationId: "gap-068-deactivated",
+    });
+    expect(await recipientsOf(alertId)).toContain(U_ADMIN);
   });
 });
