@@ -67,7 +67,13 @@ const PERMISSION_SEED = [
   },
 ];
 
-function makeServer(opts: { cosignRequired?: boolean; extraRoles?: readonly RoleView[] } = {}) {
+function makeServer(
+  opts: {
+    cosignRequired?: boolean;
+    extraRoles?: readonly RoleView[];
+    auditorLinkDelivery?: AuthzRouteDeps["auditorLinkDelivery"];
+  } = {},
+) {
   const roles = createInMemoryRoleStore();
   const membershipRoles = createInMemoryMembershipRoleStore();
   const breakGlass = createInMemoryBreakGlassStore();
@@ -98,6 +104,7 @@ function makeServer(opts: { cosignRequired?: boolean; extraRoles?: readonly Role
     breakGlass: breakGlass.store,
     engagements: engagements.store,
     auditorSessions: auditorSessions.minter,
+    ...(opts.auditorLinkDelivery ? { auditorLinkDelivery: opts.auditorLinkDelivery } : {}),
     notifier: notifier.notifier,
     effectivePermissions: perms.resolver,
     audit: auditSink.executor,
@@ -701,6 +708,93 @@ describe("M3-T08 authorization route inventory", () => {
       });
       expect(summary.statusCode).toBe(200);
       expect(summary.json().auditorsEnrolled).toBe(1);
+      await app.close();
+    });
+
+    it("DELIVERS the minted link to the auditor (token only to the delivery port, never the response)", async () => {
+      const delivered: Array<{
+        organizationId: string;
+        engagementId: string;
+        auditorEmail: string;
+        token: string;
+        expiresAt: Date;
+      }> = [];
+      const { app, auditorSessions } = makeServer({
+        auditorLinkDelivery: {
+          async deliver(input) {
+            delivered.push(input);
+          },
+        },
+      });
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/engagements",
+        headers: COMPLIANCE,
+        payload: {
+          engagementType: "cms_survey",
+          auditorAgency: "CMS",
+          scope: { tenantWide: true },
+          startAt: "2026-07-01T00:00:00.000Z",
+          endAt: "2026-07-15T00:00:00.000Z",
+        },
+      });
+      const engagementId = create.json().engagementId;
+      const enroll = await app.inject({
+        method: "POST",
+        url: `/api/v1/engagements/${engagementId}/auditors`,
+        headers: COMPLIANCE,
+        payload: { name: "Dana Auditor", email: "dana@cms.example" },
+      });
+      expect(enroll.statusCode).toBe(201);
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]).toMatchObject({
+        organizationId: "org_a",
+        engagementId,
+        auditorEmail: "dana@cms.example",
+        expiresAt: new Date("2026-07-15T00:00:00.000Z"),
+      });
+      expect(delivered[0]?.token.length).toBeGreaterThan(8);
+      expect(enroll.body).not.toContain(delivered[0]?.token ?? "never");
+      expect(auditorSessions.mints()).toHaveLength(1);
+      await app.close();
+    });
+
+    it("FAILS the enrolment (503) when delivery fails, and records no enrolment", async () => {
+      const { app } = makeServer({
+        auditorLinkDelivery: {
+          async deliver() {
+            throw new Error("smtp down: secret-detail");
+          },
+        },
+      });
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/engagements",
+        headers: COMPLIANCE,
+        payload: {
+          engagementType: "cms_survey",
+          auditorAgency: "CMS",
+          scope: { tenantWide: true },
+          startAt: "2026-07-01T00:00:00.000Z",
+          endAt: "2026-07-15T00:00:00.000Z",
+        },
+      });
+      const engagementId = create.json().engagementId;
+      const enroll = await app.inject({
+        method: "POST",
+        url: `/api/v1/engagements/${engagementId}/auditors`,
+        headers: COMPLIANCE,
+        payload: { name: "Dana Auditor", email: "dana@cms.example" },
+      });
+      expect(enroll.statusCode).toBe(503);
+      expect(enroll.json().error.code).toBe("AUDITOR_LINK_DELIVERY_FAILED");
+      expect(enroll.body).not.toContain("secret-detail");
+      const summary = await app.inject({
+        method: "GET",
+        url: `/api/v1/engagements/${engagementId}/summary`,
+        headers: COMPLIANCE,
+      });
+      expect(summary.json().auditorsEnrolled).toBe(0);
       await app.close();
     });
 

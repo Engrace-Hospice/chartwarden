@@ -3416,6 +3416,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auditors/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7) */
+        post: operations["postApiV1AuditorsRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/context": {
         parameters: {
             query?: never;
@@ -31435,6 +31452,16 @@ export interface operations {
                             lastSealedPartition: string;
                             brokenAt: string | null;
                         };
+                        integritySample?: {
+                            /** Format: date-time */
+                            lastRun: string;
+                            result: "match" | "mismatch" | "skipped" | "error";
+                            sealsTotal: number;
+                            sealsSampled: number;
+                            eventsHashed: number;
+                            mismatches: number;
+                            backupCrossReference: string;
+                        };
                     };
                 };
             };
@@ -31558,6 +31585,42 @@ export interface operations {
                         documentsViewed: number;
                         amendmentsSubmitted: number;
                         administrationsAttested: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsRedeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    organizationId: string;
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        sessionClass: "auditor";
+                        organizationId: string;
+                        engagementId: string;
+                        /** Format: date-time */
+                        expiresAt: string;
                     };
                 };
             };

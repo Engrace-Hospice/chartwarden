@@ -40,6 +40,10 @@ import {
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
 import {
+  AuditorRedeemRequestSchema as M2AuditorRedeemRequestSchema,
+  AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
+import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
@@ -6128,6 +6132,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased)",
     body: M2FuneralInviteRequestSchema,
     response: M2FuneralInviteResponseSchema,
+  },
+  "POST /api/v1/auditors/redeem": {
+    summary:
+      "Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7)",
+    body: M2AuditorRedeemRequestSchema,
+    response: M2AuditorRedeemResponseSchema,
   },
   "POST /api/v1/collaborators/consume": {
     summary: "Consume the link → scoped external-collaborator session (§7.6)",

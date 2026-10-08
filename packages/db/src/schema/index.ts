@@ -74,6 +74,7 @@ export * from "./destruction-certificates";
 export * from "./state-retention-overrides";
 export * from "./audit-exports";
 export * from "./audit-seals";
+export * from "./audit-integrity-runs";
 export * from "./audit-denylist-catalog";
 export * from "./audit-action-catalog";
 // M38-T02 — Clinical Terminology Service schema (M38 spec §3.3–3.6). M38 owns 13 tables.

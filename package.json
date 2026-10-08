@@ -297,6 +297,8 @@
     "test:m3:break-glass:live": "vitest run apps/backend/__tests__/ac-01-break-glass-cosign.live.test.ts",
     "test:m3:break-glass-outbox:live": "vitest run apps/backend/__tests__/gap-010-m3-breakglass-outbox.live.test.ts",
     "test:m3:auditor-engagement:live": "vitest run apps/backend/__tests__/gap-093-m3-auditor-engagement.live.test.ts",
+    "test:m2:auditor-redemption:live": "vitest run apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
+    "test:m4:audit-integrity:live": "vitest run apps/backend/__tests__/m4-audit-integrity-sample.live.test.ts",
     "test:m2:step-up-override:live": "vitest run apps/backend/__tests__/ac-03-step-up-tighten-only.live.test.ts",
     "test:m2:pre-org-picker:live": "vitest run apps/backend/__tests__/f-001-pre-org-membership-picker.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",

@@ -117,6 +117,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.auditor-redeem",
+      "path": "/auditor/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.security-passkeys",
       "path": "/security/passkeys",
       "permission": "(none)"

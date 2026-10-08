@@ -11,7 +11,7 @@
 //                open RETURNING; a replay, an expired, revoked or not-yet-open link all return null.
 //   • revoke   — authz.close_engagements calls it when an engagement closes/cancels, so an unconsumed link
 //                dies with its engagement.
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { AuditorMagicLinkIssuer } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -109,4 +109,113 @@ export async function revokeAuditorMagicLinksForEngagement(
       .returning({ id: LINK.id }),
   );
   return rows.length;
+}
+
+// ── Redemption primitives (the auditor session redemption flow, `auditor-redemption.ts`) ────────────────
+
+/** Where a presented link stands. Order matters: a revoked link is revoked even if it also expired. */
+export type AuditorLinkState = "live" | "consumed" | "revoked" | "expired" | "not_yet_open";
+
+/** The `auditor_magic_link` row, never including the token hash. */
+export interface AuditorLinkRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly engagementId: string;
+  readonly auditorEmail: string;
+  readonly auditorName: string;
+  readonly windowStart: Date;
+  readonly expiresAt: Date;
+  readonly consumedAt: Date | null;
+  readonly revokedAt: Date | null;
+}
+
+/** Pure: classify a link at `now` (injectable clock). */
+export function classifyAuditorLink(
+  row: Pick<AuditorLinkRow, "windowStart" | "expiresAt" | "consumedAt" | "revokedAt">,
+  now: Date,
+): AuditorLinkState {
+  if (row.revokedAt) return "revoked";
+  if (row.consumedAt) return "consumed";
+  if (row.expiresAt.getTime() <= now.getTime()) return "expired";
+  if (row.windowStart.getTime() > now.getTime()) return "not_yet_open";
+  return "live";
+}
+
+/**
+ * Constant-time comparison of two hex sha-256 digests. The row is found by an indexed equality on the hash,
+ * so the database comparison is already over a 256-bit one-way digest of a 256-bit random secret (nothing a
+ * timing channel can usefully probe); this is the defence-in-depth application-level check the redemption
+ * contract asks for, and it also refuses any malformed stored value instead of comparing it.
+ */
+export function auditorTokenHashMatches(storedHashHex: string, candidateHashHex: string): boolean {
+  if (storedHashHex.length !== candidateHashHex.length) return false;
+  const a = Buffer.from(storedHashHex, "hex");
+  const b = Buffer.from(candidateHashHex, "hex");
+  if (a.length === 0 || a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+const LINK_COLUMNS = {
+  id: LINK.id,
+  organizationId: LINK.organizationId,
+  engagementId: LINK.engagementId,
+  auditorEmail: LINK.auditorEmail,
+  auditorName: LINK.auditorName,
+  windowStart: LINK.windowStart,
+  expiresAt: LINK.expiresAt,
+  consumedAt: LINK.consumedAt,
+  revokedAt: LINK.revokedAt,
+  tokenHash: LINK.tokenHash,
+} as const;
+
+/** The scoped transaction handle `withOrgContext` passes — callers cast it to a DbClient, the repo's pattern. */
+type LinkTx = DbClient;
+
+/**
+ * Find the link a presented token names, tenant-scoped (RLS + explicit predicate), optionally taking a row
+ * lock so two concurrent redemptions serialize. `null` for an unknown token or a non-matching digest.
+ */
+export async function findAuditorLinkByToken(
+  tx: LinkTx,
+  organizationId: string,
+  token: string,
+  opts: { readonly lock: boolean },
+): Promise<AuditorLinkRow | null> {
+  const candidate = hashAuditorToken(token);
+  const base = tx
+    .select(LINK_COLUMNS)
+    .from(LINK)
+    .where(and(eq(LINK.organizationId, organizationId), eq(LINK.tokenHash, candidate)))
+    .limit(1);
+  const rows = await (opts.lock ? base.for("update") : base);
+  const row = rows[0];
+  if (!row || !auditorTokenHashMatches(row.tokenHash, candidate)) return null;
+  const { tokenHash: _omit, ...link } = row;
+  return link;
+}
+
+/**
+ * Single-use consume of a specific link row. Matches on the row id AND the still-live predicate and asserts
+ * the RETURNING, so a lost race (or a link revoked a moment ago) reports `false` instead of silently succeeding.
+ */
+export async function consumeAuditorLinkRow(
+  tx: LinkTx,
+  link: Pick<AuditorLinkRow, "id" | "organizationId">,
+  now: Date,
+): Promise<boolean> {
+  const rows = await tx
+    .update(LINK)
+    .set({ consumedAt: now })
+    .where(
+      and(
+        eq(LINK.id, link.id),
+        eq(LINK.organizationId, link.organizationId),
+        isNull(LINK.consumedAt),
+        isNull(LINK.revokedAt),
+        lte(LINK.windowStart, now),
+        gt(LINK.expiresAt, now),
+      ),
+    )
+    .returning({ id: LINK.id });
+  return rows.length === 1;
 }

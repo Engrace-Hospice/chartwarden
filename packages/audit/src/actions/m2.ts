@@ -27,6 +27,14 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.user.deactivated", "A user was fully offboarded (credentials disabled)."),
   compliance("m2.collaborator.invited", "A per-patient collaborator magic-link was issued."),
   compliance("m2.collaborator.session_started", "A collaborator magic-link session began."),
+  compliance(
+    "m2.auditor_link.redeemed",
+    "An auditor magic link was redeemed into a scoped read-only auditor session.",
+  ),
+  compliance(
+    "m2.auditor_link.refused",
+    "Redemption of an auditor magic link was refused (replayed, expired, revoked, engagement not live, identity is a member, ...).",
+  ),
   compliance("m2.session.step_up.completed", "A step-up (re-auth) challenge was completed."),
   compliance("m2.session.step_up.failed", "A step-up (re-auth) challenge failed."),
   compliance(

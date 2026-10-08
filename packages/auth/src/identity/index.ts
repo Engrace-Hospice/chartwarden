@@ -103,6 +103,16 @@ export {
   createInMemoryAuditorMagicLinkIssuer,
 } from "./auditor-session";
 export {
+  type AuditorIssuerAuth,
+  type AuditorIssuerAuthContext,
+  type AuditorSessionIssuer,
+  AuditorSessionIssueError,
+  type IssueAuditorSessionInput,
+  type IssuedAuditorSession,
+  createAuditorSessionIssuer,
+  signSessionCookieValue,
+} from "./auditor-session-issuer";
+export {
   SESSION_CLASSES,
   type SessionClass,
   type SessionLifecycleState,
@@ -135,4 +145,5 @@ export {
   type SessionTimeoutState,
   createDbSessionTimeoutEnforcer,
   evaluateSessionTimeout,
+  isUserStatusBlocked,
 } from "./session-timeout";
