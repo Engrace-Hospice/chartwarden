@@ -8,8 +8,8 @@ import type { FastifyInstance } from "fastify";
 
 import { actorOf } from "./actor";
 import { ABAC_IN_ORG, P } from "./guards";
-import type { M29Store } from "./store";
 import { FEED_HEALTH_NO_PHI } from "./read-audit-configs";
+import type { M29Store } from "./store";
 
 export interface OpsRouteDeps {
   readonly store: M29Store;

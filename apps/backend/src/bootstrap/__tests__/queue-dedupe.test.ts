@@ -29,11 +29,14 @@ describe("addJobCoalescingInFlight", () => {
     expect(remove).toHaveBeenCalledTimes(1);
     expect(add).toHaveBeenCalledTimes(1);
   });
-  it.each(["waiting", "active", "delayed"])("keeps a %s job (true in-flight dedupe)", async (state) => {
-    const { queue, add, remove } = fakeQueue(state);
-    const res = await addJobCoalescingInFlight(queue, "q", {}, { jobId: "j" });
-    expect(remove).not.toHaveBeenCalled();
-    expect(add).toHaveBeenCalledTimes(1);
-    expect(res.id).toBe("j");
-  });
+  it.each(["waiting", "active", "delayed"])(
+    "keeps a %s job (true in-flight dedupe)",
+    async (state) => {
+      const { queue, add, remove } = fakeQueue(state);
+      const res = await addJobCoalescingInFlight(queue, "q", {}, { jobId: "j" });
+      expect(remove).not.toHaveBeenCalled();
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(res.id).toBe("j");
+    },
+  );
 });

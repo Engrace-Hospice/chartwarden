@@ -24,8 +24,12 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
+import {
+  LAB_OBSERVATION_AUDIT,
+  LAB_OBSERVATION_LIST_AUDIT,
+  LAB_UNMATCHED_LIST_AUDIT,
+} from "./read-audit-configs";
 import type { M29Store } from "./store";
-import { LAB_OBSERVATION_AUDIT, LAB_OBSERVATION_LIST_AUDIT, LAB_UNMATCHED_LIST_AUDIT } from "./read-audit-configs";
 
 export interface LabRouteDeps {
   readonly store: M29Store;

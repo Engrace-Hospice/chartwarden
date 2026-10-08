@@ -103,6 +103,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "external_feed.baa_missing",
       // GAP-086 — the MLLP listener could not bind an active inbound feed (not a BAA refusal).
       "external_feed.listener_blocked",
+      // GAP-043 — an active inbound feed went silent with its listener not serving (circuit OPEN).
+      "external_feed.listener_down",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
       // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.

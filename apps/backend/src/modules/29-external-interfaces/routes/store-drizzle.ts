@@ -119,6 +119,18 @@ const UNBOUND_PATIENTS: M29BindPatientResolver = {
   },
 };
 
+/** The newest hourly health row per feed (the current listener state lives on it). */
+function latestHealthByFeed(
+  rows: readonly (typeof HEALTH.$inferSelect)[],
+): Map<string, typeof HEALTH.$inferSelect> {
+  const latest = new Map<string, typeof HEALTH.$inferSelect>();
+  for (const h of rows) {
+    const prev = latest.get(h.feedId);
+    if (!prev || h.hourBucket.getTime() > prev.hourBucket.getTime()) latest.set(h.feedId, h);
+  }
+  return latest;
+}
+
 export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDeps = {}): M29Store {
   const patients: M29BindPatientResolver =
     typeof storeDeps.patients === "function"
@@ -883,11 +895,14 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
           .from(FEED)
           .where(eq(FEED.organizationId, orgId));
         const health = await tx.select().from(HEALTH).where(eq(HEALTH.organizationId, orgId));
+        // GAP-043 — current listener state is the LATEST hourly row per feed (its breaker state), not a
+        // count of every historical row that ever accrued up/down seconds.
+        const latest = [...latestHealthByFeed(health).values()];
         return {
           feedCount: feeds.length,
           activeFeedCount: feeds.filter((f) => f.status === "active").length,
-          listenersUp: health.filter((h) => h.listenerUpSeconds > 0).length,
-          listenersDown: health.filter((h) => h.listenerDownSeconds > 0).length,
+          listenersUp: latest.filter((h) => h.listenerCircuitState !== "open").length,
+          listenersDown: latest.filter((h) => h.listenerCircuitState === "open").length,
           inboundMessageCount: health.reduce((s, h) => s + h.inboundMessageCount, 0),
           outboundMessageCount: health.reduce((s, h) => s + h.outboundMessageCount, 0),
           parseErrorCount: health.reduce((s, h) => s + h.parseErrorCount, 0),
@@ -898,20 +913,14 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
       return withOrgContext(db, ctx(orgId), async (tx): Promise<ListenerStatusView[]> => {
         const feeds = await tx.select().from(FEED).where(eq(FEED.organizationId, orgId));
         const health = await tx.select().from(HEALTH).where(eq(HEALTH.organizationId, orgId));
-        const latestByFeed = new Map<string, typeof HEALTH.$inferSelect>();
-        for (const h of health) {
-          const prev = latestByFeed.get(h.feedId);
-          if (!prev || h.hourBucket.getTime() > prev.hourBucket.getTime()) {
-            latestByFeed.set(h.feedId, h);
-          }
-        }
+        const latestByFeed = latestHealthByFeed(health);
         return feeds.map((f) => {
           const h = latestByFeed.get(f.id);
           return {
             feedId: f.id,
             displayName: f.displayName,
             status: f.status,
-            listenerUp: f.status === "active" && (h?.listenerUpSeconds ?? 0) > 0,
+            listenerUp: f.status === "active" && !!h && h.listenerCircuitState !== "open",
             lastMessageAt: h?.lastMessageAt ? h.lastMessageAt.toISOString() : null,
           };
         });

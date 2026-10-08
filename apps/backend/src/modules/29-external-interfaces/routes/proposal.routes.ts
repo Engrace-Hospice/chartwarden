@@ -18,8 +18,8 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
-import type { M29Store } from "./store";
 import { PROPOSAL_AUDIT, PROPOSAL_LIST_AUDIT } from "./read-audit-configs";
+import type { M29Store } from "./store";
 
 export interface ProposalRouteDeps {
   readonly store: M29Store;

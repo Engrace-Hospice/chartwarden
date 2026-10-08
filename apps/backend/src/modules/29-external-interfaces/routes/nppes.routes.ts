@@ -19,8 +19,8 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
-import { type M29Store, M29StoreError } from "./store";
 import { NPPES_NO_PHI } from "./read-audit-configs";
+import { type M29Store, M29StoreError } from "./store";
 
 /** The §4.1.4 manual-trigger port (nppes/cron-workers.ts `NppesManualSyncTrigger`), restated locally so
  *  the route layer takes no import edge on bullmq. */

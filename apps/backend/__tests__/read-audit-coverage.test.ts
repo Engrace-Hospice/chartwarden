@@ -17,7 +17,10 @@ import {
 } from "../src/bootstrap/plugins/read-audit";
 import type { M26RouteServices } from "../src/modules/26-cap/routes/index";
 import { mountM26Routes } from "../src/modules/26-cap/routes/mount";
-import { createInMemoryM29Store, mountM29Routes } from "../src/modules/29-external-interfaces/routes";
+import {
+  createInMemoryM29Store,
+  mountM29Routes,
+} from "../src/modules/29-external-interfaces/routes";
 import { mountConsentRoutes } from "../src/modules/39-consent/index";
 
 const PREFIXES = ["/api/v1/patients"];

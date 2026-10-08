@@ -27,8 +27,12 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
+import {
+  FEED_CONFIG_NO_PHI,
+  FEED_CREDENTIAL_NO_PHI,
+  FEED_HEALTH_NO_PHI,
+} from "./read-audit-configs";
 import type { M29Store } from "./store";
-import { FEED_CONFIG_NO_PHI, FEED_CREDENTIAL_NO_PHI, FEED_HEALTH_NO_PHI } from "./read-audit-configs";
 
 export interface FeedRouteDeps {
   readonly store: M29Store;

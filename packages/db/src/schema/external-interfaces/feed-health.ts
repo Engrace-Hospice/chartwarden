@@ -8,7 +8,7 @@
 // PHI, empty §3.6 denylist) so it audits through the baseline `wardenx_audit_trigger()`; the ROW ages at 90
 // days (§3.7) while its audit trail files `compliance` — retention of the row vs. its audit event are
 // distinct. `feed_id` carries a REAL intra-M29 FK to `external_feed`.
-import { bigint, integer, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { externalFeed } from "./feed";
 
@@ -35,6 +35,8 @@ export const externalFeedHealth = pgTable(
     parseErrorCount: integer("parse_error_count").notNull().default(0),
     senderRejectedCount: integer("sender_rejected_count").notNull().default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    /** §4.11.5 breaker state at the last health tick (`closed` | `open` | `half_open`; migration 0700). */
+    listenerCircuitState: text("listener_circuit_state").notNull().default("closed"),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.feedId, t.hourBucket] }),

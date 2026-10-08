@@ -11,8 +11,13 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import { InboundMessageListQuery, OutboundMessageListQuery, parseQuery } from "./m29-typebox";
+import {
+  INBOUND_MESSAGE_AUDIT,
+  INBOUND_MESSAGE_LIST_AUDIT,
+  OUTBOUND_MESSAGE_AUDIT,
+  OUTBOUND_MESSAGE_LIST_AUDIT,
+} from "./read-audit-configs";
 import { type M29Store, M29StoreError } from "./store";
-import { INBOUND_MESSAGE_AUDIT, INBOUND_MESSAGE_LIST_AUDIT, OUTBOUND_MESSAGE_AUDIT, OUTBOUND_MESSAGE_LIST_AUDIT } from "./read-audit-configs";
 
 export interface MessageRouteDeps {
   readonly store: M29Store;

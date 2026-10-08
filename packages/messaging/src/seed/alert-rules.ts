@@ -783,6 +783,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-043 — an ACTIVE inbound HL7 feed went silent (no frame for the §4.11.5 down-threshold) while its listener is
+  // not serving (`evaluateListenerCircuit` tripped OPEN). Inbound ADT / lab results are not arriving: same audience as
+  // `listener_blocked` — the people who can fix the feed.
+  {
+    eventType: "external_feed.listener_down",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
