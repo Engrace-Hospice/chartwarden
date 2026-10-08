@@ -4312,6 +4312,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             buildDrizzleM33ExportDrilldownService({
               db: dbHandle.db,
               outbox: m33OutboxPublisher,
+              tenantKeys: { dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId) },
             }).service,
           );
           // M30 (HQRP & Quality) — mount the nine §4.1 route plugins (measures / CAHPS / risk-register /
@@ -5766,6 +5767,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         auditBypass: m34PlatformBypassAuditor,
         outboxPublisher: m33OutboxPublisher,
         lagProbeRedis: m33LagProbeRedis,
+        tenantKeys: { dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId) },
         mvRefreshEnqueue: m33MvRefreshEnqueue.enqueue,
       }),
     );
