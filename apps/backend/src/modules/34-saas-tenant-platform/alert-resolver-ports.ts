@@ -11,8 +11,8 @@
 //    roles only). Delivery caveat: the notification rows live in the emit-org, so the in-app inbox is not
 //    visible from the owner's own org; out-of-band channels (push/email) reach them.
 import type { DbClient } from "@wardenx/db";
-import { sql } from "drizzle-orm";
 import type { RecipientResolverFn } from "@wardenx/messaging";
+import { sql } from "drizzle-orm";
 import { type M34AlertResolverPorts, registerM34AlertResolvers } from "./alert-rules";
 
 export interface M34AlertResolverBindings {
@@ -32,7 +32,10 @@ export function createDrizzleM34AlertResolverPorts(
     async platformSecurityOwners(roleKeys) {
       if (roleKeys.length === 0) return [];
       const result = await db.execute<{ user_id: string }>(
-        sql`SELECT user_id FROM m34_platform_role_holders(${roleKeys as string[]}::text[])`,
+        sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${sql.join(
+          roleKeys.map((k) => sql`${k}`),
+          sql`, `,
+        )}]::text[])`,
       );
       return result.rows.map((r) => r.user_id);
     },

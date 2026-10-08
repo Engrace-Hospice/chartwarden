@@ -7,11 +7,11 @@
 import { createAlertEmitter } from "@wardenx/messaging";
 import type { AlertEmitterPorts, EmitAlertRule, PersistedAlert } from "@wardenx/messaging";
 import { describe, expect, it } from "vitest";
-import {
-  M34_ALERT_RULES,
-  type M34AlertResolverPorts,
-} from "../src/modules/34-saas-tenant-platform/alert-rules";
 import { m34ResolverExtension } from "../src/modules/34-saas-tenant-platform/alert-resolver-ports";
+import {
+  type M34AlertResolverPorts,
+  M34_ALERT_RULES,
+} from "../src/modules/34-saas-tenant-platform/alert-rules";
 
 const TENANT = "00000000-0000-4000-8000-000000000001";
 const OFFICER = "00000000-0000-4000-8000-0000000000aa";
@@ -44,7 +44,7 @@ function harness() {
           severityFloor: r.severityFloor,
           recipientResolver: r.recipientResolver,
           resolverArgs: r.resolverArgs,
-          channelsOverride: r.channelsOverride,
+          channelsOverride: r.channelsOverride as EmitAlertRule["channelsOverride"],
         }),
       ),
     preferencesFor: async () => new Map(),
