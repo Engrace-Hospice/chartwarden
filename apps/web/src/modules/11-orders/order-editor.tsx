@@ -1,7 +1,7 @@
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
-import { CanonicalOrderFields } from "./order-kind-fields";
+import { CanonicalOrderFields, kindDefaults } from "./order-kind-fields";
 import { OrderAdmissionLookup, OrderingPhysicianLookup } from "./order-lookups";
 
 const KINDS = [
@@ -16,6 +16,20 @@ const KINDS = [
 ] as const;
 
 type OrderKind = (typeof KINDS)[number];
+
+/**
+ * Mirrors `ORDER_KIND_CATALOG[kind].allowsVerbal` in `@wardenx/orders` (§2.3): level-of-care changes
+ * and recertifications need a written order ab initio, so the verbal form must not offer them.
+ */
+const KIND_OPTIONS: ReadonlyArray<{ value: OrderKind; label: string; allowsVerbal: boolean }> = [
+  { value: "lab", label: "Lab", allowsVerbal: true },
+  { value: "dme", label: "DME", allowsVerbal: true },
+  { value: "level_of_care_change", label: "Level of care change", allowsVerbal: false },
+  { value: "recertification", label: "Recertification", allowsVerbal: false },
+  { value: "comfort_kit", label: "Comfort kit", allowsVerbal: true },
+  { value: "supply", label: "Supply", allowsVerbal: true },
+  { value: "ancillary_service", label: "Ancillary service", allowsVerbal: true },
+];
 
 export interface EditableOrder {
   id: string;
@@ -81,6 +95,7 @@ export function OrderEditor({
     setBusy(true);
     setError(null);
     setFieldErrors({});
+    const payload = { ...kindDefaults(kind), ...data };
 
     try {
       let result: { data?: unknown; error?: unknown };
@@ -92,7 +107,7 @@ export function OrderEditor({
         ) => Promise<{ data?: unknown; error?: unknown }>;
         result = await patch("/api/v1/orders/{id}", {
           params: { path: { id: draft.id } },
-          body: { data, priority },
+          body: { data: payload, priority },
         });
       } else {
         const post = client.POST as unknown as (
@@ -113,7 +128,7 @@ export function OrderEditor({
                   admissionId,
                   kind,
                   drafterDiscipline: discipline,
-                  data,
+                  data: payload,
                   priority,
                   orderingPhysicianMdmId: physicianId,
                 },
@@ -131,7 +146,7 @@ export function OrderEditor({
                 admissionId,
                 kind,
                 drafterDiscipline: discipline,
-                data,
+                data: payload,
                 priority,
                 orderingPhysicianMdmId: physicianId,
               },
@@ -197,13 +212,11 @@ export function OrderEditor({
                 onChange={(e) => setKind(e.target.value as OrderKind)}
                 style={control}
               >
-                <option value="lab">Lab</option>
-                <option value="dme">DME</option>
-                <option value="level_of_care_change">Level of care change</option>
-                <option value="recertification">Recertification</option>
-                <option value="comfort_kit">Comfort kit</option>
-                <option value="supply">Supply</option>
-                <option value="ancillary_service">Ancillary service</option>
+                {KIND_OPTIONS.filter((k) => !verbal || k.allowsVerbal).map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {k.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label style={field}>
@@ -317,19 +330,35 @@ function asData(value: unknown): Record<string, unknown> {
     ? (value as Record<string, unknown>)
     : {};
 }
-function message(error: unknown): string {
-  const x = error as { message?: string; detail?: string } | undefined;
+type ApiError = {
+  message?: string;
+  detail?: string;
+  details?: unknown;
+};
+/** The API wraps failures as `{ error: { message, details } }`; accept the unwrapped shape too. */
+function apiError(error: unknown): ApiError {
+  const x = error as (ApiError & { error?: ApiError }) | undefined;
+  return x?.error ?? x ?? {};
+}
+export function message(error: unknown): string {
+  const x = apiError(error);
+  const first = Array.isArray(x.details)
+    ? (x.details[0] as { message?: string } | undefined)?.message
+    : undefined;
   return (
-    x?.detail ??
-    x?.message ??
+    first ??
+    x.detail ??
+    x.message ??
     "The server could not save this order. Review the clinical details and try again."
   );
 }
-function findings(error: unknown): Record<string, string> {
-  const details =
-    (error as { details?: Array<{ field?: string; message?: string }> } | undefined)?.details ?? [];
+export function findings(error: unknown): Record<string, string> {
+  const details = apiError(error).details;
+  const list = Array.isArray(details)
+    ? (details as Array<{ field?: string; message?: string }>)
+    : [];
   return Object.fromEntries(
-    details
+    list
       .filter((x) => x.field && x.message)
       .map((x) => [x.field!.replace(/^data\./, ""), x.message!]),
   );
