@@ -6,6 +6,7 @@
 // notes ("definitions only; members loaded via curation file").
 
 import type { ValueSetScope } from "../interfaces/kinds";
+import { SUD_TEST_LOINC_VALUE_SET_ID } from "./sud-test-loinc";
 
 /** One platform `value_set` definition row (§3.5, §3.9). */
 export interface PlatformValueSetSeed {
@@ -16,7 +17,7 @@ export interface PlatformValueSetSeed {
 }
 
 /**
- * The nine Phase-1 platform value-set definitions (§3.9). Stable order for deterministic
+ * The Phase-1 platform value-set definitions (§3.9). Stable order for deterministic
  * seeding/tests. Members are NOT here — see {@link PLATFORM_VALUE_SET_MEMBERS} (curated) and
  * the per-system loaders (§4.3).
  */
@@ -82,6 +83,16 @@ export const PLATFORM_VALUE_SETS: readonly PlatformValueSetSeed[] = [
     id: "cms_hospice_modifiers",
     name: "CMS hospice-specific HCPCS modifiers",
     description: "GV, GW — the two modifiers CMS defines specifically for hospice claim lines",
+    scope: "platform",
+  },
+  // sud_test_loinc — LOINC codes of 42 CFR Part 2 substance-use-disorder lab tests (GAP-086). M29's inbound
+  // lab gate redacts a result whose LOINC is a member (platform members + the tenant's own extension). Members
+  // are the generated list in sud-test-loinc.ts; the platform database gets them via migration 0500.
+  {
+    id: SUD_TEST_LOINC_VALUE_SET_ID,
+    name: "42 CFR Part 2 substance-use-disorder laboratory tests (LOINC)",
+    description:
+      "LOINC codes for drug-screen / drugs-of-abuse panels, individual drug and metabolite screens and confirmations, and alcohol biomarkers; a match marks an inbound lab result SUD-class (M29 D15). Tenants extend via value_set_tenant_extension.",
     scope: "platform",
   },
 ] as const;
