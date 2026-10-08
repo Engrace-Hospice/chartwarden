@@ -347,6 +347,7 @@ export {
 } from "./routes/signed-url-service";
 export { M22_OUTBOX_EVENTS, M22_DOCUMENT_RENDERED_EVENT } from "./events-by-m22";
 export { buildPortalUploadIntakePort } from "./portal-upload-intake";
+export { buildPortalDisclosureReader } from "./access-log/portal-disclosures";
 
 // GAP-141 — M22 D7 AI-boundary boot validator (db-present onReady hook in the composition root).
 export {

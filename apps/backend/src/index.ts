@@ -807,6 +807,7 @@ import {
   buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
+  buildPortalDisclosureReader,
   buildPortalUploadIntakePort,
   createCandidateValueCipher,
   createCodingTerminology,
@@ -1881,7 +1882,11 @@ export function wireModuleSeams(
   // consent must refuse). The subject facts load through the Drizzle store over M31's three owned tables when
   // a DB client is present; without one the deny-stub resolver stands.
   if (deps.db) {
-    const portalStore = buildDrizzlePortalStore(deps.db);
+    const portalStore = buildDrizzlePortalStore(
+      deps.db,
+      undefined,
+      buildPortalDisclosureReader(deps.db),
+    );
     registerM31PublishedSeams({ registerSeam }, createM31PublishedSeamImpls(portalStore));
     registerPortalAbacPredicates({
       resolver: buildPortalAbacResolverFromStore(portalStore),
