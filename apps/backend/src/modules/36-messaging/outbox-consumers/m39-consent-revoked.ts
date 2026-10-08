@@ -6,8 +6,10 @@
 // to a channel member, and `channel_member` carries none (no consent or delegate column, and the revoked event
 // names only the patient + consent type). A patientId-only sweep would soft-remove staff and unrelated members, so
 // M36 deliberately takes no membership action from this event. What M36 DOES guarantee is the pull half:
-// `canViewChannel` re-checks the live care-team roster on every read (GAP-104), so a revocation never leaves an
-// open window behind a stale membership row. The ACK attests exactly that, and is what lets the cascade reach
+// `canViewChannel` re-checks the live care-team roster on every read (GAP-104) AND, for a SUD-flagged patient, asks
+// M39's ConsentEvaluator per member (`part2-channel-gate.ts`, GAP-065; `syncCareTeamChannel` applies the same gate
+// on the push side), so a revocation never leaves an open window behind a stale membership row. The ACK attests
+// exactly that — proven live in `m36-channel-membership-lifecycle.live.test.ts` — and is what lets the cascade reach
 // `completed` instead of exhausting its budget and raising a false CRITICAL alert. If a consent -> member link is
 // ever added, the membership removal belongs HERE, before the ACK. A malformed payload THROWS (relay retry -> DLQ).
 //

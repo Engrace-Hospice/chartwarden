@@ -63,6 +63,7 @@ import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@war
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
+import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -269,6 +270,8 @@ export function createDbMessagingRouteService(
      * out-of-band dispatcher yet, so by default NOTHING is sent and the endpoint simply stays `pending`
      * (fail closed: an unverified endpoint is never a delivery target). A throw rolls the registration back.
      */
+    /** GAP-065 — the M39 Part 2 consent gate on care_team visibility (default: seam-backed, fail-closed). */
+    part2Gate?: Part2ChannelGate;
     sendEndpointVerificationCode?: (input: {
       channel: DeliveryEndpointChannel;
       target: string;
@@ -277,6 +280,7 @@ export function createDbMessagingRouteService(
   } = {},
 ): MessagingRouteService {
   const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
+  const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
@@ -453,11 +457,28 @@ export function createDbMessagingRouteService(
           .limit(1);
         if (!m[0]) return { visible: false as const };
         const patientId = c[0].subjectId;
-        return c[0].kind === "care_team" && m[0].source === "auto" && patientId
-          ? { visible: true as const, rosterPatientId: patientId }
-          : { visible: true as const };
+        if (c[0].kind !== "care_team" || !patientId) return { visible: true as const };
+        return m[0].source === "auto"
+          ? { visible: true as const, rosterPatientId: patientId, consentPatientId: patientId }
+          : { visible: true as const, consentPatientId: patientId };
       });
       if (!access?.visible) return false;
+      // GAP-065 / spec §7.13 — the PULL half of the M39 cascade: a care_team channel about a SUD-flagged
+      // patient is visible only to members M39's Part 2 release covers, re-asked on every read (so a
+      // revocation closes access at once). Manual admin-override members are gated too. Fail-closed: an
+      // unreadable flag or an unanswerable evaluator denies.
+      if ("consentPatientId" in access && access.consentPatientId) {
+        try {
+          const permitted = await part2Gate.allowedUserIds({
+            organizationId: orgId,
+            patientId: access.consentPatientId,
+            userIds: [userId],
+          });
+          if (!permitted.has(userId)) return false;
+        } catch {
+          return false;
+        }
+      }
       if (!("rosterPatientId" in access) || !access.rosterPatientId) return true;
       // GAP-104 — caseload_membership (§4.5, care_team): an AUTO member must also be on the patient's
       // CURRENT care team. The roster read stays outside the tx above (the seam opens its own connection),

@@ -34,6 +34,7 @@ import {
   insertEncryptedMessage,
   markMessagesRead,
 } from "./messaging-write-core";
+import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -62,9 +63,11 @@ function channelShape(kind: ChannelKind): {
 /** Build the production {@link MessagingProvider}. `opts.kek`/`opts.cipher` are injectable for tests. */
 export function createDbMessagingProvider(
   db: DbClient,
-  opts: { kek?: Buffer; cipher?: MessageBodyCipher } = {},
+  opts: { kek?: Buffer; cipher?: MessageBodyCipher; part2Gate?: Part2ChannelGate } = {},
 ): MessagingProvider {
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
+  // GAP-065 — M39 consent gate on care_team membership (spec §7.13); seam-backed unless injected.
+  const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
 
   function notWired(hook: string): never {
     throw new WardenXError(
@@ -224,10 +227,19 @@ export function createDbMessagingProvider(
       // to begin with. Nesting bought an illusion of atomicity, not the fact of it. And the M11
       // "read within tx" rule does not apply here — `patient_assignment` is not written by this
       // transaction, so there is no same-tx write this read could miss.
+      const careTeam = await getSeam("CareTeamProvider").careTeamMembers({
+        organizationId: orgId,
+        patientId,
+      });
+      // GAP-065 / spec §7.13 — for a SUD-flagged patient only members M39's Part 2 release covers stay on
+      // the roster; the rest are excluded from this re-sync (and an existing auto member who no longer
+      // qualifies is removed below). A throw (privacy flag unreadable) aborts the sync: membership is
+      // left exactly as it was and the relay retries, rather than admitting on a guess.
       const roster = new Set(
-        await getSeam("CareTeamProvider").careTeamMembers({
+        await part2Gate.allowedUserIds({
           organizationId: orgId,
           patientId,
+          userIds: [...new Set(careTeam)],
         }),
       );
       return withOrgContext(
