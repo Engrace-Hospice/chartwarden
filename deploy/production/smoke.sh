@@ -240,4 +240,20 @@ ok "web app carries the §9.6 security headers (CSP frame-ancestors, X-Frame-Opt
 #   $CURL -b "$cookie_jar" -X POST "$api_url/api/auth/sign-out" >/dev/null 2>&1 || true
 # fi
 
+# ── boot state (informational) ──────────────────────────────────────────────────────────────────────
+#
+# Some features boot deliberately OFF or UNBOUND and say so in one loud startup warning (the DoseSpot
+# adapter until DOSESPOT_TENANT_CONFIGS is set, the MLLP listener until M29_MLLP_LISTENER_ENABLED=true).
+# A healthy deploy can still be missing a feature the operator expects, and the only place that shows is
+# the startup log - which nobody reads after a green deploy. Echo those lines into the deploy log so the
+# state of every dormant feature is recorded with every release. NOT a failure: OFF is a valid state.
+echo "boot state — features that started disabled or unbound"
+for svc in api worker; do
+  container_id=$($compose ps -q "$svc" 2>/dev/null || true)
+  [ -n "$container_id" ] || continue
+  docker logs --since 10m "$container_id" 2>&1 \
+    | grep -E 'UNBOUND|listener is OFF|is OFF|not bound' \
+    | cut -c1-400 | sed "s/^/  [$svc] /" | sort -u || true
+done
+
 echo "SMOKE OK"

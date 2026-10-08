@@ -1,0 +1,72 @@
+name: PR image and deploy-path gate
+
+# Why this exists. `ci.yml` only runs on `pull_request` for `fix/admission` (the `main` line is commented
+# out to protect metered Actions minutes), so a PR into `main` got NO checks and the first signal came from
+# `deploy.yml` AFTER the merge. PR #335 shipped three fixable HIGH CVEs in the docling-worker image and a
+# broken MinIO provisioning step that way: production ran the new schema with unhealthy services for hours.
+#
+# Cost control. This workflow is path-filtered to the things that only break at image-build / deploy time:
+# the docling-worker image, the Dockerfiles, the production deploy folder and the scan allowlist. An
+# ordinary code PR does not trigger it at all. It mirrors the release scan (same severity, same
+# `.trivyignore.yaml`, same `ignore-unfixed`) so a PR is red for exactly what the release would be red for.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/docling-worker/**"
+      - "Dockerfile"
+      - "Dockerfile.web"
+      - "deploy/production/**"
+      - ".trivyignore.yaml"
+      - ".github/workflows/pr-image-gate.yml"
+
+concurrency:
+  group: pr-image-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-path:
+    name: Deploy script and compose dry run
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shell syntax
+        run: |
+          for f in deploy/production/deploy.sh deploy/production/smoke.sh deploy/production/bootstrap-vps.sh; do
+            bash -n "$f"
+          done
+      # `compose.yml` reads `.env.production` (env_file) and interpolates the template's variables; the
+      # example file is the contract for what a real one must define, so `config` fails here when a
+      # service needs a variable the template does not list (the class of break the env-template test
+      # caught for MinIO).
+      - name: Compose config against the env template
+        working-directory: deploy/production
+        run: |
+          cp .env.production.example .env.production
+          docker compose --env-file .env.production -f compose.yml config -q
+
+  docling-scan:
+    name: Docling image CVE scan
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    if: ${{ !cancelled() }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build docling-worker image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: services/docling-worker
+          load: true
+          push: false
+          tags: wardenx-docling-worker:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha,scope=docling-worker
+      - name: Scan docling-worker image (fixable HIGH/CRITICAL fail the PR)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: wardenx-docling-worker:pr-${{ github.event.pull_request.number }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
