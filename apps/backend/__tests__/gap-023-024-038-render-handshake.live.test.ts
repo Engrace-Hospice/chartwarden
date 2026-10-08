@@ -24,6 +24,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import { buildAppealPacketRenderPayload } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -734,7 +735,22 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       label: "M25 appeal packet",
       eventType: "m25.appeal_packet.render_requested",
       aggregateKind: "appeal_case",
-      payload: (id: string) => ({ appealCaseId: id, tier: "redetermination", payload: {} }),
+      payload: (id: string) => ({
+        appealCaseId: id,
+        tier: "redetermination",
+        // GAP-036 - M22 validates the typed packet before drawing the letter.
+        payload: buildAppealPacketRenderPayload({
+          appealCaseId: id,
+          denialCaseId: id,
+          claimId: id,
+          tier: "redetermination",
+          tierDeadlineAt: "2026-12-01T00:00:00.000Z",
+          submittedAt: "2026-08-13T00:00:00.000Z",
+          appealNarrative: "Timely certification enclosed.",
+          attachedDocumentIds: [],
+          denial: { carcCode: "50", rarcCode: null, dollarValue: "10.00", remittanceLineId: null },
+        }),
+      }),
       aggregateType: "appeal_packet",
       retentionClass: "compliance",
       patientId: null,
