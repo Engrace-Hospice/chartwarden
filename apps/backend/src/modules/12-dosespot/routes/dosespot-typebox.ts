@@ -14,6 +14,7 @@ import {
 } from "@wardenx/types";
 import type {
   MedicationHistoryRecordView,
+  RxBenefitLookupView,
   ControlledSubstancePolicyView as ServiceControlledSubstancePolicyView,
   MedicationOrderDetailView as ServiceMedicationOrderDetailView,
   MedicationOrderView as ServiceMedicationOrderView,
@@ -441,8 +442,21 @@ export const DenyRefillResponseSchema = Type.Object({ status: Type.Literal("deni
 
 /** Route 24 — the cached RxBenefit coverage lookup. */
 export const RxBenefitResponseSchema = Type.Object({
-  covered: Type.Boolean(),
+  /**
+   * GAP-019 -- `unknown` is a first-class answer: there is no fresh cached lookup for this (patient, drug)
+   * (the cache is filled only from a real vendor response, and no verified RxBenefit endpoint exists yet),
+   * so coverage is NOT asserted either way. `covered` is null in that case -- never a fabricated `true`.
+   */
+  status: Type.Union([
+    Type.Literal("covered"),
+    Type.Literal("not_covered"),
+    Type.Literal("unknown"),
+  ]),
+  covered: Nullable(Type.Boolean()),
   copayCents: Nullable(Type.Integer()),
+  copayTier: Nullable(Type.String()),
+  priorAuthRequired: Nullable(Type.Boolean()),
+  lookedUpAt: Nullable(Type.String({ format: "date-time" })),
 });
 
 /** Route 27 — the prescriber-revoke acknowledgment. */
@@ -511,10 +525,7 @@ type _Resulting = Conforms<
   { resultingOrderId: string }
 >;
 type _DenyRefill = Conforms<Static<typeof DenyRefillResponseSchema>, { status: "denied" }>;
-type _RxBenefit = Conforms<
-  Static<typeof RxBenefitResponseSchema>,
-  { covered: boolean; copayCents: number | null }
->;
+type _RxBenefit = Conforms<Static<typeof RxBenefitResponseSchema>, RxBenefitLookupView>;
 type _Revoke = Conforms<Static<typeof RevokePrescriberResponseSchema>, { status: "revoked" }>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */

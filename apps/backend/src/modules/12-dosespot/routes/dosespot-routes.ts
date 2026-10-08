@@ -381,7 +381,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       parse(SignControlledCompleteRequest, request.body);
-      return service.signControlledComplete(organizationId, userId, id);
+      return service.signControlledComplete(organizationId, userId, id, {
+        signerDisciplines: prescriberDisciplinesOf(request.context),
+      });
     },
   );
 

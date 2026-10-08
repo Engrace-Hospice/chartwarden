@@ -62,3 +62,40 @@ describe("toAdministrationIdentity", () => {
     expect(identity.blockedReasons).toEqual(["not_active"]);
   });
 });
+
+describe("toAdministrationIdentity — order facts for the safety gates (GAP-020/021)", () => {
+  const withSig = (sigStructured: object) =>
+    toAdministrationIdentity({
+      order: asOrder({
+        ...baseOrder,
+        isSudTreatment: false,
+        rxnormRxcui: "rx-1",
+        ndc: "ndc-1",
+        sigStructured,
+      }),
+      allowAdministration: true,
+      blockedReasons: [],
+    });
+
+  it("projects the authorised dose, the drug identities and the PRN minimum interval", () => {
+    const identity = withSig({ doseQuantity: 5, doseUnit: "mg", prnMinimumIntervalMinutes: 240 });
+    expect(identity).toMatchObject({
+      doseAmount: 5,
+      doseUnit: "mg",
+      rxnormRxcui: "rx-1",
+      ndc: "ndc-1",
+      prnMinimumIntervalMinutes: 240,
+    });
+  });
+
+  it("treats a neutral-empty sig dose as UNKNOWN (null), never as zero", () => {
+    const identity = withSig({ doseQuantity: 0, doseUnit: "" });
+    expect(identity.doseAmount).toBeNull();
+    expect(identity.doseUnit).toBeNull();
+    expect(identity.prnMinimumIntervalMinutes).toBeNull();
+  });
+
+  it("carries no wristband digest (none is on file anywhere): the wrong-patient arm is honestly not armed", () => {
+    expect(withSig({ doseQuantity: 5, doseUnit: "mg" }).patientWristbandPayloadDigest).toBeNull();
+  });
+});

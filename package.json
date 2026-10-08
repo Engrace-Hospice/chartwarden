@@ -173,6 +173,7 @@
     "test:m11:m9-m21-consumers:live": "vitest run apps/backend/__tests__/m11-m9-m21-outbox-consumers.live.test.ts",
     "test:m11:supply-cancelled:live": "vitest run apps/backend/__tests__/m11-supply-cancelled.live.test.ts",
     "test:m11:lab-transmission-applier:live": "vitest run apps/backend/__tests__/m11-lab-transmission-applier.live.test.ts",
+    "test:m11:lab-results-applier:live": "vitest run apps/backend/__tests__/m11-lab-results-applier.live.test.ts",
     "test:m11:orm-requested:live": "vitest run apps/backend/__tests__/m11-orm-requested.live.test.ts",
     "test:m11:orm-resend:live": "vitest run apps/backend/__tests__/m11-orm-resend.live.test.ts",
     "test:m11:orm-recovery:live": "vitest run apps/backend/__tests__/m11-orm-recovery.live.test.ts",

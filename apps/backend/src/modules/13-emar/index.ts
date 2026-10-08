@@ -51,6 +51,14 @@ function buildEmarBackend(db: DbClient, outbox?: EmarWriteOutboxPort) {
         if (ctx === null) return null;
         return toAdministrationIdentity(ctx);
       },
+      // GAP-023 -- the expected m12_active line set of a reconciliation worksheet.
+      async activeMedicationOrderIds({ organizationId, patientId }) {
+        const orders = await getSeam("MedicationOrderProvider").getActiveMedications(
+          organizationId,
+          patientId,
+        );
+        return orders.map((o) => o.id as string);
+      },
     }),
     // GAP-107 — M37's IV-continuous safety overlay (M37 §2.6 / D7), through its published seam; thunked so it
     // resolves per call, after M37 has registered over the deny-stub.

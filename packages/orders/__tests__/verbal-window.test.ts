@@ -5,6 +5,7 @@ import { OrderStateError } from "../src/lifecycle/errors";
 import {
   VERBAL_PLATFORM_FLOOR_HOURS,
   type VerbalDeadlinePolicy,
+  assertVerbalReceivedAtPlausible,
   classifyPreExpiryTier,
   computeVerbalDeadline,
   hoursOverdue,
@@ -184,5 +185,42 @@ describe("§2.2 / W-VO-02 planVerbalExpiry", () => {
     expect(() => planVerbalExpiry(at(Date.parse(deadline) - HOUR), deadline)).toThrowError(
       expect.objectContaining({ code: "VERBAL_DEADLINE_NOT_REACHED" }),
     );
+  });
+});
+
+describe("GAP-017 assertVerbalReceivedAtPlausible (the 48h clock start is bounded by server time)", () => {
+  const now = "2026-06-22T10:00:00.000Z";
+  const outOfRange = expect.objectContaining({
+    code: "VERBAL_RECEIVED_AT_OUT_OF_RANGE",
+    statusCode: 422,
+  });
+
+  it("accepts an order received just now, within clock skew ahead, and earlier today", () => {
+    expect(() => assertVerbalReceivedAtPlausible(now, now)).not.toThrow();
+    expect(() =>
+      assertVerbalReceivedAtPlausible(at(Date.parse(now) + 4 * 60_000), now),
+    ).not.toThrow();
+    expect(() =>
+      assertVerbalReceivedAtPlausible(at(Date.parse(now) - 20 * HOUR), now),
+    ).not.toThrow();
+  });
+
+  it("rejects a receivedAt in the future beyond skew (it would postpone the signature deadline)", () => {
+    expect(() =>
+      assertVerbalReceivedAtPlausible(at(Date.parse(now) + 6 * 60_000), now),
+    ).toThrowError(outOfRange);
+    expect(() =>
+      assertVerbalReceivedAtPlausible(at(Date.parse(now) + 47 * HOUR), now),
+    ).toThrowError(outOfRange);
+  });
+
+  it("rejects a receivedAt older than the look-back (it would manufacture an instant expiry)", () => {
+    expect(() =>
+      assertVerbalReceivedAtPlausible(at(Date.parse(now) - 25 * HOUR), now),
+    ).toThrowError(outOfRange);
+  });
+
+  it("rejects an unparseable instant", () => {
+    expect(() => assertVerbalReceivedAtPlausible("not-a-date", now)).toThrowError(outOfRange);
   });
 });

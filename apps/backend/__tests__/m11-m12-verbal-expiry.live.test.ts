@@ -155,6 +155,16 @@ describe.skipIf(!DB_URL)(
       return rows[0].id as string;
     }
 
+    /** GAP-017 -- age a freshly recorded medication-order verbal to overdue (received 72h ago). */
+    async function ageVerbal(medId: string): Promise<void> {
+      await admin.query(
+        `UPDATE verbal_order SET received_at = now() - interval '72 hours',
+           effective_at = now() - interval '72 hours', deadline_at = now() - interval '24 hours'
+         WHERE target_kind='medication_order' AND target_id=$1`,
+        [medId],
+      );
+    }
+
     async function medRow(
       id: string,
     ): Promise<{ status: string; version: number; patientId: string } | undefined> {
@@ -269,7 +279,10 @@ describe.skipIf(!DB_URL)(
 
     it("records a medication-order verbal through the real M12 route service, writing a real polymorphic verbal_order row", async () => {
       const medId = await seedMedOrder(ORG_A, "pending_signature");
-      const receivedAt = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(); // 3 days ago
+      // GAP-017 -- the clock start is bounded by server time (<= 24h look-back), so the row is recorded with
+      // an in-bounds receivedAt; the "already overdue" fixtures below backdate it by SQL, as a real
+      // 48h-later sweep would find it.
+      const receivedAt = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(); // 20h ago
 
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
@@ -286,10 +299,43 @@ describe.skipIf(!DB_URL)(
       const v = await verbalRowByTarget("medication_order", medId);
       expect(v).toBeDefined();
       expect(v?.status).toBe("pending");
-      // receivedAt (3 days ago) + the 48h platform-floor default = 1 day ago — already overdue.
+      // receivedAt (20h ago) + the 48h platform-floor default = 28h from now.
       const expectedDeadlineMs = Date.parse(receivedAt) + 48 * 60 * 60 * 1000;
       expect(Math.abs((v?.deadlineAt.getTime() ?? 0) - expectedDeadlineMs)).toBeLessThan(2000);
-      expect((v?.deadlineAt.getTime() ?? Number.POSITIVE_INFINITY) < Date.now()).toBe(true);
+      expect((v?.deadlineAt.getTime() ?? Number.NEGATIVE_INFINITY) > Date.now()).toBe(true);
+    });
+
+    it("GAP-017: a receivedAt in the future, or older than the look-back, is refused before any row is written", async () => {
+      const medId = await seedMedOrder(ORG_A, "pending_signature");
+      for (const receivedAt of [
+        new Date(Date.now() + 47 * 60 * 60 * 1000).toISOString(), // would postpone the deadline ~2 days
+        new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(), // would manufacture an instant expiry
+      ]) {
+        await expect(
+          runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+            m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
+              recorderDiscipline: "rn_case_manager",
+              recorderDisciplines: ["rn_case_manager"],
+              namedPrescriberMdmId: PHYSICIAN_MDM,
+              verbalAttestation: ATTESTATION,
+              receivedAt,
+            }),
+          ),
+        ).rejects.toMatchObject({ code: "VERBAL_RECEIVED_AT_OUT_OF_RANGE", statusCode: 422 });
+      }
+      expect(await verbalRowByTarget("medication_order", medId)).toBeUndefined();
+      expect((await medRow(medId))?.status).toBe("pending_signature");
+      // The schema floor under the services: a raw insert starting the clock in the future is refused too.
+      await expect(
+        admin.query(
+          `INSERT INTO verbal_order (organization_id, target_kind, target_id, recording_membership_id,
+             ordering_physician_mdm_id, verbal_attestation, read_back_verified, effective_at, received_at,
+             deadline_at, deadline_policy_version, status)
+           VALUES ($1,'medication_order',$2,$3,$4,$5,true, now(), now() + interval '2 days',
+             now() + interval '4 days','v1','pending')`,
+          [ORG_A, medId, memberOf[ORG_A], PHYSICIAN_MDM, ATTESTATION],
+        ),
+      ).rejects.toThrow(/VERBAL_RECEIVED_AT_IN_FUTURE/);
     });
 
     it("the worker tick expires both M11's own overdue order and M12's overdue medication order in the same pass, and dispatching flips the medication order + emits list_changed", async () => {
@@ -306,7 +352,7 @@ describe.skipIf(!DB_URL)(
       // The M12 side — through the real route service, same as the first test, so both target kinds are
       // genuinely overdue `verbal_order` rows the ONE sweep below must find together.
       const medId = await seedMedOrder(ORG_A, "pending_signature");
-      const medReceivedAt = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+      const medReceivedAt = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString();
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
           recorderDiscipline: "rn_case_manager",
@@ -315,6 +361,15 @@ describe.skipIf(!DB_URL)(
           verbalAttestation: ATTESTATION,
           receivedAt: medReceivedAt,
         }),
+      );
+
+      // Backdate to an overdue row (received 72h ago -> deadline 1 day ago): the service bounds a NEW
+      // order's clock start (GAP-017), so the already-overdue state is reached the way real time reaches it.
+      await admin.query(
+        `UPDATE verbal_order SET received_at = now() - interval '72 hours',
+           effective_at = now() - interval '72 hours', deadline_at = now() - interval '24 hours'
+         WHERE target_kind='medication_order' AND target_id=$1`,
+        [medId],
       );
 
       // A NOT-yet-due medication verbal in the same org — the negative control the same tick must leave alone.
@@ -394,9 +449,10 @@ describe.skipIf(!DB_URL)(
           recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
-          receivedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
+          receivedAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
         }),
       );
+      await ageVerbal(medId);
       await runVerbalOrderExpiryFanout({
         connection: {} as never,
         service: m11Backend,
@@ -430,9 +486,10 @@ describe.skipIf(!DB_URL)(
           recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
-          receivedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
+          receivedAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
         }),
       );
+      await ageVerbal(medIdB);
 
       // Fan-out scoped to org A only.
       await runVerbalOrderExpiryFanout({

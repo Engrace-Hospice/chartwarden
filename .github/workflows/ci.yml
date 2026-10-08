@@ -245,6 +245,7 @@ jobs:
           # F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
           # order_record.transmission_status and re-publish M11's own D16-decisive events.
           - { name: "M11 lab-transmission applier", scripts: "test:m11:lab-transmission-applier:live" }
+          - { name: "M11 lab-results applier", scripts: "test:m11:lab-results-applier:live" }
           - { name: "M11 lab ORM producer (F-181)", scripts: "test:m11:orm-requested:live" }
           - { name: "M11 lab ORM resend (F-182)", scripts: "test:m11:orm-resend:live" }
           - { name: "M11 lab ORM attested recovery + never-pending (F-187)", scripts: "test:m11:orm-recovery:live" }

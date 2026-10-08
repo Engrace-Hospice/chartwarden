@@ -9,7 +9,7 @@
 // signature timestamp authoritatively, computes the verbal-order 48-hour deadline via the pure
 // `@wardenx/orders` window math, and — for a LOCAL `order_record` target — drives the lifecycle status
 // transition through the store (a med-order target records the primitive only; M12 owns its lifecycle).
-import { computeVerbalDeadline } from "@wardenx/orders";
+import { assertVerbalReceivedAtPlausible, computeVerbalDeadline } from "@wardenx/orders";
 import type {
   CosignOrderInput,
   DiscontinueOrderInput,
@@ -79,6 +79,9 @@ export function createOrderSignatureProvider(
     async recordVerbalOrder(input: RecordVerbalOrderInput) {
       // The tenant's real §2.3 D3 policy (tighten-only floor), not the platform default alone — a hospice
       // that has tightened its window gets the same math through this seam as through M11's own route.
+      // GAP-017 -- the seam M12 records its verbal orders through bounds the clock start the same way M11's
+      // own routes do: against the server's clock, never the caller's.
+      assertVerbalReceivedAtPlausible(input.receivedAt, now());
       const policy = await store.verbalPolicyForOrg();
       const deadlineAt = computeVerbalDeadline(input.receivedAt, policy);
       const verbalOrderId = await store.insertVerbalOrder({

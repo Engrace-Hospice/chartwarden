@@ -181,7 +181,12 @@ export interface RecordAdministrationArgs {
    * §5.11 five-rights checks and the snapshot columns.
    */
   readonly data?: unknown;
-  readonly prn?: { triggeringPrnReason: string; requestedByKind: string };
+  readonly prn?: {
+    triggeringPrnReason: string;
+    requestedByKind: string;
+    /** §2.4 D3 -- supervisor override of the minimum interval; the permission fact is the ROUTE's, not the body's. */
+    intervalOverride?: { hasPermission: boolean; reason: string };
+  };
   readonly lateEntryReason?: string;
   readonly offlineCapture?: { deviceId: string; localId: string; capturedAt: string };
   readonly witnessToken?: string;
@@ -282,7 +287,12 @@ export interface EmarRouteService extends EmarAbacResolver {
     orgId: string,
     q: { patient: string; from?: string; to?: string },
   ): Promise<ScheduledDoseView[]>;
-  intentionalHold(orgId: string, userId: string, id: string): Promise<ScheduledDoseView>;
+  intentionalHold(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason?: string,
+  ): Promise<ScheduledDoseView>;
   listMissedDoses(orgId: string, q: { patient: string; since?: string }): Promise<MissedDoseView[]>;
   acknowledgeMissed(orgId: string, userId: string, id: string): Promise<MissedDoseView>;
   listWorksheets(orgId: string, patient: string): Promise<WorksheetView[]>;
@@ -301,7 +311,12 @@ export interface EmarRouteService extends EmarAbacResolver {
     decision: ReconciliationDecisionKind,
     resultingMedicationOrderId?: string,
   ): Promise<WorksheetView>;
-  addCaregiverReportedLine(orgId: string, id: string, drugName: string): Promise<WorksheetView>;
+  addCaregiverReportedLine(
+    orgId: string,
+    userId: string,
+    id: string,
+    drugName: string,
+  ): Promise<WorksheetView>;
   finalizeReconciliation(orgId: string, userId: string, id: string): Promise<WorksheetView>;
   voidWorksheet(orgId: string, userId: string, id: string, reason: string): Promise<WorksheetView>;
   listDeployments(orgId: string, patient: string): Promise<DeploymentView[]>;
@@ -744,6 +759,10 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         case "medicationOrderId":
           return resolveOrder(orgId, id)?.patientId ?? null;
       }
+    },
+    async loadScheduledDoseOrderId(orgId, scheduledDoseId): Promise<string | null> {
+      const s = scheduled.get(scheduledDoseId);
+      return s && s.organizationId === orgId ? s.medicationOrderId : null;
     },
     async loadOrderMedClass(orgId, medicationOrderId): Promise<string | null> {
       // Fail-closed like the DB backend: an unseeded / other-org order has no class, so the floor denies.
@@ -1303,7 +1322,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       });
       return wView(w);
     },
-    async addCaregiverReportedLine(orgId, id, drugName): Promise<WorksheetView> {
+    async addCaregiverReportedLine(orgId, _userId, id, drugName): Promise<WorksheetView> {
       const w = requireWorksheet(orgId, id);
       w.lineCount += 1;
       return wView(w);

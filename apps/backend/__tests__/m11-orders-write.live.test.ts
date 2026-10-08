@@ -306,6 +306,47 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     expect(await eventsFor(draft.id)).toContain("m11.order.verbal_signed_in_time");
   });
 
+  it("GAP-017: recordVerbal refuses a receivedAt in the future or beyond the look-back; the order stays pending_signature", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    for (const receivedAt of [
+      new Date(Date.now() + 47 * 3_600_000).toISOString(), // would postpone the 48h deadline ~2 days
+      new Date(Date.now() - 72 * 3_600_000).toISOString(), // would manufacture an instant expiry
+    ]) {
+      await expect(
+        svc.recordVerbal(
+          ORG_A,
+          memberOf[ORG_A],
+          draft.id,
+          {
+            recorderDiscipline: "rn_case_manager",
+            verbalAttestation: ATTESTATION,
+            readBackVerified: true,
+            effectiveAt: new Date().toISOString(),
+            receivedAt,
+            orderingPhysicianMdmId: PHYSICIAN_MDM,
+          },
+          SYSTEM_ORDER_ACTOR,
+        ),
+      ).rejects.toMatchObject({ code: "VERBAL_RECEIVED_AT_OUT_OF_RANGE", statusCode: 422 });
+    }
+    expect(
+      (
+        await admin.query("SELECT count(*)::int AS n FROM verbal_order WHERE target_id=$1", [
+          draft.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (await admin.query("SELECT status FROM order_record WHERE id=$1", [draft.id])).rows[0].status,
+    ).toBe("pending_signature");
+  });
+
   it("GAP-031: requestSignature derives the cosign requirement from the stored order, ignoring body signerDiscipline / levelChange", async () => {
     const draft = await svc.createDraft(
       ORG_A,
