@@ -30,6 +30,7 @@ import {
   EncounterListQuerySchema,
   EncounterParamsSchema,
   EvvReconcileSchema,
+  FinalizeEncounterSchema,
   HearthnoteEnhanceSchema,
   LateEntryOverrideSchema,
   ModificationDecisionSchema,
@@ -570,7 +571,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.finalize(organizationId, encounterIdOf(request), today());
+      const body = parse(FinalizeEncounterSchema, request.body ?? {});
+      return service.finalize(organizationId, encounterIdOf(request), today(), {
+        lateEntryReason: body.lateEntryReason,
+      });
     },
   );
 
@@ -614,9 +618,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      const body = parse(SignEncounterSchema, request.body); // the attestation-confirmed shape
       return service.sign(organizationId, encounterIdOf(request), signingActorOf(request), {
         at: today(),
+        lateEntryReason: body.lateEntryReason,
       });
     },
   );
