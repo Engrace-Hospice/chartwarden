@@ -218,6 +218,14 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
 
   // ── internals ──────────────────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * The vendor room name for a visit (`tlh_<hmac(visitId)>`, the same value `mintRoom` returns as `vendorRoomId`).
+   * Public so the M31 route port, which addresses a participant token by VISIT id, needs no stored room lookup.
+   */
+  roomNameForVisit(telehealthVisitId: string): string {
+    return this.roomName(telehealthVisitId);
+  }
+
   /** `tlh_<hmac(visitId)>` — opaque, deterministic, PHI-free. Never the raw visit id (§7.2 step 2 / D1). */
   private roomName(telehealthVisitId: string): string {
     const digest = createHmac("sha256", this.roomNameSecret)
