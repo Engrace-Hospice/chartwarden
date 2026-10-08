@@ -11,6 +11,25 @@ export {
   consumeAuditorMagicLink,
   revokeAuditorMagicLinksForEngagement,
 } from "./auditor-magic-link-store";
+export {
+  type AuditorAccessPort,
+  type AuditorRedemptionDeps,
+  type AuditorRefusalReason,
+  auditorRefusalError,
+  redeemAuditorLink,
+} from "./auditor-redemption";
+export {
+  type AuditorLinkEmailTransport,
+  buildAuditorRedeemUrl,
+  createAuditorLinkEmailDelivery,
+} from "./auditor-link-delivery";
+export {
+  type AttemptLimiter,
+  type AuditorRedeemRouteDeps,
+  AuditorRedeemRequestSchema,
+  AuditorRedeemResponseSchema,
+  registerAuditorRedeemRoutes,
+} from "./routes/auditor-redeem";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`

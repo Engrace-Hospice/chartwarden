@@ -252,6 +252,7 @@ export const MODULES: ModuleDef[] = [
       "state_retention_override",
       "audit_export",
       "audit_seal",
+      "audit_integrity_run",
       "audit_denylist_catalog",
       "audit_action_catalog",
     ],

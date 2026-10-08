@@ -8,16 +8,18 @@
 // never touches a row). `appendOnly.grantsVerified` is therefore a REAL, live compliance signal, not
 // a static assertion.
 //
-// `backupSampling` and `sealChain` are honestly omitted (see `IntegrityReportResponseSchema`'s
-// comment in audit-typebox.ts): the `audit.integrity_sample` job has no persisted run-history table
-// and its worker adapters are unwired, and the Phase-2 hash-chain seal is flag-gated off — this
-// route does not fabricate either section.
-import { type GrantSnapshot, verifyAppendOnly } from "@wardenx/audit";
+// `sealChain` / `integritySample` come from the sealed audit hash chain and its sampled verification
+// (`audit_seal` + `audit_integrity_run`, jobs/audit-integrity-job.ts) and are OMITTED until the org has a
+// seal / a run — "never checked" must not read as "verified clean". `backupSampling` (a pgBackRest
+// comparison) stays absent: no backup reader exists in this repo, which `integritySample
+// .backupCrossReference` states explicitly rather than fabricating a section.
+import { type GrantSnapshot, verifyAppendOnly, verifySealLinkage } from "@wardenx/audit";
 import { requirePermission } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { UnauthorizedError } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { readIntegrityState } from "../jobs/audit-integrity-job";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -34,9 +36,18 @@ const APP_ROLE = "wardenx_app";
 
 const integrityPermission = requirePermission("audit.integrity") as PreHandler;
 
-function actorOf(request: FastifyRequest): void {
+function actorOf(request: FastifyRequest): string {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  return ctx.organizationId;
+}
+
+/** First partition a stored run recorded as broken, or null. */
+function firstRecordedBreak(detail: unknown): string | null {
+  const breaks = (detail as { breaks?: unknown } | null)?.breaks;
+  if (!Array.isArray(breaks)) return null;
+  const first = breaks[0] as { partition?: unknown } | undefined;
+  return typeof first?.partition === "string" ? first.partition : null;
 }
 
 /**
@@ -79,17 +90,47 @@ export function registerAuditIntegrityRoutes(
     "/api/v1/audit/integrity/report",
     { preHandler: [integrityPermission] },
     async (request) => {
-      actorOf(request);
+      const organizationId = actorOf(request);
       const grants = await readAuditEventGrants(deps.db);
       const violations = verifyAppendOnly(grants, {
         appRoles: [APP_ROLE],
         auditTables: [AUDIT_TABLE],
       });
+      // The hash-chain half. Omitted entirely while the org has neither seals nor a run (the flag is
+      // off and the job never ran): "never checked" must not read as "verified clean".
+      const { seals, lastSample } = await readIntegrityState(deps.db, organizationId);
+      const liveBreaks = verifySealLinkage(seals);
+      const newestSeal = seals[seals.length - 1];
+      const brokenAt =
+        liveBreaks[0]?.partition ??
+        (lastSample?.result === "mismatch" ? firstRecordedBreak(lastSample.detail) : null);
       return {
         appendOnly: {
           grantsVerified: violations.length === 0,
           lastChecked: now().toISOString(),
         },
+        ...(newestSeal
+          ? {
+              sealChain: {
+                contiguous: brokenAt === null,
+                lastSealedPartition: newestSeal.partition,
+                brokenAt,
+              },
+            }
+          : {}),
+        ...(lastSample
+          ? {
+              integritySample: {
+                lastRun: lastSample.finishedAt.toISOString(),
+                result: lastSample.result,
+                sealsTotal: lastSample.sealsTotal,
+                sealsSampled: lastSample.sealsSampled,
+                eventsHashed: lastSample.eventsHashed,
+                mismatches: lastSample.mismatches,
+                backupCrossReference: lastSample.backupCrossReference,
+              },
+            }
+          : {}),
       };
     },
   );

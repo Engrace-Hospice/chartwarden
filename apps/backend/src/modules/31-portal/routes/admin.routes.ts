@@ -355,7 +355,16 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
         P("portal.engagement.read_auditor"),
         ABAC_ENGAGEMENT_SCOPE("portal.engagement.read_auditor"),
       ],
-      config: { auditRead: { resourceKind: "portal_engagement", list: false } },
+      // `resourceIdParam` names the engagement: without it the read event carried an EMPTY resource id,
+      // the audit insert failed (uuid cast), and the failure was swallowed as "best-effort" - so an
+      // auditor's use of their session left no trail at all. The engagement is what was viewed.
+      config: {
+        auditRead: {
+          resourceKind: "portal_engagement",
+          resourceIdParam: "engagementId",
+          list: false,
+        },
+      },
     },
     async (request) => {
       const actor = actorOf(request);

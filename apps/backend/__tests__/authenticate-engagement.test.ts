@@ -44,7 +44,7 @@ const run = async (actor: ResolvedActor, headers: Record<string, string> = {}) =
     getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
     getResolver: () => resolverReturning(actor),
   });
-  await hook({ context: ctx, headers } as unknown as FastifyRequest);
+  await hook({ context: ctx, headers, method: "GET", url: "/" } as unknown as FastifyRequest);
   return ctx.attributes;
 };
 

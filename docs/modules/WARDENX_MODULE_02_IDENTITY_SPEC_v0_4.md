@@ -741,6 +741,7 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | POST | `/api/v1/sessions/step-up` | session | self | n/a | verify step-up challenge; writes `last_step_up_at`/`last_step_up_factor` |
 | POST | `/api/v1/collaborators/invite` | staff | per role | yes | mint external-collaborator magic-link (per-patient) |
 | POST | `/api/v1/collaborators/consume` | none | — | yes | consume magic-link → scoped session |
+| POST | `/api/v1/auditors/redeem` | none | — | single-use token | redeem the emailed auditor link → scoped read-only `auditor` session (served by M2: session mechanics; the link is minted by M3's `POST /engagements/:id/auditors`). Single-use, expiring, tenant-scoped, rate-limited, audited (`m2.auditor_link.redeemed` / `.refused`); 409 `LINK_ALREADY_USED`, 410 `LINK_EXPIRED` / `LINK_INVALID`, 403 `ENGAGEMENT_NOT_OPEN` / `ENGAGEMENT_NOT_ACTIVE`, 409 `AUDITOR_IDENTITY_IS_MEMBER`. **DEFERRED (unbuilt):** the per-auditor 2FA enrolment and BAA acceptance of §7.7 — the session carries no step-up. |
 | ~~POST~~ | ~~`/api/v1/auditors/invite`~~ | — | — | — | **Served by Module 3, not M2** — moved to M3 with the `auditor_engagement` entity (D4 / §4.7). M2 only exposes the boot-validated `AuditorSessionMinter` that M3 calls. |
 | POST | `/api/v1/funeral/invite` | staff | per policy | yes | mint funeral-home magic-link (per-deceased) **DEFERRED (unbuilt):** no route; funeral-home magic links are not built. |
 

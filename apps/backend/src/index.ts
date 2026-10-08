@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
+import {
+  AUDIT_HASH_CHAIN_FLAG,
+  auditPlatformEvent,
+  createDbAuditChainReader,
+  createDbAuditQuery,
+} from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -7,6 +12,7 @@ import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
   LAB_RECOVERY_KEYS,
+  createAuditorSessionIssuer,
   createCredentialThrottle,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
@@ -222,6 +228,7 @@ import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/audi
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
+  createAuditorLinkEmailDelivery,
   createDrizzleIdentityEraserStore,
   createPortalInviteeUserPort,
   membershipDisplayForOrg,
@@ -230,6 +237,7 @@ import {
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
+  registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
@@ -238,6 +246,7 @@ import {
   type M3OutboxPublisher,
   M3_OUTBOX_EVENTS,
   M3_PLATFORM_JOB_ID,
+  createDbAuditorAccessGrantor,
   createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
@@ -3757,6 +3766,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             dbHandle.db,
             liveRbacHandle,
             m3OutboxPublisher as M3OutboxPublisher,
+            // The minted auditor link is emailed (M2 `auth.send_magic_link`); without a web origin the
+            // delivery throws and the enrolment route answers 503 rather than reporting a phantom invite.
+            createAuditorLinkEmailDelivery({ transport: emailTransport, baseUrl: webAppBaseUrl }),
           );
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
           // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the
@@ -3860,6 +3872,32 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
+          // M2 §2.2.4 / §7.7 — redeem an emailed auditor link into a scoped, read-only `auditor` session.
+          // Public (the token is the credential); M3 grants the one least-privilege role inside the
+          // redemption transaction; Better Auth mints the signed session cookie. Per-IP and per-org attempt
+          // budgets over the shared Valkey store (in-memory only on a single instance without one).
+          if (auth) {
+            const auditorLimiterStore = rateLimitStore ?? createInMemoryRateLimitStore();
+            const auditorLimiter = (keyPrefix: string, limit: number) =>
+              createBudgetedRateLimiter(auditorLimiterStore, {
+                limit,
+                windowMs: 15 * 60 * 1000,
+                keyPrefix,
+                onStoreError: (err) =>
+                  app.log.warn({ err }, "auditor redeem rate-limit store error"),
+              });
+            registerAuditorRedeemRoutes(app, {
+              redemption: {
+                db: dbHandle.db,
+                sessions: createAuditorSessionIssuer(auth),
+                access: createDbAuditorAccessGrantor(),
+                onRedeemed: (organizationId, userId) =>
+                  liveRbacHandle?.invalidateActor(organizationId, userId),
+              },
+              ipLimiter: auditorLimiter("auditor-redeem:ip", 20),
+              orgLimiter: auditorLimiter("auditor-redeem:org", 200),
+            });
+          }
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
@@ -5511,8 +5549,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──
     // Same worker-runner shape as the M34 block above. Needs the platform pool for the active-org fan-out;
     // exports additionally need the MINIO_* object store, destruction the DATABASE_DESTRUCTION_URL credential.
-    // integrity_sample (needs a pgBackRest reader) and seal_partition (Phase 2) stay unconstructed — see
-    // 04-audit/jobs/audit-job-ops.ts.
+    // seal_partition + integrity_sample (the sealed hash chain and its sampled verification) are built in
+    // 04-audit/jobs/audit-integrity-job.ts; only the spec's pgBackRest backup comparison is not (no reader).
     if (platformDbHandle) {
       const m4AuditOrgs = buildActiveOrgEnumerator({
         platformDb: platformDbHandle.db,
@@ -5550,19 +5588,50 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           : {}),
         log: (message: string, detail: Record<string, unknown>) => app.log.warn(detail, message),
       };
-      const m4Workers = registerAuditOpsWorkers({ connection: queueConnection, ops: m4Ops });
+      // M4 §4.4 — the sealed audit hash chain (`audit.seal_partition`) and its sampled verification
+      // (`audit.integrity_sample`). Gated per org by the `audit_hash_chain_enabled` feature flag (M4 D2,
+      // default OFF: a disabled org gets `skipped` run rows, never a clean-looking pass). A mismatch raises
+      // the M36 alert `m4.audit.integrity_mismatch` and fails the job.
+      const m4Integrity = {
+        db: dbHandle.db,
+        listOrgs: () => m4AuditOrgs.listActiveOrgs(),
+        reader: createDbAuditChainReader(dbHandle.db),
+        alerts: getSeam("AlertEmitter") as {
+          emit(
+            orgId: string,
+            input: {
+              eventType: string;
+              payload: Record<string, unknown>;
+              severity: string;
+              correlationId: string;
+            },
+          ): Promise<unknown>;
+        },
+        isHashChainEnabled: async (organizationId: string) =>
+          (await featureFlagReader?.forOrg(organizationId))?.[AUDIT_HASH_CHAIN_FLAG] === true,
+        ...(process.env.AUDIT_INTEGRITY_SAMPLE_SIZE
+          ? { sampleSize: Number(process.env.AUDIT_INTEGRITY_SAMPLE_SIZE) }
+          : {}),
+        log: (message: string, detail: Record<string, unknown>) => app.log.error(detail, message),
+      };
+      const m4Workers = registerAuditOpsWorkers({
+        connection: queueConnection,
+        ops: m4Ops,
+        integrity: m4Integrity,
+      });
       attachDlqAlertsToAll(m4Workers, "m4");
       app.addHook("onClose", () => Promise.all(m4Workers.map((w) => w.close())));
       void scheduleAuditOpsJobs(queueConnection, {
         exports: m34DsarObjectStore !== null,
         destruction: destructionDbHandle !== undefined,
+        integrity: true,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
         })
         .catch((err) => app.log.error(err, "M4 audit job schedule registration failed"));
       app.log.info(
-        `M4 audit workers constructed: retention_scan${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
+        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
       );
     } else {
       app.log.warn(

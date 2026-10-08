@@ -8,6 +8,12 @@
 // M3's own routes. It also registers the §2.2 break-glass BRANCH (the checker + critical
 // per-access audit hook) over the contract's fail-closed seams (`contract.ts`).
 export {
+  type AuditorAccessGrantor,
+  EXTERNAL_AUDITOR_PERMISSIONS,
+  EXTERNAL_AUDITOR_ROLE_KEY,
+  createDbAuditorAccessGrantor,
+} from "./auditor-access-grant";
+export {
   AUTHZ_AUDIT_EVENTS,
   auditAuditorEnrolled,
   auditAuthzDenied,
@@ -27,6 +33,7 @@ export {
 } from "./audit/authz-audit";
 export {
   type ActorPermissionResolver,
+  type AuditorLinkDeliveryPort,
   type AuditorSessionMinterPort,
   type AuthzRouteDeps,
   BreakGlassCosignError,
@@ -108,6 +115,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import {
+  type AuditorLinkDeliveryPort,
   type AuthzRouteDeps,
   type ComplianceNotifier,
   type M3OutboxPublisher,
@@ -181,6 +189,8 @@ export function mountAuthorizationRoutes(
    * (slice/tests) the in-memory notifier stands and the composition root records the gap.
    */
   outbox?: M3OutboxPublisher,
+  /** Delivery of the minted auditor link (email). The composition root binds it; absent in slice/tests. */
+  auditorLinkDelivery?: AuditorLinkDeliveryPort,
 ): void {
   const breakGlass = _dbBreakGlass(db, outbox);
   // §2.2 / §7.4 — wire the break-glass branch over the durable store; the per-access critical row is
@@ -197,6 +207,7 @@ export function mountAuthorizationRoutes(
     auditorSessions: {
       mintAuditorSession: (input) => getSeam("AuditorSessionMinter").mintAuditorSession(input),
     },
+    ...(auditorLinkDelivery ? { auditorLinkDelivery } : {}),
     // With an outbox the break-glass store has already published `m3.breakglass.invoked` in the invoke's tx, so
     // the route-level notify must not notify a second time (the in-memory array nothing read was GAP-010).
     notifier: outbox ? DURABLE_VIA_OUTBOX_NOTIFIER : _notifier().notifier,

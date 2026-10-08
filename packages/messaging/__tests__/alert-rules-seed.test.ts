@@ -133,6 +133,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.sra_due_60",
       "m30.alerts.sra_due_30",
       "m30.alerts.sra_overdue",
+      "m4.audit.integrity_mismatch",
       "m39.consent.revoked_cascade_failed",
       "mdm.license_expiring",
       "m30.incident.cap_overdue",

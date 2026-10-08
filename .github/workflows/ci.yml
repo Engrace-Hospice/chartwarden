@@ -576,6 +576,15 @@ jobs:
           # publisher on the invoke's own tx (atomic with the grant), RLS-scoped, delivered by the M36 consumer.
           - { name: "M3 break-glass outbox (GAP-010)", scripts: "test:m3:break-glass-outbox:live" }
           - { name: "M3 auditor engagement (GAP-093)", scripts: "test:m3:auditor-engagement:live" }
+          # Auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral): a link issued by M3 and stored hashed by
+          # M2 becomes a signed, engagement-scoped, read-only `auditor` session - single use, expiring, tenant-
+          # scoped, rate-limited, audited, least-privilege, closed with the engagement window. Real Better Auth,
+          # real authenticate hook, real RBAC, as the NOBYPASSRLS wardenx_app role.
+          - { name: "M2 auditor link redemption", scripts: "test:m2:auditor-redemption:live" }
+          # M4 `audit.seal_partition` + `audit.integrity_sample`: the sealed audit hash chain and its sampled
+          # verification - a row altered/inserted/deleted out of band, or a broken seal link, is DETECTED, the
+          # run fails closed with an alert, and org B's chain is unaffected.
+          - { name: "M4 audit hash-chain integrity sample", scripts: "test:m4:audit-integrity:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever

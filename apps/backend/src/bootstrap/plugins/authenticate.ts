@@ -7,7 +7,7 @@
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
 import { DEVICE_ATTESTATION_ATTRIBUTE, type SessionTimeoutEnforcer } from "@wardenx/auth";
-import type { OrgScope, SessionContextResolver } from "@wardenx/types";
+import { type OrgScope, type SessionContextResolver, WardenXError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
 
@@ -29,6 +29,17 @@ export interface SystemCredentialConfig {
 
 const SYSTEM_TOKEN_HEADER = "x-internal-service-token";
 const SYSTEM_ORG_HEADER = "x-internal-org-id";
+/** HTTP methods an `auditor`-class session may use (M2 §2.2.4: auditor sessions are read-only). */
+const AUDITOR_SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
+/**
+ * The only mutations an auditor session may make: ending its own session, and redeeming a (second)
+ * engagement link — which replaces it (no concurrent auditor sessions) and authenticates by token.
+ */
+const AUDITOR_ALLOWED_MUTATION_PATHS: ReadonlySet<string> = new Set([
+  "/api/auth/sign-out",
+  "/api/v1/auditors/redeem",
+]);
+
 /** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
 const BACKGROUND_HEADER = "x-wardenx-background";
 
@@ -122,6 +133,16 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);
     if (!actor) return; // session/org mismatch — no org binding, no roles (no cross-tenant leak)
+    // M2 §2.2.4 — an `auditor`-class session is READ-ONLY, enforced here for every route (the class
+    // descriptor's `readOnly` flag had no reader, and the auditor role's single read permission is the second
+    // layer, not the only one). The only mutation allowed is signing out.
+    if (
+      actor.sessionClass === "auditor" &&
+      !AUDITOR_SAFE_METHODS.has(request.method.toUpperCase()) &&
+      !AUDITOR_ALLOWED_MUTATION_PATHS.has(request.url.split("?")[0] ?? "")
+    ) {
+      throw new WardenXError("AUDITOR_READ_ONLY", "auditor sessions are read-only", 403);
+    }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];
     // Stamp the ACTIVE membership id the §4.x ownership predicates read. Seven modules

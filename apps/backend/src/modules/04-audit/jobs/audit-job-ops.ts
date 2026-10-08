@@ -16,8 +16,9 @@
 //                         destruction-granted client exists (`DATABASE_DESTRUCTION_URL`): without it the
 //                         eraser's `performErasure` would throw, so the sweep is simply not constructed.
 //
-// DEFERRED (recorded, not silent): the quarterly `integrity_sample` needs a pgBackRest backup reader that
-// does not exist in this repo, and `seal_partition` is Phase-2/flag-gated. Neither queue is constructed.
+// `seal_partition` and the quarterly `integrity_sample` live in ./audit-integrity-job.ts (the sealed audit
+// hash chain + its sampled verification). The spec's pgBackRest backup comparison is NOT built — no backup
+// reader exists in this repo (external factor); every integrity run records that explicitly.
 import {
   type AuditEventFilter,
   type AuditEventRecord,

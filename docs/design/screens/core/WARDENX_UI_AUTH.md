@@ -48,6 +48,12 @@ Centered Card
 - **Password reset** (`/forgot`, `/reset-password`) — request → confirm; token TTL 15 minutes.
 - **Accept invitation** (`/invite/:token`) — validate token → set password (live policy
   meter) → verify email → enroll mandatory MFA (TOTP or passkey per role) → land in org.
+- **Auditor access link** (`/auditor/redeem?org=…#token=…`) — the emailed single-use link of an audit
+  engagement. The token rides the URL fragment (never sent to a server) and is scrubbed from the address
+  bar; nothing is redeemed until the auditor presses *Start auditor session*, so a mail scanner that follows
+  the link cannot burn it. Success starts a read-only `auditor` session bound to ONE engagement (10-min idle,
+  ends at the engagement window); replay, expiry, revocation and a not-yet-open window are refused with a
+  plain explanation. Per-auditor 2FA enrolment and BAA acceptance (M2 §7.7) are not part of this screen yet.
 - **Screen-lock overlay** — after 5 minutes idle; soft re-auth (password / biometric /
   passkey); session stays alive until absolute timeout.
 - **Step-up challenge** (full-page chrome-less route `/step-up` — deliberately outside the app shell, not a modal) — triggered by privileged actions; WebAuthn or TOTP only

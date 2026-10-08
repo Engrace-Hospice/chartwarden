@@ -228,3 +228,6 @@ export function verifySealChain(
   }
   return breaks;
 }
+
+export * from "./chain-sample";
+export * from "./db-chain-reader";

@@ -38301,6 +38301,59 @@
                           ]
                         }
                       }
+                    },
+                    "integritySample": {
+                      "type": "object",
+                      "required": [
+                        "lastRun",
+                        "result",
+                        "sealsTotal",
+                        "sealsSampled",
+                        "eventsHashed",
+                        "mismatches",
+                        "backupCrossReference"
+                      ],
+                      "properties": {
+                        "lastRun": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "result": {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mismatch",
+                              "type": "string"
+                            },
+                            {
+                              "const": "skipped",
+                              "type": "string"
+                            },
+                            {
+                              "const": "error",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sealsTotal": {
+                          "type": "integer"
+                        },
+                        "sealsSampled": {
+                          "type": "integer"
+                        },
+                        "eventsHashed": {
+                          "type": "integer"
+                        },
+                        "mismatches": {
+                          "type": "integer"
+                        },
+                        "backupCrossReference": {
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -38706,6 +38759,81 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auditors/redeem": {
+      "post": {
+        "operationId": "postApiV1AuditorsRedeem",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Redeem an emailed auditor link into a scoped, read-only, single-use auditor session (§2.2.4, §7.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionClass",
+                    "organizationId",
+                    "engagementId",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "sessionClass": {
+                      "const": "auditor",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "engagementId": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "organizationId",
+                  "token"
+                ],
+                "properties": {
+                  "organizationId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "token": {
+                    "pattern": "^[A-Za-z0-9_-]{43}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
