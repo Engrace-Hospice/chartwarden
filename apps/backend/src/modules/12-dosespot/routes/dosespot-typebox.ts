@@ -15,6 +15,7 @@ import {
 import type {
   MedicationHistoryRecordView,
   ControlledSubstancePolicyView as ServiceControlledSubstancePolicyView,
+  MedicationOrderDetailView as ServiceMedicationOrderDetailView,
   MedicationOrderView as ServiceMedicationOrderView,
   PrescriberRosterView as ServicePrescriberRosterView,
   RefillInboxPolicyView as ServiceRefillInboxPolicyView,
@@ -304,6 +305,14 @@ export const MedicationOrderResponseSchema = Type.Object({
   // COP27 — the hospice coverage determination (mig 0385).
   ...HospiceCoverageFieldsSchema,
 });
+/**
+ * Route 2 — the single-order detail: the order plus `viewerMayRetransmit`, whether THIS caller passes the
+ * retransmit standing rule (false unless `transmission_failed`). Lists never carry it.
+ */
+export const MedicationOrderDetailResponseSchema = Type.Object({
+  ...MedicationOrderResponseSchema.properties,
+  viewerMayRetransmit: Type.Optional(Type.Boolean()),
+});
 /** The `{ orders }` envelope the list + active-medications reads return. */
 export const MedicationOrderListResponseSchema = Type.Object({
   orders: Type.Array(MedicationOrderResponseSchema),
@@ -449,6 +458,10 @@ export const MedicationErrorReportResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _MedOrder = Conforms<Static<typeof MedicationOrderResponseSchema>, ServiceMedicationOrderView>;
+type _MedOrderDetail = Conforms<
+  Static<typeof MedicationOrderDetailResponseSchema>,
+  ServiceMedicationOrderDetailView
+>;
 type _MedOrderList = Conforms<
   Static<typeof MedicationOrderListResponseSchema>,
   { readonly orders: readonly ServiceMedicationOrderView[] }

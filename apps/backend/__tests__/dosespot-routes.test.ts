@@ -868,6 +868,71 @@ describe("GAP-035 follow-up — retransmit applies the sign standing rule", () =
     expect(res.statusCode).toBe(403);
     await app.close();
   });
+
+  describe("the detail read's viewerMayRetransmit mirrors the same standing rule", () => {
+    const detail = (
+      app: Awaited<ReturnType<typeof makeServer>>["app"],
+      headers: Record<string, string>,
+      id = FAILED,
+    ) => app.inject({ method: "GET", url: `/api/v1/medication-orders/${id}`, headers });
+
+    it("is true for the order's authoring prescriber", async () => {
+      const { app } = makeServer([failedOrder]);
+      const res = await detail(app, MD);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().viewerMayRetransmit).toBe(true);
+      await app.close();
+    });
+
+    it("is true for a physician whose roster row maps to the order's named physician", async () => {
+      const { app, backend } = makeServer([failedOrder]);
+      await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+      const res = await detail(app, MD2);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().viewerMayRetransmit).toBe(true);
+      await app.close();
+    });
+
+    it("is false for another signer-eligible physician (the write would 403)", async () => {
+      const { app } = makeServer([failedOrder]);
+      const res = await detail(app, MD2);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().viewerMayRetransmit).toBe(false);
+      expect((await retransmit(app, MD2)).statusCode).toBe(403);
+      await app.close();
+    });
+
+    it("is false for a non-prescriber discipline holding prescribing.sign", async () => {
+      const { app } = makeServer([failedOrder]);
+      const res = await detail(app, RN_SIGNER);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().viewerMayRetransmit).toBe(false);
+      await app.close();
+    });
+
+    it("is false on an order that is not transmission_failed, even for its prescriber", async () => {
+      const { app } = makeServer([failedOrder]);
+      const res = await detail(app, MD, SOURCE_ORDER);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("active");
+      expect(res.json().viewerMayRetransmit).toBe(false);
+      await app.close();
+    });
+
+    it("is never carried on list rows", async () => {
+      const { app } = makeServer([failedOrder]);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/medication-orders?patientId=${PATIENT}`,
+        headers: MD,
+      });
+      expect(res.statusCode).toBe(200);
+      const rows = res.json().orders as Array<Record<string, unknown>>;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row).not.toHaveProperty("viewerMayRetransmit");
+      await app.close();
+    });
+  });
 });
 
 describe("GAP-035 follow-up — verbal record needs an enrolled named prescriber", () => {

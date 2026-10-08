@@ -271,9 +271,14 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
-      return service.getOrder(organizationId, id);
+      // `viewerMayRetransmit` — the retransmit route's own standing inputs (acting membership + session
+      // disciplines), so the UI offers Retransmit only to a caller the write would accept.
+      return service.getOrder(organizationId, id, {
+        membershipId: userId,
+        disciplines: prescriberDisciplinesOf(request.context),
+      });
     },
   );
 

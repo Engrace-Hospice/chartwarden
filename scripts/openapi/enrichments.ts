@@ -1530,6 +1530,7 @@ import {
   HistoryRefreshResponseSchema as M12HistoryRefreshResponseSchema,
   MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   MedicationHistoryResponseSchema as M12MedicationHistoryResponseSchema,
+  MedicationOrderDetailResponseSchema as M12MedicationOrderDetailResponseSchema,
   MedicationOrderListQuerySchema as M12MedicationOrderListQuerySchema,
   MedicationOrderListResponseSchema as M12MedicationOrderListResponseSchema,
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
@@ -4866,7 +4867,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/medication-orders/:id": {
     summary:
       "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
-    response: M12MedicationOrderResponseSchema,
+    response: M12MedicationOrderDetailResponseSchema,
   },
   "PATCH /api/v1/medication-orders/:id": {
     summary: "Edit a medication-order draft",

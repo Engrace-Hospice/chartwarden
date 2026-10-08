@@ -662,6 +662,48 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     ).rejects.toMatchObject({ code: "SIGNER_NOT_ORDERING_PHYSICIAN" });
   });
 
+  it("getOrder's viewerMayRetransmit applies the retransmit standing rule (author, roster-mapped physician, others)", async () => {
+    const namedMdm = "99999999-9999-4999-8999-999999999999";
+    const failedId = (
+      await admin.query(
+        `INSERT INTO medication_order (organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, med_class, drug_name, strength, dose_form, route, data, prescriber_membership_id,
+           prescribing_physician_mdm_id, status)
+         VALUES ($1,$2,$3,$4,$5,'standard','Morphine','5 mg','tablet','oral','{}'::jsonb,$6,$7,'transmission_failed') RETURNING id`,
+        [
+          ORG_A,
+          providerOf[ORG_A],
+          locationOf[ORG_A],
+          PATIENT,
+          ADMISSION,
+          memberOf[ORG_A],
+          namedMdm,
+        ],
+      )
+    ).rows[0].id as string;
+    const physician = ["hospice_physician"];
+    const asViewer = (membershipId: string, disciplines: readonly string[], id = failedId) =>
+      svc.getOrder(ORG_A, id, { membershipId, disciplines });
+
+    // No viewer ⇒ the field is absent (the pre-existing projection).
+    expect(await svc.getOrder(ORG_A, failedId)).not.toHaveProperty("viewerMayRetransmit");
+    // The authoring prescriber.
+    expect((await asViewer(memberOf[ORG_A], physician)).viewerMayRetransmit).toBe(true);
+    // Same membership, but a discipline that cannot sign.
+    expect((await asViewer(memberOf[ORG_A], ["rn_case_manager"])).viewerMayRetransmit).toBe(false);
+    // Another physician whose roster row does not map to the named MDM id — the write refuses them too.
+    expect((await asViewer(member2Of[ORG_A], physician)).viewerMayRetransmit).toBe(false);
+    // Once their ACTIVE roster row maps to the named physician, the read and the write agree: allowed.
+    await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], namedMdm);
+    expect((await asViewer(member2Of[ORG_A], physician)).viewerMayRetransmit).toBe(true);
+    // A revoked roster row no longer counts.
+    await svc.revokePrescriber(ORG_A, member2Of[ORG_A], "test cleanup");
+    expect((await asViewer(member2Of[ORG_A], physician)).viewerMayRetransmit).toBe(false);
+    // A non-failed order is never retransmittable, even by its author.
+    const active = await seedActiveOrder(ORG_A);
+    expect((await asViewer(memberOf[ORG_A], physician, active)).viewerMayRetransmit).toBe(false);
+  });
+
   it("enrollPrescriber then revokePrescriber round-trips the roster + emits", async () => {
     const enrolled = await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], ["III", "IV"]);
     expect(enrolled.enrolled).toBe(true);

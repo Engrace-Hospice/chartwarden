@@ -35,6 +35,7 @@ import {
   assertRetransmitStanding,
   cosignRequiredFor,
   isVerbalRecorderDiscipline,
+  mayRetransmit,
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
   prescriberEligible,
@@ -111,6 +112,21 @@ export interface MedicationOrderView {
   readonly coverageDeterminedAt: string | null;
   /** The determining MEMBERSHIP id (session-derived). */
   readonly coverageDeterminedBy: string | null;
+}
+
+/**
+ * The single-order detail read: the order plus what THIS viewer may do with it. `viewerMayRetransmit` is
+ * decided by the same standing rule the retransmit write enforces (false unless `transmission_failed`); it is
+ * absent when the caller supplied no viewer. Lists never carry it (no per-row roster lookups).
+ */
+export interface MedicationOrderDetailView extends MedicationOrderView {
+  readonly viewerMayRetransmit?: boolean;
+}
+
+/** The session-derived identity of the detail read's viewer (never the request body). */
+export interface MedicationOrderViewer {
+  readonly membershipId: string;
+  readonly disciplines: readonly string[];
 }
 
 export interface RefillRequestView {
@@ -335,7 +351,11 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
       scope: OrderListScope;
     },
   ): Promise<{ orders: MedicationOrderView[]; statusCounts: Record<string, number> }>;
-  getOrder(organizationId: string, id: string): Promise<MedicationOrderView>;
+  getOrder(
+    organizationId: string,
+    id: string,
+    viewer?: MedicationOrderViewer,
+  ): Promise<MedicationOrderDetailView>;
   createDraft(
     organizationId: string,
     userId: string,
@@ -885,8 +905,23 @@ export function createInMemoryDoseSpotBackend(
         statusCounts,
       };
     },
-    async getOrder(organizationId, id) {
-      return view(find(organizationId, id));
+    async getOrder(organizationId, id, viewer) {
+      const r = find(organizationId, id);
+      if (!viewer) return view(r);
+      const rosterRow =
+        r.status === "transmission_failed"
+          ? prescribers.get(`${organizationId}:${viewer.membershipId}`)
+          : undefined;
+      return {
+        ...view(r),
+        viewerMayRetransmit: mayRetransmit(r.status, {
+          disciplines: viewer.disciplines,
+          signerMembershipId: viewer.membershipId,
+          signerMdmId: rosterRow?.enrolled ? (rosterRow.externalPhysicianMdmId ?? null) : null,
+          orderPrescriberMembershipId: r.prescriberMembershipId,
+          orderPrescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+        }),
+      };
     },
     async createDraft(organizationId, userId, args) {
       return view(await createInternal(organizationId, userId, args, false));

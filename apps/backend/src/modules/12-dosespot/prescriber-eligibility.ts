@@ -155,12 +155,26 @@ export function namedPrescriberNotEnrolled(): WardenXError {
   );
 }
 
+/** The retransmit-standing facts: the sign-standing input minus the status (retransmit is always from failure). */
+export type RetransmitStandingInput = Omit<SignerStandingInput, "orderStatus">;
+
+/**
+ * The non-throwing read of {@link assertRetransmitStanding}: whether the viewer of an order could retransmit
+ * it. False unless the order is `transmission_failed`; otherwise the same `signerStanding` rule the write
+ * enforces, so the detail read's `viewerMayRetransmit` can never offer an action the write would refuse.
+ */
+export function mayRetransmit(orderStatus: string, input: RetransmitStandingInput): boolean {
+  if (orderStatus !== "transmission_failed") return false;
+  const standing = signerStanding({ ...input, orderStatus });
+  return standing.signerEligible && standing.signerIsOrderingPhysician;
+}
+
 /**
  * Retransmit standing (spec §2.2 W-MR-08: "the prescriber clicks Retransmit ... the prescriber re-signs"):
  * a signer-eligible discipline who is the order's authoring prescriber or the named physician (roster MDM id
  * match) — the standard-sign rule; there is no on-behalf path. Throws the same machine error codes as sign.
  */
-export function assertRetransmitStanding(input: Omit<SignerStandingInput, "orderStatus">): void {
+export function assertRetransmitStanding(input: RetransmitStandingInput): void {
   const standing = signerStanding({ ...input, orderStatus: "transmission_failed" });
   if (!standing.signerEligible) {
     throw new WardenXError(
