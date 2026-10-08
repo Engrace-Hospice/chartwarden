@@ -3,7 +3,7 @@
 // The drawer is resolved from the loaded list, so a link to a record that was filtered out, deleted or mistyped rendered
 // nothing and left the param in the URL: no drawer, no message, and the drawer could pop up later when the list changed.
 // Once the list has finished loading and the id is absent, this clears the param (replace, so Back is not trapped) and says so.
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useOptionalToast } from "../system/toast";
 
@@ -31,11 +31,19 @@ export function useStaleSelection({
   const [params, setParams] = useSearchParams();
   const toast = useOptionalToast();
   const selected = params.get(param);
+  // StrictMode (development) runs every effect twice with the same closure: remember what was already cleared so the notice shows once.
+  const handled = useRef<string | null>(null);
   const stale =
     ready && selected !== null && selected !== "" && !ignore.includes(selected) && !found;
 
   useEffect(() => {
-    if (!stale) return;
+    if (!stale) {
+      handled.current = null;
+      return;
+    }
+    const key = `${param}=${selected}`;
+    if (handled.current === key) return;
+    handled.current = key;
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -45,5 +53,5 @@ export function useStaleSelection({
       { replace: true },
     );
     toast?.show(message, { tone: "info" });
-  }, [stale, param, message, setParams, toast]);
+  }, [stale, param, selected, message, setParams, toast]);
 }

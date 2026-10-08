@@ -5,7 +5,7 @@
 // user is not dropped at the top of the page. The closed sidebar is `visibility: hidden` (so its links leave the tab order),
 // and a hidden element cannot take focus: the first attempt after opening can land before the open class has been styled, so the
 // focus call is retried for a few frames until it sticks.
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 const FOCUS_ATTEMPTS = 8;
 const FOCUS_RETRY_MS = 40;
@@ -13,22 +13,31 @@ const FOCUS_RETRY_MS = 40;
 export interface OffCanvasNav {
   navOpen: boolean;
   setNavOpen: (open: boolean | ((current: boolean) => boolean)) => void;
+  /** Close after a nav link was activated: the page changed, so focus goes to the main region (`getMain`), not back to the toggle. */
+  closeForNavigation: () => void;
   /** Attach to the `<aside className="wx-sidebar">`. */
   sidebarRef: RefObject<HTMLElement>;
   /** Attach to the `wx-nav-toggle` button. */
   toggleRef: RefObject<HTMLButtonElement>;
 }
 
-export function useOffCanvasNav(): OffCanvasNav {
+export function useOffCanvasNav(getMain?: () => HTMLElement | null): OffCanvasNav {
   const [navOpen, setNavOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
+  const navigated = useRef(false);
+  const mainRef = useRef(getMain);
+  mainRef.current = getMain;
 
   useEffect(() => {
     if (!navOpen) {
-      if (wasOpen.current) toggleRef.current?.focus();
+      if (wasOpen.current) {
+        if (navigated.current) mainRef.current?.()?.focus({ preventScroll: true });
+        else toggleRef.current?.focus();
+      }
       wasOpen.current = false;
+      navigated.current = false;
       return;
     }
     wasOpen.current = true;
@@ -55,5 +64,10 @@ export function useOffCanvasNav(): OffCanvasNav {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [navOpen]);
 
-  return { navOpen, setNavOpen, sidebarRef, toggleRef };
+  const closeForNavigation = useCallback(() => {
+    navigated.current = true;
+    setNavOpen(false);
+  }, []);
+
+  return { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef };
 }

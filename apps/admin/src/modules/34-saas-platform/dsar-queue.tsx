@@ -23,7 +23,7 @@ import type { paths } from "@wardenx/ui";
 // requiredPermission: `dsar_export.list_own`. Mirrors the M40/M36 R1 work-queue exemplars exactly:
 // useApiClient + client.GET, @wardenx/ui primitives, mono identifiers (wx-data-md), tabular numerics,
 // laid out as the redesign's list + right drawer (outbox is the reference).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { DSAR_TONE, cap } from "./saas-status";
 
@@ -69,6 +69,8 @@ const isOpen = (s: DsarExportJob["status"]): boolean => s !== "fulfilled" && s !
 // The effective deadline: a granted one-time §164.524 extension moves the clock to extendedUntil.
 const effectiveDue = (j: DsarExportJob): string => j.extendedUntil ?? j.slaDueAt;
 
+const filterKey = (select: string, text: string): string => `${select}\u0000${text.trim()}`;
+
 export function DsarQueue(): JSX.Element {
   const client = useApiClient();
   const [patientId, setPatientId] = useState("");
@@ -81,9 +83,14 @@ export function DsarQueue(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DsarExportJob | null>(null);
 
+  // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
+  // catches up to the same text — without this the effect would fetch the identical query a second time.
+  const loadedKey = useRef<string | null>(null);
+
   const load = useCallback(
     async (patient: string = debouncedPatientId) => {
       const isCurrent = guard();
+      loadedKey.current = filterKey(status, patient);
       setLoading(true);
       setError(null);
       setSelected(null);
@@ -108,8 +115,9 @@ export function DsarQueue(): JSX.Element {
   );
 
   useEffect(() => {
+    if (loadedKey.current === filterKey(status, debouncedPatientId)) return;
     void load();
-  }, [load]);
+  }, [load, status, debouncedPatientId]);
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>

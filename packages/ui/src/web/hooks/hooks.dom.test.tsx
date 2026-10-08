@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { type JSX, useRef, useState } from "react";
+import { type JSX, StrictMode, useRef, useState } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../system/toast";
@@ -214,5 +214,107 @@ describe("useOffCanvasNav", () => {
     );
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(document.activeElement).toBe(toggle));
+  });
+});
+
+describe("review regressions", () => {
+  it("useRequestGuard still guards after StrictMode's mount/cleanup/mount", () => {
+    const { result } = renderHook(() => useRequestGuard(), { wrapper: StrictMode });
+    const first = result.current();
+    const second = result.current();
+    expect(first()).toBe(false);
+    expect(second()).toBe(true);
+  });
+
+  it("a drawer the user has edited does not close on Escape from a button (the Close button still works)", () => {
+    const onClose = vi.fn();
+    render(<Host onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    fireEvent.input(screen.getByLabelText("note"), { target: { value: "half-typed" } });
+    fireEvent.keyDown(screen.getByRole("button", { name: "act" }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("complementary", { name: "Detail" }), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closing a drawer does not pull focus back when the user already moved it (switching rows)", () => {
+    function Rows(): JSX.Element {
+      const [id, setId] = useState<string | null>(null);
+      return (
+        <div>
+          <button type="button" onClick={() => setId("a")}>
+            row a
+          </button>
+          <button type="button" onClick={() => setId("b")}>
+            row b
+          </button>
+          {id ? <KeyedDrawer key={id} /> : null}
+        </div>
+      );
+    }
+    function KeyedDrawer(): JSX.Element {
+      const props = useDrawerA11y<HTMLElement>(() => undefined);
+      return <aside aria-label="Detail" {...props} />;
+    }
+    render(<Rows />);
+    const a = screen.getByRole("button", { name: "row a" });
+    const b = screen.getByRole("button", { name: "row b" });
+    a.focus();
+    fireEvent.click(a);
+    b.focus();
+    fireEvent.click(b);
+    expect(document.activeElement).not.toBe(a);
+  });
+
+  it("useOffCanvasNav does not focus the toggle on first render, and a link-activated close focuses main instead of the toggle", async () => {
+    function NavWithMain(): JSX.Element {
+      const main = useRef<HTMLElement>(null);
+      const { setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
+        () => main.current,
+      );
+      return (
+        <div>
+          <button type="button" ref={toggleRef} onClick={() => setNavOpen((o) => !o)}>
+            toggle
+          </button>
+          <aside ref={sidebarRef}>
+            <a
+              href="/first"
+              onClick={(e) => {
+                e.preventDefault();
+                closeForNavigation();
+              }}
+            >
+              first
+            </a>
+          </aside>
+          <main ref={main} tabIndex={-1}>
+            page
+          </main>
+        </div>
+      );
+    }
+    render(<NavWithMain />);
+    expect(document.activeElement).toBe(document.body);
+    const toggle = screen.getByRole("button", { name: "toggle" });
+    fireEvent.click(toggle);
+    const link = await screen.findByRole("link", { name: "first" });
+    await waitFor(() => expect(document.activeElement).toBe(link));
+    fireEvent.click(link);
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector("main")));
+    expect(document.activeElement).not.toBe(toggle);
+  });
+
+  it("useStaleSelection shows its notice once under StrictMode", async () => {
+    render(
+      <StrictMode>
+        <ToastProvider>
+          <MemoryRouter initialEntries={["/tenants?tenant=gone"]}>
+            <Stale ready found={false} />
+          </MemoryRouter>
+        </ToastProvider>
+      </StrictMode>,
+    );
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(""));
+    expect(screen.getAllByText("That record is no longer in this list.")).toHaveLength(1);
   });
 });

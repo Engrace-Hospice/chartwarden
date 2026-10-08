@@ -3,6 +3,7 @@ import {
   DegradedBanner,
   EmptyState,
   Glyph,
+  InlineAlert,
   setSearchTerm,
   useDisclosureDismiss,
   useOffCanvasNav,
@@ -63,7 +64,9 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
   // default and toggled by the header's hamburger button instead of always occupying the viewport.
-  const { navOpen, setNavOpen, sidebarRef, toggleRef } = useOffCanvasNav();
+  const { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
+    () => mainRef.current,
+  );
   // `.wx-main` (not the window) is the scroll container (`overflow: auto` — see index.css), so
   // react-router doesn't reset it on navigation. Without this, a deep scroll into a long page
   // (e.g. the Home dashboard tile grid) carries over to the next route and can leave a short
@@ -111,7 +114,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // A click on a nav link closes the drawer; a click on an entry's own disclosure toggle (not an
   // <a>) should not, or the entry would expand AND the drawer close in the same tap.
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
-    if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
+    if ((e.target as HTMLElement).closest("a")) closeForNavigation();
   }
   return (
     <div className="wx-shell">
@@ -186,7 +189,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef}>
+        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -318,15 +321,20 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [signOutFailed, setSignOutFailed] = useState(false);
   useDisclosureDismiss(open, () => setOpen(false), ref, triggerRef);
 
   async function signOut(): Promise<void> {
-    setOpen(false);
+    setSignOutFailed(false);
     try {
       await authClient.signOut();
     } catch {
-      // Fall through to the sign-in page: it re-checks the session, so a failed call never strands the user.
+      // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session
+      // on a shared workstation while the user believes they have left.
+      setSignOutFailed(true);
+      return;
     }
+    setOpen(false);
     window.location.href = "/login";
   }
 
@@ -360,6 +368,9 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
           <button type="button" className="wx-actor-menu-item" onClick={() => void signOut()}>
             Sign out
           </button>
+          {signOutFailed ? (
+            <InlineAlert tone="error">Could not sign out. Try again.</InlineAlert>
+          ) : null}
         </div>
       ) : null}
     </div>

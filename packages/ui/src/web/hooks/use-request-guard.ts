@@ -8,19 +8,22 @@
 //     setRows(data);
 //   }, [client, guard]);
 //
-// Also returns false once the component has unmounted, so a late response never writes into a dead screen.
+// Also returns false once the component has unmounted, so a late response never writes into a dead screen. "Mounted" is tracked
+// separately from the request counter: React StrictMode runs mount -> cleanup -> mount in development, and a cleanup that
+// poisoned the counter would leave every later request looking current.
 import { useCallback, useEffect, useRef } from "react";
 
 export function useRequestGuard(): () => () => boolean {
   const latest = useRef(0);
-  useEffect(
-    () => () => {
-      latest.current = Number.POSITIVE_INFINITY;
-    },
-    [],
-  );
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return useCallback(() => {
     const mine = ++latest.current;
-    return () => latest.current === mine;
+    return () => mounted.current && latest.current === mine;
   }, []);
 }

@@ -24,7 +24,7 @@ import type { GlyphName, paths } from "@wardenx/ui";
 // a CeremonyModal that requires the operator to type the flag key to commit. Imports only leaves.
 // Laid out as the redesign's list + right drawer (outbox is the reference): KPI stat grid, filter row,
 // list table, and the selected flag in an `aside.wx-admission-drawer`.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { FLAG_KIND_TONE, statusLabel } from "./saas-status";
 
@@ -64,6 +64,8 @@ const renderValue = (f: FeatureFlagView): string => {
   return String(f.value);
 };
 
+const filterKey = (select: string, text: string): string => `${select}\u0000${text.trim()}`;
+
 export function FeatureFlags(): JSX.Element {
   const client = useApiClient();
   const [flagKind, setFlagKind] = useState<FlagKind | "">("");
@@ -78,9 +80,14 @@ export function FeatureFlags(): JSX.Element {
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
 
+  // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
+  // catches up to the same text — without this the effect would fetch the identical query a second time.
+  const loadedKey = useRef<string | null>(null);
+
   const load = useCallback(
     async (org: string = debouncedOrg) => {
       const isCurrent = guard();
+      loadedKey.current = filterKey(flagKind, org);
       setLoading(true);
       setError(null);
       const query: NonNullable<
@@ -105,8 +112,9 @@ export function FeatureFlags(): JSX.Element {
   );
 
   useEffect(() => {
+    if (loadedKey.current === filterKey(flagKind, debouncedOrg)) return;
     void load();
-  }, [load]);
+  }, [load, flagKind, debouncedOrg]);
 
   // §6/D10 — the kill-switch toggle is the controlled act. We confirm-by-typing the flag key, then
   // POST the enqueue route; the server enforces the passkey-recent-5min step-up + ABAC authority.

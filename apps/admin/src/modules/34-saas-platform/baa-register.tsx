@@ -20,7 +20,7 @@ import type { paths } from "@wardenx/ui";
 // status / expiration, with BAA-status pills. Read-only here; execution/attestation are separate
 // command surfaces. Imports only leaves (@wardenx/ui) + the shared M34 tone maps. Laid out as the
 // redesign's list + right drawer (outbox is the reference).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
 
@@ -56,6 +56,8 @@ interface BaaRegisterPage {
 const isExpired = (r: BaaRecordView): boolean =>
   r.expiresOn !== null && new Date(r.expiresOn).getTime() < Date.now();
 
+const filterKey = (select: string, text: string): string => `${select}\u0000${text.trim()}`;
+
 export function BaaRegister(): JSX.Element {
   const client = useApiClient();
   const [status, setStatus] = useState<BaaStatus | "">("");
@@ -68,9 +70,14 @@ export function BaaRegister(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<BaaRecordView | null>(null);
 
+  // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
+  // catches up to the same text — without this the effect would fetch the identical query a second time.
+  const loadedKey = useRef<string | null>(null);
+
   const load = useCallback(
     async (tenant: string = debouncedTenant) => {
       const isCurrent = guard();
+      loadedKey.current = filterKey(status, tenant);
       setLoading(true);
       setError(null);
       const query: NonNullable<
@@ -95,8 +102,9 @@ export function BaaRegister(): JSX.Element {
   );
 
   useEffect(() => {
+    if (loadedKey.current === filterKey(status, debouncedTenant)) return;
     void load();
-  }, [load]);
+  }, [load, status, debouncedTenant]);
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>

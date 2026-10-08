@@ -457,6 +457,9 @@
   table::-webkit-scrollbar {
     display: none !important; /* Chrome, Safari and Opera */
   }
+  .wx-main:focus {
+    outline: none;
+  }
   .wx-main {
     flex: 1;
     min-width: 0;

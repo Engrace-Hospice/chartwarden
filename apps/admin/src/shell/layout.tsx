@@ -1,4 +1,4 @@
-import { Glyph, useDisclosureDismiss, useOffCanvasNav, useTheme } from "@wardenx/ui";
+import { Glyph, InlineAlert, useDisclosureDismiss, useOffCanvasNav, useTheme } from "@wardenx/ui";
 // apps/admin/src/shell — the Platform-Ops console frame in the clinical app's 2026-09-25 redesign: a full-height
 // sidebar (brand + grouped nav, admin-nav.ts) beside a column holding the top bar and the routed screen. The markup
 // and `wx-shell` classes match apps/web/src/shell/layout.tsx; the rules live in packages/ui/src/web/styles/app-shell.css,
@@ -25,7 +25,9 @@ function initials(name: string): string {
 export function AdminLayout({ sections }: { sections: readonly AdminNavSection[] }): JSX.Element {
   const session = useSession();
   // Below 768px the sidebar is an off-canvas drawer toggled by the header's menu button (app-shell.css).
-  const { navOpen, setNavOpen, sidebarRef, toggleRef } = useOffCanvasNav();
+  const { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
+    () => mainRef.current,
+  );
   const mainRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
   // `.wx-main` is the scroll container, so a route change would otherwise keep the previous page's scroll.
@@ -36,7 +38,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
   const activeKey = activeAdminEntry(sections, pathname);
 
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
-    if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
+    if ((e.target as HTMLElement).closest("a")) closeForNavigation();
   }
 
   return (
@@ -112,7 +114,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef}>
+        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -126,16 +128,21 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [signOutFailed, setSignOutFailed] = useState(false);
 
   useDisclosureDismiss(open, () => setOpen(false), ref, triggerRef);
 
   async function signOut(): Promise<void> {
-    setOpen(false);
+    setSignOutFailed(false);
     try {
       await authClient.signOut();
     } catch {
-      // Fall through to the sign-in page: it re-checks the session, so a failed call never strands the operator.
+      // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session
+      // on a shared workstation while the user believes they have left.
+      setSignOutFailed(true);
+      return;
     }
+    setOpen(false);
     window.location.href = "/login";
   }
 
@@ -165,6 +172,9 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
           <button type="button" className="wx-actor-menu-item" onClick={() => void signOut()}>
             Sign out
           </button>
+          {signOutFailed ? (
+            <InlineAlert tone="error">Could not sign out. Try again.</InlineAlert>
+          ) : null}
         </div>
       ) : null}
     </div>

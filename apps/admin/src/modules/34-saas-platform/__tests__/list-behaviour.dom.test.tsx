@@ -17,6 +17,7 @@ import { TenantInventory } from "../tenant-inventory";
 
 const STALE_NOTICE = "That record is no longer in this list.";
 const DEBOUNCE_WAIT_MS = 2000;
+const SETTLE_AFTER_DEBOUNCE_MS = 600;
 const NOW = "2026-01-01T00:00:00.000Z";
 
 interface Recorded {
@@ -344,6 +345,9 @@ describe("debounced text filters", () => {
     fireEvent.keyDown(screen.getByLabelText("Tenant organization id"), { key: "Enter" });
     await waitFor(() => expect(listCalls(path)).toHaveLength(3));
     expect(listCalls(path)[2]?.search).toContain("organizationId=org-9");
+    // The debounced value then catches up to the text Enter already loaded: it must not fetch the same query again.
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_AFTER_DEBOUNCE_MS));
+    expect(listCalls(path)).toHaveLength(3);
   });
 
   it("BaaRegister issues one request after typing pauses", async () => {
@@ -368,5 +372,7 @@ describe("debounced text filters", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(listCalls(path)).toHaveLength(3));
     expect(listCalls(path)[2]?.search).toContain("patientId=pat-43");
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_AFTER_DEBOUNCE_MS));
+    expect(listCalls(path)).toHaveLength(3);
   });
 });
