@@ -81,7 +81,7 @@ export interface OrderRouteDeps {
   }) => Promise<readonly string[]>;
 }
 
-const defaultCaseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"]> = (q) =>
+export const defaultCaseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"]> = (q) =>
   getSeam("CaseloadProvider").caseloadPatientIds(q);
 
 /**
@@ -89,7 +89,7 @@ const defaultCaseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"
  * is limited to their caseload plus the one patient a pinned (collaborator / portal) session names.
  * Fail-CLOSED: a caseload that cannot be resolved narrows to nothing rather than widening to the org.
  */
-async function readScopeOf(
+export async function readScopeOf(
   request: FastifyRequest,
   caseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"]>,
 ): Promise<OrderReadScope> {

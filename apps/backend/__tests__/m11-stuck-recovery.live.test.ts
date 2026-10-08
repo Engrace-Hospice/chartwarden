@@ -231,7 +231,7 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     const { rows } = await admin.query(
       `SELECT status, transmission_status, transmission_failure_reason, transmission_attempt_id,
               transmission_auto_retry_count AS retries, transmission_auto_retry_at AS retry_at,
-              transmission_auto_retry_exhausted_at AS exhausted_at, updated_at
+              transmission_auto_retry_exhausted_at AS exhausted_at, updated_at, patient_id
          FROM order_record WHERE id=$1`,
       [id],
     );
@@ -760,6 +760,27 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     expect((await recoveryB.listHeld(ORG_B, { limit: 50 })).items.map((i) => i.orderId)).toEqual([
       inB,
     ]);
+  });
+
+  it("GAP-030 — the worklist narrows to the given caseload: only those patients' held orders, and an empty caseload reads nothing", async () => {
+    const mine = await heldOrder();
+    const theirs = await heldOrder();
+    const minePatient = (await orderRow(mine)).patient_id as string;
+    const theirsPatient = (await orderRow(theirs)).patient_id as string;
+    expect(minePatient).not.toBe(theirsPatient);
+
+    const all = await recovery.listHeld(ORG_A, { limit: 50, patientIds: null });
+    expect(all.items.map((i) => i.orderId)).toEqual(expect.arrayContaining([mine, theirs]));
+
+    const narrowed = await recovery.listHeld(ORG_A, { limit: 50, patientIds: [minePatient] });
+    expect(narrowed.items.map((i) => i.patientId)).toEqual(narrowed.items.map(() => minePatient));
+    expect(narrowed.items.some((i) => i.orderId === mine)).toBe(true);
+    expect(narrowed.items.some((i) => i.orderId === theirs)).toBe(false);
+
+    expect(await recovery.listHeld(ORG_A, { limit: 50, patientIds: [] })).toEqual({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it("the worklist paginates by a keyset cursor with no overlap or gap, and refuses a malformed cursor", async () => {

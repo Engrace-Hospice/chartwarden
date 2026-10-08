@@ -4,9 +4,16 @@
 // every refusal the route can give (STEP_UP_REQUIRED, 403, 409, 422 with row details) reaches the operator.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WageIndexLoad } from "../wage-index-load";
+import {
+  WAGE_INDEX_DRAFT_TTL_MS,
+  clearWageIndexDraft,
+  readWageIndexDraft,
+  saveWageIndexDraft,
+} from "../wage-index-load-draft";
+import { fiscalYearStartingOf } from "../wage-index-load-model";
 
 type Call = { method: string; path: string; body: Record<string, unknown>; key: string | null };
 let calls: Call[] = [];
@@ -35,13 +42,19 @@ function mount(): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <ToastProvider>
-        <MemoryRouter>
-          <WageIndexLoad />
+        <MemoryRouter initialEntries={["/admin/billing/wage-index"]}>
+          <Routes>
+            <Route path="/admin/billing/wage-index" element={<WageIndexLoad />} />
+            <Route path="/step-up" element={<div data-testid="step-up-page" />} />
+          </Routes>
         </MemoryRouter>
       </ToastProvider>
     </ApiClientProvider>,
   );
 }
+
+/** A fiscal year the screen offers (the current federal FY). */
+const FY = fiscalYearStartingOf(new Date());
 
 const TABLE = ["CCN,CBSA,Wage Index", "381588,38900,1.0342", "381589,,0.9876"].join("\n");
 
@@ -60,6 +73,7 @@ async function confirmLoad(): Promise<HTMLElement> {
 beforeEach(() => {
   calls = [];
   reply = { status: 200, body: {} };
+  clearWageIndexDraft();
 });
 afterEach(() => cleanup());
 
@@ -116,15 +130,75 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("STEP_UP_REQUIRED asks the operator to re-verify; nothing was loaded", async () => {
+  it("STEP_UP_REQUIRED offers a Re-verify link to /step-up and back, keeping the form", async () => {
     reply = {
       status: 403,
       body: { error: { code: "STEP_UP_REQUIRED", message: "step up", correlationId: "c" } },
     };
     mount();
+    fireEvent.change(screen.getByLabelText(/Fiscal year/), { target: { value: String(FY) } });
     fill();
     const dialog = await confirmLoad();
     expect(await within(dialog).findByText("Re-verify to load")).toBeTruthy();
+    const link = within(dialog).getByRole("link", { name: "Re-verify and come back" });
+    expect(link.getAttribute("href")).toBe(
+      `/step-up?returnTo=${encodeURIComponent("/admin/billing/wage-index")}`,
+    );
+
+    fireEvent.click(link);
+    expect(await screen.findByTestId("step-up-page")).toBeTruthy();
+    expect(readWageIndexDraft()).toEqual({
+      fiscalYearStarting: FY,
+      sourceReference: "CMS FY2027 hospice wage index table",
+      table: TABLE,
+    });
+  });
+
+  it("restores a stashed draft once, clearing it on mount", () => {
+    saveWageIndexDraft({ fiscalYearStarting: FY, sourceReference: "src", table: TABLE });
+    mount();
+    expect(screen.getByText(/Restored the table/)).toBeTruthy();
+    expect(readWageIndexDraft()).toBeNull();
+  });
+
+  it("restores a stashed draft on mount, and clears it after a successful load", async () => {
+    saveWageIndexDraft({
+      fiscalYearStarting: FY,
+      sourceReference: "CMS FY2027 hospice wage index table",
+      table: TABLE,
+    });
+    reply = {
+      status: 200,
+      body: {
+        fiscalYearStarting: FY,
+        sourceReference: "CMS FY2027 hospice wage index table",
+        inserted: 2,
+        updated: 0,
+      },
+    };
+    mount();
+    expect(screen.getByText(/Restored the table/)).toBeTruthy();
+    expect((screen.getByLabelText(/Paste the table/) as HTMLTextAreaElement).value).toBe(TABLE);
+    expect((screen.getByLabelText(/Source reference/) as HTMLInputElement).value).toBe(
+      "CMS FY2027 hospice wage index table",
+    );
+    expect((screen.getByLabelText(/Fiscal year/) as HTMLSelectElement).value).toBe(String(FY));
+
+    await confirmLoad();
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]?.body.fiscalYearStarting).toBe(FY);
+    expect(await screen.findByText(/2 new values, 0 updated/)).toBeTruthy();
+    expect(readWageIndexDraft()).toBeNull();
+  });
+
+  it("drops an expired draft instead of restoring it", () => {
+    saveWageIndexDraft(
+      { fiscalYearStarting: FY, sourceReference: "old", table: TABLE },
+      Date.now() - WAGE_INDEX_DRAFT_TTL_MS - 1,
+    );
+    mount();
+    expect(screen.queryByText(/Restored the table/)).toBeNull();
+    expect((screen.getByLabelText(/Paste the table/) as HTMLTextAreaElement).value).toBe("");
   });
 
   it("a plain 403 names the permission", async () => {

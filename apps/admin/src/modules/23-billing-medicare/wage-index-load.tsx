@@ -7,6 +7,7 @@ import {
   Modal,
   PageHeader,
   Panel,
+  ReverifyLink,
   SelectField,
   TextAreaField,
   TextField,
@@ -23,8 +24,17 @@ import {
 // so this screen previews the parse with the route's own per-row patterns and refuses to send a file with a problem;
 // the server validates every row again and loads nothing if one is bad. The tenant-entered per-CCN values live in
 // apps/web (Billing → Wage Index); this is the platform table claim assembly falls back to.
-import { useMemo, useState } from "react";
+//
+// A stale session gets 403 STEP_UP_REQUIRED: the confirm dialog offers a Re-verify link to the console's /step-up
+// page, which comes back here. The form (table, fiscal year, source reference) is stashed for that round trip
+// (wage-index-load-draft.ts) and restored on mount, so the operator does not have to paste the file again.
+import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import {
+  clearWageIndexDraft,
+  readWageIndexDraft,
+  saveWageIndexDraft,
+} from "./wage-index-load-draft";
 import {
   type LoadErrorView,
   SOURCE_REFERENCE_MAX,
@@ -56,10 +66,23 @@ function readText(file: File): Promise<string> {
 const plural = (n: number, one: string, many = `${one}s`): string =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
+/** The fiscal year to restore from a draft, only when it is still one of the offered options. */
+function restoredFiscalYear(fiscalYearStarting: number | undefined): number {
+  const offered = FY_OPTIONS.some((o) => o.value === String(fiscalYearStarting));
+  return offered && fiscalYearStarting !== undefined ? fiscalYearStarting : NOW_FY + 1;
+}
+
 export function WageIndexLoad(): JSX.Element {
-  const [fy, setFy] = useState(NOW_FY + 1);
-  const [sourceReference, setSourceReference] = useState("");
-  const [table, setTable] = useState("");
+  // Read once on mount (a render-safe read: it does not clear, so StrictMode's double initialiser is harmless;
+  // the effect below clears it after the first render).
+  const [draft] = useState(() => readWageIndexDraft());
+  const [fy, setFy] = useState(() => restoredFiscalYear(draft?.fiscalYearStarting));
+  const [sourceReference, setSourceReference] = useState(draft?.sourceReference ?? "");
+  const [table, setTable] = useState(draft?.table ?? "");
+  // A draft is restored once: clear it now, so a later visit (or a reload) does not claim to restore it again.
+  useEffect(() => {
+    if (draft) clearWageIndexDraft();
+  }, [draft]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<WageIndexLoadResult | null>(null);
@@ -110,6 +133,11 @@ export function WageIndexLoad(): JSX.Element {
       </KpiStrip>
 
       <div className="flex flex-col gap-4 px-6">
+        {draft ? (
+          <InlineAlert tone="info">
+            Restored the table, fiscal year and source reference from before you re-verified.
+          </InlineAlert>
+        ) : null}
         <Panel
           title="Source"
           icon="file-text"
@@ -186,7 +214,9 @@ export function WageIndexLoad(): JSX.Element {
           sourceReference={source}
           parsed={parsed}
           onClose={() => setConfirming(false)}
+          onReverify={() => saveWageIndexDraft({ fiscalYearStarting: fy, sourceReference, table })}
           onLoaded={(loaded) => {
+            clearWageIndexDraft();
             setConfirming(false);
             setResult(loaded);
           }}
@@ -272,6 +302,8 @@ interface ConfirmLoadModalProps {
   readonly sourceReference: string;
   readonly parsed: Parsed;
   readonly onClose: () => void;
+  /** Called as the operator leaves for /step-up, to keep the form for the return trip. */
+  readonly onReverify: () => void;
   readonly onLoaded: (result: WageIndexLoadResult) => void;
 }
 
@@ -280,6 +312,7 @@ function ConfirmLoadModal({
   sourceReference,
   parsed,
   onClose,
+  onReverify,
   onLoaded,
 }: ConfirmLoadModalProps): JSX.Element {
   const client = useApiClient();
@@ -331,6 +364,11 @@ function ConfirmLoadModal({
               </ul>
             ) : null}
           </InlineAlert>
+        ) : null}
+        {failure?.stepUp ? (
+          <div className="flex justify-start">
+            <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
+          </div>
         ) : null}
         <div className="flex justify-end gap-3">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>

@@ -1478,25 +1478,8 @@
     }
   }
 
-  /* Care Plans tab (07-care-plan/care-plan-overview.tsx). */
-  .wx-page-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .wx-page-head h1 {
-    margin: 0;
-    font-size: 1.625rem;
-    font-weight: 700;
-    color: var(--color-on-surface);
-  }
-  .wx-page-head p {
-    margin: 0.25rem 0 0;
-    color: var(--color-muted);
-    font-size: 0.875rem;
-  }
+  /* Care Plans tab (07-care-plan/care-plan-overview.tsx). The `.wx-page-head` list header lives in the shared
+     list chrome (packages/ui/src/web/styles/list-chrome.css). */
   .wx-version-card {
     display: flex;
     align-items: center;
@@ -3717,6 +3700,15 @@
     margin: 0;
     color: var(--color-muted);
     font-size: 0.75rem;
+  }
+  /* The line's text beside its glyph. A bare text node is a max-content flex item, so a sentence wider than the
+     drawer wrapped onto its own line and left the icon alone above it; a zero basis keeps it beside the icon. */
+  .wx-source-line > svg {
+    flex: none;
+  }
+  .wx-source-line > .wx-source-text {
+    flex: 1 1 0;
+    min-width: 0;
   }
   .wx-segmented {
     border: 0;

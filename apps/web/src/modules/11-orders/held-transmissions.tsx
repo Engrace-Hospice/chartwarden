@@ -27,6 +27,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { type PatientNames, usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import {
   clearStepUpDraft,
@@ -129,6 +130,7 @@ export function HeldTransmissions(): JSX.Element {
     [all],
   );
   const selected = all.find((i) => i.orderId === selectedId) ?? null;
+  const patients = usePatientNames(all.map((i) => i.patientId));
 
   return (
     <div className={`wx-rates wx-held-tx${selectedId ? " has-drawer" : ""}`}>
@@ -193,7 +195,12 @@ export function HeldTransmissions(): JSX.Element {
           </div>
         ) : (
           <>
-            <HeldTable items={all} selectedId={selectedId} onSelect={setSelectedId} />
+            <HeldTable
+              items={all}
+              patients={patients}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
             {nextCursor ? (
               <Button tone="secondary" loading={loadingMore} onClick={() => void loadMore()}>
                 Load more
@@ -208,6 +215,7 @@ export function HeldTransmissions(): JSX.Element {
           key={selectedId}
           orderId={selectedId}
           item={selected}
+          patients={patients}
           onClose={() => setSelectedId(null)}
           onChanged={() => setReloadKey((k) => k + 1)}
         />
@@ -216,12 +224,45 @@ export function HeldTransmissions(): JSX.Element {
   );
 }
 
+/** The patient's name linked to the chart; the short id only while loading or when the name cannot be read. */
+function PatientCell({
+  patientId,
+  patients,
+}: {
+  patientId: string;
+  patients: PatientNames;
+}): JSX.Element {
+  if (!patientId) return <span className="wx-data-md">—</span>;
+  const entry = patients[patientId];
+  if (!entry) {
+    return (
+      <span className="wx-data-md" title={entry === null ? "Patient name unavailable" : undefined}>
+        {entry === undefined ? "…" : shortId(patientId)}
+      </span>
+    );
+  }
+  return (
+    <>
+      <Link
+        to={`/patients/${patientId}`}
+        className="wx-row-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {entry.name}
+      </Link>
+      {entry.mrn ? <span className="wx-row-sub wx-data-md">MRN {entry.mrn}</span> : null}
+    </>
+  );
+}
+
 function HeldTable({
   items,
+  patients,
   selectedId,
   onSelect,
 }: {
   items: HeldItem[];
+  patients: PatientNames;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): JSX.Element {
@@ -253,7 +294,9 @@ function HeldTable({
                   <span className="wx-row-title">Lab order</span>
                   <span className="wx-row-sub wx-data-md">{shortId(i.orderId)}</span>
                 </td>
-                <td className="wx-data-md">{shortId(i.patientId)}</td>
+                <td>
+                  <PatientCell patientId={i.patientId} patients={patients} />
+                </td>
                 <td>{heldReasonLabel(i.reason)}</td>
                 <td className="wx-nums">{heldAge(i.ageSeconds)}</td>
                 <td>
@@ -279,11 +322,13 @@ type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 function HeldOrderDrawer({
   orderId,
   item,
+  patients,
   onClose,
   onChanged,
 }: {
   orderId: string;
   item: HeldItem | null;
+  patients: PatientNames;
   onClose: () => void;
   onChanged: () => void;
 }): JSX.Element {
@@ -385,6 +430,12 @@ function HeldOrderDrawer({
     }));
   }
 
+  /** Closing abandons the typed evidence: a stashed draft must not reopen this order on the next visit. */
+  function close(): void {
+    clearStepUpDraft(draftKey);
+    onClose();
+  }
+
   const pending =
     detail?.pendingRecovery?.status === "pending_cosign" ? detail.pendingRecovery : null;
   const selfFiled =
@@ -404,7 +455,7 @@ function HeldOrderDrawer({
             {item ? heldReasonLabel(item.reason) : "Transmission held"}
           </div>
         </div>
-        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={close}>
           <Glyph name="close" size={16} />
         </Button>
       </header>
@@ -422,7 +473,12 @@ function HeldOrderDrawer({
               </Link>
             </dd>
             <dt>Patient</dt>
-            <dd className="wx-data-md">{shortId(item?.patientId ?? detail?.patientId ?? "")}</dd>
+            <dd>
+              <PatientCell
+                patientId={item?.patientId ?? detail?.patientId ?? ""}
+                patients={patients}
+              />
+            </dd>
             {item ? (
               <>
                 <dt>Failed</dt>
@@ -575,7 +631,10 @@ function AttestationForm({
         onChange={(e) => onChange({ ...draft, labReference: e.target.value })}
       />
       <p className="wx-source-line">
-        <Glyph name="lock" size={12} /> Requires a fresh step-up. Recorded with who and when.
+        <Glyph name="lock" size={12} />
+        <span className="wx-source-text">
+          Requires a fresh step-up. Recorded with who and when.
+        </span>
       </p>
       <Button loading={busy} disabled={busy} onClick={onSubmit}>
         Record attestation

@@ -16,17 +16,33 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
-import { Field, Kv, OutcomeBanner, actionButtonStyle, inputStyle } from "./ui";
+import {
+  Field,
+  Kv,
+  type Outcome,
+  OutcomeBanner,
+  actionButtonStyle,
+  failureOutcome,
+  inputStyle,
+} from "./ui";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
 
-function denialMessage(error: unknown, fallback: string): string {
-  const code = (error as { code?: string })?.code;
-  if (code === "REFUND_FOUR_EYES")
-    return "Four-eyes: you cannot approve a refund you requested. A different approver is required.";
-  if (code === "STEP_UP_REQUIRED")
-    return "Step-up re-authentication required — re-verify and retry.";
-  return fallback;
+/** The parsed error body is the standard envelope `{ error: { code } }` (a flat `{ code }` is tolerated). */
+function errorCode(error: unknown): string | undefined {
+  const body = error as { code?: unknown; error?: { code?: unknown } } | null | undefined;
+  const code = body?.error?.code ?? body?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function denial(error: unknown, fallback: string): Outcome {
+  if (errorCode(error) === "REFUND_FOUR_EYES")
+    return {
+      ok: false,
+      message:
+        "Four-eyes: you cannot approve a refund you requested. A different approver is required.",
+    };
+  return failureOutcome(error, fallback);
 }
 
 export function RefundApprove(): JSX.Element {
@@ -38,7 +54,7 @@ export function RefundApprove(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [denyReason, setDenyReason] = useState("");
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -71,7 +87,7 @@ export function RefundApprove(): JSX.Element {
       headers: { "Idempotency-Key": crypto.randomUUID() },
     });
     if (res.error) {
-      setOutcome({ ok: false, message: denialMessage(res.error, "Could not approve the refund.") });
+      setOutcome(denial(res.error, "Could not approve the refund."));
       setBusy(false);
       return;
     }
@@ -90,7 +106,7 @@ export function RefundApprove(): JSX.Element {
       headers: { "Idempotency-Key": crypto.randomUUID() },
     });
     if (res.error) {
-      setOutcome({ ok: false, message: denialMessage(res.error, "Could not deny the refund.") });
+      setOutcome(denial(res.error, "Could not deny the refund."));
       setBusy(false);
       return;
     }
@@ -142,7 +158,7 @@ export function RefundApprove(): JSX.Element {
           Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
           requested. A denied step-up or a self-approval attempt is reported below.
         </div>
-        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
         {decided ? (
           <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
             This refund is already {cap(refund.status)} — no action available.

@@ -14,6 +14,7 @@ const ORDER = "cccccccc-3333-4333-8333-cccccccccccc";
 const NEW_ORDER = "ffffffff-6666-4666-8666-ffffffffffff";
 
 let status = "transmission_failed";
+let viewerMayRetransmit: boolean | undefined = true;
 let writeFailure: { status: number; body: unknown } | null = null;
 let calls: string[] = [];
 
@@ -49,6 +50,7 @@ const order = () => ({
   coverageReason: null,
   coverageDeterminedAt: null,
   coverageDeterminedBy: null,
+  viewerMayRetransmit,
 });
 
 const json = (code: number, body: unknown) =>
@@ -99,6 +101,7 @@ const writes = () => calls.filter((c) => !c.startsWith("GET "));
 
 beforeEach(() => {
   status = "transmission_failed";
+  viewerMayRetransmit = true;
   writeFailure = null;
   calls = [];
 });
@@ -131,7 +134,22 @@ describe("GAP-125 — retransmit a transmission_failed medication order", () => 
     expect(screen.queryByRole("button", { name: "Retransmit" })).toBeNull();
   });
 
-  it("renders the server's standing refusal (403) from the error envelope", async () => {
+  it("is not offered when the server says this viewer lacks retransmit standing", async () => {
+    // A tenant admin holds prescribing.sign but is neither the order's prescriber nor its named physician.
+    viewerMayRetransmit = false;
+    mount();
+    await screen.findAllByText(/Morphine/);
+    expect(screen.queryByRole("button", { name: "Retransmit" })).toBeNull();
+  });
+
+  it("is not offered when the read omits viewerMayRetransmit", async () => {
+    viewerMayRetransmit = undefined;
+    mount();
+    await screen.findAllByText(/Morphine/);
+    expect(screen.queryByRole("button", { name: "Retransmit" })).toBeNull();
+  });
+
+  it("maps the SIGNER_NOT_ORDERING_PHYSICIAN refusal (403) to user-facing copy", async () => {
     writeFailure = {
       status: 403,
       body: {
@@ -145,12 +163,31 @@ describe("GAP-125 — retransmit a transmission_failed medication order", () => 
     fireEvent.click(await screen.findByRole("button", { name: "Retransmit" }));
     const dialog = await screen.findByRole("dialog", { name: "Retransmit medication order" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create replacement" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toMatch(
-      /prescriber or the named ordering physician/,
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Only this order's prescriber or its named ordering physician can retransmit it. Ask them to retransmit, or sign in as them.",
     );
   });
 
-  it("renders a 409/422 with the server's message", async () => {
+  it("maps the SIGNER_NOT_ELIGIBLE refusal (403) to user-facing copy", async () => {
+    writeFailure = {
+      status: 403,
+      body: {
+        error: {
+          code: "SIGNER_NOT_ELIGIBLE",
+          message: "the retransmitting discipline is not eligible to sign medication orders",
+        },
+      },
+    };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Retransmit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Retransmit medication order" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create replacement" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Your discipline can't sign medication orders, so you can't retransmit this one.",
+    );
+  });
+
+  it("renders any other refusal as a sentence-cased server message", async () => {
     writeFailure = {
       status: 422,
       body: { error: { code: "VALIDATION_ERROR", message: "pharmacy no longer active" } },
@@ -159,6 +196,8 @@ describe("GAP-125 — retransmit a transmission_failed medication order", () => 
     fireEvent.click(await screen.findByRole("button", { name: "Retransmit" }));
     const dialog = await screen.findByRole("dialog", { name: "Retransmit medication order" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create replacement" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toMatch(/pharmacy no longer/);
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Pharmacy no longer active.",
+    );
   });
 });

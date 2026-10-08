@@ -46,8 +46,14 @@ import {
   wageIndexWriteError,
 } from "./wage-index-model";
 
+/** A value just written: shown (with the confirmation) until the reload brings it back in the list. */
+interface SavedValue {
+  readonly value: WageIndexView;
+  readonly message: string;
+}
+
 type DrawerMode =
-  | { kind: "view"; id: string }
+  | { kind: "view"; id: string; saved?: SavedValue }
   | { kind: "enter" }
   | { kind: "supersede"; id: string };
 
@@ -122,10 +128,16 @@ export function WageIndexes(): JSX.Element {
   const live = useMemo(() => all.filter((v) => v.supersededAt === null), [all]);
   const selected =
     drawer && drawer.kind !== "enter"
-      ? (all.find((v) => v.wageIndexId === drawer.id) ?? null)
+      ? (all.find((v) => v.wageIndexId === drawer.id) ??
+        (drawer.kind === "view" ? (drawer.saved?.value ?? null) : null))
       : null;
   const hasDrawer = drawer !== null && (drawer.kind === "enter" || selected !== null);
-  const onSaved = (): void => setReloadKey((k) => k + 1);
+  // After a save the form is done: show the NEW value (now the live one) with the confirmation, so the form cannot
+  // be resubmitted against a row that is now history (a second supersede of it is a 409).
+  const onSaved = (saved: SavedValue): void => {
+    setDrawer({ kind: "view", id: saved.value.wageIndexId, saved });
+    setReloadKey((k) => k + 1);
+  };
 
   return (
     <div className={`wx-rates${hasDrawer ? " has-drawer" : ""}`}>
@@ -234,6 +246,7 @@ export function WageIndexes(): JSX.Element {
       ) : selected ? (
         <WageIndexDrawer
           value={selected}
+          savedMessage={drawer?.kind === "view" ? drawer.saved?.message : undefined}
           canSupersede={canAdmin && selected.supersededAt === null}
           onSupersede={() => setDrawer({ kind: "supersede", id: selected.wageIndexId })}
           onClose={() => setDrawer(null)}
@@ -327,11 +340,13 @@ function DrawerHead({
 
 function WageIndexDrawer({
   value: v,
+  savedMessage,
   canSupersede,
   onSupersede,
   onClose,
 }: {
   value: WageIndexView;
+  savedMessage?: string;
   canSupersede: boolean;
   onSupersede: () => void;
   onClose: () => void;
@@ -346,6 +361,7 @@ function WageIndexDrawer({
         onClose={onClose}
       />
       <div className="wx-drawer-body">
+        {savedMessage ? <InlineAlert tone="success">{savedMessage}</InlineAlert> : null}
         <section className="wx-drawer-card">
           <div className="wx-drawer-card-head">
             <h3>Wage index</h3>
@@ -383,7 +399,8 @@ function WageIndexDrawer({
             ) : null}
           </dl>
           <p className="wx-source-line">
-            <Glyph name="lock" size={12} /> Append-only · entered {usDate(v.createdAt)}
+            <Glyph name="lock" size={12} />
+            <span className="wx-source-text">Append-only · entered {usDate(v.createdAt)}</span>
           </p>
         </section>
         {canSupersede ? (
@@ -403,7 +420,7 @@ function WageIndexEntryDrawer({
 }: {
   supersedes?: WageIndexView;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (saved: SavedValue) => void;
 }): JSX.Element {
   const client = useApiClient();
   const [draft, setDraft] = useState<WageIndexDraft>(
@@ -412,7 +429,7 @@ function WageIndexEntryDrawer({
   const [fy, setFy] = useState(supersedes?.fiscalYearStarting ?? NOW_FY);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const set = (key: keyof WageIndexDraft) => (value: string) =>
     setDraft((d) => ({ ...d, [key]: value }));
 
@@ -420,11 +437,11 @@ function WageIndexEntryDrawer({
     const found = validateDraft(draft);
     setErrors(found);
     if (Object.keys(found).length > 0) {
-      setResult(null);
+      setError(null);
       return;
     }
     setBusy(true);
-    setResult(null);
+    setError(null);
     const body = bodyFrom(draft, fy);
     const header = { "Idempotency-Key": crypto.randomUUID() };
     const res = supersedes
@@ -434,17 +451,16 @@ function WageIndexEntryDrawer({
         })
       : await client.POST("/api/v1/billing/wage-indexes", { params: { header }, body });
     setBusy(false);
-    if (res.error) {
-      setResult({ tone: "error", text: wageIndexWriteError(res.response?.status, res.error) });
+    if (res.error || !res.data) {
+      setError(wageIndexWriteError(res.response?.status, res.error));
       return;
     }
-    setResult({
-      tone: "success",
-      text: supersedes
+    onSaved({
+      value: res.data,
+      message: supersedes
         ? "Saved. The corrected value is now live; the old one is kept as history."
         : "Saved. Claim assembly prices this CCN and fiscal year from the new value.",
     });
-    onSaved();
   }
 
   const title = supersedes ? "Supersede wage index" : "Enter wage index";
@@ -514,10 +530,7 @@ function WageIndexEntryDrawer({
             the live value; nothing is edited in place.
           </p>
         </section>
-        {result?.tone === "error" ? <InlineAlert tone="error">{result.text}</InlineAlert> : null}
-        {result?.tone === "success" ? (
-          <InlineAlert tone="success">{result.text}</InlineAlert>
-        ) : null}
+        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
         <Button loading={busy} disabled={busy} onClick={() => void save()}>
           {supersedes ? "Supersede value" : "Save wage index"}
         </Button>

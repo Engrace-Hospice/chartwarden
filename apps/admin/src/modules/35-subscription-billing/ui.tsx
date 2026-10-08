@@ -1,7 +1,7 @@
 // apps/admin/src/modules/35-subscription-billing — shared presentational bits for the §5.2 console screens.
 // Small, token-only helpers (no raw hex — the design-tokens gate forbids it in render code) the 14 screens
 // reuse so table/field/button chrome is written once. Anything richer composes the @wardenx/ui layout kit.
-import { StatusPill } from "@wardenx/ui";
+import { ReverifyLink, StatusPill, isStepUpRequired } from "@wardenx/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
 export const cell: CSSProperties = { padding: "0.6rem 0.75rem" };
@@ -69,11 +69,39 @@ export function Field({
   );
 }
 
-/** A first-class outcome banner (success/error) surfacing a server result to the operator. */
-export function OutcomeBanner({ ok, message }: { ok: boolean; message: string }): JSX.Element {
+/** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */
+export interface Outcome {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly stepUp?: boolean;
+}
+
+export const STEP_UP_MESSAGE = "This action needs a fresh verification. Re-verify, then try again.";
+
+/**
+ * The outcome for a failed write: a STEP_UP_REQUIRED refusal (session valid but not fresh enough) becomes
+ * the re-verify outcome, anything else `fallback`. `error` is the parsed error body openapi-fetch returns —
+ * the standard envelope `{ error: { code } }` (reading a top-level `.code` off it never matched).
+ */
+export function failureOutcome(error: unknown, fallback: string): Outcome {
+  return isStepUpRequired(error)
+    ? { ok: false, message: STEP_UP_MESSAGE, stepUp: true }
+    : { ok: false, message: fallback };
+}
+
+/**
+ * A first-class outcome banner (success/error) surfacing a server result to the operator. A step-up refusal
+ * also carries a Re-verify link to the console's /step-up page, which returns here — never an automatic
+ * redirect, so a form with typed input is not torn away.
+ */
+export function OutcomeBanner({ ok, message, stepUp = false }: Outcome): JSX.Element {
   return (
-    <output aria-live="polite">
+    <output
+      aria-live="polite"
+      style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}
+    >
       <StatusPill label={message} tone={ok ? "success" : "error"} />
+      {stepUp ? <ReverifyLink /> : null}
     </output>
   );
 }

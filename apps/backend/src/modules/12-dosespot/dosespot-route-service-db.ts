@@ -64,6 +64,7 @@ import {
   cosignDraftingDiscipline,
   cosignRequiredFor,
   isVerbalRecorderDiscipline,
+  mayRetransmit,
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
   prescriberEligible,
@@ -73,6 +74,7 @@ import type {
   ControlledSubstancePolicyView,
   CreateMedicationOrderArgs,
   DoseSpotAbacActor,
+  MedicationOrderDetailView,
   MedicationOrderRouteService,
   MedicationOrderView,
   NamedPrescriberView,
@@ -447,6 +449,15 @@ export function createDbDoseSpotBackend(
     if (!r) throw new NotFoundError(`medication order ${id} not found`);
     return r;
   }
+  /** GAP-035 — the `external_physician_mdm_id` of the membership's ACTIVE roster row (null = none). */
+  async function activeRosterMdmId(tx: DbClient, membershipId: string): Promise<string | null> {
+    const [roster] = await tx
+      .select({ mdmId: DP.externalPhysicianMdmId })
+      .from(DP)
+      .where(and(eq(DP.membershipId, membershipId), isNull(DP.revokedAt)))
+      .limit(1);
+    return roster?.mdmId ?? null;
+  }
   /** Re-read one order (post-write) as the wire view. */
   async function readOrder(tx: DbClient, id: string): Promise<MedicationOrderView> {
     return toOrderView(await loadOrder(tx, id));
@@ -598,8 +609,26 @@ export function createDbDoseSpotBackend(
         };
       });
     },
-    async getOrder(organizationId, id) {
-      return withOrg(organizationId, async (tx) => readOrder(tx, id));
+    async getOrder(organizationId, id, viewer): Promise<MedicationOrderDetailView> {
+      return withOrg(organizationId, async (tx) => {
+        const r = await loadOrder(tx, id);
+        if (!viewer) return toOrderView(r);
+        // The roster lookup only matters for a failed order — every other status is `false` without it.
+        const signerMdmId =
+          r.status === "transmission_failed"
+            ? await activeRosterMdmId(tx, viewer.membershipId)
+            : null;
+        return {
+          ...toOrderView(r),
+          viewerMayRetransmit: mayRetransmit(r.status, {
+            disciplines: viewer.disciplines,
+            signerMembershipId: viewer.membershipId,
+            signerMdmId,
+            orderPrescriberMembershipId: r.prescriberMembershipId,
+            orderPrescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+          }),
+        };
+      });
     },
     async getTransmission(organizationId, id) {
       return withOrg(organizationId, async (tx) => {
@@ -832,11 +861,7 @@ export function createDbDoseSpotBackend(
         assertCosignSatisfied(r);
         const fromVerbal = r.status === "verbal_pending";
         // GAP-035 — decided from the session actor + the stored order, never from the request body.
-        const [roster] = await tx
-          .select({ mdmId: DP.externalPhysicianMdmId })
-          .from(DP)
-          .where(and(eq(DP.membershipId, userId), isNull(DP.revokedAt)))
-          .limit(1);
+        const signerMdmId = await activeRosterMdmId(tx, userId);
         transitionMedicationOrder(r.status, {
           type: "sign",
           medClass: r.medClass,
@@ -844,7 +869,7 @@ export function createDbDoseSpotBackend(
           ...signerStanding({
             disciplines: args.signerDisciplines,
             signerMembershipId: userId,
-            signerMdmId: roster?.mdmId ?? null,
+            signerMdmId,
             orderStatus: r.status,
             orderPrescriberMembershipId: r.prescriberMembershipId,
             orderPrescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
@@ -1178,15 +1203,10 @@ export function createDbDoseSpotBackend(
             `medication order ${id} is ${original.status}; only a transmission_failed order may be retransmitted`,
           );
         // GAP-035 follow-up — the sign standing rule, from the session + the stored order + the roster.
-        const [roster] = await tx
-          .select({ mdmId: DP.externalPhysicianMdmId })
-          .from(DP)
-          .where(and(eq(DP.membershipId, userId), isNull(DP.revokedAt)))
-          .limit(1);
         assertRetransmitStanding({
           disciplines: args.signerDisciplines,
           signerMembershipId: userId,
-          signerMdmId: roster?.mdmId ?? null,
+          signerMdmId: await activeRosterMdmId(tx, userId),
           orderPrescriberMembershipId: original.prescriberMembershipId,
           orderPrescribingPhysicianMdmId: original.prescribingPhysicianMdmId,
         });

@@ -58287,6 +58287,7 @@ export interface operations {
                         coverageReason: string | null;
                         coverageDeterminedAt: string | null;
                         coverageDeterminedBy: string | null;
+                        viewerMayRetransmit?: boolean;
                     };
                 };
             };

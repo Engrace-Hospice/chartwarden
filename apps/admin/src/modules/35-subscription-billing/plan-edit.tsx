@@ -19,11 +19,13 @@ import { cap, formatCents, idempotencyKey } from "./status";
 import {
   Field,
   Kv,
+  type Outcome,
   OutcomeBanner,
   actionButtonStyle,
   bodyRow,
   cell,
   cellRight,
+  failureOutcome,
   inputStyle,
   tableStyle,
   theadRow,
@@ -39,7 +41,7 @@ export function PlanEdit(): JSX.Element {
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [meter, setMeter] = useState({
     eventType: "",
@@ -75,7 +77,7 @@ export function PlanEdit(): JSX.Element {
       setBusy(true);
       setOutcome(null);
       const res = await fn();
-      setOutcome(res.error ? { ok: false, message: failMsg } : { ok: true, message: okMsg });
+      setOutcome(res.error ? failureOutcome(res.error, failMsg) : { ok: true, message: okMsg });
       if (!res.error) await load();
       setBusy(false);
     },
@@ -99,7 +101,7 @@ export function PlanEdit(): JSX.Element {
           headers: { "Idempotency-Key": idempotencyKey() },
         }),
       `Meter "${meter.eventType}" added.`,
-      "Could not add the meter (check step-up + fields).",
+      "Could not add the meter (check the fields).",
     );
     setMeter({ eventType: "", inclusive: "0", overage: "0", threshold: "80" });
   }, [client, id, meter, run]);
@@ -113,7 +115,7 @@ export function PlanEdit(): JSX.Element {
           headers: { "Idempotency-Key": idempotencyKey() },
         }),
       "Plan activated — queued for Stripe sync (product/price).",
-      "Could not activate (check step-up).",
+      "Could not activate this plan.",
     );
   }, [client, id, run]);
 
@@ -126,7 +128,7 @@ export function PlanEdit(): JSX.Element {
           headers: { "Idempotency-Key": idempotencyKey() },
         }),
       "Plan deprecated.",
-      "Could not deprecate (check step-up).",
+      "Could not deprecate this plan.",
     );
   }, [client, id, run]);
 
@@ -188,7 +190,7 @@ export function PlanEdit(): JSX.Element {
       }
     >
       <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
         <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>Usage meters</h2>
         {plan.meters.length === 0 ? (
           <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>

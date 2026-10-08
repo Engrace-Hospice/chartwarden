@@ -146130,6 +146130,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "viewerMayRetransmit": {
+                      "type": "boolean"
                     }
                   }
                 }

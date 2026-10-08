@@ -8,6 +8,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  safeReturnTo,
 } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Passkey enrollment & management (M2 Auth, ADR-0034 follow-up).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "passkey enrollment". An authenticated user registers a
@@ -15,6 +16,7 @@ import {
 // browser-only (a real authenticator) — not CI-testable — so this is build-/e2e-verified.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { authClient } from "./auth-client";
 
 const PASSKEY_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -30,6 +32,11 @@ export function SecurityPasskeys(): JSX.Element {
   >("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  // Sent here from the step-up page (no passkey yet): after registering, offer the way back. Same guard as step-up.
+  const [params] = useSearchParams();
+  const rawReturnTo = params.get("returnTo");
+  const returnTo = rawReturnTo === null ? null : safeReturnTo(rawReturnTo);
+  const [registered, setRegistered] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error: err } = await authClient.passkey.listUserPasskeys();
@@ -60,6 +67,7 @@ export function SecurityPasskeys(): JSX.Element {
       return;
     }
     setName("");
+    setRegistered(true);
     void load();
   }
 
@@ -113,6 +121,14 @@ export function SecurityPasskeys(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
+          {registered && returnTo ? (
+            <div role="status" style={inlineClusterStyle}>
+              <Glyph name="check" size={16} />
+              <span>
+                Passkey registered. <Link to={returnTo}>Continue where you left off</Link>
+              </span>
+            </div>
+          ) : null}
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <div style={inlineClusterStyle}>

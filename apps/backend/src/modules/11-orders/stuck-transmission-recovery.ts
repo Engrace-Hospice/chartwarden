@@ -426,9 +426,19 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
     /** The operator's worklist: orders waiting on a human's verification with the lab, oldest first. */
     async listHeld(
       organizationId: string,
-      opts: { readonly limit: number; readonly cursor?: string | undefined },
+      opts: {
+        readonly limit: number;
+        readonly cursor?: string | undefined;
+        /**
+         * GAP-030 caseload narrowing: the patients the caller may open, or null/absent for org-wide scope. An empty
+         * list reads nothing — a held row the caller cannot open is a dead end, and its patient id is PHI.
+         */
+        readonly patientIds?: readonly string[] | null | undefined;
+      },
     ): Promise<HeldTransmissionPage> {
       const at = now();
+      const patientIds = opts.patientIds ?? null;
+      if (patientIds !== null && patientIds.length === 0) return { items: [], nextCursor: null };
       const limit = Math.max(1, Math.min(opts.limit, 100));
       const after = opts.cursor === undefined ? null : decodeCursor(opts.cursor);
       return withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
@@ -446,6 +456,7 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
             and(
               failedActiveLab(organizationId),
               heldReasonFilter(),
+              patientIds === null ? undefined : inArray(OR.patientId, [...patientIds]),
               after === null
                 ? undefined
                 : sql`(${OR.updatedAt}, ${OR.id}) > (${after.u}::timestamptz, ${after.i}::uuid)`,

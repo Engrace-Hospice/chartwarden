@@ -15,11 +15,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { formatCents, formatDate, idempotencyKey } from "./status";
 import {
+  type Outcome,
   OutcomeBanner,
   actionButtonStyle,
   bodyRow,
   cell,
   cellRight,
+  failureOutcome,
   tableStyle,
   theadRow,
 } from "./ui";
@@ -37,7 +39,7 @@ export function Revenue(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,14 +67,7 @@ export function Revenue(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error) {
-      const c = (res.error as { code?: string })?.code;
-      setOutcome({
-        ok: false,
-        message:
-          c === "STEP_UP_REQUIRED"
-            ? "Step-up required — re-verify and retry."
-            : "Could not recompute revenue.",
-      });
+      setOutcome(failureOutcome(res.error, "Could not recompute revenue."));
     } else {
       setOutcome({ ok: true, message: "Revenue snapshot recomputed." });
       await load();
@@ -107,7 +102,7 @@ export function Revenue(): JSX.Element {
           </button>
         }
       />
-      {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+      {outcome ? <OutcomeBanner {...outcome} /> : null}
       <KpiStrip>
         <KpiCard label="MRR" value={formatCents(current.mrrCents)} />
         <KpiCard label="ARR" value={formatCents(current.arrCents)} />

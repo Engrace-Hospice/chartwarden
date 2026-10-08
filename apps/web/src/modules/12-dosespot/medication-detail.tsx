@@ -21,7 +21,9 @@ import {
 // `not_certified`, so `requestSignature` refuses a controlled order outright and the ceremony would
 // always fail — see `prescribe-modal.tsx`, which reads that status rather than assuming it.
 // GAP-125 — a `transmission_failed` order offers Retransmit (POST .../retransmit: `prescribing.sign` + the signer ABAC,
-// no step-up), which mints a replacement draft and opens it (retransmit-modal.tsx).
+// no step-up), which mints a replacement draft and opens it (retransmit-modal.tsx). The write also demands the sign
+// standing rule (the order's authoring prescriber or its named ordering physician), so the button shows only when the
+// detail read's `viewerMayRetransmit` — that same rule, decided server-side for this caller — is true.
 // The SERVER enforces every scope incl. ABAC (ADR-0030 — out-of-scope orders 404, never 403).
 // Reads GET /api/v1/medication-orders/:id and (when transmitted) GET .../transmission.
 import { useEffect, useState } from "react";
@@ -71,6 +73,8 @@ interface MedicationOrderView {
   coverageReason: string | null;
   coverageDeterminedAt: string | null;
   coverageDeterminedBy: string | null;
+  /** Whether THIS viewer passes the retransmit standing rule (server-decided; false unless transmission_failed). */
+  viewerMayRetransmit?: boolean;
 }
 
 interface TransmissionView {
@@ -142,7 +146,8 @@ export function MedicationDetail(): JSX.Element {
   const [action, setAction] = useState<MedicationAction | null>(null);
   const [retransmitting, setRetransmitting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  // GAP-125 — the retransmit route gates `prescribing.sign` (no step-up); hiding it from a non-signer is a UX cue only.
+  // GAP-125 — the retransmit route gates `prescribing.sign` (no step-up) plus the standing rule the read reports as
+  // `viewerMayRetransmit`; hiding the button is a UX cue only — the server still decides.
   const canSign = useSession()?.permissions?.includes("prescribing.sign") ?? false;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed write bumps, not read in the body.
@@ -244,7 +249,9 @@ export function MedicationDetail(): JSX.Element {
                     {ACTION_LABEL[a]}
                   </Button>
                 ))}
-                {row.status === "transmission_failed" && canSign ? (
+                {row.status === "transmission_failed" &&
+                canSign &&
+                row.viewerMayRetransmit === true ? (
                   <Button tone="secondary" onClick={() => setRetransmitting(true)}>
                     Retransmit
                   </Button>

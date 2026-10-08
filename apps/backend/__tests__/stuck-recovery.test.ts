@@ -345,7 +345,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.attributes.membershipId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
-  request.context.roles = [];
+  const roles = request.headers["x-test-roles"];
+  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
 }
 
 const ORG = "org_a";
@@ -378,7 +379,13 @@ const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG };
 const URL = "/api/v1/orders/held-transmissions";
 
-function makeServer() {
+const CASELOAD = ["pat_on_caseload"];
+
+function makeServer(
+  caseloadPatientIds: (q: { organizationId: string; userId: string }) => Promise<
+    readonly string[]
+  > = async () => CASELOAD,
+) {
   const listHeld = vi.fn(async () => ({ items: [], nextCursor: null }));
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.map((s) => ({
@@ -396,7 +403,7 @@ function makeServer() {
       timeZone: "America/New_York",
     }),
   });
-  registerHeldTransmissionRoutes(app, { recovery: { listHeld } });
+  registerHeldTransmissionRoutes(app, { recovery: { listHeld }, caseloadPatientIds });
   return { app, listHeld };
 }
 
@@ -433,10 +440,57 @@ describe("F-201 — GET /api/v1/orders/held-transmissions", () => {
     const res = await app.inject({ method: "GET", url: URL, headers: RN });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ items: [], nextCursor: null });
-    expect(listHeld).toHaveBeenCalledWith(ORG, { limit: 50, cursor: undefined });
+    expect(listHeld).toHaveBeenCalledWith(ORG, {
+      limit: 50,
+      cursor: undefined,
+      patientIds: CASELOAD,
+    });
 
     await app.inject({ method: "GET", url: `${URL}?limit=7&cursor=abc`, headers: RN });
-    expect(listHeld).toHaveBeenLastCalledWith(ORG, { limit: 7, cursor: "abc" });
+    expect(listHeld).toHaveBeenLastCalledWith(ORG, {
+      limit: 7,
+      cursor: "abc",
+      patientIds: CASELOAD,
+    });
+  });
+
+  it("GAP-030 — narrows to the caller's caseload; an org-wide scope role reads the whole org", async () => {
+    const { app, listHeld } = makeServer();
+    await app.inject({ method: "GET", url: URL, headers: RN });
+    expect(listHeld).toHaveBeenLastCalledWith(
+      ORG,
+      expect.objectContaining({ patientIds: CASELOAD }),
+    );
+
+    await app.inject({
+      method: "GET",
+      url: URL,
+      headers: { ...RN, "x-test-roles": "director_of_nursing" },
+    });
+    expect(listHeld).toHaveBeenLastCalledWith(ORG, expect.objectContaining({ patientIds: null }));
+  });
+
+  it("GAP-030 — org_admin is NOT org-wide: with no caseload it reads nothing, and an unresolvable caseload fails closed", async () => {
+    const empty = makeServer(async () => []);
+    await empty.app.inject({
+      method: "GET",
+      url: URL,
+      headers: { ...RN, "x-test-roles": "org_admin" },
+    });
+    expect(empty.listHeld).toHaveBeenLastCalledWith(
+      ORG,
+      expect.objectContaining({ patientIds: [] }),
+    );
+
+    const broken = makeServer(async () => {
+      throw new Error("caseload seam down");
+    });
+    const res = await broken.app.inject({ method: "GET", url: URL, headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(broken.listHeld).toHaveBeenLastCalledWith(
+      ORG,
+      expect.objectContaining({ patientIds: [] }),
+    );
   });
 
   it("the org comes from the authenticated context, NEVER a query parameter", async () => {

@@ -7,7 +7,14 @@ import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { Field, OutcomeBanner, actionButtonStyle, inputStyle } from "./ui";
+import {
+  Field,
+  type Outcome,
+  OutcomeBanner,
+  actionButtonStyle,
+  failureOutcome,
+  inputStyle,
+} from "./ui";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
@@ -24,7 +31,7 @@ export function RefundNew(): JSX.Element {
     detail: "",
   });
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const detailShort = useMemo(() => form.detail.trim().length < MIN_REASON, [form.detail]);
   const canSubmit = !detailShort && form.invoiceId.trim().length > 0 && Number(form.amount) > 0;
@@ -48,14 +55,12 @@ export function RefundNew(): JSX.Element {
       headers: { "Idempotency-Key": idempotencyKey() },
     });
     if (res.error) {
-      const c = (res.error as { code?: string })?.code;
-      setOutcome({
-        ok: false,
-        message:
-          c === "STEP_UP_REQUIRED"
-            ? "Step-up re-authentication required — re-verify and retry."
-            : "Could not create the refund request (check the invoice id + fields).",
-      });
+      setOutcome(
+        failureOutcome(
+          res.error,
+          "Could not create the refund request (check the invoice id + fields).",
+        ),
+      );
       setBusy(false);
       return;
     }
@@ -144,7 +149,7 @@ export function RefundNew(): JSX.Element {
         >
           {form.detail.trim().length}/{MIN_REASON} characters
         </span>
-        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
             type="button"

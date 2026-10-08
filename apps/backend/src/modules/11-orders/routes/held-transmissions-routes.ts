@@ -15,11 +15,17 @@
 // static segment first, so it is never read as an order id (a route test pins that).
 //
 // NO PHI beyond what the order list already exposes (`patientId`); the reason is a fixed token, never free text.
+//
+// CASELOAD (GAP-030): like every other order queue, the list narrows to the caller's caseload (`readScopeOf`) —
+// org-wide scope roles (DON, medical director, compliance officer, ...) see the whole org. `view_held` alone is not
+// chart access: an org_admin holds it but deliberately no `patient.read` scope, and before this the queue listed
+// rows whose order and patient reads then 404'd for that same caller.
 import { requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { StuckTransmissionRecovery } from "../stuck-transmission-recovery";
 import { HeldTransmissionsQuerySchema } from "./held-transmissions-typebox";
+import { type OrderRouteDeps, defaultCaseloadPatientIds, readScopeOf } from "./orders-routes";
 import { parse } from "./orders-typebox";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -28,12 +34,15 @@ const VIEW_HELD = requirePermission("orders.transmission.view_held") as PreHandl
 
 export interface HeldTransmissionRouteDeps {
   readonly recovery: Pick<StuckTransmissionRecovery, "listHeld">;
+  /** The caller's caseload (GAP-030); defaults to M5's `CaseloadProvider` seam, as the order routes do. */
+  readonly caseloadPatientIds?: OrderRouteDeps["caseloadPatientIds"];
 }
 
 export function registerHeldTransmissionRoutes(
   app: FastifyInstance,
   deps: HeldTransmissionRouteDeps,
 ): void {
+  const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
   app.get(
     "/api/v1/orders/held-transmissions",
     {
@@ -46,7 +55,12 @@ export function registerHeldTransmissionRoutes(
       const organizationId = request.context?.organizationId;
       if (!organizationId) throw new UnauthorizedError();
       const q = parse(HeldTransmissionsQuerySchema, request.query);
-      return deps.recovery.listHeld(organizationId, { limit: q.limit ?? 50, cursor: q.cursor });
+      const scope = await readScopeOf(request, caseloadPatientIds);
+      return deps.recovery.listHeld(organizationId, {
+        limit: q.limit ?? 50,
+        cursor: q.cursor,
+        patientIds: scope.patientIds,
+      });
     },
   );
 }
