@@ -188,7 +188,8 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
 
   it("recordVerbalOrder computes the 48h deadline and moves the order to verbal_pending", async () => {
     const { store } = createInMemoryOrderSeamStore(seed());
-    const provider = createOrderSignatureProvider(store);
+    // GAP-017 -- the receivedAt clock start is bounded against the SERVER clock: inject it at receipt time.
+    const provider = createOrderSignatureProvider(store, () => "2026-03-04T10:00:00.000Z");
     const out = await provider.recordVerbalOrder({
       organizationId: "org-1",
       targetKind: "order",
@@ -204,6 +205,26 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
       orderId: "ord-pend",
     });
     expect(timeliness?.status).toBe("pending");
+  });
+
+  it("GAP-017: recordVerbalOrder refuses a receivedAt in the future or beyond the look-back, writing nothing", async () => {
+    const { store } = createInMemoryOrderSeamStore(seed());
+    const provider = createOrderSignatureProvider(store, () => "2026-03-04T10:00:00.000Z");
+    const base = {
+      organizationId: "org-1",
+      targetKind: "order" as const,
+      targetId: "ord-pend",
+      recordingMembershipId: "mem-rn",
+      orderingPhysicianMdmId: "phys-1",
+      verbalAttestation: "x".repeat(120),
+    };
+    for (const receivedAt of ["2026-03-06T09:00:00.000Z", "2026-03-01T10:00:00.000Z"]) {
+      await expect(provider.recordVerbalOrder({ ...base, receivedAt })).rejects.toMatchObject({
+        code: "VERBAL_RECEIVED_AT_OUT_OF_RANGE",
+        statusCode: 422,
+      });
+    }
+    expect((await store.getOrder("ord-pend"))?.status).toBe("pending_signature");
   });
 
   it("signing a verbal_pending order resolves the verbal row to signed_in_time", async () => {
