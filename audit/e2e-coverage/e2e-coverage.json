@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 168,
+  "totalStaticWebScreens": 170,
   "e2eReachedCount": 19,
   "axeReachedCount": 163,
   "zeroE2eCoverage": [
@@ -147,6 +147,22 @@
       "permission": "audit.read",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "identity.auditor-enrolment",
+      "module": "02-identity",
+      "path": "/auditor/enrol",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.auditor-redeem",
+      "module": "02-identity",
+      "path": "/auditor/redeem",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "bereavement.caseload",
@@ -1199,6 +1215,22 @@
   ],
   "zeroAxeCoverage": [
     {
+      "id": "identity.auditor-enrolment",
+      "module": "02-identity",
+      "path": "/auditor/enrol",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.auditor-redeem",
+      "module": "02-identity",
+      "path": "/auditor/redeem",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "scheduling.calendar",
       "module": "17-scheduling",
       "path": "/calendar",
@@ -1399,6 +1431,22 @@
       "permission": "audit.read",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "identity.auditor-enrolment",
+      "module": "02-identity",
+      "path": "/auditor/enrol",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.auditor-redeem",
+      "module": "02-identity",
+      "path": "/auditor/redeem",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "bereavement.caseload",

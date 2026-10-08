@@ -71,6 +71,31 @@ describe("deploy/production/.env.production.example", () => {
     ]);
   });
 
+  it("ships the Postmark credentials BLANK (unbound by default) and a filled set satisfies the contract", () => {
+    const rendered = render(text);
+    for (const key of [
+      "POSTMARK_SERVER_TOKEN",
+      "POSTMARK_FROM_ADDRESS",
+      "POSTMARK_SENDER_VERIFIED",
+    ]) {
+      expect(rendered[key]).toBe("");
+    }
+    // Never a hard-coded credential in the template: every uncommented POSTMARK_ value is empty.
+    const assigned = text.split("\n").filter((l) => /^POSTMARK_[A-Z_]+=/.test(l));
+    expect(assigned.every((l) => l.endsWith("="))).toBe(true);
+    const env = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://wardenx_app:x@postgres:5432/wardenx",
+      DATABASE_PLATFORM_URL: "postgresql://wardenx_platform_login:x@postgres:5432/wardenx",
+      REDIS_URL: "redis://valkey:6379",
+      ...rendered,
+      POSTMARK_SERVER_TOKEN: "pm-token-0123456789abcdef",
+      POSTMARK_FROM_ADDRESS: "no-reply@mail.wardenx.health",
+      POSTMARK_SENDER_VERIFIED: "true",
+    };
+    expect(collectEnvProblems(env).filter((p) => p.key.startsWith("POSTMARK_"))).toEqual([]);
+  });
+
   it("gives independent secrets to each placeholder occurrence", () => {
     const a = render(text);
     expect(a.M34_TENANT_KEK).not.toBe(a.M35_PSEUDONYM_KEY_KEK);

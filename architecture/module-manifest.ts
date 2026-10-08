@@ -201,6 +201,10 @@ export const MODULES: ModuleDef[] = [
       "tenant_step_up_policy_override",
       // GAP-011: the durable auditor magic-link token store (hash only) behind M2's AuditorSessionMinter.
       "auditor_magic_link",
+      // GAP-115 follow-up: the durable, hash-only, bounded-use collaborator / funeral-home link store.
+      "collaborator_link",
+      // M2 §7.7: the append-only per-auditor BAA / engagement-terms acceptance evidence.
+      "auditor_baa_acceptance",
       // GAP-043: the per-membership named-approval-authority registry M27's approver predicate keys on.
       "membership_elevated_approval",
       // ADR-0023 D2 (adjudicated): the device-attestation surface M3's `device_attestation_valid`
@@ -252,6 +256,7 @@ export const MODULES: ModuleDef[] = [
       "state_retention_override",
       "audit_export",
       "audit_seal",
+      "audit_integrity_run",
       "audit_denylist_catalog",
       "audit_action_catalog",
     ],

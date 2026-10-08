@@ -21,3 +21,15 @@ export {
   type OutboundEmail,
   type TransactionalEmailTransport,
 } from "./transactional-email";
+
+// Postmark HTTP adapter for the port above + env-driven bind decision (credentials only from env).
+export {
+  createPostmarkTransactionalEmailTransport,
+  resolvePostmarkConfig,
+  postmarkConfigAttempted,
+  EmailDeliveryError,
+  POSTMARK_ENV,
+  type EmailDeliveryErrorCode,
+  type PostmarkConfigResult,
+  type PostmarkTransportOptions,
+} from "./postmark-transactional-email";

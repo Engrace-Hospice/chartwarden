@@ -177,6 +177,18 @@ export {
   createNoopTransactionalEmailTransport,
 } from "./notification";
 export type { OutboundEmail, TransactionalEmailTransport } from "./notification";
+export {
+  createPostmarkTransactionalEmailTransport,
+  resolvePostmarkConfig,
+  postmarkConfigAttempted,
+  EmailDeliveryError,
+  POSTMARK_ENV,
+} from "./notification";
+export type {
+  EmailDeliveryErrorCode,
+  PostmarkConfigResult,
+  PostmarkTransportOptions,
+} from "./notification";
 
 // ── M36-T05 alert-payload catalog (Foundation Registry + boot gate) — §3.11–3.12 ──────────
 export {

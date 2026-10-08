@@ -34,6 +34,8 @@ export const AUDIT_JOB_SCHEDULES = {
   archive: "30 3 2 * *",
   /** Daily at 02:15 UTC — the nightly retention window (§4.4, §12.6). */
   retentionScan: "15 2 * * *",
+  /** Monthly, 04:00 UTC on the 3rd — seal the closed month(s) (hash-chain flag gated, §4.4). */
+  sealPartition: "0 4 3 * *",
   /** Quarterly: 03:30 UTC on the 1st of Jan/Apr/Jul/Oct (§4.4 integrity sample). */
   integritySample: "30 3 1 1,4,7,10 *",
 } as const;

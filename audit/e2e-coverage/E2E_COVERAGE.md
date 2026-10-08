@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 168 statically-routable `web` screen(s) — 19/168 E2E-reached, 163/168 axe-reached.
+**Coverage:** 170 statically-routable `web` screen(s) — 19/170 E2E-reached, 163/170 axe-reached.
 
 ## Zero E2E coverage
 
@@ -26,6 +26,8 @@
 | `admission.discharges` | 06-admission | `/admissions/discharges` | discharge.create |
 | `admission.readmit-list` | 06-admission | `/admissions/readmit` | admission.create |
 | `audit.log-viewer` | 04-audit | `/audit` | audit.read |
+| `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
+| `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `bereavement.caseload` | 16-bereavement | `/bereavement` | bereavement.dashboard.counselor |
 | `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |
 | `bereavement.supervisor` | 16-bereavement | `/bereavement/supervisor` | bereavement.dashboard.supervisor |
@@ -162,6 +164,8 @@
 
 | Screen id | Module | Path | Permission |
 |---|---|---|---|
+| `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
+| `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |

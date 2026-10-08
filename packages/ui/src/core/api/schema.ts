@@ -3416,6 +3416,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auditors/enrolment/baa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept the versioned BAA / engagement terms (version + sha-256 of the exact text; stale terms refused; idempotent) — upgrades the session once a second factor is also proven (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentBaa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where the auditor is in the enrolment ceremony: the terms to read, BAA acceptance, second-factor status and lockout (§7.7) */
+        get: operations["getApiV1AuditorsEnrolmentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/totp/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** First engagement only: start authenticator (TOTP) setup — a fresh unconfirmed secret as an otpauth URI and a manual-entry key (409 when a factor is already enrolled) (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentTotpBegin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/totp/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** First engagement only: confirm the first authenticator code — the factor becomes real and ten single-use recovery codes are returned ONCE (stored hashed); wrong codes count toward a lockout (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentTotpConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/enrolment/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Later engagements: present the enrolled factor — a TOTP code (a spent step cannot be replayed) or a single-use recovery code; five wrong codes lock the factor for 15 minutes (429) (§7.7) */
+        post: operations["postApiV1AuditorsEnrolmentVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditors/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem an emailed auditor link into a single-use, ENROLMENT-stage auditor session that reaches only the enrolment routes until the BAA terms are accepted and a second factor is proven (§2.2.4, §7.7) */
+        post: operations["postApiV1AuditorsRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/context": {
         parameters: {
             query?: never;
@@ -5765,7 +5867,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Consume the link → scoped external-collaborator session (§7.6) */
+        /** Redeem a single-use link → scoped external-collaborator / funeral-home session (sets the session cookie; replay and expiry refused) */
         post: operations["postApiV1CollaboratorsConsume"];
         delete?: never;
         options?: never;
@@ -9293,6 +9395,23 @@ export interface paths {
         };
         /** Read a specific template version */
         get: operations["getApiV1FormtemplatesByKeyVersionsByVersionId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/funeral/case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A redeemed funeral-home session reads the ONE decedent's minimum facts (legal name, date of death); session-pinned, audited */
+        get: operations["getApiV1FuneralCase"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15777,6 +15896,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/sessions/patients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patients this portal account holds a live grant for (the patient-select screen, D2) */
+        get: operations["getApiV1PortalSessionsPatients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/sessions/select-patient": {
         parameters: {
             query?: never;
@@ -15805,6 +15941,40 @@ export interface paths {
         put?: never;
         /** TOTP step-up for high-PHI portal actions */
         post: operations["postApiV1PortalSessionsStepup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/sign-in/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-org: the portal accounts the signed-in user holds and whether each can sign in (no PHI, own accounts only) */
+        get: operations["getApiV1PortalSigninAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/sign-in/establish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pre-org: bind the authenticated session to one of the user's portal accounts (org + portal session class); idempotent, throttled, audited */
+        post: operations["postApiV1PortalSigninEstablish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31435,6 +31605,16 @@ export interface operations {
                             lastSealedPartition: string;
                             brokenAt: string | null;
                         };
+                        integritySample?: {
+                            /** Format: date-time */
+                            lastRun: string;
+                            result: "match" | "mismatch" | "skipped" | "error";
+                            sealsTotal: number;
+                            sealsSampled: number;
+                            eventsHashed: number;
+                            mismatches: number;
+                            backupCrossReference: string;
+                        };
                     };
                 };
             };
@@ -31558,6 +31738,241 @@ export interface operations {
                         documentsViewed: number;
                         amendmentsSubmitted: number;
                         administrationsAttested: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentBaa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    termsVersion: string;
+                    termsSha256: string;
+                    acceptedName: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditorsEnrolmentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentTotpBegin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        otpauthUri: string;
+                        manualEntryKey: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentTotpConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        recoveryCodes: string[];
+                        state: {
+                            stage: "enrolment" | "active";
+                            engagementId: string;
+                            terms: {
+                                version: string;
+                                title: string;
+                                text: string;
+                                sha256: string;
+                            };
+                            baaAccepted: boolean;
+                            secondFactor: "enrol" | "challenge" | "verified";
+                            totpPending: boolean;
+                            lockedUntil: string | null;
+                            /** Format: date-time */
+                            expiresAt: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsEnrolmentVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    totpCode?: string;
+                    recoveryCode?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        engagementId: string;
+                        terms: {
+                            version: string;
+                            title: string;
+                            text: string;
+                            sha256: string;
+                        };
+                        baaAccepted: boolean;
+                        secondFactor: "enrol" | "challenge" | "verified";
+                        totpPending: boolean;
+                        lockedUntil: string | null;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditorsRedeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    organizationId: string;
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        sessionClass: "auditor";
+                        /** @constant */
+                        stage: "enrolment";
+                        organizationId: string;
+                        engagementId: string;
+                        /** Format: date-time */
+                        expiresAt: string;
                     };
                 };
             };
@@ -38815,6 +39230,7 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    recipientEmail?: string;
                 };
             };
         };
@@ -48418,6 +48834,32 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1FuneralCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        decedentName: string;
+                        dateOfDeath: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1FuneralInvite: {
         parameters: {
             query?: never;
@@ -48429,6 +48871,7 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    recipientEmail?: string;
                 };
             };
         };
@@ -67467,6 +67910,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PortalSessionsPatients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            grantId: string;
+                            grantKind: string;
+                            scopeSet: string[];
+                            layPatientLabel: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PortalSessionsSelectpatient: {
         parameters: {
             query?: never;
@@ -67528,6 +68003,71 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSigninAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            portalAccountId: string;
+                            organizationName: string;
+                            relationship: string;
+                            blockedReason: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSigninEstablish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    portalAccountId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        portalAccountId: string;
+                        organizationName: string;
+                        sessionClass: string;
+                        replayed: boolean;
                     };
                 };
             };

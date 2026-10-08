@@ -27,6 +27,49 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.user.deactivated", "A user was fully offboarded (credentials disabled)."),
   compliance("m2.collaborator.invited", "A per-patient collaborator magic-link was issued."),
   compliance("m2.collaborator.session_started", "A collaborator magic-link session began."),
+  compliance(
+    "m2.auditor_link.redeemed",
+    "An auditor magic link was redeemed into a scoped read-only auditor session.",
+  ),
+  compliance(
+    "m2.auditor_link.refused",
+    "Redemption of an auditor magic link was refused (replayed, expired, revoked, engagement not live, identity is a member, ...).",
+  ),
+  // M2 §7.7 - the auditor enrolment ceremony (BAA / engagement terms + second factor) between link redemption
+  // and the read-only session. Never carries a code, a secret or a recovery code - only the step and its outcome.
+  compliance(
+    "m2.auditor_enrolment.baa_accepted",
+    "An auditor accepted the versioned BAA / engagement terms (version and sha-256 recorded).",
+  ),
+  compliance("m2.auditor_enrolment.totp_started", "An auditor began authenticator (TOTP) setup."),
+  compliance(
+    "m2.auditor_enrolment.totp_enrolled",
+    "An auditor confirmed an authenticator and was issued recovery codes (shown once, stored hashed).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.factor_verified",
+    "An auditor proved an enrolled second factor (TOTP code or single-use recovery code).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.recovery_code_used",
+    "An auditor spent a single-use recovery code.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.factor_failed",
+    "An auditor presented a wrong or replayed second-factor code.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.locked",
+    "An auditor's second factor locked after consecutive wrong codes.",
+  ),
+  compliance(
+    "m2.auditor_enrolment.refused",
+    "An enrolment step was refused (stale terms, locked factor, engagement no longer live, ...).",
+  ),
+  compliance(
+    "m2.auditor_enrolment.activated",
+    "An auditor session completed enrolment: the least-privilege role was granted and the session became the read-only engagement session.",
+  ),
   compliance("m2.session.step_up.completed", "A step-up (re-auth) challenge was completed."),
   compliance("m2.session.step_up.failed", "A step-up (re-auth) challenge failed."),
   compliance(
@@ -50,6 +93,21 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "A tenant step-up policy override was removed (the platform floor applies again).",
   ),
   compliance("m2.funeral.invited", "A per-deceased funeral-home magic-link was issued."),
+  // GAP-115 follow-up — redemption of a collaborator / funeral-home link, and portal invitee sign-in. Ids only: the
+  // token, the hash and the invitee's address never enter a payload.
+  compliance("m2.link.redeemed", "A collaborator / funeral-home link was redeemed into a scoped session."),
+  compliance(
+    "m2.link.redemption_refused",
+    "A redemption of a known collaborator / funeral-home link was refused (expired, spent, revoked or no longer eligible).",
+  ),
+  compliance(
+    "m2.portal.session_established",
+    "A pre-org session was bound to a portal account (portal invitee sign-in).",
+  ),
+  compliance(
+    "m2.portal.session_refused",
+    "A portal sign-in bind was refused for a known portal account (suspended, unverified, no live grant, ...).",
+  ),
   // ADR-0023 D2 / SecHardening §12.4 — device attestation. The FAILED event is as load-bearing as the
   // passing one: §12.4 names the server-side audit as the complement to on-device detection, and a
   // handset that repeatedly fails the posture check is exactly the pattern it is asking to surface.

@@ -1055,6 +1055,21 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // M4 §4.4 / §11.1 `audit.integrity_mismatch` — the sampled audit hash-chain verification (`audit.integrity_sample`)
+  // found a sealed month whose live rows no longer hash to its `audit_seal` (or a broken `prev_chain_hash` link):
+  // the append-only log was altered out of band. `critical`, to the Security Officer + Compliance Officer + org
+  // admin on every channel the recipient has (in-app, push, email); raised by the M4 job through AlertEmitter.
+  // Payload: run id, partition names and break reasons only — no row content, no PHI.
+  {
+    eventType: "m4.audit.integrity_mismatch",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["hipaa_security_officer", "compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
   // GAP-171 — M39 §2.2.3 / §4.10: a consent-revocation cascade exhausted its retry budget with a consumer still
   // un-ACKed (`partial_failed`). A revoked consent that some surface still honours is a privacy exposure, so it is
   // `critical` and goes to the Compliance Officer + org admin on in-app + email. Raised by the M39

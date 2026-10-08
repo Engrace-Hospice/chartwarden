@@ -7,7 +7,7 @@
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
 import { DEVICE_ATTESTATION_ATTRIBUTE, type SessionTimeoutEnforcer } from "@wardenx/auth";
-import type { OrgScope, SessionContextResolver } from "@wardenx/types";
+import { type OrgScope, type SessionContextResolver, WardenXError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
 
@@ -29,6 +29,31 @@ export interface SystemCredentialConfig {
 
 const SYSTEM_TOKEN_HEADER = "x-internal-service-token";
 const SYSTEM_ORG_HEADER = "x-internal-org-id";
+/** HTTP methods an `auditor`-class session may use (M2 §2.2.4: auditor sessions are read-only). */
+const AUDITOR_SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
+/**
+ * The only mutations an auditor session may make: ending its own session, and redeeming a (second)
+ * engagement link — which replaces it (no concurrent auditor sessions) and authenticates by token.
+ */
+const AUDITOR_ALLOWED_MUTATION_PATHS: ReadonlySet<string> = new Set([
+  "/api/auth/sign-out",
+  "/api/v1/auditors/redeem",
+]);
+
+/**
+ * M2 §7.7 — the ONLY routes an ENROLMENT-stage auditor session may call (method + path, exact). Everything
+ * else — including the engagement read — is refused until the BAA is accepted and a second factor proven,
+ * and the enrolment service upgrades the session to `active`. Sign-out and a (second) link redemption stay
+ * reachable so a half-enrolled auditor can always leave or start over.
+ */
+const AUDITOR_ENROLMENT_ROUTES: ReadonlySet<string> = new Set([
+  "GET /api/v1/auditors/enrolment/state",
+  "POST /api/v1/auditors/enrolment/baa",
+  "POST /api/v1/auditors/enrolment/totp/begin",
+  "POST /api/v1/auditors/enrolment/totp/confirm",
+  "POST /api/v1/auditors/enrolment/verify",
+]);
+
 /** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
 const BACKGROUND_HEADER = "x-wardenx-background";
 
@@ -64,6 +89,31 @@ function timingSafeMatch(provided: string, expected: string): boolean {
 function headerOf(request: FastifyRequest, name: string): string | null {
   const value = request.headers[name];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * The auditor method/route gate (M2 §2.2.4 read-only + §7.7 enrolment). An `active` session is read-only
+ * (sign-out and a second redemption are the only mutations); any other stage - fail closed - may call
+ * exactly the enrolment routes plus those two.
+ */
+function assertAuditorMayCall(request: FastifyRequest, stage: "enrolment" | "active" | null): void {
+  const method = request.method.toUpperCase();
+  const path = request.url.split("?")[0] ?? "";
+  if (stage === "active") {
+    if (AUDITOR_SAFE_METHODS.has(method) || AUDITOR_ALLOWED_MUTATION_PATHS.has(path)) return;
+    throw new WardenXError("AUDITOR_READ_ONLY", "auditor sessions are read-only", 403);
+  }
+  if (
+    AUDITOR_ENROLMENT_ROUTES.has(`${method} ${path}`) ||
+    AUDITOR_ALLOWED_MUTATION_PATHS.has(path)
+  ) {
+    return;
+  }
+  throw new WardenXError(
+    "AUDITOR_ENROLMENT_REQUIRED",
+    "accept the engagement terms and verify a second factor before using this session",
+    403,
+  );
 }
 
 /** Build the authenticate hook. Anonymous requests leave request.context untouched. */
@@ -122,6 +172,12 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);
     if (!actor) return; // session/org mismatch — no org binding, no roles (no cross-tenant leak)
+    // M2 §2.2.4 — an `auditor`-class session is READ-ONLY, enforced here for every route (the class
+    // descriptor's `readOnly` flag had no reader, and the auditor role's single read permission is the second
+    // layer, not the only one). The only mutation allowed is signing out.
+    if (actor.sessionClass === "auditor") {
+      assertAuditorMayCall(request, actor.auditorStage ?? null);
+    }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];
     // Stamp the ACTIVE membership id the §4.x ownership predicates read. Seven modules
@@ -191,8 +247,18 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // for the `auditor` class and only from the resolver (`session.scope.engagementId`, class- and
     // window-gated at the source by `sessionEngagementId`) — never from a header or the route, which is
     // exactly the claim the predicate compares this against.
+    //
+    // M2 §7.7 — an ENROLMENT-stage session does NOT get `engagementId`: the engagement read's
+    // `portal_engagement_scope` predicate therefore denies it even if a route were ever reachable. The enrolment
+    // routes read the separate `auditorEnrolmentEngagementId`, which names no read scope at all.
     if (actor.sessionClass === "auditor" && actor.engagementId) {
-      request.context.attributes.engagementId = actor.engagementId;
+      request.context.attributes.auditorEnrolmentEngagementId = actor.engagementId;
+      if (actor.auditorStage === "active") {
+        request.context.attributes.engagementId = actor.engagementId;
+      }
+    }
+    if (actor.sessionClass === "auditor") {
+      request.context.attributes.auditorStage = actor.auditorStage ?? "enrolment";
     }
     // SecHardening §12.4 — the platform's OWN verdict on the device, resolved from M2's
     // `device_attestation` row and never from anything the request carries. Stamped only when a LIVE

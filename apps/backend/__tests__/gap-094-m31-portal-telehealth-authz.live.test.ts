@@ -112,6 +112,20 @@ interface FixtureOptions {
   readonly telehealthConsent?: "active" | "revoked";
 }
 
+// The join route opens the sealed vendor-room columns (GAP-095), so the live suite binds a cipher and seeds
+// rows sealed the same way. A transparent stub is enough here: this suite proves AUTHZ over a real database,
+// not the AES envelope (portal-crypto has its own tests).
+const ROOM_CIPHER = {
+  async encrypt(_org: string, column: string, plaintext: string) {
+    return `sealed:${column}:${plaintext}`;
+  },
+  async decrypt(_org: string, column: string, envelope: string) {
+    const prefix = `sealed:${column}:`;
+    if (!envelope.startsWith(prefix)) throw new Error("foreign envelope");
+    return envelope.slice(prefix.length);
+  },
+};
+
 describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
@@ -244,7 +258,7 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
         `INSERT INTO telehealth_visit
            (organization_id, provider_entity_id, m17_visit_id, patient_id, assigned_membership_id, vendor,
             vendor_room_id_cipher, vendor_room_url_cipher, scheduled_visit_setting)
-         VALUES ($1,$2,$3,$4,$5,'daily_co','c1','c2','patient_home_with_video') RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,'daily_co','sealed:vendor_room_id:room-1','sealed:vendor_room_url:https://rooms.test/room-1','patient_home_with_video') RETURNING id`,
         [org, pe[org], randomUUID(), patientId, randomUUID()],
       )
     ).rows[0].id as string;
@@ -396,7 +410,7 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
       },
     });
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    registerTelehealthRoutes(app, { store, telehealth: VENDOR });
+    registerTelehealthRoutes(app, { store, telehealth: VENDOR, roomCipher: ROOM_CIPHER });
     await app.ready();
   }, 180_000);
 

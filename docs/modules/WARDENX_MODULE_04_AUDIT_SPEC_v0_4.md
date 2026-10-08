@@ -943,7 +943,7 @@ Type.Object({
 | `audit.retention_scan` | scheduled (daily) | find expired partitions/objects by class + state override → create pending destruction certs; skip `legal_hold` and `compliance_42cfr_part2` rows whose patient is alive / <6yr post-death |
 | `audit.execute_destruction` | on cert approval | partition detach + cryptographic erasure; emit cert + audit; Part 2 rows refused → `partial_refused` |
 | `audit.seal_partition` (phase 2) | on partition close | compute + store chain hash |
-| `audit.integrity_sample` | scheduled (quarterly) | sample 100 events vs pgBackRest backup; alert on mismatch (Security Hardening T6 validation) |
+| `audit.integrity_sample` | scheduled (quarterly) | sample 100 events vs pgBackRest backup; alert on mismatch (Security Hardening T6 validation). **As built:** the reference is the `audit_seal` hash chain (check every `prev_chain_hash` link, recompute a random sample of sealed months), not a backup — **the pgBackRest comparison is NOT built** (no backup reader; each run records `backup_cross_reference = unavailable_no_backup_reader`). Gated per org by `audit_hash_chain_enabled` (default off); run history in `audit_integrity_run` (migration 0510); a mismatch alerts (`m4.audit.integrity_mismatch`) and fails the job. See `docs/history/auditor-redemption-and-audit-integrity-sample.md`. |
 | `audit.build_export` | on export request | render watermarked file to MinIO |
 
 ### 4.5 Permission Keys Registered into Module 3

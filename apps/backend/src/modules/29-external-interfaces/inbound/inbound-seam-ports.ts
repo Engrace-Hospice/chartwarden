@@ -5,8 +5,8 @@
 //   terminology   M38 `TerminologyProvider` → `LabSudTerminologyPort`
 //                   validateLoinc  = `validate("loinc", code, asOf)`
 //                   classifyLoinc  = membership in the `SUD_TEST_LOINC_VALUE_SET` value set, as of the observation date and
-//                                    INCLUDING the tenant's own extension members (so a tenant can list its drug-screen LOINCs
-//                                    even before a platform seed exists). Membership ⇒ category `sud_test`.
+//                                    INCLUDING the tenant's own extension members. The platform members are seeded by
+//                                    migration 0500 (docs/history/m29-m38-sud-test-loinc-seed.md). Membership ⇒ category `sud_test`.
 //   consent       M39 `ConsentEvaluator.evaluateForIngressRedaction` → `LabConsentPort` (allowDisclosure = !redactSUD)
 //   orders        M11 `OrderProvider.getOrder` → `LabOrderPort` (OBR-2 placer order number = `order_record.id`, D8)
 //

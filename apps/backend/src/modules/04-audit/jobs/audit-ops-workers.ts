@@ -8,6 +8,11 @@
 import { AUDIT_JOB_SCHEDULES, AUDIT_QUEUES } from "@wardenx/audit";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
+  type AuditIntegrityDeps,
+  runIntegritySampleForOrg,
+  runSealPartitionsForOrg,
+} from "./audit-integrity-job";
+import {
   type AuditJobOpsDeps,
   runAuditFanout,
   runBuildExportSweepForOrg,
@@ -24,6 +29,8 @@ export const M4_AUDIT_JOBS_PLATFORM_JOB_ID = "m4.audit_jobs";
 export interface AuditOpsWorkerDeps {
   readonly connection: ConnectionOptions;
   readonly ops: AuditJobOpsDeps;
+  /** The sealed audit hash chain + sampled verification (§4.4). Absent ⇒ neither queue is constructed. */
+  readonly integrity?: AuditIntegrityDeps;
 }
 
 /** One Worker per bound queue; the destruction sweep only when an eraser (destruction credential) exists. */
@@ -60,19 +67,52 @@ export function registerAuditOpsWorkers(deps: AuditOpsWorkerDeps): Worker[] {
       ),
     );
   }
+  const { integrity } = deps;
+  if (integrity) {
+    workers.push(
+      new Worker(
+        AUDIT_QUEUES.sealPartition,
+        () =>
+          runAuditFanout(
+            integrity.listOrgs,
+            (o) => runSealPartitionsForOrg(integrity, o),
+            "seal_partition",
+          ),
+        { connection, concurrency: 1 },
+      ),
+      // A mismatch makes the per-org run throw; runAuditFanout re-raises (AggregateError) AFTER every
+      // other org was checked, so the job FAILS — it never reports green over a broken chain.
+      new Worker(
+        AUDIT_QUEUES.integritySample,
+        () =>
+          runAuditFanout(
+            integrity.listOrgs,
+            (o) => runIntegritySampleForOrg(integrity, o),
+            "integrity_sample",
+          ),
+        { connection, concurrency: 1 },
+      ),
+    );
+  }
   return workers;
 }
 
 /** Register the repeatable triggers for the queues {@link registerAuditOpsWorkers} constructs. */
 export async function scheduleAuditOpsJobs(
   connection: ConnectionOptions,
-  opts: { exports: boolean; destruction: boolean },
+  opts: { exports: boolean; destruction: boolean; integrity?: boolean },
 ): Promise<Queue[]> {
   const specs: { name: string; pattern: string }[] = [
     { name: AUDIT_QUEUES.retentionScan, pattern: AUDIT_JOB_SCHEDULES.retentionScan },
     ...(opts.exports ? [{ name: AUDIT_QUEUES.buildExport, pattern: EXPORT_SWEEP_CRON }] : []),
     ...(opts.destruction
       ? [{ name: AUDIT_QUEUES.executeDestruction, pattern: DESTRUCTION_SWEEP_CRON }]
+      : []),
+    ...(opts.integrity
+      ? [
+          { name: AUDIT_QUEUES.sealPartition, pattern: AUDIT_JOB_SCHEDULES.sealPartition },
+          { name: AUDIT_QUEUES.integritySample, pattern: AUDIT_JOB_SCHEDULES.integritySample },
+        ]
       : []),
   ];
   const queues: Queue[] = [];

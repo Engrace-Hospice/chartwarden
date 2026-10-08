@@ -399,6 +399,22 @@ export interface CollaboratorScope {
   readonly organizationId: string;
   /** Which session class the link yields (GAP-115: `funeral_home` links share this store). Default collaborator. */
   readonly kind?: "external_collaborator" | "funeral_home";
+  /** The durable link row (absent on the per-process slice store). */
+  readonly linkId?: string;
+  /** The credential-less principal `user` the redeemed session row belongs to (durable store only). */
+  readonly principalUserId?: string;
+  /** Lifetime of the session this redemption mints, in seconds (durable store only). */
+  readonly sessionTtlSec?: number;
+  /** Redemptions spent including this one (durable store only). */
+  readonly useCount?: number;
+}
+
+/** What a durable store reports about a refused redemption of a link it KNOWS (audit-only; never sent to a client). */
+export interface RefusedLinkInfo {
+  readonly linkId: string;
+  readonly organizationId: string;
+  readonly kind: "external_collaborator" | "funeral_home";
+  readonly reason: "expired" | "used" | "revoked" | "not_eligible";
 }
 
 /** Mint / consume per-patient external-collaborator magic-links (30-min TTL, one-time). */
@@ -411,9 +427,30 @@ export interface CollaboratorLinkStore {
     kind?: "external_collaborator" | "funeral_home";
     /** Override the link's TTL (seconds). */
     ttlSec?: number;
-  }): Promise<{ linkId: string; expiresAt: string }> | { linkId: string; expiresAt: string };
+    /** Lifetime of the session a redemption mints (seconds). Durable store only; the slice store ignores it. */
+    sessionTtlSec?: number;
+    /** Redemptions the link allows (default 1 - single use). Durable store only. */
+    maxUses?: number;
+  }): Promise<CreatedLink> | CreatedLink;
   /** Atomically consume a token → its scope. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
+  /**
+   * Give back the use a failed session mint spent (durable store only): without it a transient Better Auth failure
+   * would burn a single-use link the holder never got a session for. Idempotent and org-scoped.
+   */
+  release?(scope: { organizationId: string; linkId: string }): Promise<void>;
+  /** Revoke ONE link (durable store only), e.g. when its token could not be delivered. Idempotent and org-scoped. */
+  revoke?(scope: { organizationId: string; linkId: string }): Promise<void>;
+  /** Revoke every live link for a patient (durable store only) - e.g. the patient is no longer deceased. */
+  revokeForPatient?(scope: { organizationId: string; patientId: string }): Promise<number>;
+}
+
+/** A freshly minted link: the raw token is delivered ONCE and never stored (the store keeps its hash). */
+export interface CreatedLink {
+  readonly linkId: string;
+  readonly expiresAt: string;
+  /** The raw single-use token, for the delivery port. Never returned to a client, never logged. */
+  readonly token?: string;
 }
 
 /**
@@ -528,10 +565,35 @@ export class LinkError extends Error {
   constructor(
     readonly kind: "expired" | "used" | "verification_required",
     message: string,
+    /** Present only when the store KNOWS the link (a token that parses to no row carries none: no oracle). */
+    readonly link?: RefusedLinkInfo,
   ) {
     super(message);
     this.name = "LinkError";
   }
+}
+
+/**
+ * Delivers a freshly minted collaborator / funeral-home link to its recipient. The raw token is handed here ONCE
+ * and never returned to a client. Unbound (the transactional email provider is not wired in production) the invite
+ * routes refuse 503 `LINK_DELIVERY_UNAVAILABLE` before minting anything: a link nobody can receive is a credential
+ * that exists for no one.
+ */
+export interface LinkDeliveryPort {
+  deliver(input: {
+    readonly kind: "external_collaborator" | "funeral_home";
+    readonly email: string;
+    readonly token: string;
+    readonly expiresAt: Date;
+  }): Promise<void>;
+}
+
+/** The minimum decedent facts a funeral-home session reads (M5's published read, injected). */
+export interface FuneralCaseReader {
+  read(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ decedentName: string; dateOfDeath: string } | null>;
 }
 
 /** The full injection surface for `registerIdentityRoutes`. */
@@ -546,6 +608,23 @@ export interface IdentityRouteDeps {
    * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE` (fail closed).
    */
   deceasedPatients?: DeceasedPatientReader;
+  /**
+   * GAP-115 follow-up - the server-only Better Auth session mint behind link redemption. Unbound ->
+   * `POST /collaborators/consume` keeps its legacy slice behaviour (no session row); a durable mount ALWAYS binds
+   * it, and a durable store with no minter refuses 503 `LINK_SESSION_UNAVAILABLE` WITHOUT consuming the link.
+   */
+  linkSessions?: import("@wardenx/auth").LinkSessionMinter;
+  /** GAP-115 follow-up - delivers the minted token. Unbound -> invite routes refuse 503 (see {@link LinkDeliveryPort}). */
+  linkDelivery?: LinkDeliveryPort;
+  /**
+   * True on a durable mount: the invite routes then REQUIRE `recipientEmail` (422) - a durable link with nobody to
+   * send it to is unreachable. The slice/test mounts leave it unset and keep the legacy "no delivery" behaviour.
+   */
+  linkRecipientRequired?: boolean;
+  /** GAP-115 follow-up - the failed-redemption budget (per IP). Unbound -> only the global rate tier applies. */
+  linkRedeemThrottle?: import("@wardenx/auth").CredentialThrottle;
+  /** GAP-115 follow-up - M5's minimum decedent read for `GET /funeral/case`. Unbound -> that route answers 503. */
+  funeralCases?: FuneralCaseReader;
   users: UserDirectory;
   /** Audit sink for the M2 lifecycle events (audit() executor — denylist runs there). */
   audit: import("@wardenx/audit").AuditExecutor;
@@ -891,7 +970,7 @@ export function createInMemoryCollaboratorLinkStore(): {
         expiresAtMs: Date.now() + ttlMs,
         consumed: false,
       });
-      return { linkId, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
+      return { linkId, expiresAt: new Date(Date.now() + ttlMs).toISOString(), token };
     },
     consume(token) {
       const link = links.get(token);

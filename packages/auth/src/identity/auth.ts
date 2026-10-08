@@ -26,6 +26,7 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
+import { linkSessionPlugin } from "./link-session";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
@@ -282,6 +283,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // transport, injected at the composition root (FB-T14). Runtime + any schema reconciliation are
     // exercised in the AUTH-T06 live-PG lane.
     plugins: [
+      // Server-only mint of the session a REDEEMED collaborator / funeral-home link yields (never on the HTTP router).
+      linkSessionPlugin(),
       haveIBeenPwned(), // HIBP k-anonymity breach check (M2 §3.1)
       // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator
       // above seals/opens the values); ADR-0034. SMS fallback never qualifies as step-up.

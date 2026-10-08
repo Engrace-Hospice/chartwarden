@@ -157,7 +157,7 @@ export function MyOnCallScreen(): JSX.Element {
         <div style={filterShellStyle}>
           {coverage === "on" ? (
             <Notice tone="success" live>
-              <strong>ON CALL</strong>
+              <strong>On call</strong>
               {activeShift ? ` until ${dateTime(activeShift.shiftEndsAt)}` : ""} — the server
               resolves a covering actor for your scope as of {dateTime(current?.asOf)}.
             </Notice>

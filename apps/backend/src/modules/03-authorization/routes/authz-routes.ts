@@ -553,18 +553,38 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { name, email } = parse(EnrollAuditorBody, request.body);
 
       // M3 owns the engagement scope; M2 mints the time-boxed magic-link session (D4 / §4.4).
-      await deps.auditorSessions.mintAuditorSession({
+      const { magicLinkToken } = await deps.auditorSessions.mintAuditorSession({
         engagementId,
         organizationId,
         identity: { name, email },
         window: { start: new Date(engagement.startAt), end: new Date(engagement.endAt) },
       });
+      // The link reaches the auditor out of band. A delivery failure fails the enrolment: reporting an
+      // auditor `pending` who was never sent anything is the defect this closes.
+      if (deps.auditorLinkDelivery) {
+        try {
+          await deps.auditorLinkDelivery.deliver({
+            organizationId,
+            engagementId,
+            auditorName: name,
+            auditorEmail: email,
+            token: magicLinkToken,
+            expiresAt: new Date(engagement.endAt),
+          });
+        } catch {
+          throw new WardenXError(
+            "AUDITOR_LINK_DELIVERY_FAILED",
+            "the auditor link could not be delivered; the enrolment was not recorded",
+            503,
+          );
+        }
+      }
       await deps.engagements.recordAuditorEnrolled(engagementId);
       await auditAuditorEnrolled(deps.audit, auditContextFor(request), {
         engagementId,
         auditorEmail: email,
       });
-      // The magic-link token is delivered out-of-band (email) — never returned in the body.
+      // The magic-link token is delivered out-of-band (email) — never returned in the body or logged.
       return reply.code(201).send({ engagementId, status: "pending" });
     },
   );

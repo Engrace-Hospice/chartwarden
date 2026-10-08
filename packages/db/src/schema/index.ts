@@ -63,7 +63,9 @@ export * from "./membership-roles";
 // window for external auditors (§7.5).
 export * from "./break-glass";
 export * from "./auditor-engagements";
+export * from "./auditor-baa-acceptance";
 export * from "./auditor-magic-links";
+export * from "./collaborator-links";
 // M4-T04 — Audit lifecycle / integrity / catalog tables (M4 spec §3.5). legal_hold,
 // destruction_certificate, audit_export are org-scoped (standard app.org_id RLS lands in
 // M4-T05); audit_seal is the Phase-2 tamper-evidence chain (nullable org). state_retention_override,
@@ -74,6 +76,7 @@ export * from "./destruction-certificates";
 export * from "./state-retention-overrides";
 export * from "./audit-exports";
 export * from "./audit-seals";
+export * from "./audit-integrity-runs";
 export * from "./audit-denylist-catalog";
 export * from "./audit-action-catalog";
 // M38-T02 — Clinical Terminology Service schema (M38 spec §3.3–3.6). M38 owns 13 tables.

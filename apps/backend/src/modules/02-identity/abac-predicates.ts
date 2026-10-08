@@ -29,6 +29,8 @@ import {
 export const M2_ABAC_PREDICATES = [
   "organization_lifecycle_platform_ops",
   "user_lifecycle_platform_ops",
+  "funeral_session_pinned_patient",
+  "auditor_enrolment_session",
 ] as const;
 
 /**
@@ -51,10 +53,51 @@ export async function userLifecyclePlatformOpsPredicate(context: AbacContext): P
   return hasAnyRole(context, USER_LIFECYCLE_PLATFORM_ROLE_KEYS);
 }
 
+/**
+ * `funeral_session_pinned_patient` (GAP-115 follow-up) - the redeemed funeral-home session may read exactly the ONE
+ * patient it was pinned to at mint. Pure, and it decides over SESSION-assembled facts only: the class and the pinned
+ * patient come from `context.attributes` (stamped by the authenticate hook from the `session` row), and the target
+ * patient is that same pinned value - so a request can neither name another patient nor smuggle a class.
+ */
+export async function funeralSessionPinnedPatientPredicate(
+  context: AbacContext,
+  target: Record<string, unknown>,
+): Promise<boolean> {
+  const sessionClass = context.attributes.sessionClass;
+  const pinned = context.attributes.sessionPatientId;
+  if (!context.organizationId) return false;
+  if (sessionClass !== "funeral_home") return false;
+  if (typeof pinned !== "string" || pinned.length === 0) return false;
+  return target.patientId === pinned;
+}
+
+/**
+ * `auditor_enrolment_session` (M2 §7.7) - the caller is an `auditor`-class session acting on its OWN engagement's
+ * enrolment. Pure, over SESSION-assembled facts only: the class and the engagement come from
+ * `context.attributes` (stamped by the authenticate hook off the `session` row), and the target engagement is that
+ * same value, so a request can neither name another engagement nor smuggle a class. It grants NO read: an
+ * enrolment-stage session holds no permission and carries no `engagementId` scope attribute.
+ */
+export async function auditorEnrolmentSessionPredicate(
+  context: AbacContext,
+  target: Record<string, unknown>,
+): Promise<boolean> {
+  if (!context.organizationId || !context.userId) return false;
+  if (context.attributes.sessionClass !== "auditor") return false;
+  const engagementId = context.attributes.auditorEnrolmentEngagementId;
+  if (typeof engagementId !== "string" || engagementId.length === 0) return false;
+  return target.engagementId === engagementId;
+}
+
 /** Register M2's predicates into M3's shared registry. Idempotent (single-owner / no-clear). */
 export function registerM2AbacPredicates(): void {
   registerPredicateIdempotent("organization_lifecycle_platform_ops", async (context) =>
     hasAnyRole(context, PLATFORM_OPS_ROLE_KEYS),
   ); // (context, target) => boolean|Promise<boolean> — target unused, this predicate reads no per-row fact
   registerPredicateIdempotent("user_lifecycle_platform_ops", userLifecyclePlatformOpsPredicate);
+  registerPredicateIdempotent(
+    "funeral_session_pinned_patient",
+    funeralSessionPinnedPatientPredicate,
+  );
+  registerPredicateIdempotent("auditor_enrolment_session", auditorEnrolmentSessionPredicate);
 }

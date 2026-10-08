@@ -64,6 +64,28 @@ export const M31_ERROR_STATUS = {
    *  fault, refused rather than silently re-scoped. */
   SESSION_ORG_SWITCH_FORBIDDEN: 403,
 
+  // ── invitee SIGN-IN (the pre-org -> portal-session bind; M2 owns authentication, M31 the account binding) ──
+  /** The signed-in user holds no (non-revoked) portal account: they authenticated, but nothing here is theirs. */
+  SIGN_IN_NO_PORTAL_ACCOUNT: 403,
+  /** The account is still `invited`: the invitation has not been accepted, so there is no grant to sign in to. */
+  SIGN_IN_ACCOUNT_NOT_ACTIVATED: 403,
+  /** The account is `suspended`/`revoked` (lockout). A new bind is refused; existing sessions die at their next request. */
+  SIGN_IN_ACCOUNT_NOT_ACTIVE: 403,
+  /** The user's email is not verified: a portal session is never bound to an address that never proved itself. */
+  SIGN_IN_EMAIL_UNVERIFIED: 403,
+  /** The user is suspended/deactivated at the identity layer. */
+  SIGN_IN_USER_INACTIVE: 403,
+  /** The tenant is not `active`: sign-in is refused (the M2 §11 D19 auth-time rule, applied to the portal). */
+  SIGN_IN_ORGANIZATION_NOT_ACTIVE: 403,
+  /** The account has no live grant: it can reach no patient, so a session would be scoped to nothing. */
+  SIGN_IN_NO_ACTIVE_GRANT: 403,
+  /** More than one eligible account (several tenants / relationships): the caller must name one. */
+  SIGN_IN_ACCOUNT_SELECTION_REQUIRED: 409,
+  /** The session is already org-bound as something else (staff, another account); a session is bound ONCE. */
+  SIGN_IN_SESSION_NOT_BINDABLE: 409,
+  /** The sign-in port is not bound in this deployment (fail closed, never a fake success). */
+  SIGN_IN_UNAVAILABLE: 503,
+
   // ── §7.5 / D6 the bereaved lateral flip ────────────────────────────────────────────────────────────
   /** §7.5 — the flip was asked to re-scope a grant that is already revoked. The lateral flip preserves the
    *  account row and swaps one ACTIVE grant for a bereaved one; a revoked grant has no live scope to flip,

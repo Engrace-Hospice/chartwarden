@@ -103,6 +103,30 @@ export {
   createInMemoryAuditorMagicLinkIssuer,
 } from "./auditor-session";
 export {
+  RECOVERY_CODE_COUNT,
+  TOTP_PERIOD_SEC,
+  type NewTotpEnrolment,
+  type TotpSecretOptions,
+  type TotpStepResult,
+  createTotpEnrolment,
+  generateRecoveryCodes,
+  hashRecoveryCode,
+  matchTotpStep,
+  normalizeRecoveryCode,
+  recoveryCodeMatches,
+  totpStepStart,
+} from "./auditor-second-factor";
+export {
+  type AuditorIssuerAuth,
+  type AuditorIssuerAuthContext,
+  type AuditorSessionIssuer,
+  AuditorSessionIssueError,
+  type IssueAuditorSessionInput,
+  type IssuedAuditorSession,
+  createAuditorSessionIssuer,
+  signSessionCookieValue,
+} from "./auditor-session-issuer";
+export {
   SESSION_CLASSES,
   type SessionClass,
   type SessionLifecycleState,
@@ -119,6 +143,10 @@ export {
   assertSessionScope,
   sessionExternalActorId,
   sessionEngagementId,
+  sessionAuditorStage,
+  AUDITOR_STAGE_ACTIVE,
+  AUDITOR_STAGE_ENROLMENT,
+  type AuditorSessionStage,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
   PORTAL_SESSION_CLASSES,
@@ -135,4 +163,17 @@ export {
   type SessionTimeoutState,
   createDbSessionTimeoutEnforcer,
   evaluateSessionTimeout,
+  isUserStatusBlocked,
 } from "./session-timeout";
+
+// GAP-115 follow-up — the server-only session mint behind a redeemed collaborator / funeral-home link.
+export {
+  LINK_SESSION_CLASSES,
+  type LinkSessionCapableAuth,
+  type LinkSessionClass,
+  type LinkSessionMintInput,
+  type LinkSessionMinter,
+  type MintedLinkSession,
+  createLinkSessionMinter,
+  linkSessionPlugin,
+} from "./link-session";

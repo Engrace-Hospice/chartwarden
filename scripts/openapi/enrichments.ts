@@ -40,6 +40,18 @@ import {
   SystemStatusResponseSchema as M1SystemStatusResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/system";
 import {
+  AcceptTermsRequestSchema as M2AuditorAcceptTermsRequestSchema,
+  BeginTotpResponseSchema as M2AuditorBeginTotpResponseSchema,
+  ConfirmTotpRequestSchema as M2AuditorConfirmTotpRequestSchema,
+  ConfirmTotpResponseSchema as M2AuditorConfirmTotpResponseSchema,
+  EnrolmentStateSchema as M2AuditorEnrolmentStateSchema,
+  VerifyFactorRequestSchema as M2AuditorVerifyFactorRequestSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/auditor-enrolment";
+import {
+  AuditorRedeemRequestSchema as M2AuditorRedeemRequestSchema,
+  AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
+import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
@@ -76,6 +88,7 @@ import {
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
 import {
+  FuneralCaseResponseSchema as M2FuneralCaseResponseSchema,
   FuneralInviteRequestSchema as M2FuneralInviteRequestSchema,
   FuneralInviteResponseSchema as M2FuneralInviteResponseSchema,
   LocationCreateRequestSchema as M2LocationCreateRequestSchema,
@@ -1784,6 +1797,10 @@ import {
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
+  PortalSessionPatientsResponse as M31PortalSessionPatientsResponse,
+  PortalSignInAccountsResponse as M31PortalSignInAccountsResponse,
+  PortalSignInEstablishRequest as M31PortalSignInEstablishRequest,
+  PortalSignInEstablishResponse as M31PortalSignInEstablishResponse,
   SelectPatientRequest as M31SelectPatientRequest,
   SelectPatientResponse as M31SelectPatientResponse,
   StartRecordingRequest as M31StartRecordingRequest,
@@ -3389,6 +3406,22 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/portal/sessions/current": {
     summary: "Current portal session context (account, active patient, scope set)",
     response: M31PortalSessionCurrentResponse,
+  },
+  "GET /api/v1/portal/sessions/patients": {
+    summary:
+      "The patients this portal account holds a live grant for (the patient-select screen, D2)",
+    response: M31PortalSessionPatientsResponse,
+  },
+  "GET /api/v1/portal/sign-in/accounts": {
+    summary:
+      "Pre-org: the portal accounts the signed-in user holds and whether each can sign in (no PHI, own accounts only)",
+    response: M31PortalSignInAccountsResponse,
+  },
+  "POST /api/v1/portal/sign-in/establish": {
+    summary:
+      "Pre-org: bind the authenticated session to one of the user's portal accounts (org + portal session class); idempotent, throttled, audited",
+    body: M31PortalSignInEstablishRequest,
+    response: M31PortalSignInEstablishResponse,
   },
   "POST /api/v1/portal/sessions/step-up": {
     summary: "TOTP step-up for high-PHI portal actions",
@@ -6129,8 +6162,48 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M2FuneralInviteRequestSchema,
     response: M2FuneralInviteResponseSchema,
   },
+  "POST /api/v1/auditors/redeem": {
+    summary:
+      "Redeem an emailed auditor link into a single-use, ENROLMENT-stage auditor session that reaches only the enrolment routes until the BAA terms are accepted and a second factor is proven (§2.2.4, §7.7)",
+    body: M2AuditorRedeemRequestSchema,
+    response: M2AuditorRedeemResponseSchema,
+  },
+  "GET /api/v1/auditors/enrolment/state": {
+    summary:
+      "Where the auditor is in the enrolment ceremony: the terms to read, BAA acceptance, second-factor status and lockout (§7.7)",
+    response: M2AuditorEnrolmentStateSchema,
+  },
+  "POST /api/v1/auditors/enrolment/baa": {
+    summary:
+      "Accept the versioned BAA / engagement terms (version + sha-256 of the exact text; stale terms refused; idempotent) — upgrades the session once a second factor is also proven (§7.7)",
+    body: M2AuditorAcceptTermsRequestSchema,
+    response: M2AuditorEnrolmentStateSchema,
+  },
+  "POST /api/v1/auditors/enrolment/totp/begin": {
+    summary:
+      "First engagement only: start authenticator (TOTP) setup — a fresh unconfirmed secret as an otpauth URI and a manual-entry key (409 when a factor is already enrolled) (§7.7)",
+    response: M2AuditorBeginTotpResponseSchema,
+  },
+  "POST /api/v1/auditors/enrolment/totp/confirm": {
+    summary:
+      "First engagement only: confirm the first authenticator code — the factor becomes real and ten single-use recovery codes are returned ONCE (stored hashed); wrong codes count toward a lockout (§7.7)",
+    body: M2AuditorConfirmTotpRequestSchema,
+    response: M2AuditorConfirmTotpResponseSchema,
+  },
+  "POST /api/v1/auditors/enrolment/verify": {
+    summary:
+      "Later engagements: present the enrolled factor — a TOTP code (a spent step cannot be replayed) or a single-use recovery code; five wrong codes lock the factor for 15 minutes (429) (§7.7)",
+    body: M2AuditorVerifyFactorRequestSchema,
+    response: M2AuditorEnrolmentStateSchema,
+  },
+  "GET /api/v1/funeral/case": {
+    summary:
+      "A redeemed funeral-home session reads the ONE decedent's minimum facts (legal name, date of death); session-pinned, audited",
+    response: M2FuneralCaseResponseSchema,
+  },
   "POST /api/v1/collaborators/consume": {
-    summary: "Consume the link → scoped external-collaborator session (§7.6)",
+    summary:
+      "Redeem a single-use link → scoped external-collaborator / funeral-home session (sets the session cookie; replay and expiry refused)",
     body: M2CollaboratorConsumeRequestSchema,
     response: M2CollaboratorConsumeResponseSchema,
   },

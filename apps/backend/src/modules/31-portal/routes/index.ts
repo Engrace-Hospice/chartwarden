@@ -36,6 +36,7 @@ import type { M31EventEmitter } from "../events";
 import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
 import type { PortalProvisioning } from "../provisioning";
 import type { PortalAccountAuditPort, PortalBereavementOptOutPort } from "../provisioning/types";
+import type { PortalSignInPort } from "../sign-in";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
 
@@ -119,6 +120,13 @@ export interface PortalRouteDeps {
    * seam (deny-stub until M3 registers it, which 403s the view). Injectable so the route suite needs no registry.
    */
   readonly engagementReader?: import("./auditor-engagement").EngagementCoverageReader;
+  /**
+   * Invitee sign-in — M2's cross-tenant account read + the atomic session bind. ABSENT ⇒ the two sign-in routes
+   * answer 503 `SIGN_IN_UNAVAILABLE`: a portal that cannot bind a session must say so, never pretend.
+   */
+  readonly signIn?: PortalSignInPort;
+  /** Invitee sign-in — the §5.3.1 failed-bind throttle (per user + per IP). ABSENT ⇒ only the global rate tier applies. */
+  readonly signInThrottle?: import("@wardenx/auth").CredentialThrottle;
   /** GAP-159 - the M31 outbox emitter for decision-point events (session, upload, amendment, message). */
   readonly events?: M31EventEmitter;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */

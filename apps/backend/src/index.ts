@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
+import {
+  AUDIT_HASH_CHAIN_FLAG,
+  auditPlatformEvent,
+  createDbAuditChainReader,
+  createDbAuditQuery,
+} from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -7,6 +12,7 @@ import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
   LAB_RECOVERY_KEYS,
+  createAuditorSessionIssuer,
   createCredentialThrottle,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
@@ -15,6 +21,7 @@ import {
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
   createInMemoryFailedLoginStore,
+  createLinkSessionMinter,
   getIdentitySession,
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
@@ -222,14 +229,21 @@ import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/audi
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
+  createAuditorEnrolment,
+  createAuditorLinkEmailDelivery,
   createDrizzleIdentityEraserStore,
+  createLinkDelivery,
+  createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
+  createPortalSignInStore,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
+  registerAuditorEnrolmentRoutes,
+  registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
@@ -238,6 +252,7 @@ import {
   type M3OutboxPublisher,
   M3_OUTBOX_EVENTS,
   M3_PLATFORM_JOB_ID,
+  createDbAuditorAccessGrantor,
   createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
@@ -294,6 +309,7 @@ import {
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
   dosespotSyncDemographicsForOrg,
+  funeralCaseForOrg,
   getCaseloadProvider,
   getPatientCoverageReader,
   getPatientReader,
@@ -1301,10 +1317,10 @@ import {
   registerMessagingErasers,
   registerMessagingSeams,
   scheduleM36DeliveryJobs,
-  selectTransactionalEmailTransport,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -3617,9 +3633,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // a vendor SDK nor takes a `dependsOn` edge on M36. A real Postmark/SES adapter plugs into M36's
   // `provider` slot when M1 infra wires credentials; until then dev logs the link (console) and
   // production drops it (no-op — a link in prod logs is a credential in logs).
-  const emailTransport = selectTransactionalEmailTransport({
-    isProduction: process.env.NODE_ENV === "production",
+  // The Postmark adapter binds ONLY when POSTMARK_SERVER_TOKEN + a verified POSTMARK_FROM_ADDRESS are configured
+  // (credentials come from env alone; see 36-messaging/transactional-email-binding.ts). Otherwise it stays unbound:
+  // production keeps dropping email and the link-delivery routes keep answering 503, with a loud boot line.
+  const emailBinding = bindTransactionalEmail({
+    env: process.env,
+    log: (line) => process.stderr.write(`${line}\n`),
   });
+  const emailTransport = emailBinding.emailTransport;
   // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
   // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
@@ -3629,6 +3650,37 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     process.env.WEB_APP_URL ??
     process.env.BETTER_AUTH_URL ??
     (process.env.NODE_ENV === "production" ? undefined : "http://localhost:5173");
+  // GAP-115 follow-up / M31 sign-in - the §5.3.1 failed-attempt budgets for the two NEW unauthenticated-or-pre-org
+  // doors (link redemption, portal session establishment). Same store as the login throttle (Valkey when REDIS_URL is
+  // set, per-replica otherwise), each under its OWN key prefix so a run against one door cannot lock out another.
+  const doorFailureStore = rateLimitRedisClient
+    ? createRedisFailedLoginStore(rateLimitRedisClient)
+    : createInMemoryFailedLoginStore();
+  const onThrottleStoreError = (err: unknown) =>
+    process.stderr.write(
+      `[throttle] failed-attempt store unavailable - failing open: ${String(err)}\n`,
+    );
+  const linkRedeemThrottle = createCredentialThrottle(doorFailureStore, {
+    keyPrefix: "link-redeem",
+    onStoreError: onThrottleStoreError,
+  });
+  const portalSignInThrottle = createCredentialThrottle(doorFailureStore, {
+    keyPrefix: "portal-signin",
+    onStoreError: onThrottleStoreError,
+  });
+  // Without a bound transactional-email PROVIDER (the Postmark adapter, credentials + verified From from env) production
+  // DROPS every email. A collaborator / funeral-home link nobody can receive must not be minted, so in production the
+  // delivery port stays UNBOUND (the invite routes answer 503 LINK_DELIVERY_UNAVAILABLE) until the adapter is bound;
+  // dev/test log the link via the console transport. The flag is derived from the adapter actually being bound.
+  // The auditor invite had no bound-provider gate: in production the no-op transport "delivered" the link and the
+  // enrolment reported a pending auditor who was sent nothing. `linkEmailTransport` THROWS when production is
+  // unbound, which that route already maps to 503 AUDITOR_LINK_DELIVERY_FAILED.
+  const linkEmailTransport = emailBinding.linkEmailTransport;
+  const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
+  const linkDelivery =
+    linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
+      ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
+      : undefined;
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
@@ -3757,6 +3809,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             dbHandle.db,
             liveRbacHandle,
             m3OutboxPublisher as M3OutboxPublisher,
+            // The minted auditor link is emailed (M2 `auth.send_magic_link`); without a web origin the
+            // delivery throws and the enrolment route answers 503 rather than reporting a phantom invite.
+            createAuditorLinkEmailDelivery({
+              transport: linkEmailTransport,
+              baseUrl: webAppBaseUrl,
+            }),
           );
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
           // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the
@@ -3813,21 +3871,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               isDeceased: (organizationId, patientId) =>
                 patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
             },
+            // GAP-115 follow-up - the DURABLE collaborator / funeral link store (migration 0521): M6's siting of the
+            // patient (the ARCH-011 columns), the server-only Better Auth session mint a redemption ends in, the
+            // delivery channel (UNBOUND in production until the email provider is - see above), the redemption
+            // throttle and M5's minimum decedent read for `GET /funeral/case`.
+            linkPatientSite: {
+              siteForPatient: (organizationId, patientId) =>
+                patientSiteForOrg(dbHandle.db, organizationId, patientId),
+            },
+            ...(auth ? { linkSessions: createLinkSessionMinter(auth) } : {}),
+            ...(linkDelivery ? { linkDelivery } : {}),
+            linkRedeemThrottle,
+            funeralCases: {
+              read: (organizationId, patientId) =>
+                funeralCaseForOrg(dbHandle.db, organizationId, patientId),
+            },
           });
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
           // overrides). The tax-id envelope cipher is NOT bound: it is the KMS-backed key ring (the same
           // unbound port M8/M20/M32 refuse on), so `POST /provider-entities` answers 503 TAX_ID_CIPHER_UNBOUND
           // until it is — an EIN is never stored in the clear.
           mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher });
-          // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
-          // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
-          // on one replica only and dies with the process.
-          noteInMemoryBinding({
-            kind: "route-dep",
-            label:
-              "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
-            task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
-          });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
           // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
@@ -3860,6 +3924,45 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
+          // M2 §2.2.4 / §7.7 — redeem an emailed auditor link into a scoped, read-only `auditor` session.
+          // Public (the token is the credential); M3 grants the one least-privilege role inside the
+          // redemption transaction; Better Auth mints the signed session cookie. Per-IP and per-org attempt
+          // budgets over the shared Valkey store (in-memory only on a single instance without one).
+          if (auth) {
+            const auditorLimiterStore = rateLimitStore ?? createInMemoryRateLimitStore();
+            const auditorLimiter = (keyPrefix: string, limit: number) =>
+              createBudgetedRateLimiter(auditorLimiterStore, {
+                limit,
+                windowMs: 15 * 60 * 1000,
+                keyPrefix,
+                onStoreError: (err) =>
+                  app.log.warn({ err }, "auditor redeem rate-limit store error"),
+              });
+            const auditorAccess = createDbAuditorAccessGrantor();
+            registerAuditorRedeemRoutes(app, {
+              redemption: {
+                db: dbHandle.db,
+                sessions: createAuditorSessionIssuer(auth),
+                access: auditorAccess,
+                onRedeemed: (organizationId, userId) =>
+                  liveRbacHandle?.invalidateActor(organizationId, userId),
+              },
+              ipLimiter: auditorLimiter("auditor-redeem:ip", 20),
+              orgLimiter: auditorLimiter("auditor-redeem:org", 200),
+            });
+            // M2 §7.7 — the enrolment ceremony an `auditor` session must finish (BAA terms + second factor)
+            // before it can read. The role grant happens HERE, at activation, not at redemption.
+            registerAuditorEnrolmentRoutes(app, {
+              enrolment: createAuditorEnrolment({
+                db: dbHandle.db,
+                access: auditorAccess,
+                onActivated: (organizationId, userId) =>
+                  liveRbacHandle?.invalidateActor(organizationId, userId),
+              }),
+              ipLimiter: auditorLimiter("auditor-enrol:ip", 60),
+              userLimiter: auditorLimiter("auditor-enrol:user", 30),
+            });
+          }
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
@@ -4852,6 +4955,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             },
             store: buildDrizzlePortalStore(dbHandle.db, m31Events),
             events: m31Events,
+            // M31 invitee sign-in - M2's cross-tenant own-account read + the atomic session bind (migration 0520),
+            // and the failed-bind throttle. Without these two routes would answer 503, never fake a sign-in.
+            signIn: createPortalSignInStore(dbHandle.db, createOrgScopedAuditExecutor(dbHandle.db)),
+            signInThrottle: portalSignInThrottle,
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
             // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
             // per-tenant DEK envelope for the two vendor-room columns. The vendor adapter stays UNBOUND above,
@@ -5511,8 +5618,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──
     // Same worker-runner shape as the M34 block above. Needs the platform pool for the active-org fan-out;
     // exports additionally need the MINIO_* object store, destruction the DATABASE_DESTRUCTION_URL credential.
-    // integrity_sample (needs a pgBackRest reader) and seal_partition (Phase 2) stay unconstructed — see
-    // 04-audit/jobs/audit-job-ops.ts.
+    // seal_partition + integrity_sample (the sealed hash chain and its sampled verification) are built in
+    // 04-audit/jobs/audit-integrity-job.ts; only the spec's pgBackRest backup comparison is not (no reader).
     if (platformDbHandle) {
       const m4AuditOrgs = buildActiveOrgEnumerator({
         platformDb: platformDbHandle.db,
@@ -5550,19 +5657,50 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           : {}),
         log: (message: string, detail: Record<string, unknown>) => app.log.warn(detail, message),
       };
-      const m4Workers = registerAuditOpsWorkers({ connection: queueConnection, ops: m4Ops });
+      // M4 §4.4 — the sealed audit hash chain (`audit.seal_partition`) and its sampled verification
+      // (`audit.integrity_sample`). Gated per org by the `audit_hash_chain_enabled` feature flag (M4 D2,
+      // default OFF: a disabled org gets `skipped` run rows, never a clean-looking pass). A mismatch raises
+      // the M36 alert `m4.audit.integrity_mismatch` and fails the job.
+      const m4Integrity = {
+        db: dbHandle.db,
+        listOrgs: () => m4AuditOrgs.listActiveOrgs(),
+        reader: createDbAuditChainReader(dbHandle.db),
+        alerts: getSeam("AlertEmitter") as {
+          emit(
+            orgId: string,
+            input: {
+              eventType: string;
+              payload: Record<string, unknown>;
+              severity: string;
+              correlationId: string;
+            },
+          ): Promise<unknown>;
+        },
+        isHashChainEnabled: async (organizationId: string) =>
+          (await featureFlagReader?.forOrg(organizationId))?.[AUDIT_HASH_CHAIN_FLAG] === true,
+        ...(process.env.AUDIT_INTEGRITY_SAMPLE_SIZE
+          ? { sampleSize: Number(process.env.AUDIT_INTEGRITY_SAMPLE_SIZE) }
+          : {}),
+        log: (message: string, detail: Record<string, unknown>) => app.log.error(detail, message),
+      };
+      const m4Workers = registerAuditOpsWorkers({
+        connection: queueConnection,
+        ops: m4Ops,
+        integrity: m4Integrity,
+      });
       attachDlqAlertsToAll(m4Workers, "m4");
       app.addHook("onClose", () => Promise.all(m4Workers.map((w) => w.close())));
       void scheduleAuditOpsJobs(queueConnection, {
         exports: m34DsarObjectStore !== null,
         destruction: destructionDbHandle !== undefined,
+        integrity: true,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
         })
         .catch((err) => app.log.error(err, "M4 audit job schedule registration failed"));
       app.log.info(
-        `M4 audit workers constructed: retention_scan${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
+        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
       );
     } else {
       app.log.warn(

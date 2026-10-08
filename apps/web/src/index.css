@@ -393,8 +393,6 @@
     padding: 0.25rem 0.75rem 0.375rem;
     font-size: 0.6875rem;
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
     color: var(--color-muted);
   }
   .wx-nav-row {
@@ -1986,8 +1984,6 @@
     margin: 0;
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
     color: var(--color-on-surface-variant);
   }
   .wx-hope-title {
@@ -4722,14 +4718,12 @@
     font-weight: 500;
     line-height: 1.4;
   }
-  /* All-caps metadata / timestamps / KPI eyebrow. */
+  /* Small sentence-case metadata / timestamps / KPI eyebrow. */
   .wx-label-sm {
     font-family: var(--font-sans);
     font-size: 0.6875rem;
     font-weight: 600;
     line-height: 1.4;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
   /* Identifiers / codes / control numbers — copy-safe mono. */
   .wx-data-md {

@@ -48,6 +48,12 @@ import type { ComponentType } from "react";
 const AcceptInvitation = lazy(() =>
   import("./accept-invitation").then((m) => ({ default: m.AcceptInvitation })),
 );
+const AuditorRedeem = lazy(() =>
+  import("./auditor-redeem").then((m) => ({ default: m.AuditorRedeem })),
+);
+const AuditorEnrolment = lazy(() =>
+  import("./auditor-enrolment").then((m) => ({ default: m.AuditorEnrolment })),
+);
 const ForgotPassword = lazy(() =>
   import("./forgot-password").then((m) => ({ default: m.ForgotPassword })),
 );
@@ -121,6 +127,20 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Accept invitation",
       chrome: false,
       screen: AcceptInvitation,
+    },
+    {
+      id: "identity.auditor-redeem",
+      path: "/auditor/redeem",
+      title: "Auditor access",
+      chrome: false, // Auth Flow — an emailed link opens it before any session exists
+      screen: AuditorRedeem,
+    },
+    {
+      id: "identity.auditor-enrolment",
+      path: "/auditor/enrol",
+      title: "Auditor enrolment",
+      chrome: false, // Auth Flow — the constrained session may reach nothing else until this is done
+      screen: AuditorEnrolment,
     },
     {
       // Authenticated settings screen — register/manage WebAuthn passkeys.

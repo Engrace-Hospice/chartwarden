@@ -156,6 +156,9 @@ exports.MODULES = [
       "organization_invitation",
       "tenant_step_up_policy_override",
       "auditor_magic_link",
+      "collaborator_link",
+      // M2 §7.7: the append-only per-auditor BAA / engagement-terms acceptance evidence.
+      "auditor_baa_acceptance",
       "membership_elevated_approval",
       "device_attestation",
     ],
@@ -201,6 +204,7 @@ exports.MODULES = [
       "state_retention_override",
       "audit_export",
       "audit_seal",
+      "audit_integrity_run",
       "audit_denylist_catalog",
       "audit_action_catalog",
     ],

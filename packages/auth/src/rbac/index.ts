@@ -42,3 +42,9 @@ export {
   createDbEffectivePermissionStore,
   registerDbEffectivePermissionResolver,
 } from "./drizzle-store";
+// M31 / M2 — permissions held by SESSION CLASS (portal, funeral-home), not by membership.
+export {
+  SESSION_CLASS_PERMISSIONS,
+  sessionClassPermissions,
+  withSessionClassPermissions,
+} from "./session-class-permissions";

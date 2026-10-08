@@ -117,6 +117,22 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.auditor-redeem",
+      "path": "/auditor/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.auditor-enrolment",
+      "path": "/auditor/enrol",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.security-passkeys",
       "path": "/security/passkeys",
       "permission": "(none)"
@@ -2551,6 +2567,38 @@
       "moduleId": 31,
       "id": "portal.accept-invitation",
       "path": "/accept-invitation",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.signed-in",
+      "path": "/signed-in",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.link-redeem-funeral",
+      "path": "/funeral/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.link-redeem-collaborator",
+      "path": "/collaborator/redeem",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.funeral-case",
+      "path": "/funeral/case",
       "permission": "(none)"
     },
     {

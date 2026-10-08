@@ -38,9 +38,16 @@ describe("portal screen registry (M31 §5.1)", () => {
     }
   });
 
-  it("exposes exactly the two chromeless pre-session surfaces (sign-in at /, accept-invitation)", () => {
+  it("exposes exactly the chromeless pre-session surfaces (sign-in, accept-invitation, signed-in, the two secure-link redemptions and the funeral case)", () => {
     const chromeless = portalScreens.screens.filter((s) => s.chrome === false);
-    expect(chromeless.map((s) => s.path).sort()).toEqual(["/", "/accept-invitation"]);
+    expect(chromeless.map((s) => s.path).sort()).toEqual([
+      "/",
+      "/accept-invitation",
+      "/collaborator/redeem",
+      "/funeral/case",
+      "/funeral/redeem",
+      "/signed-in",
+    ]);
   });
 
   it("rejects a duplicate screen id at registration", () => {

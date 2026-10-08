@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 42 module screen-sets registered · 324 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 42 module screen-sets registered · 330 screens wired across web/portal/admin.
 - **admin**: 35 screen(s)
-- **portal**: 14 screen(s)
-- **web**: 275 screen(s)
+- **portal**: 18 screen(s)
+- **web**: 277 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -36,6 +36,8 @@
 | web | 02-identity | `identity.step-up` | `/step-up` | `(none)` | ✅ |
 | web | 02-identity | `identity.organization-select` | `/login/organization` | `(none)` | ✅ |
 | web | 02-identity | `identity.accept-invitation` | `/invite/:token` | `(none)` | ✅ |
+| web | 02-identity | `identity.auditor-redeem` | `/auditor/redeem` | `(none)` | ✅ |
+| web | 02-identity | `identity.auditor-enrolment` | `/auditor/enrol` | `(none)` | ✅ |
 | web | 02-identity | `identity.security-passkeys` | `/security/passkeys` | `(none)` | ✅ |
 | web | 02-identity | `identity.staff-management` | `/admin/staff` | `member.manage` | ✅ |
 | web | 03-authorization | `authz.roles-permissions` | `/roles` | `role.read` | ✅ |
@@ -341,6 +343,10 @@
 | admin | 35-subscription-billing | `admin.webhooks` | `/admin/webhooks/stripe` | `stripe.admin.read` | ✅ |
 | portal | 31-portal | `portal.sign-in` | `/` | `(none)` | ✅ |
 | portal | 31-portal | `portal.accept-invitation` | `/accept-invitation` | `(none)` | ✅ |
+| portal | 31-portal | `portal.signed-in` | `/signed-in` | `(none)` | ✅ |
+| portal | 31-portal | `portal.link-redeem-funeral` | `/funeral/redeem` | `(none)` | ✅ |
+| portal | 31-portal | `portal.link-redeem-collaborator` | `/collaborator/redeem` | `(none)` | ✅ |
+| portal | 31-portal | `portal.funeral-case` | `/funeral/case` | `(none)` | ✅ |
 | portal | 31-portal | `portal.patient-picker` | `/patient-picker` | `portal.session.read_own` | ✅ |
 | portal | 31-portal | `portal.dashboard` | `/p/:patientId` | `portal.care_summary.read` | ✅ |
 | portal | 31-portal | `portal.care-plan` | `/p/:patientId/care-plan` | `portal.care_plan.read_summary` | ✅ |

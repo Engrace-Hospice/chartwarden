@@ -11,6 +11,39 @@ export {
   consumeAuditorMagicLink,
   revokeAuditorMagicLinksForEngagement,
 } from "./auditor-magic-link-store";
+export {
+  type AuditorAccessPort,
+  type AuditorRedemptionDeps,
+  type AuditorRefusalReason,
+  auditorRefusalError,
+  redeemAuditorLink,
+} from "./auditor-redemption";
+export {
+  type AuditorEnrolment,
+  type AuditorEnrolmentDeps,
+  type EnrolmentActor,
+  type EnrolmentResult,
+  type EnrolmentState,
+  createAuditorEnrolment,
+  enrolmentRefusalError,
+} from "./auditor-enrolment";
+export { CURRENT_AUDITOR_TERMS, type AuditorTerms, isCurrentTerms } from "./auditor-terms";
+export {
+  type AuditorEnrolmentRouteDeps,
+  registerAuditorEnrolmentRoutes,
+} from "./routes/auditor-enrolment";
+export {
+  type AuditorLinkEmailTransport,
+  buildAuditorRedeemUrl,
+  createAuditorLinkEmailDelivery,
+} from "./auditor-link-delivery";
+export {
+  type AttemptLimiter,
+  type AuditorRedeemRouteDeps,
+  AuditorRedeemRequestSchema,
+  AuditorRedeemResponseSchema,
+  registerAuditorRedeemRoutes,
+} from "./routes/auditor-redeem";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`
@@ -223,6 +256,7 @@ export {
   createFixedActorResolver,
   createInMemoryCollaboratorLinkStore,
   createInMemoryInvitationStore,
+  createOrgScopedAuditExecutor,
   createInMemoryMembershipRepository,
   createInMemorySessionWriter,
   createInMemoryUserDirectory,
@@ -242,6 +276,28 @@ export {
   auditUserInvited,
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
+export { registerLinkRoutes } from "./routes/link-routes";
+export {
+  type DbCollaboratorLinkStoreDeps,
+  type LinkPatientSitePort,
+  createDbCollaboratorLinkStore,
+  hashLinkToken,
+  mintLinkToken,
+  organizationOfLinkToken,
+} from "./collaborator-link-store-db";
+export { createLinkDelivery } from "./link-delivery";
+export {
+  type PortalSignInAccountRow,
+  type PortalSignInStore,
+  createPortalSignInStore,
+} from "./portal-sign-in-store";
+export {
+  SESSION_LINK_AUDIT_EVENTS,
+  auditLinkRedeemed,
+  auditLinkRedemptionRefused,
+  auditPortalSessionEstablished,
+  auditPortalSessionRefused,
+} from "./audit/session-link-audit";
 export { createDbMembershipRepository } from "./membership-repository";
 // Org-explicit BATCHED staff display read (name only), injected into other modules' route layers as a port at the
 // composition root (e.g. M14's finalized-minutes "Finalized by") — consumers import no identity code/schema.
@@ -277,6 +333,7 @@ import type { AdminMembershipReader } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import type Redis from "ioredis";
 import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
+import { createDbCollaboratorLinkStore as _dbCollaboratorLinks } from "./collaborator-link-store-db";
 import type {
   DeviceAttestationChallenge as _DeviceAttestationChallenge,
   DeviceAttestationChallengeStore as _DeviceAttestationChallengeStore,
@@ -343,13 +400,10 @@ import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
  * it actually work — `wardenx_app` held the INSERT grant but no INSERT POLICY, so under production RLS
  * every application-level audit write was refused with "new row violates row-level security policy".
  *
- * ⚠ STILL IN MEMORY: `collaborators`. The external-collaborator magic-link store mints a one-time,
- * 30-minute token per patient — and there is NO TABLE for it. M2 owns exactly four tables (two_factor,
- * passkey, organization_invitation, tenant_step_up_policy_override); the `session` row for an
- * `external_collaborator` is what the token eventually PRODUCES, not where the pending token lives.
- * Making this durable needs a new M2-owned table (token hash, patient scope, inviter, TTL, consumed-at)
- * plus its RLS + audit trigger, which is a schema change, not a wiring change. Left explicit rather
- * than bound to something that would look durable and not be.
+ * `collaborators` is DURABLE (GAP-115 follow-up, migration 0521 `collaborator_link`): the external-collaborator and
+ * funeral-home links are hash-only, bounded-use, org-scoped rows, and a redemption mints a real Better Auth session.
+ * The per-process Map store survives only as the unit-test slice default: a mount that is not given a patient-site
+ * port (`invite.linkPatientSite`) keeps it, and the composition root records that in the in-memory ledger.
  */
 
 /**
@@ -398,6 +452,20 @@ export function mountIdentityRoutes(
      * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE`.
      */
     deceasedPatients?: IdentityRouteDeps["deceasedPatients"];
+    /**
+     * GAP-115 follow-up - M6's patient siting, injected as a port. PRESENT => the DURABLE `collaborator_link` store
+     * backs the collaborator / funeral links (and the invite routes then require `recipientEmail`); ABSENT => the
+     * per-process slice store (unit tests only).
+     */
+    linkPatientSite?: import("./collaborator-link-store-db").LinkPatientSitePort;
+    /** The server-only Better Auth session mint behind a redeemed link (`createLinkSessionMinter(auth)`). */
+    linkSessions?: IdentityRouteDeps["linkSessions"];
+    /** Delivers the minted token (email). Unbound => the invite routes refuse 503 before minting. */
+    linkDelivery?: IdentityRouteDeps["linkDelivery"];
+    /** The failed-redemption budget (per IP). */
+    linkRedeemThrottle?: IdentityRouteDeps["linkRedeemThrottle"];
+    /** M5's minimum decedent read for `GET /funeral/case`. */
+    funeralCases?: IdentityRouteDeps["funeralCases"];
   },
 ): void {
   const deps: IdentityRouteDeps = {
@@ -405,7 +473,9 @@ export function mountIdentityRoutes(
     memberships: _dbMemberships(db, admin),
     sessions: _dbSessionWriter(db),
     invitations: _dbInvitations(db),
-    collaborators: _collabStore().store, // no table exists — see the header
+    collaborators: invite?.linkPatientSite
+      ? _dbCollaboratorLinks(db, { site: invite.linkPatientSite })
+      : _collabStore().store, // durable only when the composition root binds the patient-site port — see the header
     users: _dbUserDirectory(db),
     // #205 — fixes a real RLS bug found while wiring the outbox: `audit: db` (bare, no org context)
     // could never satisfy `audit_event_org_append`'s WITH CHECK. See createOrgScopedAuditExecutor's doc.
@@ -422,6 +492,11 @@ export function mountIdentityRoutes(
     userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
     ...(invite?.deceasedPatients ? { deceasedPatients: invite.deceasedPatients } : {}),
+    ...(invite?.linkPatientSite ? { linkRecipientRequired: true } : {}),
+    ...(invite?.linkSessions ? { linkSessions: invite.linkSessions } : {}),
+    ...(invite?.linkDelivery ? { linkDelivery: invite.linkDelivery } : {}),
+    ...(invite?.linkRedeemThrottle ? { linkRedeemThrottle: invite.linkRedeemThrottle } : {}),
+    ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.

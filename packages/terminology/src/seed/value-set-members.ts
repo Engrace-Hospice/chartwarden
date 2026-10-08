@@ -18,6 +18,7 @@
 // criterion exactly — small, fully enumerated, CMS-public, listed inline by M10 spec §2.1.
 
 import type { CodeSystemId } from "../interfaces/kinds";
+import { SUD_TEST_LOINC_ENTRIES, SUD_TEST_LOINC_VALUE_SET_ID } from "./sud-test-loinc";
 
 /** One curated platform `value_set_member` row (§3.5). `effectiveDate` defaults to the set's epoch. */
 export interface PlatformValueSetMemberSeed {
@@ -160,4 +161,15 @@ export const PLATFORM_VALUE_SET_MEMBERS: readonly PlatformValueSetMemberSeed[] =
     code: "GW",
     display: "Service not related to the hospice patient's terminal condition",
   },
+
+  // sud_test_loinc — the generated 42 CFR Part 2 SUD lab-test LOINC list (GAP-086); see sud-test-loinc.ts for the
+  // inclusion rule, the deliberate exclusions and the required clinical/compliance review.
+  ...SUD_TEST_LOINC_ENTRIES.map(
+    ([code, display]): PlatformValueSetMemberSeed => ({
+      valueSetId: SUD_TEST_LOINC_VALUE_SET_ID,
+      systemId: "loinc",
+      code,
+      display,
+    }),
+  ),
 ] as const;

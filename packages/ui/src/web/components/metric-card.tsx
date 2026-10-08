@@ -40,8 +40,6 @@ export function MetricCard({
           fontFamily: t.fontDisplay,
           fontSize: "0.6875rem",
           fontWeight: 650,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
         }}
       >
         {label}

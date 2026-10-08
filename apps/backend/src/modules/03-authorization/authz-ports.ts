@@ -286,6 +286,24 @@ export interface AuditorSessionMinterPort {
 }
 
 /**
+ * Delivers the minted auditor link to the auditor (email, out of band). The token is returned by the minter
+ * exactly once and never stored in the clear, so without a delivery the link is unusable - the enrolment route
+ * used to drop it on the floor. Production binds an M36-transport-backed delivery at the composition root;
+ * a delivery failure fails the enrolment (503) rather than reporting an auditor `pending` who got nothing.
+ */
+export interface AuditorLinkDeliveryPort {
+  deliver(input: {
+    organizationId: string;
+    engagementId: string;
+    auditorName: string;
+    auditorEmail: string;
+    token: string;
+    /** The engagement window end - also when the link stops being redeemable. */
+    expiresAt: Date;
+  }): Promise<void>;
+}
+
+/**
  * The `m3.breakglass.invoked` / `m3.engagement.*` OUTBOX path Module 36's alert rules
  * subscribe to (SD-017). M3 emits the event; M36 delivers the Compliance-Officer
  * notification. Modeled as an injected port so the slice can assert "Compliance notified".
@@ -330,6 +348,8 @@ export interface AuthzRouteDeps {
   breakGlass: BreakGlassStore;
   engagements: EngagementStore;
   auditorSessions: AuditorSessionMinterPort;
+  /** Emails the minted auditor link. Absent only in slice/tests (the in-memory minter's token is test-visible). */
+  auditorLinkDelivery?: AuditorLinkDeliveryPort;
   notifier: ComplianceNotifier;
   /** Resolves the actor's effective permissions (anti-escalation + GET /me/permissions). */
   effectivePermissions: ActorPermissionResolver;

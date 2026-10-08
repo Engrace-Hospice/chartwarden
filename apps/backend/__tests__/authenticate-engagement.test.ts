@@ -14,6 +14,7 @@ const ACTOR: ResolvedActor = {
   deviceAttestation: null,
   externalActorId: null,
   engagementId: ENGAGEMENT,
+  auditorStage: "active",
   userId: "u1",
   membershipId: null,
   organizationId: "org1",
@@ -31,7 +32,7 @@ const resolverReturning = (actor: ResolvedActor): SessionContextResolver => ({
   }),
 });
 
-const run = async (actor: ResolvedActor, headers: Record<string, string> = {}) => {
+const run = async (actor: ResolvedActor, headers: Record<string, string> = {}, url = "/") => {
   const ctx = {
     userId: "",
     organizationId: "",
@@ -44,7 +45,7 @@ const run = async (actor: ResolvedActor, headers: Record<string, string> = {}) =
     getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
     getResolver: () => resolverReturning(actor),
   });
-  await hook({ context: ctx, headers } as unknown as FastifyRequest);
+  await hook({ context: ctx, headers, method: "GET", url } as unknown as FastifyRequest);
   return ctx.attributes;
 };
 
@@ -69,7 +70,23 @@ describe("authenticate hook — engagementId (GAP-093(c))", () => {
 
   it("does not stamp when the auditor session has no engagement", async () => {
     expect((await run({ ...ACTOR, engagementId: null })).engagementId).toBeUndefined();
-    const { engagementId: _omit, ...legacy } = ACTOR;
-    expect((await run(legacy as ResolvedActor)).engagementId).toBeUndefined();
+  });
+
+  it("stamps NO read scope for an enrolment-stage auditor (M2 §7.7) - only the enrolment engagement", async () => {
+    const attrs = await run(
+      { ...ACTOR, auditorStage: "enrolment" },
+      {},
+      "/api/v1/auditors/enrolment/state",
+    );
+    expect(attrs.engagementId).toBeUndefined();
+    expect(attrs.auditorEnrolmentEngagementId).toBe(ENGAGEMENT);
+    expect(attrs.auditorStage).toBe("enrolment");
+  });
+
+  it("FAILS CLOSED: an auditor actor with no stage is an enrolment session and reads nothing", async () => {
+    const { auditorStage: _omit, ...legacy } = ACTOR;
+    await expect(run(legacy as ResolvedActor)).rejects.toMatchObject({
+      code: "AUDITOR_ENROLMENT_REQUIRED",
+    });
   });
 });

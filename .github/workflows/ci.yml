@@ -406,6 +406,8 @@ jobs:
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
+          # GAP-086: the `sud_test_loinc` M38 value set is seeded (mig 0500) and the real M29 adapter flags it.
+          - { name: "M29 SUD test-LOINC seed (GAP-086)", scripts: "test:m29:sud-loinc-seed:live" }
           - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }
           # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
           - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
@@ -576,6 +578,16 @@ jobs:
           # publisher on the invoke's own tx (atomic with the grant), RLS-scoped, delivered by the M36 consumer.
           - { name: "M3 break-glass outbox (GAP-010)", scripts: "test:m3:break-glass-outbox:live" }
           - { name: "M3 auditor engagement (GAP-093)", scripts: "test:m3:auditor-engagement:live" }
+          # Auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral): a link issued by M3 and stored hashed by
+          # M2 becomes a signed, engagement-scoped, read-only `auditor` session - single use, expiring, tenant-
+          # scoped, rate-limited, audited, least-privilege, closed with the engagement window. Real Better Auth,
+          # real authenticate hook, real RBAC, as the NOBYPASSRLS wardenx_app role.
+          - { name: "M2 auditor link redemption", scripts: "test:m2:auditor-redemption:live" }
+          - { name: "M2 auditor enrolment (BAA + 2FA)", scripts: "test:m2:auditor-enrolment:live" }
+          # M4 `audit.seal_partition` + `audit.integrity_sample`: the sealed audit hash chain and its sampled
+          # verification - a row altered/inserted/deleted out of band, or a broken seal link, is DETECTED, the
+          # run fails closed with an alert, and org B's chain is unaffected.
+          - { name: "M4 audit hash-chain integrity sample", scripts: "test:m4:audit-integrity:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever
@@ -680,6 +692,12 @@ jobs:
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
           - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }
           - { name: "GAP-158 portal invitation link", scripts: "test:gap-158-invitation:live" }
+          # Portal invitee sign-in (magic link -> pre-org session -> portal session, M2 definer read + atomic bind) and
+          # the collaborator / funeral-home link redemption (durable hash-only single-use link -> Better Auth session).
+          - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
+          - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
+          # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
+          - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }

@@ -331,6 +331,25 @@ export const IntegrityReportResponseSchema = Type.Object({
       brokenAt: Type.Union([Type.String(), Type.Null()]),
     }),
   ),
+  // The sampled hash-chain verification (`audit.integrity_sample`, migration 0510). Present once a run
+  // exists. `result` is `skipped` when the org has not enabled `audit_hash_chain_enabled` (never a clean
+  // pass); `backupCrossReference` says the pgBackRest comparison is not available in this deployment.
+  integritySample: Type.Optional(
+    Type.Object({
+      lastRun: Type.String({ format: "date-time" }),
+      result: Type.Union([
+        Type.Literal("match"),
+        Type.Literal("mismatch"),
+        Type.Literal("skipped"),
+        Type.Literal("error"),
+      ]),
+      sealsTotal: Type.Integer(),
+      sealsSampled: Type.Integer(),
+      eventsHashed: Type.Integer(),
+      mismatches: Type.Integer(),
+      backupCrossReference: Type.String(),
+    }),
+  ),
 });
 
 // ── §4.3 RESPONSE DTO pins (M4E enrichment) ────────────────────────────────────────────────────
