@@ -1083,7 +1083,11 @@ function VisitList({
           {visits.map((v) => {
             const s = new Date(v.scheduledStartedAt);
             return (
-              <tr key={v.id} aria-selected={v.id === selectedId}>
+              <tr
+                key={v.id}
+                className={v.id === selectedId ? "is-selected" : undefined}
+                aria-current={v.id === selectedId ? "true" : undefined}
+              >
                 <td className="wx-nums">
                   <button type="button" className="wx-link-button" onClick={() => onSelect(v.id)}>
                     {fmt(s, {

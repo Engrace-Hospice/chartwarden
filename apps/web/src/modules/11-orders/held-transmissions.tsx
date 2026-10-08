@@ -10,6 +10,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/web/src/modules/11-orders — HELD TRANSMISSIONS (GAP-125; F-201 worklist, F-187/F-188 attested recovery, F-202
 // two-person control). The lab orders whose outbound HL7 message dead-ended — retries exhausted with delivery
@@ -332,6 +333,7 @@ function HeldOrderDrawer({
   onClose: () => void;
   onChanged: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const session = useSession();
   const navigate = useNavigate();
@@ -444,7 +446,11 @@ function HeldOrderDrawer({
     pending.requestedByMembershipId === session?.membershipId;
 
   return (
-    <aside className="wx-admission-drawer" aria-label={`Held lab order ${shortId(orderId)}`}>
+    <aside
+      className="wx-admission-drawer"
+      {...drawer}
+      aria-label={`Held lab order ${shortId(orderId)}`}
+    >
       <header className="wx-drawer-head">
         <span className="wx-rail-icon" aria-hidden>
           <Glyph name="send" size={20} />

@@ -1,11 +1,4 @@
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -14,17 +7,7 @@ import type { operations } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { formatCents, formatDate, idempotencyKey } from "./status";
-import {
-  type Outcome,
-  OutcomeBanner,
-  actionButtonStyle,
-  bodyRow,
-  cell,
-  cellRight,
-  failureOutcome,
-  tableStyle,
-  theadRow,
-} from "./ui";
+import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 
 type Current =
   operations["getApiAdminRevenueCurrent"]["responses"][200]["content"]["application/json"];
@@ -41,10 +24,13 @@ export function Revenue(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const cur = await client.GET("/api/admin/revenue/current");
+    if (!isCurrent()) return;
     if (cur.error) {
       setError("Revenue unavailable.");
       setLoading(false);
@@ -52,9 +38,10 @@ export function Revenue(): JSX.Element {
     }
     setCurrent(cur.data);
     const snaps = await client.GET("/api/admin/revenue/snapshots", { params: { query: {} } });
+    if (!isCurrent()) return;
     setSnapshots(snaps.error ? [] : snaps.data.items);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -75,94 +62,101 @@ export function Revenue(): JSX.Element {
     setBusy(false);
   }, [client, load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !current)
-    return <EmptyState title="Unavailable" description={error ?? "No revenue data."} />;
+  const stats = current
+    ? [
+        { label: "MRR", value: formatCents(current.mrrCents) },
+        { label: "ARR", value: formatCents(current.arrCents) },
+        { label: "Active subscriptions", value: current.activeSubscriptions.toLocaleString() },
+        { label: "As of", value: formatDate(current.asOf) },
+      ]
+    : [];
 
   return (
-    <div
-      style={{
-        padding: "1.5rem 1.75rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "1.25rem",
-      }}
-    >
-      <PageHeader
-        title="Revenue"
-        breadcrumb="Platform Ops"
-        actions={
-          <button
-            type="button"
-            onClick={() => void recompute()}
-            disabled={busy}
-            style={actionButtonStyle(true, busy)}
-          >
-            {busy ? "Recomputing…" : "Recompute"}
-          </button>
-        }
-      />
-      {outcome ? <OutcomeBanner {...outcome} /> : null}
-      <KpiStrip>
-        <KpiCard label="MRR" value={formatCents(current.mrrCents)} />
-        <KpiCard label="ARR" value={formatCents(current.arrCents)} />
-        <KpiCard
-          label="Active subscriptions"
-          value={current.activeSubscriptions.toLocaleString()}
-        />
-        <KpiCard label="As of" value={formatDate(current.asOf)} />
-      </KpiStrip>
-      <div>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
-          Trailing snapshots
-        </h2>
-        {snapshots.length === 0 ? (
-          <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-            No revenue snapshots recorded yet — run a recompute.
-          </p>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Revenue</h1>
+            <p>Monthly and annual recurring revenue, with the trailing monthly snapshots.</p>
+          </div>
+          {current && !error ? (
+            <div className="wx-list-toolbar-end">
+              <Button loading={busy} disabled={loading} onClick={() => void recompute()}>
+                Recompute
+              </Button>
+            </div>
+          ) : null}
+        </header>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {loading ? (
+          <StateLoading label="Loading revenue…" />
+        ) : error || !current ? (
+          <StateError message={error ?? "No revenue data."} onRetry={() => void load()} />
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={theadRow}>
-                <th style={cell}>Month</th>
-                <th style={cellRight}>MRR</th>
-                <th style={cellRight}>New</th>
-                <th style={cellRight}>Expansion</th>
-                <th style={cellRight}>Contraction</th>
-                <th style={cellRight}>Churn</th>
-                <th style={cellRight}>Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshots.map((s) => (
-                <tr key={s.id} style={bodyRow}>
-                  <td style={cell} className="tabular-nums">
-                    {s.snapshotMonth}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(s.mrrCents)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(s.newMrrCents)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(s.expansionMrrCents)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(s.contractionMrrCents)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(s.churnMrrCents)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {s.activeSubscriptions.toLocaleString()}
-                  </td>
-                </tr>
+          <>
+            <div className="wx-stat-grid" aria-label="Revenue summary">
+              {stats.map((s) => (
+                <div key={s.label} className="wx-stat-card">
+                  <div>
+                    <span className="wx-stat-label">{s.label}</span>
+                    <span className="wx-stat-value wx-nums">{s.value}</span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+            <h2 className="m-0 text-base font-semibold">Trailing snapshots</h2>
+            {snapshots.length === 0 ? (
+              <p className="m-0 text-sm">No revenue snapshots recorded yet — run a recompute.</p>
+            ) : (
+              <SnapshotsTable snapshots={snapshots} />
+            )}
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+const MONEY_COLUMNS = [
+  { label: "MRR", cents: (s: Snapshot) => s.mrrCents },
+  { label: "New", cents: (s: Snapshot) => s.newMrrCents },
+  { label: "Expansion", cents: (s: Snapshot) => s.expansionMrrCents },
+  { label: "Contraction", cents: (s: Snapshot) => s.contractionMrrCents },
+  { label: "Churn", cents: (s: Snapshot) => s.churnMrrCents },
+] as const;
+
+function SnapshotsTable({ snapshots }: { snapshots: readonly Snapshot[] }): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Trailing revenue snapshots</caption>
+        <thead>
+          <tr>
+            <th scope="col">Month</th>
+            {MONEY_COLUMNS.map((c) => (
+              <th key={c.label} scope="col" className="wx-num-col">
+                {c.label}
+              </th>
+            ))}
+            <th scope="col" className="wx-num-col">
+              Active
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {snapshots.map((s) => (
+            <tr key={s.id}>
+              <td className="wx-nums">{s.snapshotMonth}</td>
+              {MONEY_COLUMNS.map((c) => (
+                <td key={c.label} className="wx-num-col wx-nums">
+                  {formatCents(c.cents(s))}
+                </td>
+              ))}
+              <td className="wx-num-col wx-nums">{s.activeSubscriptions.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

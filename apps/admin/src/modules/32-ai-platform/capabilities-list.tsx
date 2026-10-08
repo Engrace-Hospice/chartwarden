@@ -1,4 +1,10 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  StatusPill,
+  interactiveRowProps,
+  useApiClient,
+  useRequestGuard,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.1 capability registry overview
 // (`/admin/ai-platform/capabilities`, `ai.capability.read`). The AI Safety Owner's front door: every
@@ -10,23 +16,13 @@ import type { operations } from "@wardenx/ui";
 //
 // COLUMNS THE SPEC ASKS FOR AND THE API DOES NOT SERVE: `30d invocation count` and `Last hallucination
 // report` are not on `GET /api/v1/ai/capabilities`. Rather than fabricate them from a second N+1 fan-out
-// over the invocation search, each row links to its detail screen, whose Invocations tab is exactly that
+// over the invocation search, each row opens its detail screen, whose Invocations tab is exactly that
 // query pre-filtered. Adding the two counts to the list response is a backend change, not a UI one.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { lifecycleTone, riskTierTone } from "./status";
-import {
-  actionButtonStyle,
-  bodyRow,
-  cap,
-  cell,
-  formatDate,
-  inputStyle,
-  pageStyle,
-  tableStyle,
-  theadRow,
-} from "./ui";
+import { EmptyListState, ErrorState, LoadingState, PageHead, cap, formatDate } from "./ui";
 
 type CapabilityPage =
   operations["getApiV1AiCapabilities"]["responses"][200]["content"]["application/json"];
@@ -46,14 +42,17 @@ const RISK_TIERS = ["high", "medium", "low"] as const;
 
 export function CapabilitiesList(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Capability[]>([]);
   const [lifecycleState, setLifecycleState] = useState("");
   const [riskTier, setRiskTier] = useState("");
   const [hotPhase1, setHotPhase1] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const query: Record<string, string | boolean> = {};
@@ -61,6 +60,7 @@ export function CapabilitiesList(): JSX.Element {
     if (riskTier) query.riskTier = riskTier;
     if (hotPhase1) query.hotPhase1 = true;
     const res = await client.GET("/api/v1/ai/capabilities", { params: { query } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Capability registry unavailable.");
       setLoading(false);
@@ -68,124 +68,120 @@ export function CapabilitiesList(): JSX.Element {
     }
     setRows(res.data.capabilities);
     setLoading(false);
-  }, [client, lifecycleState, riskTier, hotPhase1]);
+  }, [client, guard, lifecycleState, riskTier, hotPhase1]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const filtered = rows;
-
   return (
-    <div style={pageStyle}>
-      <PageHeader
-        title="AI capabilities"
-        breadcrumb="AI Platform"
-        actions={
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-            <select
-              value={lifecycleState}
-              onChange={(e) => setLifecycleState(e.target.value)}
-              style={inputStyle}
-              aria-label="Filter by lifecycle state"
-            >
-              <option value="">All lifecycle states</option>
-              {LIFECYCLE_STATES.map((s) => (
-                <option key={s} value={s}>
-                  {cap(s.toLowerCase())}
-                </option>
-              ))}
-            </select>
-            <select
-              value={riskTier}
-              onChange={(e) => setRiskTier(e.target.value)}
-              style={inputStyle}
-              aria-label="Filter by risk tier"
-            >
-              <option value="">All risk tiers</option>
-              {RISK_TIERS.map((r) => (
-                <option key={r} value={r}>
-                  {cap(r)}
-                </option>
-              ))}
-            </select>
-            <label style={{ display: "flex", gap: "0.4rem", fontSize: "0.85rem" }}>
-              <input
-                type="checkbox"
-                checked={hotPhase1}
-                onChange={(e) => setHotPhase1(e.target.checked)}
-              />
-              Phase-1 hot only
-            </label>
-            <Link to="/admin/ai-platform/kill-switches" style={actionButtonStyle(false)}>
-              Kill switches
-            </Link>
-          </div>
-        }
-      />
-      {loading && rows.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : filtered.length === 0 ? (
-        // §5.1.1: never empty in production (14 Phase-1 capabilities are pre-seeded), so an empty table
-        // means the FILTERS excluded everything — say that, rather than "no capabilities exist".
-        <EmptyState
-          title="No capabilities match filters"
-          description="Clear a filter to see the rest of the registry."
-        />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>Key</th>
-              <th style={cell}>Display name</th>
-              <th style={cell}>Lifecycle</th>
-              <th style={cell}>Risk</th>
-              <th style={cell}>Active backend</th>
-              <th style={cell}>Active prompt</th>
-              <th style={cell}>Re-approval due</th>
-              <th style={cell} />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((c) => (
-              <tr key={c.id} style={bodyRow}>
-                <td style={cell}>
-                  <code>{c.capabilityKey}</code>
-                </td>
-                <td style={cell}>{c.displayName}</td>
-                <td style={cell}>
-                  <StatusPill
-                    label={cap(c.lifecycleState.toLowerCase())}
-                    tone={lifecycleTone(c.lifecycleState)}
-                  />
-                </td>
-                <td style={cell}>
-                  <StatusPill label={cap(c.riskTier)} tone={riskTierTone(c.riskTier)} />
-                </td>
-                <td style={cell}>
-                  <code>{c.defaultBackendKey}</code>
-                </td>
-                <td style={cell}>
-                  {c.currentPromptTemplateKey ? <code>{c.currentPromptTemplateKey}</code> : "—"}
-                </td>
-                <td style={cell} className="tabular-nums">
-                  {formatDate(c.nextReapprovalDueAt)}
-                </td>
-                <td style={cell}>
-                  <Link
-                    to={`/admin/ai-platform/capabilities/${c.id}`}
-                    style={actionButtonStyle(true)}
-                  >
-                    Detail
-                  </Link>
-                </td>
-              </tr>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="AI capabilities"
+          description="Every registered AI capability with its lifecycle state, risk tier, active backend and re-approval clock."
+        >
+          <select
+            value={lifecycleState}
+            onChange={(e) => setLifecycleState(e.target.value)}
+            aria-label="Filter by lifecycle state"
+          >
+            <option value="">All lifecycle states</option>
+            {LIFECYCLE_STATES.map((s) => (
+              <option key={s} value={s}>
+                {cap(s.toLowerCase())}
+              </option>
             ))}
-          </tbody>
-        </table>
-      )}
+          </select>
+          <select
+            value={riskTier}
+            onChange={(e) => setRiskTier(e.target.value)}
+            aria-label="Filter by risk tier"
+          >
+            <option value="">All risk tiers</option>
+            {RISK_TIERS.map((r) => (
+              <option key={r} value={r}>
+                {cap(r)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={hotPhase1 ? "hot" : ""}
+            onChange={(e) => setHotPhase1(e.target.value === "hot")}
+            aria-label="Filter by Phase-1 hot set"
+          >
+            <option value="">All phases</option>
+            <option value="hot">Phase-1 hot only</option>
+          </select>
+          <Button
+            tone="secondary"
+            onClick={() => void navigate("/admin/ai-platform/kill-switches")}
+          >
+            Kill switches
+          </Button>
+        </PageHead>
+
+        {loading && rows.length === 0 ? (
+          <LoadingState label="Loading capabilities…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : rows.length === 0 ? (
+          // §5.1.1: never empty in production (14 Phase-1 capabilities are pre-seeded), so an empty table
+          // means the FILTERS excluded everything — say that, rather than "no capabilities exist".
+          <EmptyListState
+            glyph="filter"
+            title="No capabilities match filters"
+            description="Clear a filter to see the rest of the registry."
+          />
+        ) : (
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table">
+              <caption className="wx-sr-only">AI capabilities</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Capability</th>
+                  <th scope="col">Lifecycle</th>
+                  <th scope="col">Risk</th>
+                  <th scope="col">Active backend</th>
+                  <th scope="col">Active prompt</th>
+                  <th scope="col">Re-approval due</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((c) => {
+                  const open = (): void => {
+                    void navigate(`/admin/ai-platform/capabilities/${c.id}`);
+                  };
+                  return (
+                    <tr
+                      key={c.id}
+                      className="wx-data-row-interactive"
+                      {...interactiveRowProps(open, false)}
+                    >
+                      <td>
+                        <span className="wx-row-title">{c.displayName}</span>
+                        <span className="wx-row-sub wx-data-md">{c.capabilityKey}</span>
+                      </td>
+                      <td>
+                        <StatusPill
+                          label={cap(c.lifecycleState.toLowerCase())}
+                          tone={lifecycleTone(c.lifecycleState)}
+                        />
+                      </td>
+                      <td>
+                        <StatusPill label={cap(c.riskTier)} tone={riskTierTone(c.riskTier)} />
+                      </td>
+                      <td className="wx-data-md">{c.defaultBackendKey}</td>
+                      <td className="wx-data-md">{c.currentPromptTemplateKey ?? "—"}</td>
+                      <td className="wx-nums">{formatDate(c.nextReapprovalDueAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

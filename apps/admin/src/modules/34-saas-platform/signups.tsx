@@ -1,27 +1,40 @@
 import {
-  EmptyState,
-  FilterBar,
+  Button,
+  Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
+  SelectField,
   StatusPill,
   type StatusTone,
-  WorkQueueLayout,
+  TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
-// apps/web/src/modules/34-saas — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
+// apps/admin/src/modules/34-saas-platform — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
 // Spec: docs/modules/... §5.1 screen inventory. The pre-provision intake funnel a platform-ops actor
-// triages: /signups lists the queue (GET /api/v1/platform/signup-intents); the detail panel offers
+// triages: /signups lists the queue (GET /api/v1/platform/signup-intents); the right drawer (`?intent=<id>`) offers
 // Qualify (`new → qualified` → enqueues `tenant.provision`, POST .../{id}/qualify) and Reject
 // (`new → rejected` with a recorded rationale, POST .../{id}/reject). Live-wired over the typed
 // client; imports only @wardenx/ui leaves + the Foundation tone map.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SIGNUP_TONE, cap } from "./saas-status";
 
 // §3.11 wire vocab mirror — the route returns these intent statuses.
 type SignupIntentStatus = "new" | "qualified" | "provisioned" | "abandoned" | "rejected";
 type SignupIntentSource = "self_serve_form" | "platform_ops_manual" | "partner_referral";
+type PlanLabel = "starter" | "standard" | "enterprise";
+
+const PLAN_OPTIONS: readonly { value: PlanLabel; label: string }[] = [
+  { value: "starter", label: "Starter" },
+  { value: "standard", label: "Standard" },
+  { value: "enterprise", label: "Enterprise" },
+];
+const FIRST_ADMIN_NAME_MAX = 200;
 
 interface SignupIntentView {
   id: string;
@@ -60,39 +73,53 @@ const STATUS_FILTERS: readonly (SignupIntentStatus | "all")[] = [
   "rejected",
 ];
 
+interface Banner {
+  tone: "success" | "error";
+  text: string;
+}
+
 export function Signups(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("intent");
   const [intents, setIntents] = useState<SignupIntentView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SignupIntentStatus | "all">("all");
-  const [selected, setSelected] = useState<SignupIntentView | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/signup-intents");
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load signup intents.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     const page = (data ?? null) as CursorPage<SignupIntentView> | null;
     setIntents(page?.items ?? []);
+    setLoaded(true);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const closeDrawer = (): void => setParams({});
+
   // Qualify enqueues the `tenant.provision` flow (§7.1); reject records the rationale on the intent.
   async function qualify(
     intent: SignupIntentView,
     firstAdminFullName: string,
-    planLabel: "starter" | "standard" | "enterprise",
+    planLabel: PlanLabel,
   ): Promise<void> {
     setBusy(true);
     const { error: err } = await client.POST("/api/v1/platform/signup-intents/{id}/qualify", {
@@ -101,11 +128,11 @@ export function Signups(): JSX.Element {
     });
     setBusy(false);
     if (err) {
-      setBanner("Qualify failed.");
+      setBanner({ tone: "error", text: "Qualify failed." });
       return;
     }
-    setBanner("Intent qualified — provisioning enqueued.");
-    setSelected(null);
+    setBanner({ tone: "success", text: "Intent qualified — provisioning enqueued." });
+    closeDrawer();
     void load();
   }
 
@@ -118,63 +145,66 @@ export function Signups(): JSX.Element {
     });
     setBusy(false);
     if (err) {
-      setBanner("Reject failed.");
+      setBanner({ tone: "error", text: "Reject failed." });
       return;
     }
-    setBanner("Intent rejected.");
-    setSelected(null);
+    setBanner({ tone: "success", text: "Intent rejected." });
+    closeDrawer();
     void load();
   }
 
   const visible =
     statusFilter === "all" ? intents : intents.filter((i) => i.intentStatus === statusFilter);
+  const selected = selectedId ? intents.find((i) => i.id === selectedId) : undefined;
+  useStaleSelection({ param: "intent", ready: loaded, found: selected !== undefined });
 
   return (
-    <WorkQueueLayout
-      header={<PageHeader title="Signup Intents" />}
-      filters={
-        <FilterBar>
-          <select
-            aria-label="Intent status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {s === "all" ? "All statuses" : cap(s)}
-              </option>
-            ))}
-          </select>
-          {banner ? (
-            <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-              {banner}
-            </span>
-          ) : null}
-        </FilterBar>
-      }
-      table={
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Signup intents</h1>
+            <p>The pre-provision intake funnel: qualify an intent to provision it, or reject it.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <select
+              aria-label="Intent status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
+            >
+              {STATUS_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  {s === "all" ? "All statuses" : cap(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </header>
+
+        {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
+
         <IntentTable
           items={visible}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(i) => setParams({ intent: i.id })}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        selected ? (
-          <IntentDetail
-            intent={selected}
-            busy={busy}
-            onClose={() => setSelected(null)}
-            onQualify={(firstAdminFullName, planLabel) =>
-              void qualify(selected, firstAdminFullName, planLabel)
-            }
-            onReject={() => void reject(selected)}
-          />
-        ) : undefined
-      }
-    />
+      </div>
+      {selected ? (
+        <IntentDrawer
+          key={selected.id}
+          intent={selected}
+          busy={busy}
+          onClose={closeDrawer}
+          onQualify={(firstAdminFullName, planLabel) =>
+            void qualify(selected, firstAdminFullName, planLabel)
+          }
+          onReject={() => void reject(selected)}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -184,65 +214,80 @@ function IntentTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: SignupIntentView[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (i: SignupIntentView) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading signup intents…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No signup intents" description="No intents match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="user-plus" size={24} />
+        <span>No intents match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Signup intents</caption>
         <thead>
           <tr>
-            <th>Business</th>
-            <th>Contact</th>
-            <th>Source</th>
-            <th>Received</th>
-            <th>Status</th>
+            <th scope="col">Business</th>
+            <th scope="col">Source</th>
+            <th scope="col">Received</th>
+            <th scope="col">Status</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((i) => (
-            <tr
-              key={i.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={i.id === selectedId}
-              onClick={() => onSelect(i)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(i);
+          {items.map((i) => {
+            const isSelected = i.id === selectedId;
+            const open = (): void => onSelect(i);
+            return (
+              <tr
+                key={i.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: i.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td>{i.legalBusinessName}</td>
-              <td className="wx-data-md">{i.contactEmail}</td>
-              <td>{cap(i.source)}</td>
-              <td className="tabular-nums">{new Date(i.receivedAt).toLocaleString()}</td>
-              <td>
-                <StatusPill label={cap(i.intentStatus)} tone={intentTone(i.intentStatus)} />
-              </td>
-            </tr>
-          ))}
+                {...interactiveRowProps(open, isSelected)}
+              >
+                <td>
+                  <span className="wx-row-title">{i.legalBusinessName}</span>
+                  <span className="wx-row-sub wx-data-md">{i.contactEmail}</span>
+                </td>
+                <td>{cap(i.source)}</td>
+                <td className="wx-nums">{new Date(i.receivedAt).toLocaleString()}</td>
+                <td>
+                  <StatusPill label={cap(i.intentStatus)} tone={intentTone(i.intentStatus)} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function IntentDetail({
+function IntentDrawer({
   intent,
   busy,
   onClose,
@@ -252,110 +297,104 @@ function IntentDetail({
   intent: SignupIntentView;
   busy: boolean;
   onClose: () => void;
-  onQualify: (firstAdminFullName: string, planLabel: "starter" | "standard" | "enterprise") => void;
+  onQualify: (firstAdminFullName: string, planLabel: PlanLabel) => void;
   onReject: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const actionable = intent.intentStatus === "new";
   const [firstAdminFullName, setFirstAdminFullName] = useState("");
-  const [planLabel, setPlanLabel] = useState<"starter" | "standard" | "enterprise">("standard");
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
+  const [planLabel, setPlanLabel] = useState<PlanLabel>("standard");
   return (
-    <RightDetailPanel title={intent.legalBusinessName} onClose={onClose}>
-      {row("Intent id", <span className="wx-data-md">{intent.id}</span>)}
-      {row(
-        "Status",
-        <StatusPill label={cap(intent.intentStatus)} tone={intentTone(intent.intentStatus)} />,
-      )}
-      {row("Contact email", <span className="wx-data-md">{intent.contactEmail}</span>)}
-      {row(
-        "Intended first admin",
-        <span className="wx-data-md">{intent.intendedFirstAdminEmail}</span>,
-      )}
-      {row("Source", cap(intent.source))}
-      {row(
-        "Received",
-        <span className="tabular-nums">{new Date(intent.receivedAt).toLocaleString()}</span>,
-      )}
-      {intent.processedAt
-        ? row(
-            "Processed",
-            <span className="tabular-nums">{new Date(intent.processedAt).toLocaleString()}</span>,
-          )
-        : null}
-      {intent.rejectionReason ? row("Rejection reason", intent.rejectionReason) : null}
-      {intent.tenantAccountId
-        ? row("Tenant account", <span className="wx-data-md">{intent.tenantAccountId}</span>)
-        : null}
+    <aside className="wx-admission-drawer" aria-label="Signup intent" {...drawer}>
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="user-plus" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>{intent.legalBusinessName}</h2>
+          <span className="wx-row-sub wx-data-md">{intent.id}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Intent</h3>
+            <StatusPill label={cap(intent.intentStatus)} tone={intentTone(intent.intentStatus)} />
+          </div>
+          <dl className="wx-kv">
+            <dt>Intent id</dt>
+            <dd className="wx-data-md break-words">{intent.id}</dd>
+            <dt>Contact email</dt>
+            <dd className="wx-data-md break-words">{intent.contactEmail}</dd>
+            <dt>Intended first admin</dt>
+            <dd className="wx-data-md break-words">{intent.intendedFirstAdminEmail}</dd>
+            <dt>Source</dt>
+            <dd>{cap(intent.source)}</dd>
+            <dt>Received</dt>
+            <dd className="wx-nums">{new Date(intent.receivedAt).toLocaleString()}</dd>
+            {intent.processedAt ? (
+              <>
+                <dt>Processed</dt>
+                <dd className="wx-nums">{new Date(intent.processedAt).toLocaleString()}</dd>
+              </>
+            ) : null}
+            {intent.rejectionReason ? (
+              <>
+                <dt>Rejection reason</dt>
+                <dd className="break-words">{intent.rejectionReason}</dd>
+              </>
+            ) : null}
+            {intent.tenantAccountId ? (
+              <>
+                <dt>Tenant account</dt>
+                <dd className="wx-data-md break-words">{intent.tenantAccountId}</dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
 
-      {actionable ? (
-        <div
-          style={{
-            marginTop: "1rem",
-            borderTop: "1px solid var(--color-outline-variant)",
-            paddingTop: "1rem",
-          }}
-        >
-          <label style={{ display: "grid", gap: "0.25rem", marginBottom: "0.75rem" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
-              First admin full name
-            </span>
-            <input
+        {actionable ? (
+          <section className="wx-drawer-card">
+            <h3>Triage</h3>
+            <TextField
+              label="First admin full name"
               type="text"
               required
-              maxLength={200}
+              maxLength={FIRST_ADMIN_NAME_MAX}
               autoComplete="name"
               value={firstAdminFullName}
               onChange={(event) => setFirstAdminFullName(event.target.value)}
             />
-          </label>
-          <label style={{ display: "grid", gap: "0.25rem", marginBottom: "0.75rem" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
-              Plan
-            </span>
-            <select
+            <SelectField
+              label="Plan"
               value={planLabel}
-              onChange={(event) =>
-                setPlanLabel(event.target.value as "starter" | "standard" | "enterprise")
-              }
-            >
-              <option value="starter">Starter</option>
-              <option value="standard">Standard</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-          </label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              type="button"
-              onClick={() => onQualify(firstAdminFullName, planLabel)}
-              disabled={busy || firstAdminFullName.trim().length === 0}
-            >
-              {busy ? "Working…" : "Qualify"}
-            </button>
-            <button type="button" onClick={onReject} disabled={busy}>
-              Reject
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          style={{
-            marginTop: "1rem",
-            fontSize: "0.78rem",
-            color: "var(--color-on-surface-variant)",
-          }}
-        >
-          This intent has been processed; no further triage actions are available.
-        </div>
-      )}
-    </RightDetailPanel>
+              options={PLAN_OPTIONS}
+              onChange={(event) => setPlanLabel(event.target.value as PlanLabel)}
+            />
+            <div className="wx-drawer-actions">
+              <Button
+                onClick={() => onQualify(firstAdminFullName, planLabel)}
+                disabled={busy || firstAdminFullName.trim().length === 0}
+              >
+                {busy ? "Working…" : "Qualify"}
+              </Button>
+              <Button tone="secondary" onClick={onReject} disabled={busy}>
+                Reject
+              </Button>
+            </div>
+          </section>
+        ) : (
+          <p className="wx-source-line">
+            <Glyph name="info" size={14} />
+            <span className="wx-source-text">
+              This intent has been processed; no further triage actions are available.
+            </span>
+          </p>
+        )}
+      </div>
+    </aside>
   );
 }

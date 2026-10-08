@@ -12,6 +12,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE RATES (M23 F-210 + FY2027 workstream E; 2026-09-25 redesign,
 // mockup "Billing / Claims" frame 10 for the page + the Admissions right drawer 03_20_25 for the selected version).
@@ -452,11 +453,13 @@ function VersionDrawer({
   onSupersede: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const column =
     reference && v.hqrpCompliant !== null ? referenceColumn(reference, v.hqrpCompliant) : null;
   return (
     <aside
       className="wx-admission-drawer"
+      {...drawer}
       aria-label={`${fiscalYearLabel(v.fiscalYearStarting)} rates`}
     >
       <DrawerHead
@@ -581,6 +584,7 @@ function RateEntryDrawer({
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const [hqrpCompliant, setHqrpCompliant] = useState<boolean>(supersedes?.hqrpCompliant ?? true);
   const [rates, setRates] = useState<RateText>(() =>
@@ -680,6 +684,7 @@ function RateEntryDrawer({
   return (
     <aside
       className="wx-admission-drawer"
+      {...drawer}
       aria-label={supersedes ? "Supersede rates" : "Enter rates"}
     >
       <DrawerHead

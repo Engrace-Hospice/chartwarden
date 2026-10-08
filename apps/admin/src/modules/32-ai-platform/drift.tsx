@@ -1,4 +1,4 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.8 drift overview (`/admin/ai-platform/drift`,
 // `ai.capability.read`).
@@ -22,15 +22,13 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { driftTone } from "./status";
 import {
+  EmptyListState,
+  ErrorState,
+  LoadingState,
+  PageHead,
+  SectionTitle,
   StandingNotice,
-  bodyRow,
-  cell,
-  cellRight,
   formatDate,
-  inputStyle,
-  pageStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type DriftPage =
@@ -56,13 +54,16 @@ export function DriftOverview(): JSX.Element {
   const [withinHours, setWithinHours] = useState<number>(168);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/v1/ai/drift/recent", {
       params: { query: { withinHours } },
     });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Drift feed unavailable.");
       setLoading(false);
@@ -71,7 +72,7 @@ export function DriftOverview(): JSX.Element {
     setFindings(res.data.findings);
     setSource(res.data.source);
     setLoading(false);
-  }, [client, withinHours]);
+  }, [client, guard, withinHours]);
 
   useEffect(() => {
     void load();
@@ -86,15 +87,15 @@ export function DriftOverview(): JSX.Element {
   }, [findings]);
 
   return (
-    <div style={pageStyle}>
-      <PageHeader
-        title="Drift overview"
-        breadcrumb="AI Platform"
-        actions={
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Drift overview"
+          description="Capabilities with a recent drift-response evaluation run, and the metrics each one reported."
+        >
           <select
             value={String(withinHours)}
             onChange={(e) => setWithinHours(Number(e.target.value))}
-            style={inputStyle}
             aria-label="Lookback window"
           >
             {WINDOWS.map((h) => (
@@ -103,102 +104,106 @@ export function DriftOverview(): JSX.Element {
               </option>
             ))}
           </select>
-        }
-      />
-      {loading && findings.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : (
-        <>
-          <StandingNotice tone="warning">
-            Cells are the metric values reported by each capability's most recent drift-response
-            evaluation run ({source}), toned against the D11 10% / 20% / 30% thresholds. A blank
-            cell means the capability did not report that metric — not that it measured zero.
-          </StandingNotice>
-          {findings.length === 0 ? (
-            <EmptyState
-              title="No drift investigations in this window"
-              description="No drift-response evaluation run has been recorded. This is the expected steady state."
-            />
-          ) : (
-            <>
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={theadRow}>
-                    <th style={cell}>Capability</th>
-                    {columns.map((c) => (
-                      <th key={c} style={cellRight}>
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {findings.map((f) => {
-                    const metrics = numericMetrics(f.run.summaryMetrics);
-                    return (
-                      <tr key={f.run.id} style={bodyRow}>
-                        <td style={cell}>
-                          <Link to={`/admin/ai-platform/capabilities/${f.run.capabilityId}`}>
-                            <code>{f.capabilityKey}</code>
-                          </Link>
-                        </td>
+        </PageHead>
+        {loading && findings.length === 0 ? (
+          <LoadingState label="Loading drift feed…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : (
+          <>
+            <StandingNotice tone="warning">
+              Cells are the metric values reported by each capability's most recent drift-response
+              evaluation run ({source}), toned against the D11 10% / 20% / 30% thresholds. A blank
+              cell means the capability did not report that metric — not that it measured zero.
+            </StandingNotice>
+            {findings.length === 0 ? (
+              <EmptyListState
+                title="No drift investigations in this window"
+                description="No drift-response evaluation run has been recorded. This is the expected steady state."
+              />
+            ) : (
+              <>
+                <div className="wx-list-table-wrap">
+                  <table className="wx-list-table wx-list-table-static">
+                    <caption className="wx-sr-only">Drift metrics by capability</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Capability</th>
                         {columns.map((c) => (
-                          <td key={c} style={cellRight}>
-                            {c in metrics ? (
-                              <StatusPill
-                                label={metrics[c]?.toFixed(3) ?? "—"}
-                                tone={driftTone(metrics[c] ?? 0)}
-                              />
-                            ) : null}
-                          </td>
+                          <th key={c} scope="col" className="wx-num-col">
+                            {c}
+                          </th>
                         ))}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {findings.map((f) => {
+                        const metrics = numericMetrics(f.run.summaryMetrics);
+                        return (
+                          <tr key={f.run.id}>
+                            <td>
+                              <Link
+                                className="wx-data-md"
+                                to={`/admin/ai-platform/capabilities/${f.run.capabilityId}`}
+                              >
+                                {f.capabilityKey}
+                              </Link>
+                            </td>
+                            {columns.map((c) => (
+                              <td key={c} className="wx-num-col wx-nums">
+                                {c in metrics ? (
+                                  <StatusPill
+                                    label={metrics[c]?.toFixed(3) ?? "—"}
+                                    tone={driftTone(metrics[c] ?? 0)}
+                                  />
+                                ) : null}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-              <section>
-                <h2 style={{ fontSize: "0.95rem", fontWeight: 600, padding: "0.5rem 0" }}>
-                  Recent breach feed
-                </h2>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={theadRow}>
-                      <th style={cell}>Detected</th>
-                      <th style={cell}>Capability</th>
-                      <th style={cell}>Run status</th>
-                      <th style={cell}>Golden set</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...findings]
-                      .sort((a, b) => (a.run.createdAt < b.run.createdAt ? 1 : -1))
-                      .map((f) => (
-                        <tr key={`feed-${f.run.id}`} style={bodyRow}>
-                          <td style={cell} className="tabular-nums">
-                            {formatDate(f.run.createdAt)}
-                          </td>
-                          <td style={cell}>
-                            <Link to={`/admin/ai-platform/capabilities/${f.run.capabilityId}`}>
-                              <code>{f.capabilityKey}</code>
-                            </Link>
-                          </td>
-                          <td style={cell}>{f.run.status}</td>
-                          <td style={cell}>
-                            <code>{f.run.datasetVersionRef}</code>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </section>
-            </>
-          )}
-        </>
-      )}
+                <SectionTitle>Recent breach feed</SectionTitle>
+                <div className="wx-list-table-wrap">
+                  <table className="wx-list-table wx-list-table-static">
+                    <caption className="wx-sr-only">Recent breach feed</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Detected</th>
+                        <th scope="col">Capability</th>
+                        <th scope="col">Run status</th>
+                        <th scope="col">Golden set</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...findings]
+                        .sort((a, b) => (a.run.createdAt < b.run.createdAt ? 1 : -1))
+                        .map((f) => (
+                          <tr key={`feed-${f.run.id}`}>
+                            <td className="wx-nums">{formatDate(f.run.createdAt)}</td>
+                            <td>
+                              <Link
+                                className="wx-data-md"
+                                to={`/admin/ai-platform/capabilities/${f.run.capabilityId}`}
+                              >
+                                {f.capabilityKey}
+                              </Link>
+                            </td>
+                            <td>{f.run.status}</td>
+                            <td className="wx-data-md">{f.run.datasetVersionRef}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

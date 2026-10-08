@@ -1,19 +1,13 @@
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, Glyph, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
 // dunning state (on the row), a usage drill-down (GET /api/admin/usage/:orgId/current), and its refund
 // history (GET /api/admin/refunds, narrowed to this org). Links to the pause + apply-promo gated actions.
+// Redesign frame: usage + refunds in the main column, the subscription summary in the right drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   cap,
   dunningTone,
@@ -24,7 +18,7 @@ import {
   subscriptionTone,
   usageThresholdTone,
 } from "./status";
-import { Kv, actionButtonStyle, bodyRow, cell, cellRight, tableStyle, theadRow } from "./ui";
+import { DrawerHead, StateError, StateLoading } from "./ui";
 
 type AdminSub =
   operations["getApiAdminSubscriptionsById"]["responses"][200]["content"]["application/json"];
@@ -35,6 +29,7 @@ type Refund =
 
 export function SubscriptionDetail(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [sub, setSub] = useState<AdminSub | null>(null);
   const [usage, setUsage] = useState<UsageMeter[] | null>(null);
@@ -42,7 +37,9 @@ export function SubscriptionDetail(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No subscription selected.");
       setLoading(false);
@@ -51,6 +48,7 @@ export function SubscriptionDetail(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/subscriptions/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Subscription unavailable.");
       setLoading(false);
@@ -62,161 +60,207 @@ export function SubscriptionDetail(): JSX.Element {
     const usageRes = await client.GET("/api/admin/usage/{organizationId}/current", {
       params: { path: { organizationId: s.organizationId } },
     });
+    if (!isCurrent()) return;
     setUsage(usageRes.error ? [] : usageRes.data.meters);
     const refundRes = await client.GET("/api/admin/refunds", { params: { query: {} } });
+    if (!isCurrent()) return;
     const allRefunds = refundRes.error ? [] : refundRes.data.items;
     setRefunds(allRefunds.filter((r) => r.organizationId === s.organizationId));
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !sub)
-    return <EmptyState title="Unavailable" description={error ?? "Subscription not found."} />;
+  if (loading || error || !sub)
+    return (
+      <div className="wx-list-drawer">
+        <div className="wx-list-drawer-main">
+          <header className="wx-page-head">
+            <div>
+              <h1>Subscription</h1>
+              <p>One tenant's subscription, usage and refunds.</p>
+            </div>
+          </header>
+          {loading ? (
+            <StateLoading label="Loading subscription…" />
+          ) : (
+            <StateError message={error ?? "Subscription not found."} onRetry={() => void load()} />
+          )}
+        </div>
+      </div>
+    );
 
   return (
-    <DetailPageLayout
-      header={
-        <PageHeader
-          title={orgLabel(sub.organizationName, sub.organizationId)}
-          breadcrumb="Platform Ops / Subscriptions"
-          actions={
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              <Link
-                to={`/admin/subscriptions/${sub.id}/apply_promo`}
-                style={actionButtonStyle(false)}
-              >
-                Apply promo
-              </Link>
-              <Link to={`/admin/subscriptions/${sub.id}/pause`} style={actionButtonStyle(true)}>
-                Pause
-              </Link>
-            </div>
-          }
-        />
-      }
-      aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-          <Kv label="Status">
-            <StatusPill label={cap(sub.status)} tone={subscriptionTone(sub.status)} />
-          </Kv>
-          <Kv label="Dunning">
-            {sub.dunningStage === "none" ? (
-              "—"
-            ) : (
-              <StatusPill label={cap(sub.dunningStage)} tone={dunningTone(sub.dunningStage)} />
-            )}
-          </Kv>
-          <Kv label="Plan">
-            {sub.planName} · {cap(sub.planTier)}
-          </Kv>
-          <Kv label="Started">
-            <span className="tabular-nums">{formatDate(sub.startedAt)}</span>
-          </Kv>
-          <Kv label="Current period">
-            <span className="tabular-nums">
-              {formatDate(sub.currentPeriodStart)} — {formatDate(sub.currentPeriodEnd)}
-            </span>
-          </Kv>
-          <Kv label="Cancel at period end">{sub.cancelAtPeriodEnd ? "Yes" : "No"}</Kv>
-          <Kv label="Stripe subscription">{sub.stripeSubscriptionId ?? "— (pending sync)"}</Kv>
-        </div>
-      }
-    >
-      <section style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        <div>
-          <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
-            Usage this period
-          </h2>
-          {!usage || usage.length === 0 ? (
-            <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-              No metered usage recorded for the current period.
+    <div className="wx-list-drawer has-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>{orgLabel(sub.organizationName, sub.organizationId)}</h1>
+            <p>
+              {sub.planName} · {cap(sub.planTier)}
             </p>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={cell}>Meter</th>
-                  <th style={cellRight}>Used</th>
-                  <th style={cellRight}>Included</th>
-                  <th style={cellRight}>Overage</th>
-                  <th style={cellRight}>Proj. cost</th>
-                  <th style={cell}>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usage.map((m) => (
-                  <tr key={m.eventType} style={bodyRow}>
-                    <td style={cell}>{m.label}</td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.totalQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.inclusiveQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {m.overageQuantity.toLocaleString()}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {formatCents(m.projectedOverageCostCents)}
-                    </td>
-                    <td style={cell}>
-                      <StatusPill
-                        label={cap(m.thresholdState)}
-                        tone={usageThresholdTone(m.thresholdState)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <div>
-          <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
-            Refund history
-          </h2>
-          {refunds.length === 0 ? (
-            <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-              No refunds requested for this organization.
-            </p>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={cell}>Requested</th>
-                  <th style={cellRight}>Amount</th>
-                  <th style={cell}>Reason</th>
-                  <th style={cell}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {refunds.map((r) => (
-                  <tr key={r.id} style={bodyRow}>
-                    <td style={cell} className="tabular-nums">
-                      {formatDate(r.requestedAt)}
-                    </td>
-                    <td style={cellRight} className="tabular-nums">
-                      {formatCents(r.amountCents)}
-                    </td>
-                    <td style={cell}>{cap(r.reasonCode)}</td>
-                    <td style={cell}>
-                      <StatusPill label={cap(r.status)} tone={refundTone(r.status)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <p style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
-          A full state-transition history is retained server-side; it is not yet exposed as a read
-          surface here.
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button
+              tone="secondary"
+              onClick={() => navigate(`/admin/subscriptions/${sub.id}/apply_promo`)}
+            >
+              Apply promo
+            </Button>
+            <Button onClick={() => navigate(`/admin/subscriptions/${sub.id}/pause`)}>Pause</Button>
+          </div>
+        </header>
+        <h2 className="m-0 text-base font-semibold">Usage this period</h2>
+        {!usage || usage.length === 0 ? (
+          <p className="m-0 text-sm">No metered usage recorded for the current period.</p>
+        ) : (
+          <UsageTable meters={usage} />
+        )}
+        <h2 className="m-0 text-base font-semibold">Refund history</h2>
+        {refunds.length === 0 ? (
+          <p className="m-0 text-sm">No refunds requested for this organization.</p>
+        ) : (
+          <RefundsTable refunds={refunds} />
+        )}
+        <p className="wx-source-line">
+          <Glyph name="info" size={14} />
+          <span className="wx-source-text">
+            A full state-transition history is retained server-side; it is not yet exposed as a read
+            surface here.
+          </span>
         </p>
-      </section>
-    </DetailPageLayout>
+      </div>
+      <SubscriptionSummary sub={sub} />
+    </div>
+  );
+}
+
+function UsageTable({ meters }: { meters: readonly UsageMeter[] }): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Usage this period</caption>
+        <thead>
+          <tr>
+            <th scope="col">Meter</th>
+            <th scope="col" className="wx-num-col">
+              Used
+            </th>
+            <th scope="col" className="wx-num-col">
+              Included
+            </th>
+            <th scope="col" className="wx-num-col">
+              Overage
+            </th>
+            <th scope="col" className="wx-num-col">
+              Proj. cost
+            </th>
+            <th scope="col">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {meters.map((m) => (
+            <tr key={m.eventType}>
+              <td>
+                <span className="wx-row-title">{m.label}</span>
+              </td>
+              <td className="wx-num-col wx-nums">{m.totalQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{m.inclusiveQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{m.overageQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">{formatCents(m.projectedOverageCostCents)}</td>
+              <td>
+                <StatusPill
+                  label={cap(m.thresholdState)}
+                  tone={usageThresholdTone(m.thresholdState)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RefundsTable({ refunds }: { refunds: readonly Refund[] }): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Refund history</caption>
+        <thead>
+          <tr>
+            <th scope="col">Requested</th>
+            <th scope="col" className="wx-num-col">
+              Amount
+            </th>
+            <th scope="col">Reason</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {refunds.map((r) => (
+            <tr key={r.id}>
+              <td className="wx-nums">{formatDate(r.requestedAt)}</td>
+              <td className="wx-num-col wx-nums">{formatCents(r.amountCents)}</td>
+              <td>{cap(r.reasonCode)}</td>
+              <td>
+                <StatusPill label={cap(r.status)} tone={refundTone(r.status)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SubscriptionSummary({ sub }: { sub: AdminSub }): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="Subscription summary">
+      <DrawerHead
+        icon="receipt"
+        title={orgLabel(sub.organizationName, sub.organizationId)}
+        sub={sub.planName}
+      />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Subscription</h3>
+            <StatusPill label={cap(sub.status)} tone={subscriptionTone(sub.status)} />
+          </div>
+          <dl className="wx-kv">
+            <dt>Dunning</dt>
+            <dd>
+              {sub.dunningStage === "none" ? (
+                "—"
+              ) : (
+                <StatusPill label={cap(sub.dunningStage)} tone={dunningTone(sub.dunningStage)} />
+              )}
+            </dd>
+            <dt>Plan</dt>
+            <dd>
+              {sub.planName} · {cap(sub.planTier)}
+            </dd>
+            <dt>Started</dt>
+            <dd className="wx-nums">{formatDate(sub.startedAt)}</dd>
+            <dt>Current period</dt>
+            <dd className="wx-nums">
+              {formatDate(sub.currentPeriodStart)} — {formatDate(sub.currentPeriodEnd)}
+            </dd>
+            <dt>Cancel at period end</dt>
+            <dd>{sub.cancelAtPeriodEnd ? "Yes" : "No"}</dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>Stripe</h3>
+          <dl className="wx-kv">
+            <dt>Subscription</dt>
+            <dd className="wx-data-md">{sub.stripeSubscriptionId ?? "— (pending sync)"}</dd>
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }

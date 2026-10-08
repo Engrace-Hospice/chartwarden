@@ -1,8 +1,8 @@
-/* apps/admin — global stylesheet for the Platform-Ops console SPA (M34 §5.1 / M35 §5.2, Lantern).
+/* apps/admin — global stylesheet for the Platform-Ops console SPA (M34 §5.1 / M35 §5.2).
  *
  * Two jobs, mirroring apps/web/src/index.css + apps/portal/src/index.css:
  *   1. Pull in Tailwind v4 (Preflight reset + the utility engine) via the @tailwindcss/vite plugin.
- *   2. Define the Lantern design tokens the admin screens + @wardenx/admin-ui-shell chrome consume.
+ *   2. Define the design tokens the admin screens + @wardenx/admin-ui-shell chrome consume.
  *
  * SOURCE OF TRUTH is packages/ui/src/core/theme/colors.ts + apps/web/src/index.css; this is the admin
  * app's LOCAL token layer, kept until the shared `@wardenx/ui` stylesheet lift that apps/web/index.css's
@@ -18,54 +18,78 @@
 
 /* GAP-207 — the shared `wx-*` list chrome (KPI strip, DataTable card, WorkQueue slots, list table). */
 @import "../../../packages/ui/src/web/styles/list-chrome.css";
+/* The shared element defaults + sidebar/header shell — the console wears the clinical app's 2026-09-25 redesign. */
+@import "../../../packages/ui/src/web/styles/app-shell.css";
 
 :root {
-  /* GAP-207: tokens read by the shared list chrome (packages/ui/src/web/styles/list-chrome.css). */
-  --color-card-border: var(--color-outline-variant);
-  --color-focus-ring: var(--color-primary);
-  /* Brand — twilight indigo */
-  --color-primary: #3b45a8;
-  --color-primary-strong: #2b338a;
-  --color-primary-tint: #ecedfb;
+  /* 2026-10-08: the clinical-blue palette of the 2026-09-25 redesign, copied from apps/web/src/index.css's
+     @theme block (keep in sync). */
+  /* Brand — clinical blue */
+  --color-primary: #1a56eb;
+  --color-primary-strong: #1443c6;
+  --color-primary-tint: #e6edfd;
+  --color-primary-dim: #a9c1f8;
   --color-on-primary: #ffffff;
-  --color-accent: #c98a1f;
-  --color-accent-tint: #fbf1dd;
+  --color-accent: #d97706; /* warm amber — brand warmth only, never status */
+  --color-accent-tint: #fef3c7;
 
-  /* Semantic status */
-  --color-success: #1f8a5b;
-  /* WX-PR-022: StatusPill "success" text on its own 12%-tint bg fails WCAG AA at #1f8a5b
-     (~3.7:1, needs 4.5:1) — this darker variant gives ~6.1:1. Text-only; the pill's background
-     tint still derives from --color-success unchanged. */
-  --color-success-pill-fg: #14653f;
-  --color-warning: #9a5b00;
-  --color-error: #c12b3b;
-  --color-alert: #e0413f;
+  /* Semantic */
+  --color-success: #16a34a;
+  --color-warning: #b45309;
+  --color-error: #dc2626;
+  --color-alert: #e5484d;
+  /* WX-PR-022: StatusPill "success" text must hold WCAG AA (4.5:1) on its own tint — #166534 on the
+     ~#dcf5e4 tint gives ~6.4:1. Text-only; the pill's background still derives from --color-success. */
+  --color-success-pill-fg: #166534;
+  /* The same shape for `warning` (F-077, found by the care-plan axe scan): the warning chip's text on
+     its own tint sits at the 4.5:1 edge. This darker text-only variant (#92400e) clears it with room
+     (~6.3:1 on the 12% tint). Text-only; the tint still derives from --color-warning unchanged. */
+  --color-warning-pill-fg: #92400e;
+  /* And for `error` / `critical` (the #243 E2E axe scans): #dc2626 on its 12% tint measures 4.0:1 and
+     --color-alert 3.35:1. Text-only darker variants (~5.4:1 and ~5.6:1); the tints are unchanged. */
+  --color-error-pill-fg: #b91c1c;
+  --color-alert-pill-fg: #b42330;
 
-  /* Surfaces — warm paper hierarchy */
-  --color-background: #f6f5f2;
-  --color-surface: #f6f5f2;
+  /* Surfaces — cool slate hierarchy */
+  --color-background: #f7f8fa;
+  --color-surface: #f7f8fa;
   --color-surface-lowest: #ffffff;
-  --color-surface-low: #f1f0ec;
-  --color-surface-container: #eceae5;
-  --color-surface-high: #e5e3dd;
-  --color-surface-highest: #dedbd4;
+  --color-surface-low: #f4f6f9;
+  --color-surface-container: #eef1f5;
+  --color-surface-high: #e5e9ef;
+  --color-surface-highest: #dce1e8;
+  /* Shell sidebar — a faint blue-slate wash distinct from the white workspace (mockup nav column). */
+  --color-sidebar: #f2f5f9;
+  /* Card edge — the mockups' hairline card border (replaces Lantern's borderless shadow cards). */
+  --color-card-border: #e4e8ee;
 
   /* Text & line */
-  --color-on-surface: #1c1b1a;
-  --color-on-surface-variant: #56524c;
-  /* WX-PR-018: was #8c877f (~3.57:1 on --color-surface-lowest — fails WCAG AA), caught by the E2E
-     suite's axe scan on the nav-group toggle buttons. #726d64 gives ~5.1:1. */
-  --color-muted: #726d64;
-  --color-outline: #6e6a62;
-  --color-outline-variant: #d7d3cb;
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #475569;
+  /* WX-PR-018: muted text must hold ≥4.5:1 on EVERY light surface it sits on, not just white. #64748b
+     (~4.8:1 on white) fell to 4.35:1 on --color-sidebar and 3.6:1 on --color-surface-highest; #586476
+     holds 4.57:1 on the darkest of them. */
+  --color-muted: #586476;
+  --color-outline: #94a3b8;
+  --color-outline-variant: #dfe4eb;
+  --color-focus-ring: #1a56eb;
 
-  /* On-emphasis + scrim */
+  /* On-emphasis — text/icons on a SATURATED brand/status fill (primary button, break-glass banner,
+     status-flood CTA). White in light; deep ink in dark (the dark status colors are light pastels,
+     so white-on-them fails contrast — dark text is correct, mirroring --color-on-primary). */
   --color-on-emphasis: #ffffff;
-  --color-scrim: rgba(17, 24, 39, 0.55);
+  /* Scrim — modal/overlay backdrop. Dims the content behind in both themes. */
+  --color-scrim: rgba(15, 23, 42, 0.5);
 
-  /* Type — WardenX trio (Manrope for titles, Inter for text/UI) */
-  --font-display: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
+  /* Legacy aliases (kept so existing wx-* refs resolve) */
+  --color-brand: var(--color-primary);
+  --color-line: var(--color-outline-variant);
+
+  /* Type — WardenX trio. Variable faces register "<Name> Variable" (see main.tsx); name those
+     first, then the static family, then system fallbacks. */
+  /* The redesign sets headings in Inter too (mockups); Manrope stays registered as a fallback face. */
+  --font-display: "Inter Variable", "Inter", "Manrope Variable", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -78,63 +102,138 @@
   --radius-2xl: 1.5rem;
 
   /* Elevation */
-  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
-  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
-  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
-
-  /* Spacing scale (4px base) */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 1.75rem;
-  --space-7: 2rem;
-  --space-8: 2.5rem;
-  --space-9: 3rem;
-
-  color: var(--color-on-surface);
-  background: var(--color-background);
-  font-family: var(--font-sans);
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-float: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --shadow-ambient: 0 4px 16px rgba(26, 86, 235, 0.06);
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-display);
-  font-weight: 650;
+:root {
+  --space-1: 0.25rem; /* 4 — tight icon gaps */
+  --space-2: 0.5rem; /* 8 — inline element spacing */
+  --space-3: 0.75rem; /* 12 — dense list/row padding */
+  --space-4: 1rem; /* 16 — standard card padding */
+  --space-5: 1.5rem; /* 24 — card internal sections */
+  --space-6: 1.75rem; /* 28 — list-item separation (no divider) */
+  --space-7: 2rem; /* 32 — section gaps */
+  --space-8: 2.5rem; /* 40 — major section separation */
+  --space-9: 3rem; /* 48 — page vertical rhythm */
 }
 
-/* Twilight dark mode (class strategy on <html>). Designed, not inverted. */
+/* Data-viz palette (2026-09-25 redesign) — categorical hues for avatars, diagnosis dots, symptom
+   icons and list accent bars. Decorative identity only, never a status signal (status keeps the
+   semantic --color-success/-warning/-error). Plain :root so Tailwind cannot drop them. */
+:root {
+  --color-viz-blue: #1a56eb;
+  --color-viz-teal: #0d9488;
+  --color-viz-green: #16a34a;
+  --color-viz-amber: #d97706;
+  --color-viz-yellow: #eab308;
+  --color-viz-orange: #ea580c;
+  --color-viz-cyan: #0891b2;
+  --color-viz-violet: #7c3aed;
+  --color-viz-rose: #e11d48;
+  --color-viz-pink: #db2777;
+}
 .dark {
-  --color-primary: #aeb4f0;
-  --color-primary-strong: #8e95e0;
-  --color-primary-tint: #262a52;
-  --color-on-primary: #13163a;
-  --color-accent: #e7b35a;
-  --color-accent-tint: #3a2f16;
-  --color-success: #5fd6a0;
-  /* Dark mode's --color-success already passes WCAG AA on its own pill tint (~7.35:1) — same value. */
-  --color-success-pill-fg: #5fd6a0;
-  --color-warning: #e0a24a;
-  --color-error: #f2939e;
-  --color-alert: #ff6b68;
-  --color-background: #15151b;
-  --color-surface: #15151b;
-  --color-surface-lowest: #1c1c24;
-  --color-surface-low: #21212b;
-  --color-surface-container: #272732;
-  --color-surface-high: #30303c;
-  --color-surface-highest: #3a3a47;
-  --color-on-surface: #eceae6;
-  --color-on-surface-variant: #b8b4ad;
-  /* WX-PR-018: was #7e7a72 (~3.96:1 on --color-surface-lowest — fails WCAG AA). #96918a gives ~5.4:1. */
-  --color-muted: #96918a;
-  --color-outline: #8a857c;
-  --color-outline-variant: #45444e;
-  --color-on-emphasis: #15151b;
+  --color-viz-blue: #7c9cff;
+  --color-viz-teal: #2dd4bf;
+  --color-viz-green: #4ade80;
+  --color-viz-amber: #fbbf24;
+  --color-viz-yellow: #facc15;
+  --color-viz-orange: #fb923c;
+  --color-viz-cyan: #22d3ee;
+  --color-viz-violet: #a78bfa;
+  --color-viz-rose: #fb7185;
+  --color-viz-pink: #f472b6;
+}
+
+/* Dark mode (class strategy on <html>). Designed, not inverted — deep navy slate with a lifted blue. */
+.dark {
+  --color-primary: #7aa2ff;
+  --color-primary-strong: #9bb8ff;
+  --color-primary-tint: #16264d;
+  --color-primary-dim: #1e3a8a;
+  --color-on-primary: #0b1120;
+  --color-accent: #f5b544;
+  --color-accent-tint: #3a2a10;
+  --color-success: #4ade80;
+  /* Dark --color-success already passes WCAG AA on its own pill tint — same value. */
+  --color-success-pill-fg: #4ade80;
+  --color-warning: #fbbf24;
+  /* Dark --color-warning already passes on its own pill tint — same value, like the success pair. */
+  --color-warning-pill-fg: #fbbf24;
+  --color-error: #f87171;
+  --color-alert: #fb7185;
+  /* Dark --color-error / --color-alert already pass on their own pill tints — same values. */
+  --color-error-pill-fg: #f87171;
+  --color-alert-pill-fg: #fb7185;
+  --color-background: #0b1120;
+  --color-surface: #0b1120;
+  --color-surface-lowest: #111827;
+  --color-surface-low: #151e2e;
+  --color-surface-container: #1b2436;
+  --color-surface-high: #232e42;
+  --color-surface-highest: #2c384e;
+  --color-sidebar: #0e1626;
+  --color-card-border: #222c3e;
+  --color-on-surface: #e5e9f0;
+  --color-on-surface-variant: #a7b1c2;
+  /* WX-PR-018: muted must hold ≥4.5:1 on --color-surface-lowest — #8b97ab gives ~5.6:1. */
+  --color-muted: #8b97ab;
+  --color-outline: #6b778c;
+  --color-outline-variant: #263145;
+  --color-focus-ring: #7aa2ff;
+  --color-on-emphasis: #0b1120;
   --color-scrim: rgba(0, 0, 0, 0.62);
+}
+
+@layer components {
+  /* The console landing (app.tsx AdminHome): every surface, grouped as in the sidebar. */
+  .wx-admin-home {
+    display: grid;
+    gap: 1.5rem;
+    padding: 1.5rem 1.5rem 2rem;
+  }
+  .wx-admin-home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 1rem;
+    align-items: start;
+  }
+  .wx-admin-home-group {
+    padding: 1rem 1rem 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-admin-home-group h2 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .wx-admin-home-group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.125rem;
+  }
+  .wx-admin-home-group a {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.45rem 0.5rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .wx-admin-home-group a svg {
+    color: var(--color-primary);
+  }
+  .wx-admin-home-group a:hover {
+    background: var(--color-primary-tint);
+    text-decoration: none;
+  }
 }

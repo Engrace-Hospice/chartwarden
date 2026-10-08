@@ -1,34 +1,22 @@
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
 // Hydrates from GET /api/admin/plans/:id (M35A-T03 detail GET), then manages the plan's usage meters
 // (POST/PATCH .../meters) and drives the lifecycle: Activate (which the §4.13 outbox dispatcher syncs to a
 // Stripe product/price — the "Sync to Stripe" path, vendor SDK OFF) and Deprecate. Every mutation carries a
-// server-enforced step-up + Idempotency-Key; stale step-up surfaces as a first-class outcome. Lantern: Detail.
+// server-enforced step-up + Idempotency-Key; stale step-up surfaces as a first-class outcome. Redesign frame:
+// the meters in the main column, the plan summary in the right drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
-  Field,
-  Kv,
+  DrawerHead,
   type Outcome,
   OutcomeBanner,
-  actionButtonStyle,
-  bodyRow,
-  cell,
-  cellRight,
+  StateError,
+  StateLoading,
   failureOutcome,
-  inputStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type PlanDetail =
@@ -50,7 +38,9 @@ export function PlanEdit(): JSX.Element {
     threshold: "80",
   });
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No plan selected.");
       setLoading(false);
@@ -59,6 +49,7 @@ export function PlanEdit(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/plans/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Plan unavailable.");
       setLoading(false);
@@ -66,7 +57,7 @@ export function PlanEdit(): JSX.Element {
     }
     setPlan(res.data);
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();
@@ -132,144 +123,156 @@ export function PlanEdit(): JSX.Element {
     );
   }, [client, id, run]);
 
-  if (loading) return <LoadingSpinner />;
+  const frame = (content: JSX.Element): JSX.Element => (
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Edit plan</h1>
+            <p>Usage meters, pricing and the plan's lifecycle.</p>
+          </div>
+        </header>
+        {content}
+      </div>
+    </div>
+  );
+  if (loading) return frame(<StateLoading label="Loading plan…" />);
   if (error || !plan)
-    return <EmptyState title="Unavailable" description={error ?? "Plan not found."} />;
+    return frame(<StateError message={error ?? "Plan not found."} onRetry={() => void load()} />);
 
   return (
-    <DetailPageLayout
-      header={
-        <PageHeader
-          title={`Edit — ${plan.name}`}
-          breadcrumb="Platform Ops / Plans"
-          actions={
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              {plan.isActive ? (
-                <button
-                  type="button"
-                  onClick={deprecate}
-                  disabled={busy}
-                  style={actionButtonStyle(false, busy)}
-                >
-                  Deprecate
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={activate}
-                  disabled={busy}
-                  style={actionButtonStyle(true, busy)}
-                >
-                  Activate & sync to Stripe
-                </button>
-              )}
-            </div>
-          }
-        />
-      }
-      aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-          <Kv label="Status">
+    <div className="wx-list-drawer has-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>{`Edit — ${plan.name}`}</h1>
+            <p>Usage meters, pricing and the plan's lifecycle.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            {plan.isActive ? (
+              <Button tone="secondary" onClick={deprecate} disabled={busy}>
+                Deprecate
+              </Button>
+            ) : (
+              <Button onClick={activate} disabled={busy}>
+                Activate & sync to Stripe
+              </Button>
+            )}
+          </div>
+        </header>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        <h2 className="m-0 text-base font-semibold">Usage meters</h2>
+        {plan.meters.length === 0 ? (
+          <p className="m-0 text-sm">No meters yet — add one below.</p>
+        ) : (
+          <MetersTable meters={plan.meters} currencyCode={plan.currencyCode} />
+        )}
+        <div className="grid max-w-3xl items-end gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+          <TextField
+            label="Event type"
+            value={meter.eventType}
+            onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
+          />
+          <TextField
+            label="Included qty"
+            value={meter.inclusive}
+            inputMode="numeric"
+            onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
+          />
+          <TextField
+            label="Overage $/unit"
+            value={meter.overage}
+            inputMode="decimal"
+            onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
+          />
+          <TextField
+            label="Warn %"
+            value={meter.threshold}
+            inputMode="numeric"
+            onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
+          />
+          <Button onClick={addMeter} disabled={busy || !meter.eventType.trim()}>
+            Add meter
+          </Button>
+        </div>
+      </div>
+      <PlanSummary plan={plan} />
+    </div>
+  );
+}
+
+function MetersTable({
+  meters,
+  currencyCode,
+}: { meters: readonly Meter[]; currencyCode: string }): JSX.Element {
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Usage meters</caption>
+        <thead>
+          <tr>
+            <th scope="col">Meter</th>
+            <th scope="col" className="wx-num-col">
+              Included
+            </th>
+            <th scope="col" className="wx-num-col">
+              Overage / unit
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {meters.map((m) => (
+            <tr key={m.eventType}>
+              <td>
+                <span className="wx-row-title">{m.label}</span>
+                <span className="wx-row-sub wx-data-md">{m.eventType}</span>
+              </td>
+              <td className="wx-num-col wx-nums">{m.inclusiveQuantity.toLocaleString()}</td>
+              <td className="wx-num-col wx-nums">
+                {formatCents(m.overageUnitPriceCents, currencyCode)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlanSummary({ plan }: { plan: PlanDetail }): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="Plan summary">
+      <DrawerHead icon="layout-grid" title={plan.name} sub={plan.slug} />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Plan</h3>
             <StatusPill
               label={plan.isActive ? "Active" : "Draft"}
               tone={plan.isActive ? "success" : "neutral"}
             />
-          </Kv>
-          <Kv label="Tier / cadence">
-            {cap(plan.tier)} · {cap(plan.cadence)}
-          </Kv>
-          <Kv label="Base price">
-            <span className="tabular-nums">
-              {formatCents(plan.basePriceCents, plan.currencyCode)}
-            </span>
-          </Kv>
-          <Kv label="Trial">{plan.trialPeriodDays} days</Kv>
-          <Kv label="Stripe product">{plan.stripeProductId ?? "— (pending sync)"}</Kv>
-          <Kv label="Stripe price">{plan.stripePriceId ?? "— (pending sync)"}</Kv>
-        </div>
-      }
-    >
-      <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
-        <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>Usage meters</h2>
-        {plan.meters.length === 0 ? (
-          <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-            No meters yet — add one below.
-          </p>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={theadRow}>
-                <th style={cell}>Meter</th>
-                <th style={cellRight}>Included</th>
-                <th style={cellRight}>Overage / unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plan.meters.map((m) => (
-                <tr key={m.eventType} style={bodyRow}>
-                  <td style={cell}>{m.label}</td>
-                  <td style={cellRight} className="tabular-nums">
-                    {m.inclusiveQuantity.toLocaleString()}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatCents(m.overageUnitPriceCents, plan.currencyCode)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(9rem, 1fr))",
-            gap: "0.75rem",
-            maxWidth: "44rem",
-            alignItems: "end",
-          }}
-        >
-          <Field label="Event type">
-            <input
-              value={meter.eventType}
-              onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Included qty">
-            <input
-              value={meter.inclusive}
-              inputMode="numeric"
-              onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Overage $/unit">
-            <input
-              value={meter.overage}
-              inputMode="decimal"
-              onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Warn %">
-            <input
-              value={meter.threshold}
-              inputMode="numeric"
-              onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <button
-            type="button"
-            onClick={addMeter}
-            disabled={busy || !meter.eventType.trim()}
-            style={actionButtonStyle(true, busy || !meter.eventType.trim())}
-          >
-            Add meter
-          </button>
-        </div>
-      </section>
-    </DetailPageLayout>
+          </div>
+          <dl className="wx-kv">
+            <dt>Tier / cadence</dt>
+            <dd>
+              {cap(plan.tier)} · {cap(plan.cadence)}
+            </dd>
+            <dt>Base price</dt>
+            <dd className="wx-nums">{formatCents(plan.basePriceCents, plan.currencyCode)}</dd>
+            <dt>Trial</dt>
+            <dd className="wx-nums">{plan.trialPeriodDays} days</dd>
+          </dl>
+        </section>
+        <section className="wx-drawer-card">
+          <h3>Stripe</h3>
+          <dl className="wx-kv">
+            <dt>Product</dt>
+            <dd className="wx-data-md">{plan.stripeProductId ?? "— (pending sync)"}</dd>
+            <dt>Price</dt>
+            <dd className="wx-data-md">{plan.stripePriceId ?? "— (pending sync)"}</dd>
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }

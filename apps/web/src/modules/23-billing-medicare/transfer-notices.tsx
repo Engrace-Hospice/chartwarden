@@ -10,6 +10,7 @@ import {
   TextField,
   interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — Transfer notices: the receiving hospice's Medicare Change of
 // Provider / Transfer Notice (TOB 81C), its date correction and its 8xD void (CMS Pub. 100-04 ch. 11 §20.1.3 /
@@ -269,6 +270,7 @@ function NoticeRail({
   onClose: () => void;
   onChanged: (selectId?: string) => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -327,7 +329,11 @@ function NoticeRail({
   };
 
   return (
-    <aside className="wx-admission-drawer" aria-label={`Transfer notice for ${patientName}`}>
+    <aside
+      className="wx-admission-drawer"
+      {...drawer}
+      aria-label={`Transfer notice for ${patientName}`}
+    >
       <header className="wx-drawer-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>

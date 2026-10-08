@@ -1,5 +1,14 @@
 import { createWardenxAuthClient } from "@wardenx/auth/client";
-import { DegradedBanner, EmptyState, Glyph, setSearchTerm } from "@wardenx/ui";
+import {
+  DegradedBanner,
+  EmptyState,
+  Glyph,
+  InlineAlert,
+  setSearchTerm,
+  useDisclosureDismiss,
+  useOffCanvasNav,
+  useTheme,
+} from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui + @wardenx/auth/client (leaves) + react-router — never a
@@ -19,7 +28,6 @@ import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
-import { useTheme } from "./theme";
 
 const authClient = createWardenxAuthClient();
 
@@ -56,7 +64,9 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
   // default and toggled by the header's hamburger button instead of always occupying the viewport.
-  const [navOpen, setNavOpen] = useState(false);
+  const { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
+    () => mainRef.current,
+  );
   // `.wx-main` (not the window) is the scroll container (`overflow: auto` — see index.css), so
   // react-router doesn't reset it on navigation. Without this, a deep scroll into a long page
   // (e.g. the Home dashboard tile grid) carries over to the next route and can leave a short
@@ -104,7 +114,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // A click on a nav link closes the drawer; a click on an entry's own disclosure toggle (not an
   // <a>) should not, or the entry would expand AND the drawer close in the same tap.
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
-    if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
+    if ((e.target as HTMLElement).closest("a")) closeForNavigation();
   }
   return (
     <div className="wx-shell">
@@ -115,6 +125,8 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: closes the mobile nav on a bubbled click from
           a nav link descendant, which is already keyboard-navigable — the aside itself isn't a control. */}
       <aside
+        id="wx-sidebar"
+        ref={sidebarRef}
         className={navOpen ? "wx-sidebar wx-nav-open" : "wx-sidebar"}
         onClick={closeNavOnLinkClick}
       >
@@ -156,12 +168,13 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         <DegradedBanner />
         <header ref={headerRef} className="wx-header">
           <button
+            ref={toggleRef}
             type="button"
             className="wx-icon-btn wx-nav-toggle"
             onClick={() => setNavOpen((open) => !open)}
             aria-label={navOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={navOpen}
-            aria-controls="wx-primary-nav"
+            aria-controls="wx-sidebar"
           >
             <Glyph name={navOpen ? "close" : "menu"} size={18} />
           </button>
@@ -176,7 +189,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef}>
+        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -307,18 +320,21 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(ev: PointerEvent): void {
-      if (!ref.current?.contains(ev.target as Node)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  useDisclosureDismiss(open, () => setOpen(false), ref, triggerRef);
 
   async function signOut(): Promise<void> {
+    setSignOutFailed(false);
+    try {
+      await authClient.signOut();
+    } catch {
+      // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session
+      // on a shared workstation while the user believes they have left.
+      setSignOutFailed(true);
+      return;
+    }
     setOpen(false);
-    await authClient.signOut();
     window.location.href = "/login";
   }
 
@@ -332,10 +348,10 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   return (
     <div className="wx-actor" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
         aria-expanded={open}
       >
         <span className="wx-actor-avatar" aria-hidden>
@@ -348,15 +364,13 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         <Glyph name="chevron-down" size={16} strokeWidth={1.75} />
       </button>
       {open ? (
-        <div className="wx-actor-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="wx-actor-menu-item"
-            onClick={() => void signOut()}
-          >
+        <div className="wx-actor-menu">
+          <button type="button" className="wx-actor-menu-item" onClick={() => void signOut()}>
             Sign out
           </button>
+          {signOutFailed ? (
+            <InlineAlert tone="error">Could not sign out. Try again.</InlineAlert>
+          ) : null}
         </div>
       ) : null}
     </div>

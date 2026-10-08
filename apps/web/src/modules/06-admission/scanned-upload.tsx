@@ -3,7 +3,7 @@
 // election statement addendum's signed paper copy (election-addendum-scan-form.tsx). Same file control, same
 // upload-stage notice, same right-hand drawer shell (aside.wx-admission-drawer, rail header, flat drawer card),
 // so the four ceremonies look and behave the same. Kit controls and tokens only.
-import { Button, Glyph, IconButton, InlineAlert, TextField } from "@wardenx/ui";
+import { Button, Glyph, IconButton, InlineAlert, TextField, useDrawerA11y } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import type { UploadStage } from "../../shell/document-workflows";
 
@@ -82,8 +82,9 @@ export function ScannedUploadDrawer({
   onClose: () => void;
   children: ReactNode;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <aside className="wx-admission-drawer" aria-label={title}>
+    <aside className="wx-admission-drawer" {...drawer} aria-label={title}>
       <header className="wx-drawer-head">
         <span className="wx-rail-icon wx-addendum-icon" aria-hidden>
           <Glyph name="upload" size={16} />

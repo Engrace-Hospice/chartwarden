@@ -1,98 +1,81 @@
 // apps/admin/src/modules/32-ai-platform — shared presentational bits for the §5.1 AI Safety Owner
-// console (GAP-049). The M35 §5.2 slice's `ui.tsx` precedent: token-only helpers (no raw hex — the
-// design-tokens gate forbids it in render code) so table/field/button chrome is written once.
-import { StatusPill, type StatusTone } from "@wardenx/ui";
-import type { CSSProperties, JSX, ReactNode } from "react";
+// console (GAP-049), in the 2026-09-25 redesign's list chrome: the `wx-*` classes from
+// packages/ui/src/web/styles/list-chrome.css plus the @wardenx/ui kit — no inline styles, no raw colour.
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  LoadingSpinner,
+  StatusPill,
+  type StatusTone,
+} from "@wardenx/ui";
+import type { GlyphName } from "@wardenx/ui";
+import type { JSX, ReactNode } from "react";
 
-export const cell: CSSProperties = { padding: "0.6rem 0.75rem" };
-export const cellRight: CSSProperties = { ...cell, textAlign: "right" };
-
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-};
-export const theadRow: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-};
-export const bodyRow: CSSProperties = { borderTop: "1px solid var(--color-outline-variant)" };
-
-export const inputStyle: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  borderRadius: "var(--radius-md, 0.5rem)",
-  border: "1px solid var(--color-outline)",
-  background: "var(--color-surface-lowest)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.9rem",
-};
-
-export const cardStyle: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "var(--radius-lg, 0.75rem)",
-  background: "var(--color-surface)",
-  padding: "1rem 1.1rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-};
-
-export const pageStyle: CSSProperties = {
-  padding: "1.5rem 1.75rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-};
-
-export function actionButtonStyle(primary: boolean, disabled = false): CSSProperties {
-  return {
-    padding: "0.55rem 1.1rem",
-    borderRadius: "var(--radius-md, 0.5rem)",
-    border: primary ? "none" : "1px solid var(--color-outline)",
-    background: primary ? "var(--color-primary)" : "transparent",
-    color: primary ? "var(--color-on-primary)" : "var(--color-primary)",
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    textDecoration: "none",
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-  };
+/** The redesign's page title block (`wx-page-head`) with optional right-hand actions. */
+export function PageHead({
+  title,
+  description,
+  children,
+}: { title: ReactNode; description: ReactNode; children?: ReactNode }): JSX.Element {
+  return (
+    <header className="wx-page-head">
+      <div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {children ? <div className="wx-list-toolbar-end">{children}</div> : null}
+    </header>
+  );
 }
 
-/** A label→value stack for the detail asides. */
-export function Kv({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+/** A page section heading above a table (the redesign has no section card for a bare table). */
+export function SectionTitle({ children }: { children: ReactNode }): JSX.Element {
+  return <h2 className="m-0 text-base font-semibold">{children}</h2>;
+}
+
+/** Loading state in the list-state card. */
+export function LoadingState({ label }: { label: string }): JSX.Element {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
-      <span style={{ fontSize: "0.9rem", color: "var(--color-on-surface)" }}>{children}</span>
+    <div className="wx-list-state">
+      <LoadingSpinner label={label} />
     </div>
   );
 }
 
-/** A form field: label + control. */
-export function Field({
-  label,
-  htmlFor,
-  children,
-}: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
+/** Error state in the list-state card, with a retry. */
+export function ErrorState({
+  message,
+  onRetry,
+}: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <label
-      htmlFor={htmlFor}
-      style={{ display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.85rem" }}
-    >
-      <span style={{ fontWeight: 500 }}>{label}</span>
-      {children}
-    </label>
+    <div className="wx-list-state" role="alert">
+      <InlineAlert tone="error">{message}</InlineAlert>
+      <Button tone="secondary" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
+
+/** Empty state in the list-state card. */
+export function EmptyListState({
+  title,
+  description,
+  glyph = "check-circle",
+}: { title: string; description?: string; glyph?: GlyphName }): JSX.Element {
+  return (
+    <div className="wx-list-state">
+      <Glyph name={glyph} size={24} />
+      <span className="font-semibold">{title}</span>
+      {description ? <span className="text-sm">{description}</span> : null}
+    </div>
   );
 }
 
 /** A first-class outcome banner surfacing a server result to the operator. */
 export function OutcomeBanner({ ok, message }: { ok: boolean; message: string }): JSX.Element {
-  return (
-    <output aria-live="polite">
-      <StatusPill label={message} tone={ok ? "success" : "error"} />
-    </output>
-  );
+  return <InlineAlert tone={ok ? "success" : "error"}>{message}</InlineAlert>;
 }
 
 /**
@@ -102,30 +85,29 @@ export function OutcomeBanner({ ok, message }: { ok: boolean; message: string })
  */
 export function StandingNotice({
   tone,
+  urgent = tone === "critical" || tone === "error",
   children,
-}: { tone: StatusTone; children: ReactNode }): JSX.Element {
+}: { tone: StatusTone; urgent?: boolean; children: ReactNode }): JSX.Element {
+  // A plain role="note" is never announced. Urgent notices interrupt (alert); the rest are polite (status).
+  // Deliberately a <div>, not an <output>, and it must not sit inside another live region.
   return (
-    <div
-      role="note"
-      style={{
-        ...cardStyle,
-        padding: "0.7rem 0.9rem",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: "0.6rem",
-      }}
-    >
+    <div role={urgent ? "alert" : "status"} className="wx-drawer-card flex items-center gap-3">
       <StatusPill label={tone === "success" ? "OK" : "Notice"} tone={tone} />
-      <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-        {children}
-      </span>
+      <span className="text-sm">{children}</span>
     </div>
   );
 }
 
-/** Title-case an underscore enum value, e.g. `dangerous_clinical_suggestion` → `Dangerous Clinical Suggestion`. */
+const ACRONYMS = new Set(["ai", "zdr", "sla", "phi", "hitl", "pr", "id"]);
+
+/** Sentence-case an underscore enum value, e.g. `dangerous_clinical_suggestion` → `Dangerous clinical suggestion`. */
 export function cap(s: string): string {
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const words = s
+    .split("_")
+    .filter((w) => w !== "")
+    .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w));
+  const text = words.join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Absolute-instant formatting; `null` renders an em dash rather than "Invalid Date". */

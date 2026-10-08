@@ -1,10 +1,12 @@
 import {
-  EmptyState,
-  LoadingSpinner,
+  Button,
   Modal,
-  PageHeader,
+  SelectField,
   StatusPill,
+  TextAreaField,
+  TextField,
   useApiClient,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.2 capability detail
@@ -26,20 +28,15 @@ import { Link, useParams } from "react-router-dom";
 import { InvocationSearch } from "./invocations";
 import { EDGE_APPROVAL_KIND, lifecycleTone, riskTierTone } from "./status";
 import {
-  Field,
-  Kv,
+  EmptyListState,
+  ErrorState,
+  LoadingState,
   OutcomeBanner,
+  PageHead,
+  SectionTitle,
   StandingNotice,
-  actionButtonStyle,
-  bodyRow,
   cap,
-  cardStyle,
-  cell,
   formatDate,
-  inputStyle,
-  pageStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type Detail =
@@ -50,6 +47,19 @@ type ActivePrompt =
 const TABS = ["Overview", "Lifecycle", "Calibration", "Prompts", "Invocations", "Drift"] as const;
 type Tab = (typeof TABS)[number];
 
+const TAB_PANEL_ID = "cap-tabpanel";
+const tabId = (name: Tab): string => `cap-tab-${name}`;
+
+/** Arrow keys / Home / End move between tabs (WAI-ARIA tabs pattern, automatic activation); anything else is not ours. */
+function nextTab(current: Tab, key: string): Tab | null {
+  const i = TABS.indexOf(current);
+  if (key === "ArrowRight") return TABS[(i + 1) % TABS.length] ?? null;
+  if (key === "ArrowLeft") return TABS[(i - 1 + TABS.length) % TABS.length] ?? null;
+  if (key === "Home") return TABS[0] ?? null;
+  if (key === "End") return TABS[TABS.length - 1] ?? null;
+  return null;
+}
+
 const ACTOR_ROLES = [
   "ai_safety_owner",
   "clinical_reviewer",
@@ -57,9 +67,15 @@ const ACTOR_ROLES = [
   "privacy_officer",
 ] as const;
 
+/** Keyed by id: going from one capability to another remounts, so the previous capability, tab and outcome never linger. */
 export function CapabilityDetail(): JSX.Element {
   const { capabilityId = "" } = useParams<{ capabilityId: string }>();
+  return <CapabilityDetailBody key={capabilityId} capabilityId={capabilityId} />;
+}
+
+function CapabilityDetailBody({ capabilityId }: { capabilityId: string }): JSX.Element {
   const client = useApiClient();
+  const guard = useRequestGuard();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
   const [loading, setLoading] = useState(true);
@@ -68,11 +84,13 @@ export function CapabilityDetail(): JSX.Element {
   const [transitioning, setTransitioning] = useState(false);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/v1/ai/capabilities/{capabilityId}", {
       params: { path: { capabilityId } },
     });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Capability unavailable.");
       setLoading(false);
@@ -80,94 +98,114 @@ export function CapabilityDetail(): JSX.Element {
     }
     setDetail(res.data);
     setLoading(false);
-  }, [client, capabilityId]);
+  }, [client, capabilityId, guard]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading && !detail) return <LoadingSpinner />;
-  if (error || !detail)
-    return <EmptyState title={error ?? "Not found"} description="Retry shortly." />;
+  if ((loading && !detail) || error || !detail) {
+    return (
+      <div className="wx-list-drawer">
+        <div className="wx-list-drawer-main">
+          <PageHead
+            title="AI capability"
+            description="Lifecycle, calibration, prompt and invocations for one registered capability."
+          />
+          {loading && !detail ? (
+            <LoadingState label="Loading capability…" />
+          ) : (
+            <ErrorState message={error ?? "Not found"} onRetry={() => void load()} />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const c = detail.capability;
   const posture = detail.posture as { kind: string; reason?: string };
 
   return (
-    <div style={pageStyle}>
-      <PageHeader
-        title={c.displayName}
-        breadcrumb="AI Platform / Capabilities"
-        actions={
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-            <StatusPill
-              label={cap(c.lifecycleState.toLowerCase())}
-              tone={lifecycleTone(c.lifecycleState)}
-            />
-            <StatusPill label={`${cap(c.riskTier)} risk`} tone={riskTierTone(c.riskTier)} />
-            <button
-              type="button"
-              onClick={() => setTransitioning(true)}
-              disabled={detail.permittedNextStates.length === 0}
-              style={actionButtonStyle(true, detail.permittedNextStates.length === 0)}
-            >
-              Transition
-            </button>
-          </div>
-        }
-      />
-      {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title={c.displayName}
+          description={<span className="wx-data-md">{c.capabilityKey}</span>}
+        >
+          <StatusPill
+            label={cap(c.lifecycleState.toLowerCase())}
+            tone={lifecycleTone(c.lifecycleState)}
+          />
+          <StatusPill label={`${cap(c.riskTier)} risk`} tone={riskTierTone(c.riskTier)} />
+          <Button
+            onClick={() => setTransitioning(true)}
+            disabled={detail.permittedNextStates.length === 0}
+          >
+            Transition
+          </Button>
+        </PageHead>
+        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
 
-      {/* Posture is the operational answer to "would a call to this capability actually be served right
-          now" — and it is NOT implied by the lifecycle state: an APPROVED capability with an active kill
-          switch or an unhealthy backend is unavailable. Shown at the top of every tab. */}
-      {posture.kind === "unavailable" ? (
-        <StandingNotice tone="error">
-          Not currently serving — {cap(posture.reason ?? "unknown")}.
-        </StandingNotice>
-      ) : (
-        <StandingNotice tone="success">Serving — {cap(posture.kind)}.</StandingNotice>
-      )}
+        {/* Posture is the operational answer to "would a call to this capability actually be served right
+            now" — and it is NOT implied by the lifecycle state: an APPROVED capability with an active kill
+            switch or an unhealthy backend is unavailable. Shown at the top of every tab. */}
+        {posture.kind === "unavailable" ? (
+          <StandingNotice tone="error">
+            Not currently serving — {cap(posture.reason ?? "unknown").toLowerCase()}.
+          </StandingNotice>
+        ) : (
+          <StandingNotice tone="success">
+            Serving — {cap(posture.kind).toLowerCase()}.
+          </StandingNotice>
+        )}
 
-      <nav
-        style={{
-          display: "flex",
-          gap: "0.4rem",
-          borderBottom: "1px solid var(--color-outline-variant)",
-        }}
-      >
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => setTab(name)}
-            aria-current={tab === name ? "page" : undefined}
-            style={{
-              ...actionButtonStyle(false),
-              border: "none",
-              borderBottom:
-                tab === name ? "2px solid var(--color-primary)" : "2px solid transparent",
-              borderRadius: 0,
-              color: tab === name ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+        <div className="wx-list-toolbar">
+          <div
+            className="flex flex-wrap gap-1"
+            role="tablist"
+            aria-label="Capability sections"
+            onKeyDown={(event) => {
+              const next = nextTab(tab, event.key);
+              if (!next) return;
+              event.preventDefault();
+              setTab(next);
+              document.getElementById(tabId(next))?.focus();
             }}
           >
-            {name}
-          </button>
-        ))}
-      </nav>
+            {TABS.map((name) => (
+              <Button
+                key={name}
+                id={tabId(name)}
+                role="tab"
+                size="sm"
+                tone={tab === name ? "secondary" : "tertiary"}
+                aria-selected={tab === name}
+                aria-controls={TAB_PANEL_ID}
+                tabIndex={tab === name ? 0 : -1}
+                onClick={() => setTab(name)}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
+        </div>
 
-      {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
-      {tab === "Lifecycle" ? <LifecycleTab detail={detail} /> : null}
-      {tab === "Calibration" ? <CalibrationTab detail={detail} /> : null}
-      {tab === "Prompts" ? <PromptsTab capabilityKey={c.capabilityKey} /> : null}
-      {tab === "Invocations" ? <InvocationSearch capabilityId={c.id} embedded /> : null}
-      {tab === "Drift" ? (
-        <StandingNotice tone="warning">
-          Per-capability drift series are not served by the API — the drift feed is run-shaped, not
-          a time series. See the <Link to="/admin/ai-platform/drift">platform drift overview</Link>{" "}
-          for this capability's most recent drift-response run.
-        </StandingNotice>
-      ) : null}
+        <div id={TAB_PANEL_ID} role="tabpanel" aria-labelledby={tabId(tab)} className="grid gap-4">
+          {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
+          {tab === "Lifecycle" ? <LifecycleTab detail={detail} /> : null}
+          {tab === "Calibration" ? <CalibrationTab detail={detail} /> : null}
+          {tab === "Prompts" ? <PromptsTab capabilityKey={c.capabilityKey} /> : null}
+          {tab === "Invocations" ? <InvocationSearch capabilityId={c.id} embedded /> : null}
+          {tab === "Drift" ? (
+            <StandingNotice tone="warning">
+              Per-capability drift series are not served by the API — the drift feed is run-shaped,
+              not a time series. See the{" "}
+              <Link to="/admin/ai-platform/drift">platform drift overview</Link> for this
+              capability's most recent drift-response run.
+            </StandingNotice>
+          ) : null}
+        </div>
+      </div>
 
       {transitioning ? (
         <TransitionDialog
@@ -187,30 +225,30 @@ export function CapabilityDetail(): JSX.Element {
 function OverviewTab({ detail }: { detail: Detail }): JSX.Element {
   const c = detail.capability;
   return (
-    <section
-      style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.9rem" }}
-    >
-      <Kv label="Capability key">
-        <code>{c.capabilityKey}</code>
-      </Kv>
-      <Kv label="Default backend">
-        <code>{c.defaultBackendKey}</code>
-      </Kv>
-      <Kv label="Allowed backends">
-        {c.allowedBackendKeys.map((b) => (
-          <code key={b} style={{ marginRight: "0.4rem" }}>
-            {b}
-          </code>
-        ))}
-      </Kv>
-      <Kv label="Active prompt template">
-        {c.currentPromptTemplateKey ? <code>{c.currentPromptTemplateKey}</code> : "None"}
-      </Kv>
-      <Kv label="Tenant opt-in required">{c.tenantOptInRequired ? "Yes" : "No"}</Kv>
-      <Kv label="Clinician opt-out supported">{c.clinicianOptOutSupported ? "Yes" : "No"}</Kv>
-      <Kv label="First approved">{formatDate(c.firstApprovedAt)}</Kv>
-      <Kv label="Last re-approved">{formatDate(c.lastReapprovedAt)}</Kv>
-      <Kv label="Re-approval due">{formatDate(c.nextReapprovalDueAt)}</Kv>
+    <section className="wx-drawer-card">
+      <h3>Registry entry</h3>
+      <dl className="wx-kv">
+        <dt>Capability key</dt>
+        <dd className="wx-data-md">{c.capabilityKey}</dd>
+        <dt>Default backend</dt>
+        <dd className="wx-data-md">{c.defaultBackendKey}</dd>
+        <dt>Allowed backends</dt>
+        <dd className="wx-data-md">{c.allowedBackendKeys.join(", ")}</dd>
+        <dt>Active prompt template</dt>
+        <dd className={c.currentPromptTemplateKey ? "wx-data-md" : undefined}>
+          {c.currentPromptTemplateKey ?? "None"}
+        </dd>
+        <dt>Tenant opt-in required</dt>
+        <dd>{c.tenantOptInRequired ? "Yes" : "No"}</dd>
+        <dt>Clinician opt-out supported</dt>
+        <dd>{c.clinicianOptOutSupported ? "Yes" : "No"}</dd>
+        <dt>First approved</dt>
+        <dd className="wx-nums">{formatDate(c.firstApprovedAt)}</dd>
+        <dt>Last re-approved</dt>
+        <dd className="wx-nums">{formatDate(c.lastReapprovedAt)}</dd>
+        <dt>Re-approval due</dt>
+        <dd className="wx-nums">{formatDate(c.nextReapprovalDueAt)}</dd>
+      </dl>
     </section>
   );
 }
@@ -220,50 +258,53 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
     a.transitionedAt < b.transitionedAt ? 1 : -1,
   );
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
+    <section className="grid gap-3">
+      <p className="wx-source-line">
         Permitted next states:{" "}
         {detail.permittedNextStates.length === 0
           ? "none — this capability is at a terminal state"
           : detail.permittedNextStates.map((s) => cap(s.toLowerCase())).join(", ")}
       </p>
       {events.length === 0 ? (
-        <EmptyState title="No transitions" description="This capability has not moved yet." />
+        <EmptyListState
+          glyph="clock"
+          title="No transitions"
+          description="This capability has not moved yet."
+        />
       ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>When</th>
-              <th style={cell}>From → To</th>
-              <th style={cell}>Stage</th>
-              <th style={cell}>Signer role</th>
-              <th style={cell}>Rationale</th>
-              <th style={cell}>Evidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((e) => (
-              <tr key={e.id} style={bodyRow}>
-                <td style={cell} className="tabular-nums">
-                  {formatDate(e.transitionedAt)}
-                </td>
-                <td style={cell}>
-                  {e.fromState ? cap(e.fromState.toLowerCase()) : "—"} →{" "}
-                  <StatusPill
-                    label={cap(e.toState.toLowerCase())}
-                    tone={lifecycleTone(e.toState)}
-                  />
-                </td>
-                <td style={cell}>{cap(e.approvalKind)}</td>
-                <td style={cell}>{cap(e.actorRole)}</td>
-                <td style={{ ...cell, maxWidth: "24rem" }}>{e.rationaleText}</td>
-                <td style={cell}>
-                  {e.linkedEvaluationRunId ? <code>{e.linkedEvaluationRunId}</code> : "—"}
-                </td>
+        <div className="wx-list-table-wrap">
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">Lifecycle transitions</caption>
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">From → to</th>
+                <th scope="col">Stage</th>
+                <th scope="col">Signer role</th>
+                <th scope="col">Rationale</th>
+                <th scope="col">Evidence</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td className="wx-nums">{formatDate(e.transitionedAt)}</td>
+                  <td>
+                    {e.fromState ? cap(e.fromState.toLowerCase()) : "—"} →{" "}
+                    <StatusPill
+                      label={cap(e.toState.toLowerCase())}
+                      tone={lifecycleTone(e.toState)}
+                    />
+                  </td>
+                  <td>{cap(e.approvalKind)}</td>
+                  <td>{cap(e.actorRole)}</td>
+                  <td className="max-w-96">{e.rationaleText}</td>
+                  <td className="wx-data-md">{e.linkedEvaluationRunId ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -273,7 +314,7 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
   const current = detail.calibrations.find((c) => c.isCurrent) ?? null;
   const history = [...detail.calibrations].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+    <section className="grid gap-4">
       {current === null ? (
         // Worth stating rather than showing an empty card: an APPROVED capability with no calibration is
         // a governance gap (§2.5), not a cosmetic one.
@@ -281,51 +322,49 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
           No current calibration is published for this capability.
         </StandingNotice>
       ) : (
-        <div style={cardStyle}>
-          <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>Current calibration</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-            <Kv label="Backend">
-              <code>{current.backendKey}</code>
-            </Kv>
-            <Kv label="Baseline set">{formatDate(current.baselineSetAt)}</Kv>
-            <Kv label="Thresholds">
-              <code style={{ fontSize: "0.75rem" }}>{JSON.stringify(current.thresholds)}</code>
-            </Kv>
-            <Kv label="Baseline metrics">
-              <code style={{ fontSize: "0.75rem" }}>{JSON.stringify(current.baselineMetrics)}</code>
-            </Kv>
-          </div>
-        </div>
+        <section className="wx-drawer-card">
+          <h3>Current calibration</h3>
+          <dl className="wx-kv">
+            <dt>Backend</dt>
+            <dd className="wx-data-md">{current.backendKey}</dd>
+            <dt>Baseline set</dt>
+            <dd className="wx-nums">{formatDate(current.baselineSetAt)}</dd>
+          </dl>
+          <h3>Thresholds</h3>
+          <pre className="wx-code-block">{JSON.stringify(current.thresholds, null, 2)}</pre>
+          <h3>Baseline metrics</h3>
+          <pre className="wx-code-block">{JSON.stringify(current.baselineMetrics, null, 2)}</pre>
+        </section>
       )}
       {history.length === 0 ? null : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={theadRow}>
-              <th style={cell}>Published</th>
-              <th style={cell}>Backend</th>
-              <th style={cell}>Current</th>
-              <th style={cell}>Superseded</th>
-              <th style={cell}>Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((h) => (
-              <tr key={h.id} style={bodyRow}>
-                <td style={cell} className="tabular-nums">
-                  {formatDate(h.createdAt)}
-                </td>
-                <td style={cell}>
-                  <code>{h.backendKey}</code>
-                </td>
-                <td style={cell}>{h.isCurrent ? "Yes" : "—"}</td>
-                <td style={cell} className="tabular-nums">
-                  {formatDate(h.supersededAt)}
-                </td>
-                <td style={cell}>{h.supersededReason ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <SectionTitle>Calibration history</SectionTitle>
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table wx-list-table-static">
+              <caption className="wx-sr-only">Calibration history</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Published</th>
+                  <th scope="col">Backend</th>
+                  <th scope="col">Current</th>
+                  <th scope="col">Superseded</th>
+                  <th scope="col">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id}>
+                    <td className="wx-nums">{formatDate(h.createdAt)}</td>
+                    <td className="wx-data-md">{h.backendKey}</td>
+                    <td>{h.isCurrent ? "Yes" : "—"}</td>
+                    <td className="wx-nums">{formatDate(h.supersededAt)}</td>
+                    <td>{h.supersededReason ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
@@ -359,46 +398,41 @@ function PromptsTab({ capabilityKey }: { capabilityKey: string }): JSX.Element {
     };
   }, [client, capabilityKey]);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <LoadingState label="Loading prompt…" />;
   if (missing || !prompt)
     return (
-      <EmptyState
+      <EmptyListState
+        glyph="file-text"
         title="No active prompt template"
         description="This capability serves no prompt yet — expected below APPROVED."
       />
     );
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-        <Kv label="Template key">
-          <code>{prompt.templateKey}</code>
-        </Kv>
-        <Kv label="Version">v{prompt.version}</Kv>
-        <Kv label="Content hash">
-          <code style={{ fontSize: "0.75rem" }}>{prompt.contentHash}</code>
-        </Kv>
-        <Kv label="Approved">{formatDate(prompt.approvedAt)}</Kv>
-        <Kv label="Git artifact">
-          <code style={{ fontSize: "0.75rem" }}>{prompt.gitArtifactPath}</code>
-        </Kv>
-        <Kv label="Compatible backends">
-          {prompt.compatibleBackendKeys.map((b) => (
-            <code key={b} style={{ marginRight: "0.4rem" }}>
-              {b}
-            </code>
-          ))}
-        </Kv>
-        <Kv label="Input schema">
-          <code style={{ fontSize: "0.75rem" }}>{prompt.inputSchemaRef}</code>
-        </Kv>
-        <Kv label="Output schema">
-          <code style={{ fontSize: "0.75rem" }}>{prompt.outputSchemaRef}</code>
-        </Kv>
-        <Kv label="Clinical reviewer attestation">
-          {prompt.clinicalReviewerAttestation ?? "None recorded"}
-        </Kv>
-      </div>
+    <section className="grid gap-4">
+      <section className="wx-drawer-card">
+        <h3>Active prompt template</h3>
+        <dl className="wx-kv">
+          <dt>Template key</dt>
+          <dd className="wx-data-md">{prompt.templateKey}</dd>
+          <dt>Version</dt>
+          <dd className="wx-nums">v{prompt.version}</dd>
+          <dt>Content hash</dt>
+          <dd className="wx-data-md break-all">{prompt.contentHash}</dd>
+          <dt>Approved</dt>
+          <dd className="wx-nums">{formatDate(prompt.approvedAt)}</dd>
+          <dt>Git artifact</dt>
+          <dd className="wx-data-md break-all">{prompt.gitArtifactPath}</dd>
+          <dt>Compatible backends</dt>
+          <dd className="wx-data-md">{prompt.compatibleBackendKeys.join(", ")}</dd>
+          <dt>Input schema</dt>
+          <dd className="wx-data-md break-all">{prompt.inputSchemaRef}</dd>
+          <dt>Output schema</dt>
+          <dd className="wx-data-md break-all">{prompt.outputSchemaRef}</dd>
+          <dt>Clinical reviewer attestation</dt>
+          <dd>{prompt.clinicalReviewerAttestation ?? "None recorded"}</dd>
+        </dl>
+      </section>
       <StandingNotice tone="warning">
         Version history and activation are not exposed here: no route lists a capability's prompt
         versions, and registering one (R30) is a release-pipeline step carrying the artifact's
@@ -450,76 +484,54 @@ function TransitionDialog({
   }
 
   return (
-    <Modal
-      open
-      ariaLabel="Transition capability"
-      role="alertdialog"
-      onClose={onClose}
-      width="34rem"
-    >
-      <div style={{ ...cardStyle, border: "none" }}>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600 }}>
-          Transition {detail.capability.capabilityKey}
+    <Modal open ariaLabel="Transition capability" onClose={onClose} width="34rem">
+      <div className="wx-modal-body">
+        <h2>
+          Transition <span className="wx-data-md">{detail.capability.capabilityKey}</span>
         </h2>
-        <Field label="To state" htmlFor="tx-state">
-          <select
-            id="tx-state"
-            value={toState}
-            onChange={(e) => setToState(e.target.value)}
-            style={inputStyle}
-          >
-            {detail.permittedNextStates.map((s) => (
-              <option key={s} value={s}>
-                {cap(s.toLowerCase())}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Signing as" htmlFor="tx-role">
-          <select
-            id="tx-role"
-            value={actorRole}
-            onChange={(e) => setActorRole(e.target.value)}
-            style={inputStyle}
-          >
-            {ACTOR_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {cap(r)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Evidence — evaluation run id" htmlFor="tx-run">
-          <input
-            id="tx-run"
-            value={runId}
-            onChange={(e) => setRunId(e.target.value)}
-            style={inputStyle}
-            placeholder="Required by some edges; the route decides which"
-          />
-        </Field>
-        <Field label="Rationale" htmlFor="tx-rationale">
-          <textarea
-            id="tx-rationale"
-            value={rationale}
-            onChange={(e) => setRationale(e.target.value)}
-            rows={4}
-            style={inputStyle}
-            placeholder="Why this capability may move to that state."
-          />
-        </Field>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
-            type="button"
+        <SelectField
+          id="tx-state"
+          label="To state"
+          value={toState}
+          onChange={(e) => setToState(e.target.value)}
+          options={detail.permittedNextStates.map((s) => ({
+            value: s,
+            label: cap(s.toLowerCase()),
+          }))}
+        />
+        <SelectField
+          id="tx-role"
+          label="Signing as"
+          value={actorRole}
+          onChange={(e) => setActorRole(e.target.value)}
+          options={ACTOR_ROLES.map((r) => ({ value: r, label: cap(r) }))}
+        />
+        <TextField
+          id="tx-run"
+          label="Evidence — evaluation run id"
+          value={runId}
+          onChange={(e) => setRunId(e.target.value)}
+          placeholder="Required by some edges; the route decides which"
+        />
+        <TextAreaField
+          id="tx-rationale"
+          label="Rationale"
+          value={rationale}
+          onChange={(e) => setRationale(e.target.value)}
+          rows={4}
+          placeholder="Why this capability may move to that state."
+        />
+        <div className="wx-modal-actions">
+          <Button tone="tertiary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
             onClick={() => void submit()}
+            loading={busy}
             disabled={busy || !toState || rationale.trim().length === 0}
-            style={actionButtonStyle(true, busy || !toState || rationale.trim().length === 0)}
           >
             {busy ? "Recording…" : "Record transition"}
-          </button>
-          <button type="button" onClick={onClose} style={actionButtonStyle(false)}>
-            Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

@@ -1,22 +1,29 @@
 import {
-  EmptyState,
-  FilterBar,
+  Button,
+  Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
   StatusPill,
-  WorkQueueLayout,
+  TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
+  useStaleSelection,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
-// apps/web/src/modules/34-saas — M34 SaaS Tenant Platform, the MARQUEE platform-ops inventory (R2).
+// apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the MARQUEE platform-ops inventory (R2).
 // Spec §5.1 (`/tenants` row) — the cross-tenant inventory with status filter, legal-name search, and a
 // "New tenant" CTA. Backed by GET /api/v1/platform/tenants (cursor-paginated CursorPage<TenantSummary>)
 // via the generated typed client; reads run under withPlatformContext server-side (F03/F09 audited).
-// Lantern: No-Line table, primary-tint selected row, mono org slug (wx-data-md), tabular-nums dates,
-// CSS-var tokens only. Status pills resolve through the shared §6.6 tone map (saas-status.ts).
+// The redesign's list + right drawer: a row opens the tenant's summary in the drawer, kept in
+// `?tenant=<orgSlug>`; the drawer links on to the full §5.2 overview at `/tenants/:orgSlug`.
+// Status pills resolve through the shared §6.6 tone map (saas-status.ts).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { lifecycleTone, statusLabel } from "./saas-status";
+import { TenantProvisionDrawer } from "./tenant-provision";
 
 // §5.2 eleven-state tenant lifecycle (the UI owns its copy of the wire enum for the filter options).
 const LIFECYCLE_STATUSES = [
@@ -32,6 +39,9 @@ const LIFECYCLE_STATUSES = [
   "destruction_pending",
   "destroyed",
 ] as const;
+
+const PAGE_LIMIT = 50;
+const NEW_TENANT = "new";
 
 interface TenantSummary {
   id: string;
@@ -52,59 +62,80 @@ interface TenantPage {
 
 export function TenantInventory(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedSlug = params.get("tenant");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  // The text the list was last searched with: typing alone must not refetch, only Enter / Search.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  // A slower earlier response must not overwrite a newer one.
+  const guard = useRequestGuard();
   const [items, setItems] = useState<TenantSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
-      limit: 50,
+      limit: PAGE_LIMIT,
     };
     if (status) query.status = status as typeof query.status;
-    if (search.trim()) query.search = search.trim();
+    if (appliedSearch) query.search = appliedSearch;
     const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
       params: { query },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Tenant inventory unavailable.");
+      setLoaded(false);
       setLoading(false);
       return;
     }
     const page = data as unknown as TenantPage | undefined;
     setItems((page?.items ?? []) as TenantSummary[]);
+    setLoaded(true);
     setLoading(false);
-  }, [client, status, search]);
+  }, [client, guard, status, appliedSearch]);
 
   // Load on mount + whenever the status filter changes; the search applies on submit (Enter / Search).
   useEffect(() => {
     void load();
   }, [load]);
 
+  const onSearch = (e: FormEvent<HTMLFormElement>): void => {
+    e.preventDefault();
+    const next = search.trim();
+    if (next === appliedSearch) void load();
+    else setAppliedSearch(next);
+  };
+
+  const provisioning = selectedSlug === NEW_TENANT;
+  const selected =
+    selectedSlug && !provisioning ? items.find((t) => t.orgSlug === selectedSlug) : undefined;
+  useStaleSelection({
+    param: "tenant",
+    ready: loaded,
+    found: selected !== undefined,
+    ignore: [NEW_TENANT],
+  });
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Tenants"
-          actions={
-            <button type="button" onClick={() => alert("New tenant — provisioning ceremony")}>
-              New tenant
-            </button>
-          }
-        />
-      }
-      filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => void load()}>
-              Search
-            </button>
-          }
-        >
+    <div className={`wx-list-drawer${selected || provisioning ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Tenants</h1>
+            <p>Every hospice tenant on the platform, by lifecycle status.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button onClick={() => setParams({ tenant: NEW_TENANT })}>New tenant</Button>
+          </div>
+        </header>
+
+        <form className="wx-list-toolbar" onSubmit={onSearch}>
           <select
             aria-label="Lifecycle status"
             value={status}
@@ -117,27 +148,34 @@ export function TenantInventory(): JSX.Element {
               </option>
             ))}
           </select>
-          <input
-            aria-label="Search legal business name"
-            placeholder="Legal business name"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void load();
-            }}
-          />
-        </FilterBar>
-      }
-      table={
+          <div className="min-w-60 flex-1">
+            <TextField
+              type="search"
+              label={<span className="wx-sr-only">Search legal business name</span>}
+              placeholder="Legal business name"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Button type="submit" tone="secondary">
+            Search
+          </Button>
+        </form>
+
         <TenantTable
           items={items}
           loading={loading}
           error={error}
           selectedSlug={selectedSlug}
-          onSelect={setSelectedSlug}
+          onSelect={(slug) => setParams({ tenant: slug })}
+          onRetry={() => void load()}
         />
-      }
-    />
+      </div>
+      {provisioning ? (
+        <TenantProvisionDrawer onClose={() => setParams({})} onAccepted={() => void load()} />
+      ) : null}
+      {selected ? <TenantDrawer tenant={selected} onClose={() => setParams({})} /> : null}
+    </div>
   );
 }
 
@@ -147,64 +185,133 @@ function TenantTable({
   error,
   selectedSlug,
   onSelect,
+  onRetry,
 }: {
   items: TenantSummary[];
   loading: boolean;
   error: string | null;
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading tenants…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No tenants" description="No tenants match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="search" size={24} />
+        <span>No tenants match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Tenants</caption>
         <thead>
           <tr>
-            <th>Tenant</th>
-            <th>Org slug</th>
-            <th>Plan</th>
-            <th>Status</th>
-            <th>Created</th>
+            <th scope="col">Tenant</th>
+            <th scope="col">Plan</th>
+            <th scope="col">Status</th>
+            <th scope="col">Created</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((tenant) => (
-            <tr
-              key={tenant.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={tenant.orgSlug === selectedSlug}
-              onClick={() => onSelect(tenant.orgSlug)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(tenant.orgSlug);
+          {items.map((tenant) => {
+            const isSelected = tenant.orgSlug === selectedSlug;
+            const open = (): void => onSelect(tenant.orgSlug);
+            return (
+              <tr
+                key={tenant.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background:
-                  tenant.orgSlug === selectedSlug ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td>{tenant.legalBusinessName}</td>
-              <td className="wx-data-md">{tenant.orgSlug}</td>
-              <td>{tenant.planLabel}</td>
-              <td>
-                <StatusPill
-                  label={statusLabel(tenant.status)}
-                  tone={lifecycleTone(tenant.status)}
-                />
-              </td>
-              <td className="tabular-nums">{new Date(tenant.createdAt).toLocaleDateString()}</td>
-            </tr>
-          ))}
+                {...interactiveRowProps(open, isSelected)}
+              >
+                <td>
+                  <span className="wx-row-title">{tenant.legalBusinessName}</span>
+                  <span className="wx-row-sub wx-data-md">{tenant.orgSlug}</span>
+                </td>
+                <td>{tenant.planLabel}</td>
+                <td>
+                  <StatusPill
+                    label={statusLabel(tenant.status)}
+                    tone={lifecycleTone(tenant.status)}
+                  />
+                </td>
+                <td className="wx-nums">{new Date(tenant.createdAt).toLocaleDateString()}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function TenantDrawer({
+  tenant,
+  onClose,
+}: {
+  tenant: TenantSummary;
+  onClose: () => void;
+}): JSX.Element {
+  const navigate = useNavigate();
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
+  return (
+    <aside className="wx-admission-drawer" aria-label="Tenant" {...drawer}>
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="building" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>{tenant.legalBusinessName}</h2>
+          <span className="wx-row-sub wx-data-md">{tenant.orgSlug}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Tenant</h3>
+            <StatusPill label={statusLabel(tenant.status)} tone={lifecycleTone(tenant.status)} />
+          </div>
+          <dl className="wx-kv">
+            <dt>Plan</dt>
+            <dd>{tenant.planLabel}</dd>
+            <dt>Tenant id</dt>
+            <dd className="wx-data-md">{tenant.id}</dd>
+            <dt>Organization id</dt>
+            <dd className="wx-data-md">{tenant.organizationId}</dd>
+            <dt>Created</dt>
+            <dd className="wx-nums">{new Date(tenant.createdAt).toLocaleString()}</dd>
+            <dt>Updated</dt>
+            <dd className="wx-nums">{new Date(tenant.updatedAt).toLocaleString()}</dd>
+          </dl>
+          <div className="wx-drawer-actions">
+            <Button
+              tone="secondary"
+              onClick={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}`)}
+            >
+              Open tenant overview
+            </Button>
+          </div>
+        </section>
+      </div>
+    </aside>
   );
 }

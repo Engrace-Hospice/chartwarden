@@ -1,0 +1,535 @@
+/* Shared WardenX app chrome (2026-09-25 redesign) — the element defaults and the sidebar/header shell,
+ * used by apps/web (shell/layout.tsx) and apps/admin (shell/layout.tsx). Lifted out of apps/web/src/index.css so
+ * the Platform-Ops console wears the same shell; each app imports it right after list-chrome.css, before its own
+ * components. Tokens stay in each app's stylesheet (apps/web's @theme is the arch:design-tokens source). */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-on-surface);
+    background: var(--color-background);
+  }
+  /* Headings use the Manrope display face. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  /* Screens author bare elements (<a>/<input>/<select>/<button>) and lean on these defaults. */
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  button {
+    font: inherit;
+  }
+  input,
+  select,
+  textarea {
+    font: inherit;
+    padding: 0.45rem 0.7rem;
+    /* Controls carry the redesign's hairline edge on a white field (mockups). */
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    color: var(--color-on-surface);
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+    background: var(--color-surface-lowest);
+  }
+  .wx-button:focus-visible,
+  .wx-field input:focus-visible,
+  .wx-field select:focus-visible,
+  .wx-field textarea:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .wx-button:not(:disabled):hover {
+    filter: brightness(0.96);
+  }
+  .dark .wx-button:not(:disabled):hover {
+    filter: brightness(1.12);
+  }
+  .wx-button-tertiary:not(:disabled):hover {
+    background: var(--color-primary-tint);
+  }
+  .wx-data-row-interactive {
+    cursor: pointer;
+  }
+  .wx-data-row-interactive:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+  /* Identifiers/codes read in the mono face (MRN, MBI, claim/control numbers). */
+  code,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 0.625rem 0.875rem;
+    /* Hairline row separator (mockup tables). */
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  th {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+  /* Financial/numeric alignment per DESIGN.md §6.7. */
+  td:has(> .tabular),
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* ---- App shell (apps/web/src/shell/layout.tsx — NO inline styles, must be defined) ---- */
+  /* `height` (not `min-height`) so the flex column is CLAMPED to the viewport — .wx-body/
+     .wx-main/.wx-nav below are all `flex: 1; min-height: 0; overflow: auto` expecting exactly
+     that clamp to turn into their own internal scrollbars. `min-height: 100vh` let the whole
+     shell grow past the viewport on any sufficiently long page, so the WINDOW scrolled instead
+     of .wx-main/.wx-nav scrolling internally — .wx-main's `overflow: auto` never had a bounded
+     box to overflow inside of (live-browser audit #3's real root cause: the route-change
+     scroll-reset fix targeted .wx-main's own scrollTop, which this bug meant was always 0).
+     100dvh falls back to 100vh in browsers that don't parse it (the second declaration is
+     simply invalid and dropped, per cascade). */
+  .wx-shell {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--color-background);
+  }
+  /* ---- Sidebar: brand + curated primary nav (primary-nav.ts), full viewport height ---- */
+  .wx-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 13.25rem;
+    flex-shrink: 0;
+    background: var(--color-sidebar);
+    border-right: 1px solid var(--color-card-border);
+    min-height: 0;
+  }
+  .wx-brand-block {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 1rem 1.125rem 1.25rem;
+    color: inherit;
+  }
+  .wx-brand-block:hover {
+    text-decoration: none;
+  }
+  .wx-brand-logo {
+    display: inline-flex;
+    color: var(--color-primary);
+  }
+  .wx-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+  .wx-brand {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    letter-spacing: -0.01em;
+    color: var(--color-on-surface);
+    white-space: nowrap;
+  }
+  .wx-brand-sub {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+  .wx-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
+    padding: 0 0.625rem 1rem;
+    overflow-y: auto;
+  }
+  .wx-nav-section + .wx-nav-section {
+    margin-top: 0.75rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-nav-section-label {
+    padding: 0.25rem 0.75rem 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .wx-nav-row {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .wx-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .wx-nav-link:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-nav-link.active {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-nav-link:focus-visible,
+  .wx-nav-child:focus-visible,
+  .wx-nav-disclosure:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .wx-nav-disclosure {
+    position: absolute;
+    right: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+  .wx-nav-disclosure:hover {
+    color: var(--color-on-surface);
+  }
+  /* The mockup's rows are clean: the disclosure chevron appears on hover/focus or once expanded. */
+  .wx-nav-disclosure[aria-expanded="false"] {
+    opacity: 0;
+  }
+  .wx-nav-row:hover .wx-nav-disclosure,
+  .wx-nav-disclosure:focus-visible {
+    opacity: 1;
+  }
+  .wx-nav-children {
+    list-style: none;
+    margin: 0.125rem 0 0.25rem;
+    padding: 0 0 0 2.375rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+  }
+  .wx-nav-child {
+    display: block;
+    padding: 0.3rem 0.625rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-nav-child:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    text-decoration: none;
+  }
+  .wx-nav-child.active {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  /* ---- Column right of the sidebar: top bar + routed workspace ---- */
+  .wx-shell-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .wx-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 3.75rem;
+    padding: 0.5rem 1.5rem;
+    border-bottom: 1px solid var(--color-card-border);
+    background: var(--color-surface-lowest);
+  }
+  .wx-topnav-search {
+    position: relative;
+    flex: 1;
+    max-width: 34rem;
+  }
+  .wx-topnav-search input {
+    width: 100%;
+    height: 2.5rem;
+    padding: 0 3.5rem 0 2.5rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+    font-size: 0.875rem;
+  }
+  .wx-topnav-search input::placeholder {
+    color: var(--color-muted);
+  }
+  .wx-topnav-search-icon {
+    position: absolute;
+    left: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-muted);
+    pointer-events: none;
+  }
+  .wx-topnav-search-kbd {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-lowest);
+    color: var(--color-muted);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    pointer-events: none;
+  }
+  .wx-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+  .wx-actor {
+    position: relative;
+    margin-left: 0.5rem;
+    padding-left: 1rem;
+    border-left: 1px solid var(--color-card-border);
+  }
+  /* The signed-in actor — a menu trigger, not inert text (live-browser audit #6: a shared
+     clinical workstation needs a discoverable, direct way to sign out). */
+  .wx-actor-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    border: none;
+    background: transparent;
+    padding: 0.25rem 0.375rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface-variant);
+    cursor: pointer;
+    text-align: left;
+  }
+  .wx-actor-trigger:hover,
+  .wx-actor-trigger[aria-expanded="true"] {
+    background: var(--color-surface-container);
+  }
+  .wx-actor-trigger:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  .wx-actor-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+  .wx-actor-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+  .wx-actor-name {
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wx-actor-role {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .wx-actor-menu {
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    right: 0;
+    min-width: 10rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.375rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-card-border);
+    background: var(--color-surface-lowest);
+    box-shadow: var(--shadow-float);
+    z-index: 60;
+  }
+  .wx-actor-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 0.5rem 0.6rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .wx-actor-menu-item:hover {
+    background: var(--color-surface-container);
+  }
+  /* Header icon button (bell, theme toggle). */
+  .wx-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-on-surface-variant);
+    cursor: pointer;
+  }
+  .wx-icon-btn:hover {
+    background: var(--color-surface-container);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-icon-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+
+  /* Hide scrollbars visually */
+  .wx-no-scrollbar,
+  .wx-main,
+  .wx-nav,
+  .wx-work-table,
+  table {
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE and Edge */
+  }
+  .wx-no-scrollbar::-webkit-scrollbar,
+  .wx-main::-webkit-scrollbar,
+  .wx-nav::-webkit-scrollbar,
+  .wx-work-table::-webkit-scrollbar,
+  table::-webkit-scrollbar {
+    display: none !important; /* Chrome, Safari and Opera */
+  }
+  .wx-main:focus {
+    outline: none;
+  }
+  .wx-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  /* Every <table> scrolls horizontally instead of blowing out the layout at narrow widths
+     (TASK-033 / UI-004). `display: block` on the outer element only — thead/tbody/tr/td keep
+     their table-* display by default (the UA stylesheet sets those on the descendant tags, not
+     inherited from the ancestor), so internal column layout is unaffected. Cheaper and more
+     consistent than hand-wrapping ~150 screens' raw `<table>` usages in an `overflow-x` div. */
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* ---- Responsive shell (TASK-033 / UI-004): usable down to a 390px viewport. Below the
+     breakpoint a fixed 14rem sidebar would leave under 170px for content, so the nav becomes an
+     off-canvas drawer (toggled by the header's hamburger, layout.tsx) instead of a permanent column. */
+  .wx-nav-toggle {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .wx-header {
+      flex-wrap: wrap;
+      padding: 0.5rem 0.75rem;
+    }
+    .wx-nav-toggle {
+      display: inline-flex;
+      order: -1;
+    }
+    .wx-topnav-search {
+      order: 3;
+      flex-basis: 100%;
+      max-width: none;
+    }
+    .wx-actor-text {
+      display: none;
+    }
+    .wx-nav-backdrop {
+      position: fixed;
+      inset: 0;
+      background: var(--color-scrim);
+      z-index: 40;
+    }
+    .wx-sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 50;
+      width: 85vw;
+      max-width: 18rem;
+      transform: translateX(-100%);
+      /* Hidden once off-screen so its links leave the tab order and the accessibility tree; the delay lets the slide finish. */
+      visibility: hidden;
+      transition: transform 0.2s ease, visibility 0s linear 0.2s;
+      box-shadow: var(--shadow-float);
+    }
+    .wx-sidebar.wx-nav-open {
+      transform: translateX(0);
+      visibility: visible;
+      transition: transform 0.2s ease, visibility 0s;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wx-sidebar,
+      .wx-sidebar.wx-nav-open {
+        transition: none;
+      }
+    }
+  }
+}

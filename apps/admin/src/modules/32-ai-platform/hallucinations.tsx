@@ -1,24 +1,30 @@
 import {
-  EmptyState,
+  Button,
+  Glyph,
+  InlineAlert,
   LoadingSpinner,
-  Modal,
-  PageHeader,
+  SelectField,
   StatusPill,
+  TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.5 hallucination triage queue
-// (`/admin/ai-platform/hallucinations`, `ai.hallucination.triage`). D9's queue as a kanban board keyed
-// on `ai_hallucination_triage_status`.
+// (`/admin/ai-platform/hallucinations`, `ai.hallucination.triage`). D9's queue, keyed on
+// `ai_hallucination_triage_status`: a count per triage column, then one list in column order, and a right
+// drawer (`?report=<id>`) that triages the selected report.
 //
-// COLUMN ORDER IS NOT THE ENUM ORDER. `escalated_to_clinical_safety` leads (status.ts
+// COLUMN (AND ROW) ORDER IS NOT THE ENUM ORDER. `escalated_to_clinical_safety` leads (status.ts
 // `TRIAGE_COLUMNS`), then `open`, then the working states, then `closed`. A clinical-safety escalation
-// that sorts to the far right of a six-column board is one horizontal scroll away from being missed.
+// that sorts to the bottom of the list (or the far right of a board) is one scroll away from being missed.
 //
-// NO NARRATIVE SNIPPET ON THE CARD. §5.1.5 asks for "first 200 chars of reporter narrative, PHI-redacted
+// NO NARRATIVE SNIPPET ON THE ROW. §5.1.5 asks for "first 200 chars of reporter narrative, PHI-redacted
 // server-side". The list projection (R19) carries no narrative field at all — deliberately, per the route
 // notes: the reporter's free text is the field most likely to contain the very PHI the report is about,
-// and no server-side redactor is bound. So the card shows the structured facts (kind, severity, reporter
+// and no server-side redactor is bound. So the row shows the structured facts (kind, severity, reporter
 // role, age) and the drawer triages from those. Rendering an unredacted snippet because the spec asked
 // for a redacted one is the one thing not to do here.
 //
@@ -26,18 +32,17 @@ import type { operations } from "@wardenx/ui";
 // stop the clock a clinician started (status.ts `slaBreach`).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { TRIAGE_COLUMNS, severityTone, slaBreach, triageTone } from "./status";
 import {
-  Field,
-  Kv,
+  EmptyListState,
+  ErrorState,
+  LoadingState,
   OutcomeBanner,
-  actionButtonStyle,
+  PageHead,
+  StandingNotice,
   cap,
-  cardStyle,
   formatDate,
-  inputStyle,
-  pageStyle,
 } from "./ui";
 
 type ReportPage =
@@ -53,23 +58,28 @@ const DISPOSITIONS = [
   "false_alarm",
 ] as const;
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+const SELECTED_PARAM = "report";
 
 export function HallucinationQueue(): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get(SELECTED_PARAM);
   const [reports, setReports] = useState<Report[]>([]);
   const [capabilityKeys, setCapabilityKeys] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
-  const [selected, setSelected] = useState<Report | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const [rep, caps] = await Promise.all([
       client.GET("/api/v1/ai/hallucination-reports", { params: { query: {} } }),
       client.GET("/api/v1/ai/capabilities", { params: { query: {} } }),
     ]);
+    if (!isCurrent()) return;
     if (rep.error || caps.error) {
       setError("Triage queue unavailable.");
       setLoading(false);
@@ -79,7 +89,7 @@ export function HallucinationQueue(): JSX.Element {
     const page = caps.data as CapabilityPage;
     setCapabilityKeys(new Map(page.capabilities.map((c) => [c.id, c.capabilityKey])));
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -94,93 +104,119 @@ export function HallucinationQueue(): JSX.Element {
       })),
     [reports],
   );
+  // One list in column order: the clinical-safety escalations first, `closed` last.
+  const ordered = useMemo(() => columns.flatMap((c) => c.items), [columns]);
+  const selected = reports.find((r) => r.id === selectedId) ?? null;
+  const keyOf = (id: string): string => capabilityKeys.get(id) ?? id;
 
   const breaching = reports.filter((r) => slaBreach(r.reportedAt, r.closedAt, now) !== null).length;
 
   return (
-    <div style={pageStyle}>
-      <PageHeader
-        title="Hallucination triage"
-        breadcrumb="AI Platform"
-        actions={
-          <button type="button" onClick={() => void load()} style={actionButtonStyle(false)}>
-            Refresh
-          </button>
-        }
-      />
-      {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
-      {breaching > 0 ? (
-        <output aria-live="polite">
-          <StatusPill
-            label={`${breaching} report${breaching === 1 ? "" : "s"} past the 48h triage SLA`}
-            tone="warning"
-          />
-        </output>
-      ) : null}
-      {loading && reports.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : reports.length === 0 ? (
-        <EmptyState
-          title="No reports filed"
-          description="Clinicians have filed no hallucination reports."
-        />
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${columns.length}, minmax(15rem, 1fr))`,
-            gap: "0.9rem",
-            overflowX: "auto",
-          }}
+    <div className={`wx-list-drawer${selectedId ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Hallucination triage"
+          description="Clinician-filed hallucination reports, clinical-safety escalations first."
         >
-          {columns.map(({ status, items }) => (
-            <section
-              key={status}
-              style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}
-            >
-              <h2 style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-                <StatusPill label={`${cap(status)} · ${items.length}`} tone={triageTone(status)} />
-              </h2>
-              {items.map((r) => {
-                const sla = slaBreach(r.reportedAt, r.closedAt, now);
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setSelected(r)}
-                    style={{ ...cardStyle, textAlign: "left", cursor: "pointer", gap: "0.4rem" }}
-                  >
-                    <code style={{ fontSize: "0.8rem" }}>
-                      {capabilityKeys.get(r.capabilityId) ?? r.capabilityId}
-                    </code>
-                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                      <StatusPill label={cap(r.severity)} tone={severityTone(r.severity)} />
-                      {sla ? <StatusPill label={sla.label} tone={sla.tone} /> : null}
-                    </div>
-                    <span style={{ fontSize: "0.78rem", color: "var(--color-on-surface-variant)" }}>
-                      {cap(r.hallucinationKind)}
-                    </span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--color-on-surface-variant)" }}>
-                      {r.reporterRole} · {formatDate(r.reportedAt)}
-                    </span>
-                  </button>
-                );
-              })}
-            </section>
-          ))}
-        </div>
-      )}
-      {selected ? (
+          <Button tone="secondary" onClick={() => void load()}>
+            Refresh
+          </Button>
+        </PageHead>
+        {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
+        {breaching > 0 ? (
+          <StandingNotice tone="warning" urgent>
+            {`${breaching} report${breaching === 1 ? "" : "s"} past the 48h triage SLA`}
+          </StandingNotice>
+        ) : null}
+        {loading && reports.length === 0 ? (
+          <LoadingState label="Loading triage queue…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : reports.length === 0 ? (
+          <EmptyListState
+            title="No reports filed"
+            description="Clinicians have filed no hallucination reports."
+          />
+        ) : (
+          <>
+            <div className="wx-stat-grid" aria-label="Triage summary">
+              {columns.map(({ status, items }) => (
+                <div key={status} className="wx-stat-card">
+                  <div>
+                    <span className="wx-stat-label">{cap(status)}</span>
+                    <span className="wx-stat-value wx-nums">{items.length}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="wx-list-table-wrap">
+              <table className="wx-list-table">
+                <caption className="wx-sr-only">Hallucination reports</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Capability</th>
+                    <th scope="col">Triage status</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col">SLA</th>
+                    <th scope="col">Reported</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordered.map((r) => {
+                    const sla = slaBreach(r.reportedAt, r.closedAt, now);
+                    const isSelected = r.id === selectedId;
+                    const open = (): void => setParams({ [SELECTED_PARAM]: r.id });
+                    return (
+                      <tr
+                        key={r.id}
+                        className={
+                          isSelected
+                            ? "is-selected wx-data-row-interactive"
+                            : "wx-data-row-interactive"
+                        }
+                        {...interactiveRowProps(open, isSelected)}
+                      >
+                        <td>
+                          <span className="wx-row-title wx-data-md">{keyOf(r.capabilityId)}</span>
+                          <span className="wx-row-sub">{cap(r.hallucinationKind)}</span>
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={cap(r.triageStatus)}
+                            tone={triageTone(r.triageStatus)}
+                          />
+                        </td>
+                        <td>
+                          <StatusPill label={cap(r.severity)} tone={severityTone(r.severity)} />
+                        </td>
+                        <td>{sla ? <StatusPill label={sla.label} tone={sla.tone} /> : "—"}</td>
+                        <td>
+                          <span className="wx-nums">{formatDate(r.reportedAt)}</span>
+                          <span className="wx-row-sub">{r.reporterRole}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+      {selectedId ? (
         <TriageDrawer
+          key={selectedId}
+          id={selectedId}
           report={selected}
-          capabilityKey={capabilityKeys.get(selected.capabilityId) ?? selected.capabilityId}
-          onClose={() => setSelected(null)}
+          capabilityKey={selected ? keyOf(selected.capabilityId) : null}
+          loading={loading}
+          onClose={() => setParams({})}
           onDone={(message, ok) => {
-            setSelected(null);
             setOutcome({ ok, message });
-            if (ok) void load();
+            if (ok) {
+              setParams({});
+              void load();
+            }
           }}
         />
       ) : null}
@@ -188,16 +224,92 @@ export function HallucinationQueue(): JSX.Element {
   );
 }
 
-/** R20 — record a triage decision. */
+/** The selected report in the right drawer, with R20 — record a triage decision. */
 function TriageDrawer({
+  id,
   report,
   capabilityKey,
+  loading,
   onClose,
   onDone,
 }: {
-  report: Report;
-  capabilityKey: string;
+  id: string;
+  report: Report | null;
+  capabilityKey: string | null;
+  loading: boolean;
   onClose: () => void;
+  onDone: (message: string, ok: boolean) => void;
+}): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
+  return (
+    <aside className="wx-admission-drawer" aria-label="Triage hallucination report" {...drawer}>
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="alert-circle" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>Triage report</h2>
+          <span className="wx-row-sub wx-data-md">{capabilityKey ?? id}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        {report === null ? (
+          loading ? (
+            <LoadingSpinner label="Loading report…" />
+          ) : (
+            <InlineAlert tone="info">This report is not in the triage queue.</InlineAlert>
+          )
+        ) : (
+          <>
+            <section className="wx-drawer-card">
+              <div className="wx-drawer-card-head">
+                <h3>Report</h3>
+                <StatusPill
+                  label={cap(report.triageStatus)}
+                  tone={triageTone(report.triageStatus)}
+                />
+              </div>
+              <dl className="wx-kv">
+                <dt>Capability</dt>
+                <dd>
+                  <Link
+                    className="wx-data-md"
+                    to={`/admin/ai-platform/capabilities/${report.capabilityId}`}
+                  >
+                    {capabilityKey}
+                  </Link>
+                </dd>
+                <dt>Kind</dt>
+                <dd>{cap(report.hallucinationKind)}</dd>
+                <dt>Reported by</dt>
+                <dd>{report.reporterRole}</dd>
+                <dt>Reported at</dt>
+                <dd className="wx-nums">{formatDate(report.reportedAt)}</dd>
+                <dt>Reporter severity</dt>
+                <dd>{cap(report.severity)}</dd>
+                <dt>Linked invocation</dt>
+                <dd className={report.invocationId ? "wx-data-md break-all" : undefined}>
+                  {report.invocationId ?? "None — provenance broken"}
+                </dd>
+              </dl>
+            </section>
+            {/* The reporter narrative is intentionally absent — see the file header. */}
+            <TriageForm report={report} onDone={onDone} />
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function TriageForm({
+  report,
+  onDone,
+}: {
+  report: Report;
   onDone: (message: string, ok: boolean) => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -225,90 +337,44 @@ function TriageDrawer({
   }
 
   return (
-    <Modal open ariaLabel="Triage hallucination report" onClose={onClose} width="38rem">
-      <div style={{ ...cardStyle, border: "none" }}>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600 }}>Triage report</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-          <Kv label="Capability">
-            <Link to={`/admin/ai-platform/capabilities/${report.capabilityId}`}>
-              <code>{capabilityKey}</code>
-            </Link>
-          </Kv>
-          <Kv label="Kind">{cap(report.hallucinationKind)}</Kv>
-          <Kv label="Reported by">{report.reporterRole}</Kv>
-          <Kv label="Reported at">{formatDate(report.reportedAt)}</Kv>
-          <Kv label="Reporter severity">{cap(report.severity)}</Kv>
-          <Kv label="Linked invocation">
-            {report.invocationId ? <code>{report.invocationId}</code> : "None — provenance broken"}
-          </Kv>
-        </div>
-        {/* The reporter narrative is intentionally absent — see the file header. */}
-        <Field label="Move to" htmlFor="tr-status">
-          <select
-            id="tr-status"
-            value={toStatus}
-            onChange={(e) => setToStatus(e.target.value)}
-            style={inputStyle}
-          >
-            {TRIAGE_COLUMNS.map((s) => (
-              <option key={s} value={s}>
-                {cap(s)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Re-classified severity" htmlFor="tr-severity">
-          <select
-            id="tr-severity"
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value)}
-            style={inputStyle}
-          >
-            {SEVERITIES.map((s) => (
-              <option key={s} value={s}>
-                {cap(s)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Disposition" htmlFor="tr-disposition">
-          <select
-            id="tr-disposition"
-            value={disposition}
-            onChange={(e) => setDisposition(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Not yet determined</option>
-            {DISPOSITIONS.map((d) => (
-              <option key={d} value={d}>
-                {cap(d)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Mitigation reference" htmlFor="tr-action">
-          <input
-            id="tr-action"
-            value={actionRef}
-            onChange={(e) => setActionRef(e.target.value)}
-            style={inputStyle}
-            placeholder="Ticket / PR / incident id"
-          />
-        </Field>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={busy}
-            style={actionButtonStyle(true, busy)}
-          >
-            {busy ? "Saving…" : "Record triage"}
-          </button>
-          <button type="button" onClick={onClose} style={actionButtonStyle(false)}>
-            Cancel
-          </button>
-        </div>
+    <section className="wx-drawer-card">
+      <h3>Triage decision</h3>
+      <SelectField
+        id="tr-status"
+        label="Move to"
+        value={toStatus}
+        onChange={(e) => setToStatus(e.target.value)}
+        options={TRIAGE_COLUMNS.map((s) => ({ value: s, label: cap(s) }))}
+      />
+      <SelectField
+        id="tr-severity"
+        label="Re-classified severity"
+        value={severity}
+        onChange={(e) => setSeverity(e.target.value)}
+        options={SEVERITIES.map((s) => ({ value: s, label: cap(s) }))}
+      />
+      <SelectField
+        id="tr-disposition"
+        label="Disposition"
+        value={disposition}
+        onChange={(e) => setDisposition(e.target.value)}
+        options={[
+          { value: "", label: "Not yet determined" },
+          ...DISPOSITIONS.map((d) => ({ value: d, label: cap(d) })),
+        ]}
+      />
+      <TextField
+        id="tr-action"
+        label="Mitigation reference"
+        value={actionRef}
+        onChange={(e) => setActionRef(e.target.value)}
+        placeholder="Ticket / PR / incident id"
+      />
+      <div className="wx-drawer-actions">
+        <Button onClick={() => void submit()} loading={busy} disabled={busy}>
+          {busy ? "Saving…" : "Record triage"}
+        </Button>
       </div>
-    </Modal>
+    </section>
   );
 }

@@ -1,12 +1,4 @@
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.6 token ledger + forecast
 // (`/admin/ai-platform/tokens`, `ai.tokens.read`).
@@ -30,14 +22,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { forecastStatus } from "./status";
 import {
-  bodyRow,
-  cell,
-  cellRight,
+  EmptyListState,
+  ErrorState,
+  LoadingState,
+  PageHead,
+  SectionTitle,
   formatDate,
   formatInt,
-  pageStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type LedgerPage =
@@ -65,14 +56,17 @@ export function TokenLedger(): JSX.Element {
   const [windowOutput, setWindowOutput] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     const [f, l] = await Promise.all([
       client.GET("/api/v1/ai/tokens/forecast", { params: { query: {} } }),
       client.GET("/api/v1/ai/tokens/ledger", { params: { query: { limit: 100 } } }),
     ]);
+    if (!isCurrent()) return;
     if (f.error || l.error) {
       setError("Token ledger unavailable.");
       setLoading(false);
@@ -83,7 +77,7 @@ export function TokenLedger(): JSX.Element {
     setWindowInput(l.data.windowInputTokens);
     setWindowOutput(l.data.windowOutputTokens);
     setLoading(false);
-  }, [client]);
+  }, [client, guard]);
 
   useEffect(() => {
     void load();
@@ -91,135 +85,159 @@ export function TokenLedger(): JSX.Element {
 
   const capped = forecasts.filter((f) => f.softCap !== null || f.hardCap !== null);
   const projectedBreaches = forecasts.filter((f) => f.projectedBreach !== null).length;
+  const stats = [
+    { label: "Input tokens (window)", value: formatInt(windowInput) },
+    { label: "Output tokens (window)", value: formatInt(windowOutput) },
+    { label: "Accrual rows shown", value: formatInt(entries.length) },
+    { label: "Capabilities projected to breach", value: String(projectedBreaches) },
+  ];
 
   return (
-    <div style={pageStyle}>
-      <PageHeader title="Token ledger" breadcrumb="AI Platform" />
-      {loading && forecasts.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : (
-        <>
-          <KpiStrip>
-            <KpiCard label="Input tokens (window)" value={formatInt(windowInput)} />
-            <KpiCard label="Output tokens (window)" value={formatInt(windowOutput)} />
-            <KpiCard label="Accrual rows shown" value={formatInt(entries.length)} />
-            <KpiCard label="Capabilities projected to breach" value={String(projectedBreaches)} />
-          </KpiStrip>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Token ledger"
+          description="Token spend so far this window, and where each capability's burn rate is heading against its caps."
+        >
+          <Button tone="secondary" onClick={() => void load()}>
+            Refresh
+          </Button>
+        </PageHead>
+        {loading && forecasts.length === 0 ? (
+          <LoadingState label="Loading token ledger…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : (
+          <>
+            <div className="wx-stat-grid" aria-label="Token summary">
+              {stats.map((s) => (
+                <div key={s.label} className="wx-stat-card">
+                  <div>
+                    <span className="wx-stat-label">{s.label}</span>
+                    <span className="wx-stat-value wx-nums">{s.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-          <section>
-            <h2 style={{ fontSize: "0.95rem", fontWeight: 600, padding: "0.5rem 0" }}>
-              Forecast by capability
-            </h2>
+            <SectionTitle>Forecast by capability</SectionTitle>
             {forecasts.length === 0 ? (
-              <EmptyState
+              <EmptyListState
                 title="No spend in the current window"
                 description="No capability has accrued tokens yet."
               />
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={theadRow}>
-                    <th style={cell}>Capability</th>
-                    <th style={cell}>Window</th>
-                    <th style={cellRight}>Spent</th>
-                    <th style={cellRight}>Burn / h</th>
-                    <th style={cellRight}>Projected</th>
-                    <th style={cellRight}>Soft cap</th>
-                    <th style={cellRight}>Hard cap</th>
-                    <th style={cell}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {forecasts.map((f) => {
-                    const status = forecastStatus(
-                      f.projectedWindowTotal,
-                      f.softCap ?? null,
-                      f.hardCap ?? null,
-                    );
-                    return (
-                      <tr key={f.capabilityId} style={bodyRow}>
-                        <td style={cell}>
-                          <code>{f.capabilityKey}</code>
-                        </td>
-                        <td style={cell} className="tabular-nums">
-                          {formatDate(f.windowStart)} → {formatDate(f.windowEnd)}
-                        </td>
-                        <td style={cellRight} className="tabular-nums">
-                          {formatInt(f.spentTokens)}
-                        </td>
-                        <td style={cellRight} className="tabular-nums">
-                          {Math.round(f.burnRatePerHour).toLocaleString()}
-                        </td>
-                        <td style={cellRight} className="tabular-nums">
-                          {formatInt(Math.round(f.projectedWindowTotal))}
-                        </td>
-                        <td style={cellRight} className="tabular-nums">
-                          {f.softCap === null ? "—" : formatInt(f.softCap)}
-                        </td>
-                        <td style={cellRight} className="tabular-nums">
-                          {f.hardCap === null ? "—" : formatInt(f.hardCap)}
-                        </td>
-                        <td style={cell}>
-                          <StatusPill label={status.label} tone={status.tone} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="wx-list-table-wrap">
+                <table className="wx-list-table wx-list-table-static">
+                  <caption className="wx-sr-only">Forecast by capability</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Capability</th>
+                      <th scope="col">Window</th>
+                      <th scope="col" className="wx-num-col">
+                        Spent
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Burn / h
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Projected
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Soft cap
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Hard cap
+                      </th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecasts.map((f) => {
+                      const status = forecastStatus(
+                        f.projectedWindowTotal,
+                        f.softCap ?? null,
+                        f.hardCap ?? null,
+                      );
+                      return (
+                        <tr key={f.capabilityId}>
+                          <td className="wx-data-md">{f.capabilityKey}</td>
+                          <td className="wx-nums">
+                            {formatDate(f.windowStart)} → {formatDate(f.windowEnd)}
+                          </td>
+                          <td className="wx-num-col wx-nums">{formatInt(f.spentTokens)}</td>
+                          <td className="wx-num-col wx-nums">
+                            {Math.round(f.burnRatePerHour).toLocaleString()}
+                          </td>
+                          <td className="wx-num-col wx-nums">
+                            {formatInt(Math.round(f.projectedWindowTotal))}
+                          </td>
+                          <td className="wx-num-col wx-nums">
+                            {f.softCap === null ? "—" : formatInt(f.softCap)}
+                          </td>
+                          <td className="wx-num-col wx-nums">
+                            {f.hardCap === null ? "—" : formatInt(f.hardCap)}
+                          </td>
+                          <td>
+                            <StatusPill label={status.label} tone={status.tone} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
             {forecasts.length > 0 && capped.length === 0 ? (
               // Worth saying out loud: every row will read "Within caps" forever when no cap is set.
-              <p style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+              <p className="wx-source-line">
                 No capability in this window has a soft or hard cap configured, so no spend can
                 breach one.
               </p>
             ) : null}
-          </section>
 
-          <section>
-            <h2 style={{ fontSize: "0.95rem", fontWeight: 600, padding: "0.5rem 0" }}>
-              Recent accruals
-            </h2>
+            <SectionTitle>Recent accruals</SectionTitle>
             {entries.length === 0 ? (
-              <EmptyState title="No accruals" description="No token accrual rows in this window." />
+              <EmptyListState
+                title="No accruals"
+                description="No token accrual rows in this window."
+              />
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={theadRow}>
-                    <th style={cell}>Accrued at</th>
-                    <th style={cellRight}>Input</th>
-                    <th style={cellRight}>Output</th>
-                    <th style={cellRight}>Cloud cost</th>
-                    <th style={cell}>Local attribution</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((e) => (
-                    <tr key={e.ledgerId} style={bodyRow}>
-                      <td style={cell} className="tabular-nums">
-                        {formatDate(e.accruedAt)}
-                      </td>
-                      <td style={cellRight} className="tabular-nums">
-                        {formatInt(e.inputTokens)}
-                      </td>
-                      <td style={cellRight} className="tabular-nums">
-                        {formatInt(e.outputTokens)}
-                      </td>
-                      <td style={cellRight} className="tabular-nums">
-                        {formatUsd(e.cloudCostUsd)}
-                      </td>
-                      <td style={cell}>{e.localComputeAttribution ?? "—"}</td>
+              <div className="wx-list-table-wrap">
+                <table className="wx-list-table wx-list-table-static">
+                  <caption className="wx-sr-only">Recent accruals</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Accrued at</th>
+                      <th scope="col" className="wx-num-col">
+                        Input
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Output
+                      </th>
+                      <th scope="col" className="wx-num-col">
+                        Cloud cost
+                      </th>
+                      <th scope="col">Local attribution</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {entries.map((e) => (
+                      <tr key={e.ledgerId}>
+                        <td className="wx-nums">{formatDate(e.accruedAt)}</td>
+                        <td className="wx-num-col wx-nums">{formatInt(e.inputTokens)}</td>
+                        <td className="wx-num-col wx-nums">{formatInt(e.outputTokens)}</td>
+                        <td className="wx-num-col wx-nums">{formatUsd(e.cloudCostUsd)}</td>
+                        <td>{e.localComputeAttribution ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </section>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

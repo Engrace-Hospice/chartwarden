@@ -1,4 +1,4 @@
-import { CenteredCardLayout, PageHeader, useApiClient } from "@wardenx/ui";
+import { Button, Panel, SelectField, TextAreaField, TextField, useApiClient } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
 // refund.request). POST /api/admin/refunds (step-up + Idempotency-Key). The §4.8 four-eyes rule keeps
 // the REQUESTER distinct from the approver, so this screen only REQUESTS — approval is a separate surface.
@@ -7,18 +7,13 @@ import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import {
-  Field,
-  type Outcome,
-  OutcomeBanner,
-  actionButtonStyle,
-  failureOutcome,
-  inputStyle,
-} from "./ui";
+import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
 const MIN_REASON = 40;
+const KIND_OPTIONS = KINDS.map((k) => ({ value: k, label: k.replace(/_/g, " ") }));
+const REASON_OPTIONS = REASONS.map((r) => ({ value: r, label: r.replace(/_/g, " ") }));
 
 export function RefundNew(): JSX.Element {
   const client = useApiClient();
@@ -73,101 +68,78 @@ export function RefundNew(): JSX.Element {
   }, [client, form, canSubmit, navigate]);
 
   return (
-    <CenteredCardLayout>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "1rem",
-          padding: "1.5rem",
-          maxWidth: "34rem",
-        }}
-      >
-        <PageHeader title="Request a refund" breadcrumb="Platform Ops / Refunds" />
-        <Field label="Invoice id" htmlFor="invoice-id">
-          <input
-            id="invoice-id"
-            value={form.invoiceId}
-            onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
-            placeholder="Invoice UUID"
-            style={inputStyle}
-          />
-        </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-          <Field label="Amount (USD)" htmlFor="amount">
-            <input
-              id="amount"
-              value={form.amount}
-              inputMode="decimal"
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Kind" htmlFor="kind">
-            <select
-              id="kind"
-              value={form.kind}
-              onChange={(e) => setForm({ ...form, kind: e.target.value })}
-              style={inputStyle}
-            >
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {k.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <Field label="Reason code" htmlFor="reason-code">
-          <select
-            id="reason-code"
-            value={form.reasonCode}
-            onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
-            style={inputStyle}
-          >
-            {REASONS.map((r) => (
-              <option key={r} value={r}>
-                {r.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={`Reason detail (min ${MIN_REASON} chars)`} htmlFor="detail">
-          <textarea
-            id="detail"
-            value={form.detail}
-            onChange={(e) => setForm({ ...form, detail: e.target.value })}
-            rows={4}
-            style={{ ...inputStyle, resize: "vertical" }}
-          />
-        </Field>
-        <span
-          style={{
-            fontSize: "0.75rem",
-            color: detailShort ? "var(--color-error)" : "var(--color-on-surface-variant)",
-          }}
-        >
-          {form.detail.trim().length}/{MIN_REASON} characters
-        </span>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/refunds")}
-            style={actionButtonStyle(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={busy || !canSubmit}
-            style={actionButtonStyle(true, busy || !canSubmit)}
-          >
-            {busy ? "Submitting…" : "Submit request"}
-          </button>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Request a refund</h1>
+            <p>A request only — a different operator approves it (four-eyes).</p>
+          </div>
+        </header>
+        <div className="max-w-2xl">
+          <Panel title="Refund request" icon="rotate-ccw">
+            <div className="grid gap-4">
+              <TextField
+                id="invoice-id"
+                label="Invoice id"
+                value={form.invoiceId}
+                onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
+                placeholder="Invoice UUID"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <TextField
+                  id="amount"
+                  label="Amount (USD)"
+                  value={form.amount}
+                  inputMode="decimal"
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                />
+                <SelectField
+                  id="kind"
+                  label="Kind"
+                  value={form.kind}
+                  options={KIND_OPTIONS}
+                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
+                />
+              </div>
+              <SelectField
+                id="reason-code"
+                label="Reason code"
+                value={form.reasonCode}
+                options={REASON_OPTIONS}
+                onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
+              />
+              <div className="grid gap-1">
+                <TextAreaField
+                  id="detail"
+                  label={`Reason detail (min ${MIN_REASON} chars)`}
+                  value={form.detail}
+                  onChange={(e) => setForm({ ...form, detail: e.target.value })}
+                  rows={4}
+                />
+                <span
+                  className={`wx-nums text-xs ${
+                    detailShort
+                      ? "text-[var(--color-error)]"
+                      : "text-[var(--color-on-surface-variant)]"
+                  }`}
+                >
+                  {form.detail.trim().length}/{MIN_REASON} characters
+                </span>
+              </div>
+              {outcome ? <OutcomeBanner {...outcome} /> : null}
+              <div className="wx-action-row is-end">
+                <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
+                  Cancel
+                </Button>
+                <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
+                  Submit request
+                </Button>
+              </div>
+            </div>
+          </Panel>
         </div>
       </div>
-    </CenteredCardLayout>
+    </div>
   );
 }

@@ -49,7 +49,7 @@ export function AuditExports(): JSX.Element {
   // inventing a list endpoint that doesn't exist.
   useEffect(() => {
     // Storage can be disabled/broken (private mode, a locked-down environment) — the theme
-    // controller's `readStored()` (apps/web/src/shell/theme.ts) sets the precedent: try/catch,
+    // controller's `readStored()` (packages/ui/src/web/theme/theme-mode.ts) sets the precedent: try/catch,
     // fall back to empty rather than crash the screen.
     try {
       const stored = window.sessionStorage.getItem("wx-audit-export-ids");

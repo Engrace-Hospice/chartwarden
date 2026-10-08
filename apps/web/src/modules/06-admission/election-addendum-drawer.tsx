@@ -15,6 +15,7 @@ import {
   StatusPill,
   TextAreaField,
   TextField,
+  useDrawerA11y,
 } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -151,6 +152,7 @@ export function ElectionAddendumDrawer({
   onChanged: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const [items, setItems] = useState<AddendumItem[]>(v.items);
   const [none, setNone] = useState(v.noNonCoveredItems);
   const [explanation, setExplanation] = useState(v.clinicalExplanation ?? "");
@@ -254,7 +256,11 @@ export function ElectionAddendumDrawer({
   const ackLabel = acknowledgementLabel(v);
 
   return (
-    <aside className="wx-admission-drawer" aria-label={`Addendum version ${v.versionNumber}`}>
+    <aside
+      className="wx-admission-drawer"
+      {...drawer}
+      aria-label={`Addendum version ${v.versionNumber}`}
+    >
       <header className="wx-drawer-head">
         <span className="wx-rail-icon wx-addendum-icon" aria-hidden>
           <Glyph name="file-text" size={16} />

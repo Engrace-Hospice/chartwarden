@@ -27,7 +27,7 @@ proposals. **If a module or screen spec conflicts with architecture, architectur
 
 [`docs/README.md`](./docs/README.md) is the master index of every document under `docs/`.
 
-Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet.
+Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrome.css`; each app imports it after `@import "tailwindcss"`. Add list-chrome rules there, not to an app stylesheet. The shell (`wx-shell`, sidebar, header) and the base element defaults live in `app-shell.css` beside it, imported the same way by `apps/web` and `apps/admin`; design tokens stay per app (`apps/admin/src/index.css` keeps a copy of web's `@theme` — keep them in sync).
 
 - **Module specs** → [`docs/modules/`](./docs/modules/) (index: `docs/modules/README.md`). Resolve specs
   there, not the repo root. Module 29 sub-tasks: `docs/modules/module-29-tasks/`.
@@ -106,6 +106,7 @@ apply only when it is installed. **This file and the repo's own gates win over E
 - **Implement test-first** with the `tdd-workflow` skill (vitest); `/ecc:build-fix` after a failing
   `bun run typecheck`. The real gate is `bun run typecheck && bun run arch:fitness && bun run test`,
   not `/ecc:quality-gate` (it does not know `arch:fitness`).
+- **Mandatory pre-PR review.** Before opening a PR, pushing to `main`, or merging, run `/ecc:code-review` on the branch diff (`git diff main...HEAD`) in a fresh agent, without being asked. Fix every CRITICAL/HIGH finding (or state why not) and re-run until none remain, then say in the PR body what the review found. Add `/ecc:react-review` for `apps/web`/`apps/admin` changes and `/ecc:security-scan` for auth/PHI/RLS code. A merge still needs the user's explicit go-ahead; this review does not replace it.
 - **Review before the PR** in a fresh agent: `/ecc:code-review` (prefixed — the built-in
   `/code-review` is a different command), `/ecc:react-review` for `apps/web`, `/ecc:security-scan` for
   auth/PHI/RLS code. `database-migrations` / `postgres-patterns` are advice only; the custom migration

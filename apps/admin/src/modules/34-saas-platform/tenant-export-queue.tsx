@@ -1,13 +1,14 @@
 import {
-  EmptyState,
-  FilterBar,
+  Button,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
+  SelectField,
   StatusPill,
-  WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -15,7 +16,8 @@ import type { paths } from "@wardenx/ui";
 // manifest.json archive used for migration / BAA-termination / compliance-audit / surveyor requests).
 // One row per export job. Backed by GET /api/v1/tenant/tenant-export-jobs (tenant-scoped). Filters by
 // status + purpose (purpose is filtered client-side; the list route filters server-side on status).
-// requiredPermission: `tenant_export.list_own`. Mirrors the M40/M36 R1 work-queue exemplars exactly.
+// requiredPermission: `tenant_export.list_own`. Laid out as the redesign's list + right drawer (outbox
+// is the reference).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { TENANT_EXPORT_TONE, cap } from "./saas-status";
@@ -41,6 +43,15 @@ const STATUSES = ["requested", "generating", "fulfilled", "expired", "cancelled"
 const PURPOSES = ["migration", "baa_termination", "compliance_audit", "surveyor_request"] as const;
 type Status = (typeof STATUSES)[number];
 type Purpose = (typeof PURPOSES)[number];
+const purposeLabel = (p: Purpose): string => cap(p.replace(/_/g, " "));
+const STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  ...STATUSES.map((s) => ({ value: s, label: cap(s) })),
+];
+const PURPOSE_OPTIONS = [
+  { value: "", label: "All purposes" },
+  ...PURPOSES.map((p) => ({ value: p, label: purposeLabel(p) })),
+];
 
 // Human-readable archive size (the manifest bundle); null until generated.
 function formatBytes(n: number | null): string {
@@ -62,10 +73,12 @@ export function TenantExportQueue(): JSX.Element {
   const [purpose, setPurpose] = useState<Purpose | "">("");
   const [items, setItems] = useState<TenantExportJob[]>([]);
   const [loading, setLoading] = useState(false);
+  const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TenantExportJob | null>(null);
 
   const load = useCallback(async () => {
+    const isCurrent = guard();
     setLoading(true);
     setError(null);
     setSelected(null);
@@ -76,6 +89,7 @@ export function TenantExportQueue(): JSX.Element {
     const { data, error: err } = await client.GET("/api/v1/tenant/tenant-export-jobs", {
       params: { query },
     });
+    if (!isCurrent()) return;
     if (err) {
       setError("Could not load the tenant-export queue.");
       setLoading(false);
@@ -83,7 +97,7 @@ export function TenantExportQueue(): JSX.Element {
     }
     setItems(((data as TenantExportListPage | undefined)?.items ?? []) as TenantExportJob[]);
     setLoading(false);
-  }, [client, status]);
+  }, [client, guard, status]);
 
   useEffect(() => {
     void load();
@@ -96,57 +110,48 @@ export function TenantExportQueue(): JSX.Element {
   );
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Tenant Export Queue" breadcrumb="Exports · Full-tenant archives" />
-      }
-      filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => void load()}>
+    <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Tenant exports</h1>
+            <p>Full-tenant archive jobs for migration, BAA termination, audits and surveyors.</p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" onClick={() => void load()}>
               Apply
-            </button>
-          }
-        >
-          <select
-            aria-label="Filter by status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as Status | "")}
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {cap(s)}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by purpose"
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value as Purpose | "")}
-          >
-            <option value="">All purposes</option>
-            {PURPOSES.map((p) => (
-              <option key={p} value={p}>
-                {cap(p.replace(/_/g, " "))}
-              </option>
-            ))}
-          </select>
-        </FilterBar>
-      }
-      table={
+            </Button>
+          </div>
+        </header>
+
+        <div className="wx-list-toolbar">
+          <div className="grid w-full gap-3 md:grid-cols-2">
+            <SelectField
+              label="Status"
+              value={status}
+              options={STATUS_OPTIONS}
+              onChange={(e) => setStatus(e.target.value as Status | "")}
+            />
+            <SelectField
+              label="Purpose"
+              value={purpose}
+              options={PURPOSE_OPTIONS}
+              onChange={(e) => setPurpose(e.target.value as Purpose | "")}
+            />
+          </div>
+        </div>
+
         <ExportTable
           items={visible}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
           onSelect={setSelected}
+          onRetry={() => void load()}
         />
-      }
-      detail={
-        selected ? <ExportDetail job={selected} onClose={() => setSelected(null)} /> : undefined
-      }
-    />
+      </div>
+      {selected ? <ExportDrawer job={selected} onClose={() => setSelected(null)} /> : null}
+    </div>
   );
 }
 
@@ -156,110 +161,134 @@ function ExportTable({
   error,
   selectedId,
   onSelect,
+  onRetry,
 }: {
   items: TenantExportJob[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (j: TenantExportJob) => void;
+  onRetry: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">{error}</InlineAlert>
+        <Button tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (loading)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading the tenant-export queue…" />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No exports" description="No tenant-export jobs match this filter." />;
+    return (
+      <div className="wx-list-state">
+        <Glyph name="package" size={24} />
+        <span>No tenant-export jobs match this filter.</span>
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">Tenant export jobs</caption>
         <thead>
           <tr>
-            <th>Purpose</th>
-            <th>Status</th>
-            <th>Requested</th>
-            <th>Fulfilled</th>
-            <th>Bundle size</th>
+            <th scope="col">Purpose</th>
+            <th scope="col">Status</th>
+            <th scope="col">Requested</th>
+            <th scope="col">Fulfilled</th>
+            <th scope="col" className="wx-num-col">
+              Bundle size
+            </th>
           </tr>
         </thead>
         <tbody>
-          {items.map((j) => (
-            <tr
-              key={j.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              aria-pressed={j.id === selectedId}
-              onClick={() => onSelect(j)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(j);
+          {items.map((j) => {
+            const isSelected = j.id === selectedId;
+            const open = (): void => onSelect(j);
+            return (
+              <tr
+                key={j.id}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-              }}
-              style={{
-                cursor: "pointer",
-                background: j.id === selectedId ? "var(--color-primary-tint)" : undefined,
-              }}
-            >
-              <td>{cap(j.requestedPurpose.replace(/_/g, " "))}</td>
-              <td>
-                <StatusPill
-                  label={cap(j.status)}
-                  tone={TENANT_EXPORT_TONE[j.status] ?? "neutral"}
-                />
-              </td>
-              <td className="tabular-nums">{new Date(j.requestedAt).toLocaleDateString()}</td>
-              <td className="tabular-nums">
-                {j.fulfilledAt ? new Date(j.fulfilledAt).toLocaleDateString() : "—"}
-              </td>
-              <td className="tabular-nums">{formatBytes(j.bundleSizeBytes)}</td>
-            </tr>
-          ))}
+                {...interactiveRowProps(open, isSelected)}
+              >
+                <td>
+                  <span className="wx-row-title">{purposeLabel(j.requestedPurpose)}</span>
+                  <span className="wx-row-sub wx-data-md">{j.id.slice(0, 8)}</span>
+                </td>
+                <td>
+                  <StatusPill
+                    label={cap(j.status)}
+                    tone={TENANT_EXPORT_TONE[j.status] ?? "neutral"}
+                  />
+                </td>
+                <td className="wx-nums">{new Date(j.requestedAt).toLocaleDateString()}</td>
+                <td className="wx-nums">
+                  {j.fulfilledAt ? new Date(j.fulfilledAt).toLocaleDateString() : "—"}
+                </td>
+                <td className="wx-num-col wx-nums">{formatBytes(j.bundleSizeBytes)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function ExportDetail({
+function ExportDrawer({
   job,
   onClose,
 }: { job: TenantExportJob; onClose: () => void }): JSX.Element {
-  const row = (label: string, value: JSX.Element | string) => (
-    <div style={{ marginBottom: "0.6rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-      <div
-        style={{ fontSize: "0.85rem", color: "var(--color-on-surface)", wordBreak: "break-word" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <RightDetailPanel
-      title={
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-          <Glyph name="info" size={16} />
-          Export Job
+    <aside className="wx-admission-drawer" aria-label="Export job" {...drawer}>
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="package" size={16} />
         </span>
-      }
-      onClose={onClose}
-    >
-      {row("Job id", <span className="wx-data-md">{job.id}</span>)}
-      {row("Purpose", cap(job.requestedPurpose.replace(/_/g, " ")))}
-      {row(
-        "Status",
-        <StatusPill label={cap(job.status)} tone={TENANT_EXPORT_TONE[job.status] ?? "neutral"} />,
-      )}
-      {row(
-        "Requested at",
-        <span className="tabular-nums">{new Date(job.requestedAt).toLocaleString()}</span>,
-      )}
-      {job.fulfilledAt
-        ? row(
-            "Fulfilled at",
-            <span className="tabular-nums">{new Date(job.fulfilledAt).toLocaleString()}</span>,
-          )
-        : null}
-      {row("Bundle size", <span className="tabular-nums">{formatBytes(job.bundleSizeBytes)}</span>)}
-    </RightDetailPanel>
+        <div className="wx-drawer-head-main">
+          <h2>Export job</h2>
+          <span className="wx-row-sub wx-data-md">{job.id}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Archive</h3>
+            <StatusPill
+              label={cap(job.status)}
+              tone={TENANT_EXPORT_TONE[job.status] ?? "neutral"}
+            />
+          </div>
+          <dl className="wx-kv">
+            <dt>Job id</dt>
+            <dd className="wx-data-md break-words">{job.id}</dd>
+            <dt>Purpose</dt>
+            <dd>{purposeLabel(job.requestedPurpose)}</dd>
+            <dt>Requested at</dt>
+            <dd className="wx-nums">{new Date(job.requestedAt).toLocaleString()}</dd>
+            {job.fulfilledAt ? (
+              <>
+                <dt>Fulfilled at</dt>
+                <dd className="wx-nums">{new Date(job.fulfilledAt).toLocaleString()}</dd>
+              </>
+            ) : null}
+            <dt>Bundle size</dt>
+            <dd className="wx-nums">{formatBytes(job.bundleSizeBytes)}</dd>
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }

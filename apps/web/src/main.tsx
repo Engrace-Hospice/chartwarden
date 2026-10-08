@@ -1,4 +1,4 @@
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient, initTheme } from "@wardenx/ui";
 // WardenX type trio — SELF-HOSTED (DESIGN.md §3). No third-party CDN: external font requests would
 // leak client IPs on a PHI app. Variable faces for the display/UI axes; static weights for the mono
 // identifier face (no variable build exists). Family names: "Manrope Variable" / "Inter Variable" /
@@ -57,7 +57,6 @@ import {
   signalForStatus,
   systemScreens,
 } from "./shell";
-import { initTheme } from "./shell/theme";
 
 // Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
 initTheme();

@@ -5,8 +5,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // pragmatic choice for a first, single-surface ops slice rather than minting a new `ops.*` permission
 // category (see the backend route's own comment, apps/backend/src/bootstrap/routes/ops-outbox.ts).
 import type { ComponentType } from "react";
-import { OutboxDetail } from "./outbox-detail";
-import { OutboxList } from "./outbox-list";
+import { OutboxEventRedirect, OutboxList } from "./outbox-list";
 
 export const opsAdminScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 1,
@@ -26,7 +25,8 @@ export const opsAdminScreens: ScreenRegistryModule<ComponentType> = {
       title: "Outbox event",
       navGroup: "Platform",
       requiredPermission: "member.manage",
-      screen: OutboxDetail,
+      // The list with the event's drawer open (?event=).
+      screen: OutboxEventRedirect,
     },
   ],
 };

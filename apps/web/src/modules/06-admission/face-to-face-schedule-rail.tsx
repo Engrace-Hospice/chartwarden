@@ -9,6 +9,7 @@ import {
   SelectField,
   TextField,
   useApiClient,
+  useDrawerA11y,
 } from "@wardenx/ui";
 import { useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
@@ -48,6 +49,7 @@ export interface F2fScheduleRailProps {
 }
 
 export function F2fScheduleRail(props: F2fScheduleRailProps): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(props.onClose);
   const client = useApiClient();
   const api = useMemo(() => createElectionCertificationApi(client), [client]);
   const defaults = defaultF2fWindow(props.periodEffectiveAt);
@@ -82,7 +84,7 @@ export function F2fScheduleRail(props: F2fScheduleRailProps): JSX.Element {
   }
 
   return (
-    <aside className="wx-admission-drawer" aria-label="Schedule Face-to-Face">
+    <aside className="wx-admission-drawer" {...drawer} aria-label="Schedule Face-to-Face">
       <header className="wx-drawer-head">
         <div className="wx-drawer-head-main">
           <h2>Schedule Face-to-Face</h2>

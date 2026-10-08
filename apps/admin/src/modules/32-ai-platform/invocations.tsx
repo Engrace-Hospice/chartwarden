@@ -1,10 +1,13 @@
 import {
-  EmptyState,
-  LoadingSpinner,
-  Modal,
-  PageHeader,
+  Button,
+  Glyph,
+  InlineAlert,
   StatusPill,
+  TextField,
+  interactiveRowProps,
   useApiClient,
+  useDrawerA11y,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.4 invocation search (`/admin/ai-platform/invocations`,
@@ -18,6 +21,8 @@ import type { operations } from "@wardenx/ui";
 // "reveal" affordance is deliberately NOT built, because `ai.invocation.read` does not carry it and a
 // button that always 403s is worse than no button. The banner names the M2 elevated-access flow instead.
 //
+// The redesign's list + right drawer: a row opens the invocation in the drawer, kept in `?invocation=<id>`.
+//
 // PAGING is keyset, not offset: the route returns `nextInvokedAtBefore` and the next page feeds it back
 // as the `to` bound, so an invocation arriving mid-walk cannot shift a page boundary under the operator.
 //
@@ -29,21 +34,17 @@ import type { operations } from "@wardenx/ui";
 // tenant's patients), not something a console should fake with a fan-out.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { invocationTone } from "./status";
 import {
+  EmptyListState,
+  ErrorState,
+  LoadingState,
+  PageHead,
   StandingNotice,
-  actionButtonStyle,
-  bodyRow,
   cap,
-  cardStyle,
-  cell,
-  cellRight,
   formatDate,
   formatInt,
-  inputStyle,
-  pageStyle,
-  tableStyle,
-  theadRow,
 } from "./ui";
 
 type InvocationPage =
@@ -51,6 +52,7 @@ type InvocationPage =
 export type Invocation = InvocationPage["rows"][number];
 
 const STATUSES = ["completed", "failed", "timed_out", "killed", "capability_unavailable"] as const;
+const SELECTED_PARAM = "invocation";
 
 export interface InvocationSearchProps {
   /** When set, the capability filter is fixed and hidden — the capability detail's Invocations tab. */
@@ -64,6 +66,8 @@ export function InvocationSearch({
   embedded = false,
 }: InvocationSearchProps): JSX.Element {
   const client = useApiClient();
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get(SELECTED_PARAM);
   const [rows, setRows] = useState<Invocation[]>([]);
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
@@ -72,10 +76,11 @@ export function InvocationSearch({
   const [phiMasked, setPhiMasked] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Invocation | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(
     async (before: string | null, append: boolean) => {
+      const isCurrent = guard();
       setLoading(true);
       setError(null);
       const query: Record<string, string | number> = { limit: 50 };
@@ -87,6 +92,7 @@ export function InvocationSearch({
       const upper = before ?? (to ? new Date(to).toISOString() : null);
       if (upper) query.to = upper;
       const res = await client.GET("/api/v1/ai/invocations", { params: { query } });
+      if (!isCurrent()) return;
       if (res.error) {
         setError("Invocation log unavailable.");
         setLoading(false);
@@ -97,12 +103,102 @@ export function InvocationSearch({
       setPhiMasked(res.data.phiMasked);
       setLoading(false);
     },
-    [client, capabilityId, status, from, to],
+    [client, guard, capabilityId, status, from, to],
   );
 
   useEffect(() => {
     void load(null, false);
   }, [load]);
+
+  const select = (id: string | null): void =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set(SELECTED_PARAM, id);
+        else next.delete(SELECTED_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+
+  const filters = (
+    <>
+      <select
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+        aria-label="Filter by status"
+      >
+        <option value="">All statuses</option>
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {cap(s)}
+          </option>
+        ))}
+      </select>
+      <TextField
+        type="date"
+        label="From date"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+      />
+      <TextField type="date" label="To date" value={to} onChange={(e) => setTo(e.target.value)} />
+    </>
+  );
+
+  const table = (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table">
+        <caption className="wx-sr-only">AI invocations</caption>
+        <thead>
+          <tr>
+            <th scope="col">Invoked at</th>
+            <th scope="col">Capability</th>
+            <th scope="col">Routing</th>
+            <th scope="col" className="wx-num-col">
+              In
+            </th>
+            <th scope="col" className="wx-num-col">
+              Out
+            </th>
+            <th scope="col" className="wx-num-col">
+              Latency
+            </th>
+            <th scope="col">Status</th>
+            <th scope="col">HITL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const isSelected = r.invocationId === selectedId;
+            const open = (): void => select(r.invocationId);
+            return (
+              <tr
+                key={r.invocationId}
+                className={
+                  isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
+                }
+                {...interactiveRowProps(open, isSelected)}
+              >
+                <td className="wx-nums">{formatDate(r.invokedAt)}</td>
+                <td>
+                  <span className="wx-row-title wx-data-md">{r.capabilityKey}</span>
+                  <span className="wx-row-sub wx-data-md">{r.backendKey}</span>
+                </td>
+                <td>{cap(r.routingDecision)}</td>
+                <td className="wx-num-col wx-nums">{formatInt(r.inputTokenCount)}</td>
+                <td className="wx-num-col wx-nums">{formatInt(r.outputTokenCount)}</td>
+                <td className="wx-num-col wx-nums">{formatInt(r.durationMs)} ms</td>
+                <td>
+                  <StatusPill label={cap(r.status)} tone={invocationTone(r.status)} />
+                </td>
+                <td>{r.hitlOutcome ? cap(r.hitlOutcome) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const body = (
     <>
@@ -118,173 +214,147 @@ export function InvocationSearch({
         </StandingNotice>
       )}
       {loading && rows.length === 0 ? (
-        <LoadingSpinner />
+        <LoadingState label="Loading invocations…" />
       ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
+        <ErrorState message={error} onRetry={() => void load(null, false)} />
       ) : rows.length === 0 ? (
-        <EmptyState
+        <EmptyListState
+          glyph="search"
           title="No invocations"
           description="No invocations match these filters in the selected window."
         />
       ) : (
         <>
-          <table style={tableStyle}>
-            <thead>
-              <tr style={theadRow}>
-                <th style={cell}>Invoked at</th>
-                <th style={cell}>Capability</th>
-                <th style={cell}>Backend</th>
-                <th style={cell}>Routing</th>
-                <th style={cellRight}>In</th>
-                <th style={cellRight}>Out</th>
-                <th style={cellRight}>Latency</th>
-                <th style={cell}>Status</th>
-                <th style={cell}>HITL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.invocationId} style={bodyRow}>
-                  <td style={cell} className="tabular-nums">
-                    <button
-                      type="button"
-                      onClick={() => setSelected(r)}
-                      style={{ ...actionButtonStyle(false), padding: "0.2rem 0.4rem" }}
-                    >
-                      {formatDate(r.invokedAt)}
-                    </button>
-                  </td>
-                  <td style={cell}>
-                    <code>{r.capabilityKey}</code>
-                  </td>
-                  <td style={cell}>
-                    <code>{r.backendKey}</code>
-                  </td>
-                  <td style={cell}>{cap(r.routingDecision)}</td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatInt(r.inputTokenCount)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatInt(r.outputTokenCount)}
-                  </td>
-                  <td style={cellRight} className="tabular-nums">
-                    {formatInt(r.durationMs)} ms
-                  </td>
-                  <td style={cell}>
-                    <StatusPill label={cap(r.status)} tone={invocationTone(r.status)} />
-                  </td>
-                  <td style={cell}>{r.hitlOutcome ? cap(r.hitlOutcome) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {table}
           {cursor ? (
-            <div style={{ padding: "0.75rem", textAlign: "center" }}>
-              <button
-                type="button"
+            <div className="flex justify-center">
+              <Button
+                tone="secondary"
                 onClick={() => void load(cursor, true)}
+                loading={loading}
                 disabled={loading}
-                style={actionButtonStyle(false, loading)}
               >
                 {loading ? "Loading…" : "Load more"}
-              </button>
+              </Button>
             </div>
           ) : null}
         </>
       )}
-      <InvocationDrawer invocation={selected} onClose={() => setSelected(null)} />
     </>
   );
 
-  const filters = (
-    <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-      <select
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        style={inputStyle}
-        aria-label="Filter by status"
-      >
-        <option value="">All statuses</option>
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {cap(s)}
-          </option>
-        ))}
-      </select>
-      <input
-        type="date"
-        value={from}
-        onChange={(e) => setFrom(e.target.value)}
-        style={inputStyle}
-        aria-label="From date"
-      />
-      <input
-        type="date"
-        value={to}
-        onChange={(e) => setTo(e.target.value)}
-        style={inputStyle}
-        aria-label="To date"
-      />
-    </div>
-  );
-
-  if (embedded) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {filters}
+  const frame = `wx-list-drawer${embedded ? " p-0" : ""}${selectedId ? " has-drawer" : ""}`;
+  return (
+    <div className={frame}>
+      <div className="wx-list-drawer-main">
+        {embedded ? (
+          <div className="wx-list-toolbar">
+            <div className="wx-list-toolbar-end">{filters}</div>
+          </div>
+        ) : (
+          <PageHead
+            title="AI invocations"
+            description="The disclosure ledger: every AI call your organization made, with routing, tokens, latency and outcome."
+          >
+            {filters}
+          </PageHead>
+        )}
         {body}
       </div>
-    );
-  }
-
-  return (
-    <div style={pageStyle}>
-      <PageHeader title="AI invocations" breadcrumb="AI Platform" actions={filters} />
-      {body}
+      {selectedId ? (
+        <InvocationDrawer
+          id={selectedId}
+          invocation={rows.find((r) => r.invocationId === selectedId) ?? null}
+          onClose={() => select(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
 /** §5.1.4 row drawer — the full (already-masked) invocation projection. */
 function InvocationDrawer({
+  id,
   invocation,
   onClose,
-}: { invocation: Invocation | null; onClose: () => void }): JSX.Element | null {
-  if (!invocation) return null;
-  const fields: [string, string][] = [
-    ["Invocation", invocation.invocationId],
-    ["Capability", invocation.capabilityKey],
-    ["Backend", invocation.backendKey],
-    ["Model pin", invocation.modelVersionPin],
-    ["Prompt version", invocation.promptTemplateVersion ?? "—"],
-    ["Routing", `${cap(invocation.routingDecision)} — ${invocation.routingReason}`],
-    ["Actor role", invocation.actorRole],
-    ["Touched chart", invocation.touchedPatientChart ? "Yes" : "No"],
-    ["Disclosed to vendor", invocation.disclosedToVendor ? "Yes" : "No"],
-    ["ZDR confirmed", invocation.zdrConfirmed ? "Yes" : "No"],
-    ["Error class", invocation.errorClass ?? "—"],
-    ["Invoked at", formatDate(invocation.invokedAt)],
-    ["Completed at", formatDate(invocation.completedAt)],
-  ];
+}: { id: string; invocation: Invocation | null; onClose: () => void }): JSX.Element {
+  const drawer = useDrawerA11y<HTMLElement>(onClose);
   return (
-    <Modal open ariaLabel="Invocation detail" onClose={onClose} width="40rem">
-      <div style={{ ...cardStyle, border: "none" }}>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600 }}>Invocation detail</h2>
-        {/* Neither the patient id nor the actor membership id is shown: this is a platform-ops console
-            reading across every tenant, and the operational question ("did this capability behave?")
-            is answerable without either. */}
-        <dl style={{ display: "grid", gridTemplateColumns: "10rem 1fr", gap: "0.4rem 1rem" }}>
-          {fields.map(([k, v]) => (
-            <div key={k} style={{ display: "contents" }}>
-              <dt style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>{k}</dt>
-              <dd style={{ fontSize: "0.85rem", margin: 0, wordBreak: "break-all" }}>{v}</dd>
-            </div>
-          ))}
-        </dl>
-        <button type="button" onClick={onClose} style={actionButtonStyle(true)}>
-          Close
-        </button>
+    <aside className="wx-admission-drawer" aria-label="Invocation detail" {...drawer}>
+      <header className="wx-drawer-head">
+        <span className="wx-rail-icon" aria-hidden>
+          <Glyph name="cpu" size={16} />
+        </span>
+        <div className="wx-drawer-head-main">
+          <h2>{invocation?.capabilityKey ?? "Invocation"}</h2>
+          <span className="wx-row-sub wx-data-md">{id}</span>
+        </div>
+        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+          <Glyph name="close" size={16} />
+        </Button>
+      </header>
+      <div className="wx-drawer-body">
+        {invocation === null ? (
+          <InlineAlert tone="info">
+            This invocation is not in the loaded page. Adjust the filters or load more to find it.
+          </InlineAlert>
+        ) : (
+          <>
+            {/* Neither the patient id nor the actor membership id is shown: this is a platform-ops console
+                reading across every tenant, and the operational question ("did this capability behave?")
+                is answerable without either. */}
+            <section className="wx-drawer-card">
+              <div className="wx-drawer-card-head">
+                <h3>Call</h3>
+                <StatusPill
+                  label={cap(invocation.status)}
+                  tone={invocationTone(invocation.status)}
+                />
+              </div>
+              <dl className="wx-kv">
+                <dt>Capability</dt>
+                <dd className="wx-data-md">{invocation.capabilityKey}</dd>
+                <dt>Backend</dt>
+                <dd className="wx-data-md">{invocation.backendKey}</dd>
+                <dt>Model pin</dt>
+                <dd className="wx-data-md break-all">{invocation.modelVersionPin}</dd>
+                <dt>Prompt version</dt>
+                <dd>{invocation.promptTemplateVersion ?? "—"}</dd>
+                <dt>Routing</dt>
+                <dd>
+                  {cap(invocation.routingDecision)} — {invocation.routingReason}
+                </dd>
+                <dt>Actor role</dt>
+                <dd>{invocation.actorRole}</dd>
+                <dt>Error class</dt>
+                <dd>{invocation.errorClass ?? "—"}</dd>
+              </dl>
+            </section>
+            <section className="wx-drawer-card">
+              <h3>Disclosure</h3>
+              <dl className="wx-kv">
+                <dt>Touched chart</dt>
+                <dd>{invocation.touchedPatientChart ? "Yes" : "No"}</dd>
+                <dt>Disclosed to vendor</dt>
+                <dd>{invocation.disclosedToVendor ? "Yes" : "No"}</dd>
+                <dt>ZDR confirmed</dt>
+                <dd>{invocation.zdrConfirmed ? "Yes" : "No"}</dd>
+              </dl>
+            </section>
+            <section className="wx-drawer-card">
+              <h3>Timing</h3>
+              <dl className="wx-kv">
+                <dt>Invoked at</dt>
+                <dd className="wx-nums">{formatDate(invocation.invokedAt)}</dd>
+                <dt>Completed at</dt>
+                <dd className="wx-nums">{formatDate(invocation.completedAt)}</dd>
+                <dt>Latency</dt>
+                <dd className="wx-nums">{formatInt(invocation.durationMs)} ms</dd>
+              </dl>
+            </section>
+          </>
+        )}
       </div>
-    </Modal>
+    </aside>
   );
 }

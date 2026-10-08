@@ -1,10 +1,11 @@
 import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
+  Button,
+  InlineAlert,
+  Panel,
   StatusPill,
+  TextAreaField,
   useApiClient,
+  useRequestGuard,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
@@ -12,18 +13,18 @@ import type { operations } from "@wardenx/ui";
 // MUST differ from the requester). The server enforces both; this screen surfaces each denial as a
 // first-class outcome — REFUND_FOUR_EYES (403 approver == requester) and a stale step-up are distinct, named
 // messages, not a generic error. Hydrates the refund from GET /api/admin/refunds/:id (M35A-T03 detail GET).
+// Redesign frame: the decision in the main column, the refund summary in the right drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 import {
-  Field,
-  Kv,
+  DrawerHead,
   type Outcome,
   OutcomeBanner,
-  actionButtonStyle,
+  StateError,
+  StateLoading,
   failureOutcome,
-  inputStyle,
 } from "./ui";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
@@ -56,7 +57,9 @@ export function RefundApprove(): JSX.Element {
   const [denyReason, setDenyReason] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  const guard = useRequestGuard();
   const load = useCallback(async () => {
+    const isCurrent = guard();
     if (!id) {
       setError("No refund selected.");
       setLoading(false);
@@ -65,6 +68,7 @@ export function RefundApprove(): JSX.Element {
     setLoading(true);
     setError(null);
     const res = await client.GET("/api/admin/refunds/{id}", { params: { path: { id } } });
+    if (!isCurrent()) return;
     if (res.error) {
       setError("Refund unavailable.");
       setLoading(false);
@@ -72,7 +76,7 @@ export function RefundApprove(): JSX.Element {
     }
     setRefund(res.data);
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, guard]);
 
   useEffect(() => {
     void load();
@@ -115,85 +119,110 @@ export function RefundApprove(): JSX.Element {
     setTimeout(() => navigate("/admin/refunds"), 1000);
   }, [client, id, denyReason, navigate]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !refund)
-    return <EmptyState title="Unavailable" description={error ?? "Refund not found."} />;
+  const pageHead = (
+    <header className="wx-page-head">
+      <div>
+        <h1>Review refund</h1>
+        <p>Approve or deny a requested refund. You cannot decide a refund you requested.</p>
+      </div>
+    </header>
+  );
+
+  if (loading || error || !refund)
+    return (
+      <div className="wx-list-drawer">
+        <div className="wx-list-drawer-main">
+          {pageHead}
+          {loading ? (
+            <StateLoading label="Loading refund…" />
+          ) : (
+            <StateError message={error ?? "Refund not found."} onRetry={() => void load()} />
+          )}
+        </div>
+      </div>
+    );
 
   const decided = refund.status !== "requested";
 
   return (
-    <DetailPageLayout
-      header={<PageHeader title="Review refund" breadcrumb="Platform Ops / Refunds" />}
-      aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-          <Kv label="Organization">{orgLabel(refund.organizationName, refund.organizationId)}</Kv>
-          <Kv label="Amount">
-            <span className="tabular-nums">{formatCents(refund.amountCents)}</span>
-          </Kv>
-          <Kv label="Kind">{cap(refund.kind)}</Kv>
-          <Kv label="Reason">{cap(refund.reasonCode)}</Kv>
-          <Kv label="Requested">
-            <span className="tabular-nums">{formatDate(refund.requestedAt)}</span>
-          </Kv>
-          <Kv label="Requested by">
-            <span style={{ fontSize: "0.75rem" }}>{refund.requestedByMembershipId}</span>
-          </Kv>
-          <Kv label="Status">
+    <div className="wx-list-drawer has-drawer">
+      <div className="wx-list-drawer-main">
+        {pageHead}
+        <div className="grid max-w-xl gap-4">
+          <InlineAlert tone="info">
+            Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
+            requested. A denied step-up or a self-approval attempt is reported below.
+          </InlineAlert>
+          {outcome ? <OutcomeBanner {...outcome} /> : null}
+          {decided ? (
+            <p className="m-0 text-sm">
+              This refund is already {cap(refund.status)} — no action available.
+            </p>
+          ) : (
+            <Panel title="Decision" icon="scale">
+              <div className="grid gap-4">
+                <div className="wx-action-row">
+                  <Button loading={busy} onClick={() => void approve()}>
+                    Approve refund
+                  </Button>
+                </div>
+                <TextAreaField
+                  id="deny-reason"
+                  label="Deny reason"
+                  value={denyReason}
+                  onChange={(e) => setDenyReason(e.target.value)}
+                  rows={3}
+                  placeholder="Why is this refund being denied?"
+                />
+                <div className="wx-action-row">
+                  <Button
+                    tone="secondary"
+                    onClick={() => void deny()}
+                    disabled={busy || denyReason.trim().length === 0}
+                  >
+                    Deny refund
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+          )}
+        </div>
+      </div>
+      <RefundSummary refund={refund} />
+    </div>
+  );
+}
+
+function RefundSummary({ refund }: { refund: Refund }): JSX.Element {
+  return (
+    <aside className="wx-admission-drawer" aria-label="Refund summary">
+      <DrawerHead
+        icon="rotate-ccw"
+        title={formatCents(refund.amountCents)}
+        sub={orgLabel(refund.organizationName, refund.organizationId)}
+      />
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Refund</h3>
             <StatusPill label={cap(refund.status)} tone={refundTone(refund.status)} />
-          </Kv>
-        </div>
-      }
-    >
-      <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "34rem" }}>
-        <div
-          role="note"
-          style={{
-            fontSize: "0.8rem",
-            color: "var(--color-on-surface-variant)",
-            border: "1px solid var(--color-outline-variant)",
-            borderRadius: "var(--radius-md, 0.5rem)",
-            padding: "0.75rem 0.9rem",
-          }}
-        >
-          Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
-          requested. A denied step-up or a self-approval attempt is reported below.
-        </div>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
-        {decided ? (
-          <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-            This refund is already {cap(refund.status)} — no action available.
-          </p>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => void approve()}
-              disabled={busy}
-              style={actionButtonStyle(true, busy)}
-            >
-              {busy ? "Working…" : "Approve refund"}
-            </button>
-            <Field label="Deny reason" htmlFor="deny-reason">
-              <textarea
-                id="deny-reason"
-                value={denyReason}
-                onChange={(e) => setDenyReason(e.target.value)}
-                rows={3}
-                style={{ ...inputStyle, resize: "vertical" }}
-                placeholder="Why is this refund being denied?"
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={() => void deny()}
-              disabled={busy || denyReason.trim().length === 0}
-              style={actionButtonStyle(false, busy || denyReason.trim().length === 0)}
-            >
-              Deny refund
-            </button>
-          </>
-        )}
-      </section>
-    </DetailPageLayout>
+          </div>
+          <dl className="wx-kv">
+            <dt>Organization</dt>
+            <dd>{orgLabel(refund.organizationName, refund.organizationId)}</dd>
+            <dt>Amount</dt>
+            <dd className="wx-nums">{formatCents(refund.amountCents)}</dd>
+            <dt>Kind</dt>
+            <dd>{cap(refund.kind)}</dd>
+            <dt>Reason</dt>
+            <dd>{cap(refund.reasonCode)}</dd>
+            <dt>Requested</dt>
+            <dd className="wx-nums">{formatDate(refund.requestedAt)}</dd>
+            <dt>Requested by</dt>
+            <dd className="wx-data-md break-all">{refund.requestedByMembershipId}</dd>
+          </dl>
+        </section>
+      </div>
+    </aside>
   );
 }
