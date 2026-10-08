@@ -26,10 +26,14 @@ import { CenteredCardLayout } from "../layouts/patterns";
  * The `returnTo` to navigate to after a successful step-up, or "/" when the raw value is missing or not
  * an app-relative path. Only "/..." qualifies: "//host" and "/\\host" are protocol-relative URLs to
  * another origin in browsers, and anything with a scheme ("https:", "javascript:") is not a path at all.
+ * Control characters are refused too: the URL parser strips tab and newline, so "/\t/host" would
+ * otherwise reach the router as "//host".
  */
 export function safeReturnTo(raw: string | null | undefined): string {
   if (!raw?.startsWith("/")) return "/";
   if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point.
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return "/";
   return raw;
 }
 

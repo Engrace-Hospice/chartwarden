@@ -28,7 +28,7 @@ import {
 // A stale session gets 403 STEP_UP_REQUIRED: the confirm dialog offers a Re-verify link to the console's /step-up
 // page, which comes back here. The form (table, fiscal year, source reference) is stashed for that round trip
 // (wage-index-load-draft.ts) and restored on mount, so the operator does not have to paste the file again.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import {
   clearWageIndexDraft,
@@ -73,11 +73,16 @@ function restoredFiscalYear(fiscalYearStarting: number | undefined): number {
 }
 
 export function WageIndexLoad(): JSX.Element {
-  // Read once on mount (a render-safe read: it does not clear, so StrictMode's double initialiser is harmless).
+  // Read once on mount (a render-safe read: it does not clear, so StrictMode's double initialiser is harmless;
+  // the effect below clears it after the first render).
   const [draft] = useState(() => readWageIndexDraft());
   const [fy, setFy] = useState(() => restoredFiscalYear(draft?.fiscalYearStarting));
   const [sourceReference, setSourceReference] = useState(draft?.sourceReference ?? "");
   const [table, setTable] = useState(draft?.table ?? "");
+  // A draft is restored once: clear it now, so a later visit (or a reload) does not claim to restore it again.
+  useEffect(() => {
+    if (draft) clearWageIndexDraft();
+  }, [draft]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<WageIndexLoadResult | null>(null);

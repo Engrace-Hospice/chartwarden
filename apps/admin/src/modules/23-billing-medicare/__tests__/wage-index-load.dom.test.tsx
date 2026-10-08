@@ -154,6 +154,13 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     });
   });
 
+  it("restores a stashed draft once, clearing it on mount", () => {
+    saveWageIndexDraft({ fiscalYearStarting: FY, sourceReference: "src", table: TABLE });
+    mount();
+    expect(screen.getByText(/Restored the table/)).toBeTruthy();
+    expect(readWageIndexDraft()).toBeNull();
+  });
+
   it("restores a stashed draft on mount, and clears it after a successful load", async () => {
     saveWageIndexDraft({
       fiscalYearStarting: FY,

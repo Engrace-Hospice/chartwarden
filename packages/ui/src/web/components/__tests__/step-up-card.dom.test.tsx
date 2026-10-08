@@ -73,6 +73,8 @@ describe("safeReturnTo", () => {
     ["backslash protocol-relative", "/\\evil.example"],
     ["javascript scheme", "javascript:alert(1)"],
     ["bare relative", "admin/refunds"],
+    ["tab-prefixed protocol-relative", "/\t/evil.example"],
+    ["newline-prefixed protocol-relative", "/\n/evil.example"],
   ])("falls back to / for a %s returnTo", (_label, raw) => {
     expect(safeReturnTo(raw)).toBe("/");
   });
