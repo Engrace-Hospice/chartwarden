@@ -38,7 +38,13 @@ import {
 } from "./authoring/index";
 import { CarePlanStateError } from "./lifecycle/errors";
 import { computeNextReviewDueAt, warningOpensAt } from "./lifecycle/gate-clock";
-import { decideRecordSignature, resolveRequiredSignerSet } from "./lifecycle/required-signer-set";
+import {
+  assertActorHoldsSignerRole,
+  assertMembershipNotAlreadySigned,
+  decideRecordSignature,
+  resolveRequiredSignerSet,
+  resolveTightenedSignerSet,
+} from "./lifecycle/required-signer-set";
 import {
   checkGoalReferencesProblem,
   checkInterventionFrequency,
@@ -60,6 +66,25 @@ import {
   type PatchInterventionInput,
   type PatchProblemInput,
 } from "./routes/service";
+
+const SIGNER_SLOT_UNIQUE_CONSTRAINT = "care_plan_signature_version_membership_uq";
+const PG_UNIQUE_VIOLATION = "23505";
+
+/** A Postgres 23505 from migration 0620's one-slot-per-membership trigger (Drizzle wraps it in `.cause`). */
+function isSignerSlotCollision(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+    cause?: { code?: string; constraint?: string; message?: string };
+  };
+  if ((e?.code ?? e?.cause?.code) !== PG_UNIQUE_VIOLATION) return false;
+  return (
+    (e?.constraint ?? e?.cause?.constraint) === SIGNER_SLOT_UNIQUE_CONSTRAINT ||
+    String(e?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT) ||
+    String(e?.cause?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT)
+  );
+}
 
 const CP = schema.carePlans;
 const CPV = schema.carePlanVersions;
@@ -1129,15 +1154,11 @@ export function createDbCarePlanRouteService(
         await requireReadyToFinalize(t, v);
         let requiredSignerSet = v.requiredSignerSet;
         if (set) {
-          // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5).
-          const floor = resolveRequiredSignerSet(v.kind);
-          if (set.length < floor.length) {
-            throw new CarePlanStateError(
-              "REQUIRED_SIGNER_SET_UNMET",
-              "the Required Signer Set may not loosen the floor quorum",
-            );
-          }
-          requiredSignerSet = set;
+          // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5) — GAP-012:
+          // the requested set must COVER every floor slot, not merely be as long.
+          requiredSignerSet = [
+            ...resolveTightenedSignerSet(resolveRequiredSignerSet(v.kind), set),
+          ];
         }
         const updated = firstOrThrow(
           await t
@@ -1172,12 +1193,12 @@ export function createDbCarePlanRouteService(
       ifVersion,
       signerRole,
       at,
-      actor?: CarePlanSignActor,
+      actor: CarePlanSignActor,
       patientUnderstandingText?: string | null,
     ) {
       return withOrgContext(
         db,
-        { organizationId: org, userId: actor?.userId ?? "" },
+        { organizationId: org, userId: actor.userId },
         async (tx) => {
           const t = tx as unknown as DbClient;
           const plan = await loadPlan(t, planId);
@@ -1191,22 +1212,45 @@ export function createDbCarePlanRouteService(
             );
           }
           await requireReadyToSign(t, v);
+          // GAP-011 — bind the claimed slot (a BODY field) to the authenticated actor: they must hold the
+          // role, and one membership fills at most one slot per version.
+          assertActorHoldsSignerRole(actor.roles, signerRole);
+          const signedBy = await t
+            .select({ membershipId: SIG.membershipId })
+            .from(SIG)
+            .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
+          assertMembershipNotAlreadySigned(
+            signedBy.map((r) => r.membershipId),
+            actor.membershipId,
+          );
           const existing = await sigsFor(t, versionId);
           const decision = decideRecordSignature(
             v.requiredSignerSet as Parameters<typeof decideRecordSignature>[0],
             existing.map((s) => s.signerRole) as Parameters<typeof decideRecordSignature>[1],
             signerRole,
           );
-          await t.insert(SIG).values({
-            organizationId: org,
-            carePlanVersionId: versionId,
-            providerEntityId: v.providerEntityId,
-            locationId: v.locationId,
-            membershipId: actor?.membershipId ?? null,
-            signerRole,
-            signatureMethod: "password_step_up",
-            signedAt: new Date(at),
-          });
+          try {
+            await t.insert(SIG).values({
+              organizationId: org,
+              carePlanVersionId: versionId,
+              providerEntityId: v.providerEntityId,
+              locationId: v.locationId,
+              membershipId: actor.membershipId,
+              signerRole,
+              signatureMethod: "password_step_up",
+              signedAt: new Date(at),
+            });
+          } catch (err) {
+            // Two concurrent signs by one membership both pass the app-level check above; migration
+            // 0620's trigger is the backstop — surface it as the same 409, not a 500.
+            if (isSignerSlotCollision(err)) {
+              throw new CarePlanStateError(
+                "SIGNER_ALREADY_SIGNED",
+                "this membership has already signed a slot of this version",
+              );
+            }
+            throw err;
+          }
           let idgApplied: { applicationCount: number; changeCount: number } | null = null;
           if (decision.quorumMet && v.kind === "idg_review") {
             idgApplied = await applyIdgProposalChanges(t, {

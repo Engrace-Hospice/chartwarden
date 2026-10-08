@@ -38,6 +38,22 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "44444444-4444-4444-4444-444444444444";
 
+// GAP-011: signing is bound to the actor, so each signer slot needs its own person holding that role.
+const SIGNER_ROLES = [
+  "rn_case_manager",
+  "hospice_physician",
+  "nurse_practitioner",
+  "msw",
+  "chaplain",
+  "medical_director",
+] as const;
+const signerIds = (role: string) => {
+  const n = SIGNER_ROLES.indexOf(role as (typeof SIGNER_ROLES)[number]) + 1;
+  const tail = String(n).padStart(12, "0");
+  return { userId: `5555555${n}-5555-4555-8555-${tail}`, membershipId: `6666666${n}-6666-4666-8666-${tail}` };
+};
+const signerFor = (role: string) => ({ ...signerIds(role), roles: [role] });
+
 type Boot = { id: string; initialVersionId: string; version: number };
 type Element = { id: string; status: string; version: number };
 type Version = {
@@ -92,6 +108,14 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
       [MEMBER, USER, ORG_A],
     );
+    for (const role of SIGNER_ROLES) {
+      const { userId, membershipId } = signerIds(role);
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [userId, `${role}@m7.test`]);
+      await admin.query(
+        "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
+        [membershipId, userId, ORG_A],
+      );
+    }
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
@@ -186,7 +210,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       "2026-06-21T12:00:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
     );
     await svc.signVersion(
       ORG_A,
@@ -195,7 +219,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       3,
       "hospice_physician",
       "2026-06-21T12:05:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("hospice_physician"),
     );
     return { boot, patientId, problem };
   }
@@ -316,10 +340,42 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
       "Patient verbalized understanding",
     )) as Version;
     expect(sig1.status).toBe("in_review");
+    // GAP-011 — the claimed slot is bound to the actor. The RN holds only rn_case_manager…
+    await expect(
+      svc.signVersion(
+        ORG_A,
+        boot.id,
+        boot.initialVersionId,
+        3,
+        "hospice_physician",
+        new Date().toISOString(),
+        signerFor("rn_case_manager"),
+      ),
+    ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+    // …and even holding BOTH roles, the same membership cannot fill a second slot.
+    await expect(
+      svc.signVersion(
+        ORG_A,
+        boot.id,
+        boot.initialVersionId,
+        3,
+        "hospice_physician",
+        new Date().toISOString(),
+        { ...signerFor("rn_case_manager"), roles: ["rn_case_manager", "hospice_physician"] },
+      ),
+    ).rejects.toMatchObject({ code: "SIGNER_ALREADY_SIGNED" });
+    // The DB backstop (migration 0620) refuses the same duplicate even if a caller skipped the check.
+    await expect(
+      admin.query(
+        `INSERT INTO care_plan_signature (organization_id, care_plan_version_id, membership_id, signer_role, signature_method, signed_at)
+         VALUES ($1,$2,$3,'hospice_physician','password_step_up',now())`,
+        [ORG_A, boot.initialVersionId, signerIds("rn_case_manager").membershipId],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
     // The attending (hospice physician) fills the second slot — quorum met → signed + plan active.
     const sig2 = (await svc.signVersion(
       ORG_A,
@@ -328,7 +384,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       3,
       "hospice_physician",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      signerFor("hospice_physician"),
     )) as Version;
     expect(sig2.status).toBe("signed");
     expect(sig2.signatures.length).toBe(2);
@@ -342,7 +398,8 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       "SELECT membership_id FROM care_plan_signature WHERE care_plan_version_id=$1 AND invalidated_at IS NULL",
       [boot.initialVersionId],
     );
-    expect(sigRows.rows.every((r) => r.membership_id === MEMBER)).toBe(true);
+    // GAP-011: one membership per slot — the two signatures carry two DIFFERENT memberships.
+    expect(new Set(sigRows.rows.map((r) => r.membership_id)).size).toBe(2);
     const [versionRow] = (
       await admin.query(
         "SELECT patient_understanding_text, state_snapshot FROM care_plan_version WHERE id=$1",
@@ -383,7 +440,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
     );
     await svc.returnVersionToDraft(ORG_A, boot.id, boot.initialVersionId, 3);
     const [returned] = (
@@ -425,7 +482,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       "2026-06-21T12:00:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
     );
     await svc.signVersion(
       ORG_A,
@@ -434,7 +491,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       3,
       "hospice_physician",
       "2026-06-21T12:05:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("hospice_physician"),
     );
 
     const rev = (await svc.createVersion(ORG_A, boot.id, "interim_revision", null)) as Version;
@@ -446,10 +503,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       "2026-06-22T12:00:00.000Z",
-      {
-        userId: USER,
-        membershipId: MEMBER,
-      },
+      signerFor("rn_case_manager"),
     );
     await svc.signVersion(
       ORG_A,
@@ -458,7 +512,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       3,
       "nurse_practitioner",
       "2026-06-22T12:05:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("nurse_practitioner"),
     );
 
     const versions = await admin.query(
@@ -599,7 +653,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       review.version + 1,
       "rn_case_manager",
       "2026-06-22T12:00:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
     )) as Version;
     expect(sig.status).toBe("in_review");
     const [problemRow] = (
@@ -633,10 +687,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     let version = review.version + 1;
     const signerRoles = ["rn_case_manager", "msw", "chaplain", "medical_director"] as const;
     for (const role of signerRoles.slice(0, -1)) {
-      await svc.signVersion(ORG_A, boot.id, review.id, version, role, "2026-06-22T12:00:00.000Z", {
-        userId: USER,
-        membershipId: MEMBER,
-      });
+      await svc.signVersion(ORG_A, boot.id, review.id, version, role, "2026-06-22T12:00:00.000Z", signerFor(role));
       version++;
     }
     await admin.query(
@@ -650,10 +701,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       version,
       signerRoles[signerRoles.length - 1],
       "2026-06-22T12:00:00.000Z",
-      {
-        userId: USER,
-        membershipId: MEMBER,
-      },
+      signerFor(signerRoles[signerRoles.length - 1]),
     );
     const [problemRow] = (
       await admin.query("SELECT description FROM problem WHERE id=$1", [problem.id])
@@ -711,7 +759,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       review.version + 1,
       "rn_case_manager",
       "2026-06-22T12:00:00.000Z",
-      { userId: USER, membershipId: MEMBER },
+      signerFor("rn_case_manager"),
     );
     await svc.returnVersionToDraft(ORG_A, boot.id, review.id, review.version + 2);
     const [problemRow] = (
@@ -884,6 +932,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       2,
       "rn_case_manager",
       new Date().toISOString(),
+      signerFor("rn_case_manager"),
     );
     const returned = (await svc.returnVersionToDraft(
       ORG_A,

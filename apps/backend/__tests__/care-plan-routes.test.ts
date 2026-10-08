@@ -58,6 +58,8 @@ const PERMISSION_SEED = [
     ],
   },
   { userId: "viewer_1", permissions: ["care_plan.read"] },
+  // GAP-011: the physician is a separate person from the RN — one membership fills one slot.
+  { userId: "md_1", permissions: ["care_plan.read", "care_plan.sign"] },
 ];
 
 function makeServer(
@@ -110,7 +112,13 @@ function makeServer(
 const RN = {
   "x-test-user": "rn_1",
   "x-test-org": ORG,
-  "x-test-roles": "rn_case_manager,hospice_physician",
+  "x-test-roles": "rn_case_manager",
+  "x-test-step-up": "true",
+};
+const PHYSICIAN = {
+  "x-test-user": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "hospice_physician",
   "x-test-step-up": "true",
 };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
@@ -375,7 +383,7 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
     const sig1 = await app.inject({
       method: "POST",
       url: `/api/v1/care-plans/${planId}/versions/${versionId}/signatures`,
-      headers: RN,
+      headers: PHYSICIAN,
       payload: { ifVersion: 2, signerRole: "hospice_physician" },
     });
     expect(sig1.statusCode).toBe(201);
@@ -395,6 +403,70 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
       status: string;
     };
     expect(plan.status).toBe("active");
+  });
+
+  it("GAP-011 the edge refuses a signerRole the caller does not hold (RN claiming the physician seat)", async () => {
+    const { app } = makeServer();
+    const boot = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT_NEW}/care-plan`,
+      headers: RN,
+      payload: { admissionId: ADMISSION },
+    });
+    const planId = boot.json().id as string;
+    const versionId = boot.json().initialVersionId as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/problems`,
+      headers: RN,
+      payload: { description: "Terminal CA", kind: "terminal", source: "clinical" },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/versions/${versionId}/finalize`,
+      headers: RN,
+      payload: { ifVersion: 1 },
+    });
+    const forged = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/versions/${versionId}/signatures`,
+      headers: RN,
+      payload: { ifVersion: 2, signerRole: "hospice_physician" },
+    });
+    expect(forged.statusCode).toBeGreaterThanOrEqual(403);
+    expect(forged.statusCode).toBeLessThanOrEqual(404);
+  });
+
+  it("GAP-012 finalize refuses a client requiredSignerSet that drops a floor seat (same length)", async () => {
+    const { app } = makeServer();
+    const boot = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT_NEW}/care-plan`,
+      headers: RN,
+      payload: { admissionId: ADMISSION },
+    });
+    const planId = boot.json().id as string;
+    const versionId = boot.json().initialVersionId as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/problems`,
+      headers: RN,
+      payload: { description: "Terminal CA", kind: "terminal", source: "clinical" },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/versions/${versionId}/finalize`,
+      headers: RN,
+      payload: {
+        ifVersion: 1,
+        requiredSignerSet: [
+          { role: "rn_case_manager", count: 1 },
+          { role: "chaplain", count: 1 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("REQUIRED_SIGNER_SET_UNMET");
   });
 
   it("rejects finalize before an active terminal problem exists", async () => {

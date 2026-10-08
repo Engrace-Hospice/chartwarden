@@ -340,6 +340,9 @@ export function buildCarePlanAbacPredicates(
       if (!facts) return false;
       const eligible = SIGNER_ROLE_KEYS.filter((r) => hasRole(context, r));
       if (eligible.length === 0) return false;
+      // GAP-011: when the sign attempt names the slot it claims, the caller must hold THAT role.
+      const claimed = targetId(target, "signerRole");
+      if (claimed !== null && !eligible.includes(claimed as CarePlanSignerRole)) return false;
       // True iff the caller can satisfy at least one slot (a `|`-union slot needs any one member).
       return facts.requiredSignerSet.some((slot) =>
         slot.role
