@@ -102,6 +102,26 @@ export function createDbMembershipRoleStore(
       );
     },
 
+    async reachOf(membershipId: string) {
+      return withOrgContextFromRequest(db, async (tx) => {
+        const [row] = await tx
+          .select({
+            defaultProviderEntityId: schema.memberships.defaultProviderEntityId,
+            defaultLocationIds: schema.memberships.defaultLocationIds,
+          })
+          .from(schema.memberships)
+          .where(eq(schema.memberships.id, membershipId))
+          .limit(1);
+        const locations = row?.defaultLocationIds;
+        return {
+          providerEntityIds: row?.defaultProviderEntityId ? [row.defaultProviderEntityId] : [],
+          locationIds: Array.isArray(locations)
+            ? locations.filter((v): v is string => typeof v === "string")
+            : [],
+        };
+      });
+    },
+
     async countActiveHolders(roleId: string): Promise<number> {
       return withOrgContextFromRequest(db, async (tx) => {
         const rows = (await tx

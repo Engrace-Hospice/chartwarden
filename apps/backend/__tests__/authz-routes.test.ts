@@ -72,6 +72,8 @@ function makeServer(
     cosignRequired?: boolean;
     extraRoles?: readonly RoleView[];
     auditorLinkDelivery?: AuthzRouteDeps["auditorLinkDelivery"];
+    /** GAP-007 — the membership's default reach the grant's scope is bounded by. */
+    reach?: { providerEntityIds: string[]; locationIds: string[] };
   } = {},
 ) {
   const roles = createInMemoryRoleStore();
@@ -100,7 +102,9 @@ function makeServer(
   const extra = new Map((opts.extraRoles ?? []).map((r) => [r.roleId, r]));
   const deps: AuthzRouteDeps = {
     roles: { ...roles.store, get: (id) => extra.get(id) ?? roles.store.get(id) },
-    membershipRoles: membershipRoles.store,
+    membershipRoles: opts.reach
+      ? { ...membershipRoles.store, reachOf: () => opts.reach as never }
+      : membershipRoles.store,
     breakGlass: breakGlass.store,
     engagements: engagements.store,
     auditorSessions: auditorSessions.minter,
@@ -814,5 +818,103 @@ describe("M3-T08 authorization route inventory", () => {
       expect(res.statusCode).toBe(422);
       await app.close();
     });
+  });
+});
+
+// GAP-007 — membership_role.scope / role.scope_level / expires_at are VALIDATED at grant time (spec §2.4).
+describe("GAP-007 role grant scope and expiry rules", () => {
+  const LOC_X = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+  const LOC_Y = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+  const PE_1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
+  const assign = (app: ReturnType<typeof makeServer>["app"], payload: Record<string, unknown>) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/memberships/${MEMBERSHIP}/roles`,
+      headers: ADMIN,
+      payload,
+    });
+  const locationRole = roleView({
+    roleId: "role_loc",
+    organizationId: "org_a",
+    key: "loc_role",
+    scopeLevel: "location",
+  });
+  const locumRole = roleView({
+    roleId: "role_locum",
+    organizationId: "org_a",
+    key: "locum",
+    category: "temporary_special",
+  });
+  const orgRole = roleView({ roleId: "role_org", organizationId: "org_a", key: "org_role" });
+  const patientRole = roleView({
+    roleId: "role_pt",
+    organizationId: "org_a",
+    key: "pt_role",
+    scopeLevel: "patient",
+  });
+  const issues = (res: { json(): { error: { details?: { code: string }[] } } }) =>
+    (res.json().error.details ?? []).map((d) => d.code);
+
+  it("a location-scoped role cannot be granted org-wide, but can with location ids", async () => {
+    const { app, membershipRoles } = makeServer({ extraRoles: [locationRole] });
+    const wide = await assign(app, { roleId: "role_loc" });
+    expect(wide.statusCode).toBe(422);
+    expect(issues(wide)).toContain("ROLE_REQUIRES_NARROWING");
+    expect(await membershipRoles.store.listForMembership(MEMBERSHIP)).toEqual([]);
+    const ok = await assign(app, { roleId: "role_loc", scope: { locationIds: [LOC_X] } });
+    expect(ok.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("a location-scoped role rests on the membership's own default locations when no scope is named", async () => {
+    const { app } = makeServer({
+      extraRoles: [locationRole],
+      reach: { providerEntityIds: [], locationIds: [LOC_X] },
+    });
+    expect((await assign(app, { roleId: "role_loc" })).statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("a scope wider than the role's level, or outside the membership's reach, is refused", async () => {
+    const { app } = makeServer({
+      extraRoles: [locationRole, orgRole],
+      reach: { providerEntityIds: [PE_1], locationIds: [LOC_X] },
+    });
+    const wider = await assign(app, {
+      roleId: "role_loc",
+      scope: { locationIds: [LOC_X], providerEntityIds: [PE_1] },
+    });
+    expect(issues(wider)).toContain("SCOPE_WIDER_THAN_ROLE");
+    const outside = await assign(app, { roleId: "role_org", scope: { locationIds: [LOC_Y] } });
+    expect(outside.statusCode).toBe(422);
+    expect(issues(outside)).toContain("SCOPE_OUTSIDE_MEMBERSHIP");
+    await app.close();
+  });
+
+  it("an unknown or non-uuid scope shape is refused (no free-form write-only blob)", async () => {
+    const { app } = makeServer({ extraRoles: [orgRole] });
+    const unknownKey = await assign(app, { roleId: "role_org", scope: { floor: "3" } });
+    expect(issues(unknownKey)).toContain("SCOPE_MALFORMED");
+    const badIds = await assign(app, { roleId: "role_org", scope: { locationIds: ["nope"] } });
+    expect(issues(badIds)).toContain("SCOPE_MALFORMED");
+    await app.close();
+  });
+
+  it("a patient-scoped role is not grantable to a membership", async () => {
+    const { app } = makeServer({ extraRoles: [patientRole] });
+    expect(issues(await assign(app, { roleId: "role_pt" }))).toContain("ROLE_NOT_ASSIGNABLE");
+    await app.close();
+  });
+
+  it("a time-bound role requires a future expiresAt; any past expiresAt is refused", async () => {
+    const { app } = makeServer({ extraRoles: [locumRole, orgRole] });
+    const missing = await assign(app, { roleId: "role_locum" });
+    expect(missing.statusCode).toBe(422);
+    expect(issues(missing)).toContain("EXPIRY_REQUIRED");
+    const past = await assign(app, { roleId: "role_org", expiresAt: "2020-01-01T00:00:00Z" });
+    expect(issues(past)).toContain("EXPIRY_NOT_FUTURE");
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    expect((await assign(app, { roleId: "role_locum", expiresAt: future })).statusCode).toBe(201);
+    await app.close();
   });
 });

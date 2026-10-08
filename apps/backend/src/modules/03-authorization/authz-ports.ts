@@ -130,6 +130,13 @@ export interface MembershipRoleStore {
    * last-required-role guard (GAP-117) reads this before a revoke of a CoP-required role.
    */
   countActiveHolders(roleId: string): Promise<number> | number;
+  /**
+   * GAP-007 - the membership's DEFAULT reach (provider entity / locations), the bound a grant's `scope` must stay
+   * within and a narrowed role must rest on. Optional: the in-memory slice double reports none (no bound).
+   */
+  reachOf?(
+    membershipId: string,
+  ): Promise<import("@wardenx/auth").MembershipReach> | import("@wardenx/auth").MembershipReach;
 }
 
 // --- Break-glass -------------------------------------------------------------------------

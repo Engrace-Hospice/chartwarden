@@ -27,6 +27,7 @@ import {
   isTenantRoleReserved,
   requirePermission,
   requireSession,
+  validateRoleGrant,
 } from "@wardenx/auth";
 import {
   ForbiddenError,
@@ -306,6 +307,32 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       await assertNoEscalation(request, organizationId, userId, role.permissionKeys);
 
       const expiresAt = body.expiresAt ?? null;
+      // GAP-007 (spec §2.4) — scope validity, role.scope_level >= grant scope, and the time-bound expiry rule. The
+      // membership's own default reach bounds the scope; a store that cannot report it (the slice double) reports none.
+      const membershipReach = (await deps.membershipRoles.reachOf?.(membershipId)) ?? {
+        providerEntityIds: [],
+        locationIds: [],
+      };
+      const violations = validateRoleGrant({
+        role: { scopeLevel: role.scopeLevel, category: role.category },
+        scope: body.scope,
+        membership: membershipReach,
+        expiresAt: expiresAt === null ? null : new Date(expiresAt),
+        now: new Date(),
+      });
+      if (violations.length > 0) {
+        throw new ValidationError(
+          "the role grant breaks the scope / expiry rules",
+          violations.map((v) => ({
+            field:
+              v.code === "EXPIRY_REQUIRED" || v.code === "EXPIRY_NOT_FUTURE"
+                ? "expiresAt"
+                : "scope",
+            code: v.code,
+            message: v.message,
+          })),
+        );
+      }
       const grant = await deps.membershipRoles.assign({
         organizationId,
         membershipId,

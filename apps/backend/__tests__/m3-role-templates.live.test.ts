@@ -1,5 +1,6 @@
 /**
- * M3 role-template materialization, LIVE Postgres, as the RLS-enforced `wardenx_app` role (GAP-006).
+ * M3 role-template materialization (GAP-006) and role-grant scope (GAP-007), LIVE Postgres, as the RLS-enforced
+ * `wardenx_app` role.
  *
  * Before: nothing in production created `role` rows, so a freshly provisioned tenant had none, the first-admin
  * acceptance threw "org_admin role template is unavailable", and `GET /me/permissions` was empty.
@@ -14,12 +15,21 @@
  *   - tenant isolation: materializing org A creates nothing in org B, and org B cannot read org A's roles;
  *   - a materializer failure makes the provisioning confirm resolve `unavailable` (the worker retries).
  *
+ *   GAP-007: a grant's `scope` is no longer write-only - the actor's stamped location reach is the union of the live
+ *   roles' reach (never wider than the membership defaults), so `location_scope` denies a location outside every
+ *   scoped grant; an expired scoped grant stops narrowing; an unscoped role restores the defaults.
+ *
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m3:role-templates:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { allPermissionMirrorRows, createDbEffectivePermissionStore } from "@wardenx/auth";
+import {
+  allPermissionMirrorRows,
+  createDbActorEnrichmentReader,
+  createDbEffectivePermissionStore,
+  locationScope,
+} from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { sql } from "drizzle-orm";
@@ -209,5 +219,62 @@ describe.skipIf(!DB_URL)("M3 role-template materialization, LIVE Postgres", () =
     } as never);
     expect(result.kind).toBe("unavailable");
     expect(await roleCount(ORG_C)).toBe(0);
+  });
+
+  it("GAP-007 a scoped grant narrows the actor's stamped location reach, and location_scope denies outside it", async () => {
+    const LOC_X = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+    const LOC_Y = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+    const email = `scoped-${randomUUID().slice(0, 8)}@m3-role-templates.test`;
+    const userId = (
+      await admin.query(
+        `INSERT INTO "user" (email, email_verified, name) VALUES ($1,true,'Scoped') RETURNING id`,
+        [email],
+      )
+    ).rows[0].id as string;
+    const membershipId = (
+      await admin.query(
+        "INSERT INTO membership (user_id, organization_id, status, default_location_ids) VALUES ($1,$2,'active',$3::jsonb) RETURNING id",
+        [userId, ORG_B, JSON.stringify([LOC_X, LOC_Y])],
+      )
+    ).rows[0].id as string;
+    const roleOf = async (key: string) =>
+      (await admin.query("SELECT id FROM role WHERE organization_id=$1 AND key=$2", [ORG_B, key]))
+        .rows[0].id as string;
+    const grant = (roleId: string, scope: object, expiresAt: string | null = null) =>
+      admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id,scope,expires_at) VALUES ($1,$2,$3,$4::jsonb,$5)",
+        [ORG_B, membershipId, roleId, JSON.stringify(scope), expiresAt],
+      );
+    const read = () =>
+      createDbActorEnrichmentReader(handle.db).read({ orgId: ORG_B }, userId) as Promise<{
+        locationIds: string[];
+      }>;
+    const ctx = (locationIds: readonly string[]) =>
+      ({ locationIds, providerEntityIds: [] }) as never;
+
+    // Unscoped: the membership defaults, exactly as before.
+    await grant(await roleOf("compliance_officer"), {});
+    expect([...(await read()).locationIds].sort()).toEqual([LOC_X, LOC_Y]);
+    await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [membershipId]);
+
+    // Scoped to X: the only reach is X; location_scope allows X and denies Y.
+    await grant(await roleOf("compliance_officer"), { locationIds: [LOC_X] });
+    const narrowed = await read();
+    expect(narrowed.locationIds).toEqual([LOC_X]);
+    expect(await locationScope(ctx(narrowed.locationIds), { locationId: LOC_X })).toBe(true);
+    expect(await locationScope(ctx(narrowed.locationIds), { locationId: LOC_Y })).toBe(false);
+
+    // An unscoped second role restores the defaults (a grant narrows only its own role).
+    await grant(await roleOf("hipaa_privacy_officer"), {});
+    expect([...(await read()).locationIds].sort()).toEqual([LOC_X, LOC_Y]);
+    await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [membershipId]);
+
+    // An EXPIRED scoped grant stops narrowing (and confers nothing): back to the defaults.
+    await grant(
+      await roleOf("compliance_officer"),
+      { locationIds: [LOC_X] },
+      "2020-01-01T00:00:00Z",
+    );
+    expect([...(await read()).locationIds].sort()).toEqual([LOC_X, LOC_Y]);
   });
 });

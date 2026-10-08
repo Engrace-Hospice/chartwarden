@@ -51,3 +51,14 @@ export {
   type PlannedRole,
   planRoleTemplateMaterialization,
 } from "./template-materialization";
+export {
+  type GrantInput,
+  type GrantScopeParse,
+  type GrantViolation,
+  type MembershipReach,
+  type RoleGrantScope,
+  TIME_BOUND_ROLE_CATEGORY,
+  effectiveReach,
+  parseRoleGrantScope,
+  validateRoleGrant,
+} from "./grant-scope";
