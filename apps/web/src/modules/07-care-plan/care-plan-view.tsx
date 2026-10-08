@@ -53,7 +53,7 @@ import { cap, toneFor } from "./care-plan-status";
 
 type Tab = "goals" | "interventions" | "problems" | "revision" | "history";
 type ModalState =
-  | { kind: "problem"; problem?: Problem }
+  | { kind: "problem"; problem?: Problem; defaultKind?: "terminal" }
   | { kind: "resolve_problem"; problem: Problem }
   | { kind: "goal"; goal?: Goal; problemId?: string }
   | { kind: "intervention"; intervention?: Intervention; problemId?: string }
@@ -475,7 +475,7 @@ export function CarePlanView(): JSX.Element {
             canFinalize={canFinalize}
             canSign={canSign}
             busy={busy}
-            onAddTerminal={() => setModal({ kind: "problem" })}
+            onAddTerminal={() => setModal({ kind: "problem", defaultKind: "terminal" })}
             onContinue={() => setTab(openVersion?.status === "in_review" ? "revision" : "problems")}
             onOpenRevision={() => setTab("revision")}
             onStartRevision={() => void startVersion("interim_revision")}
@@ -1773,7 +1773,7 @@ function ProblemForm({
 }): JSX.Element {
   const client = useApiClient();
   const [description, setDescription] = useState(state.problem?.description ?? "");
-  const [kind, setKind] = useState(state.problem?.kind ?? "related");
+  const [kind, setKind] = useState(state.problem?.kind ?? state.defaultKind ?? "related");
   const [source, setSource] = useState(state.problem?.source ?? "clinical");
   const [icd10Code, setIcd10Code] = useState(state.problem?.icd10Code ?? "");
   const [snomedCode, setSnomedCode] = useState(state.problem?.snomedCode ?? "");
