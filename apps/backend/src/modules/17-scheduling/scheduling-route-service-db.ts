@@ -1920,7 +1920,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date } = {},
     ) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
+      return withOrgContext(db, orgContextFor(orgId, userId), (tx) =>
         sweepApprovedTimeOffReassignments(tx as DbClient, orgId, emit, now),
       );
     },
@@ -1931,7 +1931,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date } = {},
     ) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => ({
+      return withOrgContext(db, orgContextFor(orgId, userId), async (tx) => ({
         remindersEmitted: await emitDueCaregiverReminders(tx as DbClient, orgId, emit, now),
       }));
     },
