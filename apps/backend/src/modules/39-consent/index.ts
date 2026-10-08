@@ -90,6 +90,16 @@ export {
   type DeceasedConsentTx,
   type DeceasedConsentUnitOfWork,
 } from "./m5-patient-deceased-consumer";
+export {
+  M39_PATIENT_MERGED_CONSUMER_NAME,
+  applyPatientMerged,
+  buildM39PatientMergedConsumer,
+  createDrizzleMergeRepointUow,
+  parseMergedEvent,
+  type MergeRepointResult,
+  type MergeRepointTx,
+  type MergeRepointUnitOfWork,
+} from "./m5-patient-merged-consumer";
 // F-216 — the §4.9 hourly `m39.consent_expiration` / `m39.expiration_reminder` crons (the producer of
 // `m39.consent.expired` / `.expiring_soon`) + the platform-tenancy registration their fan-out needs.
 export {

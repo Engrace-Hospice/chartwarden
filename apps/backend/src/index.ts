@@ -1389,6 +1389,7 @@ import {
   M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
   buildM39PatientDeceasedConsumer,
+  buildM39PatientMergedConsumer,
   buildM39WorkerDeps,
   createConsentInternalNotesCipher,
   createDbConsentStore,
@@ -9056,6 +9057,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // consents (one `m39.consent.expired` each, same tx). Until bound, the evaluator's death probe was a
           // permanent `false` and a consent that should have ended at death kept authorizing PHI egress.
           buildM39PatientDeceasedConsumer({ db: dbHandle.db, outbox: m39OutboxPublisher }),
+          // M39 §4.6 (GAP-067) — `m5.patient.merged` re-points the folded-away chart's consent rows (Part 2
+          // releases and revocations included) to the survivor, emitting `m39.consent.repointed`.
+          buildM39PatientMergedConsumer({ db: dbHandle.db, outbox: m39OutboxPublisher }),
           // M22 §4.11 (GAP-023/024/038) — the LIVE render handshake. Every `*.document_requested` row was
           // written by a source module and drained by NOBODY: the decider, the two gates, the renderer and
           // (since GAP-095) the Drizzle document-row store all existed, but no binding ever joined them, so
