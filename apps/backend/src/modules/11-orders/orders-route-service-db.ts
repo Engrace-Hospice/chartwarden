@@ -46,6 +46,7 @@ import {
   ORDER_KIND_VERSION,
   type OrderCosignPolicy,
   assertSpawnAllowed,
+  assertVerbalReceivedAtPlausible,
   computeNextSpawnAt,
   computeVerbalDeadline,
   disciplineCanOrder,
@@ -996,6 +997,8 @@ export function createDbOrderBackend(
           attestationRecorded: args.verbal.verbalAttestation.length >= 100,
           recorderEligible: isVerbalRecorderDiscipline(args.order.drafterDiscipline),
         });
+        // GAP-017 -- the 48h clock starts at receivedAt: bound it against SERVER time, not the client's.
+        assertVerbalReceivedAtPlausible(args.verbal.receivedAt, new Date().toISOString());
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(args.verbal.receivedAt, {
           windowHours: policy.windowHours,
@@ -1174,6 +1177,8 @@ export function createDbOrderBackend(
           attestationRecorded: args.verbalAttestation.length >= 100,
           recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
         });
+        // GAP-017 -- the 48h clock starts at receivedAt: bound it against SERVER time, not the client's.
+        assertVerbalReceivedAtPlausible(args.receivedAt, new Date().toISOString());
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(args.receivedAt, {
           windowHours: policy.windowHours,

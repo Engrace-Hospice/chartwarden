@@ -54,9 +54,10 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PHYSICIAN_MDM = "99999999-9999-4999-8999-999999999999";
-/** Any receivedAt this far in the past already has an expired platform-default (48h) deadline —
- *  avoids waiting on a real clock or hand-editing `deadline_at` after the fact. */
-const RECEIVED_50H_AGO = new Date(Date.now() - 50 * 3_600_000).toISOString();
+/** GAP-017 -- the services bound a NEW verbal order's `receivedAt` to <= 24h before server time, so the
+ *  "already overdue" fixtures record with an in-bounds instant and `backdateVerbal` ages the row afterwards,
+ *  the way real time would. */
+const RECEIVED_20H_AGO = new Date(Date.now() - 20 * 3_600_000).toISOString();
 const RECEIVED_NOW = new Date().toISOString();
 
 describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE Postgres", () => {
@@ -286,6 +287,16 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await admin.query("DELETE FROM order_verbal_policy WHERE organization_id=$1", [ORG_A]);
   });
 
+  /** Age a freshly recorded verbal order to 50h ago (platform-default 48h deadline = 2h ago). */
+  async function backdateVerbal(targetId: string): Promise<void> {
+    await admin.query(
+      `UPDATE verbal_order SET received_at = now() - interval '50 hours',
+         effective_at = now() - interval '50 hours', deadline_at = now() - interval '2 hours'
+       WHERE target_id = $1`,
+      [targetId],
+    );
+  }
+
   it("expires M11's own verbal_pending order_record past its deadline (target_kind='order')", async () => {
     const orderId = await seedOrder(ORG_A);
     await orderService.recordVerbal(
@@ -296,13 +307,14 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
         recorderDiscipline: "rn",
         verbalAttestation: "x".repeat(100),
         readBackVerified: true,
-        effectiveAt: RECEIVED_50H_AGO,
-        receivedAt: RECEIVED_50H_AGO,
+        effectiveAt: RECEIVED_20H_AGO,
+        receivedAt: RECEIVED_20H_AGO,
         orderingPhysicianMdmId: PHYSICIAN_MDM,
       },
       SYSTEM_ORDER_ACTOR,
     );
     expect((await orderRow(orderId))?.status).toBe("verbal_pending");
+    await backdateVerbal(orderId);
 
     const { expiredVerbalOrderIds } = await orderService.expireOverdueVerbals(ORG_A);
     expect(expiredVerbalOrderIds.length).toBeGreaterThan(0);
@@ -329,11 +341,12 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
         recorderDiscipline: "rn",
         recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
-        receivedAt: RECEIVED_50H_AGO,
+        receivedAt: RECEIVED_20H_AGO,
         namedPrescriberMdmId: PHYSICIAN_MDM,
       }),
     );
     expect((await medOrderRow(orderId))?.status).toBe("verbal_pending");
+    await backdateVerbal(orderId);
 
     const { expiredVerbalOrderIds } = await orderService.expireOverdueVerbals(ORG_A);
     expect(expiredVerbalOrderIds.length).toBeGreaterThan(0);
@@ -378,10 +391,12 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
         recorderDiscipline: "rn",
         recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
-        receivedAt: RECEIVED_50H_AGO,
+        receivedAt: RECEIVED_20H_AGO,
         namedPrescriberMdmId: PHYSICIAN_MDM,
       }),
     );
+
+    await backdateVerbal(orderIdB);
 
     await orderService.expireOverdueVerbals(ORG_A);
     expect((await verbalRow(orderIdB))?.status).toBe("pending"); // untouched by ORG_A's sweep

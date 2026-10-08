@@ -54,6 +54,9 @@ export const M11_ERROR_STATUS = {
   VERBAL_WINDOW_EXCEEDS_FLOOR: 422,
   // §2.3 D3 — a tenant `order_verbal_policy.window_hours` below the minimum (must be ≥ 1).
   VERBAL_WINDOW_OUT_OF_RANGE: 422,
+  // GAP-017 -- a verbal order's `received_at` (the instant the 48h signature clock starts) is in the future
+  // beyond clock skew, or older than the bounded look-back. The clock starts at a server-checked instant.
+  VERBAL_RECEIVED_AT_OUT_OF_RANGE: 422,
   // §2.4 D5 — a standing-order template kind ∉ {lab, supply, ancillary_service}.
   STANDING_KIND_NOT_ELIGIBLE: 422,
   // §2.4 D5 — the standing-order template is not yet signed (the spawn signature-anchor is missing).
