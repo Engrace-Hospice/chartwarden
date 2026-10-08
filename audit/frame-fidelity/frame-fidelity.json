@@ -499,7 +499,7 @@
       "frameNode": "cFmyk",
       "spec": "screens/clinical/WARDENX_UI_HQRP_QUALITY.md",
       "kind": "unmatched",
-      "detail": "built · `web/30-quality`"
+      "detail": "partial · `web/30-quality`"
     },
     {
       "frameNode": "d9ZJU",
@@ -601,7 +601,7 @@
       "frameNode": "k7H99",
       "spec": "screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md",
       "kind": "unmatched",
-      "detail": "built · `web/30-quality`"
+      "detail": "partial · `web/30-quality`"
     },
     {
       "frameNode": "kEXWg",

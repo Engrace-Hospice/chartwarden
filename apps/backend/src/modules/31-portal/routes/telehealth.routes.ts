@@ -441,11 +441,13 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   // GAP-051: the vendor signs the EXACT bytes it sent, so the signature can only verify against the raw body. The
   // default JSON parser hands the handler a parsed object whose re-serialisation need not match those bytes, so the
   // webhooks live in an encapsulated scope whose JSON parser keeps the body as the raw string.
-  void app.register(async (scope) => {
-    scope.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) =>
+  // The encapsulated instance is deliberately named `app`: scripts/openapi/scan-routes.ts discovers routes by
+  // the `app.<method>("<path>")` call shape, so a differently-named scope would hide them from the contract.
+  void app.register(async (app) => {
+    app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) =>
       done(null, body),
     );
-    scope.post("/api/v1/telehealth/webhooks/daily-co", webhook);
-    scope.post("/api/v1/telehealth/webhooks/twilio-video", webhook);
+    app.post("/api/v1/telehealth/webhooks/daily-co", webhook);
+    app.post("/api/v1/telehealth/webhooks/twilio-video", webhook);
   });
 }

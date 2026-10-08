@@ -34,7 +34,7 @@
     "08-encounters": {
       "routes": 37,
       "deficit": 0,
-      "mutatingNoBody": 0
+      "mutatingNoBody": 1
     },
     "09-assessments": {
       "routes": 20,
@@ -77,7 +77,7 @@
       "mutatingNoBody": 0
     },
     "17-scheduling": {
-      "routes": 35,
+      "routes": 38,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -142,7 +142,7 @@
       "mutatingNoBody": 0
     },
     "30-quality": {
-      "routes": 61,
+      "routes": 63,
       "deficit": 0,
       "mutatingNoBody": 0
     },

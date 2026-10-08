@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 42 module screen-sets registered · 330 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 43 module screen-sets registered · 332 screens wired across web/portal/admin.
 - **admin**: 35 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 277 screen(s)
+- **web**: 279 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -272,6 +272,8 @@
 | web | 30-quality | `quality.hub` | `/quality` | `quality.measure.read` | ✅ |
 | web | 30-quality | `quality.qapi-incidents` | `/quality/qapi` | `incident.read` | ✅ |
 | web | 30-quality | `quality.mortality` | `/quality/mortality` | `mortality.read` | ✅ |
+| web | 31-portal | `portal.admin` | `/admin/portal` | `portal.account.read_list` | ✅ |
+| web | 31-portal | `portal.telehealth` | `/telehealth` | `telehealth.read_list` | ✅ |
 | web | 32-ai-platform | `ai.compliance` | `/compliance/ai` | `ai.invocation.read` | ✅ |
 | web | 32-ai-platform | `ai.opt-in` | `/organization/ai/opt-in` | `ai.tenant_opt_in` | ✅ |
 | web | 32-ai-platform | `ai.routing` | `/organization/ai/routing` | `ai.tenant_opt_in` | ✅ |

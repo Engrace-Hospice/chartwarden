@@ -20068,6 +20068,11 @@
                   "adminOverride": {
                     "type": "boolean"
                   },
+                  "adminOverrideJustification": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
                   "data": {
                     "additionalProperties": true,
                     "type": "object",
@@ -20601,6 +20606,11 @@
                   },
                   "adminOverride": {
                     "type": "boolean"
+                  },
+                  "adminOverrideJustification": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
                   },
                   "scheduleId": {
                     "format": "uuid",
@@ -99424,6 +99434,11 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  },
+                  "lateEntryReason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
                   }
                 }
               }
@@ -100010,6 +100025,11 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  },
+                  "lateEntryReason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
                   }
                 }
               }
@@ -101180,6 +101200,11 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  },
+                  "lateEntryReason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
                   }
                 }
               }
@@ -148478,6 +148503,7 @@
                     "subjectId",
                     "archivedAt",
                     "unreadCount",
+                    "patientId",
                     "members"
                   ],
                   "properties": {
@@ -148548,6 +148574,16 @@
                     },
                     "unreadCount": {
                       "type": "integer"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "members": {
                       "type": "array",
@@ -148762,7 +148798,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "messages"
+                    "messages",
+                    "patientId"
                   ],
                   "properties": {
                     "messages": {
@@ -148832,6 +148869,16 @@
                     },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -152614,6 +152661,278 @@
           "23-billing-medicare"
         ],
         "summary": "READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall-rotation": {
+      "get": {
+        "operationId": "getApiV1Oncallrotation",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-029: the on-call rotation M19's roster-sync reads (cancelled entries opt-in)",
+        "parameters": [
+          {
+            "name": "includeCancelled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "discipline",
+                      "startsAt",
+                      "endsAt",
+                      "cancelledAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "discipline": {
+                        "anyOf": [
+                          {
+                            "const": "clinical_rn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_lpn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medical_director",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "startsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "endsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "cancelledAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Oncallrotation",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-029: add an on-call rotation entry (201)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "membershipId",
+                    "discipline",
+                    "startsAt",
+                    "endsAt",
+                    "cancelledAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "discipline": {
+                      "anyOf": [
+                        {
+                          "const": "clinical_rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinical_lpn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medical_director",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "startsAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "endsAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "membershipId",
+                  "discipline",
+                  "startsAt",
+                  "endsAt"
+                ],
+                "properties": {
+                  "membershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "discipline": {
+                    "anyOf": [
+                      {
+                        "const": "clinical_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "startsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "endsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall-rotation/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1OncallrotationById",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-029: cancel an on-call rotation entry (204)",
         "parameters": [
           {
             "name": "id",
@@ -166790,8 +167109,30 @@
                           "line1": {
                             "type": "string"
                           },
+                          "line2": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "city": {
                             "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "minLength": 2,
+                                "maxLength": 2,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "postalCode": {
                             "type": "string"
@@ -166827,6 +167168,11 @@
                   },
                   "bypassMatchReview": {
                     "type": "boolean"
+                  },
+                  "bypassJustification": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
                   }
                 }
               }
@@ -190863,7 +191209,7 @@
         "tags": [
           "30-quality"
         ],
-        "summary": "Close a PIP",
+        "summary": "Initiate a PIP close (first of two steps; the nominee confirms)",
         "parameters": [
           {
             "name": "pipId",
@@ -190914,6 +191260,36 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/quality/qapi/pips/{pipId}/close/confirm": {
+      "post": {
+        "operationId": "postApiV1QualityQapiPipsByPipIdCloseConfirm",
+        "tags": [
+          "30-quality"
+        ],
+        "summary": "Confirm a pending PIP close as the nominated co-signer",
+        "parameters": [
+          {
+            "name": "pipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -191629,6 +192005,19 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "closePending": {
+                            "type": "boolean"
+                          },
+                          "closeNomineeMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -192050,6 +192439,19 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "closePending": {
+                            "type": "boolean"
+                          },
+                          "closeNomineeMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -192201,6 +192603,19 @@
                           "type": "string"
                         },
                         "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closePending": {
+                          "type": "boolean"
+                        },
+                        "closeNomineeMembershipId": {
                           "anyOf": [
                             {
                               "type": "string"
@@ -192418,7 +192833,7 @@
         "tags": [
           "30-quality"
         ],
-        "summary": "Close an SRA cycle (two-person close)",
+        "summary": "Initiate an SRA cycle close (first of two steps; the nominee confirms)",
         "parameters": [
           {
             "name": "cycleId",
@@ -192457,6 +192872,36 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/quality/sra/cycles/{cycleId}/close/confirm": {
+      "post": {
+        "operationId": "postApiV1QualitySraCyclesByCycleIdCloseConfirm",
+        "tags": [
+          "30-quality"
+        ],
+        "summary": "Confirm a pending SRA cycle close as the nominated co-signer",
+        "parameters": [
+          {
+            "name": "cycleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

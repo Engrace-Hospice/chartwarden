@@ -90,7 +90,7 @@
 | ⏸ deferred | `node:c5WGQ9` | `screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md` | No breach / security-incident screen; M4 audit holds the evidence and has no incident workflow. |
 | ⏸ deferred | `node:c96zD` | `screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md` | M32 copilot / semantic chart search has no clinician-facing screen (only compliance, opt-in, routing and preferences). |
 | ⏸ deferred | `node:cFG0u` | `screens/platform/WARDENX_UI_SYSTEM_HEALTH_DEGRADED_MODE.md` | No system-health / degraded-mode screen; the shell shows a maintenance page on 503 only. |
-| ◻ unmatched | `node:cFmyk` | `screens/clinical/WARDENX_UI_HQRP_QUALITY.md` | built · `web/30-quality` |
+| ◻ unmatched | `node:cFmyk` | `screens/clinical/WARDENX_UI_HQRP_QUALITY.md` | partial · `web/30-quality` |
 | ◻ unmatched | `node:d9ZJU` | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md` | built · `web/06-admission` |
 | ⏸ deferred | `node:dFRJ9` | `screens/integration/WARDENX_UI_HL7_INTERFACE_LOGS.md` | M29 has no screen set; interface logs are read from the database / ops tooling. |
 | ◻ unmatched | `node:e7rV0x` | `screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md` | built · `web/26-cap` |
@@ -107,7 +107,7 @@
 | ◻ unmatched | `node:j3z3U` | `screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md` | built · `admin/34-saas-platform` |
 | ◻ unmatched | `node:jFySy` | `screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md` | built · `web/39-consent` |
 | ◻ unmatched | `node:jbNOR` | `screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md` | partial · `web/30-quality` |
-| ◻ unmatched | `node:k7H99` | `screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md` | built · `web/30-quality` |
+| ◻ unmatched | `node:k7H99` | `screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md` | partial · `web/30-quality` |
 | ◻ unmatched | `node:kEXWg` | `screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md` | built · `web/12-dosespot` |
 | ◻ unmatched | `node:l00Umf` | `screens/revenue/WARDENX_UI_DENIALS_MANAGEMENT.md` | built · `web/25-remittance` |
 | ◻ unmatched | `node:lZPbZ` | `screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md` | partial · `web/06-admission` |
