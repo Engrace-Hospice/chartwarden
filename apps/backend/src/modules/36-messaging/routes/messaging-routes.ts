@@ -150,15 +150,33 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // ── channels & messages (§4.2) ───────────────────────────────────────────────────────────
 
   // --- list the channels the user is a member of (no per-channel ABAC: scoped by membership) -
-  app.get("/api/v1/messaging/channels", { preHandler: [READ] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    return { channels: await service.listChannels(organizationId, userId) };
-  });
+  app.get(
+    "/api/v1/messaging/channels",
+    {
+      preHandler: [READ],
+      // GAP-064: a channel title can name a patient ("Care Team — Patient X"); account the list read.
+      config: { auditRead: { resourceKind: "messaging_channel", list: true } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return { channels: await service.listChannels(organizationId, userId) };
+    },
+  );
 
   // --- channel detail + recent members (+ channel_visibility ABAC) ---------------------------
   app.get(
     "/api/v1/messaging/channels/:id",
-    { preHandler: [READ, VIEW_CHANNEL] },
+    {
+      preHandler: [READ, VIEW_CHANNEL],
+      // GAP-064: the patient is the care_team channel's server-derived patient, never a client value.
+      config: {
+        auditRead: {
+          resourceKind: "messaging_channel",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
@@ -169,7 +187,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- paginated message history (+ channel_visibility ABAC) ---------------------------------
   app.get(
     "/api/v1/messaging/channels/:id/messages",
-    { preHandler: [READ, VIEW_CHANNEL] },
+    {
+      preHandler: [READ, VIEW_CHANNEL],
+      // GAP-064 (spec: message reads are audited): clinical bodies are decrypted here. One aggregate
+      // list-read event per page (count + filter), attributed to the care_team channel's patient.
+      config: {
+        auditRead: { resourceKind: "message", list: true, patientIdPayloadPath: "patientId" },
+      },
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
@@ -290,10 +315,21 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // ── notification preferences & endpoints (§4.2; SELF-only) ─────────────────────────────────
 
   // --- self-read preferences -----------------------------------------------------------------
-  app.get("/api/v1/notifications/preferences", { preHandler: [PREFS] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    return service.getPreferences(organizationId, userId);
-  });
+  app.get(
+    "/api/v1/notifications/preferences",
+    {
+      preHandler: [PREFS],
+      config: {
+        auditRead: {
+          none: "self-only delivery preferences (routing map, quiet hours); no patient data is surfaced",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return service.getPreferences(organizationId, userId);
+    },
+  );
 
   // --- self-update preferences (422 INVALID_ROUTING_MAP / 409 VACATION_FORWARD_*) ------------
   app.put("/api/v1/notifications/preferences", { preHandler: [PREFS] }, async (request) => {
@@ -349,10 +385,18 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // ── alerts (§4.2) ──────────────────────────────────────────────────────────────────────────
 
   // --- the actor's recent alerts with delivery status ----------------------------------------
-  app.get("/api/v1/alerts/inbox", { preHandler: [READ] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    return { alerts: await service.alertInbox(organizationId, userId) };
-  });
+  app.get(
+    "/api/v1/alerts/inbox",
+    {
+      preHandler: [READ],
+      // GAP-064: alert summaries are clinical (SFV due, safety); account the list read.
+      config: { auditRead: { resourceKind: "alert", list: true } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return { alerts: await service.alertInbox(organizationId, userId) };
+    },
+  );
 
   // --- mark one alert read for the current actor -----------------------------------------------
   app.post("/api/v1/alerts/:id/read", { preHandler: [READ] }, async (request, reply) => {

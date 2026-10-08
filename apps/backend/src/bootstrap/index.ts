@@ -250,6 +250,12 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   // WX-PR-020 (OPS-004) — the operator outbox view. A row's `payload`/`aggregateId` can reference
   // clinical/patient aggregates depending on event type, so this is covered like any other read.
   "/api/v1/ops",
+  // M36 Messaging (GAP-064) — channel history decrypts clinical message bodies and the alert inbox
+  // surfaces clinical alert summaries; the spec requires message reads to be audited. Every GET under
+  // these is annotated (an emission config, or a justified waiver for the self-only preferences).
+  "/api/v1/messaging",
+  "/api/v1/alerts",
+  "/api/v1/notifications",
 ];
 
 /**

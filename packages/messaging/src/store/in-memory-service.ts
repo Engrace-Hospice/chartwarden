@@ -251,6 +251,7 @@ export function createInMemoryMessagingService(
       const ch = channelOr404(orgId, channelId);
       const detail: ChannelDetail = {
         ...toSummary(orgId, userId, ch),
+        patientId: ch.kind === "care_team" ? (ch.subjectId ?? null) : null,
         members: [...ch.members.entries()].map(([uid, m]) => ({
           userId: uid,
           role: m.role,
@@ -261,7 +262,7 @@ export function createInMemoryMessagingService(
     },
 
     async listMessages(orgId, input) {
-      channelOr404(orgId, input.channelId);
+      const channel = channelOr404(orgId, input.channelId);
       const limit = input.limit ?? 50;
       const rows = [...messages.values()]
         .filter((m) => m.channelId === input.channelId && m.orgId === orgId)
@@ -278,6 +279,7 @@ export function createInMemoryMessagingService(
       return {
         messages: page,
         nextCursor: rows.length > limit ? rows[limit]!.messageId : undefined,
+        patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
       };
     },
 

@@ -72,3 +72,27 @@ export function mapError(e: unknown): never {
   }
   throw e;
 }
+
+const STAFF_ROUTE_REVOKER_KINDS = ["staff", "dpoa_agent", "court_order"] as const;
+export type StaffRouteRevokerKind = (typeof STAFF_ROUTE_REVOKER_KINDS)[number];
+
+/**
+ * GAP-066: the revoke route is staff-session only, so the actor class is derived from the route, never
+ * from the body. A staff user recording a DPOA/court-order revocation is still staff and still owes the
+ * >=40-char reason + evidence document. `patient_self_via_portal` (portal route deferred) and
+ * `platform_admin_break_glass` (break-glass path only) are refused rather than trusted.
+ */
+export function deriveStaffRevocationAttribution(claimedKind: string): {
+  actorIsStaff: true;
+  revokedByKind: StaffRouteRevokerKind;
+} {
+  const kind = STAFF_ROUTE_REVOKER_KINDS.find((k) => k === claimedKind);
+  if (!kind) {
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      `revokedByKind '${claimedKind}' is not accepted on the staff revoke route`,
+      422,
+    );
+  }
+  return { actorIsStaff: true, revokedByKind: kind };
+}

@@ -137,6 +137,23 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m39.consent.repointed",
+    moduleOwner: "m39",
+    description:
+      "A patient merge (`m5.patient.merged`) moved the folded-away chart's consent rows (records, delegated access, renewal cycles) onto the survivor (spec §4.6, GAP-067). `patientId` = the survivor.",
+    payloadSchema: Type.Object({
+      ...core,
+      sourcePatientId: Type.String({ minLength: 1 }),
+      consentRecordIds: Type.Array(Type.String()),
+      delegatedAccessCount: Type.Integer({ minimum: 0 }),
+      renewalCycleCount: Type.Integer({ minimum: 0 }),
+    }),
+    // Record-only: the consumer's write is the durable fact. M5's privacy-snapshot recompute for the survivor is a
+    // separate, M5-owned follow-up (reported on GAP-067), not declared until it exists.
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m39.consent.expiring_soon",
     moduleOwner: "m39",
     description:

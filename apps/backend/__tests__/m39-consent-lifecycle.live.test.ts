@@ -16,8 +16,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   M39_OUTBOX_EVENTS,
+  applyPatientMerged,
   createDbConsentEvaluator,
   createDbConsentRouteService,
+  createDrizzleMergeRepointUow,
 } from "../src/modules/39-consent";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -265,6 +267,66 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
     expect(await ask(NAMED_MEMBERSHIP)).toMatchObject({
       redactSubstanceUseDisorderFields: true,
     });
+  });
+
+  // GAP-067 — `m5.patient.merged` re-points the folded-away chart's consent to the survivor under RLS, in one
+  // tx with the `m39.consent.repointed` outbox row; a redelivery and another tenant's event move nothing.
+  it("m5.patient.merged re-points the source chart's consent records to the survivor (idempotent, tenant-scoped)", async () => {
+    const SOURCE = "44444444-4444-4444-4444-4444444444aa";
+    const SURVIVOR = "44444444-4444-4444-4444-4444444444bb";
+    const draft = await service.createDraft(ORG, {
+      patientId: SOURCE,
+      typeKey: "portal_access",
+      grantorKind: "patient_self",
+      captureMethod: "electronic_portal_signature",
+      scopeDescriptor: { portal: true },
+      createdById: USER,
+    });
+    await service.signConsent(ORG, draft.id, USER, new Date().toISOString(), {
+      portalSessionId: "portal-merge",
+    });
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M39_OUTBOX_EVENTS]));
+    const uow = createDrizzleMergeRepointUow(handle.db, {
+      publish: (tx, input) => publisher.publish(tx as DbClient, { ...input, callerModule: "m39" }),
+    });
+    const event = {
+      organizationId: ORG,
+      payload: { patientId: SURVIVOR, sourcePatientId: SOURCE },
+    };
+
+    const moved = await applyPatientMerged(uow, event);
+    expect(moved.consentRecordIds).toContain(draft.id);
+    const row = await admin.query("SELECT patient_id FROM consent_record WHERE id=$1", [draft.id]);
+    expect(row.rows[0].patient_id).toBe(SURVIVOR);
+    const emitted = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type='m39.consent.repointed' AND aggregate_id=$1",
+      [SURVIVOR],
+    );
+    expect(emitted.rows).toHaveLength(1);
+    expect(emitted.rows[0].payload).toMatchObject({
+      patientId: SURVIVOR,
+      sourcePatientId: SOURCE,
+      consentRecordIds: expect.arrayContaining([draft.id]),
+    });
+
+    // redelivery: nothing left to move, nothing emitted
+    expect((await applyPatientMerged(uow, event)).consentRecordIds).toEqual([]);
+    const again = await admin.query(
+      "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m39.consent.repointed' AND aggregate_id=$1",
+      [SURVIVOR],
+    );
+    expect(again.rows[0].n).toBe(1);
+
+    // another tenant's delivery names the same ids but RLS scopes it to its own (empty) org
+    const other = await applyPatientMerged(uow, {
+      organizationId: "99999999-9999-4999-8999-999999999999",
+      payload: { patientId: SOURCE, sourcePatientId: SURVIVOR },
+    });
+    expect(other.consentRecordIds).toEqual([]);
+    expect(
+      (await admin.query("SELECT patient_id FROM consent_record WHERE id=$1", [draft.id])).rows[0]
+        .patient_id,
+    ).toBe(SURVIVOR);
   });
 
   it("allows exactly one concurrent renewal of a terminal consent", async () => {

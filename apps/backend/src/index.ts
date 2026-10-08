@@ -40,7 +40,7 @@ import {
 } from "@wardenx/dosespot";
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
-import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messaging";
+import { createAlertPayloadRegistry } from "@wardenx/messaging";
 import {
   type PseudonymKeyProvider,
   createStripePaymentMethodVerifier,
@@ -1335,6 +1335,7 @@ import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correl
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
+  bindOutOfBandTransports,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
@@ -1426,6 +1427,7 @@ import {
   M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
   buildM39PatientDeceasedConsumer,
+  buildM39PatientMergedConsumer,
   buildM39WorkerDeps,
   createConsentInternalNotesCipher,
   createDbConsentStore,
@@ -3740,6 +3742,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     log: (line) => process.stderr.write(`${line}\n`),
   });
   const emailTransport = emailBinding.emailTransport;
+  // M36 §4.4 out-of-band vendor transports (GAP-062) + the §4.2 endpoint-verification sender (GAP-063): env-gated,
+  // per channel; an unconfigured channel stays on the fail-closed deny transport and is named at boot (SOS voice
+  // is called out on its own). See 36-messaging/delivery/transport-binding.ts.
+  const outOfBandBinding = bindOutOfBandTransports({
+    env: process.env,
+    log: (line) => process.stderr.write(`${line}\n`),
+  });
   // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
   // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
@@ -4312,7 +4321,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // GAP-171 — the manual cascade retry raises the CRITICAL cascade-failed alert on exhaustion too.
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
-          mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
+          mountMessagingRoutes(app, dbHandle.db, {
+            // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
+            sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
+          }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
           // secret that is not configured answers 503 and never verifies against a default.
@@ -7870,8 +7882,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // ── M36 §4.4 out-of-band delivery workers (GAP-101): `messaging.send_push|sms|voice|email`. A repeatable
     // tick per queue sweeps the pending `notification_delivery` rows of every active org (bounded batch, leased
     // claim, §4.4.1 retry/backoff), dispatches through the transport SEAM and settles the row; a terminal failure
-    // publishes `m36.notification.delivery_failed` in the same tx. The transports are the fail-closed DENY stubs
-    // until a real web-push/Twilio/Postmark adapter is bound — so every out-of-band delivery settles `failed`
+    // publishes `m36.notification.delivery_failed` in the same tx. The transports are `outOfBandBinding.transports`
+    // (GAP-062): the real web-push / Twilio SMS+voice / Postmark adapter per channel when its env is set, otherwise
+    // that channel's fail-closed DENY transport — so an unconfigured out-of-band delivery settles `failed`
     // (`transport_not_configured`) rather than sitting `pending` forever or being reported as sent.
     const m36DeliveryActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
@@ -7882,7 +7895,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     const m36DeliveryWorkers = registerM36DeliveryWorkers({
       connection: queueConnection,
       store: createDrizzleDeliveryDispatchStore(dbHandle.db, m36OutboxPublisher),
-      transports: createDenyTransports(),
+      transports: outOfBandBinding.transports,
       appBaseUrl: webAppBaseUrl ?? "",
       activeOrgs: m36DeliveryActiveOrgs,
       onError: (context, err) => app.log.error({ ...context, err }, "M36 delivery sweep error"),
@@ -9345,6 +9358,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // consents (one `m39.consent.expired` each, same tx). Until bound, the evaluator's death probe was a
           // permanent `false` and a consent that should have ended at death kept authorizing PHI egress.
           buildM39PatientDeceasedConsumer({ db: dbHandle.db, outbox: m39OutboxPublisher }),
+          // M39 §4.6 (GAP-067) — `m5.patient.merged` re-points the folded-away chart's consent rows (Part 2
+          // releases and revocations included) to the survivor, emitting `m39.consent.repointed`.
+          buildM39PatientMergedConsumer({ db: dbHandle.db, outbox: m39OutboxPublisher }),
           // M22 §4.11 (GAP-023/024/038) — the LIVE render handshake. Every `*.document_requested` row was
           // written by a source module and drained by NOBODY: the decider, the two gates, the renderer and
           // (since GAP-095) the Drizzle document-row store all existed, but no binding ever joined them, so
