@@ -17,6 +17,7 @@ import type { paths } from "@wardenx/ui";
 // and kind-specific payload because they are unnecessary for this triage surface.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { IncidentActions } from "./incident-actions";
 import {
   INCIDENT_SEVERITY_TONE,
   INCIDENT_STATE_TONE,
@@ -50,6 +51,8 @@ export function QapiIncidents(): JSX.Element {
   const [projectPage, setProjectPage] = useState(1);
   const [projectPageSize, setProjectPageSize] = useState(5);
   const [selected, setSelected] = useState<IncidentRow | null>(null);
+  // Bumped after a lifecycle write so the list (and the open row) reload from the server.
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +71,7 @@ export function QapiIncidents(): JSX.Element {
     setLoadingMore(false);
   }, [client, nextCursor]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is a re-run trigger bumped after a lifecycle write
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -90,7 +94,7 @@ export function QapiIncidents(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, refreshKey]);
 
   const counts = useMemo(
     () => ({
@@ -486,7 +490,14 @@ export function QapiIncidents(): JSX.Element {
       }
       detail={
         selected ? (
-          <IncidentDetailPanel incident={selected} onClose={() => setSelected(null)} />
+          <IncidentDetailPanel
+            incident={selected}
+            onClose={() => setSelected(null)}
+            onChanged={() => {
+              setSelected(null);
+              setRefreshKey((k) => k + 1);
+            }}
+          />
         ) : undefined
       }
       fullPageScroll
@@ -497,7 +508,8 @@ export function QapiIncidents(): JSX.Element {
 function IncidentDetailPanel({
   incident,
   onClose,
-}: { incident: IncidentRow; onClose: () => void }): JSX.Element {
+  onChanged,
+}: { incident: IncidentRow; onClose: () => void; onChanged: () => void }): JSX.Element {
   const client = useApiClient();
   const [detail, setDetail] = useState<IncidentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -540,6 +552,11 @@ function IncidentDetailPanel({
         />
         {error ? <EmptyState title="Incident detail unavailable" description={error} /> : null}
         {!detail && !error ? <LoadingSpinner label="Loading incident detail" /> : null}
+        <IncidentActions
+          incidentId={incident.incidentId}
+          state={incident.state}
+          onChanged={onChanged}
+        />
         {detail ? (
           <>
             <section>
