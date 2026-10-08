@@ -1315,10 +1315,10 @@ import {
   registerMessagingErasers,
   registerMessagingSeams,
   scheduleM36DeliveryJobs,
-  selectTransactionalEmailTransport,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -3631,9 +3631,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // a vendor SDK nor takes a `dependsOn` edge on M36. A real Postmark/SES adapter plugs into M36's
   // `provider` slot when M1 infra wires credentials; until then dev logs the link (console) and
   // production drops it (no-op — a link in prod logs is a credential in logs).
-  const emailTransport = selectTransactionalEmailTransport({
-    isProduction: process.env.NODE_ENV === "production",
+  // The Postmark adapter binds ONLY when POSTMARK_SERVER_TOKEN + a verified POSTMARK_FROM_ADDRESS are configured
+  // (credentials come from env alone; see 36-messaging/transactional-email-binding.ts). Otherwise it stays unbound:
+  // production keeps dropping email and the link-delivery routes keep answering 503, with a loud boot line.
+  const emailBinding = bindTransactionalEmail({
+    env: process.env,
+    log: (line) => process.stderr.write(`${line}\n`),
   });
+  const emailTransport = emailBinding.emailTransport;
   // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
   // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
@@ -3661,15 +3666,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     keyPrefix: "portal-signin",
     onStoreError: onThrottleStoreError,
   });
-  // EXTERNAL BLOCKER (named): the production transactional-email PROVIDER (Postmark/SES adapter in M36's
-  // `selectTransactionalEmailTransport` `provider` slot) is not wired, so production DROPS every email. A collaborator /
-  // funeral-home link nobody can receive must not be minted, so in production the delivery port stays UNBOUND (the
-  // invite routes answer 503 LINK_DELIVERY_UNAVAILABLE) until a provider is bound; dev/test log the link via the
-  // console transport. Flip this to `true` in the same change that passes `provider` to the selector above.
-  const transactionalEmailProviderBound = false;
+  // Without a bound transactional-email PROVIDER (the Postmark adapter, credentials + verified From from env) production
+  // DROPS every email. A collaborator / funeral-home link nobody can receive must not be minted, so in production the
+  // delivery port stays UNBOUND (the invite routes answer 503 LINK_DELIVERY_UNAVAILABLE) until the adapter is bound;
+  // dev/test log the link via the console transport. The flag is derived from the adapter actually being bound.
+  // The auditor invite had no bound-provider gate: in production the no-op transport "delivered" the link and the
+  // enrolment reported a pending auditor who was sent nothing. `linkEmailTransport` THROWS when production is
+  // unbound, which that route already maps to 503 AUDITOR_LINK_DELIVERY_FAILED.
+  const linkEmailTransport = emailBinding.linkEmailTransport;
   const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
   const linkDelivery =
-    linkLandingBaseUrl && (process.env.NODE_ENV !== "production" || transactionalEmailProviderBound)
+    linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
       : undefined;
   const auth = dbHandle
@@ -3802,7 +3809,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             m3OutboxPublisher as M3OutboxPublisher,
             // The minted auditor link is emailed (M2 `auth.send_magic_link`); without a web origin the
             // delivery throws and the enrolment route answers 503 rather than reporting a phantom invite.
-            createAuditorLinkEmailDelivery({ transport: emailTransport, baseUrl: webAppBaseUrl }),
+            createAuditorLinkEmailDelivery({
+              transport: linkEmailTransport,
+              baseUrl: webAppBaseUrl,
+            }),
           );
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
           // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the

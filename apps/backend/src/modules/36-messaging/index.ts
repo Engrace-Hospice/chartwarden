@@ -126,6 +126,10 @@ export {
   selectTransactionalEmailTransport,
   createConsoleTransactionalEmailTransport,
   createNoopTransactionalEmailTransport,
+  createPostmarkTransactionalEmailTransport,
+  resolvePostmarkConfig,
+  postmarkConfigAttempted,
+  EmailDeliveryError,
   type OutboundEmail,
   type TransactionalEmailTransport,
 } from "@wardenx/messaging";

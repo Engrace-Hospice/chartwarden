@@ -413,3 +413,34 @@ describe("GAP-146 — the M24 launch-gateway gate is an opt-out production switc
     expect(withM24LaunchGatewayDefault({})).toEqual({});
   });
 });
+
+describe("M36 transactional email (Postmark) credentials", () => {
+  const POSTMARK = {
+    POSTMARK_SERVER_TOKEN: "pm-token-0123456789abcdef",
+    POSTMARK_FROM_ADDRESS: "no-reply@mail.wardenx.health",
+    POSTMARK_SENDER_VERIFIED: "true",
+  };
+  it("is optional as a whole: none set leaves the provider unbound without refusing the boot", () => {
+    expect(collectEnvProblems({ ...GOOD })).toEqual([]);
+  });
+  it("accepts a complete, verified configuration", () => {
+    expect(collectEnvProblems({ ...GOOD, ...POSTMARK })).toEqual([]);
+  });
+  it("refuses a PARTIAL configuration, naming each missing var", () => {
+    const problems = collectEnvProblems({
+      ...GOOD,
+      POSTMARK_SERVER_TOKEN: POSTMARK.POSTMARK_SERVER_TOKEN,
+    });
+    expect(problems.map((p) => p.key).sort()).toEqual([
+      "POSTMARK_FROM_ADDRESS",
+      "POSTMARK_SENDER_VERIFIED",
+    ]);
+  });
+  it("refuses a malformed From, an unverified attestation, and a reserved placeholder domain", () => {
+    const keysFor = (override: Record<string, string>) =>
+      collectEnvProblems({ ...GOOD, ...POSTMARK, ...override }).map((p) => p.key);
+    expect(keysFor({ POSTMARK_FROM_ADDRESS: "not-an-email" })).toEqual(["POSTMARK_FROM_ADDRESS"]);
+    expect(keysFor({ POSTMARK_SENDER_VERIFIED: "false" })).toEqual(["POSTMARK_SENDER_VERIFIED"]);
+    expect(keysFor({ POSTMARK_FROM_ADDRESS: "a@example.com" })).toEqual(["POSTMARK_FROM_ADDRESS"]);
+  });
+});
