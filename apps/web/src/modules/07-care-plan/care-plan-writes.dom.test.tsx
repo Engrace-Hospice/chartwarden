@@ -155,6 +155,16 @@ function bodyFor(method: string, path: string): unknown {
         proposals: [],
         changes: [],
       };
+    // M38 terminology: the ICD-10-CM catalog is loaded; SNOMED CT is not (licensed, unloaded).
+    if (path === "/api/v1/terminology/icd10cm/search")
+      return {
+        results: [
+          { code: "I50.84", display: "End stage heart failure", status: "active" },
+          { code: "I50.9", display: "Heart failure, unspecified", status: "active" },
+        ],
+      };
+    if (path === "/api/v1/terminology/snomed/search") return { results: [] };
+    if (path.endsWith("/validate")) return { valid: false };
     if (path.startsWith("/api/v1/patients/"))
       return {
         mrn: "MRN-1",
@@ -318,6 +328,34 @@ describe("#91 — the IPOC can be authored", () => {
     // terminal / related is covered by the benefit and unrelated is not — the field drives billing.
     expect(sent.kind).toBe("related");
     expect(sent.source).toBe("clinical");
+  });
+
+  it("Add problem codes the problem from the ICD-10 catalog and keeps an unloaded SNOMED code as entered", async () => {
+    await problemsView();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add problem" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add problem" });
+    fireEvent.change(within(dialog).getByLabelText("Problem description"), {
+      target: { value: "End-stage heart failure with dyspnea" },
+    });
+    const icd = within(dialog).getByRole("combobox", { name: /ICD-10 code/ });
+    fireEvent.focus(icd);
+    fireEvent.change(icd, { target: { value: "heart failure" } });
+    fireEvent.click(await within(dialog).findByRole("option", { name: /I50\.84/ }));
+    expect((icd as HTMLInputElement).value).toBe("I50.84 \u2013 End stage heart failure");
+
+    const snomed = within(dialog).getByRole("combobox", { name: /SNOMED code/ });
+    fireEvent.focus(snomed);
+    fireEvent.change(snomed, { target: { value: "84114007" } });
+    fireEvent.click(await within(dialog).findByRole("option", { name: /as entered/ }));
+    await waitFor(() =>
+      expect(within(dialog).getByText(/Not found in the SNOMED CT catalog/)).toBeTruthy(),
+    );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save problem" }));
+    await waitFor(() => expect(writes()).toContain(`POST /api/v1/care-plans/${PLAN}/problems`));
+    const sent = bodies[0] as Record<string, unknown>;
+    expect(sent.icd10Code).toBe("I50.84");
+    expect(sent.snomedCode).toBe("84114007");
   });
 
   it("Add goal hangs the goal off the problem it was opened from", async () => {

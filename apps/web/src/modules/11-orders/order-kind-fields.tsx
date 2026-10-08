@@ -1,3 +1,4 @@
+import { CodeSearchInput } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 
 type Kind =
@@ -61,32 +62,29 @@ export function CanonicalOrderFields({ kind, value, onChange, errors = {} }: Pro
             <option value="stat">STAT</option>
           </select>
         </Field>
-        <Field label="LOINC test code" error={errors.testCodes} required>
-          <input
-            aria-invalid={Boolean(errors.testCodes)}
-            value={
-              Array.isArray(value.testCodes)
-                ? String((value.testCodes[0] as { code?: string })?.code ?? "")
-                : ""
-            }
-            placeholder="Enter LOINC code"
-            onChange={(e) =>
-              set(
-                "testCodes",
-                e.target.value
-                  ? [
-                      {
-                        system: "http://loinc.org",
-                        code: e.target.value,
-                        display: e.target.value,
-                      },
-                    ]
-                  : [],
-              )
-            }
-            style={control}
-          />
-        </Field>
+        <CodeSearchInput
+          label="LOINC test code"
+          system="loinc"
+          required
+          error={errors.testCodes}
+          value={
+            Array.isArray(value.testCodes)
+              ? String((value.testCodes[0] as { code?: string })?.code ?? "")
+              : ""
+          }
+          valueDisplay={
+            Array.isArray(value.testCodes)
+              ? String((value.testCodes[0] as { display?: string })?.display ?? "")
+              : ""
+          }
+          placeholder="Search LOINC by code or test name"
+          onChange={(code, display) =>
+            set(
+              "testCodes",
+              code ? [{ system: "http://loinc.org", code, display: display || code }] : [],
+            )
+          }
+        />
         <label style={checkField}>
           <input
             type="checkbox"
