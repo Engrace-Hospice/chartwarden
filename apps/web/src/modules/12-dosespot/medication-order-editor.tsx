@@ -1,4 +1,10 @@
-import { Button, PageHeader, PatientWorkspaceLayout, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  CodeSearchInput,
+  PageHeader,
+  PatientWorkspaceLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -279,11 +285,6 @@ export function MedicationOrderEditor(): JSX.Element {
   const [pharmacy, setPharmacy] = useState("");
   const [discipline, setDiscipline] = useState("hospice_physician");
   const [patientId, setPatientId] = useState(routePatientId ?? "");
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(!!id);
@@ -483,67 +484,21 @@ export function MedicationOrderEditor(): JSX.Element {
               <fieldset>
                 <legend>Medication and prescriber</legend>
                 <p className="med-editor-help">
-                  Search the catalog to prefill the drug name and RxNorm code, or enter the details
-                  manually.
+                  Search the catalog by name or RxCUI to prefill the drug name and RxNorm code, or
+                  enter the details manually.
                 </p>
-                <label>
-                  RxNorm search
-                  <input
-                    value={query}
-                    onKeyDown={(e) => {
-                      // The search control lives in the draft form; Enter must never submit a draft.
-                      if (e.key === "Enter") e.preventDefault();
-                    }}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setResults([]);
-                      setSearched(false);
-                      setSearchError(null);
-                    }}
-                    placeholder="Search by medication name"
-                  />
-                  <button
-                    type="button"
-                    disabled={searching || !query.trim()}
-                    onClick={() =>
-                      void (async () => {
-                        setSearching(true);
-                        setSearchError(null);
-                        setResults([]);
-                        setSearched(false);
-                        try {
-                          const r = await api.GET("/api/v1/terminology/{system}/search", {
-                            params: {
-                              path: { system: "rxnorm" },
-                              query: { q: query.trim(), mode: "fuzzy", limit: 10 },
-                            },
-                          });
-                          if (r.error) throw new Error("Search unavailable");
-                          setResults(r.data?.results ?? []);
-                          setSearched(true);
-                        } catch {
-                          setSearchError(
-                            "RxNorm search is unavailable. You can enter the medication manually.",
-                          );
-                        } finally {
-                          setSearching(false);
-                        }
-                      })
-                    }
-                  >
-                    {searching ? "Searching…" : "Search"}
-                  </button>
-                </label>
                 {!editing ? (
                   <>
-                    <label>
-                      RxNorm RxCUI
-                      <input
-                        value={rxcui}
-                        placeholder="Enter RxCUI"
-                        onChange={(e) => setRxcui(e.target.value)}
-                      />
-                    </label>
+                    <CodeSearchInput
+                      label="RxNorm drug"
+                      system="rxnorm"
+                      value={rxcui}
+                      onChange={(code, display) => {
+                        setRxcui(code);
+                        if (display) setName(display);
+                      }}
+                      placeholder="Search by medication name or RxCUI"
+                    />
                     <Finding path="rxnormRxcui" findings={findings} />
                   </>
                 ) : null}
@@ -559,35 +514,6 @@ export function MedicationOrderEditor(): JSX.Element {
                     </label>
                     <Finding path="ndc" findings={findings} />
                   </>
-                ) : null}
-                {searchError ? (
-                  <span role="alert" className="med-editor-finding">
-                    {searchError}
-                  </span>
-                ) : null}
-                {searched && !results.length ? (
-                  <output className="med-editor-help">
-                    No matches found. Enter the details manually.
-                  </output>
-                ) : null}
-                {results.length ? (
-                  <div className="med-editor-results" aria-label="RxNorm search results">
-                    <p className="med-editor-help">Choose a result to fill the name and code:</p>
-                    {results.map((r) => (
-                      <button
-                        type="button"
-                        key={r.code}
-                        onClick={() => {
-                          setRxcui(r.code);
-                          setName(r.display);
-                          setResults([]);
-                          setSearched(false);
-                        }}
-                      >
-                        {r.display} <small>({r.code})</small>
-                      </button>
-                    ))}
-                  </div>
                 ) : null}
                 <div className="med-editor-pair">
                   <div className="med-editor-pair-field">
@@ -952,9 +878,6 @@ const editorStyles = `
 .med-editor-finding { display: block; margin: .25rem 0 .6rem; color: var(--color-error); font-size: .85rem; }
 .med-editor-error { padding: .8rem 1rem; border: 1px solid var(--color-error); border-radius: .5rem; color: var(--color-error); }
 .med-editor-message { padding: .8rem 1rem; }
-.med-editor-results { display: grid; gap: .35rem; max-height: 17rem; overflow: auto; padding: .6rem; border: 1px solid var(--color-outline-variant); border-radius: .5rem; }
-.med-editor-results button { text-align: left; color: var(--color-on-surface); background: var(--color-surface); border-color: var(--color-outline-variant); }
-.med-editor-results small { opacity: .7; }
 .med-editor-component { margin: 1rem 0 !important; }
 .med-editor-footer { position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .9rem 1rem; border: 1px solid var(--color-outline-variant); border-radius: .75rem; background: var(--color-surface); box-shadow: 0 -4px 18px color-mix(in srgb, var(--color-on-surface) 6%, transparent); }
 .med-editor-footer-actions { display: flex; flex-wrap: wrap; gap: .65rem; }

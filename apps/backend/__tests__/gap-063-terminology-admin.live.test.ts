@@ -407,7 +407,8 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
   describe("catalog + history reads", () => {
     it("lists the value-set catalog", async () => {
       const items = await ops.listValueSets();
-      expect(items.map((v) => v.id)).toEqual(["level_of_care", "terminal_dx"]);
+      // sud_test_loinc is seeded by migration 0500 (GAP-086), the other two by this suite.
+      expect(items.map((v) => v.id)).toEqual(["level_of_care", "sud_test_loinc", "terminal_dx"]);
     });
 
     it("returns load history newest-first, including entries with no version", async () => {

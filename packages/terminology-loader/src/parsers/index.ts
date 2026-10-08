@@ -11,6 +11,7 @@ import { parseNdc } from "./ndc";
 import { parseNormalizedCsv } from "./normalized-csv";
 import { parseRxnorm } from "./rxnorm";
 import { parseSnomed } from "./snomed";
+import { isX12Html, parseX12CodeListHtml } from "./x12-code-list-html";
 
 const PARSERS: Readonly<Record<LoadableSystemId, (bundle: SourceBundle) => ParsedSource>> = {
   icd10cm: parseIcd10cm,
@@ -22,8 +23,9 @@ const PARSERS: Readonly<Record<LoadableSystemId, (bundle: SourceBundle) => Parse
   hcpcs: parseHcpcs,
   cvx: parseCvx,
   revenue: (b) => parseNormalizedCsv("revenue", b),
-  carc: (b) => parseNormalizedCsv("carc", b),
-  rarc: (b) => parseNormalizedCsv("rarc", b),
+  // X12 publishes CARC/RARC only as web pages: accept the saved page, or the documented normalized CSV.
+  carc: (b) => (isX12Html(b) ? parseX12CodeListHtml("carc", b) : parseNormalizedCsv("carc", b)),
+  rarc: (b) => (isX12Html(b) ? parseX12CodeListHtml("rarc", b) : parseNormalizedCsv("rarc", b)),
 };
 
 /** Parse the bytes of an uploaded/fetched source for `system`. Throws {@link LoaderDataError} on any fault. */
@@ -50,6 +52,7 @@ export {
   parseNormalizedCsv,
   parseRxnorm,
   parseSnomed,
+  parseX12CodeListHtml,
 };
 export { icd10cmOrderEntries } from "./icd10cm";
 export { toNdc11 } from "./ndc";

@@ -1,5 +1,6 @@
 import {
   Button,
+  CodeSearchInput,
   Glyph,
   Modal,
   SelectField,
@@ -296,10 +297,11 @@ export function DecisionModal({
                 onChange={(e) => setProblemKind(e.target.value as (typeof PROBLEM_KINDS)[number])}
                 options={PROBLEM_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
               />
-              <TextField
+              <CodeSearchInput
                 label="ICD-10 code (optional)"
+                system="icd10cm"
                 value={icd10}
-                onChange={(e) => setIcd10(e.target.value)}
+                onChange={(code) => setIcd10(code)}
               />
               <p style={meta}>
                 Adds a PROBLEM to the plan. Updating an existing problem, goal or intervention

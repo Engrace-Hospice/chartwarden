@@ -12,15 +12,16 @@
 // authoring gates on the separate `triage.admin_protocol` with a step-up.
 //
 // TWO THINGS THE §5.1 SPEC ASKS FOR THAT ARE NOT BUILT, both named on the screen:
-//   • The SNOMED code is free text validated by pattern, not an M38 lookup: M19 publishes no terminology
-//     search and M38's is another module's screen with another module's permission. Putting a second copy
-//     of it here would be a second, unaudited vocabulary path.
+//   • The SNOMED code is picked with the shared type-ahead over M38's own search route (no second copy of the
+//     vocabulary here). If the SNOMED catalog is not loaded the field degrades to a labelled "as entered" code
+//     and the 6-18 digit pattern below still gates the form.
 //   • There is no "publish new version" workflow with drafts isolated from live intake. §4.1 publishes a
 //     create and a patch and no draft state — `triage_protocol` has no draft column. Versioning is by
 //     EFFECTIVE DATE: a call freezes the protocol version at open, so a newly effective version never
 //     switches the questions under a call already walking. That is the real mechanism and the screen says
 //     so instead of implying a publish button exists.
 import {
+  CodeSearchInput,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -373,12 +374,13 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
             hint="Lowercase letters, digits and underscores — the stable identifier, not the display label."
           />
           <TextField label="Chief complaint label" value={label} onChange={setLabel} />
-          <TextField
+          <CodeSearchInput
             label="SNOMED code"
+            system="snomed"
             value={snomed}
-            onChange={setSnomed}
-            mono
-            hint="6–18 digits, validated by pattern here and by the terminology service at write. There is no code picker on this screen: the vocabulary search belongs to the terminology module and its own permission."
+            onChange={(code) => setSnomed(code)}
+            required
+            hint="6–18 digits, validated by pattern here and by the terminology service at write."
           />
           <SelectField
             label="Discipline required"

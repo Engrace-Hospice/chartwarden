@@ -15,6 +15,7 @@
 // projection (§7.9) are the Drizzle-backed store's job in T07/T09 — this default keeps them
 // deliberately simple.
 
+import { WardenXError } from "@wardenx/types";
 import type { CodeSystemId, ExpansionMember, ResolvedConcept } from "../interfaces/kinds";
 import type {
   CodeSystemVersionWindow,
@@ -191,11 +192,23 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
 
     async searchConcepts<S extends CodeSystemId>(system: S, q: string, opts: SearchOptions) {
       const needle = q.toLowerCase();
+      let allowed: Set<string> | null = null;
+      if (opts.inValueSet !== undefined) {
+        const platform = platformMembers.get(opts.inValueSet);
+        if (!platform) throw new WardenXError("NOT_FOUND", "value set not found", 404);
+        const tenant = opts.orgId
+          ? (tenantMembers.get(compoundKey(opts.orgId, opts.inValueSet)) ?? [])
+          : [];
+        allowed = new Set(
+          [...platform, ...tenant].filter((m) => m.systemId === system).map((m) => m.code),
+        );
+      }
       const hits: ResolvedConcept<CodeSystemId>[] = [];
       for (const [k, rows] of concepts) {
         if (!k.startsWith(`${system} `)) continue;
         for (const row of rows) {
           if (opts.billableOnly && !isBillable(row)) continue;
+          if (allowed && !allowed.has(row.code)) continue;
           const match =
             opts.mode === "exact"
               ? row.code.toLowerCase() === needle || row.display.toLowerCase() === needle
@@ -270,10 +283,9 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
   return { store };
 }
 
-/** ICD-10-CM exposes a billable-leaf flag; other systems have no Phase-1 billable notion. */
+/** `billableOnly`: ICD-10-CM needs the billable-leaf flag AND active; every other system means active. */
 function isBillable(row: ResolvedConcept<CodeSystemId>): boolean {
-  return (
-    row.systemId === "icd10cm" &&
-    (row.properties as { isBillableLeaf?: boolean }).isBillableLeaf === true
-  );
+  if (row.status !== "active") return false;
+  if (row.systemId !== "icd10cm") return true;
+  return (row.properties as { isBillableLeaf?: boolean }).isBillableLeaf === true;
 }

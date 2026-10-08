@@ -13,8 +13,13 @@ import { LoaderDataError } from "../errors";
 import type { ParsedSource, SourceBundle } from "../types";
 import { concept, finish } from "./shared";
 
-/** Best-label order: dispensable drugs first, then ingredient-level terms. */
-const TTY_RANK = [
+/**
+ * The term types that become concepts, in best-label order: dispensable clinical/branded drugs and packs first, then
+ * ingredients (IN/MIN/PIN), brand names (BN) and the component/form levels a prescriber search needs.
+ * Dose forms (DF/DFG), dose-form groups (SCDG/SBDG), entry terms (ET), prescribable names (PSN) and synonyms
+ * (SY/TMSY) are NOT concepts of their own for a drug picker: an RXCUI whose only atoms are of those types is skipped.
+ */
+export const RXNORM_LOADED_TTYS = [
   "SCD",
   "SBD",
   "GPCK",
@@ -27,15 +32,8 @@ const TTY_RANK = [
   "SBDC",
   "SCDF",
   "SBDF",
-  "SCDG",
-  "SBDG",
-  "DF",
-  "DFG",
-  "ET",
-  "PSN",
-  "SY",
-  "TMSY",
-];
+] as const;
+const TTY_RANK: readonly string[] = RXNORM_LOADED_TTYS;
 const RXCUI = /^\d{1,9}$/;
 
 interface Best {

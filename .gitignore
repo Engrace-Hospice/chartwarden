@@ -10,6 +10,10 @@ node_modules/
 .codex/
 .cursor/
 
+# Terminology release files fetched for the M38 admin load (X12 lists, LOINC, SNOMED, RxNorm): copyrighted or
+# licensed content that must never be committed.
+.terminology-downloads/
+
 # Local scratch file (provenance untracked; not part of the corpus).
 scratchpad_list.txt
 

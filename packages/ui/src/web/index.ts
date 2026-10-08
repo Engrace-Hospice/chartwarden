@@ -22,6 +22,8 @@ export type {
 export { DegradedBanner } from "./components/degraded-banner";
 export { InlineAlert } from "./components/inline-alert";
 export type { InlineAlertProps } from "./components/inline-alert";
+export { CodeSearchInput } from "./components/code-search-input";
+export type { CodeSearchInputProps, CodeSearchSystem } from "./components/code-search-input";
 export { EmptyState } from "./components/empty-state";
 export type { EmptyStateProps } from "./components/empty-state";
 export { EntityLookupField } from "./components/entity-lookup-field";

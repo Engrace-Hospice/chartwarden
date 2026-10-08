@@ -219,6 +219,7 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
         limit: q.limit ?? 10,
         billableOnly: q.billableOnly ?? false,
         inValueSet: q.inValueSet,
+        orgId: request.context.organizationId || undefined,
       });
       return { results, mode, asOf: q.asOf ?? null };
     },

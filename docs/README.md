@@ -40,6 +40,7 @@ wins until the spec is re-locked.
 | [`START_PROJECT.md`](./START_PROJECT.md) | Step-by-step local startup guide — dependencies, migrations, API, worker, web app, and demo seed. **Start here to run the project.** |
 | [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
 | [`runbooks/transactional-email-postmark.md`](./runbooks/transactional-email-postmark.md) | Operator runbook: Postmark account/BAA, verified sender + SPF/DKIM, env vars, verification and rollback for transactional email. |
+| [`runbooks/terminology-catalog-loading.md`](./runbooks/terminology-catalog-loading.md) | Operator runbook: loading CARC/RARC, LOINC, SNOMED CT and RxNorm into M38 — licence to hold, who attests, download, endpoints, expected counts, verification and rollback. |
 | [`APP_OVERVIEW.md`](./APP_OVERVIEW.md) | Guided map of what the codebase is and how it fits together — for an engineer joining the project. |
 | [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the 40 modules — state machines, validation, calculations, cross-module flows. |
 | [`PLATFORM_TOOLS_MANUAL.md`](./PLATFORM_TOOLS_MANUAL.md) | Private-cloud platform operating manual — Talos, Kubernetes, Cilium, Envoy Gateway, CloudNativePG, Garage, Valkey, OpenBao, Argo CD, Kyverno and the rest: role, deployment baseline, day-2 operations, HIPAA notes and failure modes per tool. Hosting phases: Hostinger test → OVHcloud production → Hostinger playground (ADR-0050). |

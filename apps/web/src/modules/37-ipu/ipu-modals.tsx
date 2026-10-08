@@ -1,5 +1,6 @@
 import {
   Button,
+  CodeSearchInput,
   EntityLookupField,
   Modal,
   SelectField,
@@ -957,11 +958,16 @@ export function AttestGipModal({
         {criterion === "medications_treatments_inpatient_only" ? (
           <>
             <div style={row2}>
-              <TextField
+              <CodeSearchInput
                 label="RxNorm code"
+                system="rxnorm"
                 required
                 value={rxNormCode}
-                onChange={(e) => setRxNormCode(e.target.value)}
+                onChange={(code, display) => {
+                  setRxNormCode(code);
+                  if (display) setMedDisplayName(display);
+                }}
+                placeholder="Search RxNorm by medication name or RxCUI"
               />
               <TextField
                 label="Medication name"

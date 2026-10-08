@@ -1,5 +1,6 @@
 import {
   Button,
+  CodeSearchInput,
   EmptyState,
   Glyph,
   KpiCard,
@@ -134,15 +135,15 @@ export function TaxonomyOverlay(): JSX.Element {
             </div>
           ) : null}
           <div style={filterRowStyle}>
-            <label className="wx-search-field">
-              <Glyph name="search" size={16} />
-              <input
-                aria-label="CARC code"
+            <div style={{ minWidth: "18rem", flex: "1 1 18rem" }}>
+              <CodeSearchInput
+                label="CARC code"
+                system="carc"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter a CARC code, e.g. 16, 50, 197"
+                onChange={(next) => setCode(next)}
+                placeholder="Search CARC by code or description, e.g. 16, 50, 197"
               />
-            </label>
+            </div>
             <Button type="submit" tone="primary" size="sm" disabled={!code.trim() || loading}>
               {loading ? "Looking up..." : "Look up"}
             </Button>
