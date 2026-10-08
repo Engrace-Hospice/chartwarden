@@ -23,7 +23,7 @@ type Props = {
  * choice the server never receives (a level-of-care change POSTed with no from/to level).
  */
 export function kindDefaults(kind: Kind): Record<string, unknown> {
-  if (kind === "lab") return { priority: "routine" };
+  if (kind === "lab") return { priority: "routine", fastingRequired: false };
   if (kind === "level_of_care_change") return { fromLevel: "rhc", toLevel: "irc" };
   if (kind === "comfort_kit") return { deploymentSite: "home" };
   return {};

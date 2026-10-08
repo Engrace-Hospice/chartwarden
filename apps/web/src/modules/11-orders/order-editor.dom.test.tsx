@@ -67,12 +67,16 @@ describe("order editor", () => {
         ],
       },
     };
-    expect(message(body)).toBe("Must be at least 20 characters");
+    expect(message(body)).toBe("clinicalJustification: Must be at least 20 characters");
     expect(findings(body)).toEqual({ clinicalJustification: "Must be at least 20 characters" });
     expect(message({ error: { message: "Verbal orders are not allowed for this kind" } })).toBe(
       "Verbal orders are not allowed for this kind",
     );
     expect(message(undefined)).toMatch(/could not save/);
+  });
+
+  it("sends fastingRequired for a lab order even when the box is never touched", () => {
+    expect(kindDefaults("lab")).toMatchObject({ fastingRequired: false, priority: "routine" });
   });
 
   it("seeds the select values the form displays", () => {
