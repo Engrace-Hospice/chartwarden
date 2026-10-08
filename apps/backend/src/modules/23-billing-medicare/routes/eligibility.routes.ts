@@ -37,6 +37,14 @@ const READ_ABAC = CASELOAD_OR_SCOPE("billing.eligibility.read");
 const READ_ABAC_OR_INTAKE = CASELOAD_OR_INTAKE_SCOPE("billing.eligibility.read");
 const CHECK = P("billing.eligibility.check");
 const CHECK_ABAC = CASELOAD_OR_SCOPE("billing.eligibility.check");
+/**
+ * Single-resource PHI reads keyed by `?patientId=`: without a patient the read event's resource id is
+ * empty, the uuid insert fails and the best-effort wrapper swallows it (GAP-034) — so name the patient.
+ */
+export const ELIGIBILITY_SINGLE_READ_AUDIT = {
+  resourceKind: "eligibility_check",
+  patientIdQueryParam: "patientId",
+} as const;
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -80,7 +88,7 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     "/api/v1/billing/eligibility/hospice-periods",
     {
       preHandler: [READ, READ_ABAC_OR_INTAKE],
-      config: { auditRead: { resourceKind: "eligibility_check" } },
+      config: { auditRead: ELIGIBILITY_SINGLE_READ_AUDIT },
     },
     async (request) => {
       const actor = actorOf(request);
@@ -92,7 +100,7 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
   // GET /billing/eligibility/latest?patientId= — the latest check (auto-refresh-on-stale read). §4.1.
   app.get(
     "/api/v1/billing/eligibility/latest",
-    { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "eligibility_check" } } },
+    { preHandler: [READ, READ_ABAC], config: { auditRead: ELIGIBILITY_SINGLE_READ_AUDIT } },
     async (request) => {
       const actor = actorOf(request);
       const { patientId } = parse(PatientQuerySchema, request.query);
