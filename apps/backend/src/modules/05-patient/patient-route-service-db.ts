@@ -10,15 +10,21 @@
 // `m5.patient.*` event (GAP-016) through the injected m5 outbox port ON THE SAME TRANSACTION, so a failed
 // publish rolls the write back. Remaining follow-ups: SSN + name-alias storage on admit, soft_review
 // match-review rows.
+import { audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  assertAdmitDemographicsStorable,
+  insertAdmitContactDetails,
+  loadMatchCandidates,
+} from "./admit-matching-db";
 import { changeToApply, isAmendableField, normalizeRequestedChange } from "./amendments";
 import type { M5OutboxPort } from "./deceased-db";
 import { insertSoftMatchReviews } from "./match-review-db";
-import { type MatchCandidate, runMatch } from "./matching/matcher";
+import { runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
 import { type PrivacyFlag, isSudReadAllowed } from "./privacy/index";
 import type {
@@ -309,9 +315,9 @@ export function createDbPatientRouteService(
       });
     });
 
-  // Insert the patient row (+ its mrn / mbi identifiers) — the census reads patient.mrn (denormalised),
-  // patient_identifier is the source of truth. SSN is NOT stored here (envelope-encrypted; a follow-up),
-  // nor are name_alias / address / phone / email (also follow-ups). Returns the new patient id.
+  // Insert the patient row (+ its mrn / mbi identifiers and primary address / phone / email) — the census
+  // reads patient.mrn (denormalised), patient_identifier is the source of truth. SSN is refused upstream
+  // (GAP-010: no envelope-encrypted writer yet); name_alias is a follow-up. Returns the new patient id.
   type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
   const emitPatientEvent = (
     tx: Tx,
@@ -328,7 +334,12 @@ export function createDbPatientRouteService(
       aggregateId: patientId,
     });
 
-  async function insertPatient(tx: Tx, organizationId: string, input: AdmitInput): Promise<string> {
+  async function insertPatient(
+    tx: Tx,
+    organizationId: string,
+    input: AdmitInput,
+    bypass?: { readonly actorUserId: string; readonly justification: string | null },
+  ): Promise<string> {
     const mrn = `MRN-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
     const today = new Date().toISOString().slice(0, 10);
     const inserted = (await tx
@@ -352,6 +363,25 @@ export function createDbPatientRouteService(
         .insert(ID)
         .values({ patientId, organizationId, kind: "mbi", value: input.mbi, effectiveFrom: today });
     }
+    await insertAdmitContactDetails(tx, organizationId, patientId, input, today);
+    if (bypass) {
+      await audit(
+        tx,
+        {
+          organizationId,
+          userId: bypass.actorUserId,
+          correlationId: `patient-create-bypass:${patientId}`,
+        },
+        {
+          eventType: "patient.create_bypass_match",
+          resourceKind: "patient",
+          resourceId: patientId,
+          outcome: "success",
+          severity: "critical",
+          context: { patientId, byUserId: bypass.actorUserId, justification: bypass.justification },
+        },
+      );
+    }
     await emitPatientEvent(tx, organizationId, patientId, "m5.patient.created", { mrn });
     return patientId;
   }
@@ -365,50 +395,38 @@ export function createDbPatientRouteService(
     actorUserId: string,
   ): Promise<AdmitResult> =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      assertAdmitDemographicsStorable(input);
       const incoming = normalizeSubject(input);
-      if (!input.bypassMatchReview) {
-        const candRows = await tx
-          .select({
-            id: P.id,
-            lastName: P.legalLastName,
-            firstName: P.legalFirstName,
-            dob: P.dob,
-            mbi: ID.value,
-          })
-          .from(P)
-          .leftJoin(ID, and(eq(ID.patientId, P.id), eq(ID.kind, "mbi")));
-        const candidates: MatchCandidate[] = candRows.map((r) => ({
-          ...normalizeSubject({
-            lastName: r.lastName,
-            firstName: r.firstName,
-            dob: r.dob,
-            mbi: r.mbi,
-          }),
-          id: r.id,
-        }));
-        const result = runMatch(incoming, candidates);
-        if (result.outcome === "hard_block") {
-          return {
-            outcome: "hard_block",
-            existingPatientId: result.existingPatientId,
-            matchedOn: String(result.matchedOn),
-          };
-        }
-        const patientId = await insertPatient(tx, organizationId, input);
-        // §7.3 (GAP-019): one open patient_match_review per soft candidate, in this same transaction.
-        if (result.outcome === "soft_review") {
-          const matchReviewIds = await insertSoftMatchReviews(
-            tx,
-            organizationId,
-            patientId,
-            incoming,
-            result.reviewCandidates,
-          );
-          return { outcome: "soft_review", patientId, matchReviewIds };
-        }
+      // GAP-009: a bypass is only reachable through the route's patient.create_bypass_match + step-up
+      // gate; the critical audit rides the same transaction as the row it let through.
+      if (input.bypassMatchReview) {
+        const patientId = await insertPatient(tx, organizationId, input, {
+          actorUserId,
+          justification: input.bypassJustification ?? null,
+        });
         return { outcome: "created", patientId };
       }
-      return { outcome: "created", patientId: await insertPatient(tx, organizationId, input) };
+      const result = runMatch(incoming, await loadMatchCandidates(tx));
+      if (result.outcome === "hard_block") {
+        return {
+          outcome: "hard_block",
+          existingPatientId: result.existingPatientId,
+          matchedOn: String(result.matchedOn),
+        };
+      }
+      const patientId = await insertPatient(tx, organizationId, input);
+      // §7.3 (GAP-019): one open patient_match_review per soft candidate, in this same transaction.
+      if (result.outcome === "soft_review") {
+        const matchReviewIds = await insertSoftMatchReviews(
+          tx,
+          organizationId,
+          patientId,
+          incoming,
+          result.reviewCandidates,
+        );
+        return { outcome: "soft_review", patientId, matchReviewIds };
+      }
+      return { outcome: "created", patientId };
     });
 
   const SIXTY_DAYS_MS = 60 * 24 * 3600 * 1000;
