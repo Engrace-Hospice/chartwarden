@@ -67,14 +67,14 @@ function h(user: string, opts: { session?: string; locations?: string; roles?: s
   };
 }
 
-function makeServer() {
+function makeServer(status: "scheduled" | "live" = "scheduled") {
   const backend = createInMemoryIdgBackend({
     meetings: [
       {
         id: MTG,
         organizationId: ORG,
         locationId: LOC,
-        status: "scheduled",
+        status,
         scheduledStart: "2026-06-22T14:00:00.000Z",
         scheduledEnd: "2026-06-22T16:00:00.000Z",
         includedPatientIds: [PATIENT],
@@ -307,7 +307,7 @@ describe("M14 Lot 1 — list scope", () => {
   });
 
   it("defaults action-items to the authenticated membership and restricts third-party reads to coordinators", async () => {
-    const { app, backend } = makeServer();
+    const { app, backend } = makeServer("live");
     const other = "77777777-7777-4777-8777-777777777777";
     await backend.createActionItem(ORG, "coordinator", MTG, {
       patientId: PATIENT,

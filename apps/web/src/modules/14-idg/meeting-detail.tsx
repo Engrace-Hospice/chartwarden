@@ -46,7 +46,7 @@ import {
   startMeeting,
 } from "./idg-api";
 import { type LifecycleAction, LifecycleModal } from "./idg-meeting-modals";
-import { IdgStat } from "./idg-page-kit";
+import { IdgStat, MeetingProgress } from "./idg-page-kit";
 import { PatientLabel, type PatientRef, patientText, shortId, useMemberNames } from "./idg-people";
 import { MEETING_TONE, stateLabel } from "./idg-status";
 
@@ -173,16 +173,21 @@ export function MeetingDetail(): JSX.Element {
     if (!id) return;
     setBusy(true);
     setNotice(null);
-    const res = kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
-    setBusy(false);
-    setNotice(
-      res.ok
-        ? kind === "build"
-          ? "Packet build started."
-          : "Meeting started — decisions can now be recorded."
-        : res.message,
-    );
-    if (res.ok) await load();
+    try {
+      const res = kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
+      setNotice(
+        res.ok
+          ? kind === "build"
+            ? "Packet build started."
+            : "Meeting started — decisions can now be recorded."
+          : res.message,
+      );
+      if (res.ok) await load();
+    } catch {
+      setNotice("The network request did not complete. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -243,6 +248,7 @@ export function MeetingDetail(): JSX.Element {
   const ready = packets.filter((p) => p.frozenAt !== null).length;
   const selected = packets.find((p) => p.packetId === selectedId) ?? null;
   const building = meeting.status === "packets_building";
+  const terminal = ["adjourned", "cancelled", "rescheduled"].includes(meeting.status);
   const quorumLabel =
     roster.length === 0
       ? { tone: "neutral" as const, text: "Quorum — no check-ins yet" }
@@ -331,7 +337,7 @@ export function MeetingDetail(): JSX.Element {
             >
               <h1 style={{ fontSize: "1.875rem" }}>IDG Meeting</h1>
               <StatusPill
-                label={stateLabel(meeting.status)}
+                label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
                 tone={MEETING_TONE[meeting.status] ?? "neutral"}
               />
             </div>
@@ -401,10 +407,21 @@ export function MeetingDetail(): JSX.Element {
               className="wx-btn-primary"
               onClick={() => navigate(`/idg/meetings/${meeting.id}/live`)}
             >
-              <Glyph name="play" size={14} /> Live surface
+              <Glyph name={terminal ? "file-text" : "play"} size={14} />{" "}
+              {meeting.status === "adjourned"
+                ? "View finalized record"
+                : terminal
+                  ? "View meeting record"
+                  : "Meeting workspace"}
             </button>
           </div>
         </div>
+
+        <MeetingProgress
+          status={meeting.status}
+          scheduledStart={meeting.scheduledStart}
+          adjournedAt={meeting.adjournedAt}
+        />
 
         {notice ? (
           <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
@@ -678,7 +695,7 @@ export function MeetingDetail(): JSX.Element {
                 label: "Status",
                 value: (
                   <StatusPill
-                    label={stateLabel(meeting.status)}
+                    label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
                     tone={MEETING_TONE[meeting.status] ?? "neutral"}
                   />
                 ),

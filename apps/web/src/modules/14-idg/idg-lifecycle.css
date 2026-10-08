@@ -1,0 +1,145 @@
+.wx-idg-progress {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+.wx-idg-progress > ol {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-idg-progress li {
+  position: relative;
+  min-width: 0;
+  padding: 0 0.5rem;
+  text-align: center;
+  color: var(--color-on-surface-variant);
+}
+.wx-idg-progress li::before {
+  content: "";
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin: 0 auto 0.5rem;
+  border: 2px solid var(--color-outline);
+  border-radius: 9999px;
+  background: var(--color-surface-lowest);
+}
+.wx-idg-progress li:not(:first-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0.375rem;
+  right: 50%;
+  width: 100%;
+  border-top: 2px solid var(--color-outline-variant, var(--color-card-border));
+}
+.wx-idg-progress li::before,
+.wx-idg-progress li > * {
+  position: relative;
+  z-index: 1;
+}
+.wx-idg-progress li[data-state="complete"]::before {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+.wx-idg-progress li[data-state="current"] {
+  color: var(--color-on-surface);
+}
+.wx-idg-progress li[data-state="current"]::before {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+.wx-idg-progress strong,
+.wx-idg-progress small {
+  display: block;
+}
+.wx-idg-progress strong {
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+.wx-idg-progress small {
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--color-on-surface-variant);
+}
+.wx-idg-progress-terminal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.875rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-lowest));
+  color: var(--color-warning-pill-fg);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.wx-idg-finalize-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+.wx-idg-finalize-summary > div {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-low);
+}
+.wx-idg-finalize-summary span,
+.wx-idg-finalize-summary strong {
+  display: block;
+}
+.wx-idg-finalize-summary span {
+  font-size: 0.6875rem;
+  color: var(--color-on-surface-variant);
+}
+.wx-idg-finalize-summary strong {
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+}
+.wx-idg-finalize-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-tint);
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+.wx-idg-finalize-confirm input {
+  margin-top: 0.125rem;
+}
+.wx-idg-finalize-confirm input:focus-visible {
+  outline: 2px solid var(--color-focus-ring, var(--color-primary));
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .wx-idg-progress > ol {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.625rem;
+  }
+  .wx-idg-progress li {
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    gap: 0 0.625rem;
+    padding: 0;
+    text-align: left;
+  }
+  .wx-idg-progress li::before {
+    grid-row: 1 / span 2;
+    margin: 0.125rem 0 0;
+  }
+  .wx-idg-progress li::after {
+    display: none;
+  }
+  .wx-idg-finalize-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

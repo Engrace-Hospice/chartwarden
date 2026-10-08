@@ -186,14 +186,27 @@ const SESSION = {
   organizationId: "org-1",
   membershipId: "membership-1",
   roles: ["idg_coordinator"],
-  permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide", "idg.act", "idg.schedule"],
+  permissions: [
+    "idg.read",
+    "idg.attend",
+    "idg.coordinate",
+    "idg.decide",
+    "idg.act",
+    "idg.schedule",
+    "idg.amend_minutes",
+  ],
   isAdmin: false,
 };
 
-function mount(path: string, element: JSX.Element, route: string): ReturnType<typeof render> {
+function mount(
+  path: string,
+  element: JSX.Element,
+  route: string,
+  session: typeof SESSION = SESSION,
+): ReturnType<typeof render> {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <SessionProvider session={SESSION}>
+      <SessionProvider session={session}>
         <ToastProvider>
           <MemoryRouter initialEntries={[path]}>
             <Routes>
@@ -209,8 +222,13 @@ function mount(path: string, element: JSX.Element, route: string): ReturnType<ty
 const mountLive = () =>
   mount(`/idg/meetings/${MEETING}/live`, <LiveMeeting />, "/idg/meetings/:id/live");
 const mountDetail = () => mount(`/idg/meetings/${MEETING}`, <MeetingDetail />, "/idg/meetings/:id");
-const mountMinutes = () =>
-  mount(`/idg/meetings/${MEETING}/minutes`, <Minutes />, "/idg/meetings/:id/minutes");
+const mountMinutes = (session: typeof SESSION = SESSION) =>
+  mount(
+    `/idg/meetings/${MEETING}/minutes`,
+    <Minutes />,
+    "/idg/meetings/:id/minutes",
+    session,
+  );
 
 const writes = () => calls.filter((c) => !c.startsWith("GET "));
 
@@ -445,10 +463,15 @@ describe("#91 — the meeting can be conducted", () => {
 describe("#91 — adjournment is the commit point, and its refusal is legible", () => {
   it("Adjourn POSTs the commit point", async () => {
     mountLive();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Adjourn" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Adjourn" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Finalize & Adjourn" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Finalize & Adjourn" }));
+    fireEvent.click(await screen.findByLabelText(/I understand that this finalizes/i));
     fireEvent.click(
-      await waitFor(() => screen.getAllByRole("button", { name: "Adjourn" })[1] as HTMLElement),
+      (await waitFor(() =>
+        screen.getAllByRole("button", { name: "Finalize & Adjourn" }),
+      )).at(-1) as HTMLElement,
     );
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/adjourn`));
   });
@@ -461,12 +484,49 @@ describe("#91 — adjournment is the commit point, and its refusal is legible", 
       body: { error: { code: "STEP_UP_REQUIRED", message: "fresh step-up required" } },
     };
     mountLive();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Adjourn" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Adjourn" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Finalize & Adjourn" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Finalize & Adjourn" }));
+    fireEvent.click(await screen.findByLabelText(/I understand that this finalizes/i));
     fireEvent.click(
-      await waitFor(() => screen.getAllByRole("button", { name: "Adjourn" })[1] as HTMLElement),
+      (await waitFor(() =>
+        screen.getAllByRole("button", { name: "Finalize & Adjourn" }),
+      )).at(-1) as HTMLElement,
     );
     expect((await screen.findByRole("alert")).textContent).toMatch(/re-authentication/i);
+    expect(screen.getByRole("button", { name: "Re-authenticate" })).toBeTruthy();
+  });
+
+  it("requires explicit confirmation and presents reliable finalization facts", async () => {
+    roster = [
+      { id: "a", meetingId: MEETING, membershipId: "m1", discipline: "hospice_physician", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
+      { id: "b", meetingId: MEETING, membershipId: "m2", discipline: "rn_case_manager", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
+      { id: "c", meetingId: MEETING, membershipId: "m3", discipline: "msw", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
+      { id: "d", meetingId: MEETING, membershipId: "m4", discipline: "chaplain", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
+    ];
+    mountLive();
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize & Adjourn" }));
+    expect(await screen.findByText("Open decisions")).toBeTruthy();
+    expect(screen.getByText("Met")).toBeTruthy();
+    const buttons = screen.getAllByRole("button", { name: "Finalize & Adjourn" });
+    expect((buttons.at(-1) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(/I understand that this finalizes/i));
+    expect((buttons.at(-1) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("distinguishes an obsolete version from a step-up refusal", async () => {
+    writeFailure = {
+      status: 412,
+      body: { error: { code: "STALE_VERSION", message: "expected version 3" } },
+    };
+    mountLive();
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize & Adjourn" }));
+    fireEvent.click(screen.getByLabelText(/I understand that this finalizes/i));
+    fireEvent.click(screen.getAllByRole("button", { name: "Finalize & Adjourn" }).at(-1)!);
+    expect(await screen.findByRole("button", { name: "Refresh meeting" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Re-authenticate" })).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toMatch(/changed|version/i);
   });
 
   it("a 422 from quorate_decision is shown where the coordinator is looking", async () => {
@@ -516,6 +576,26 @@ describe("#91 — the pre-meeting lifecycle", () => {
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/start`));
   });
 
+  it("renders the lifecycle progression and keeps cancellation separate from adjournment", async () => {
+    meetingStatus = "cancelled";
+    mountDetail();
+    const progress = await screen.findByRole("region", { name: "Meeting progress" });
+    expect(progress.textContent).toMatch(/was cancelled/i);
+    expect(progress.querySelector('[aria-current="step"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Build packets" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start meeting" })).toBeNull();
+  });
+
+  it("presents an adjourned meeting as finalized and removes ordinary edit controls", async () => {
+    meetingStatus = "adjourned";
+    mountLive();
+    expect(await screen.findByText("Finalized")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check in" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add agenda item" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record decision" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Finalize & Adjourn" })).toBeNull();
+  });
+
   it("Cancel sends the reason and the proposedTransition the review-floor ABAC resolves on", async () => {
     meetingStatus = "scheduled";
     mountDetail();
@@ -552,6 +632,16 @@ describe("#91 — the pre-meeting lifecycle", () => {
 });
 
 describe("#91 — the minutes are the §418.56(d) evidence", () => {
+  it("does not offer amendment controls without idg.amend_minutes", async () => {
+    minutesStatus = "final";
+    mountMinutes({
+      ...SESSION,
+      permissions: SESSION.permissions.filter((permission) => permission !== "idg.amend_minutes"),
+    });
+    expect(await screen.findByText("Final")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Request an amendment" })).toBeNull();
+  });
+
   it("in-progress minutes distinguish 'nothing frozen yet' from 'nothing happened'", async () => {
     mountMinutes();
     // Four counts (attendance, decisions, action items, discipline notes), all "not frozen yet" — the assertion is that none of them reads as a zero.

@@ -76,6 +76,7 @@ import {
   LifecycleModal,
 } from "./idg-meeting-modals";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
+import { MeetingProgress } from "./idg-page-kit";
 import "./live-meeting.css";
 import { useSession } from "../../shell/session";
 import { PacketCompact, usePacketDetail } from "./packet-content";
@@ -204,6 +205,9 @@ export function LiveMeeting(): JSX.Element {
   const canAttend = session?.permissions?.includes("idg.attend") ?? false;
   const canCoordinate = session?.permissions?.includes("idg.coordinate") ?? false;
   const canDecide = session?.permissions?.includes("idg.decide") ?? false;
+  const canAct =
+    session?.permissions?.includes("idg.act") === true ||
+    session?.permissions?.includes("idg.coordinate") === true;
   const { id } = useParams<{ id: string }>();
   const [meeting, setMeeting] = useState<MeetingView | null>(null);
   const [packets, setPackets] = useState<PacketDigestView[]>([]);
@@ -483,7 +487,10 @@ export function LiveMeeting(): JSX.Element {
   const openDecisions = decisions.filter((d) => d.status === "open").length;
   const carryForward = agenda.filter((a) => a.kind === "carry_forward").length;
   const isLive = meeting?.status === "live";
-  const closed = meeting?.status === "adjourned" || meeting?.status === "cancelled";
+  const closed =
+    meeting?.status === "adjourned" ||
+    meeting?.status === "cancelled" ||
+    meeting?.status === "rescheduled";
   const coordinatorId = (meeting as { coordinatorMembershipId?: string } | null)
     ?.coordinatorMembershipId;
   const who = (membershipId: string): string => names.get(membershipId) ?? short(membershipId);
@@ -596,7 +603,7 @@ export function LiveMeeting(): JSX.Element {
       header: <span className="wx-sr-only">Actions</span>,
       cell: (d) => (
         <span className="wx-idg-live-cell-actions">
-          {canCoordinate ? <Button
+          {canCoordinate && isLive ? <Button
             tone="tertiary"
             size="sm"
             onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
@@ -641,7 +648,7 @@ export function LiveMeeting(): JSX.Element {
                   </span>
                 ) : null}
                 <StatusPill
-                  label={stateLabel(meeting.status)}
+                  label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
                   tone={MEETING_TONE[meeting.status] ?? "neutral"}
                 />
                 <StatusPill
@@ -661,33 +668,38 @@ export function LiveMeeting(): JSX.Element {
           </div>
           {meeting && (canAttend || canCoordinate || canDecide) ? (
             <div className="wx-idg-live-actions">
-              {canAttend ? <Button
+              {canAttend && !closed ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "attendance" })}
-                disabled={closed}
               >
                 Check in
               </Button> : null}
-              {canCoordinate ? <Button
+              {canCoordinate && !closed ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "agenda" })}
-                disabled={closed}
               >
                 Add agenda item
               </Button> : null}
-              {canDecide ? <Button onClick={() => setDialog({ kind: "decision" })} disabled={!isLive}>
+              {canDecide && isLive ? <Button onClick={() => setDialog({ kind: "decision" })}>
                 Record decision
               </Button> : null}
-              {canCoordinate ? <Button
+              {canCoordinate && isLive ? <Button
                 tone="secondary"
                 onClick={() => setDialog({ kind: "adjourn" })}
-                disabled={!isLive}
               >
-                Adjourn
+                Finalize &amp; Adjourn
               </Button> : null}
             </div>
           ) : null}
         </header>
+
+        {meeting ? (
+          <MeetingProgress
+            status={meeting.status}
+            scheduledStart={meeting.scheduledStart}
+            adjournedAt={meeting.adjournedAt}
+          />
+        ) : null}
 
         {error ? (
           <ErrorState
@@ -707,13 +719,26 @@ export function LiveMeeting(): JSX.Element {
               </output>
             ) : null}
             {meeting && !isLive ? (
-              <p className="wx-idg-alert" data-tone="warning">
-                <Glyph name="alert-circle" size={16} />
-                <span>
-                  This meeting is {stateLabel(meeting.status).toLowerCase()}, not live — decisions
-                  and adjournment open only while it is live.
-                </span>
-              </p>
+              meeting.status === "adjourned" ? (
+                <p className="wx-idg-alert" data-tone="success">
+                  <Glyph name="check-circle" size={16} />
+                  <span>
+                    <strong>Finalized</strong>
+                    Historical attendance, agenda and decisions are read-only
+                    {meeting.adjournedAt
+                      ? ` since ${new Date(meeting.adjournedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`
+                      : ""}. Action-item follow-up and authorized late addenda remain available.
+                  </span>
+                </p>
+              ) : (
+                <p className="wx-idg-alert" data-tone="warning">
+                  <Glyph name="alert-circle" size={16} />
+                  <span>
+                    This meeting is {stateLabel(meeting.status).toLowerCase()}, not live — decisions,
+                    new action items and adjournment are unavailable at this stage.
+                  </span>
+                </p>
+              )
             ) : null}
 
             <div className="wx-stat-grid" aria-label="Meeting summary">
@@ -1040,7 +1065,7 @@ export function LiveMeeting(): JSX.Element {
                           tone={ATTENDANCE_TONE[r.status] ?? "neutral"}
                         />
                       </div>
-                      {canCoordinate ? <div className="wx-idg-rail-tools">
+                      {canCoordinate && !closed ? <div className="wx-idg-rail-tools">
                         <select
                           className="wx-select"
                           aria-label={`Attendance status for ${who(r.membershipId)}`}
@@ -1101,6 +1126,15 @@ export function LiveMeeting(): JSX.Element {
                   ))}
                 </ul>
               )}
+              {canAct ? (
+                <Link
+                  to="/idg/action-items"
+                  className="wx-btn-secondary"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  Open my action-item queue
+                </Link>
+              ) : null}
             </Panel>
           </Region>
 
@@ -1206,7 +1240,13 @@ export function LiveMeeting(): JSX.Element {
                 open={dialog.kind === "adjourn"}
                 action="adjourn"
                 meetingId={id}
-                pending={{ decisions: openDecisions, patients: packets.length }}
+                pending={{
+                  ...(meeting ? { scheduledStart: meeting.scheduledStart } : {}),
+                  decisions: openDecisions,
+                  patients: packets.length,
+                  quorumMet: roster.length === 0 ? null : quorate,
+                  packetCount: packets.length,
+                }}
                 onClose={() => setDialog({ kind: "none" })}
                 onDone={() => void load()}
               />

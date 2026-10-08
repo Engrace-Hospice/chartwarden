@@ -35,6 +35,7 @@ import type {
 import { ForbiddenError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 import { type PacketContentView, mapPacketContent } from "./packet-content";
+import { assertMeetingWriteAllowed } from "./meeting-write-policy";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedIdgEvent {
@@ -1380,7 +1381,8 @@ export function createInMemoryIdgBackend(
 
     // ── attendance ───────────────────────────────────────────────────────────────────────────────────────
     async recordAttendance(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       const id = nextId("idg-att");
       const row: AttendanceRow = {
         id,
@@ -1405,7 +1407,8 @@ export function createInMemoryIdgBackend(
     async updateAttendance(orgId, _userId, id, status, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       row.status = status;
       row.version += 1;
@@ -1414,7 +1417,8 @@ export function createInMemoryIdgBackend(
     async removeAttendance(orgId, _userId, id, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       attendance.delete(id);
       return { id, removed: true };
@@ -1501,7 +1505,8 @@ export function createInMemoryIdgBackend(
 
     // ── agenda ───────────────────────────────────────────────────────────────────────────────────────────
     async addAgendaItem(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       const id = nextId("idg-agd");
       const row: AgendaRow = {
         id,
@@ -1516,14 +1521,16 @@ export function createInMemoryIdgBackend(
     async updateAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       return { ...row };
     },
     async removeAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       agenda.delete(id);
       return { id, removed: true };
@@ -1537,6 +1544,7 @@ export function createInMemoryIdgBackend(
     // ── decisions ────────────────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args) {
       const m = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(m.status, "decision");
       // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
       const plan = planDecisionRecord({
         meetingIsLive: m.status === "live",
@@ -1646,7 +1654,8 @@ export function createInMemoryIdgBackend(
 
     // ── action items ─────────────────────────────────────────────────────────────────────────────────────
     async createActionItem(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "action_item_create");
       planActionItemCreate();
       const id = nextId("idg-act");
       const row: ActionItemRow = {
@@ -1682,7 +1691,8 @@ export function createInMemoryIdgBackend(
     ) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "action_item_follow_up");
       if (!isCoordinator && row.assignedToMembershipId !== userId)
         throw actionItemNotAssigneeError();
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
@@ -1700,8 +1710,9 @@ export function createInMemoryIdgBackend(
     async removeActionItem(orgId, _userId, id, expectedVersion) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
-      if (meetingOf(orgId, row.meetingId).status === "adjourned")
-        throw actionItemMeetingAdjournedError();
+      const meeting = meetingOf(orgId, row.meetingId);
+      if (meeting.status === "adjourned") throw actionItemMeetingAdjournedError();
+      assertMeetingWriteAllowed(meeting.status, "action_item_remove");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       actionItems.delete(id);
       return { id, removed: true };
