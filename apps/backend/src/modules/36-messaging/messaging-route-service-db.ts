@@ -362,6 +362,7 @@ export function createDbMessagingRouteService(
           kind: ch.kind as ChannelKind,
           title: ch.title,
           subjectId: ch.subjectId,
+          patientId: ch.kind === "care_team" ? ch.subjectId : null,
           archivedAt: ch.isArchived ? (iso(ch.archivesAt) ?? iso(ch.updatedAt)) : null,
           unreadCount: Number(ur[0]?.count ?? 0),
           members: members.map((m) => ({
@@ -376,7 +377,7 @@ export function createDbMessagingRouteService(
     async listMessages(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const ch = await tx
-          .select({ id: CH.id })
+          .select({ id: CH.id, kind: CH.channelKind, subjectId: CH.subjectId })
           .from(CH)
           .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
           .limit(1);
@@ -419,7 +420,11 @@ export function createDbMessagingRouteService(
         const lastRow = pageRows[pageRows.length - 1];
         const nextCursor =
           hasMore && lastRow ? encodeCursor(lastRow.createdAt, lastRow.id) : undefined;
-        return { messages: page, nextCursor };
+        return {
+          messages: page,
+          nextCursor,
+          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+        };
       });
     },
 

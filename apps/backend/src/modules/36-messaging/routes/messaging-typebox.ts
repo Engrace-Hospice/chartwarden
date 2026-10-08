@@ -211,6 +211,7 @@ export const ChannelDetailResponseSchema = Type.Object({
   subjectId: NullableString(),
   archivedAt: NullableString(),
   unreadCount: Type.Integer(),
+  patientId: NullableString(),
   members: Type.Array(ChannelMemberViewSchema),
 });
 const ResolvedMessageSchema = Type.Object({
@@ -225,6 +226,7 @@ const ResolvedMessageSchema = Type.Object({
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),
   nextCursor: Type.Optional(Type.String()),
+  patientId: NullableString(),
 });
 export const SendMessageResponseSchema = Type.Object({
   messageId: Type.String(),
