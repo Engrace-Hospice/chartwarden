@@ -21,6 +21,10 @@ const FINANCE_LEADS: Audience = {
   recipientResolver: "role_set",
   resolverArgs: { roleKeys: ["cfo", "billing_manager"] },
 };
+const FINANCE_AND_COMPLIANCE: Audience = {
+  recipientResolver: "role_set",
+  resolverArgs: { roleKeys: ["cfo", "billing_manager", "compliance_officer", "org_admin"] },
+};
 const TENANT_ADMINS: Audience = { recipientResolver: "tenant_admins", resolverArgs: {} };
 
 function rule(
@@ -56,7 +60,16 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("denial.aging_threshold_breached", "warn", BILLING_MANAGERS),
   rule("denial.high_value", "critical", BILLING_MANAGERS),
   rule("appeal.deadline_approaching", "warn", BILLING_MANAGERS),
-  // ── M26 cap crons (threshold-crossing alerts reuse the seeded `cap.approaching` rule) ─────────
+  // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
+  // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
+  ...(["agency", "patient"] as const).flatMap((family) => [
+    rule(`m26.cap.${family}_watch_90`, "warn", FINANCE_LEADS),
+    rule(`m26.cap.${family}_warn_95`, "warn", FINANCE_LEADS),
+    rule(`m26.cap.${family}_breach_100`, "critical", FINANCE_AND_COMPLIANCE),
+  ]),
+  rule("m26.cap.inpatient_watch_18", "warn", FINANCE_LEADS),
+  rule("m26.cap.inpatient_breach", "critical", FINANCE_AND_COMPLIANCE),
+  // ── M26 cap crons ──────────────────────────────────────────────────────────────────────────────
   rule("m26.cap.year_close_reminder", "warn", FINANCE_LEADS),
   rule("m26.cap.psr_variance_detected", "warn", FINANCE_LEADS),
   // ── M27 §4.9 filing-deadline tiers ────────────────────────────────────────────────────────────

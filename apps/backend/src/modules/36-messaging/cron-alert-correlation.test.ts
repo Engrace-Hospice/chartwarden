@@ -14,9 +14,9 @@ describe("cronAlertCorrelationId", () => {
     const p = { noeId: "n1", admissionId: "a1" };
     const same = cronAlertCorrelationId("m23-cron", "x", p, new Date("2026-10-08T22:00:00Z"));
     expect(cronAlertCorrelationId("m23-cron", "x", p, DAY)).toEqual(same);
-    expect(cronAlertCorrelationId("m23-cron", "x", p, new Date("2026-10-09T01:00:00Z"))).not.toEqual(
-      same,
-    );
+    expect(
+      cronAlertCorrelationId("m23-cron", "x", p, new Date("2026-10-09T01:00:00Z")),
+    ).not.toEqual(same);
   });
 
   it("keys platform events on the jurisdiction and ignores non-subject payload fields", () => {

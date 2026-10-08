@@ -24,13 +24,16 @@ function emittedCodes(): Set<string> {
     const text = readFileSync(join(SRC, rel), "utf8");
     // `alertCode: <expr>,` (possibly multi-line) and the M25 pure watchers' `kind: "<code>"` emissions.
     const exprs = [...text.matchAll(/alertCode:\s*([^;]*?),\s*\n\s*severity/g)].map((m) => m[1]);
-    const kinds = [...text.matchAll(/kind:\s*("(?:denial|appeal)\.[a-z0-9_.]+")/g)].map((m) => m[1]);
+    const kinds = [...text.matchAll(/kind:\s*("(?:denial|appeal)\.[a-z0-9_.]+")/g)].map(
+      (m) => m[1],
+    );
     const taxonomy = text.includes("M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_ALERT_CODE =")
       ? ['"m23.taxonomy.unmapped_taxonomy_alert"']
       : [];
     for (const expr of [...exprs, ...kinds, ...taxonomy]) {
       for (const m of (expr ?? "").matchAll(CODE_LITERAL)) codes.add(m[1] as string);
-      if (expr?.includes("${tier}")) for (const t of M27_TIERS) codes.add(`m27.filing_deadline.${t}_due`);
+      if (expr?.includes("${tier}"))
+        for (const t of M27_TIERS) codes.add(`m27.filing_deadline.${t}_due`);
     }
   }
   return codes;

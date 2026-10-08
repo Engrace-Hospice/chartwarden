@@ -424,6 +424,7 @@
     "test:m25:interim-payments-seam:live": "vitest run apps/backend/__tests__/m25-interim-payments-seam.live.test.ts",
     "test:m26:cost-report-cap-seam:live": "vitest run apps/backend/__tests__/m26-cost-report-cap-seam.live.test.ts",
     "test:m26:psr-import:live": "vitest run apps/backend/__tests__/m26-psr-import.live.test.ts",
+    "test:m26:projections-alerts:live": "vitest run apps/backend/__tests__/m26-projections-alerts.live.test.ts",
     "test:m27:allocation-input:live": "vitest run apps/backend/__tests__/m27-allocation-input.live.test.ts",
     "test:m27:validation-context:live": "vitest run apps/backend/__tests__/m27-validation-context.live.test.ts",
     "test:m27:workflow-slice:live": "vitest run apps/backend/__tests__/m27-cost-report-workflow-slice.live.test.ts",

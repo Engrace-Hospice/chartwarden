@@ -263,6 +263,8 @@ export function createDrizzleCapConsumerStore(
           // deliveries for the same (org, period) racing an UPDATE-if-exists-else-INSERT would let one
           // lose its delta entirely on an ON CONFLICT DO NOTHING insert. ON CONFLICT DO UPDATE folds
           // the delta into the existing row (or seeds it, on first insert) under one row lock.
+          // GAP-038 — every level-of-care day (RHC/CHC/IRC/GIP) is the cap's denominator, so
+          // total_patient_days grows by the same replay-safe line (the unique key above gates it).
           await tx
             .insert(IA)
             .values({
@@ -270,12 +272,14 @@ export function createDrizzleCapConsumerStore(
               capPeriodId: period.id,
               gipDays: gipDelta,
               ircDays: ircDelta,
+              totalPatientDays: day.days,
             })
             .onConflictDoUpdate({
               target: [IA.organizationId, IA.capPeriodId],
               set: {
                 gipDays: sql`${IA.gipDays} + ${gipDelta}`,
                 ircDays: sql`${IA.ircDays} + ${ircDelta}`,
+                totalPatientDays: sql`${IA.totalPatientDays} + ${day.days}`,
                 lastUpdatedAt: new Date(),
               },
             });
