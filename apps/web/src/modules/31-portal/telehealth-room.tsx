@@ -64,19 +64,22 @@ const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString
 export function TelehealthRoom(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<VisitRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // True only until the FIRST load settles. A refresh (after join / leave / end) must never swap the page for the
+  // spinner: that would unmount the live video iframe and remount it with the same participant token.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [room, setRoom] = useState<ActiveRoom | null>(null);
   const [busyVisit, setBusyVisit] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
     const res = await client.GET("/api/v1/admin/telehealth/visits");
     if (res.error) setLoadError("The telehealth visit list could not be loaded.");
-    else setRows(((res.data as { items?: VisitRow[] } | undefined)?.items ?? []).slice());
-    setLoading(false);
+    else {
+      setLoadError(null);
+      setRows(((res.data as { items?: VisitRow[] } | undefined)?.items ?? []).slice());
+    }
+    setInitialLoading(false);
   }, [client]);
 
   useEffect(() => {
@@ -130,8 +133,11 @@ export function TelehealthRoom(): JSX.Element {
     [client, load],
   );
 
-  if (loading) return <LoadingSpinner />;
-  if (loadError) return <EmptyState title="Unavailable" description={loadError} />;
+  if (initialLoading) return <LoadingSpinner />;
+  // A failed refresh keeps the page (and any live room) mounted and reports inline; only a failed first load,
+  // with nothing to show, replaces the page.
+  if (loadError && rows.length === 0 && !room)
+    return <EmptyState title="Unavailable" description={loadError} />;
 
   const frameUrl = room ? roomFrameUrl(room.ticket) : null;
 
@@ -147,6 +153,11 @@ export function TelehealthRoom(): JSX.Element {
       }
       table={
         <div style={shellStyle}>
+          {loadError ? (
+            <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
+              {loadError}
+            </p>
+          ) : null}
           {actionError ? (
             <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
               {actionError}
