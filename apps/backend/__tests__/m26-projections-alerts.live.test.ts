@@ -309,7 +309,12 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
 
   // ── GAP-038 ───────────────────────────────────────────────────────────────────────────────────
   it("level-of-care days feed the denominator so inpatient utilisation and the settlement overage are real", async () => {
-    const store = createDrizzleCapConsumerStore(handle.db, { outbox: m26Outbox });
+    const store = createDrizzleCapConsumerStore(handle.db, {
+      outbox: m26Outbox,
+      // the day-line path never reads the MBI / first-election facts (accrual lines only)
+      mbi: { mbiNormalizedForPatient: async () => null },
+      firstElection: { firstElectionEffectiveDateInRange: async () => null },
+    });
     const day = (n: number, revCode: "0651" | "0655" | "0656", days: number) => ({
       organizationId: ORG,
       patientId: PAT_HIGH,

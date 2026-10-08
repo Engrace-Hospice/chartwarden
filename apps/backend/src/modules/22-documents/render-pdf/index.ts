@@ -1,4 +1,4 @@
-export { renderRegisteredPdf, DEFAULT_PDF_RENDERERS } from "./registry";
+export { renderRegisteredPdf, renderPdfForTemplate, DEFAULT_PDF_RENDERERS } from "./registry";
 export type { DocModelBuilder, PdfRendererRegistry } from "./registry";
 export { buildIdgMinutesDoc } from "./idg-minutes-doc";
 export { buildIdgPacketDoc } from "./idg-packet-doc";
