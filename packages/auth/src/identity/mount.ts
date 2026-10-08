@@ -57,6 +57,44 @@ export interface RegisterIdentityAuthOptions {
    * whose MFA matrix requires a second factor. Absent means no pre-handler policy.
    */
   guard?: (input: { relativePath: string; actor: AuthAuditActor | null }) => Promise<void>;
+  /**
+   * GAP-003/005 - called after a SUCCESSFUL second-factor ceremony (TOTP verify, passkey sign-in, backup code) with
+   * the session that ceremony produced, so the factor the session PROVED can be recorded (the MFA matrix tests
+   * assurance, not enrolment). Awaited before the response is sent, so the client's next call sees it. A rejection
+   * is reported to {@link onSecondFactorError} and never fails the sign-in: the session simply stays unproven and
+   * the matrix refuses it (fail closed).
+   */
+  onSecondFactorVerified?: (input: {
+    sessionId: string;
+    userId: string;
+    factor: "totp" | "webauthn";
+  }) => Promise<void>;
+  onSecondFactorError?: (err: unknown) => void;
+}
+
+/** Which proved factor a successful auth path establishes; backup codes count as a TOTP-grade factor. */
+const PROVED_FACTOR_BY_PATH: Readonly<Record<string, "totp" | "webauthn">> = {
+  "/passkey/verify-authentication": "webauthn",
+  "/two-factor/verify-totp": "totp",
+  "/two-factor/verify-backup-code": "totp",
+};
+
+/** The request's cookies overlaid with the response's Set-Cookie values (the newly minted session wins). */
+function cookieHeaderAfter(
+  requestCookie: string | undefined,
+  setCookies: readonly string[],
+): string {
+  const jar = new Map<string, string>();
+  for (const pair of (requestCookie ?? "").split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+  }
+  for (const cookie of setCookies) {
+    const pair = cookie.split(";", 1)[0] ?? "";
+    const idx = pair.indexOf("=");
+    if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+  }
+  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
 /** Convert a Fastify request to a web `Request` (Fastify-parsed JSON body is re-serialized). */
@@ -80,6 +118,7 @@ function toWebRequest(request: FastifyRequest): Request {
 async function resolveActor(
   auth: MountableAuth,
   request: FastifyRequest,
+  cookieOverride?: string,
 ): Promise<AuthAuditActor | null> {
   if (!auth.api) return null;
   try {
@@ -88,6 +127,7 @@ async function resolveActor(
       if (value !== undefined)
         headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
     }
+    if (cookieOverride !== undefined) headers.set("cookie", cookieOverride);
     const snapshot = (await auth.api.getSession({ headers })) as {
       user?: { id?: unknown };
       session?: { id?: unknown; activeOrganizationId?: unknown };
@@ -147,7 +187,9 @@ export function registerIdentityAuth(
       }
     }
     const relativePath =
-      opts.auditSink || opts.guard ? relativeAuthPath(request.url, basePath) : null;
+      opts.auditSink || opts.guard || opts.onSecondFactorVerified
+        ? relativeAuthPath(request.url, basePath)
+        : null;
     // Sign-out / revoke destroy the session the event is about: resolve the actor first.
     const actor =
       relativePath !== null && needsActor(relativePath) ? await resolveActor(auth, request) : null;
@@ -179,6 +221,30 @@ export function registerIdentityAuth(
           actor,
         }),
       );
+    }
+    const provedFactor = PROVED_FACTOR_BY_PATH[relativePath ?? ""];
+    if (
+      provedFactor !== undefined &&
+      opts.onSecondFactorVerified &&
+      request.method.toUpperCase() === "POST" &&
+      res.status >= 200 &&
+      res.status < 300
+    ) {
+      try {
+        const cookie = cookieHeaderAfter(
+          request.headers.cookie,
+          res.headers.getSetCookie?.() ?? [],
+        );
+        const session = await resolveActor(auth, request, cookie);
+        if (session)
+          await opts.onSecondFactorVerified({
+            sessionId: session.sessionId,
+            userId: session.userId,
+            factor: provedFactor,
+          });
+      } catch (err) {
+        opts.onSecondFactorError?.(err);
+      }
     }
     reply.status(res.status);
     // Forward headers; Set-Cookie must go as a list (Headers.forEach folds duplicates into one string).

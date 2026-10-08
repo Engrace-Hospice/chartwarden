@@ -47,7 +47,10 @@ import {
   createDbActiveMembershipLister,
   createMfaEnrolmentGate,
 } from "../src/modules/02-identity/mfa-enrolment-gate";
-import { createDbMfaEnrollmentReader } from "../src/modules/02-identity/step-up-adapters-db";
+import {
+  createDbMfaEnrollmentReader,
+  createDbSessionProofReader,
+} from "../src/modules/02-identity/step-up-adapters-db";
 import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -183,6 +186,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     const gate = createMfaEnrolmentGate({
       enforced: resolveMfaEnforcement({ WARDENX_MFA_ENFORCEMENT: "true" }),
       factors: createDbMfaEnrollmentReader(handle.db as never),
+      sessionProvedFactor: createDbSessionProofReader(handle.db as never),
       roleKeysForMembership: async ({ organizationId, membershipId }) =>
         (await membershipRoleKeysForOrg(handle.db as never, organizationId, [membershipId])).get(
           membershipId,
@@ -195,7 +199,10 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       authenticate: createSessionAuthenticate({
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
-        mfaEnrolment: { check: ({ userId, roleKeys }) => gate.forRoles({ userId, roleKeys }) },
+        mfaEnrolment: {
+          check: ({ userId, sessionId, roleKeys }) =>
+            gate.forRoles({ userId, sessionId, roleKeys }),
+        },
       }),
     });
     registerIdentityAuth(app, auth, {
@@ -282,7 +289,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
 
   it("a password-only clinician is held at MFA enrolment; a verified TOTP lifts the hold", async () => {
     const u = await seedStaff("mfa", "rn_mfa");
-    const { cookie } = await boundSession(u.email, u.password, u.userId);
+    const { cookie, sessionId } = await boundSession(u.email, u.password, u.userId);
     const held = await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } });
     expect(held.statusCode).toBe(403);
     expect(held.json().error.code).toBe("MFA_ENROLMENT_REQUIRED");
@@ -297,6 +304,17 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     await admin.query(
       "INSERT INTO two_factor (user_id, secret_encrypted, verified) VALUES ($1,'sealed',true)",
       [u.userId],
+    );
+    // Enrolment alone is not assurance: the password-only session has not PROVED the factor.
+    const stillHeld = await app.inject({
+      method: "GET",
+      url: "/__probe/clinical",
+      headers: { cookie },
+    });
+    expect(stillHeld.statusCode).toBe(403);
+    await admin.query(
+      "UPDATE session SET last_step_up_at=now(), last_step_up_factor='totp' WHERE id=$1",
+      [sessionId],
     );
     const lifted = await app.inject({
       method: "GET",
@@ -330,13 +348,25 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       "INSERT INTO two_factor (user_id, secret_encrypted, verified) VALUES ($1,'sealed',true)",
       [u.userId],
     );
-    const { cookie } = await boundSession(u.email, u.password, u.userId);
+    const { cookie, sessionId } = await boundSession(u.email, u.password, u.userId);
     const held = await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } });
     expect(held.statusCode).toBe(403);
     await admin.query(
       "INSERT INTO passkey (user_id, credential_id, public_key) VALUES ($1,$2,'pk')",
       [u.userId, randomUUID()],
     );
+    // A passkey is enrolled but this session signed in on a password (and proved only a TOTP): still held.
+    await admin.query(
+      "UPDATE session SET last_step_up_at=now(), last_step_up_factor='totp' WHERE id=$1",
+      [sessionId],
+    );
+    const unproven = await app.inject({
+      method: "GET",
+      url: "/__probe/clinical",
+      headers: { cookie },
+    });
+    expect(unproven.statusCode).toBe(403);
+    await admin.query("UPDATE session SET last_step_up_factor='webauthn' WHERE id=$1", [sessionId]);
     const lifted = await app.inject({
       method: "GET",
       url: "/__probe/clinical",

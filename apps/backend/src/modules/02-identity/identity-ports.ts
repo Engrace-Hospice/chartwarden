@@ -682,9 +682,10 @@ export interface IdentityRouteDeps {
   mfaGate?: {
     forMembership(input: {
       userId: string;
+      sessionId: string;
       organizationId: string;
       membershipId: string;
-    }): Promise<{ satisfied: boolean; requirement: string }>;
+    }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
   };
 }
 

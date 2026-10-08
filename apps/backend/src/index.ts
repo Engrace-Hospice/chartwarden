@@ -184,7 +184,11 @@ import {
   createDbActiveMembershipLister,
   createMfaEnrolmentGate,
 } from "./modules/02-identity/mfa-enrolment-gate";
-import { createDbMfaEnrollmentReader } from "./modules/02-identity/step-up-adapters-db";
+import {
+  createDbMfaEnrollmentReader,
+  createDbSessionProofReader,
+  createDbSessionStepUpWriter,
+} from "./modules/02-identity/step-up-adapters-db";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -3811,12 +3815,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const authAuditErrorLogger = (err: unknown, event: { eventType: string }) =>
     app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
   // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
-  // M3's tables), factors from M2's enrolment reader. Enforced in production by default
-  // (`WARDENX_MFA_ENFORCEMENT` overrides); see resolveMfaEnforcement.
+  // M3's tables), factors from M2's enrolment reader. OPT-IN via
+  // `WARDENX_MFA_ENFORCEMENT=true` (the web app has no enrolment UI yet - see resolveMfaEnforcement).
   const mfaGate = dbHandle
     ? createMfaEnrolmentGate({
         enforced: resolveMfaEnforcement(process.env),
         factors: createDbMfaEnrollmentReader(dbHandle.db),
+        sessionProvedFactor: createDbSessionProofReader(dbHandle.db),
         roleKeysForMembership: async ({ organizationId, membershipId }) =>
           (await membershipRoleKeysForOrg(dbHandle.db, organizationId, [membershipId])).get(
             membershipId,
@@ -3840,7 +3845,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         ...(mfaGate
           ? {
               mfaEnrolment: {
-                check: ({ userId, roleKeys }) => mfaGate.forRoles({ userId, roleKeys }),
+                check: ({ userId, sessionId, roleKeys }) =>
+                  mfaGate.forRoles({ userId, sessionId, roleKeys }),
               },
             }
           : {}),
@@ -5478,6 +5484,23 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // when REDIS_URL is set; per-replica otherwise. Usernames are hashed before they become keys.
     registerIdentityAuth(app, auth, {
       ...(authAuditSink ? { auditSink: authAuditSink, onAuditError: authAuditErrorLogger } : {}),
+      // GAP-003/005 — record the factor a session PROVED at sign-in (TOTP / passkey / backup code) so the MFA matrix
+      // can require assurance, not just enrolment. Fail closed: a failed write leaves the session unproven.
+      ...(mfaGate && dbHandle
+        ? {
+            onSecondFactorVerified: async ({
+              sessionId,
+              factor,
+            }: { sessionId: string; factor: "totp" | "webauthn" }) =>
+              createDbSessionStepUpWriter(dbHandle.db).recordStepUp({
+                sessionId,
+                factor,
+                at: new Date(),
+              }),
+            onSecondFactorError: (err: unknown) =>
+              app.log.error({ err }, "recording the proved second factor failed"),
+          }
+        : {}),
       // GAP-005 — M2 §7.4: `two-factor/disable` is refused while the MFA matrix would no longer be met.
       ...(mfaGate
         ? {

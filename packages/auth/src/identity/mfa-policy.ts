@@ -65,15 +65,18 @@ export function evaluateMfa(roleKeys: readonly string[], factors: MfaFactorState
 }
 
 /**
- * Whether the server enforces the matrix. `WARDENX_MFA_ENFORCEMENT` (`true`/`false`) wins; unset, it is STRICT in
- * production and OFF elsewhere - the dev seeds and in-process suites create staff with a password only. Same
- * environment convention as `resolveSignUpRequiresInvite`.
+ * Whether the server enforces the matrix. OPT-IN: only `WARDENX_MFA_ENFORCEMENT=true` turns it on, in every
+ * environment, production included.
+ *
+ * Why not strict-by-default in production: refusing a staff session until a factor is enrolled needs an in-app
+ * enrolment path, and apps/web has a passkey page but no TOTP enrolment screen and does not yet react to
+ * `403 MFA_ENROLMENT_REQUIRED`. Defaulting ON would lock every existing staff user (the first org_admin, who needs a
+ * passkey, included) out of a deploy with no way to enrol. Roll out by enrolling the existing users first, then set
+ * the variable. Flip this default back to strict once the enrolment UI ships.
  */
 export function resolveMfaEnforcement(env: {
   readonly WARDENX_MFA_ENFORCEMENT?: string | undefined;
   readonly NODE_ENV?: string | undefined;
 }): boolean {
-  if (env.WARDENX_MFA_ENFORCEMENT === "true") return true;
-  if (env.WARDENX_MFA_ENFORCEMENT === "false") return false;
-  return env.NODE_ENV === "production";
+  return env.WARDENX_MFA_ENFORCEMENT === "true";
 }

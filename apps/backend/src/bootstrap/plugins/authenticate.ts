@@ -94,8 +94,9 @@ export interface SessionAuthenticateDeps {
   mfaEnrolment?: {
     check(input: {
       userId: string;
+      sessionId: string;
       roleKeys: readonly string[];
-    }): Promise<{ satisfied: boolean; requirement: string }>;
+    }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
   };
 }
 
@@ -202,6 +203,7 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     if (deps.mfaEnrolment && sessionClassRequiresMfa(actor.sessionClass)) {
       const verdict = await deps.mfaEnrolment.check({
         userId: actor.userId,
+        sessionId: snap.sessionId,
         roleKeys: actor.roles,
       });
       if (!verdict.satisfied) {
@@ -209,9 +211,11 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
         if (!MFA_ENROLMENT_ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix))) {
           throw new WardenXError(
             "MFA_ENROLMENT_REQUIRED",
-            verdict.requirement === "passkey"
-              ? "register a passkey before continuing (required for your role)"
-              : "enrol an authenticator app or passkey before continuing (required for your role)",
+            verdict.reason === "not_verified"
+              ? "sign in again with your second factor before continuing (required for your role)"
+              : verdict.requirement === "passkey"
+                ? "register a passkey before continuing (required for your role)"
+                : "enrol an authenticator app or passkey before continuing (required for your role)",
             403,
           );
         }

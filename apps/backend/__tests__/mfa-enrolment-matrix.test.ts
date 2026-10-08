@@ -40,12 +40,15 @@ describe("the MFA matrix (pure)", () => {
       expect(sessionClassRequiresMfa(c)).toBe(false);
   });
 
-  it("is strict in production, off elsewhere, and overridable", () => {
-    expect(resolveMfaEnforcement({ NODE_ENV: "production" })).toBe(true);
+  it("is opt-in: a production deploy never locks staff out before the enrolment UI exists", () => {
+    expect(resolveMfaEnforcement({ NODE_ENV: "production" })).toBe(false);
     expect(resolveMfaEnforcement({ NODE_ENV: "development" })).toBe(false);
     expect(
       resolveMfaEnforcement({ NODE_ENV: "production", WARDENX_MFA_ENFORCEMENT: "false" }),
     ).toBe(false);
+    expect(resolveMfaEnforcement({ NODE_ENV: "production", WARDENX_MFA_ENFORCEMENT: "true" })).toBe(
+      true,
+    );
     expect(resolveMfaEnforcement({ NODE_ENV: "test", WARDENX_MFA_ENFORCEMENT: "true" })).toBe(true);
   });
 });
@@ -55,6 +58,8 @@ function gateWith(opts: {
   totp?: boolean;
   passkey?: boolean;
   roles?: readonly string[];
+  /** The factor the session proved at sign-in; defaults to a TOTP when TOTP-enrolled, else a passkey. */
+  proved?: string | null;
 }) {
   let factorReads = 0;
   const gate = createMfaEnrolmentGate({
@@ -65,6 +70,14 @@ function gateWith(opts: {
         return factor === "totp" ? (opts.totp ?? false) : (opts.passkey ?? false);
       },
     },
+    sessionProvedFactor: async () =>
+      opts.proved !== undefined
+        ? opts.proved
+        : opts.passkey
+          ? "webauthn"
+          : opts.totp
+            ? "totp"
+            : null,
     roleKeysForMembership: async () => opts.roles ?? ["rn"],
     activeMembershipsOf: async () => [{ organizationId: "o1", membershipId: "m1" }],
   });
@@ -75,12 +88,18 @@ describe("the gate", () => {
   it("denies a password-only clinician and admits one with a TOTP", async () => {
     const denied = await gateWith({}).gate.forMembership({
       userId: "u1",
+      sessionId: "s1",
       organizationId: "o1",
       membershipId: "m1",
     });
-    expect(denied).toEqual({ requirement: "second_factor", satisfied: false });
+    expect(denied).toEqual({
+      requirement: "second_factor",
+      satisfied: false,
+      reason: "not_enrolled",
+    });
     const admitted = await gateWith({ totp: true }).gate.forRoles({
       userId: "u1",
+      sessionId: "s1",
       roleKeys: ["rn"],
     });
     expect(admitted.satisfied).toBe(true);
@@ -89,15 +108,41 @@ describe("the gate", () => {
   it("an org_admin with only a TOTP is still refused (passkey required)", async () => {
     const verdict = await gateWith({ totp: true, roles: ["org_admin"] }).gate.forMembership({
       userId: "u1",
+      sessionId: "s1",
       organizationId: "o1",
       membershipId: "m1",
     });
-    expect(verdict).toEqual({ requirement: "passkey", satisfied: false });
+    expect(verdict).toEqual({ requirement: "passkey", satisfied: false, reason: "not_enrolled" });
+  });
+
+  it("a passkey-only org_admin on a password-only session is refused until the session proves the passkey", async () => {
+    const input = { userId: "u1", sessionId: "s1", roleKeys: ["org_admin"] };
+    const unproven = await gateWith({ passkey: true, proved: null }).gate.forRoles(input);
+    expect(unproven).toEqual({ requirement: "passkey", satisfied: false, reason: "not_verified" });
+    const totpProof = await gateWith({ passkey: true, proved: "totp" }).gate.forRoles(input);
+    expect(totpProof.satisfied).toBe(false);
+    const proven = await gateWith({ passkey: true, proved: "webauthn" }).gate.forRoles(input);
+    expect(proven.satisfied).toBe(true);
+  });
+
+  it("a TOTP-enrolled clinician on an unproven session is refused; any proved factor admits", async () => {
+    const input = { userId: "u1", sessionId: "s1", roleKeys: ["rn"] };
+    expect((await gateWith({ totp: true, proved: null }).gate.forRoles(input)).reason).toBe(
+      "not_verified",
+    );
+    expect((await gateWith({ totp: true, proved: "sms" }).gate.forRoles(input)).satisfied).toBe(
+      false,
+    );
+    expect((await gateWith({ totp: true, proved: "totp" }).gate.forRoles(input)).satisfied).toBe(
+      true,
+    );
   });
 
   it("reads nothing and admits everyone when not enforced", async () => {
     const { gate, reads } = gateWith({ enforced: false });
-    expect((await gate.forRoles({ userId: "u1", roleKeys: ["org_admin"] })).satisfied).toBe(true);
+    expect(
+      (await gate.forRoles({ userId: "u1", sessionId: "s1", roleKeys: ["org_admin"] })).satisfied,
+    ).toBe(true);
     expect(reads()).toBe(0);
   });
 
@@ -215,5 +260,89 @@ describe("the two-factor/disable guard (GAP-005)", () => {
   it("never touches other endpoints", async () => {
     const res = await build(true).inject({ method: "POST", url: "/api/auth/sign-out" });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("recording the proved second factor (GAP-003/005)", () => {
+  const build = (status = 200) => {
+    const recorded: { sessionId: string; userId: string; factor: string }[] = [];
+    const seenCookies: string[] = [];
+    const app = Fastify();
+    registerIdentityAuth(
+      app,
+      {
+        handler: async () =>
+          new Response("{}", { status, headers: { "set-cookie": "session=new-token; Path=/" } }),
+        api: {
+          getSession: async ({ headers }: { headers: Headers }) => {
+            seenCookies.push(headers.get("cookie") ?? "");
+            return { user: { id: "u1" }, session: { id: "s-new" } };
+          },
+        },
+      },
+      {
+        onSecondFactorVerified: async (input) => {
+          recorded.push(input);
+        },
+      },
+    );
+    return { app, recorded, seenCookies };
+  };
+
+  it("records webauthn for a passkey sign-in, resolving the session the response minted", async () => {
+    const { app, recorded, seenCookies } = build();
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/passkey/verify-authentication",
+      headers: { cookie: "session=old; other=1" },
+      payload: {},
+    });
+    expect(recorded).toEqual([{ sessionId: "s-new", userId: "u1", factor: "webauthn" }]);
+    expect(seenCookies[0]).toBe("session=new-token; other=1");
+  });
+
+  it("records totp for a TOTP verify and for a backup code", async () => {
+    const { app, recorded } = build();
+    for (const path of ["/two-factor/verify-totp", "/two-factor/verify-backup-code"])
+      await app.inject({ method: "POST", url: `/api/auth${path}`, payload: {} });
+    expect(recorded.map((r) => r.factor)).toEqual(["totp", "totp"]);
+  });
+
+  it("records nothing for a failed ceremony or a password sign-in", async () => {
+    const failed = build(401);
+    await failed.app.inject({
+      method: "POST",
+      url: "/api/auth/two-factor/verify-totp",
+      payload: {},
+    });
+    const password = build();
+    await password.app.inject({ method: "POST", url: "/api/auth/sign-in/email", payload: {} });
+    expect(failed.recorded).toEqual([]);
+    expect(password.recorded).toEqual([]);
+  });
+
+  it("a failing write never fails the sign-in and is reported", async () => {
+    const errors: unknown[] = [];
+    const app = Fastify();
+    registerIdentityAuth(
+      app,
+      {
+        handler: async () => new Response("{}", { status: 200 }),
+        api: { getSession: async () => ({ user: { id: "u1" }, session: { id: "s1" } }) },
+      },
+      {
+        onSecondFactorVerified: async () => {
+          throw new Error("db down");
+        },
+        onSecondFactorError: (err) => errors.push(err),
+      },
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/two-factor/verify-totp",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(errors).toHaveLength(1);
   });
 });

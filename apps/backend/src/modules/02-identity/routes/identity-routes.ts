@@ -234,10 +234,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     if (deps.mfaGate) {
       const verdict = await deps.mfaGate.forMembership({
         userId: actor.userId,
+        sessionId: actor.sessionId,
         organizationId,
         membershipId: membership.membershipId,
       });
-      if (!verdict.satisfied) throw mfaEnrolmentRequired(verdict.requirement);
+      if (!verdict.satisfied) throw mfaEnrolmentRequired(verdict.requirement, verdict.reason);
     }
 
     const binding = await deps.sessions.bindOrganization({
