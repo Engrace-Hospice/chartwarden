@@ -3389,7 +3389,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m18OutboxPublisher = bindCallerModule(txOutboxPublisher, "m18");
   // GAP-056 — the M18 aggregator ports (state selection live; transport/credentials/M5 identifier fail-closed).
   const m18AggregatorDeps = dbHandle
-    ? buildEvvAggregatorDeps(dbHandle.db, process.env.EVV_AGGREGATOR_STATES)
+    ? buildEvvAggregatorDeps(dbHandle.db, {
+        rawStates: process.env.EVV_AGGREGATOR_STATES,
+        sandataApiBaseUrl: process.env.SANDATA_API_BASE_URL,
+        rawCredentials: process.env.EVV_AGGREGATOR_CREDENTIALS,
+      })
     : undefined;
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
