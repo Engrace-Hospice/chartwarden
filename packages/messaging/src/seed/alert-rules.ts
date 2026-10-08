@@ -15,6 +15,7 @@ import type {
   NotificationChannel,
 } from "../interfaces/kinds";
 import type { ResolverArgs } from "../resolution";
+import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
 
 /** One platform-default `alert_rule` (organization_id IS NULL). Typed against the §3.2 enum
  *  unions so `tsc` rejects an invalid category/severity/resolver/channel at authoring time. */
@@ -670,6 +671,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
       enabled: true,
     }),
   ),
+  // GAP-035 — the M23 window/ack crons, M25 denial/appeal crons, M26 cap crons and M27 filing-deadline tiers.
+  ...BILLING_CAP_ALERT_RULES,
   {
     eventType: "cap.approaching",
     category: "administrative",

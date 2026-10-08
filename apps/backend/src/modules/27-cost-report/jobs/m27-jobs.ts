@@ -1029,7 +1029,7 @@ async function runFilingDeadlineScan(deps: M27WorkerDeps): Promise<void> {
               tier === "past_deadline"
                 ? "m27.filing_deadline.past_deadline"
                 : `m27.filing_deadline.${tier}_due`,
-            severity: tier === "t4_months" ? "info" : tier === "past_deadline" ? "high" : "warn",
+            severity: tier === "t4_months" ? "info" : tier === "past_deadline" ? "critical" : "warn",
             organizationId,
             payload: {
               costReportId: window.costReportId,

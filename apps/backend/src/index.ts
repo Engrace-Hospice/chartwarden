@@ -1320,6 +1320,7 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -6164,7 +6165,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             eventType: alertCode,
             payload,
             severity,
-            correlationId: `m27-cron:${alertCode}`,
+            correlationId: cronAlertCorrelationId("m27-cron", alertCode, payload),
           });
         },
       },
@@ -6280,12 +6281,20 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // seam (the M27 `WX-PR-013` pattern).
       alerts: {
         dispatch: async ({ alertCode, severity, organizationId, payload }) => {
-          await m23AlertEmitter.emit(organizationId, {
-            eventType: alertCode,
-            payload,
-            severity,
-            correlationId: `m23-cron:${alertCode}`,
-          });
+          // Platform-status alerts (MAC portal up/down) carry no tenant (organizationId ""): fan out once per
+          // active org so each tenant's admins hear about it instead of an org-less alert reaching nobody.
+          const targetOrgs =
+            organizationId === ""
+              ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
+              : [organizationId];
+          for (const orgId of targetOrgs) {
+            await m23AlertEmitter.emit(orgId, {
+              eventType: alertCode,
+              payload,
+              severity,
+              correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
+            });
+          }
         },
       },
       activeOrgs: m23ActiveOrgs,
@@ -6602,7 +6611,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           eventType: alertCode,
           payload,
           severity,
-          correlationId: `m25-cron:${alertCode}`,
+          correlationId: cronAlertCorrelationId("m25-cron", alertCode, payload),
         });
       },
     };
@@ -6644,7 +6653,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           eventType: alertCode,
           payload,
           severity,
-          correlationId: `m26-cron:${alertCode}`,
+          correlationId: cronAlertCorrelationId("m26-cron", alertCode, payload),
         });
       },
     };
@@ -9696,7 +9705,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   eventType: alertCode,
                   payload,
                   severity,
-                  correlationId: `m23-taxonomy:${alertCode}`,
+                  correlationId: cronAlertCorrelationId("m23-taxonomy", alertCode, payload),
                 });
               },
             },
