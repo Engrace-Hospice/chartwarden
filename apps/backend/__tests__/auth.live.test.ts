@@ -1561,7 +1561,11 @@ describe.skipIf(!DB_URL)(
       const amd = await svc.submitAmendment(
         org,
         patientId,
-        { scope: "demographic", rationale: "name correction" },
+        {
+          scope: "demographic",
+          rationale: "name correction",
+          requestedChange: { fieldPath: "legalLastName", requestedValue: "Correctedname" },
+        },
         actor,
       );
       expect(amd.status).toBe("pending");
