@@ -18,6 +18,7 @@
 import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
+import { type DedupeQueueLike, addJobCoalescingInFlight } from "../../bootstrap/queue-dedupe";
 
 import { registerPlatformJob } from "@wardenx/tenancy";
 
@@ -110,7 +111,8 @@ export function buildM30RecomputeEnqueue(connection: ConnectionOptions | undefin
       // in M27's producer; M30's was never live-tested either, so it shipped unnoticed). Sanitize the
       // FINAL id only — jobKey itself (and the dedupe semantics it encodes) is untouched.
       const jobId = `${queue}:${jobKey}`.replace(/:/g, "__");
-      const job = await queueFor(queue).add(queue, payload, {
+      // GAP-047: clear a finished job with the same id first (retained hash => silent no-op otherwise).
+      const job = await addJobCoalescingInFlight(queueFor(queue) as unknown as DedupeQueueLike, queue, payload, {
         jobId,
         removeOnComplete: { count: 500 },
         removeOnFail: false,
