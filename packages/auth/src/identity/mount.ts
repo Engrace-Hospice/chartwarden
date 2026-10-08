@@ -7,6 +7,15 @@
 // only when a production DB client is present (composition root); slice/tests don't mount it.
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
+  type AuthAuditActor,
+  type AuthAuditEvent,
+  type AuthAuditSink,
+  buildAccountLockedEvent,
+  buildAuthAuditEvent,
+  needsActor,
+  relativeAuthPath,
+} from "./auth-audit";
+import {
   type CredentialThrottle,
   CredentialThrottleError,
   isGuardedSignInPath,
@@ -17,6 +26,10 @@ import {
 /** The slice of a Better Auth instance the bridge needs (structural — `Auth` satisfies it). */
 export interface MountableAuth {
   handler(request: Request): Promise<Response>;
+  /** Optional: resolves the acting session for audit attribution (Better Auth's `api` satisfies it). */
+  readonly api?: {
+    getSession(input: { headers: Headers }): Promise<unknown>;
+  };
 }
 
 export interface RegisterIdentityAuthOptions {
@@ -31,6 +44,19 @@ export interface RegisterIdentityAuthOptions {
    * needs both, and Better Auth's own hooks are version-coupled internals.
    */
   credentialThrottle?: CredentialThrottle;
+  /**
+   * GAP-002/GAP-004 - persists the M2 section 8.1 authentication events (login success/failure, lockout,
+   * logout, 2FA, backup code, passkey, session revoke). Absent means no auth audit trail.
+   */
+  auditSink?: AuthAuditSink;
+  /** Called when the sink rejects. Audit loss must be loud, but never fails (or unlocks) the auth request. */
+  onAuditError?: (err: unknown, event: AuthAuditEvent) => void;
+  /**
+   * GAP-005 - runs BEFORE the handler for the endpoints that act on an existing session (`needsActor` paths) with the
+   * resolved actor (null when anonymous). Throw a `WardenXError` to refuse - e.g. `two-factor/disable` for a role
+   * whose MFA matrix requires a second factor. Absent means no pre-handler policy.
+   */
+  guard?: (input: { relativePath: string; actor: AuthAuditActor | null }) => Promise<void>;
 }
 
 /** Convert a Fastify request to a web `Request` (Fastify-parsed JSON body is re-serialized). */
@@ -50,6 +76,36 @@ function toWebRequest(request: FastifyRequest): Request {
   });
 }
 
+/** Resolve the acting session from the request's cookies; null when anonymous or unresolvable. */
+async function resolveActor(
+  auth: MountableAuth,
+  request: FastifyRequest,
+): Promise<AuthAuditActor | null> {
+  if (!auth.api) return null;
+  try {
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(request.headers)) {
+      if (value !== undefined)
+        headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+    }
+    const snapshot = (await auth.api.getSession({ headers })) as {
+      user?: { id?: unknown };
+      session?: { id?: unknown; activeOrganizationId?: unknown };
+    } | null;
+    const userId = snapshot?.user?.id;
+    const sessionId = snapshot?.session?.id;
+    if (typeof userId !== "string" || typeof sessionId !== "string") return null;
+    const organizationId = snapshot?.session?.activeOrganizationId;
+    return {
+      userId,
+      sessionId,
+      ...(typeof organizationId === "string" ? { organizationId } : {}),
+    };
+  } catch {
+    return null; // attribution is best-effort; the event is still written, just without an actor
+  }
+}
+
 /** Mount Better Auth's handler at `${basePath}/*` on the Fastify host. */
 export function registerIdentityAuth(
   app: FastifyInstance,
@@ -58,6 +114,14 @@ export function registerIdentityAuth(
 ): void {
   const basePath = opts.basePath ?? "/api/auth";
   const throttle = opts.credentialThrottle;
+  const record = async (event: AuthAuditEvent | null): Promise<void> => {
+    if (!opts.auditSink || event === null) return;
+    try {
+      await opts.auditSink(event);
+    } catch (err) {
+      opts.onAuditError?.(err, event);
+    }
+  };
   app.all(`${basePath}/*`, async (request, reply) => {
     // §5.3.1 — refuse a spent budget BEFORE the credential is checked, so a locked-out account
     // costs an attacker an Argon2id verification of nothing. Only the credential-checking paths are
@@ -68,10 +132,27 @@ export function registerIdentityAuth(
       try {
         await throttle.assertUnderBudget({ username, ip: request.ip || "unknown" });
       } catch (err) {
-        if (err instanceof CredentialThrottleError)
+        if (err instanceof CredentialThrottleError) {
           reply.header("Retry-After", String(err.retryAfterSeconds));
+          await record(
+            buildAccountLockedEvent({
+              username,
+              ip: request.ip || "unknown",
+              userAgent: request.headers["user-agent"],
+              retryAfterSeconds: err.retryAfterSeconds,
+            }),
+          );
+        }
         throw err; // rendered by M1's error-handler as the canonical envelope
       }
+    }
+    const relativePath =
+      opts.auditSink || opts.guard ? relativeAuthPath(request.url, basePath) : null;
+    // Sign-out / revoke destroy the session the event is about: resolve the actor first.
+    const actor =
+      relativePath !== null && needsActor(relativePath) ? await resolveActor(auth, request) : null;
+    if (relativePath !== null && opts.guard && needsActor(relativePath)) {
+      await opts.guard({ relativePath, actor });
     }
     const res = await auth.handler(toWebRequest(request));
     if (guarded) {
@@ -80,6 +161,24 @@ export function registerIdentityAuth(
         ip: request.ip || "unknown",
         outcome: outcomeOfStatus(res.status),
       });
+    }
+    if (relativePath !== null && opts.auditSink) {
+      const responseBody = await res
+        .clone()
+        .json()
+        .catch(() => null);
+      await record(
+        buildAuthAuditEvent({
+          relativePath,
+          method: request.method,
+          status: res.status,
+          requestBody: request.body,
+          responseBody,
+          ip: request.ip || "unknown",
+          userAgent: request.headers["user-agent"],
+          actor,
+        }),
+      );
     }
     reply.status(res.status);
     // Forward headers; Set-Cookie must go as a list (Headers.forEach folds duplicates into one string).

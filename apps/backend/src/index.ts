@@ -26,6 +26,7 @@ import {
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
+  resolveMfaEnforcement,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
@@ -171,6 +172,15 @@ import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+import {
+  type AuthAuditDb,
+  createAuthAuditSink,
+} from "./modules/02-identity/audit/auth-event-audit";
+import {
+  createDbActiveMembershipLister,
+  createMfaEnrolmentGate,
+} from "./modules/02-identity/mfa-enrolment-gate";
+import { createDbMfaEnrollmentReader } from "./modules/02-identity/step-up-adapters-db";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -3681,15 +3691,47 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
       : undefined;
+  // GAP-002/GAP-004 — M2 §8.1 authentication audit trail (login, failure, lockout, logout, 2FA, passkey,
+  // session revoke, password reset). Audit-write loss is logged loudly but never fails the auth request.
+  const authAuditSink = dbHandle
+    ? createAuthAuditSink({ db: dbHandle.db as unknown as AuthAuditDb })
+    : undefined;
+  const authAuditErrorLogger = (err: unknown, event: { eventType: string }) =>
+    app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
+  // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
+  // M3's tables), factors from M2's enrolment reader. Enforced in production by default
+  // (`WARDENX_MFA_ENFORCEMENT` overrides); see resolveMfaEnforcement.
+  const mfaGate = dbHandle
+    ? createMfaEnrolmentGate({
+        enforced: resolveMfaEnforcement(process.env),
+        factors: createDbMfaEnrollmentReader(dbHandle.db),
+        roleKeysForMembership: async ({ organizationId, membershipId }) =>
+          (await membershipRoleKeysForOrg(dbHandle.db, organizationId, [membershipId])).get(
+            membershipId,
+          ) ?? [],
+        activeMembershipsOf: createDbActiveMembershipLister(dbHandle.db),
+      })
+    : undefined;
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
+        // GAP-002 — the password-reset leg of the M2 §8.1 authentication trail (the rest is the bridge's).
+        auditSink: authAuditSink,
+        onAuditError: authAuditErrorLogger,
       })
     : undefined;
   const authenticate = auth
     ? createSessionAuthenticate({
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => getSeam("SessionContextResolver"),
+        // GAP-003 — hold an org-bound staff session at the MFA-enrolment stage until the role's factor exists.
+        ...(mfaGate
+          ? {
+              mfaEnrolment: {
+                check: ({ userId, roleKeys }) => mfaGate.forRoles({ userId, roleKeys }),
+              },
+            }
+          : {}),
         // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
         ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
@@ -3882,6 +3924,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(auth ? { linkSessions: createLinkSessionMinter(auth) } : {}),
             ...(linkDelivery ? { linkDelivery } : {}),
             linkRedeemThrottle,
+            ...(mfaGate ? { mfaGate } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -5276,6 +5319,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // named account — the credential-stuffing shape §5.3.1 actually names. Cluster-wide over Valkey
     // when REDIS_URL is set; per-replica otherwise. Usernames are hashed before they become keys.
     registerIdentityAuth(app, auth, {
+      ...(authAuditSink ? { auditSink: authAuditSink, onAuditError: authAuditErrorLogger } : {}),
+      // GAP-005 — M2 §7.4: `two-factor/disable` is refused while the MFA matrix would no longer be met.
+      ...(mfaGate
+        ? {
+            guard: async ({ relativePath, actor }) => {
+              if (relativePath !== "/two-factor/disable" || !actor) return;
+              const verdict = await mfaGate.forUserWithoutTotp(actor.userId);
+              if (!verdict.satisfied)
+                throw new WardenXError(
+                  "MFA_REQUIRED_FOR_ROLE",
+                  "your role requires a second factor; it cannot be disabled",
+                  403,
+                );
+            },
+          }
+        : {}),
       credentialThrottle: createCredentialThrottle(
         rateLimitRedisClient
           ? createRedisFailedLoginStore(rateLimitRedisClient)

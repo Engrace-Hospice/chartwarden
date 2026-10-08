@@ -721,7 +721,7 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | POST | `/api/auth/sign-in/email` | none | — | n/a | password; returns MFA challenge if enrolled |
 | POST | `/api/auth/sign-in/passkey` | none | — | n/a | WebAuthn assertion |
 | POST | `/api/auth/sign-out` | session | — | yes | terminates current session |
-| POST | `/api/auth/verify-email` | none | — | yes | consumes verification token |
+| POST | `/api/auth/verify-email` | none | — | yes | consumes verification token. **Implementation note (GAP-003):** not backed - staff accounts are created only through an invitation whose acceptance marks the email verified (`markEmailVerified`), so sign-up carries no unverified-email window and `requireEmailVerification` stays off; this route becomes live only if open self-registration is ever enabled |
 | POST | `/api/auth/forgot-password` | none | — | yes | always 200 (no account enumeration) |
 | POST | `/api/auth/reset-password` | none | — | yes | consumes token; terminates all sessions |
 | POST | `/api/auth/two-factor/enable` | session | — | n/a | returns TOTP provisioning URI + backup codes once |

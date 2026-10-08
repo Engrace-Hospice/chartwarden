@@ -25,6 +25,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
+import { type AuthAuditEvent, type AuthAuditSink, buildPasswordResetEvent } from "./auth-audit";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { linkSessionPlugin } from "./link-session";
 import { argon2idHash, argon2idVerify } from "./password-hash";
@@ -72,6 +73,13 @@ export interface IdentityAuthOptions {
    * omitted, {@link resolveSignUpRequiresInvite} decides from the environment.
    */
   readonly requireInviteForSignUp?: boolean;
+  /**
+   * GAP-002 - persists `m2.auth.password_reset` (the one auth event only Better Auth's own callback can
+   * attribute to a user). The other auth events are written by the Fastify bridge (`registerIdentityAuth`).
+   */
+  readonly auditSink?: AuthAuditSink;
+  /** Called when the audit sink rejects; a failed audit write never fails the password reset. */
+  readonly onAuditError?: (err: unknown, event: AuthAuditEvent) => void;
 }
 
 /** The header the invitee's sign-up carries; its value is the one-time invitation token. */
@@ -264,6 +272,15 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       // A token-capturing override (auth-live lane) takes precedence; otherwise the link is delivered
       // through the injected email transport. The new hash re-runs Argon2id (the `password` config
       // above), so reset credentials are stored identically.
+      onPasswordReset: async ({ user }: { user: { id: string } }) => {
+        if (!options.auditSink) return;
+        const event = buildPasswordResetEvent(user.id);
+        try {
+          await options.auditSink(event);
+        } catch (err) {
+          options.onAuditError?.(err, event);
+        }
+      },
       sendResetPassword: async (data: { user: { email: string }; url: string; token: string }) => {
         if (options.sendResetPassword) {
           await options.sendResetPassword(data);

@@ -466,6 +466,8 @@ export function mountIdentityRoutes(
     linkRedeemThrottle?: IdentityRouteDeps["linkRedeemThrottle"];
     /** M5's minimum decedent read for `GET /funeral/case`. */
     funeralCases?: IdentityRouteDeps["funeralCases"];
+    /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
+    mfaGate?: IdentityRouteDeps["mfaGate"];
   },
 ): void {
   const deps: IdentityRouteDeps = {
@@ -497,6 +499,7 @@ export function mountIdentityRoutes(
     ...(invite?.linkDelivery ? { linkDelivery: invite.linkDelivery } : {}),
     ...(invite?.linkRedeemThrottle ? { linkRedeemThrottle: invite.linkRedeemThrottle } : {}),
     ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
+    ...(invite?.mfaGate ? { mfaGate: invite.mfaGate } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.

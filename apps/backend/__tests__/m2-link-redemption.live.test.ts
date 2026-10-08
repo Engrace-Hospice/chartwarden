@@ -50,6 +50,7 @@ import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
+import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { funeralSessionPinnedPatientPredicate } from "../src/modules/02-identity/abac-predicates";
 import {
@@ -66,7 +67,6 @@ import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import { createLinkDelivery } from "../src/modules/02-identity/link-delivery";
 import { registerLinkRoutes } from "../src/modules/02-identity/routes/link-routes";
 import { createDbSessionWriter } from "../src/modules/02-identity/session-writer-db";
-import { registerSeam } from "../src/bootstrap/index";
 import {
   caseloadMembershipPredicate,
   createCaseloadProvider,

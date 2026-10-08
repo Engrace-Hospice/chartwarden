@@ -699,6 +699,7 @@ jobs:
           # the collaborator / funeral-home link redemption (durable hash-only single-use link -> Better Auth session).
           - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
           - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
+          - { name: "M2 auth audit trail + MFA matrix", scripts: "test:m2:auth-hardening:live" }
           # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
           - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
