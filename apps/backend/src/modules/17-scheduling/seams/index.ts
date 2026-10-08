@@ -58,6 +58,12 @@ export {
   registerCredentialSeam,
 } from "./credentials";
 export { createDrizzleCredentialStore } from "./credentials-drizzle-store";
+export {
+  type CreateOnCallRotationInput,
+  type OnCallRotationStore,
+  type OnCallRotationView,
+  createDrizzleOnCallRotationStore,
+} from "./oncall-rotation-store";
 
 /** Deps for M17's owned-seam registration (slice defaults to the in-memory store). */
 export interface SchedulingSeamDeps {

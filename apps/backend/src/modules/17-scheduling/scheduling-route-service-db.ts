@@ -57,7 +57,6 @@ import {
   SchedulingStateError,
   VISIT_PURPOSE_DISCIPLINES,
   materializeRecurrence,
-  parseRrule,
   planFrequencyProposals,
   planVisitProposed,
   transitionTimeOff,
@@ -88,6 +87,11 @@ import {
   flagReassignmentsForTimeOff,
   sweepApprovedTimeOffReassignments,
 } from "./reassignment-scan";
+import {
+  assertRecurringPolicyValid,
+  ruleForPolicy,
+  toRecurringPolicyColumns,
+} from "./recurring-policy";
 import { assertAssignedClinician } from "./routes/assigned-clinician";
 import {
   type CallerAuthority,
@@ -117,6 +121,10 @@ import {
   type VisitView,
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
+import {
+  type CreateOnCallRotationInput,
+  createDrizzleOnCallRotationStore,
+} from "./seams/oncall-rotation-store";
 import { orgContextFor } from "./system-actor";
 import { computeVisitMetrics } from "./visit-metrics";
 
@@ -327,6 +335,8 @@ export function createDbSchedulingBackend(
   // `CredentialReader` seam, constructed here directly (no self-referential `getSeam` round-trip)
   // for M17's OWN grant/revoke/list routes — this module owns `membership_credential`.
   const credentialStore = createDrizzleCredentialStore(db);
+  // GAP-029 — M17's own on-call rotation table.
+  const onCallRotationStore = createDrizzleOnCallRotationStore(db);
 
   // ── emit + tx helpers ───────────────────────────────────────────────────────────────────────────────
   async function emit(
@@ -1510,6 +1520,7 @@ export function createDbSchedulingBackend(
       userId: string,
       input: CreateRecurringInput,
     ): Promise<RecurringView> {
+      assertRecurringPolicyValid(input);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const { providerEntityId, locationId } = await resolveSiting(
@@ -1527,16 +1538,7 @@ export function createDbSchedulingBackend(
             assignedMembershipId: input.assignedMembershipId,
             visitPurpose: input.visitPurpose,
             visitSetting: input.visitSetting,
-            rrule: input.rrule,
-            // §2.2.3 — the time-of-day window + tz are policy fields the write path defaults (the RRULE parse
-            // for the window lands with the materializer worker); NOT NULL, so seeded deterministically.
-            timeOfDayStart: "09:00",
-            timeOfDayEnd: "10:00",
-            timeZone: "UTC",
-            // startDate is derived in the same "UTC" the row's own timeZone field is defaulted to above —
-            // consistent with that placeholder, not the org's configured org_timezone (the real time-of-day
-            // window + tz parse lands with the materializer worker per the §2.2.3 comment above).
-            startDate: serviceDateOf(new Date().toISOString(), "UTC"),
+            ...toRecurringPolicyColumns(input),
             status: "active",
           })
           .returning({ id: RV.id });
@@ -1658,7 +1660,7 @@ export function createDbSchedulingBackend(
         const windowStart = localDateInTimeZone(now, policy.timeZone);
         const occurrences = materializeRecurrence(
           {
-            rule: parseRrule(policy.rrule),
+            rule: ruleForPolicy(policy),
             startDate: policy.startDate,
             endDate: policy.endDate,
             timeOfDayStart: policy.timeOfDayStart,
@@ -1920,7 +1922,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date } = {},
     ) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
+      return withOrgContext(db, orgContextFor(orgId, userId), (tx) =>
         sweepApprovedTimeOffReassignments(tx as DbClient, orgId, emit, now),
       );
     },
@@ -1931,7 +1933,7 @@ export function createDbSchedulingBackend(
       options: { now?: Date } = {},
     ) {
       const now = options.now ?? new Date();
-      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => ({
+      return withOrgContext(db, orgContextFor(orgId, userId), async (tx) => ({
         remindersEmitted: await emitDueCaregiverReminders(tx as DbClient, orgId, emit, now),
       }));
     },
@@ -2501,6 +2503,20 @@ export function createDbSchedulingBackend(
       membershipId: string,
     ): Promise<readonly CredentialRecord[]> {
       return credentialStore.listForMembership(orgId, membershipId);
+    },
+    // ── GAP-029 — on-call rotation management (the source behind tonightsOnCallRoster) ──────────────────
+    async listOnCallRotation(orgId: string, options: { includeCancelled?: boolean } = {}) {
+      return onCallRotationStore.list(orgId, options);
+    },
+    async createOnCallRotationEntry(
+      orgId: string,
+      actorMembershipId: string,
+      input: CreateOnCallRotationInput,
+    ) {
+      return onCallRotationStore.create(orgId, actorMembershipId, input);
+    },
+    async cancelOnCallRotationEntry(orgId: string, actorMembershipId: string, entryId: string) {
+      return onCallRotationStore.cancel(orgId, actorMembershipId, entryId);
     },
     async grantCredential(
       orgId: string,

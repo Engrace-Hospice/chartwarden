@@ -2055,6 +2055,21 @@ export const M17_CONTRIBUTED_PERMISSIONS = {
     abac: "none",
   },
 
+  // --- GAP-029 — the on-call rotation M19's roster-sync reads through `tonightsOnCallRoster`. Org-wide
+  // staff scheduling (who covers which night), not caseload-scoped: plain RBAC, the `time_off.approve` shape. ---
+  "oncall_rotation.read": {
+    resource: "oncall_rotation",
+    action: "read",
+    category: "scheduling",
+    abac: "none",
+  },
+  "oncall_rotation.manage": {
+    resource: "oncall_rotation",
+    action: "manage",
+    category: "scheduling",
+    abac: "none",
+  },
+
   // --- ADR-0023 D2 / SecHardening §12.4 — the device-attestation surface (M2). ---
   //
   // No `.attest` key: a clinician attesting the phone in their own hand is not an administrative act,

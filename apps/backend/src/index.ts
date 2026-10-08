@@ -765,6 +765,7 @@ import {
   createSafetyCiphers,
   createSafetyPolicyProvider,
   createSosRecipientCounter,
+  createWebhookOpsPager,
   denyStubSafetyAbacResolver,
   lazyTenantKeys,
   mountM20Routes,
@@ -3433,7 +3434,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m18OutboxPublisher = bindCallerModule(txOutboxPublisher, "m18");
   // GAP-056 — the M18 aggregator ports (state selection live; transport/credentials/M5 identifier fail-closed).
   const m18AggregatorDeps = dbHandle
-    ? buildEvvAggregatorDeps(dbHandle.db, process.env.EVV_AGGREGATOR_STATES)
+    ? buildEvvAggregatorDeps(dbHandle.db, {
+        rawStates: process.env.EVV_AGGREGATOR_STATES,
+        sandataApiBaseUrl: process.env.SANDATA_API_BASE_URL,
+        rawCredentials: process.env.EVV_AGGREGATOR_CREDENTIALS,
+      })
     : undefined;
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
@@ -7329,6 +7334,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       db: dbHandle.db,
       outbox: m20OutboxPublisher,
       policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
+      // GAP-032 — the platform page that lets the SOS ladder enter the emergency terminus. Unset => the
+      // watchdog keeps refusing that rung (and logs it) rather than record a terminus nobody was paged for.
+      ...(process.env.WARDENX_OPS_PAGE_WEBHOOK_URL
+        ? {
+            terminus: createWebhookOpsPager({
+              url: process.env.WARDENX_OPS_PAGE_WEBHOOK_URL,
+              token: process.env.WARDENX_OPS_PAGE_WEBHOOK_TOKEN,
+            }),
+          }
+        : {}),
       activeOrgs: m20ActiveOrgs,
       // GAP-061 — the overdue detector's D14 after-hours zone, through M1's owner reader (M20 reads no
       // `location` row itself).

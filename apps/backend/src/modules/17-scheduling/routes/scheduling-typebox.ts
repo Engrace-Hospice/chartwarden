@@ -367,6 +367,22 @@ export const CredentialViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const CredentialListResponseSchema = Type.Array(CredentialViewSchema);
+// GAP-029 — on-call rotation entries (the source behind tonightsOnCallRoster).
+export const OnCallRotationViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  membershipId: Type.String({ format: "uuid" }),
+  discipline: Type.Union([
+    Type.Literal("clinical_rn"),
+    Type.Literal("clinical_lpn"),
+    Type.Literal("medical_director"),
+    Type.Literal("msw"),
+    Type.Literal("chaplain"),
+  ]),
+  startsAt: Type.String({ format: "date-time" }),
+  endsAt: Type.String({ format: "date-time" }),
+  cancelledAt: Nullable(Type.String({ format: "date-time" })),
+});
+export const OnCallRotationListResponseSchema = Type.Array(OnCallRotationViewSchema);
 export const EligibleCliniciansQuerySchema = Type.Object({
   patientId: Type.String({ format: "uuid" }),
   visitPurpose: VISIT_PURPOSE,
@@ -394,6 +410,22 @@ export const GrantCredentialRequest = Type.Object({
   effectiveAt: Type.String({ format: "date" }),
   expiresAt: Type.Optional(Nullable(Type.String({ format: "date" }))),
   issuingBody: Type.Optional(Type.String({ maxLength: 200 })),
+});
+export const OnCallRotationQuerySchema = Type.Object({
+  includeCancelled: Type.Optional(Type.Boolean()),
+});
+const ONCALL_ROTATION_DISCIPLINE = Type.Union([
+  Type.Literal("clinical_rn"),
+  Type.Literal("clinical_lpn"),
+  Type.Literal("medical_director"),
+  Type.Literal("msw"),
+  Type.Literal("chaplain"),
+]);
+export const CreateOnCallRotationRequest = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  discipline: ONCALL_ROTATION_DISCIPLINE,
+  startsAt: Type.String({ format: "date-time" }),
+  endsAt: Type.String({ format: "date-time" }),
 });
 export const RevokeCredentialRequest = Type.Object({
   reason: Type.String({ minLength: 3, maxLength: 1000 }),
@@ -511,6 +543,14 @@ type _Portal = Conforms<
 type _CredentialList = Conforms<
   Static<typeof CredentialListResponseSchema>,
   Awaited<ReturnType<ServiceType["listCredentials"]>>
+>;
+type _OnCallRotationList = Conforms<
+  Static<typeof OnCallRotationListResponseSchema>,
+  Awaited<ReturnType<ServiceType["listOnCallRotation"]>>
+>;
+type _OnCallRotationCreate = Conforms<
+  Static<typeof OnCallRotationViewSchema>,
+  Awaited<ReturnType<ServiceType["createOnCallRotationEntry"]>>
 >;
 type _CredentialGrant = Conforms<
   Static<typeof CredentialViewSchema>,

@@ -48,13 +48,14 @@ import {
   type IsoInstant,
   NotFoundError,
   SAFETY_INCIDENT_CLOSED_STATES,
+  SAFETY_SCHEDULE_ACTIONABLE_STATES,
   type SafetyCoverageGapDto,
   type SafetyPolicyEffectiveDto,
   type SafetyPolygonRings,
   type SafetySosLifecycleState,
   WardenXError,
 } from "@wardenx/types";
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   buildCheckInOverdueAlert,
   buildIncidentSubmittedAlert,
@@ -553,7 +554,7 @@ export function buildDrizzleM20WriteService(
         );
       }
 
-      const checkInId = await withOrgContext(db, ctx(actor), async (tx) => {
+      const checkIn = await withOrgContext(db, ctx(actor), async (tx) => {
         const { versionId } = await ensurePolicyVersion(tx as Tx, actor, at);
 
         // D11 — coordinates are OFF by default and consent-gated. Unlike the SOS press, a routine
@@ -608,6 +609,25 @@ export function buildDrizzleM20WriteService(
           )
           .limit(1);
 
+        // GAP-030 — a schedule row is the obligation of ONE clinician. Bind it to the poster (and to an
+        // actionable state) BEFORE anything is written, with the non-leaking 404: another clinician's
+        // schedule id is indistinguishable from one that does not exist.
+        if (input.scheduleId !== undefined) {
+          const [owned] = await tx
+            .select({ id: SCHEDULE.id })
+            .from(SCHEDULE)
+            .where(
+              and(
+                eq(SCHEDULE.id, input.scheduleId),
+                eq(SCHEDULE.organizationId, actor.organizationId),
+                eq(SCHEDULE.clinicianMembershipId, actor.membershipId),
+                inArray(SCHEDULE.state, [...SAFETY_SCHEDULE_ACTIONABLE_STATES] as never[]),
+              ),
+            )
+            .limit(1);
+          if (!owned) throw new NotFoundError("safety check-in schedule");
+        }
+
         const [created] = await tx
           .insert(CHECK_IN)
           .values({
@@ -642,10 +662,15 @@ export function buildDrizzleM20WriteService(
               and(
                 eq(SCHEDULE.id, input.scheduleId),
                 eq(SCHEDULE.organizationId, actor.organizationId),
+                eq(SCHEDULE.clinicianMembershipId, actor.membershipId),
+                inArray(SCHEDULE.state, [...SAFETY_SCHEDULE_ACTIONABLE_STATES] as never[]),
               ),
             )
             .returning({ id: SCHEDULE.id });
-          scheduleClosed = closed.length === 1;
+          // Lost a race with the detector or another post: roll the whole post back rather than leave a
+          // check-in pointing at a schedule it did not fulfil.
+          if (closed.length !== 1) throw new NotFoundError("safety check-in schedule");
+          scheduleClosed = true;
         }
 
         await outbox.publish(tx, {
@@ -671,12 +696,12 @@ export function buildDrizzleM20WriteService(
           // updates over M36's socket rooms rather than paging somebody every time a clinician says "I'm
           // OK". The overdue ALERT (if one already fired) is closed by the state flip above.
         }
-        return id;
+        return { id, scheduleClosed };
       });
 
       return {
-        checkIn: await readService.getCheckIn(actor, checkInId),
-        scheduleClosed: input.scheduleId !== undefined,
+        checkIn: await readService.getCheckIn(actor, checkIn.id),
+        scheduleClosed: checkIn.scheduleClosed,
         warningsSurfaced: warnings,
       };
     },
@@ -958,11 +983,12 @@ export function buildDrizzleM20WriteService(
           by: actor.membershipId as never,
           at: iso(at),
           biometricRequired,
-          // The DEVICE's verdict, presented through M2's step-up surface. A token that is PRESENT is a
-          // pass; its absence under a policy that requires biometric is a fail. M20 does not verify the
-          // token itself — that is M2's — and this layer must not decide that an absent token "probably"
-          // passed.
-          biometricResult: input.biometricVerificationToken !== undefined ? "passed" : null,
+          // GAP-031 — the verdict is the SERVER's, never the client's. `actor.stepUpRecent` is stamped by
+          // the authenticate hook from M2's step-up state (a qualifying webauthn/totp factor inside the
+          // freshness window). The body's `biometricVerificationToken` is an unverifiable string and is not
+          // consulted: an arbitrary non-empty token used to read as `passed`. Anything the server cannot
+          // verify is `failed`, which the machine records as a rejected (not cancelled) attempt.
+          biometricResult: actor.stepUpRecent ? "passed" : "failed",
         });
 
         const effects: readonly SafetySideEffect[] =

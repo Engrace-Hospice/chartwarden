@@ -29,6 +29,7 @@ import {
   AvailabilityQuerySchema,
   CancelTimeOffRequest,
   CancelVisitRequest,
+  CreateOnCallRotationRequest,
   CreateRecurringVisitRequest,
   CreateVisitRequest,
   DayViewQuerySchema,
@@ -44,6 +45,7 @@ import {
   MembershipIdParamsSchema,
   MetricsQuerySchema,
   NoShowVisitRequest,
+  OnCallRotationQuerySchema,
   OptimizeDayRequest,
   PortalUpcomingQuerySchema,
   ProposalIdParamsSchema,
@@ -225,6 +227,8 @@ const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.visit.read_upcoming");
 const CREDENTIAL_READ = P("membership_credential.read");
 const CREDENTIAL_GRANT = P("membership_credential.grant");
 const CREDENTIAL_REVOKE = P("membership_credential.revoke");
+const ONCALL_ROTATION_READ = P("oncall_rotation.read");
+const ONCALL_ROTATION_MANAGE = P("oncall_rotation.manage");
 
 // PARAM-004 follow-up — `requireAbac`'s `getTarget` (packages/auth/src/abac/require-abac.ts) is
 // SYNCHRONOUS, so `createGateTarget` below cannot itself resolve `orgId`'s configured timezone from
@@ -555,6 +559,14 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
         visitPurpose: b.visitPurpose,
         visitSetting: b.visitSetting,
         rrule: b.rrule,
+        timeOfDayStart: b.timeOfDayStart,
+        timeOfDayEnd: b.timeOfDayEnd,
+        timeZone: b.timeZone,
+        startDate: b.startDate,
+        ...(b.endDate !== undefined ? { endDate: b.endDate } : {}),
+        ...(b.count !== undefined ? { count: b.count } : {}),
+        ...(b.byday !== undefined ? { byday: b.byday } : {}),
+        ...(b.patientAddressId !== undefined ? { patientAddressId: b.patientAddressId } : {}),
       });
       return reply.code(201).send(res);
     },
@@ -808,6 +820,54 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
         issuingBody: b.issuingBody,
       });
       return reply.code(201).send(res);
+    },
+  );
+
+  // 33/34/35 — GAP-029 on-call rotation: the source M19's roster-sync reads via `tonightsOnCallRoster`.
+  // Org-wide staff scheduling data (no patient identifiers), plain RBAC like the credential routes.
+  app.get(
+    "/api/v1/oncall-rotation",
+    {
+      preHandler: [ONCALL_ROTATION_READ],
+      config: {
+        auditRead: {
+          none: "On-call rotation (staff, discipline, window) only; no patient identifiers or PHI in the response.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(OnCallRotationQuerySchema, request.query);
+      return service.listOnCallRotation(organizationId, {
+        includeCancelled: q.includeCancelled === true,
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/oncall-rotation",
+    { preHandler: [ONCALL_ROTATION_MANAGE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const b = parse(CreateOnCallRotationRequest, request.body);
+      const res = await service.createOnCallRotationEntry(organizationId, userId, {
+        membershipId: b.membershipId,
+        discipline: b.discipline,
+        startsAt: b.startsAt,
+        endsAt: b.endsAt,
+      });
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.delete(
+    "/api/v1/oncall-rotation/:id",
+    { preHandler: [ONCALL_ROTATION_MANAGE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      await service.cancelOnCallRotationEntry(organizationId, userId, id);
+      return reply.code(204).send();
     },
   );
 

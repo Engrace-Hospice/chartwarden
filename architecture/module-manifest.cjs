@@ -604,6 +604,7 @@ exports.MODULES = [
     ownedTables: [
       "clinician_availability",
       "membership_credential",
+      "oncall_rotation_entry",
       "recurring_visit",
       "route_segment",
       "time_off",

@@ -151,6 +151,11 @@ export {
   runSosSlaWatchdogCron,
   scheduleM20Jobs,
 } from "./jobs/cron-workers";
+export {
+  type SosTerminusPageInput,
+  type SosTerminusPort,
+  createWebhookOpsPager,
+} from "./jobs/terminus-port";
 export { M20_PLATFORM_JOB_ID, wireM20Tenancy } from "./wiring";
 export {
   type M20RegisteredAbacPredicate,

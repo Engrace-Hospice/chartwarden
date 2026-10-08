@@ -367,6 +367,68 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     expect(await outboxFor(sosAlertId)).toEqual([]);
   });
 
+  it("GAP-032: with an ops pager bound, a breached tier 3 enters emergency_terminus and ops is paged", async () => {
+    const postedAt = new Date("2026-09-01T16:00:00.000Z");
+    const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
+    const sosAlertId = await seedSos({
+      org: ORG_A,
+      lifecycleState: "escalation_tier_3",
+      postedAt,
+      policyVersionId,
+      history: { fromState: "escalation_tier_2", enteredAt: new Date("2026-09-01T16:50:00.000Z") },
+    });
+    const pages: Array<{ sosAlertId: string; loopIteration: number }> = [];
+    await runSosSlaWatchdogCron({
+      ...deps,
+      terminus: {
+        async pageOps(input) {
+          pages.push({ sosAlertId: input.sosAlertId, loopIteration: input.loopIteration });
+        },
+      },
+    });
+
+    expect(pages).toEqual([{ sosAlertId, loopIteration: 0 }]);
+    expect(await alertRow(sosAlertId)).toMatchObject({
+      lifecycle_state: "emergency_terminus",
+      version: 2,
+    });
+    const outbox = await outboxFor(sosAlertId);
+    expect(outbox.map((r) => r.event_type)).toContain("m20.safety.sos_terminus_reached");
+    const terminus = outbox.find((r) => r.event_type === "m20.safety.sos_terminus_reached");
+    // Honest payload: the page happened; the dial and the PSAP lookup have no implementer.
+    expect(terminus?.payload).toMatchObject({
+      wardenxOpsPaged: true,
+      emergencyContactCallInitiated: false,
+      psapJurisdictionId: null,
+    });
+  });
+
+  it("GAP-032: a failing ops page leaves the alert at tier 3 and records no terminus", async () => {
+    const postedAt = new Date("2026-09-01T16:00:00.000Z");
+    const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
+    const sosAlertId = await seedSos({
+      org: ORG_A,
+      lifecycleState: "escalation_tier_3",
+      postedAt,
+      policyVersionId,
+      history: { fromState: "escalation_tier_2", enteredAt: new Date("2026-09-01T16:50:00.000Z") },
+    });
+    await runSosSlaWatchdogCron({
+      ...deps,
+      terminus: {
+        async pageOps() {
+          throw new Error("receiver down");
+        },
+      },
+    });
+
+    expect(await alertRow(sosAlertId)).toMatchObject({
+      lifecycle_state: "escalation_tier_3",
+      version: 1,
+    });
+    expect(await outboxFor(sosAlertId)).toEqual([]);
+  });
+
   it("an alert already in emergency_terminus (a future manual-escalate path) gets re-paged on its loop", async () => {
     const postedAt = new Date("2026-09-01T16:00:00.000Z");
     const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);

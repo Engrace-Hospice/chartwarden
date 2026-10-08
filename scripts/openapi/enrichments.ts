@@ -1642,6 +1642,7 @@ import {
   AvailabilityViewSchema as M17AvailabilityViewSchema,
   CancelTimeOffRequest as M17CancelTimeOffRequest,
   CancelVisitRequest as M17CancelVisitRequest,
+  CreateOnCallRotationRequest as M17CreateOnCallRotationRequest,
   CreateRecurringVisitRequest as M17CreateRecurringVisitRequest,
   CreateVisitRequest as M17CreateVisitRequest,
   CredentialListResponseSchema as M17CredentialListResponseSchema,
@@ -1659,6 +1660,9 @@ import {
   MapViewResponseSchema as M17MapViewResponseSchema,
   MetricsQuerySchema as M17MetricsQuerySchema,
   NoShowVisitRequest as M17NoShowVisitRequest,
+  OnCallRotationListResponseSchema as M17OnCallRotationListResponseSchema,
+  OnCallRotationQuerySchema as M17OnCallRotationQuerySchema,
+  OnCallRotationViewSchema as M17OnCallRotationViewSchema,
   OptimizeDayRequest as M17OptimizeDayRequest,
   OptimizeDayResponseSchema as M17OptimizeDayResponseSchema,
   PortalUpcomingQuerySchema as M17PortalUpcomingQuerySchema,
@@ -5536,6 +5540,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/memberships/:membershipId/credentials/:credentialId": {
     summary: "GAP-093: revoke a credential (204)",
     body: M17RevokeCredentialRequest,
+  },
+  "GET /api/v1/oncall-rotation": {
+    summary: "GAP-029: the on-call rotation M19's roster-sync reads (cancelled entries opt-in)",
+    query: M17OnCallRotationQuerySchema,
+    response: M17OnCallRotationListResponseSchema,
+  },
+  "POST /api/v1/oncall-rotation": {
+    summary: "GAP-029: add an on-call rotation entry (201)",
+    body: M17CreateOnCallRotationRequest,
+    response: M17OnCallRotationViewSchema,
+  },
+  "DELETE /api/v1/oncall-rotation/:id": {
+    summary: "GAP-029: cancel an on-call rotation entry (204)",
   },
 });
 
