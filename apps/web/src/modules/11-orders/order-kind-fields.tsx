@@ -17,6 +17,17 @@ type Props = {
   errors?: Record<string, string>;
 };
 
+/**
+ * Values a select shows when `data` has no entry yet. Without seeding them, the form displays a
+ * choice the server never receives (a level-of-care change POSTed with no from/to level).
+ */
+export function kindDefaults(kind: Kind): Record<string, unknown> {
+  if (kind === "lab") return { priority: "routine" };
+  if (kind === "level_of_care_change") return { fromLevel: "rhc", toLevel: "irc" };
+  if (kind === "comfort_kit") return { deploymentSite: "home" };
+  return {};
+}
+
 export function CanonicalOrderFields({ kind, value, onChange, errors = {} }: Props): JSX.Element {
   const set = (key: string, next: unknown) => onChange({ ...value, [key]: next });
   const text = (key: string, label: string, required = false, placeholder?: string) => (
@@ -146,8 +157,8 @@ export function CanonicalOrderFields({ kind, value, onChange, errors = {} }: Pro
         </Field>
         {text(
           "clinicalJustification",
-          "Clinical justification",
-          false,
+          "Clinical justification (at least 20 characters)",
+          true,
           "Explain why the level-of-care change is needed",
         )}
       </ClinicalSection>
