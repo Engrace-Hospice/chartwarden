@@ -320,7 +320,7 @@ jobs:
               name: "M17 Scheduling",
               scripts:
                 "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
-                test:m17:membership-credential:live",
+                test:m17:membership-credential:live test:m17:oncall-roster:live",
             }
           # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
           - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }

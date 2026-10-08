@@ -27,6 +27,7 @@ import type {
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
+import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";
 import { computeVisitMetrics } from "../visit-metrics";
 import { assertAssignedClinician } from "./assigned-clinician";
 import {
@@ -264,6 +265,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   // pre-schedule gate itself still reads `credentialed`, a flat per-membership flag kept in sync below).
   private readonly credentials = new Map<string, CredentialRecord & { organizationId: string }>();
   private credentialSeq = 0;
+  // GAP-029 — the in-memory slice's on-call rotation rows (route-smoke-test fixture only).
+  private readonly rotation = new Map<string, OnCallRotationView & { organizationId: string }>();
 
   constructor(deps: SchedulingServiceDeps) {
     this.now = deps.now;
@@ -945,6 +948,49 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       (c) => c.membershipId === existing.membershipId && c.status === "active",
     );
     if (!stillCredentialed) this.credentialed.delete(existing.membershipId);
+  }
+
+  // ── GAP-029 — on-call rotation (slice fixture) ─────────────────────────────────────────────────────────
+  async listOnCallRotation(
+    orgId: string,
+    options: { includeCancelled?: boolean } = {},
+  ): Promise<OnCallRotationView[]> {
+    return [...this.rotation.values()]
+      .filter(
+        (r) => r.organizationId === orgId && (options.includeCancelled || r.cancelledAt === null),
+      )
+      .map(({ organizationId: _org, ...view }) => view);
+  }
+
+  async createOnCallRotationEntry(
+    orgId: string,
+    _actorMembershipId: string,
+    input: CreateOnCallRotationInput,
+  ): Promise<OnCallRotationView> {
+    const record = {
+      id: this.newId(),
+      organizationId: orgId,
+      membershipId: input.membershipId,
+      discipline: input.discipline,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      cancelledAt: null,
+    };
+    this.rotation.set(record.id, record);
+    const { organizationId: _org, ...view } = record;
+    return view;
+  }
+
+  async cancelOnCallRotationEntry(
+    orgId: string,
+    _actorMembershipId: string,
+    entryId: string,
+  ): Promise<void> {
+    const existing = this.rotation.get(entryId);
+    if (!existing || existing.organizationId !== orgId || existing.cancelledAt !== null) {
+      throw new NotFoundError("on-call rotation entry", entryId);
+    }
+    this.rotation.set(entryId, { ...existing, cancelledAt: this.now() });
   }
 
   // ── internals ─────────────────────────────────────────────────────────────────────────────────────────

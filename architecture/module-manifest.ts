@@ -657,6 +657,7 @@ export const MODULES: ModuleDef[] = [
     ownedTables: [
       "clinician_availability",
       "membership_credential", // GAP-093 — the clinical-license/certification roster (§1.1 D8)
+      "oncall_rotation_entry", // GAP-029 — the on-call rotation source behind tonightsOnCallRoster (§4.3)
       "recurring_visit",
       "route_segment",
       "time_off",

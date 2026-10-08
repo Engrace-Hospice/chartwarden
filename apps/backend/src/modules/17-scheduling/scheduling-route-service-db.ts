@@ -121,6 +121,10 @@ import {
   type VisitView,
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
+import {
+  type CreateOnCallRotationInput,
+  createDrizzleOnCallRotationStore,
+} from "./seams/oncall-rotation-store";
 import { orgContextFor } from "./system-actor";
 import { computeVisitMetrics } from "./visit-metrics";
 
@@ -331,6 +335,8 @@ export function createDbSchedulingBackend(
   // `CredentialReader` seam, constructed here directly (no self-referential `getSeam` round-trip)
   // for M17's OWN grant/revoke/list routes — this module owns `membership_credential`.
   const credentialStore = createDrizzleCredentialStore(db);
+  // GAP-029 — M17's own on-call rotation table.
+  const onCallRotationStore = createDrizzleOnCallRotationStore(db);
 
   // ── emit + tx helpers ───────────────────────────────────────────────────────────────────────────────
   async function emit(
@@ -2497,6 +2503,20 @@ export function createDbSchedulingBackend(
       membershipId: string,
     ): Promise<readonly CredentialRecord[]> {
       return credentialStore.listForMembership(orgId, membershipId);
+    },
+    // ── GAP-029 — on-call rotation management (the source behind tonightsOnCallRoster) ──────────────────
+    async listOnCallRotation(orgId: string, options: { includeCancelled?: boolean } = {}) {
+      return onCallRotationStore.list(orgId, options);
+    },
+    async createOnCallRotationEntry(
+      orgId: string,
+      actorMembershipId: string,
+      input: CreateOnCallRotationInput,
+    ) {
+      return onCallRotationStore.create(orgId, actorMembershipId, input);
+    },
+    async cancelOnCallRotationEntry(orgId: string, actorMembershipId: string, entryId: string) {
+      return onCallRotationStore.cancel(orgId, actorMembershipId, entryId);
     },
     async grantCredential(
       orgId: string,
