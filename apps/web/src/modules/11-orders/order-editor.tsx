@@ -342,9 +342,11 @@ function apiError(error: unknown): ApiError {
 }
 export function message(error: unknown): string {
   const x = apiError(error);
-  const first = Array.isArray(x.details)
-    ? (x.details[0] as { message?: string } | undefined)?.message
+  const lead = Array.isArray(x.details)
+    ? (x.details[0] as { field?: string; message?: string } | undefined)
     : undefined;
+  const field = lead?.field?.replace(/^data\.?/, "");
+  const first = lead?.message ? (field ? `${field}: ${lead.message}` : lead.message) : undefined;
   return (
     first ??
     x.detail ??
