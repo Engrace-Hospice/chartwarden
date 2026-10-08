@@ -43,6 +43,11 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
   let rn: string;
   let msw: string;
   let manual: string;
+  let suspended: string;
+  let foreignOnly: string;
+  let dualMember: string;
+  let concurrentA: string;
+  let concurrentB: string;
   let channelId: string;
 
   const run = (eventType: string, orgId: string, payload: Record<string, unknown>) => {
@@ -80,12 +85,23 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
       await admin.query(sql);
     }
   }
-  const seedUser = async (suffix: string) =>
-    (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+  const seedUser = async (
+    suffix: string,
+    organizationId = orgA,
+    status: "active" | "suspended" = "active",
+  ) => {
+    const userId = (
+      await admin.query(`INSERT INTO "user" (email, name) VALUES ($1,$2) RETURNING id`, [
         `g104-${suffix}@x.test`,
+        `G104 ${suffix}`,
       ])
     ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,$3)`,
+      [userId, organizationId, status],
+    );
+    return userId;
+  };
   const assign = (userId: string, role: string) =>
     admin.query(
       `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
@@ -134,6 +150,15 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     rn = await seedUser("rn");
     msw = await seedUser("msw");
     manual = await seedUser("manual");
+    suspended = await seedUser("suspended", orgA, "suspended");
+    foreignOnly = await seedUser("foreign", orgB);
+    dualMember = await seedUser("dual");
+    await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+      [dualMember, orgB],
+    );
+    concurrentA = await seedUser("concurrent-a");
+    concurrentB = await seedUser("concurrent-b");
     await assign(rn, "primary_rn");
     await assign(msw, "case_manager_msw");
     handle = createDbClient({
@@ -156,6 +181,59 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
   afterAll(async () => {
     await handle?.close();
     if (admin) await admin.end();
+  });
+
+  it("opens same-tenant and dual-membership DMs, but hides foreign and suspended users", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const sameTenant = await service.openDm(orgA, rn, dualMember);
+    expect(sameTenant.created).toBe(true);
+    expect((await service.openDm(orgA, dualMember, rn)).channelId).toBe(sameTenant.channelId);
+
+    await expect(service.openDm(orgA, rn, suspended)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.openDm(orgA, rn, foreignOnly)).rejects.toMatchObject({ statusCode: 404 });
+    expect(await service.canViewChannel(orgB, foreignOnly, sameTenant.channelId)).toBe(false);
+
+    for (const ineligibleUserId of [suspended, foreignOnly]) {
+      await expect(
+        service.putPreferences(orgA, rn, {
+          routingMap: {},
+          quietHours: { tz: "UTC", ranges: [], severityOverride: "critical" },
+          vacationForwardToUserId: ineligibleUserId,
+          vacationUntil: "2099-01-01T00:00:00.000Z",
+        }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    }
+
+    // Suspending a participant must stop new receipts before asynchronous channel cleanup runs.
+    await admin.query(
+      `UPDATE membership SET status='suspended' WHERE organization_id=$1 AND user_id=$2`,
+      [orgA, dualMember],
+    );
+    const sent = await service.sendMessage(orgA, {
+      channelId: sameTenant.channelId,
+      authorUserId: rn,
+      body: "eligibility recheck",
+    });
+    const receipts = await admin.query(
+      `SELECT count(*)::int AS count FROM message_receipt WHERE message_id=$1`,
+      [sent.messageId],
+    );
+    expect(receipts.rows[0].count).toBe(0);
+  });
+
+  it("collapses concurrent duplicate DM creation to one channel", async () => {
+    const service = createDbMessagingRouteService(handle.db);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => service.openDm(orgA, concurrentA, concurrentB)),
+    );
+    expect(new Set(results.map((result) => result.channelId)).size).toBe(1);
+    expect(results.filter((result) => result.created)).toHaveLength(1);
+    const count = await admin.query(
+      `SELECT count(*)::int AS count FROM channel
+       WHERE organization_id=$1 AND channel_kind='dm' AND dm_participant_key=$2`,
+      [orgA, [concurrentA, concurrentB].sort().join(":")],
+    );
+    expect(count.rows[0].count).toBe(1);
   });
 
   it("an unassigned clinician is denied immediately (no portal activity), the consumer then soft-removes them", async () => {

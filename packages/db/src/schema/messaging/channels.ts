@@ -31,6 +31,9 @@ export const channels = pgTable(
     // Polymorphic subject pointer (FK-less, resolved per kind): a patient, location,
     // provider entity, or bereavement-plan reference, or NULL for dm/announcement (§2.3).
     subjectId: uuid("subject_id"),
+    // Canonical sorted participant pair for DMs. The database uniqueness constraint makes
+    // open-or-create safe when two requests race; it is never accepted from a client.
+    dmParticipantKey: text("dm_participant_key"),
     title: text("title").notNull(),
     retentionClass: channelRetentionClass("retention_class").notNull(),
     isArchived: boolean("is_archived").notNull().default(false),
@@ -48,6 +51,9 @@ export const channels = pgTable(
       .where(
         sql`subject_id IS NOT NULL AND channel_kind IN ('care_team','on_call','bereavement','location','discipline')`,
       ),
+    uniqueDmParticipants: uniqueIndex("channel_unique_dm_participants")
+      .on(t.organizationId, t.dmParticipantKey)
+      .where(sql`channel_kind = 'dm' AND dm_participant_key IS NOT NULL`),
     // M36-F02 / ADR-0004 / ARCH-185: retention classes by kind. `dm` is care_related (staff
     // DMs routinely discuss care and are care communication, 6+ yr); the ELSE branch
     // (discipline/location/on_call) is care_related too. Only the tenant-wide `announcement`
@@ -56,11 +62,11 @@ export const channels = pgTable(
       "channel_kind_subject_shape",
       sql`
       CASE channel_kind
-        WHEN 'care_team'    THEN subject_id IS NOT NULL AND retention_class = 'care_related'
-        WHEN 'bereavement'  THEN subject_id IS NOT NULL AND retention_class = 'bereavement' AND archives_at IS NOT NULL
-        WHEN 'dm'           THEN subject_id IS NULL     AND retention_class = 'care_related'
-        WHEN 'announcement' THEN subject_id IS NULL     AND retention_class = 'operational'
-        ELSE                     subject_id IS NOT NULL AND retention_class = 'care_related'
+        WHEN 'care_team'    THEN subject_id IS NOT NULL AND dm_participant_key IS NULL AND retention_class = 'care_related'
+        WHEN 'bereavement'  THEN subject_id IS NOT NULL AND dm_participant_key IS NULL AND retention_class = 'bereavement' AND archives_at IS NOT NULL
+        WHEN 'dm'           THEN subject_id IS NULL AND dm_participant_key IS NOT NULL AND retention_class = 'care_related'
+        WHEN 'announcement' THEN subject_id IS NULL AND dm_participant_key IS NULL AND retention_class = 'operational'
+        ELSE                     subject_id IS NOT NULL AND dm_participant_key IS NULL AND retention_class = 'care_related'
       END
     `,
     ),

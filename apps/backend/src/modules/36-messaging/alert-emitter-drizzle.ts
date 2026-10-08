@@ -161,6 +161,10 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
   const AR = schema.alertRules;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
+  const M = schema.memberships;
+  const U = schema.users;
+  const CM = schema.channelMembers;
+  const CH = schema.channels;
 
   return {
     recipients: buildRecipientPorts(db),
@@ -253,13 +257,55 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
           .limit(1);
         if (existing) return record.countRepeats ? bump(existing.id) : { alertId: existing.id };
 
+        // Recipient seams can lag an offboarding or accidentally return a user from another tenant.
+        // Revalidate the final delivery audience under this org's RLS immediately before persistence.
+        const requestedRecipientIds = [
+          ...new Set(record.deliveries.map((delivery) => delivery.recipientUserId)),
+        ];
+        const activeRecipientIds = new Set<string>();
+        if (requestedRecipientIds.length > 0) {
+          const activeRecipients = await tx
+            .selectDistinct({ userId: M.userId })
+            .from(M)
+            .innerJoin(U, eq(U.id, M.userId))
+            .where(
+              and(
+                eq(M.organizationId, record.orgId),
+                eq(M.status, "active"),
+                eq(U.status, "active"),
+                inArray(M.userId, requestedRecipientIds),
+              ),
+            );
+          for (const recipient of activeRecipients) activeRecipientIds.add(recipient.userId);
+          const activePortalRecipients = await tx
+            .selectDistinct({ userId: CM.userId })
+            .from(CM)
+            .innerJoin(CH, and(eq(CH.id, CM.channelId), eq(CH.organizationId, CM.organizationId)))
+            .innerJoin(U, eq(U.id, CM.userId))
+            .where(
+              and(
+                eq(CM.organizationId, record.orgId),
+                eq(CM.role, "portal_caregiver"),
+                isNull(CM.removedAt),
+                eq(U.status, "active"),
+                inArray(CM.userId, requestedRecipientIds),
+              ),
+            );
+          for (const recipient of activePortalRecipients) {
+            activeRecipientIds.add(recipient.userId);
+          }
+        }
+        const deliveries = record.deliveries.filter((delivery) =>
+          activeRecipientIds.has(delivery.recipientUserId),
+        );
+
         // F-109 — the §2.4.3 outcome is WRITTEN, not defaulted. The column used to be
         // `NOT NULL DEFAULT 'delivered'` and no code path ever set it, so every alert in every database
         // asserted successful delivery while every one of its `notification_delivery` children sat
         // `pending` forever. The roll-up settles a plan that is already terminal — most importantly the
         // EMPTY one: `emit()` writes a no-op alert when no `alert_rule` fires, and "delivered to the zero
         // people it reached" was the single most misleading value this column carried.
-        const outcome = rollUpAlertOutcome(record.deliveries);
+        const outcome = rollUpAlertOutcome(deliveries);
         const [row] = await tx
           .insert(AL)
           .values({
@@ -284,9 +330,9 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
           if (raced) return record.countRepeats ? bump(raced.id) : { alertId: raced.id };
           throw new Error("alert insert returned no row");
         }
-        if (record.deliveries.length > 0) {
+        if (deliveries.length > 0) {
           await tx.insert(ND).values(
-            record.deliveries.map((d) => ({
+            deliveries.map((d) => ({
               alertId: row.id,
               recipientUserId: d.recipientUserId,
               forwardedFromUserId: d.forwardedFromUserId,

@@ -2072,8 +2072,8 @@ function CareTeamRolePicker({
   onChange,
   disabled,
 }: {
-  value: string;
-  onChange: (value: string) => void;
+  value: AssignableRole;
+  onChange: (value: AssignableRole) => void;
   disabled?: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -2176,10 +2176,9 @@ export function CareTeamTab({
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [assignOpen, setAssignOpen] = useState(false);
   const [clinicianUserId, setClinicianUserId] = useState("");
-  const [clinicianLabel, setClinicianLabel] = useState("");
   const [membershipId, setMembershipId] = useState("");
   const [membershipLabel, setMembershipLabel] = useState("");
-  const [assignmentRole, setAssignmentRole] = useState("primary_rn");
+  const [assignmentRole, setAssignmentRole] = useState<AssignableRole>("primary_rn");
   const [assigning, setAssigning] = useState(false);
   const [assignmentError, setAssignmentError] = useState<{
     title: string;
@@ -2506,9 +2505,8 @@ export function CareTeamTab({
           <div style={assignmentModalBody}>
             <MembershipLookupField
               label="Clinician"
-              value={clinicianUserId}
-              valueLabel={clinicianLabel}
-              idKind="user"
+              value={membershipId}
+              valueLabel={membershipLabel}
               appearance="modal"
               placeholder="Search staff by name or email..."
               hint="Only active members of this organization are available."
@@ -2581,14 +2579,6 @@ export function CareTeamTab({
                   } finally {
                     setAssigning(false);
                   }
-
-                  setAssignOpen(false);
-                  setClinicianUserId("");
-                  setClinicianLabel("");
-                  setAssignmentRole("primary_rn");
-                  setAssigning(false);
-                  toast.show("Care team member assigned.", { tone: "success" });
-                  await reload(false);
                 })()
               }
             >
