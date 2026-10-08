@@ -230,6 +230,8 @@ export interface RecordTimepointArgs {
   readonly dischargeReason?: string;
   readonly lateCompletionReasonCode?: string | null;
   readonly adminOverride?: boolean;
+  /** GAP-015: the platform-admin justification recorded on the critical audit when the override is used. */
+  readonly adminOverrideJustification?: string;
   /**
    * #48 — the `hope_timepoint_schedule` window this capture completes, as handed to the clinician by the
    * timepoint worklist. Naming it is what makes `M10_RFA_KIND_MISMATCH` reachable: the payload's RFA and
@@ -243,6 +245,7 @@ export interface RecordSfvArgs {
   readonly authorDiscipline: string;
   readonly data: Record<string, unknown>;
   readonly adminOverride?: boolean;
+  readonly adminOverrideJustification?: string;
 }
 export interface SignTimepointArgs {
   readonly ifVersion?: number;

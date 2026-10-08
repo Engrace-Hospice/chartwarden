@@ -190,7 +190,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       },
     });
     registerPatientSeams({ db: handle.db });
-    svc = createDbHopeBackend(handle.db);
+    // GAP-015: the capture gate judges the server clock; pin it before every fixture window so the gate
+    // reads each fixture's own targetDate.
+    svc = createDbHopeBackend(handle.db, undefined, () => new Date("2020-01-01T00:00:00.000Z"));
     answers = createHopeAssessmentAnswerService(handle.db);
   }, 120_000);
 

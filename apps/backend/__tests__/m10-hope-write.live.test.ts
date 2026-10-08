@@ -67,6 +67,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbHopeBackend>;
+  let liveNow = new Date("2026-06-01T00:00:00.000Z");
   const memberOf: Record<string, string> = {};
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
@@ -238,7 +239,10 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const outbox: HopeWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m10" }),
     };
-    svc = createDbHopeBackend(handle.db, outbox);
+    // GAP-015: the capture gate judges lateness on the SERVER clock. It defaults to a date before every
+    // fixture window (so the gate reads each fixture's own `targetDate`, exactly as before); the GAP-015
+    // cases below move it.
+    svc = createDbHopeBackend(handle.db, outbox, () => liveNow);
   }, 120_000);
 
   afterAll(async () => {
@@ -424,6 +428,84 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(rows[0]).toMatchObject({
       was_late: true,
       late_completion_reason_code: "hospitalization",
+    });
+  });
+
+  describe("GAP-015 — the capture gate judges the SERVER clock, not the client's targetDate", () => {
+    const WINDOW = {
+      opensAt: "2026-06-10T00:00:00.000Z",
+      closesAt: "2026-06-14T23:59:59.999Z",
+      lateDeadlineAt: "2026-06-21T23:59:59.999Z",
+    };
+    const IN_WINDOW_DATE = "2026-06-12T12:00:00.000Z";
+    afterEach(() => {
+      liveNow = new Date("2026-06-01T00:00:00.000Z");
+    });
+
+    it("a filer past the late deadline cannot send an in-window targetDate (409 M10_TIMEPOINT_EXPIRED)", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
+      liveNow = new Date("2026-06-30T12:00:00.000Z");
+      await expect(
+        svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+          ...recordArgs(QUIET_DATA),
+          targetDate: IN_WINDOW_DATE,
+          lateCompletionReasonCode: "pto",
+        }),
+      ).rejects.toMatchObject({ code: "M10_TIMEPOINT_EXPIRED", statusCode: 409 });
+    });
+
+    it("a filer in the grace span cannot get was_late=false: the reason is required and was_late is true", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
+      liveNow = new Date("2026-06-17T12:00:00.000Z");
+      await expect(
+        svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+          ...recordArgs(QUIET_DATA),
+          targetDate: IN_WINDOW_DATE,
+        }),
+      ).rejects.toMatchObject({ code: "M10_LATE_REASON_REQUIRED" });
+      const late = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: IN_WINDOW_DATE,
+        lateCompletionReasonCode: "hospitalization",
+      });
+      expect(late.wasLate).toBe(true);
+    });
+
+    it("an on-time write stays on time", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
+      liveNow = new Date("2026-06-13T12:00:00.000Z");
+      const ok = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: IN_WINDOW_DATE,
+      });
+      expect(ok.wasLate).toBe(false);
+    });
+
+    it("an admin override past the deadline writes a CRITICAL hope.late_deadline_override audit with the justification", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
+      liveNow = new Date("2026-06-30T12:00:00.000Z");
+      const justification = "EHR outage during the window; approved by the compliance lead";
+      const row = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: IN_WINDOW_DATE,
+        lateCompletionReasonCode: "admin_override",
+        adminOverride: true,
+        adminOverrideJustification: justification,
+      });
+      expect(row.wasLate).toBe(true);
+      const audits = (
+        await admin.query(
+          "SELECT severity, context FROM audit_event WHERE event_type='hope.late_deadline_override' AND resource_id=$1",
+          [row.id],
+        )
+      ).rows;
+      expect(audits).toHaveLength(1);
+      expect(audits[0].severity).toBe("critical");
+      expect(audits[0].context).toMatchObject({ justification });
     });
   });
 
