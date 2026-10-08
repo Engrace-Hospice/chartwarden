@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // The auditor link page: the one-time token is read from the URL FRAGMENT, scrubbed from the address bar, and
 // redeemed only when the auditor presses the button (so a mail scanner following the link cannot burn it).
+// A successful redemption hands over to the enrolment screen (BAA terms + second factor, M2 §7.7).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
@@ -17,6 +18,7 @@ function renderPage(post: ReturnType<typeof vi.fn>, search = `?org=${ORG}`): voi
       <ApiClientProvider client={{ POST: post } as unknown as ApiClient}>
         <Routes>
           <Route path="/auditor/redeem" element={<AuditorRedeem />} />
+          <Route path="/auditor/enrol" element={<p>enrolment page</p>} />
           <Route path="/" element={<p>home</p>} />
         </Routes>
       </ApiClientProvider>
@@ -37,10 +39,11 @@ describe("AuditorRedeem", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("redeems with the org and token, then shows the active read-only session", async () => {
+  it("redeems with the org and token, then hands over to the enrolment screen", async () => {
     const post = vi.fn(async () => ({
       data: {
         sessionClass: "auditor",
+        stage: "enrolment",
         organizationId: ORG,
         engagementId: "e1",
         expiresAt: "2030-01-01T00:00:00.000Z",
@@ -49,11 +52,10 @@ describe("AuditorRedeem", () => {
     }));
     renderPage(post);
     fireEvent.click(await screen.findByRole("button", { name: "Start auditor session" }));
-    await waitFor(() => expect(screen.getByRole("status")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("enrolment page")).toBeTruthy());
     expect(post).toHaveBeenCalledWith("/api/v1/auditors/redeem", {
       body: { organizationId: ORG, token: TOKEN },
     });
-    expect(screen.getByRole("status").textContent).toContain("read-only");
   });
 
   it("explains an already-used link and does not offer a retry", async () => {

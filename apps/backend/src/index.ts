@@ -229,6 +229,7 @@ import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/audi
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
+  createAuditorEnrolment,
   createAuditorLinkEmailDelivery,
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
@@ -241,6 +242,7 @@ import {
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
+  registerAuditorEnrolmentRoutes,
   registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -3936,16 +3938,29 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 onStoreError: (err) =>
                   app.log.warn({ err }, "auditor redeem rate-limit store error"),
               });
+            const auditorAccess = createDbAuditorAccessGrantor();
             registerAuditorRedeemRoutes(app, {
               redemption: {
                 db: dbHandle.db,
                 sessions: createAuditorSessionIssuer(auth),
-                access: createDbAuditorAccessGrantor(),
+                access: auditorAccess,
                 onRedeemed: (organizationId, userId) =>
                   liveRbacHandle?.invalidateActor(organizationId, userId),
               },
               ipLimiter: auditorLimiter("auditor-redeem:ip", 20),
               orgLimiter: auditorLimiter("auditor-redeem:org", 200),
+            });
+            // M2 §7.7 — the enrolment ceremony an `auditor` session must finish (BAA terms + second factor)
+            // before it can read. The role grant happens HERE, at activation, not at redemption.
+            registerAuditorEnrolmentRoutes(app, {
+              enrolment: createAuditorEnrolment({
+                db: dbHandle.db,
+                access: auditorAccess,
+                onActivated: (organizationId, userId) =>
+                  liveRbacHandle?.invalidateActor(organizationId, userId),
+              }),
+              ipLimiter: auditorLimiter("auditor-enrol:ip", 60),
+              userLimiter: auditorLimiter("auditor-enrol:user", 30),
             });
           }
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface

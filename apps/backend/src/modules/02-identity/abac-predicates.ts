@@ -30,6 +30,7 @@ export const M2_ABAC_PREDICATES = [
   "organization_lifecycle_platform_ops",
   "user_lifecycle_platform_ops",
   "funeral_session_pinned_patient",
+  "auditor_enrolment_session",
 ] as const;
 
 /**
@@ -70,6 +71,24 @@ export async function funeralSessionPinnedPatientPredicate(
   return target.patientId === pinned;
 }
 
+/**
+ * `auditor_enrolment_session` (M2 §7.7) - the caller is an `auditor`-class session acting on its OWN engagement's
+ * enrolment. Pure, over SESSION-assembled facts only: the class and the engagement come from
+ * `context.attributes` (stamped by the authenticate hook off the `session` row), and the target engagement is that
+ * same value, so a request can neither name another engagement nor smuggle a class. It grants NO read: an
+ * enrolment-stage session holds no permission and carries no `engagementId` scope attribute.
+ */
+export async function auditorEnrolmentSessionPredicate(
+  context: AbacContext,
+  target: Record<string, unknown>,
+): Promise<boolean> {
+  if (!context.organizationId || !context.userId) return false;
+  if (context.attributes.sessionClass !== "auditor") return false;
+  const engagementId = context.attributes.auditorEnrolmentEngagementId;
+  if (typeof engagementId !== "string" || engagementId.length === 0) return false;
+  return target.engagementId === engagementId;
+}
+
 /** Register M2's predicates into M3's shared registry. Idempotent (single-owner / no-clear). */
 export function registerM2AbacPredicates(): void {
   registerPredicateIdempotent("organization_lifecycle_platform_ops", async (context) =>
@@ -80,4 +99,5 @@ export function registerM2AbacPredicates(): void {
     "funeral_session_pinned_patient",
     funeralSessionPinnedPatientPredicate,
   );
+  registerPredicateIdempotent("auditor_enrolment_session", auditorEnrolmentSessionPredicate);
 }

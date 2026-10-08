@@ -2,9 +2,11 @@
  * M2/M3 auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral) — LIVE Postgres as the real
  * NOBYPASSRLS `wardenx_app` role, through a real Better Auth instance and the real authenticate hook.
  * Proves, end to end:
- *   1. a link is redeemed once into a signed `auditor`-class session scoped to ONE engagement, bounded by
- *      the engagement window, with exactly one least-privilege role (the cookie is then resolved by the
- *      ordinary Better Auth path, the session store and `requirePermission`);
+ *   1. a link is redeemed once into a signed `auditor`-class ENROLMENT session scoped to ONE engagement and
+ *      bounded by the engagement window; it holds NO role and cannot read until the BAA is accepted and a
+ *      second factor enrolled (the full ceremony is proven in m2-auditor-enrolment.live.test.ts), after
+ *      which it carries exactly one least-privilege role (the cookie is resolved by the ordinary Better Auth
+ *      path, the session store and `requirePermission`);
  *   2. the token is stored only as a sha-256 digest and never reaches the audit log;
  *   3. replay, expiry, revocation, a not-yet-open window and a cancelled engagement are REFUSED, the refusal
  *      of a real link is audited, and an unknown token is not (no audit flooding);
@@ -28,19 +30,23 @@ import {
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
   getIdentitySession,
+  registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   requirePermission,
+  resetAbacRegistry,
 } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate, getSeam } from "../src/bootstrap/index";
+import { createAuditorEnrolment } from "../src/modules/02-identity/auditor-enrolment";
 import {
   createDbAuditorMagicLinkIssuer,
   generateAuditorToken,
   hashAuditorToken,
 } from "../src/modules/02-identity/auditor-magic-link-store";
+import { registerAuditorEnrolmentRoutes } from "../src/modules/02-identity/routes/auditor-enrolment";
 import { registerAuditorRedeemRoutes } from "../src/modules/02-identity/routes/auditor-redeem";
 import { registerIdentitySeams } from "../src/modules/02-identity/seams";
 import {
@@ -48,6 +54,7 @@ import {
   createDbAuditorAccessGrantor,
   createDbAuditorEngagementReader,
 } from "../src/modules/03-authorization/index";
+import { enrolFirstTime } from "./_auditor-enrol-helper";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -124,6 +131,20 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
       payload: { organizationId, token },
     });
 
+  /** Redeem a fresh link and take the enrolment session to ACTIVE (BAA + first-time TOTP). */
+  async function activeSession(
+    org: string,
+    eng: { id: string; start: Date; end: Date },
+    email = `auditor${++seq}@survey.test`,
+  ): Promise<{ cookie: string; email: string; token: string }> {
+    const { token } = await link(org, eng, email);
+    const res = await redeem(org, token);
+    expect(res.statusCode).toBe(200);
+    const cookie = cookieOf(res.headers["set-cookie"]);
+    await enrolFirstTime(app, cookie);
+    return { cookie, email, token };
+  }
+
   const auditCount = async (eventType: string, org: string) =>
     Number(
       (
@@ -188,6 +209,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
       db: handle.db,
     });
     rbac = registerDbEffectivePermissionResolver(handle.db);
+    registerAbacRegistry(); // the shared registry: `auditor_enrolment_session` registers on route mount
 
     const authenticate = createSessionAuthenticate({
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
@@ -201,11 +223,20 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
         security: { rateLimitEnabled: false },
         registerModuleRoutes: (instance) => {
           let hits = 0;
+          const access = createDbAuditorAccessGrantor();
+          registerAuditorEnrolmentRoutes(instance, {
+            enrolment: createAuditorEnrolment({
+              db: handle.db,
+              access,
+              onActivated: (organizationId, userId) =>
+                rbac?.invalidateActor(organizationId, userId),
+            }),
+          });
           registerAuditorRedeemRoutes(instance, {
             redemption: {
               db: handle.db,
               sessions: createAuditorSessionIssuer(auth),
-              access: createDbAuditorAccessGrantor(),
+              access,
             },
             ...(ipLimit
               ? {
@@ -261,6 +292,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
   }, 240_000);
 
   afterAll(async () => {
+    resetAbacRegistry();
     await app?.close();
     await limitedApp?.close();
     await handle?.close();
@@ -275,11 +307,28 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       sessionClass: "auditor",
+      stage: "enrolment",
       organizationId: ORG_A,
       engagementId: eng.id,
     });
     expect(res.headers["cache-control"]).toBe("no-store");
     const cookie = cookieOf(res.headers["set-cookie"]);
+
+    // BEFORE enrolment: the possession of the link alone reads NOTHING and holds NO role.
+    const early = await app.inject({
+      method: "GET",
+      url: `/api/v1/auditor/portal-engagement/${eng.id}`,
+      headers: { cookie },
+    });
+    expect(early.statusCode).toBe(403);
+    expect(early.json().error?.code ?? early.json().code).toBe("AUDITOR_ENROLMENT_REQUIRED");
+    const noRole = await admin.query(
+      `SELECT count(*)::int AS n FROM membership_role mr JOIN membership m ON m.id = mr.membership_id
+         JOIN "user" u ON u.id = m.user_id WHERE u.email = $1`,
+      [email],
+    );
+    expect(Number(noRole.rows[0].n)).toBe(0);
+    await enrolFirstTime(app, cookie);
 
     // The session row: auditor class, bound to ONE engagement and its window; never outlives it.
     const { rows } = await admin.query(
@@ -291,10 +340,10 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     expect(rows).toHaveLength(1);
     expect(rows[0].cls).toBe("auditor");
     expect(rows[0].active_organization_id).toBe(ORG_A);
-    expect(rows[0].scope).toEqual({ engagementId: eng.id });
+    expect(rows[0].scope).toMatchObject({ engagementId: eng.id, auditorStage: "active" });
     expect(new Date(rows[0].engagement_end).getTime()).toBe(eng.end.getTime());
     expect(new Date(rows[0].expires_at).getTime()).toBe(eng.end.getTime());
-    expect(rows[0].last_step_up_at).toBeNull(); // no MFA claimed
+    expect(rows[0].last_step_up_at).not.toBeNull(); // TOTP proven during enrolment stamps the step-up
     expect(rows[0].email_verified).toBe(true);
 
     // Least privilege: one role, one permission, expiring with the window.
@@ -512,6 +561,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     const second = await redeem(ORG_A, (await link(ORG_A, e2, email)).token);
     expect(second.statusCode).toBe(200);
     const secondCookie = cookieOf(second.headers["set-cookie"]);
+    await enrolFirstTime(app, secondCookie);
     const n = await admin.query(
       `SELECT count(*)::int AS n FROM session s JOIN "user" u ON u.id=s.user_id WHERE u.email=$1`,
       [email],
@@ -586,9 +636,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
 
   it("the session dies with the engagement window (server-side enforcement)", async () => {
     const eng = await engagement(ORG_A);
-    const { token } = await link(ORG_A, eng);
-    const res = await redeem(ORG_A, token);
-    const cookie = cookieOf(res.headers["set-cookie"]);
+    const { cookie } = await activeSession(ORG_A, eng);
     const url = `/api/v1/auditor/portal-engagement/${eng.id}`;
     expect((await app.inject({ method: "GET", url, headers: { cookie } })).statusCode).toBe(200);
     const upd = await admin.query(
@@ -602,8 +650,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
 
   it("the role grant itself expires with the window (defence in depth beneath the session bound)", async () => {
     const eng = await engagement(ORG_A);
-    const { token, email } = await link(ORG_A, eng);
-    const cookie = cookieOf((await redeem(ORG_A, token)).headers["set-cookie"]);
+    const { cookie, email } = await activeSession(ORG_A, eng);
     const url = `/api/v1/auditor/portal-engagement/${eng.id}`;
     expect((await app.inject({ method: "GET", url, headers: { cookie } })).statusCode).toBe(200);
     const expired = await admin.query(

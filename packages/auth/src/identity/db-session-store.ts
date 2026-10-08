@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import {
   SESSION_CLASSES,
   type SessionClass,
+  sessionAuditorStage,
   sessionEngagementId,
   sessionExternalActorId,
   sessionPinnedPatientId,
@@ -118,6 +119,13 @@ export function toSessionContextRecord(
           engagementEnd: row.engagementEnd ?? null,
         })
       : null,
+    // Class-gated and FAIL CLOSED: only an explicit `active` in the session's server-side scope is active.
+    auditorStage: isSessionClass(sessionClass)
+      ? sessionAuditorStage({
+          sessionClass,
+          scope: { auditorStage: scopeString(row.scope, "auditorStage") ?? "" },
+        })
+      : null,
   };
 }
 
@@ -157,7 +165,7 @@ export function liveDeviceAttestation(
 /** One string field out of the `scope` jsonb, or null. Never throws on a malformed/absent value. */
 function scopeString(
   scope: unknown,
-  key: "portalAccountId" | "patientId" | "externalActorId" | "engagementId",
+  key: "portalAccountId" | "patientId" | "externalActorId" | "engagementId" | "auditorStage",
 ): string | null {
   if (typeof scope !== "object" || scope === null) return null;
   const value = (scope as Record<string, unknown>)[key];

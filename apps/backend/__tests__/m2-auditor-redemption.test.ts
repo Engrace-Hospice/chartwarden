@@ -206,14 +206,15 @@ describe("createAuditorSessionIssuer", () => {
   });
 });
 
-describe("authenticate hook — auditor sessions are read-only", () => {
-  const actor = (sessionClass: string) => ({
+describe("authenticate hook — auditor sessions are read-only and stage-gated", () => {
+  const actor = (sessionClass: string, auditorStage: "enrolment" | "active" | null = "active") => ({
     sessionClass,
     portalAccountId: null,
     sessionPatientId: null,
     deviceAttestation: null,
     externalActorId: null,
     engagementId: "e1",
+    auditorStage,
     userId: "u1",
     membershipId: null,
     organizationId: "org1",
@@ -221,20 +222,25 @@ describe("authenticate hook — auditor sessions are read-only", () => {
     providerEntityIds: [],
     locationIds: [],
   });
-  const run = async (sessionClass: string, method: string, url: string) => {
+  const run = async (
+    sessionClass: string,
+    method: string,
+    url: string,
+    stage: "enrolment" | "active" | null = "active",
+  ) => {
     const ctx = {
       userId: "",
       organizationId: "",
       roles: [],
       providerEntityIds: [],
       locationIds: [],
-      attributes: {},
+      attributes: {} as Record<string, unknown>,
     };
     const hook = createSessionAuthenticate({
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () =>
         ({
-          resolveActor: async () => actor(sessionClass),
+          resolveActor: async () => actor(sessionClass, stage),
           resolveStepUpState: async () => null,
           resolveStepUpPolicy: async () => ({ qualifyingFactors: ["totp"], maxAgeSec: 300 }),
         }) as never,
@@ -243,12 +249,12 @@ describe("authenticate hook — auditor sessions are read-only", () => {
     return ctx;
   };
 
-  it("lets an auditor read", async () => {
+  it("lets an ACTIVE auditor read", async () => {
     await expect(run("auditor", "GET", "/api/v1/x")).resolves.toBeTruthy();
     await expect(run("auditor", "HEAD", "/api/v1/x")).resolves.toBeTruthy();
   });
 
-  it("refuses every write for an auditor, with the typed code", async () => {
+  it("refuses every write for an ACTIVE auditor, with the typed code", async () => {
     for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       await expect(run("auditor", method, "/api/v1/x")).rejects.toMatchObject({
         code: "AUDITOR_READ_ONLY",
@@ -257,7 +263,14 @@ describe("authenticate hook — auditor sessions are read-only", () => {
     }
   });
 
-  it("allows only sign-out and a second link redemption as auditor mutations", async () => {
+  it("an active auditor cannot call the enrolment mutations (read-only wins)", async () => {
+    await expect(run("auditor", "POST", "/api/v1/auditors/enrolment/baa")).rejects.toMatchObject({
+      code: "AUDITOR_READ_ONLY",
+    });
+    await expect(run("auditor", "GET", "/api/v1/auditors/enrolment/state")).resolves.toBeTruthy();
+  });
+
+  it("allows only sign-out and a second link redemption as ACTIVE auditor mutations", async () => {
     await expect(run("auditor", "POST", "/api/auth/sign-out")).resolves.toBeTruthy();
     await expect(run("auditor", "POST", "/api/v1/auditors/redeem?x=1")).resolves.toBeTruthy();
     await expect(run("auditor", "POST", "/api/auth/change-email")).rejects.toMatchObject({
@@ -265,7 +278,54 @@ describe("authenticate hook — auditor sessions are read-only", () => {
     });
   });
 
+  it("an ENROLMENT-stage auditor reaches exactly the enrolment routes, sign-out and redemption", async () => {
+    const allowed: ReadonlyArray<readonly [string, string]> = [
+      ["GET", "/api/v1/auditors/enrolment/state"],
+      ["POST", "/api/v1/auditors/enrolment/baa"],
+      ["POST", "/api/v1/auditors/enrolment/totp/begin"],
+      ["POST", "/api/v1/auditors/enrolment/totp/confirm"],
+      ["POST", "/api/v1/auditors/enrolment/verify?x=1"],
+      ["POST", "/api/auth/sign-out"],
+      ["POST", "/api/v1/auditors/redeem"],
+    ];
+    for (const [method, url] of allowed) {
+      await expect(run("auditor", method, url, "enrolment")).resolves.toBeTruthy();
+    }
+  });
+
+  it("an ENROLMENT-stage auditor cannot reach the engagement read or any other route", async () => {
+    for (const [method, url] of [
+      ["GET", "/api/v1/auditor/portal-engagement/e1"],
+      ["GET", "/api/v1/patients"],
+      ["POST", "/api/v1/x"],
+      ["GET", "/api/v1/auditors/enrolment/baa"],
+      ["POST", "/api/v1/auditors/enrolment/state"],
+      ["POST", "/api/v1/auditors/enrolment/other"],
+    ] as const) {
+      await expect(run("auditor", method, url, "enrolment")).rejects.toMatchObject({
+        code: "AUDITOR_ENROLMENT_REQUIRED",
+        statusCode: 403,
+      });
+    }
+  });
+
+  it("FAILS CLOSED: an auditor whose stage is unresolved is treated as enrolment", async () => {
+    await expect(run("auditor", "GET", "/api/v1/x", null)).rejects.toMatchObject({
+      code: "AUDITOR_ENROLMENT_REQUIRED",
+    });
+  });
+
+  it("stamps the engagement READ scope only for an active session", async () => {
+    const active = await run("auditor", "GET", "/api/v1/x", "active");
+    expect(active.attributes.engagementId).toBe("e1");
+    expect(active.attributes.auditorEnrolmentEngagementId).toBe("e1");
+    const enrolling = await run("auditor", "GET", "/api/v1/auditors/enrolment/state", "enrolment");
+    expect(enrolling.attributes.engagementId).toBeUndefined();
+    expect(enrolling.attributes.auditorEnrolmentEngagementId).toBe("e1");
+    expect(enrolling.attributes.auditorStage).toBe("enrolment");
+  });
+
   it("does not restrict any other session class", async () => {
-    await expect(run("staff", "POST", "/api/v1/x")).resolves.toBeTruthy();
+    await expect(run("staff", "POST", "/api/v1/x", null)).resolves.toBeTruthy();
   });
 });

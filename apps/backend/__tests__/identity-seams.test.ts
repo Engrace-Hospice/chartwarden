@@ -78,6 +78,8 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
       externalActorId: null,
       // GAP-093(c) — null on every class but `auditor`.
       engagementId: null,
+      // M2 §7.7 - null on every class but `auditor`.
+      auditorStage: null,
     });
     const stepUp = await resolver.resolveStepUpState({ orgId: ORG }, "sess_1");
     expect(stepUp).toEqual({ lastStepUpAt: at, lastStepUpFactor: "webauthn" });

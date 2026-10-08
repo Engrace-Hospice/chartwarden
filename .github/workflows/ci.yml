@@ -583,6 +583,7 @@ jobs:
           # scoped, rate-limited, audited, least-privilege, closed with the engagement window. Real Better Auth,
           # real authenticate hook, real RBAC, as the NOBYPASSRLS wardenx_app role.
           - { name: "M2 auditor link redemption", scripts: "test:m2:auditor-redemption:live" }
+          - { name: "M2 auditor enrolment (BAA + 2FA)", scripts: "test:m2:auditor-enrolment:live" }
           # M4 `audit.seal_partition` + `audit.integrity_sample`: the sealed audit hash chain and its sampled
           # verification - a row altered/inserted/deleted out of band, or a broken seal link, is DETECTED, the
           # run fails closed with an alert, and org B's chain is unaffected.

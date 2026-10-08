@@ -43,6 +43,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
       externalActorId: null,
       // GAP-093(c) — the auditor's engagement, null on every class but `auditor`.
       engagementId: null,
+      auditorStage: null,
     });
   });
 

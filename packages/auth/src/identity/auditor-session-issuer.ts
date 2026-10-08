@@ -13,6 +13,7 @@
 // (what `AuditorEngagementReader` / `portal_engagement_scope` compare against), `engagement_start/end` bound
 // the window (the `session_scope_chk` requirement) and the session NEVER outlives `engagement_end`.
 import { createHmac } from "node:crypto";
+import { AUDITOR_STAGE_ENROLMENT } from "./session-classes";
 
 /** The cookie attributes Better Auth publishes for its session cookie (subset we serialise). */
 interface CookieAttributes {
@@ -113,7 +114,9 @@ export function createAuditorSessionIssuer(auth: AuditorIssuerAuth): AuditorSess
         {
           activeOrganizationId: input.organizationId,
           sessionClass: "auditor",
-          scope: { engagementId: input.engagementId },
+          // A freshly redeemed session is ENROLMENT-stage: it may reach only the enrolment routes until the
+          // BAA is accepted and a second factor proven (apps/backend .../auditor-enrolment.ts upgrades it).
+          scope: { engagementId: input.engagementId, auditorStage: AUDITOR_STAGE_ENROLMENT },
           engagementStart: input.windowStart,
           engagementEnd: input.windowEnd,
           // Bounded by the engagement window — `session-timeout` additionally enforces the 10-min idle.

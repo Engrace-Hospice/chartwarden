@@ -103,6 +103,20 @@ export {
   createInMemoryAuditorMagicLinkIssuer,
 } from "./auditor-session";
 export {
+  RECOVERY_CODE_COUNT,
+  TOTP_PERIOD_SEC,
+  type NewTotpEnrolment,
+  type TotpSecretOptions,
+  type TotpStepResult,
+  createTotpEnrolment,
+  generateRecoveryCodes,
+  hashRecoveryCode,
+  matchTotpStep,
+  normalizeRecoveryCode,
+  recoveryCodeMatches,
+  totpStepStart,
+} from "./auditor-second-factor";
+export {
   type AuditorIssuerAuth,
   type AuditorIssuerAuthContext,
   type AuditorSessionIssuer,
@@ -129,6 +143,10 @@ export {
   assertSessionScope,
   sessionExternalActorId,
   sessionEngagementId,
+  sessionAuditorStage,
+  AUDITOR_STAGE_ACTIVE,
+  AUDITOR_STAGE_ENROLMENT,
+  type AuditorSessionStage,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
   PORTAL_SESSION_CLASSES,

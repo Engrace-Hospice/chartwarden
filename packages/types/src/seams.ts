@@ -802,6 +802,13 @@ export interface ResolvedActor {
    * request field. Optional so existing fixtures keep their shape; absent reads as "no engagement" (deny).
    */
   readonly engagementId?: string | null;
+  /**
+   * The enrolment stage of an `auditor` session (M2 §7.7), or null on every other class. SERVER-SIDE session
+   * state (`session.scope.auditorStage`, written by M2 and class-gated through `sessionAuditorStage`):
+   * `enrolment` reaches only the enrolment routes, `active` is the read-only engagement session. FAIL CLOSED:
+   * absent on an auditor reads `enrolment`.
+   */
+  readonly auditorStage?: "enrolment" | "active" | null;
 }
 
 /**

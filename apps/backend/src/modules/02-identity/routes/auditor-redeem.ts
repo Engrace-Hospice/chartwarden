@@ -1,8 +1,9 @@
 // apps/backend/src/modules/02-identity/routes/auditor-redeem.ts — `POST /api/v1/auditors/redeem`.
 //
 // The public, unauthenticated half of the auditor flow (M2 §2.2.4 / §7.7): the emailed single-use link is
-// redeemed into a scoped, read-only `auditor`-class session (see ../auditor-redemption.ts for what that
-// does). M3 owns the engagement and the enrolment route (`POST /engagements/:id/auditors`); M2 owns session
+// redeemed into a scoped `auditor`-class ENROLMENT session (see ../auditor-redemption.ts for what that does);
+// the auditor then accepts the BAA terms and proves a second factor through `./auditor-enrolment.ts` before the
+// session can read anything. M3 owns the engagement and the enrolment route (`POST /engagements/:id/auditors`); M2 owns session
 // mechanics, so redemption is an M2 route — the same split the AuditorSessionMinter seam records (D4).
 //
 // Auth column: `none` — the caller presents the one-time token, exactly like `POST /collaborators/consume`.
@@ -32,9 +33,14 @@ export const AuditorRedeemRequestSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** POST /api/v1/auditors/redeem (200) — the session metadata; the session cookie rides `Set-Cookie`. */
+/**
+ * POST /api/v1/auditors/redeem (200) — the session metadata; the session cookie rides `Set-Cookie`. The session
+ * is ENROLMENT-stage: it reaches only `/api/v1/auditors/enrolment/*` until the auditor accepts the BAA terms and
+ * proves a second factor (M2 §7.7), at which point it becomes the read-only engagement session.
+ */
 export const AuditorRedeemResponseSchema = Type.Object({
   sessionClass: Type.Literal("auditor"),
+  stage: Type.Literal("enrolment"),
   organizationId: Type.String(),
   engagementId: Type.String(),
   expiresAt: Type.String({ format: "date-time" }),
@@ -106,6 +112,7 @@ export function registerAuditorRedeemRoutes(
     reply.header("set-cookie", [...stagedList, redeemed.setCookie]);
     return reply.code(200).send({
       sessionClass: "auditor",
+      stage: "enrolment",
       organizationId: redeemed.organizationId,
       engagementId: redeemed.engagementId,
       expiresAt: redeemed.expiresAt.toISOString(),
