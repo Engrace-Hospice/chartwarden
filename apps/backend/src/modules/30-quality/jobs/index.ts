@@ -25,3 +25,9 @@ export {
   registerM30CapOverdueWorker,
   scheduleM30CapOverdueJob,
 } from "./cap-overdue-scan";
+// GAP-049 - the mortality-review-overdue and CoP-attestation-cadence sweeps (scheduled §4.9 alerts).
+export {
+  M30_REVIEW_OVERDUE_QUEUE,
+  registerM30ReviewOverdueWorker,
+  scheduleM30ReviewOverdueJob,
+} from "./review-overdue-sweeps";

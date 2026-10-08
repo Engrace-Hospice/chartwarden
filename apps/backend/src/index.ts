@@ -1132,10 +1132,12 @@ import {
   registerM30CapOverdueWorker,
   registerM30CronWorkers,
   registerM30PublishedSeams,
+  registerM30ReviewOverdueWorker,
   registerM30Workers,
   registerQualityErasers,
   scheduleM30CapOverdueJob,
   scheduleM30Jobs,
+  scheduleM30ReviewOverdueJob,
   wireM30Tenancy,
 } from "./modules/30-quality/index";
 import {
@@ -1330,6 +1332,7 @@ import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumer
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
+import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
@@ -6068,6 +6071,28 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     } catch (err) {
       app.log.error(err, "M30 cap-overdue cron-schedule registration failed");
     }
+    // GAP-049 - the scheduled §4.9 alerts with no cron: mortality-review overdue + CoP attestation cadence.
+    const m30ReviewOverdueWorker = registerM30ReviewOverdueWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      listActiveOrgs: () => m30ActiveOrgs.listActiveOrgs(),
+      emit: (organizationId, input) =>
+        (
+          getSeam("AlertEmitter") as {
+            emit(orgId: string, i: typeof input): Promise<unknown>;
+          }
+        ).emit(organizationId, input),
+      warn: (message, context) => app.log.warn(context, message),
+    });
+    m30Workers.push(m30ReviewOverdueWorker);
+    try {
+      const m30ReviewOverdueSchedule = await scheduleM30ReviewOverdueJob(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all([m30ReviewOverdueWorker.close(), m30ReviewOverdueSchedule.close()]);
+      });
+    } catch (err) {
+      app.log.error(err, "M30 review-overdue cron-schedule registration failed");
+    }
     // GAP-161 - M32 §4.8 `ai:hallucination-triage-followup` consumer: executes the plan R18/R20 enqueue
     // (platform kill switch, the incident_demotion edge attributed to the triage owner, the system-locked alert).
     {
@@ -8689,6 +8714,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-049 — M30's sentinel / abuse-allegation incident, outbreak, threshold-breach and CAHPS-sample
+          // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
+          buildM36QualityAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-107 — M37's IV-continuous bedside-check-overdue watchdog alert (M37 §2.6/D7, §4.8): previously
           // unconsumed, so a lapsed bedside check on a running IPU infusion told the care team nothing.
           buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

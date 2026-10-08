@@ -139,6 +139,14 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m39.consent.revoked_cascade_failed",
       "mdm.license_expiring",
       "m30.incident.cap_overdue",
+      // GAP-049 — M30 quality alerts (M36 `quality-alerts` consumer + the M30 review-overdue sweep).
+      "m30.alerts.incident_sentinel",
+      "m30.alerts.incident_abuse_allegation",
+      "m30.alerts.outbreak_detected",
+      "m30.alerts.measure_threshold_breached",
+      "m30.alerts.cahps_sample_ready",
+      "m30.alerts.mortality_review_due",
+      "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
     ]);
     for (const row of toNewAlertRuleRows()) {

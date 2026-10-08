@@ -64,8 +64,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       threshold: Type.Number(),
       severityBand: id,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── incidents (§4.10) ───────────────────────────────────────────────────────────────────────────
@@ -87,8 +87,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     // storage and PDF rendering) names a dedicated `m30.incident.render_requested` event for this
     // purpose, never catalogued or emitted anywhere in the codebase (a producer-side gap, reported not
     // fixed). Not in M22's own §4.11 table either.
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -136,8 +136,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       decedentCount: Type.Integer({ minimum: 0 }),
       vendor: id,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -369,8 +369,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       firstEventAt: isoInstant,
       lastEventAt: isoInstant,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
