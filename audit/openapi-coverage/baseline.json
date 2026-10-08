@@ -34,7 +34,7 @@
     "08-encounters": {
       "routes": 37,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "09-assessments": {
       "routes": 20,

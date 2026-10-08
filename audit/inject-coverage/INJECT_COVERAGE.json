@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1468,
-    "coveredRoutes": 1468,
-    "directRoutesReferenced": 1406
+    "routes": 1470,
+    "coveredRoutes": 1470,
+    "directRoutesReferenced": 1408
   },
   "modules": [
     {
@@ -416,7 +416,7 @@
     },
     {
       "module": "31-portal",
-      "routes": 56,
+      "routes": 58,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
@@ -425,7 +425,7 @@
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 56
+      "directRoutesReferenced": 58
     },
     {
       "module": "32-ai-platform",

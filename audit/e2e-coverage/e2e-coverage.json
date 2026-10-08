@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 170,
+  "totalStaticWebScreens": 172,
   "e2eReachedCount": 19,
-  "axeReachedCount": 163,
+  "axeReachedCount": 165,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -49,6 +49,14 @@
       "module": "34-saas",
       "path": "/admin/onboarding",
       "permission": "onboarding.read_own",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "portal.admin",
+      "module": "31-portal",
+      "path": "/admin/portal",
+      "permission": "portal.account.read_list",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1117,6 +1125,14 @@
       "axeReached": true
     },
     {
+      "id": "portal.telehealth",
+      "module": "31-portal",
+      "path": "/telehealth",
+      "permission": "telehealth.read_list",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "terminology.admin",
       "module": "38-terminology",
       "path": "/terminology",
@@ -1317,6 +1333,14 @@
       "module": "34-saas",
       "path": "/admin/onboarding",
       "permission": "onboarding.read_own",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "portal.admin",
+      "module": "31-portal",
+      "path": "/admin/portal",
+      "permission": "portal.account.read_list",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2533,6 +2557,14 @@
       "module": "21-supplies",
       "path": "/supplies/vendor-routing",
       "permission": "vendor_routing.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "portal.telehealth",
+      "module": "31-portal",
+      "path": "/telehealth",
+      "permission": "telehealth.read_list",
       "e2eReached": false,
       "axeReached": true
     },

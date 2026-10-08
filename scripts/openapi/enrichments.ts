@@ -1394,6 +1394,7 @@ import {
   EncounterViewResponseSchema as M8EncounterViewResponseSchema,
   EvvReconcileResponseSchema as M8EvvReconcileResponseSchema,
   EvvReconcileSchema as M8EvvReconcileSchema,
+  FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
   HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
@@ -4350,6 +4351,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/finalize": {
     summary: "Finalize the encounter (Layer-3 gate preview)",
+    body: M8FinalizeEncounterSchema,
     response: M8FinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance": {

@@ -46163,7 +46163,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    lateEntryReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
