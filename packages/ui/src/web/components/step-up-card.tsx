@@ -18,7 +18,7 @@
 // navigating to it after a successful re-verification would otherwise be an open redirect.
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useApiClient } from "../../core/api/provider";
 import { CenteredCardLayout } from "../layouts/patterns";
 
@@ -99,11 +99,30 @@ export interface StepUpCardProps {
   footer?: ReactNode;
   /** Where a lockout (423 — the session was terminated after too many failures) sends the user. */
   signInPath?: string;
+  /**
+   * Where this app lets a signed-in user register a passkey. When set and the account has no qualifying factor
+   * (the initiate call answers `*_NOT_ENROLLED`), the card links there with a `returnTo` back to this step-up.
+   */
+  enrolPasskeyPath?: string;
 }
 
-export function StepUpCard({ brand, footer, signInPath = "/login" }: StepUpCardProps): JSX.Element {
+/** The `{ error: { code } }` envelope's code, or null. */
+function apiErrorCode(error: unknown): string | null {
+  const code = (error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return typeof code === "string" ? code : null;
+}
+
+const NOT_ENROLLED = new Set(["WEBAUTHN_NOT_ENROLLED", "TOTP_NOT_ENROLLED"]);
+
+export function StepUpCard({
+  brand,
+  footer,
+  signInPath = "/login",
+  enrolPasskeyPath,
+}: StepUpCardProps): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const returnTo = safeReturnTo(params.get("returnTo"));
 
@@ -112,11 +131,18 @@ export function StepUpCard({ brand, footer, signInPath = "/login" }: StepUpCardP
   const [mode, setMode] = useState<"webauthn" | "totp">(hasPasskey ? "webauthn" : "totp");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Which factor the server said this account has not enrolled — a dead end the card must explain, not retry.
+  const [notEnrolled, setNotEnrolled] = useState<"webauthn" | "totp" | null>(null);
   const [busy, setBusy] = useState(false);
+  const enrolHref =
+    enrolPasskeyPath === undefined
+      ? null
+      : `${enrolPasskeyPath}?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on mode change to reset the form.
   useEffect(() => {
     setError(null);
+    setNotEnrolled(null);
     setCode("");
   }, [mode]);
 
@@ -140,6 +166,10 @@ export function StepUpCard({ brand, footer, signInPath = "/login" }: StepUpCardP
     });
     if (initiated.error || !initiated.data) {
       setBusy(false);
+      if (NOT_ENROLLED.has(apiErrorCode(initiated.error) ?? "")) {
+        setNotEnrolled("totp");
+        return;
+      }
       setError(
         "Couldn’t start verification. Make sure an authenticator app is set up on your account.",
       );
@@ -181,6 +211,10 @@ export function StepUpCard({ brand, footer, signInPath = "/login" }: StepUpCardP
         : undefined;
     if (initiated.error || !webauthnChallenge) {
       setBusy(false);
+      if (NOT_ENROLLED.has(apiErrorCode(initiated.error) ?? "")) {
+        setNotEnrolled("webauthn");
+        return;
+      }
       setError(
         "Couldn’t start passkey verification. You may not have a passkey registered on this account.",
       );
@@ -242,6 +276,21 @@ export function StepUpCard({ brand, footer, signInPath = "/login" }: StepUpCardP
             ? "This action needs a fresh verification. Use your passkey — your device’s biometrics or security key."
             : "This action needs a fresh verification. Enter the 6-digit code from your authenticator app."}
         </p>
+
+        {notEnrolled ? (
+          <div role="alert" style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-error)" }}>
+            {notEnrolled === "webauthn"
+              ? "There’s no passkey on this account yet."
+              : "No authenticator app is set up on this account."}{" "}
+            {enrolHref ? (
+              <>
+                <Link to={enrolHref}>Set up a passkey</Link>, then come back here to continue.
+              </>
+            ) : (
+              "Set up a passkey in the clinical app, then come back here to continue."
+            )}
+          </div>
+        ) : null}
 
         {mode === "webauthn" ? (
           <>

@@ -11,6 +11,7 @@ import { StepUpCard, safeReturnTo } from "../step-up-card";
 import { ReverifyLink, isStepUpRequired, stepUpPath } from "../step-up-link";
 
 let verifyStatus = 200;
+let initiateNotEnrolled = false;
 let paths: string[] = [];
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -19,6 +20,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   paths.push(path);
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  if (path === "/api/v1/sessions/step-up/initiate" && initiateNotEnrolled)
+    return json(400, {
+      error: { code: "TOTP_NOT_ENROLLED", message: "totp is not enrolled", correlationId: "c" },
+    });
   if (path === "/api/v1/sessions/step-up/initiate")
     return json(200, { challengeId: "11111111-1111-4111-8111-111111111111", factor: "totp" });
   if (verifyStatus !== 200)
@@ -31,14 +36,20 @@ function Where(): JSX.Element {
   return <div data-testid="where">{`${loc.pathname}${loc.search}`}</div>;
 }
 
-function mount(entry: string): void {
+function mount(entry: string, enrolPasskeyPath?: string): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route
             path="/step-up"
-            element={<StepUpCard brand={<strong>Brand</strong>} signInPath="/sign-in" />}
+            element={
+              <StepUpCard
+                brand={<strong>Brand</strong>}
+                signInPath="/sign-in"
+                {...(enrolPasskeyPath ? { enrolPasskeyPath } : {})}
+              />
+            }
           />
           <Route path="*" element={<Where />} />
         </Routes>
@@ -56,6 +67,7 @@ async function verifyWithCode(): Promise<void> {
 
 beforeEach(() => {
   verifyStatus = 200;
+  initiateNotEnrolled = false;
   paths = [];
 });
 afterEach(() => cleanup());
@@ -102,6 +114,28 @@ describe("StepUpCard", () => {
     mount(`/step-up?returnTo=${encodeURIComponent("//evil.example/phish")}`);
     await verifyWithCode();
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/"));
+  });
+
+  it("an account with no second factor is told so, with a link to set up a passkey that returns to this step-up", async () => {
+    initiateNotEnrolled = true;
+    const here = `/step-up?returnTo=${encodeURIComponent("/orders/held-transmissions")}`;
+    mount(here, "/security/passkeys");
+    await verifyWithCode();
+    expect(await screen.findByText(/No authenticator app is set up on this account/)).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Set up a passkey" });
+    expect(link.getAttribute("href")).toBe(
+      `/security/passkeys?returnTo=${encodeURIComponent(here)}`,
+    );
+    // Never sent to verify with no challenge.
+    expect(paths).toEqual(["/api/v1/sessions/step-up/initiate"]);
+  });
+
+  it("without an enrolment path (the admin console) it still explains instead of a generic failure", async () => {
+    initiateNotEnrolled = true;
+    mount("/step-up?returnTo=%2Fanywhere");
+    await verifyWithCode();
+    expect(await screen.findByText(/Set up a passkey in the clinical app/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Set up a passkey" })).toBeNull();
   });
 
   it("a 423 lockout goes to the app's sign-in path", async () => {

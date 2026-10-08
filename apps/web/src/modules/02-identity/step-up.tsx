@@ -12,6 +12,7 @@ export function StepUp(): JSX.Element {
       brand={<strong>WardenX</strong>}
       footer={<a href="/login">Sign in as someone else</a>}
       signInPath="/login"
+      enrolPasskeyPath="/security/passkeys"
     />
   );
 }
