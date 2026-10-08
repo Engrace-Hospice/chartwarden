@@ -207,6 +207,8 @@ function m18CoordsKeys(): EvvCoordsKeyProvider {
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
 // GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
 const M28_BAA_COVERAGE_JOB_ID = "m28-baa-coverage";
+// GAP-006 — boot-time backfill that materializes the tenant-assignable ROLE_TEMPLATES into every existing org.
+const M3_ROLE_TEMPLATE_BACKFILL_JOB_ID = "m3-role-template-backfill";
 // AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
@@ -269,6 +271,8 @@ import {
   createMembershipsHoldingRoleKeyReader,
   createProposedRoleGuard,
   createTenantAuditExecutor,
+  materializeRoleTemplatesForOrg,
+  materializeRoleTemplatesInTx,
   membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
@@ -1489,6 +1493,15 @@ export function wireModuleSeams(
     sessions: deps.sessionContextStore,
     db: deps.db,
     organizationDb: deps.organizationDb,
+    // GAP-006 — the tenant-provisioning confirm also materializes the org's roles (M3's writer, injected: M2 may
+    // not import M3). Runs on the tenant pool under the new org's RLS scope, never the platform pool.
+    ...(deps.db
+      ? {
+          onTenantOrganizationAvailable: async (organizationId: string) => {
+            await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
+          },
+        }
+      : {}),
   }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
@@ -2750,12 +2763,31 @@ function buildFirstAdminAcceptanceService(deps: {
               }
               if (!membership) throw new Error("first-admin membership creation failed");
 
-              const [orgAdmin] = await tx
+              // GAP-006 — nothing in production used to create `role` rows, so this threw on every fresh tenant.
+              // Materialize the org's roles (create-only, idempotent) in THIS transaction, then take the org's
+              // OWN org_admin row; a platform-owned template row, if one ever exists, is only a fallback.
+              await materializeRoleTemplatesInTx(tx, invitation.organizationId);
+              const [ownOrgAdmin] = await tx
                 .select()
                 .from(schema.roles)
-                .where(and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")))
+                .where(
+                  and(
+                    eq(schema.roles.organizationId, invitation.organizationId),
+                    eq(schema.roles.key, "org_admin"),
+                  ),
+                )
                 .limit(1);
-              if (!orgAdmin) throw new Error("org_admin role template is unavailable");
+              const [templateOrgAdmin] = ownOrgAdmin
+                ? []
+                : await tx
+                    .select()
+                    .from(schema.roles)
+                    .where(
+                      and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")),
+                    )
+                    .limit(1);
+              const orgAdmin = ownOrgAdmin ?? templateOrgAdmin;
+              if (!orgAdmin) throw new Error("org_admin role is unavailable after materialization");
               await tx
                 .insert(schema.membershipRoles)
                 .values({
@@ -2974,6 +3006,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M3_ROLE_TEMPLATE_BACKFILL_JOB_ID);
   // GAP-062 — the M21 §4.6 par-monitor / unreturned-kit-monitor / supply-request-monitor active-org fan-out.
   if (platformDbHandle) registerPlatformJob(M21_PLATFORM_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
@@ -5295,6 +5328,34 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         info: (fields, message) => app.log.info(fields, message),
       },
     );
+  }
+  // GAP-006 — backfill: every ACTIVE org that predates the materializer (or was provisioned while it was unbound)
+  // gets its roles. Create-only and idempotent, so it is safe on every boot; fire-and-forget like the probe above
+  // (a failure is logged per org and never blocks boot - the first-admin accept re-materializes on demand).
+  if (dbHandle && platformDbHandle) {
+    const roleBackfillOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M3_ROLE_TEMPLATE_BACKFILL_JOB_ID,
+      reason: "GAP-006 role-template backfill: active-org list",
+    });
+    void roleBackfillOrgs
+      .listActiveOrgs()
+      .then(async (orgs) => {
+        for (const { organizationId } of orgs) {
+          try {
+            const result = await materializeRoleTemplatesForOrg(dbHandle.db, organizationId);
+            if (result.rolesCreated.length > 0)
+              app.log.info(
+                { organizationId, roles: result.rolesCreated, grants: result.grantsCreated },
+                "role templates materialized",
+              );
+          } catch (err) {
+            app.log.error({ err, organizationId }, "role-template materialization failed");
+          }
+        }
+      })
+      .catch((err) => app.log.error({ err }, "role-template backfill could not list orgs"));
   }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
