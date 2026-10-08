@@ -60,6 +60,51 @@ export function isValidRefundAmount(input: {
   );
 }
 
+/** The refund statuses whose amount is already spoken for against the invoice (GAP-061): a pending, approved
+ *  or executed refund consumes refundable headroom; a denied or failed one does not. */
+const REFUND_COMMITTED_STATUSES: readonly string[] = ["requested", "approved", "executed_success"];
+
+/** GAP-061 — the cents already committed to refunds of one invoice. */
+export function committedRefundCents(
+  refunds: ReadonlyArray<{ status: string; amountCents: number }>,
+): number {
+  let total = 0;
+  for (const r of refunds) if (REFUND_COMMITTED_STATUSES.includes(r.status)) total += r.amountCents;
+  return total;
+}
+
+export type RefundRequestCheck =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: "amount_invalid" | "invoice_not_paid" | "exceeds_refundable";
+      readonly refundableCents: number;
+    };
+
+/**
+ * GAP-061 / §2.3 — the application-level refund cap: only a `paid` invoice is refundable, and
+ * `amount <= amount_paid - cumulative committed refunds`. Pure; the caller supplies the committed total
+ * read under the invoice row lock so two concurrent requests cannot both pass.
+ */
+export function checkRefundRequest(input: {
+  invoiceStatus: string;
+  amountPaidCents: number;
+  committedRefundCents: number;
+  amountCents: number;
+}): RefundRequestCheck {
+  const refundableCents = Math.max(0, input.amountPaidCents - input.committedRefundCents);
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    return { ok: false, reason: "amount_invalid", refundableCents };
+  }
+  if (input.invoiceStatus !== "paid") {
+    return { ok: false, reason: "invoice_not_paid", refundableCents };
+  }
+  if (input.amountCents > refundableCents) {
+    return { ok: false, reason: "exceeds_refundable", refundableCents };
+  }
+  return { ok: true };
+}
+
 /** §2.3 a subscription's `plan_id` must reference an `active` (any new subscription) or `deprecated`
  *  (grandfathered existing subscription) plan — never an `inactive` draft. */
 export function isPlanReferenceEligible(input: {

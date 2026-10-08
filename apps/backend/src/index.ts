@@ -40,7 +40,11 @@ import {
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
 import { createAlertPayloadRegistry, createDenyTransports } from "@wardenx/messaging";
-import { type PseudonymKeyProvider, loadPseudonymKekRing } from "@wardenx/subscription-billing";
+import {
+  type PseudonymKeyProvider,
+  createStripePaymentMethodVerifier,
+  loadPseudonymKekRing,
+} from "@wardenx/subscription-billing";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import {
   getRequestContext,
@@ -1255,6 +1259,7 @@ import {
   buildM34WorkerDeps,
   buildPlatformEnqueue,
   buildTenantEnqueue,
+  createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
   createDrizzleTenantAccountFlagsService,
@@ -1262,6 +1267,7 @@ import {
   enableM34JobCapability,
   getTenantKeyProvider,
   m34ProvisionGatewayConfigFromEnv,
+  m34ResolverExtension,
   mountTenantPlatformRoutes,
   registerLiveM34Seams,
   registerM34BaaExpiryWorker,
@@ -1280,8 +1286,6 @@ import {
   validateModule34Seams,
   wireM34AlertRuleSeed,
   wireM34Tenancy,
-  createDrizzleM34AlertResolverPorts,
-  m34ResolverExtension,
 } from "./modules/34-saas-tenant-platform/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
@@ -1291,14 +1295,20 @@ import {
 // bound as deny-stubs in T05 and are still dormant (GAP-208): nothing registers a live impl and no
 // in-repo consumer resolves them via `getSeam`.
 import {
+  M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
+  type PlatformRunner,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
+  buildM35WebhookIngest,
   createDrizzlePseudonymKeyProvider,
+  loadM35StripeConfig,
   mountM35Routes,
   registerM35AbacPredicates,
+  registerM35Workers,
+  scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -1309,11 +1319,11 @@ import {
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
-  createDrizzleRoleSetMembersReader,
   createDrizzleDeliveryDispatchStore,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
+  createDrizzleRoleSetMembersReader,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
   registerM36DeliveryWorkers,
@@ -2967,6 +2977,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     );
   }
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
+  if (platformDbHandle) registerPlatformJob(M35_JOBS_PLATFORM_JOB_ID); // GAP-059 — M35 worker set's active-org fan-out
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID); // GAP-011 — authz.close_engagements fan-out
@@ -3460,6 +3471,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     : undefined;
   const m26PsrEnqueuer = queueConnection ? buildPsrReconcileEnqueuer(queueConnection) : null;
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
+  // GAP-058 — Stripe bindings (all optional, each fail-closed when its env is absent) and the ONE audited
+  // platform runner every M35 platform-table touch shares (admin routes, webhook ingest, workers).
+  const m35Stripe = loadM35StripeConfig(process.env);
+  const m35PlatformRunner: PlatformRunner | undefined = platformDbHandle
+    ? (fn) =>
+        withPlatformContext(
+          platformDbHandle.db,
+          {
+            jobId: "m35-subscription-admin",
+            reason: "M35 §5.2 platform-ops admin surface",
+            crossTenant: true,
+          },
+          m34PlatformBypassAuditor,
+          fn,
+        )
+    : undefined;
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
   // GAP-101 — M36's first publisher: the out-of-band dispatcher + vendor-webhook reconcile emit
@@ -4404,8 +4431,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // and the admin surface fails closed (503) — never reading under tenant RLS. The §4.3 webhook stays
           // fail-closed (503) until the live Stripe secret + DEK transport binds.
           mountM35Routes(app, {
+            // GAP-058 — the inbound Stripe webhook binds when the signing secret, the payload key AND the
+            // platform credential are all configured; otherwise it stays 503 (never half-bound).
+            webhook:
+              m35PlatformRunner && m35Stripe.webhookSecret && m35Stripe.cipher
+                ? {
+                    ingest: buildM35WebhookIngest({
+                      platformRunner: m35PlatformRunner,
+                      webhookSecret: m35Stripe.webhookSecret,
+                      encryptor: m35Stripe.cipher,
+                    }),
+                  }
+                : {},
             service: buildDrizzleM35RouteService(dbHandle.db, {
               outbox: m35OutboxPublisher,
+              // GAP-060 — a client-supplied payment-method id is verified against Stripe (attached to THIS
+              // org's customer) before it is stored; unset => attach refuses 503.
+              ...(m35Stripe.client
+                ? { paymentMethodVerifier: createStripePaymentMethodVerifier(m35Stripe.client) }
+                : {}),
               // M35A-T03 — resolve the M2 `OrganizationReader` seam LAZILY (per call, after validateSeams has
               // applied its graceful deny-stub / M2 has registered the real reader), so the platform-ops admin
               // lists label cross-tenant rows with an org display name instead of a raw UUID.
@@ -4415,19 +4459,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               // Platform-ops cross-tenant runner: each call is ONE allowlisted ("m35-subscription-admin"),
               // audited (`platform.bypass_invoked` via the shared M34 auditor) `withPlatformContext` tx against
               // the platform credential. Undefined → fail-closed (503), never a tenant-pool read.
-              platformRunner: platformDbHandle
-                ? (fn) =>
-                    withPlatformContext(
-                      platformDbHandle.db,
-                      {
-                        jobId: "m35-subscription-admin",
-                        reason: "M35 §5.2 platform-ops admin surface",
-                        crossTenant: true,
-                      },
-                      m34PlatformBypassAuditor,
-                      fn,
-                    )
-                : undefined,
+              platformRunner: m35PlatformRunner,
             }),
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
@@ -5621,6 +5653,58 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       app.log.warn(
         "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
       );
+    }
+
+    // ── GAP-059 — M35 worker set: dunning engine, usage aggregator, payment-method expiry watch, revenue
+    // snapshot, invoice reconciler, Stripe webhook handler, refund executor. Same worker-runner shape as the M4
+    // block below: needs the platform pool (active-org fan-out + the platform-only tables) and Valkey. The
+    // webhook handler is scheduled only with the payload key, the refund executor only with a Stripe secret
+    // key - without them those two stay un-run rather than pretending (rows remain `unprocessed` / `approved`).
+    if (platformDbHandle && m35PlatformRunner) {
+      const m35Orgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M35_JOBS_PLATFORM_JOB_ID,
+        reason: "GAP-059 M35 billing jobs active-org fan-out",
+      });
+      const m35Log = (message: string, detail: Record<string, unknown>) =>
+        app.log.warn(detail, message);
+      const m35Workers = registerM35Workers({
+        connection: queueConnection,
+        jobs: {
+          db: dbHandle.db,
+          platformRunner: m35PlatformRunner,
+          outbox: m35OutboxPublisher,
+          listOrgs: () => m35Orgs.listActiveOrgs(),
+          log: m35Log,
+        },
+        ...(m35Stripe.cipher ? { cipher: m35Stripe.cipher } : {}),
+        ...(m35Stripe.client
+          ? {
+              refunds: {
+                platformRunner: m35PlatformRunner,
+                client: m35Stripe.client,
+                outbox: m35OutboxPublisher,
+                log: m35Log,
+              },
+            }
+          : {}),
+      });
+      attachDlqAlertsToAll(m35Workers, "m35");
+      app.addHook("onClose", () => Promise.all(m35Workers.map((w) => w.close())));
+      void scheduleM35Jobs(queueConnection, {
+        webhookHandler: m35Stripe.cipher !== undefined,
+        refundExecutor: m35Stripe.client !== undefined,
+      })
+        .then((queues) => {
+          app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
+        })
+        .catch((err) => app.log.error(err, "M35 job schedule registration failed"));
+      app.log.info(
+        `M35 workers constructed: dunning, usage, payment-method expiry, revenue snapshot, reconciler${m35Stripe.cipher ? ", webhook handler" : ""}${m35Stripe.client ? ", refund executor" : ""}`,
+      );
+    } else {
+      app.log.warn("M35 workers disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required");
     }
 
     // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──

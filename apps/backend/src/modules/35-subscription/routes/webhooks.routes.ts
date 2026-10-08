@@ -9,8 +9,8 @@
 // platform runner + the in-tx outbox publish). It then maps the {@link WebhookIngestResult} kind onto the
 // Stripe-TOS reply codes (401 invalid / 410 too-old / 200 duplicate|accepted). The payload is NEVER logged.
 //
-// Until a live Stripe credential + DEK are bound, `ingest` is unset and the route fails closed (503) — the
-// verifier/store/encryptor wiring is the remaining live-transport follow-up; the ROUTE is complete.
+// Until a Stripe webhook secret + payload key + platform credential are bound, `ingest` is unset and the
+// route fails closed (503). GAP-058: the composition root now binds it (billing-runtime/webhook-ingest.ts).
 import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
@@ -28,18 +28,33 @@ export interface WebhookRouteDeps {
   readonly ingest?: M35WebhookIngest;
 }
 
-/** Best-effort raw-body access for HMAC verification (the exact bytes Stripe signed). */
+/** The exact bytes Stripe signed. Captured by the scoped JSON parser below; never re-serialised. */
 function rawBodyOf(request: FastifyRequest): string {
   const raw = (request as { rawBody?: unknown }).rawBody;
-  if (typeof raw === "string") return raw;
-  if (Buffer.isBuffer(raw)) return raw.toString("utf8");
-  if (typeof request.body === "string") return request.body;
-  return request.body === undefined ? "" : JSON.stringify(request.body);
+  return typeof raw === "string" ? raw : "";
 }
 
 /** Register the §4.3 inbound Stripe webhook route. */
 export function registerWebhookRoutes(app: FastifyInstance, deps: WebhookRouteDeps): void {
-  // POST /v1/webhooks/stripe — inbound Stripe webhook (Stripe-Signature HMAC; no user session). §4.3.
+  // GAP-058 - the HMAC is over the EXACT request bytes, and Fastify's default JSON parser hands the handler a
+  // parsed object whose `JSON.stringify` is not those bytes. So the route lives in its own encapsulated scope
+  // with a JSON parser that keeps the raw string on the request (and still parses it), leaving every other
+  // route's body parsing untouched.
+  void app.register(async (scope) => {
+    scope.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+      (request as { rawBody?: string }).rawBody = body as string;
+      try {
+        done(null, (body as string).length === 0 ? {} : JSON.parse(body as string));
+      } catch (err) {
+        done(Object.assign(err as Error, { statusCode: 400 }), undefined);
+      }
+    });
+    registerWebhookHandler(scope, deps);
+  });
+}
+
+function registerWebhookHandler(app: FastifyInstance, deps: WebhookRouteDeps): void {
+  // POST /v1/webhooks/stripe - inbound Stripe webhook (Stripe-Signature HMAC; no user session). §4.3.
   app.post("/api/v1/webhooks/stripe", async (request, reply) => {
     if (!deps.ingest) {
       throw new WardenXError(
