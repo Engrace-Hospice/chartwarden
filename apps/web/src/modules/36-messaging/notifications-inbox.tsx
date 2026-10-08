@@ -309,7 +309,7 @@ export function NotificationsInbox(): JSX.Element {
                   return (
                     <tr
                       key={alert.alertId}
-                      // biome-ignore lint/a11y/useSemanticElements: native tables cannot contain a link spanning cells; link semantics plus keyboard activation preserve a whole-row target.
+                      // Native tables cannot contain a link spanning cells; link semantics plus keyboard activation preserve a whole-row target.
                       role={isInternalAlertDeepLink(alert.deepLink) ? "link" : undefined}
                       tabIndex={isInternalAlertDeepLink(alert.deepLink) ? 0 : undefined}
                       onClick={
