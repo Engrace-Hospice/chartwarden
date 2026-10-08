@@ -1,22 +1,21 @@
 import { StatusPill, t, useApiClient } from "@wardenx/ui";
-// @wardenx/portal — §5.1 Patient selector (`/patient-picker`). The current session (GET /portal/sessions/current)
-// carries the account's active grant — the patient it is bound to, the relationship, and the scope set. A
-// single-grant account is the common case (D2: one patient at a time), so this surface confirms who the
-// caregiver is here for and binds the session context via POST /portal/sessions/select-patient before routing
-// into the dashboard. Multi-grant accounts re-enter here to switch patients.
+// @wardenx/portal — §5.1 Patient selector (`/patient-picker`). A portal session is scoped to the patients its ACCOUNT is
+// granted — never to the signed-in user — and works on ONE at a time (D2). This lists the account's live grants
+// (GET /portal/sessions/patients: the lay label, the relationship the grant came from and how many areas of care it
+// opens), and choosing one binds the session via POST /portal/sessions/select-patient before routing into the
+// dashboard. A grant that is revoked or whose consent has ended simply does not appear.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import { humanize, readError, statusTone } from "./portal-format";
+import { humanize, readError } from "./portal-format";
 import { PortalLoadState, PortalPage } from "./portal-page";
 
-interface SessionContext {
-  portalAccountId: string;
-  activePatientId: string | null;
-  activeGrantId: string | null;
+interface GrantedPatient {
+  patientId: string;
+  grantId: string;
+  grantKind: string;
   scopeSet: string[];
-  relationship: string;
-  status: string;
+  layPatientLabel: string;
 }
 
 const item: CSSProperties = {
@@ -37,18 +36,19 @@ const item: CSSProperties = {
 export function PortalPatientPicker(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [ctx, setCtx] = useState<SessionContext | null>(null);
+  const [patients, setPatients] = useState<GrantedPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       setLoading(true);
-      const res = await client.GET("/api/v1/portal/sessions/current", {});
+      const res = await client.GET("/api/v1/portal/sessions/patients", {});
       if (!active) return;
       if (res.error) setError(readError(res.response?.status));
-      else setCtx((res.data as SessionContext) ?? null);
+      else setPatients((res.data?.items ?? []) as GrantedPatient[]);
       setLoading(false);
     })();
     return () => {
@@ -57,36 +57,49 @@ export function PortalPatientPicker(): JSX.Element {
   }, [client]);
 
   async function enter(patientId: string): Promise<void> {
+    setSelecting(patientId);
     const res = await client.POST("/api/v1/portal/sessions/select-patient", {
       body: { patientId },
     });
-    if (!res.error) navigate(`/p/${patientId}`);
+    setSelecting(null);
+    if (res.error) setError(readError(res.response?.status));
+    else navigate(`/p/${patientId}`);
   }
 
-  const patientId = ctx?.activePatientId ?? null;
   return (
     <PortalPage
       title="Who are you here for?"
-      subtitle="Confirm the person whose care you'd like to see."
+      subtitle="Choose the person whose care you'd like to see."
     >
       <PortalLoadState
         loading={loading}
         error={error}
-        empty={!patientId}
+        empty={patients.length === 0}
         emptyTitle="No active access"
         emptyDescription="Your account doesn't have access to anyone's records right now. Your hospice team can help."
       >
-        <button type="button" style={item} onClick={() => patientId && void enter(patientId)}>
-          <span>
-            <span style={{ fontWeight: 600 }}>Your loved one's records</span>
-            <span style={{ display: "block", color: t.onSurfaceVariant, fontSize: "0.82rem" }}>
-              {ctx
-                ? `${humanize(ctx.relationship)} · ${ctx.scopeSet.length} area${ctx.scopeSet.length === 1 ? "" : "s"} of access`
-                : ""}
-            </span>
-          </span>
-          {ctx ? <StatusPill tone={statusTone(ctx.status)} label={humanize(ctx.status)} /> : null}
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          {patients.map((p) => (
+            <button
+              key={p.grantId}
+              type="button"
+              style={item}
+              disabled={selecting !== null}
+              onClick={() => void enter(p.patientId)}
+            >
+              <span>
+                <span style={{ fontWeight: 600 }}>{p.layPatientLabel}</span>
+                <span style={{ display: "block", color: t.onSurfaceVariant, fontSize: "0.82rem" }}>
+                  {`${humanize(p.grantKind)} · ${p.scopeSet.length} area${p.scopeSet.length === 1 ? "" : "s"} of access`}
+                </span>
+              </span>
+              <StatusPill
+                tone={selecting === p.patientId ? "progress" : "neutral"}
+                label={selecting === p.patientId ? "Opening" : "Open"}
+              />
+            </button>
+          ))}
+        </div>
       </PortalLoadState>
     </PortalPage>
   );

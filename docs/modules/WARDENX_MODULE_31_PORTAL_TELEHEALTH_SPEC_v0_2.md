@@ -774,6 +774,9 @@ All routes under `apps/backend/src/modules/31-portal/routes/`. Routes are split 
 
 | Method | Route | Session class | Permission | Step-up | Description |
 |---|---|---|---|---|---|
+| GET | `/api/v1/portal/sign-in/accounts` | pre-org (authenticated, no tenant yet) | none (own accounts only) | no | **As-built.** The signed-in user's own portal accounts and whether each can sign in (tenant display name, relationship, typed refusal code; no PHI). Cross-tenant read through the `m31_list_own_portal_accounts` SECURITY DEFINER function (migration 0520). |
+| POST | `/api/v1/portal/sign-in/establish` | pre-org | none (own account only) | no | **As-built.** Binds the authenticated session to one eligible portal account: one conditional UPDATE sets organization + `session_class` (`patient_portal` / `caregiver_portal` / `bereaved_portal`) + `scope.portalAccountId`. Idempotent replay, 409 selection / not-bindable, 403 typed refusals (invited, suspended, unverified email, inactive tenant, no live grant), §5.3.1 throttle (429), audited. |
+| GET | `/api/v1/portal/sessions/patients` | portal | `portal.session.read_own` | no | **As-built.** The patients the account holds a live grant for (D2 picker). |
 | POST | `/api/v1/portal/sessions/select-patient` | portal | `portal.session.select_patient` | no | Patient-select screen post-login; binds `active_patient_id` and `active_grant_id` (D2) |
 | GET | `/api/v1/portal/sessions/current` | portal | `portal.session.read_own` | no | Returns current session context (account, active patient, scope_set) |
 | POST | `/api/v1/portal/sessions/logout` | portal | none | no | Server-side session close |
@@ -1197,6 +1200,8 @@ M31 contributes these keys to M3's permission catalog (`packages/auth/src/permis
 | `portal.account.read_grants` | org_admin, compliance_officer, clinical_admin, privacy_officer | Per-account grants |
 | `portal.account.read_audit` | compliance_officer, privacy_officer | §164.528 audit view |
 | `portal.engagement.read_auditor` | auditor (with engagement scope) | Auditor surface |
+
+> **As-built (portal sign-in).** The portal-side "default roles" in the table (`portal_caregiver`, `portal_patient`, ...) are not seeded roles: a portal user holds no membership. The portal-side keys are held by the **session class** (`patient_portal` / `caregiver_portal` / `bereaved_portal`, `packages/auth/src/rbac/session-class-permissions.ts`), an explicit allow-list that never includes the staff-side `portal.invitation.*` / `portal.account.*` / `telehealth.*` keys; the amendment keys are patient-self only (a DPOA agent is `caregiver_portal` and does not hold them yet). Per-patient narrowing is still the §4.7 ABAC. See `docs/history/portal-signin-and-link-redemption.md`.
 
 **Total: 47 keys** (one per route + the cross-cutting bereavement/admin extras). Default role templates per §6.
 

@@ -11,10 +11,12 @@ import { registerPortalAdminRoutes } from "./admin.routes";
 import type { PortalRouteDeps } from "./index";
 import { registerPortalReadRoutes } from "./read.routes";
 import { registerPortalSessionRoutes } from "./session.routes";
+import { registerPortalSignInRoutes } from "./sign-in.routes";
 import { registerTelehealthRoutes } from "./telehealth.routes";
 import { registerPortalWriteRoutes } from "./write.routes";
 
 export { registerPortalSessionRoutes } from "./session.routes";
+export { registerPortalSignInRoutes } from "./sign-in.routes";
 export { registerPortalReadRoutes } from "./read.routes";
 export { registerPortalWriteRoutes } from "./write.routes";
 export { registerTelehealthRoutes } from "./telehealth.routes";
@@ -22,6 +24,7 @@ export { registerPortalAdminRoutes } from "./admin.routes";
 
 /** Mount every M31 §4.1 route plugin over the Drizzle-backed store + injected telehealth adapter. */
 export function mountM31Routes(app: FastifyInstance, deps: PortalRouteDeps): void {
+  registerPortalSignInRoutes(app, deps);
   registerPortalSessionRoutes(app, deps);
   registerPortalReadRoutes(app, deps);
   registerPortalWriteRoutes(app, deps);

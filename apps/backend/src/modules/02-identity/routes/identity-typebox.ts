@@ -77,6 +77,8 @@ export const UserDeactivateRequestSchema = Type.Object({
 /** POST /api/v1/collaborators/invite — mint a per-patient magic-link (§7.6). */
 export const CollaboratorInviteRequestSchema = Type.Object({
   patientId: Type.String({ minLength: 1 }),
+  /** Where the one-time link is emailed (required on a durable deployment; the token is never returned). */
+  recipientEmail: Type.Optional(Type.String({ maxLength: 254 })),
 });
 
 /** POST /api/v1/collaborators/consume — consume the link → scoped session (§7.6). */

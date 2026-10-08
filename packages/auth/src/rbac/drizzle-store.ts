@@ -24,12 +24,14 @@ import type {
 } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { roleConfersKey } from "../roles/platform-reserved";
+import { setEffectivePermissionResolver } from "./require-role";
 import {
   type EffectivePermissionStore,
   type RbacEngineHandle,
-  registerEffectivePermissionResolver,
+  createEffectivePermissionResolver,
 } from "./resolve";
 import type { RoleGrant } from "./resolve";
+import { withSessionClassPermissions } from "./session-class-permissions";
 
 /**
  * Build the live `EffectivePermissionStore` over the pooled Drizzle client. `loadGrants` is keyed by
@@ -111,7 +113,11 @@ export function createDbEffectivePermissionStore(db: DbClient): EffectivePermiss
  * can drive the §2.5 cache invalidation.
  */
 export function registerDbEffectivePermissionResolver(db: DbClient): RbacEngineHandle {
-  return registerEffectivePermissionResolver(createDbEffectivePermissionStore(db));
+  const handle = createEffectivePermissionResolver(createDbEffectivePermissionStore(db));
+  // Portal and funeral-home sessions hold no membership: their permissions are a property of their (server-bound)
+  // session CLASS. Every other session is still answered by the membership resolver, unchanged.
+  setEffectivePermissionResolver(withSessionClassPermissions(handle.resolver));
+  return handle;
 }
 
 /**

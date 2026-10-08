@@ -174,8 +174,23 @@ export const MeSessionResponseSchema = Type.Object({
   stepUpSecondsRemaining: Type.Integer({ minimum: 0 }),
 });
 
-export const FuneralInviteRequestSchema = Type.Object({ patientId: Type.String({ minLength: 1 }) });
+export const FuneralInviteRequestSchema = Type.Object({
+  patientId: Type.String({ minLength: 1 }),
+  /**
+   * Where the one-time link is emailed. REQUIRED on a durable deployment (422 without it): the token is never returned in a
+   * response, so a link with no recipient could never be redeemed. Refused 503 `LINK_DELIVERY_UNAVAILABLE` while the
+   * transactional email provider is unbound.
+   */
+  recipientEmail: Type.Optional(Type.String({ maxLength: 254 })),
+});
 export const FuneralInviteResponseSchema = Type.Object({
   linkId: Type.String(),
   expiresAt: Type.String(),
+});
+
+/** GET /api/v1/funeral/case - the MINIMUM decedent facts a redeemed funeral-home session reads (legal name, date of death). */
+export const FuneralCaseResponseSchema = Type.Object({
+  patientId: Type.String(),
+  decedentName: Type.String(),
+  dateOfDeath: Type.String(),
 });

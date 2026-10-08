@@ -30,6 +30,22 @@ export const PORTAL_SCREEN_MANIFEST: readonly PortalScreenMeta[] = [
     title: "Accept invitation",
     chrome: false,
   },
+  // Invitee sign-in: the authenticated-but-unbound landing that binds the session to a portal account.
+  { id: "portal.signed-in", path: "/signed-in", title: "Opening your account", chrome: false },
+  // Single-use secure links (GAP-115 follow-up): redemption, then the funeral home's one read.
+  {
+    id: "portal.link-redeem-funeral",
+    path: "/funeral/redeem",
+    title: "Secure link",
+    chrome: false,
+  },
+  {
+    id: "portal.link-redeem-collaborator",
+    path: "/collaborator/redeem",
+    title: "Secure link",
+    chrome: false,
+  },
+  { id: "portal.funeral-case", path: "/funeral/case", title: "Funeral home access", chrome: false },
   {
     id: "portal.patient-picker",
     path: "/patient-picker",

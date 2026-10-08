@@ -134,6 +134,44 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
     },
   );
 
+  // patients — the patients THIS account holds a live grant for (D2's patient-select screen). Account from the
+  // SESSION; a revoked grant never appears; the label is the lay one (fails closed to the generic label).
+  app.get(
+    "/api/v1/portal/sessions/patients",
+    {
+      preHandler: [P("portal.session.read_own"), ABAC_ACCOUNT("portal.session.read_own")],
+      config: { auditRead: { resourceKind: "portal_session" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const portalAccountId = portalAccountIdOf(actor);
+      const grants = (await store.grantsForAccount(actor.organizationId, portalAccountId)).filter(
+        (g) => g.revokedAt === null,
+      );
+      const items = await Promise.all(
+        grants.map(async (grant) => {
+          let layPatientLabel = "your family member";
+          try {
+            const identity = await (
+              getSeam("PatientReader") as unknown as PatientReaderArm
+            ).findById({ organizationId: actor.organizationId, id: grant.patientId });
+            if (identity?.displayName) layPatientLabel = identity.displayName;
+          } catch {
+            /* fail closed to the generic label */
+          }
+          return {
+            patientId: grant.patientId,
+            grantId: grant.grantId,
+            grantKind: grant.grantKind,
+            scopeSet: PORTAL_CATEGORIES.filter((c) => scopeSetContains(grant.scopeSet, c)),
+            layPatientLabel,
+          };
+        }),
+      );
+      return { items };
+    },
+  );
+
   // logout — server-side session close (M2 owns the row; the handler acknowledges).
   app.post("/api/v1/portal/sessions/logout", async (request) => {
     const actor = actorOf(request);

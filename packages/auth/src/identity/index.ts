@@ -136,3 +136,15 @@ export {
   createDbSessionTimeoutEnforcer,
   evaluateSessionTimeout,
 } from "./session-timeout";
+
+// GAP-115 follow-up — the server-only session mint behind a redeemed collaborator / funeral-home link.
+export {
+  LINK_SESSION_CLASSES,
+  type LinkSessionCapableAuth,
+  type LinkSessionClass,
+  type LinkSessionMintInput,
+  type LinkSessionMinter,
+  type MintedLinkSession,
+  createLinkSessionMinter,
+  linkSessionPlugin,
+} from "./link-session";
