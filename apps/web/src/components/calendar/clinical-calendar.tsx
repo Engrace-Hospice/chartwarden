@@ -1038,8 +1038,6 @@ const detailEyebrow: CSSProperties = {
   fontSize: "0.65rem",
   fontWeight: 750,
   color: t.primary,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
 };
 
 const detailTitle: CSSProperties = {

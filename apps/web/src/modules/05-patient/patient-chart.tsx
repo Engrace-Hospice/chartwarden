@@ -2980,8 +2980,6 @@ const detailItemLabel = {
   color: "var(--color-muted)",
   fontSize: "0.68rem",
   fontWeight: 700,
-  letterSpacing: "0.035em",
-  textTransform: "uppercase",
 } as const;
 
 const detailItemValue = {

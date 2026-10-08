@@ -96,8 +96,6 @@ export const tableCell: CSSProperties = {
 export const tableHead: CSSProperties = {
   ...tableCell,
   fontSize: "0.72rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: t.onSurfaceVariant,
   fontWeight: 600,
 };
