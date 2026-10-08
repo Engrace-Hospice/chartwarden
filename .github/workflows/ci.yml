@@ -996,6 +996,11 @@ jobs:
           # F-172 (#248) — the real PseudonymKeyProvider (KEK envelope over the platform-singleton
           # patient_pseudonym_key) + the 3 remaining D21 consumers it unblocks.
           - { name: "M35 pseudonym-key provider", scripts: "test:m35:pseudonym-key-provider:live" }
+          # GAP-058/059/060/061 - M35 billing runtime: payment-method trust, refund cap + execution, signed
+          # webhook -> dunning -> suspension, expiry watch, usage thresholds, revenue snapshot, reconciler.
+          - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
+          # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
+          - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

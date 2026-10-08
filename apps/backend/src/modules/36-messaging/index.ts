@@ -95,6 +95,7 @@ export {
   createDrizzleAlertEmitterPorts,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
+  createDrizzleRoleSetMembersReader,
 } from "./alert-emitter-drizzle";
 export type { MembershipsHoldingPermissionPort } from "./alert-emitter-drizzle";
 export { buildM36ClinicalAlertConsumer } from "./outbox-consumers/clinical-alerts";

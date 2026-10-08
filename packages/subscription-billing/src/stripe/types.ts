@@ -39,6 +39,8 @@ export type StripeOperation =
   | "payment_method.attach"
   | "payment_method.detach"
   | "payment_method.set_default"
+  | "payment_method.retrieve"
+  | "invoice.retrieve"
   | "setup_intent.create"
   | "refund.create"
   | "usage_record.create"

@@ -1198,6 +1198,20 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-068 — M40 §4.7.2: the NPPES source deactivated a physician record this organisation prefers. Raised by
+  // the M40 NPPES consumer / fallback job through AlertEmitter; without a rule the emit persists an alert with
+  // recipientCount 0. Tenant admins + referral/intake coordinators, in-app + email; payload `{ canonicalId, npi,
+  // kind, deepLink, message }` — an NPI is a public identifier, no PHI.
+  {
+    eventType: "mdm.physician_deactivated",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "intake_coordinator", "intake_supervisor"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a

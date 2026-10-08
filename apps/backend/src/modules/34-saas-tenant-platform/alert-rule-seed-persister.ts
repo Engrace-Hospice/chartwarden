@@ -5,16 +5,10 @@
 // seed persister uses (see ../36-messaging/alert-rule-seed-persister.ts for why a plain Drizzle upsert
 // cannot write a NULL-org row under `wardenx_app`).
 //
-// `M34_ALERT_RULES`'s own footer has called this "the Phase 2D boot UPSERT" since the file was
-// written, and nothing ever performed it — so every `m34.*` alert rule has been dormant, and the
-// GAP-098 oversized-hold alert would have been dormant on arrival too.
-//
-// PARTIAL BY CONSTRUCTION, AND IT SAYS SO. Only the rules whose `recipientResolver` is an M36 built-in
-// are seeded (`seedableM34AlertRules`). The rest name M34's own two resolvers, which are implemented
-// but never registered at boot; M36's registry THROWS on an unknown resolver name, so seeding them
-// would turn a dormant rule into a failing emit. The count skipped is returned (and logged by the
-// caller) rather than swallowed — a partial seed that reports itself is honest; one that doesn't is
-// how "the alert plane is wired" gets believed.
+// GAP-057: the seed is COMPLETE. M34's two resolvers (`compliance_officer_for_tenant`,
+// `platform_security_owner`) are registered onto the emitter's resolver registry at boot (see
+// ./alert-resolver-ports.ts and apps/backend/src/index.ts), so no rule names an unregistered resolver and
+// `skipped` is 0. The skip accounting stays so a future rule naming an unregistered resolver is reported.
 import type { DbClient } from "@wardenx/db";
 import { sql } from "drizzle-orm";
 import { M34_ALERT_RULES, seedableM34AlertRules } from "./alert-rules";

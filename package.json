@@ -192,6 +192,8 @@
     "test:m23:taxonomy-occurrence:live": "vitest run apps/backend/__tests__/m23-taxonomy-occurrence.live.test.ts",
     "test:m35:org-lifecycle-consumer:live": "vitest run apps/backend/__tests__/m35-org-lifecycle-consumer.live.test.ts",
     "test:m35:pseudonym-key-provider:live": "vitest run apps/backend/__tests__/m35-pseudonym-key-provider.live.test.ts",
+    "test:m35:billing-runtime:live": "vitest run apps/backend/__tests__/m35-billing-runtime.live.test.ts",
+    "test:m34:alert-resolvers:live": "vitest run apps/backend/__tests__/m34-alert-resolvers.live.test.ts",
     "test:m13:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m13-admission-discharged-cascade.live.test.ts",
     "test:m13:scheduled-dose-materialization:live": "vitest run apps/backend/__tests__/m13-scheduled-dose-materialization.live.test.ts",
     "test:m1:lag-probe-status:live": "vitest run apps/backend/__tests__/m1-lag-probe-status-consumer.live.test.ts",

@@ -359,6 +359,9 @@ export const alertRecipientResolver = pgEnum("alert_recipient_resolver", [
   "tenant_admins",
   "user_list",
   "broadcast",
+  // GAP-057 (migration 0740) — the two M34 resolvers the composition root registers onto M36's registry.
+  "compliance_officer_for_tenant",
+  "platform_security_owner",
 ]);
 
 // `alert_outcome` — terminal fan-out outcome of a dispatched alert (§2.4.3).
