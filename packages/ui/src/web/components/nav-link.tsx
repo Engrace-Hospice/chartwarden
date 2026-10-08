@@ -92,8 +92,6 @@ export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps)
           cursor: "pointer",
           fontSize: "0.75rem",
           fontWeight: isChildActive ? 700 : 600,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
           color: isChildActive ? "var(--color-primary)" : "var(--color-muted)",
           transition: "all 0.2s ease",
         }}
