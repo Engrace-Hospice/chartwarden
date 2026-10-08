@@ -17,10 +17,9 @@ import { join } from "node:path";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { registerSeam } from "../src/bootstrap/index";
+import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
-import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
@@ -28,6 +27,7 @@ import {
   setCareTeamChannelArchived,
 } from "../src/modules/36-messaging/messaging-provider-db";
 import { buildM36ChannelMembershipSyncConsumer } from "../src/modules/36-messaging/outbox-consumers/channel-membership-sync";
+import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

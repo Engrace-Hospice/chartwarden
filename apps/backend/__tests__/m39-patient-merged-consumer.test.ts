@@ -49,16 +49,18 @@ const event = (payload: unknown, organizationId = ORG) => ({ organizationId, pay
 describe("parseMergedEvent", () => {
   it("reads survivor (patientId) and source (sourcePatientId) from the M5 payload", () => {
     expect(
-      parseMergedEvent(event({ patientId: SURVIVOR, sourcePatientId: SOURCE, organizationId: ORG })),
+      parseMergedEvent(
+        event({ patientId: SURVIVOR, sourcePatientId: SOURCE, organizationId: ORG }),
+      ),
     ).toEqual({ organizationId: ORG, survivorPatientId: SURVIVOR, sourcePatientId: SOURCE });
   });
 
   it("dead-letters a malformed, self-merge or cross-org delivery", () => {
     expect(() => parseMergedEvent(event(null))).toThrow();
     expect(() => parseMergedEvent(event({ patientId: SURVIVOR }))).toThrow(/sourcePatientId/);
-    expect(() => parseMergedEvent(event({ patientId: SURVIVOR, sourcePatientId: SURVIVOR }))).toThrow(
-      /distinct/,
-    );
+    expect(() =>
+      parseMergedEvent(event({ patientId: SURVIVOR, sourcePatientId: SURVIVOR })),
+    ).toThrow(/distinct/);
     expect(() =>
       parseMergedEvent(
         event({ patientId: SURVIVOR, sourcePatientId: SOURCE, organizationId: "other" }),
@@ -69,7 +71,11 @@ describe("parseMergedEvent", () => {
 
 describe("applyPatientMerged", () => {
   it("re-points the source chart to the survivor in the envelope org and emits repointed", async () => {
-    const m = memoryUow({ consentRecordIds: ["c1", "c2"], delegatedAccessCount: 1, renewalCycleCount: 0 });
+    const m = memoryUow({
+      consentRecordIds: ["c1", "c2"],
+      delegatedAccessCount: 1,
+      renewalCycleCount: 0,
+    });
     await applyPatientMerged(m.uow, event({ patientId: SURVIVOR, sourcePatientId: SOURCE }));
     expect(m.orgs).toEqual([ORG]);
     expect(m.calls).toEqual([{ from: SOURCE, to: SURVIVOR }]);

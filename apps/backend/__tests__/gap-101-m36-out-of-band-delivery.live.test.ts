@@ -17,8 +17,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDrizzleDeliveryDispatchStore } from "../src/modules/36-messaging/delivery/delivery-dispatch-store-db";
 import { runDeliverySweep } from "../src/modules/36-messaging/delivery/delivery-sweep";
+import { bindOutOfBandTransports } from "../src/modules/36-messaging/delivery/transport-binding";
 import { createDbMessagingWebhookService } from "../src/modules/36-messaging/delivery/webhook-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
+import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -291,6 +293,131 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
     const d = await delivery(ORG_A, USER_A, "push");
     await runDeliverySweep(sweepDeps(fakes().transports), "push");
     expect((await row(d.id)).status).toBe("delivered");
+  });
+
+  // GAP-062 — the REAL bound adapters (Twilio SMS/voice, Postmark) end to end: only the vendor HTTP boundary is
+  // stubbed. A pending SOS voice delivery is placed through the Twilio Calls API, stores the call SID, and the
+  // vendor status callback settles it; the same for SMS and email.
+  it("GAP-062: the bound Twilio voice/SMS and Postmark adapters take pending rows to sent, and the callbacks settle them", async () => {
+    const requests: { url: string; body: string }[] = [];
+    const vendorFetch = async (url: string, init: RequestInit): Promise<Response> => {
+      requests.push({ url, body: String(init.body) });
+      seq += 1;
+      const json = url.includes("postmarkapp.com")
+        ? { ErrorCode: 0, MessageID: `pm-real-${seq}` }
+        : { sid: `${url.includes("Calls") ? "CA" : "SM"}real${seq}` };
+      return new Response(JSON.stringify(json), { status: 201 });
+    };
+    const binding = bindOutOfBandTransports({
+      env: {
+        TWILIO_ACCOUNT_SID: "ACtest",
+        TWILIO_AUTH_TOKEN: "tok",
+        TWILIO_SMS_FROM: "+15550009999",
+        TWILIO_VOICE_FROM: "+15550008888",
+        MESSAGING_WEBHOOK_PUBLIC_BASE_URL: "https://api.example.test",
+        POSTMARK_SERVER_TOKEN: "pm",
+        POSTMARK_FROM_ADDRESS: "alerts@example.test",
+        POSTMARK_SENDER_VERIFIED: "true",
+      },
+      log: () => {},
+      fetch: vendorFetch,
+    });
+    expect(binding.sosVoiceAvailable).toBe(true);
+    const deps = sweepDeps(binding.transports);
+
+    const voice = await delivery(ORG_A, USER_A, "voice", {
+      category: "field_safety",
+      severity: "critical",
+    });
+    expect(await runDeliverySweep(deps, "voice")).toMatchObject({ claimed: 1, sent: 1, errors: 0 });
+    const placed = await row(voice.id);
+    expect(placed.status).toBe("sent");
+    expect(placed.vendor_message_id).toMatch(/^CAreal/);
+    const callRequest = requests.find((r) => r.url.includes("/Calls.json"));
+    const callForm = new URLSearchParams(callRequest?.body);
+    expect(callForm.get("To")).toBe("+15550001111");
+    expect(callForm.get("StatusCallback")).toBe(
+      "https://api.example.test/webhooks/twilio/voice-status",
+    );
+    await webhooks.recordTwilioVoiceStatus({
+      vendorMessageId: placed.vendor_message_id as string,
+      status: "completed",
+      raw: {},
+    });
+    expect((await row(voice.id)).status).toBe("delivered");
+
+    const sms = await delivery(ORG_A, USER_A, "sms");
+    await runDeliverySweep(deps, "sms");
+    const sent = await row(sms.id);
+    expect(sent.vendor_message_id).toMatch(/^SMreal/);
+    await webhooks.recordTwilioSmsStatus({
+      vendorMessageId: sent.vendor_message_id as string,
+      status: "delivered",
+      raw: {},
+    });
+    expect((await row(sms.id)).status).toBe("delivered");
+
+    const email = await delivery(ORG_A, USER_A, "email");
+    await runDeliverySweep(deps, "email");
+    const mailed = await row(email.id);
+    expect(mailed.vendor_message_id).toMatch(/^pm-real-/);
+    await webhooks.recordPostmarkEvent({
+      vendorMessageId: mailed.vendor_message_id as string,
+      status: "Delivery",
+      raw: {},
+    });
+    expect((await row(email.id)).status).toBe("delivered");
+  });
+
+  // GAP-063 — the SMS endpoint-verification code is actually DELIVERED (through the bound Twilio adapter), the
+  // endpoint becomes `verified` only with that code, and only then is it a delivery target.
+  it("GAP-063: the registered SMS endpoint's code is delivered, verifies it, and the endpoint then receives deliveries", async () => {
+    const sentBodies: string[] = [];
+    const binding = bindOutOfBandTransports({
+      env: {
+        TWILIO_ACCOUNT_SID: "ACtest",
+        TWILIO_AUTH_TOKEN: "tok",
+        TWILIO_SMS_FROM: "+15550009999",
+        MESSAGING_WEBHOOK_PUBLIC_BASE_URL: "https://api.example.test",
+      },
+      log: () => {},
+      fetch: async (_url, init) => {
+        sentBodies.push(String(init.body));
+        seq += 1;
+        return new Response(JSON.stringify({ sid: `SMverify${seq}` }), { status: 201 });
+      },
+    });
+    const service = createDbMessagingRouteService(handle.db, {
+      sendEndpointVerificationCode: binding.sendEndpointVerificationCode,
+    });
+    const phone = "+15557770000";
+
+    const registered = await service.registerEndpoint(ORG_B, USER_B, {
+      channel: "sms",
+      target: phone,
+    });
+    expect(registered.verificationStatus).toBe("pending");
+    const form = new URLSearchParams(sentBodies[0]);
+    expect(form.get("To")).toBe(phone);
+    const code = /code is (\d+)/.exec(form.get("Body") ?? "")?.[1] ?? "";
+    expect(code).toMatch(/^\d{6}$/);
+
+    await expect(
+      service.verifyEndpoint(ORG_B, USER_B, registered.endpointId, "000000"),
+    ).rejects.toBeDefined();
+    const verified = await service.verifyEndpoint(ORG_B, USER_B, registered.endpointId, code);
+    expect(verified.verificationStatus).toBe("verified");
+
+    // unbound provider => a clear 503 and NO row is left behind
+    const before = (await admin.query("SELECT count(*)::int AS n FROM delivery_endpoint")).rows[0]
+      .n;
+    const unbound = createDbMessagingRouteService(handle.db);
+    await expect(
+      unbound.registerEndpoint(ORG_B, USER_B, { channel: "email", target: "x@example.test" }),
+    ).rejects.toMatchObject({ code: "ENDPOINT_VERIFICATION_UNAVAILABLE" });
+    expect((await admin.query("SELECT count(*)::int AS n FROM delivery_endpoint")).rows[0].n).toBe(
+      before,
+    );
   });
 
   it("the fail-closed deny-stub settles failed (never pending forever, never faked as sent) and escalates", async () => {

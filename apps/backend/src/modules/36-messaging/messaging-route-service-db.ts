@@ -63,7 +63,6 @@ import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@war
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
-import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -79,6 +78,7 @@ import {
   insertEncryptedMessage,
   markMessagesRead,
 } from "./messaging-write-core";
+import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -842,6 +842,16 @@ export function createDbMessagingRouteService(
 
     // --- register a push / sms / email endpoint (push is browser-verified; sms/email start pending) -
     async registerEndpoint(orgId, userId, input) {
+      // GAP-063 — with no verification-code sender bound, an sms/email endpoint could never leave `pending`
+      // (only a `verified` endpoint is ever a delivery target). Refuse up front with a clear 503 rather than
+      // leave an unverifiable row behind; push is browser-verified and needs no sender.
+      if (input.channel !== "push" && !opts.sendEndpointVerificationCode) {
+        throw new WardenXError(
+          "ENDPOINT_VERIFICATION_UNAVAILABLE",
+          `${input.channel} verification is not available: the ${input.channel} delivery provider is not configured`,
+          503,
+        );
+      }
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const verified = input.channel === "push";
         const rows = (await tx

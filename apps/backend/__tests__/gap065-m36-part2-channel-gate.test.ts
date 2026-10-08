@@ -20,7 +20,9 @@ function ports(over: Partial<Part2GatePorts> = {}): Part2GatePorts & { evaluated
       return ["sud"];
     },
     async membershipIds(_org, userIds) {
-      return new Map(userIds.flatMap((u) => (MEMBERSHIPS[u] ? [[u, MEMBERSHIPS[u]] as const] : [])));
+      return new Map(
+        userIds.flatMap((u) => (MEMBERSHIPS[u] ? [[u, MEMBERSHIPS[u]] as const] : [])),
+      );
     },
     async evaluateInternalAccess({ membershipId }) {
       evaluated.push(membershipId);
