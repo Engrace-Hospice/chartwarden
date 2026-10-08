@@ -121,9 +121,9 @@ const UNBOUND_PATIENTS: M29BindPatientResolver = {
 
 /** The newest hourly health row per feed (the current listener state lives on it). */
 function latestHealthByFeed(
-  rows: readonly (typeof HEALTH.$inferSelect)[],
-): Map<string, typeof HEALTH.$inferSelect> {
-  const latest = new Map<string, typeof HEALTH.$inferSelect>();
+  rows: readonly (typeof schema.externalFeedHealth.$inferSelect)[],
+): Map<string, typeof schema.externalFeedHealth.$inferSelect> {
+  const latest = new Map<string, typeof schema.externalFeedHealth.$inferSelect>();
   for (const h of rows) {
     const prev = latest.get(h.feedId);
     if (!prev || h.hourBucket.getTime() > prev.hourBucket.getTime()) latest.set(h.feedId, h);

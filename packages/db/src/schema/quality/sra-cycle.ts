@@ -57,12 +57,17 @@ export const sraCycle = pgTable(
   },
   (t) => ({
     uniqYear: uniqueIndex("uq_sra_cycle_year").on(t.organizationId, t.cycleYear),
+    // 0701 (GAP-046): see qapi-pip.ts — both slots stamped by two distinct members; pending shape pinned.
     closureGuard: check(
       "chk_sra_cycle_closure_cosign", // V-12
       sql`(${t.closedAt} IS NULL)
-        OR (${t.closureCosignAttested} AND ${t.cosignSecurityOfficerAt} IS NOT NULL AND ${t.cosignComplianceOfficerAt} IS NOT NULL)
-        OR (NOT ${t.closureCosignAttested}
-          AND ${t.closureClosedByMembershipId} IS NOT NULL AND ${t.closureNomineeMembershipId} IS NOT NULL
+        OR (${t.closureCosignAttested} AND ${t.cosignSecurityOfficerAt} IS NOT NULL AND ${t.cosignComplianceOfficerAt} IS NOT NULL
+          AND ${t.cosignSecurityOfficerMembershipId} <> ${t.cosignComplianceOfficerMembershipId})`,
+    ),
+    pendingGuard: check(
+      "chk_sra_cycle_close_pending",
+      sql`(${t.closedAt} IS NOT NULL) OR (${t.closureNomineeMembershipId} IS NULL)
+        OR (NOT ${t.closureCosignAttested} AND ${t.closureClosedByMembershipId} IS NOT NULL
           AND ((${t.closureClosedByMembershipId} = ${t.cosignSecurityOfficerMembershipId} AND ${t.cosignSecurityOfficerAt} IS NOT NULL
                 AND ${t.closureNomineeMembershipId} = ${t.cosignComplianceOfficerMembershipId} AND ${t.cosignComplianceOfficerAt} IS NULL)
             OR (${t.closureClosedByMembershipId} = ${t.cosignComplianceOfficerMembershipId} AND ${t.cosignComplianceOfficerAt} IS NOT NULL

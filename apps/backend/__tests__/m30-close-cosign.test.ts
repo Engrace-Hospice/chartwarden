@@ -27,9 +27,14 @@ import { selectActiveMemberRoleKeys } from "../src/modules/30-quality/member-rol
 import {
   PIP_CLOSE_ROLES,
   SRA_CLOSE_ROLES,
-  buildCloseAttestation,
-  buildPipClosureColumns,
-  buildSraClosureColumns,
+  buildConfirmedCloseAttestation,
+  buildPipConfirmColumns,
+  buildPipPendingCloseColumns,
+  buildSraConfirmColumns,
+  buildSraPendingCloseColumns,
+  pendingCloseView,
+  readPendingClose,
+  resolveCloseConfirmation,
   resolveCloseCosigners,
 } from "../src/modules/30-quality/routes/close-cosign";
 import type { M30WriteRouteService } from "../src/modules/30-quality/routes/write-service";
@@ -44,19 +49,20 @@ const M_GHOST = "66666666-6666-4666-8666-666666666666";
 const PIP_ID = "77777777-7777-4777-8777-777777777777";
 const CYCLE_ID = "88888888-8888-4888-8888-888888888888";
 
-// ── persisted closure shape (GAP-088 follow-up: the row must not present the nominee as a signer) ─────────
-describe("persisted close columns (nominee-based one-step close)", () => {
+// ── persisted closure shape (GAP-046: initiate leaves the record OPEN; only the nominee's own confirm closes it) ──
+describe("pending close columns (initiate) and confirm columns", () => {
   const AT = new Date("2026-10-04T12:00:00.000Z");
-  const pipSigners = (callerRole: string, nomineeRole: string, first: string, second: string) => ({
+  const CONFIRM_AT = new Date("2026-10-05T09:00:00.000Z");
+  const signers = (callerRole: string, nomineeRole: string, first: string, second: string) => ({
     first,
     second,
     callerRole,
     nomineeRole,
   });
 
-  it("PIP, QAPI Coordinator closer: QC slot stamped, MD slot holds the nominee id with a NULL _at", () => {
-    const cols = buildPipClosureColumns(
-      pipSigners("qapi_coordinator", "medical_director", M_QC, M_MD),
+  it("PIP, QAPI Coordinator initiates: QC slot stamped, MD slot nominee-only, closed_at stays NULL", () => {
+    const cols = buildPipPendingCloseColumns(
+      signers("qapi_coordinator", "medical_director", M_QC, M_MD),
       AT,
     );
     expect(cols).toEqual({
@@ -67,49 +73,169 @@ describe("persisted close columns (nominee-based one-step close)", () => {
       closureClosedByMembershipId: M_QC,
       closureNomineeMembershipId: M_MD,
       closureCosignAttested: false,
+      closedAt: null,
     });
   });
 
-  it("PIP, Medical Director closer: MD slot stamped, QC slot is the un-attested nominee", () => {
-    const cols = buildPipClosureColumns(
-      pipSigners("medical_director", "qapi_coordinator", M_MD, M_QC),
+  it("PIP, Medical Director initiates: MD slot stamped, QC slot is the un-attested nominee", () => {
+    const cols = buildPipPendingCloseColumns(
+      signers("medical_director", "qapi_coordinator", M_MD, M_QC),
       AT,
     );
     expect(cols.cosignMedicalDirectorAt).toEqual(AT);
     expect(cols.cosignQapiCoordinatorAt).toBeNull();
-    expect(cols.cosignMedicalDirectorMembershipId).toBe(M_MD);
-    expect(cols.cosignQapiCoordinatorMembershipId).toBe(M_QC);
-    expect(cols.closureClosedByMembershipId).toBe(M_MD);
     expect(cols.closureNomineeMembershipId).toBe(M_QC);
-    expect(cols.closureCosignAttested).toBe(false);
+    expect(cols.closedAt).toBeNull();
   });
 
-  it("SRA, Security Officer closer: SO slot stamped, CO slot nominee-only", () => {
-    const cols = buildSraClosureColumns(
-      pipSigners("hipaa_security_officer", "compliance_officer", M_SO, M_CO),
+  it("SRA, either side initiates: the closer's slot is stamped, the nominee's is not, closed_at is NULL", () => {
+    const so = buildSraPendingCloseColumns(
+      signers("hipaa_security_officer", "compliance_officer", M_SO, M_CO),
       AT,
     );
-    expect(cols).toEqual({
-      cosignSecurityOfficerMembershipId: M_SO,
+    expect(so).toMatchObject({
       cosignSecurityOfficerAt: AT,
-      cosignComplianceOfficerMembershipId: M_CO,
       cosignComplianceOfficerAt: null,
-      closureClosedByMembershipId: M_SO,
-      closureNomineeMembershipId: M_CO,
       closureCosignAttested: false,
+      closedAt: null,
+    });
+    const co = buildSraPendingCloseColumns(
+      signers("compliance_officer", "hipaa_security_officer", M_CO, M_SO),
+      AT,
+    );
+    expect(co).toMatchObject({
+      cosignComplianceOfficerAt: AT,
+      cosignSecurityOfficerAt: null,
+      closedAt: null,
     });
   });
 
-  it("SRA, Compliance Officer closer: CO slot stamped, SO slot nominee-only", () => {
-    const cols = buildSraClosureColumns(
-      pipSigners("compliance_officer", "hipaa_security_officer", M_CO, M_SO),
-      AT,
+  it("confirm stamps ONLY the nominee's slot, attests the close and writes closed_at", () => {
+    const pendingPip = {
+      closedBy: M_QC,
+      closerRole: "qapi_coordinator",
+      nominee: M_MD,
+      nomineeRole: "medical_director",
+    };
+    expect(buildPipConfirmColumns(pendingPip, CONFIRM_AT)).toEqual({
+      cosignMedicalDirectorAt: CONFIRM_AT,
+      closureCosignAttested: true,
+      closedAt: CONFIRM_AT,
+    });
+    const pendingSra = {
+      closedBy: M_SO,
+      closerRole: "hipaa_security_officer",
+      nominee: M_CO,
+      nomineeRole: "compliance_officer",
+    };
+    expect(buildSraConfirmColumns(pendingSra, CONFIRM_AT)).toEqual({
+      cosignComplianceOfficerAt: CONFIRM_AT,
+      closureCosignAttested: true,
+      closedAt: CONFIRM_AT,
+    });
+  });
+
+  it("pendingCloseView reports pending only while closed_at is NULL with an un-attested nominee", () => {
+    expect(
+      pendingCloseView({
+        closedAt: null,
+        closureNomineeMembershipId: M_MD,
+        closureCosignAttested: false,
+      }),
+    ).toEqual({ closePending: true, closeNomineeMembershipId: M_MD });
+    expect(
+      pendingCloseView({
+        closedAt: AT,
+        closureNomineeMembershipId: M_MD,
+        closureCosignAttested: true,
+      }),
+    ).toEqual({ closePending: false, closeNomineeMembershipId: null });
+    expect(
+      pendingCloseView({
+        closedAt: null,
+        closureNomineeMembershipId: null,
+        closureCosignAttested: true,
+      }),
+    ).toEqual({ closePending: false, closeNomineeMembershipId: null });
+  });
+});
+
+// ── GAP-046: the nominee's own confirmation ─────────────────────────────────────────────────────────────
+describe("resolveCloseConfirmation / readPendingClose (GAP-046)", () => {
+  const row = {
+    closedAt: null,
+    closureClosedByMembershipId: M_QC,
+    closureNomineeMembershipId: M_MD,
+    slotMembershipIds: [M_QC, M_MD] as const,
+  };
+  const pending = readPendingClose(row, PIP_CLOSE_ROLES);
+  const confirmer = {
+    pending,
+    actorMembershipId: M_MD,
+    actorRoles: ["medical_director"],
+    actorLiveRoleKeys: ["medical_director"] as readonly string[] | null,
+    recentStepUp: true,
+  };
+
+  it("derives the pending close (closer role, nominee role) from the persisted slots", () => {
+    expect(pending).toEqual({
+      closedBy: M_QC,
+      closerRole: "qapi_coordinator",
+      nominee: M_MD,
+      nomineeRole: "medical_director",
+    });
+  });
+
+  it("is not pending once closed, or when never initiated", () => {
+    expect(readPendingClose({ ...row, closedAt: new Date() }, PIP_CLOSE_ROLES)).toBeNull();
+    expect(
+      readPendingClose({ ...row, closureNomineeMembershipId: null }, PIP_CLOSE_ROLES),
+    ).toBeNull();
+  });
+
+  it("lets the nominee, in their own fresh-step-up session, confirm", () => {
+    expect(resolveCloseConfirmation(confirmer)).toEqual(pending);
+  });
+
+  it("refuses the closer confirming their own close (one person can never close alone)", () => {
+    expect(() =>
+      resolveCloseConfirmation({
+        ...confirmer,
+        actorMembershipId: M_QC,
+        actorRoles: ["qapi_coordinator", "medical_director"],
+        actorLiveRoleKeys: ["qapi_coordinator", "medical_director"],
+      }),
+    ).toThrow(/nominated co-signer/i);
+  });
+
+  it("refuses any third party, even one holding the role", () => {
+    expect(() => resolveCloseConfirmation({ ...confirmer, actorMembershipId: M_RANDOM })).toThrow(
+      /nominated co-signer/i,
     );
-    expect(cols.cosignComplianceOfficerAt).toEqual(AT);
-    expect(cols.cosignSecurityOfficerAt).toBeNull();
-    expect(cols.closureClosedByMembershipId).toBe(M_CO);
-    expect(cols.closureNomineeMembershipId).toBe(M_SO);
-    expect(cols.closureCosignAttested).toBe(false);
+  });
+
+  it("refuses a stale step-up, a missing pending close, an inactive member and a revoked role", () => {
+    expect(() => resolveCloseConfirmation({ ...confirmer, recentStepUp: false })).toThrow(
+      /re-authentication/i,
+    );
+    expect(() => resolveCloseConfirmation({ ...confirmer, pending: null })).toThrow(/pending/i);
+    expect(() => resolveCloseConfirmation({ ...confirmer, actorLiveRoleKeys: null })).toThrow(
+      /active/i,
+    );
+    expect(() => resolveCloseConfirmation({ ...confirmer, actorLiveRoleKeys: ["nurse"] })).toThrow(
+      /requires the medical_director role/i,
+    );
+    expect(() => resolveCloseConfirmation({ ...confirmer, actorRoles: ["nurse"] })).toThrow(
+      /requires the medical_director role/i,
+    );
+  });
+
+  it("the confirmed attestation is the only place cosignerAttested is true", () => {
+    expect(buildConfirmedCloseAttestation(pending as NonNullable<typeof pending>)).toEqual({
+      closedBy: { membershipId: M_QC, role: "qapi_coordinator" },
+      nominatedCosigner: { membershipId: M_MD, role: "medical_director" },
+      cosignerAttested: true,
+    });
   });
 });
 
@@ -132,36 +258,6 @@ describe("resolveCloseCosigners (service-layer, GAP-088)", () => {
       callerRole: "qapi_coordinator",
       nomineeRole: "medical_director",
     });
-  });
-
-  it("records the closer as the only signer and the other party as an un-attested nominee", () => {
-    const record = buildCloseAttestation(resolveCloseCosigners(base));
-    expect(record).toEqual({
-      closedBy: { membershipId: M_QC, role: "qapi_coordinator" },
-      nominatedCosigner: { membershipId: M_MD, role: "medical_director" },
-      cosignerAttested: false,
-    });
-    // nothing implies the nominee signed
-    expect(JSON.stringify(record)).not.toMatch(/cosignedBy|signerMembershipId/i);
-  });
-
-  it("records an SRA Compliance Officer closer with the Security Officer as nominee", () => {
-    const record = buildCloseAttestation(
-      resolveCloseCosigners({
-        ...base,
-        actorMembershipId: M_CO,
-        actorRoles: ["compliance_officer"],
-        cosignerMembershipId: M_SO,
-        cosignerRoleKeys: ["hipaa_security_officer"],
-        roles: SRA_CLOSE_ROLES,
-      }),
-    );
-    expect(record.closedBy).toEqual({ membershipId: M_CO, role: "compliance_officer" });
-    expect(record.nominatedCosigner).toEqual({
-      membershipId: M_SO,
-      role: "hipaa_security_officer",
-    });
-    expect(record.cosignerAttested).toBe(false);
   });
 
   it("maps an MD caller + QC co-signer (either order is legal)", () => {

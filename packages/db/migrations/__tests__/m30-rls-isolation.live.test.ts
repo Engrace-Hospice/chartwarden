@@ -541,7 +541,7 @@ describe.skipIf(!DB_URL)(
         slotA: "cosign_security_officer",
         slotB: "cosign_compliance_officer",
       },
-    ])("$table — closure nominee marker (0335)", ({ table, key, slotA, slotB }) => {
+    ])("$table — pending close + two-person close (0335/0701)", ({ table, key, slotA, slotB }) => {
       const M1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
       const M2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
       const closeWith = async (set: string): Promise<void> => {
@@ -572,20 +572,38 @@ describe.skipIf(!DB_URL)(
         );
       });
 
-      it("accepts a nominee close from either side (closer stamped, nominee _at NULL)", async () => {
-        await closeWith(honest(M1, M2, slotA, slotB));
-        await closeWith(honest(M2, M1, slotB, slotA));
+      // GAP-046 (0701): initiating leaves the row OPEN (closed_at NULL) with the nominee un-stamped; a CLOSED
+      // row needs both slots stamped by two distinct members.
+      const pendingWith = async (set: string): Promise<void> => {
+        await db.query("BEGIN");
+        try {
+          await db.query(`UPDATE "${table}" SET ${set} WHERE id = $1`, [a[key]]);
+        } finally {
+          await db.query("ROLLBACK");
+        }
+      };
+
+      it("accepts a PENDING close from either side (closer stamped, nominee _at NULL, closed_at NULL)", async () => {
+        await pendingWith(honest(M1, M2, slotA, slotB));
+        await pendingWith(honest(M2, M1, slotB, slotA));
       });
 
-      it("rejects a nominee close whose nominee slot is stamped", async () => {
+      it("rejects a nominee-only close: closed_at set while the nominee never stamped their slot", async () => {
+        await expect(closeWith(honest(M1, M2, slotA, slotB))).rejects.toThrow(/check constraint/i);
+        await expect(closeWith(honest(M2, M1, slotB, slotA))).rejects.toThrow(/check constraint/i);
+      });
+
+      it("rejects an attested close where both slots name the SAME member", async () => {
         await expect(
-          closeWith(`${honest(M1, M2, slotA, slotB)}, ${slotB}_at = now()`),
+          closeWith(
+            `${slotA}_at = now(), ${slotA}_membership_id = '${M1}', ${slotB}_at = now(), ${slotB}_membership_id = '${M1}'`,
+          ),
         ).rejects.toThrow(/check constraint/i);
       });
 
-      it("rejects a nominee close whose closer slot is not stamped", async () => {
+      it("rejects a pending close whose closer slot is not stamped", async () => {
         await expect(
-          closeWith(
+          pendingWith(
             `${slotA}_membership_id = '${M1}', ${slotB}_membership_id = '${M2}', ` +
               `closure_cosign_attested = false, closure_closed_by_membership_id = '${M1}', ` +
               `closure_nominee_membership_id = '${M2}'`,

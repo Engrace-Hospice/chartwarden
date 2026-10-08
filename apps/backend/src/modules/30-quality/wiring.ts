@@ -112,11 +112,16 @@ export function buildM30RecomputeEnqueue(connection: ConnectionOptions | undefin
       // FINAL id only — jobKey itself (and the dedupe semantics it encodes) is untouched.
       const jobId = `${queue}:${jobKey}`.replace(/:/g, "__");
       // GAP-047: clear a finished job with the same id first (retained hash => silent no-op otherwise).
-      const job = await addJobCoalescingInFlight(queueFor(queue) as unknown as DedupeQueueLike, queue, payload, {
-        jobId,
-        removeOnComplete: { count: 500 },
-        removeOnFail: false,
-      });
+      const job = await addJobCoalescingInFlight(
+        queueFor(queue) as unknown as DedupeQueueLike,
+        queue,
+        payload,
+        {
+          jobId,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        },
+      );
       return { jobId: job.id ?? jobId };
     },
   };

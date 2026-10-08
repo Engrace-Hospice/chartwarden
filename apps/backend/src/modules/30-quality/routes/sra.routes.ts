@@ -195,9 +195,25 @@ export function registerSraRoutes(app: FastifyInstance, deps: SraRouteDeps): voi
     },
   );
 
-  // R-47 — close a cycle. NOMINEE-BASED ONE-STEP close: the caller is the only signer; `cosignerMembershipId`
-  // is validated as an eligible Security/Compliance Officer but recorded as a NOMINATED co-signer
-  // (`cosignerAttested: false`). Pending-close + nominee confirmation is the logged follow-up. (V-12 +
+  // R-47 (GAP-046) — the nominee's own confirmation of a pending cycle close; the confirmer is the SESSION
+  // membership vs the nominee persisted on the row (no body, no identity on the wire). Fresh step-up in THIS
+  // session; the cycle closes (and `m30.sra.cycle_closed` is published) only here.
+  app.post(
+    "/api/v1/quality/sra/cycles/:cycleId/close/confirm",
+    { preHandler: [SRA_CLOSE, SRA_CLOSE_STEPUP, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { cycleId } = parse(CycleIdParamsSchema, request.params);
+      const res = await service.confirmSraCycleClose(actor, cycleId, {
+        recentStepUp: await requestStepUpFresh(request, "sra.close"),
+      });
+      return reply.code(200).send(res);
+    },
+  );
+
+  // R-47 — INITIATE a cycle close (GAP-046: the first of two steps). The caller signs their own slot;
+  // `cosignerMembershipId` is validated as an eligible Security/Compliance Officer and recorded as the NOMINEE.
+  // The cycle stays open (`closePending: true`) until the nominee confirms via `.../close/confirm`. (V-12 +
   // recent step-up W-M30-30.) RBAC gates `sra.close`,
   // `requireStepUp` enforces step-up freshness, and the write service runs `assertSraCloseSplitActor`
   // (Security Officer ≠ Compliance Officer) before the SRA `close` reducer. §4.1/§4.2.

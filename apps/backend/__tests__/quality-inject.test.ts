@@ -796,11 +796,24 @@ function createM30Backend(): {
     },
     async closeQapiPip(_actor, pipId, args) {
       const row = mustGet(qapiPips, pipId, "qapi pip");
+      // GAP-046: initiating a close leaves the PIP open and pending the nominee's confirmation.
+      const updated: QapiPipView = {
+        ...row,
+        outcome: args.outcome,
+        closePending: true,
+        closeNomineeMembershipId: args.cosignerMembershipId,
+      };
+      qapiPips.set(pipId, updated);
+      return updated;
+    },
+    async confirmQapiPipClose(_actor, pipId) {
+      const row = mustGet(qapiPips, pipId, "qapi pip");
       const updated: QapiPipView = {
         ...row,
         phase: "concluded",
-        outcome: args.outcome,
         closedAt: NOW,
+        closePending: false,
+        closeNomineeMembershipId: null,
       };
       qapiPips.set(pipId, updated);
       return updated;
@@ -901,9 +914,25 @@ function createM30Backend(): {
       sraRemediations.set(remediationId, updated);
       return updated;
     },
-    async closeSraCycle(_actor, cycleId) {
+    async closeSraCycle(_actor, cycleId, args) {
       const row = mustGet(sraCycles, cycleId, "sra cycle");
-      const updated: SraCycleView = { ...row, status: "closed", closedAt: NOW };
+      const updated: SraCycleView = {
+        ...row,
+        closePending: true,
+        closeNomineeMembershipId: args.cosignerMembershipId,
+      };
+      sraCycles.set(cycleId, updated);
+      return updated;
+    },
+    async confirmSraCycleClose(_actor, cycleId) {
+      const row = mustGet(sraCycles, cycleId, "sra cycle");
+      const updated: SraCycleView = {
+        ...row,
+        status: "closed",
+        closedAt: NOW,
+        closePending: false,
+        closeNomineeMembershipId: null,
+      };
       sraCycles.set(cycleId, updated);
       return updated;
     },
@@ -1642,6 +1671,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/quality/sra/cycles/${SRA_CYCLE_ID}/close`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k37") },
     payload: { cosignerMembershipId: M_VERIFIER },
+    expectStatus: 200,
+  },
+  {
+    label: "27b POST /quality/qapi/pips/:pipId/close/confirm (GAP-046 nominee confirmation)",
+    method: "POST",
+    url: `/api/v1/quality/qapi/pips/${QAPI_PIP_ID}/close/confirm`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k27b") },
+    expectStatus: 200,
+  },
+  {
+    label: "37b POST /quality/sra/cycles/:cycleId/close/confirm (GAP-046 nominee confirmation)",
+    method: "POST",
+    url: `/api/v1/quality/sra/cycles/${SRA_CYCLE_ID}/close/confirm`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k37b") },
     expectStatus: 200,
   },
 

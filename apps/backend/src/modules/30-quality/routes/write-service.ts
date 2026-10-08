@@ -267,6 +267,11 @@ export interface UpdateSraRemediationArgs {
   readonly dueAt?: string;
 }
 /** R-47 — close an SRA cycle (two-person co-sign; V-12). The route enforces a recent step-up. */
+/** GAP-046 — the nominee confirming a pending close. No identity rides the wire: the confirmer is the session. */
+export interface ConfirmCloseArgs {
+  /** Real step-up freshness for the close operation, derived from `request.context` by the route. */
+  readonly recentStepUp: boolean;
+}
 export interface CloseSraCycleArgs {
   /** GAP-088 — the NOMINATED co-signer (body); recorded un-attested. The only signer is `actor.membershipId` (session). */
   readonly cosignerMembershipId: string;
@@ -427,6 +432,11 @@ export interface M30WriteRouteService {
   ): Promise<QapiProjectView>;
   addQapiPip(actor: M30WriteActor, projectId: string, args: AddQapiPipArgs): Promise<QapiPipView>;
   closeQapiPip(actor: M30WriteActor, pipId: string, args: CloseQapiPipArgs): Promise<QapiPipView>;
+  confirmQapiPipClose(
+    actor: M30WriteActor,
+    pipId: string,
+    args: ConfirmCloseArgs,
+  ): Promise<QapiPipView>;
   recordQapiGovernance(
     actor: M30WriteActor,
     args: RecordQapiGovernanceArgs,
@@ -454,6 +464,11 @@ export interface M30WriteRouteService {
     remediationId: string,
     args: UpdateSraRemediationArgs,
   ): Promise<SraRemediationView>;
+  confirmSraCycleClose(
+    actor: M30WriteActor,
+    cycleId: string,
+    args: ConfirmCloseArgs,
+  ): Promise<SraCycleView>;
   closeSraCycle(
     actor: M30WriteActor,
     cycleId: string,
