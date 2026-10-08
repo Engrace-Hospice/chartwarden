@@ -15,6 +15,8 @@ const LIST_CHROME_SELECTORS = [
   ".wx-data-table-scroll",
   ".wx-work-filters",
   ".wx-work-table >",
+  ".wx-page-head {",
+  ".wx-page-head > :first-child {",
   ".wx-list-toolbar {",
   ".wx-list-state {",
   ".wx-list-table-wrap {",

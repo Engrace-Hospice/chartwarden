@@ -4,7 +4,8 @@
 // that a step-up refusal round-trips through `/step-up` with the operator's typed evidence intact.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { JSX } from "react";
+import { MemoryRouter, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { HeldTransmissions } from "./held-transmissions";
@@ -51,6 +52,7 @@ let pendingRecovery: typeof PENDING | null = null;
 let page2 = false;
 let listStatus = 200;
 let writeFailure: { status: number; body: unknown } | null = null;
+let patientReadable = true;
 
 const json = (code: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -78,6 +80,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const raw = method !== "GET" && req ? await req.clone().text() : "";
   calls.push({ method, path: url.pathname, query: url.search, body: raw ? JSON.parse(raw) : {} });
   if (method !== "GET" && writeFailure) return json(writeFailure.status, writeFailure.body);
+  if (url.pathname === `/api/v1/patients/${PATIENT}`)
+    return patientReadable
+      ? json(200, { id: PATIENT, firstName: "Ada", lastName: "Lovelace", mrn: "MRN-0042" })
+      : json(403, { error: { code: "FORBIDDEN", message: "out of scope" } });
   if (url.pathname === "/api/v1/orders/held-transmissions") {
     if (listStatus !== 200)
       return json(listStatus, { error: { code: "FORBIDDEN", message: "requires permission" } });
@@ -115,6 +121,20 @@ const RECOVERER = {
   isAdmin: false,
 };
 
+/** Stands in for 02-identity/step-up.tsx: a verified factor navigates back to `?returnTo`. */
+function StepUpStub(): JSX.Element {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  return (
+    <div>
+      step-up ceremony
+      <button type="button" onClick={() => navigate(params.get("returnTo") ?? "/")}>
+        Verify
+      </button>
+    </div>
+  );
+}
+
 function mount(session = RECOVERER): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
@@ -123,7 +143,8 @@ function mount(session = RECOVERER): void {
           <MemoryRouter initialEntries={["/orders/held-transmissions"]}>
             <Routes>
               <Route path="/orders/held-transmissions" element={<HeldTransmissions />} />
-              <Route path="/step-up" element={<div>step-up ceremony</div>} />
+              <Route path="/step-up" element={<StepUpStub />} />
+              <Route path="/patients/:id" element={<div>patient chart</div>} />
             </Routes>
           </MemoryRouter>
         </ToastProvider>
@@ -151,6 +172,7 @@ beforeEach(() => {
   page2 = false;
   listStatus = 200;
   writeFailure = null;
+  patientReadable = true;
   window.sessionStorage.clear();
 });
 afterEach(() => cleanup());
@@ -169,6 +191,42 @@ describe("Held Transmissions (M11 F-201, GAP-125)", () => {
     await waitFor(() => expect(table.querySelectorAll("tbody tr").length).toBe(2));
     expect(calls.some((c) => c.query.includes("cursor=c-1"))).toBe(true);
     expect(within(table).getByText(/Rejected by the lab interface/)).toBeTruthy();
+  });
+
+  it("shows the patient's name linked to the chart in the row and the drawer, not a uuid", async () => {
+    mount();
+    const table = await screen.findByRole("table", { name: "Held lab-order transmissions" });
+    const row = table.querySelector("tbody tr") as HTMLElement;
+    const link = await within(row).findByRole("link", { name: "Lovelace, Ada" });
+    expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}`);
+    expect(within(row).getByText("MRN MRN-0042")).toBeTruthy();
+    expect(within(row).queryByText(/cccccccc/)).toBeNull();
+
+    fireEvent.click(row);
+    const drawer = await screen.findByRole("complementary", { name: /Held lab order/ });
+    expect(within(drawer).getByRole("link", { name: "Lovelace, Ada" })).toBeTruthy();
+
+    fireEvent.click(link);
+    expect(await screen.findByText("patient chart")).toBeTruthy();
+  });
+
+  it("falls back to the short patient id when the name cannot be read", async () => {
+    patientReadable = false;
+    mount();
+    const table = await screen.findByRole("table", { name: "Held lab-order transmissions" });
+    const row = table.querySelector("tbody tr") as HTMLElement;
+    expect(await within(row).findByText("cccccccc…cccc")).toBeTruthy();
+    expect(within(row).queryByRole("link")).toBeNull();
+  });
+
+  it("keeps the step-up lock glyph inline with its text", async () => {
+    mount();
+    const drawer = await openFirstRow();
+    const text = await within(drawer).findByText(/Requires a fresh step-up/);
+    expect(text.classList.contains("wx-source-text")).toBe(true);
+    const line = text.parentElement as HTMLElement;
+    expect(line.classList.contains("wx-source-line")).toBe(true);
+    expect(line.querySelector(":scope > svg")).toBeTruthy();
   });
 
   it("files an attested recovery with the structured lab-contact evidence", async () => {
@@ -226,6 +284,68 @@ describe("Held Transmissions (M11 F-201, GAP-125)", () => {
         .getByRole("button", { name: /Lab already has it/ })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+  });
+
+  it("returning from /step-up in the same session reopens the order with the choice and evidence, then sends them", async () => {
+    writeFailure = {
+      status: 403,
+      body: { error: { code: "STEP_UP_REQUIRED", message: "step-up required" } },
+    };
+    mount();
+    const drawer = await openFirstRow();
+    fireEvent.click(within(drawer).getByRole("button", { name: /Lab did not receive it/ }));
+    fillEvidence(drawer, "Dana Lee", "LAB-4471");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record attestation" }));
+    expect(await screen.findByText("step-up ceremony")).toBeTruthy();
+
+    writeFailure = null;
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    const back = await screen.findByRole("complementary", { name: /Held lab order/ });
+    expect(
+      within(back)
+        .getByRole("button", { name: /Lab did not receive it/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect((within(back).getByLabelText(/Lab contact name/) as HTMLInputElement).value).toBe(
+      "Dana Lee",
+    );
+    expect((within(back).getByLabelText(/Lab reference/) as HTMLInputElement).value).toBe(
+      "LAB-4471",
+    );
+
+    fireEvent.click(within(back).getByRole("button", { name: "Record attestation" }));
+    await waitFor(() => expect(writes().length).toBe(2));
+    expect(writes()[1]?.body).toEqual({
+      attestation: "not_received_by_lab",
+      contactName: "Dana Lee",
+      labReference: "LAB-4471",
+    });
+    expect(await within(back).findByText(/co-sign within 24 hours/)).toBeTruthy();
+    // A successful submit consumes the draft: a later visit does not reopen the order.
+    cleanup();
+    mount();
+    await screen.findByRole("table", { name: "Held lab-order transmissions" });
+    expect(screen.queryByRole("complementary", { name: /Held lab order/ })).toBeNull();
+  });
+
+  it("closing the drawer drops the stashed evidence", async () => {
+    writeFailure = {
+      status: 403,
+      body: { error: { code: "STEP_UP_REQUIRED", message: "step-up required" } },
+    };
+    mount();
+    const drawer = await openFirstRow();
+    fireEvent.click(within(drawer).getByRole("button", { name: /Lab already has it/ }));
+    fillEvidence(drawer, "Dana Lee", "LAB-4471");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record attestation" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Verify" }));
+    const back = await screen.findByRole("complementary", { name: /Held lab order/ });
+    fireEvent.click(within(back).getByRole("button", { name: "Close" }));
+    cleanup();
+
+    mount();
+    await screen.findByRole("table", { name: "Held lab-order transmissions" });
+    expect(screen.queryByRole("complementary", { name: /Held lab order/ })).toBeNull();
   });
 
   it("a pending two-person recovery offers co-sign and cancel, and renders a 409 from the envelope", async () => {

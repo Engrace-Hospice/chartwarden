@@ -493,8 +493,11 @@ function VersionDrawer({
             ))}
           </dl>
           <p className="wx-source-line">
-            <Glyph name="lock" size={12} /> Append-only · entered {usDate(v.createdAt)}
-            {v.entryReason ? ` · ${v.entryReason}` : ""}
+            <Glyph name="lock" size={12} />
+            <span className="wx-source-text">
+              Append-only · entered {usDate(v.createdAt)}
+              {v.entryReason ? ` · ${v.entryReason}` : ""}
+            </span>
           </p>
         </section>
 

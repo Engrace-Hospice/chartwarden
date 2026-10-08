@@ -25,6 +25,13 @@ const LIVE = {
   supersededById: null,
   createdAt: `${FY}-09-20T00:00:00.000Z`,
 };
+const CORRECTED = {
+  ...LIVE,
+  wageIndexId: "44444444-4444-4444-8444-444444444444",
+  factorDecimal: "1.0400",
+  entryReason: "Corrected per CMS correction notice",
+  createdAt: `${FY}-09-22T00:00:00.000Z`,
+};
 const OLD = {
   ...LIVE,
   wageIndexId: "22222222-2222-4222-8222-222222222222",
@@ -70,8 +77,15 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     return json(200, { wageIndexes: rows });
   if (url.pathname === "/api/v1/billing/wage-indexes" && method === "POST")
     return json(201, { ...LIVE, wageIndexId: "33333333-3333-4333-8333-333333333333" });
-  if (url.pathname.endsWith("/supersede") && method === "POST")
-    return json(201, { ...LIVE, wageIndexId: "44444444-4444-4444-8444-444444444444" });
+  if (url.pathname.endsWith("/supersede") && method === "POST") {
+    // The server keeps the old row as history and answers the new live one.
+    rows = [
+      CORRECTED,
+      { ...LIVE, supersededAt: CORRECTED.createdAt, supersededById: CORRECTED.wageIndexId },
+      OLD,
+    ];
+    return json(201, CORRECTED);
+  }
   return json(404, { error: { code: "NOT_FOUND", message: "no" } });
 }
 
@@ -163,7 +177,10 @@ describe("Wage Index (M23 F-211, GAP-125)", () => {
     expect(post.body.ccn).toBe("381588");
     expect(post.body.fiscalYearStarting).toBe(FY);
     expect(post.idem).toBeTruthy();
-    expect(await within(drawer).findByText(/Saved/)).toBeTruthy();
+    // The form is done: the drawer shows the new value with the confirmation, and cannot be resubmitted.
+    const view = await screen.findByRole("complementary", { name: /381588/ });
+    expect(within(view).getByText(/Saved/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save wage index" })).toBeNull();
   });
 
   it("refuses a malformed factor client-side instead of sending it", async () => {
@@ -194,6 +211,42 @@ describe("Wage Index (M23 F-211, GAP-125)", () => {
     await waitFor(() => expect(writes().length).toBe(1));
     expect(writes()[0]?.path).toBe(`/api/v1/billing/wage-indexes/${LIVE.wageIndexId}/supersede`);
     expect(writes()[0]?.body.factorDecimal).toBe("1.0400");
+  });
+
+  it("after a supersede the drawer moves to the NEW live value and the form cannot be resubmitted", async () => {
+    mount();
+    const table = await screen.findByRole("table", { name: "Wage-index values" });
+    fireEvent.click(table.querySelector("tbody tr") as HTMLElement);
+    const view = await screen.findByRole("complementary", { name: /381588/ });
+    fireEvent.click(within(view).getByRole("button", { name: /Supersede/ }));
+    const form = await screen.findByRole("complementary", { name: "Supersede wage index" });
+    fireEvent.change(within(form).getByLabelText(/^Wage index/), { target: { value: "1.0400" } });
+    fireEvent.change(within(form).getByLabelText(/Reason/), {
+      target: { value: "Corrected per CMS correction notice" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Supersede value" }));
+
+    const after = await screen.findByRole("complementary", { name: /381588/ });
+    expect(within(after).getByText(/corrected value is now live/)).toBeTruthy();
+    expect(within(after).getByText("Wage index 1.0400 · CBSA 38900")).toBeTruthy();
+    expect(within(after).getByText("Live")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Supersede value" })).toBeNull();
+    // The reload lands; the drawer still shows the new value and the confirmation.
+    await waitFor(() => expect(table.querySelectorAll("tbody tr").length).toBe(3));
+    expect(within(after).getByText(/corrected value is now live/)).toBeTruthy();
+    expect(table.querySelector("tbody tr.is-selected")?.textContent).toContain("1.0400");
+
+    // A further correction targets the new live row, never the superseded one.
+    fireEvent.click(
+      within(after).getByRole("button", { name: /Supersede with a corrected value/ }),
+    );
+    const again = await screen.findByRole("complementary", { name: "Supersede wage index" });
+    fireEvent.change(within(again).getByLabelText(/^Wage index/), { target: { value: "1.0410" } });
+    fireEvent.click(within(again).getByRole("button", { name: "Supersede value" }));
+    await waitFor(() => expect(writes().length).toBe(2));
+    expect(writes()[1]?.path).toBe(
+      `/api/v1/billing/wage-indexes/${CORRECTED.wageIndexId}/supersede`,
+    );
   });
 
   it("renders a 409 from the envelope as a supersede hint", async () => {

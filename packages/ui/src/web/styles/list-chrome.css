@@ -141,6 +141,32 @@
   .wx-panel tbody tr:last-child td {
     border-bottom: none;
   }
+  /* A list screen's title block + its header action(s). The title block takes a 20rem BASIS, not its
+     max-content width: as max-content, a one-line description wider than the column (the column narrows
+     when a list + right drawer screen opens its drawer) wrapped the action below the title. Now the action
+     stays on the right until the column is too narrow for 20rem + the action, then wraps under it. */
+  .wx-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .wx-page-head > :first-child {
+    flex: 1 1 20rem;
+    min-width: 0;
+  }
+  .wx-page-head h1 {
+    margin: 0;
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-page-head p {
+    margin: 0.25rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.875rem;
+  }
   .wx-list-toolbar {
     display: flex;
     flex-wrap: wrap;
