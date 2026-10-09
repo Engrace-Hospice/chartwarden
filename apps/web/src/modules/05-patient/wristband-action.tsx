@@ -13,7 +13,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { renderWristbandBarcodes } from "./wristband-barcode";
 
-type Status = { state: "none" | "active"; generation: number | null; issuedAt: string | null };
+type Status = {
+  state: "none" | "active";
+  generation: number | null;
+  issuedAt: string | null;
+  /** True once any generation exists, voided ones included: the server then refuses `first_issue`. */
+  everIssued: boolean;
+};
 interface Issued {
   generation: number;
   payload: string;
@@ -64,6 +70,8 @@ export function WristbandAction({ patientId }: { patientId: string }): JSX.Eleme
   }, [loadStatus]);
 
   const hasBand = status?.state === "active";
+  // A voided-out patient has no active band but is no longer a first print: only a reprint reason is accepted.
+  const isReprint = hasBand || status?.everIssued === true;
 
   async function generate(): Promise<void> {
     setBusy(true);
@@ -71,7 +79,7 @@ export function WristbandAction({ patientId }: { patientId: string }): JSX.Eleme
     const res = await client.POST("/api/v1/patients/{id}/wristbands", {
       params: { path: { id: patientId } },
       body: {
-        reason: hasBand ? (reason as (typeof REPRINT_REASONS)[number]["value"]) : "first_issue",
+        reason: isReprint ? (reason as (typeof REPRINT_REASONS)[number]["value"]) : "first_issue",
         expectedCurrentGeneration: status?.generation ?? null,
       },
     });
@@ -91,7 +99,7 @@ export function WristbandAction({ patientId }: { patientId: string }): JSX.Eleme
   return (
     <>
       <Button type="button" tone="secondary" onClick={() => setOpen(true)}>
-        {hasBand ? "Reprint wristband" : "Print wristband"}
+        {isReprint ? "Reprint wristband" : "Print wristband"}
       </Button>
       <Modal
         open={open}
@@ -100,7 +108,7 @@ export function WristbandAction({ patientId }: { patientId: string }): JSX.Eleme
         width="30rem"
       >
         <div style={bodyStyle}>
-          <h2 style={titleStyle}>{hasBand ? "Reprint wristband" : "Print wristband"}</h2>
+          <h2 style={titleStyle}>{isReprint ? "Reprint wristband" : "Print wristband"}</h2>
           {issued ? (
             <IssuedLabel issued={issued} onDone={close} />
           ) : (
@@ -108,9 +116,11 @@ export function WristbandAction({ patientId }: { patientId: string }): JSX.Eleme
               <p style={metaStyle}>
                 {hasBand
                   ? "Printing a new wristband immediately retires the current one: the old band will no longer verify at the bedside."
-                  : "This patient has no wristband on file. Until one is printed, a barcode scan for this patient cannot be verified."}
+                  : status?.everIssued
+                    ? "Every wristband for this patient has been voided. Printing a new one starts a fresh generation."
+                    : "This patient has no wristband on file. Until one is printed, a barcode scan for this patient cannot be verified."}
               </p>
-              {hasBand ? (
+              {isReprint ? (
                 <SelectField
                   label="Reason for reprint"
                   value={reason}

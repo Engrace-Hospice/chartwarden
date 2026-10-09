@@ -10,10 +10,16 @@ const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const PAYLOAD = formatWristbandPayload(Uint8Array.from({ length: 16 }, (_, i) => i * 3 + 1));
 
 let posts: { path: string; body: Record<string, unknown> }[] = [];
-let status: { state: "none" | "active"; generation: number | null; issuedAt: string | null } = {
+let status: {
+  state: "none" | "active";
+  generation: number | null;
+  issuedAt: string | null;
+  everIssued: boolean;
+} = {
   state: "none",
   generation: null,
   issuedAt: null,
+  everIssued: false,
 };
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -52,7 +58,7 @@ function mount() {
 
 beforeEach(() => {
   posts = [];
-  status = { state: "none", generation: null, issuedAt: null };
+  status = { state: "none", generation: null, issuedAt: null, everIssued: false };
   vi.stubGlobal("fetch", vi.fn(stubFetch));
 });
 afterEach(() => {
@@ -83,7 +89,12 @@ describe("WristbandAction (GAP-020)", () => {
   });
 
   it("reprint: when a band is active it asks for a reason and sends the generation it saw", async () => {
-    status = { state: "active", generation: 3, issuedAt: "2026-10-01T00:00:00.000Z" };
+    status = {
+      state: "active",
+      generation: 3,
+      issuedAt: "2026-10-01T00:00:00.000Z",
+      everIssued: true,
+    };
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Reprint wristband" }));
     fireEvent.change(await screen.findByLabelText("Reason for reprint"), {
@@ -92,5 +103,20 @@ describe("WristbandAction (GAP-020)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate wristband" }));
     await waitFor(() => expect(posts.length).toBe(1));
     expect(posts[0]?.body).toEqual({ reason: "reprint_damaged", expectedCurrentGeneration: 3 });
+  });
+
+  it("after every generation was voided it asks for a reprint reason, never first_issue", async () => {
+    status = { state: "none", generation: null, issuedAt: null, everIssued: true };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Reprint wristband" }));
+    fireEvent.change(await screen.findByLabelText("Reason for reprint"), {
+      target: { value: "identity_correction" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate wristband" }));
+    await waitFor(() => expect(posts.length).toBe(1));
+    expect(posts[0]?.body).toEqual({
+      reason: "identity_correction",
+      expectedCurrentGeneration: null,
+    });
   });
 });

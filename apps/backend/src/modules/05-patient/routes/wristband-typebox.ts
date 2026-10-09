@@ -40,4 +40,6 @@ export const WristbandStatusSchema = Type.Object({
   state: Type.Union([Type.Literal("none"), Type.Literal("active")]),
   generation: Type.Union([Type.Integer(), Type.Null()]),
   issuedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  /** True once any generation exists (voided included). Decides first_issue vs a reprint reason. */
+  everIssued: Type.Boolean(),
 });

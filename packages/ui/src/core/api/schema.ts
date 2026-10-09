@@ -64420,6 +64420,7 @@ export interface operations {
                         state: "none" | "active";
                         generation: number | null;
                         issuedAt: string | null;
+                        everIssued: boolean;
                     };
                 };
             };

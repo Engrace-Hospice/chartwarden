@@ -170907,7 +170907,8 @@
                   "required": [
                     "state",
                     "generation",
-                    "issuedAt"
+                    "issuedAt",
+                    "everIssued"
                   ],
                   "properties": {
                     "state": {
@@ -170942,6 +170943,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "everIssued": {
+                      "type": "boolean"
                     }
                   }
                 }

@@ -51,6 +51,8 @@ export interface WristbandStatusView {
   readonly state: "none" | "active";
   readonly generation: number | null;
   readonly issuedAt: string | null;
+  /** Any generation exists, voided or superseded included: the planner then refuses `first_issue`. */
+  readonly everIssued: boolean;
 }
 
 const asDb = (tx: unknown): DbClient => tx as DbClient;
@@ -209,9 +211,15 @@ export async function getPatientWristbandStatus(
       .where(and(eq(W.organizationId, actor.organizationId), eq(W.patientId, patientId)))
       .orderBy(desc(W.generation));
     const active = rows.find((r) => r.supersededAt === null && r.voidedAt === null);
+    const everIssued = rows.length > 0;
     return active
-      ? { state: "active", generation: active.generation, issuedAt: active.issuedAt.toISOString() }
-      : { state: "none", generation: null, issuedAt: null };
+      ? {
+          state: "active",
+          generation: active.generation,
+          issuedAt: active.issuedAt.toISOString(),
+          everIssued,
+        }
+      : { state: "none", generation: null, issuedAt: null, everIssued };
   });
 }
 
