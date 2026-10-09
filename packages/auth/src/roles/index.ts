@@ -28,6 +28,14 @@ export { ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "./org-wide-scope";
 export { LAB_RECOVERY_DEFAULT_GRANTS, LAB_RECOVERY_KEYS } from "./lab-recovery-grants";
 export { INTAKE_DEFAULT_GRANTS, INTAKE_ROLE_KEYS } from "./intake-grants";
 export {
+  SSN_DEFAULT_GRANTS,
+  SSN_READ_KEY,
+  SSN_READ_ROLE_KEYS,
+  SSN_WRITE_KEY,
+  SSN_WRITE_ROLE_KEYS,
+  type SsnGrantRoleKey,
+} from "./ssn-grants";
+export {
   ADMITTING_CLINICIAN_DEFAULT_GRANTS,
   ADMITTING_CLINICIAN_ROLE_KEYS,
   type AdmittingClinicianRoleKey,
