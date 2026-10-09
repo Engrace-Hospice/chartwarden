@@ -38,7 +38,7 @@ import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
-import { NOR, ORDER_RECORD } from "./_m22-form-fixtures";
+import { CTI, NOR, ORDER_RECORD } from "./_m22-form-fixtures";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -779,6 +779,34 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     await h.consumer.handle(delivered());
     await h.consumer.handle(delivered());
     expect(h.rendered).toHaveLength(1);
+  });
+
+  // GAP-033 - `m6.cti.signed` fires for the hospice MD and again for the attending co-sign against the SAME
+  // certification. It must append a version: genesis-only dedup would drop the attending signature forever.
+  it("renders a new CTI version when the attending co-signs the same certification", async () => {
+    const h = harness();
+    const cti = (id: string, withAttending: boolean) =>
+      delivered({
+        id,
+        eventType: "m6.cti.signed",
+        aggregateKind: "certification_of_terminal_illness",
+        aggregateId: ORDER,
+        payload: {
+          ctiId: ORDER,
+          patientId: PAT,
+          renderPayload: {
+            ...CTI,
+            patient: { ...CTI.patient, patientId: PAT },
+            attendingSignature: withAttending ? CTI.hospiceMdSignature : null,
+          },
+        },
+      });
+    await h.consumer.handle(cti("00000000-0000-4000-8000-0000000000f1", false));
+    await h.consumer.handle(cti("00000000-0000-4000-8000-0000000000f2", true));
+    expect(h.rendered).toHaveLength(2);
+    // ...while redelivering the SAME event row is still a no-op.
+    await h.consumer.handle(cti("00000000-0000-4000-8000-0000000000f2", true));
+    expect(h.rendered).toHaveLength(2);
   });
 
   // §7.2 — a template that has not been published YET may be published in a minute; the request must

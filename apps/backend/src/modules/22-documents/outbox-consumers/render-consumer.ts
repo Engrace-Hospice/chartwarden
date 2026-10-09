@@ -220,11 +220,15 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   },
   // GAP-033 - the six CoP documents below carry a typed `renderPayload` built by M6 in the signing transaction
   // (packages/types render-payloads). They previously carried identifiers only, so a layout had nothing to draw.
+  // `appends: true`: the event fires for the hospice MD's signature and AGAIN for the attending co-sign against the
+  // same certification; the second render is a new version carrying `attendingSignature`. Genesis-only dedup on
+  // (aggregate type, id) would drop the co-signature from the filed CTI. A redelivered ROW is still a no-op.
   "m6.cti.signed": {
     aggregateIdFields: ["ctiId"],
     templateKey: "cti",
     contentField: "renderPayload",
     requiresRenderPayload: true,
+    appends: true,
   },
   "m6.f2f.attested": {
     aggregateIdFields: ["f2fId"],

@@ -4732,6 +4732,7 @@ export function createDbAdmissionRouteService(
             status: CTI.status,
             version: CTI.version,
             epId: CTI.electionPeriodId,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
           })
           .from(CTI)
           .where(eq(CTI.id, id))
@@ -4742,6 +4743,10 @@ export function createDbAdmissionRouteService(
           throw conflict(
             `cti ${id} is not awaiting an attending signature (state '${cti.status}')`,
           );
+        // The attending co-signs a certification the hospice physician already signed (R-CTI-03). Without that
+        // signature the filed CTI cannot be built, and the m6.cti.signed render would dead-letter.
+        if (!cti.hospiceMdSignedAt)
+          throw conflict(`cti ${id} cannot be attending-signed before the hospice physician signs`);
         const attendingSignedAt = now();
         const [r] = await tx
           .update(CTI)
