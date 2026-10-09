@@ -42,6 +42,20 @@ export const targetNoeId = (request: TargetRequest): TargetMap => paramId(reques
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
 export const targetTransferNoticeId = (request: TargetRequest): TargetMap =>
   paramId(request, "transferNoticeId");
+export const targetDdeWorkItemId = (request: TargetRequest): TargetMap =>
+  paramId(request, "ddeWorkItemId");
+
+/**
+ * DDE create: the body names the SUBJECT (item type + subject id), never the provider entity; the ABAC resolver
+ * loads the subject's owning provider entity server-side (noe -> noeId, notr -> notrId, everything else -> claimId).
+ */
+export const targetDdeSubjectFromBody = (request: TargetRequest): TargetMap => {
+  const body = request.body as { itemType?: string; subjectId?: string } | undefined;
+  const subjectId = body?.subjectId ?? "";
+  if (body?.itemType === "noe") return { noeId: subjectId };
+  if (body?.itemType === "notr") return { notrId: subjectId };
+  return { claimId: subjectId };
+};
 export const targetRuleConfigId = (request: TargetRequest): TargetMap =>
   paramId(request, "ruleConfigId");
 

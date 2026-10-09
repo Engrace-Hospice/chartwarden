@@ -16,6 +16,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { registerClaimsRoutes } from "./claims.routes";
+import { registerDdeQueueRoutes } from "./dde-queue.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
 import { type M23InternalSeamProvider, registerInternalSeamRoutes } from "./internal.routes";
@@ -36,6 +37,7 @@ export { registerClaimsRoutes, type ClaimsRouteDeps } from "./claims.routes";
 export { registerValidationRoutes, type ValidationRouteDeps } from "./validation.routes";
 export { registerRuleConfigRoutes, type RuleConfigRouteDeps } from "./rule-config.routes";
 export { registerNoeRoutes, type NoeRouteDeps } from "./noe.routes";
+export { registerDdeQueueRoutes, type DdeQueueRouteDeps } from "./dde-queue.routes";
 export { registerNotrRoutes, type NotrRouteDeps } from "./notr.routes";
 export {
   registerTransferNoticeRoutes,
@@ -85,6 +87,10 @@ export function mountM23Routes(
   // The Medicare transfer notice (TOB 8xC / corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
   if (services.transferNoticeService) {
     registerTransferNoticeRoutes(app, { transferNoticeService: services.transferNoticeService });
+  }
+  // ADR-0052 — the DDE work queue: human work tracking for Medicare Direct Data Entry (absent service => not mounted).
+  if (services.ddeQueueService) {
+    registerDdeQueueRoutes(app, { ddeQueueService: services.ddeQueueService });
   }
   // Route group E — eligibility / sequestration-policy / MAC credentials.
   registerEligibilityRoutes(app, { readService, writeService });

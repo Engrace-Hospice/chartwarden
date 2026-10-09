@@ -1,4 +1,5 @@
 import type { ClaimAssemblyService } from "../services/claim-assembly";
+import type { DdeQueueService } from "../services/dde-queue-service";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
 import type { PlatformAdminRouteService } from "./platform-admin-service";
 // apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
@@ -101,6 +102,8 @@ export interface M23RouteServices {
   readonly sequestrationService?: SequestrationPolicyRouteService;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
+  /** ADR-0052 — the DDE work-queue service (absent ⇒ /billing/dde-items is not mounted). */
+  readonly ddeQueueService?: DdeQueueService;
 }
 
 export {

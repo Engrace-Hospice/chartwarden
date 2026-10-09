@@ -234,6 +234,15 @@ async function resolveBillingScopeFacts(
     if (!facts) return null;
     return { providerEntityId: facts.providerEntityId, patientId: facts.patientId };
   }
+  const ddeWorkItemId = targetStr(target, "ddeWorkItemId");
+  if (ddeWorkItemId) {
+    // Fail closed when the resolver predates the DDE queue (an in-memory stub without the loader).
+    const facts = resolver.loadDdeWorkItem
+      ? await resolver.loadDdeWorkItem(readContextOf(context), ddeWorkItemId)
+      : null;
+    if (!facts) return null;
+    return { providerEntityId: facts.providerEntityId, patientId: facts.patientId };
+  }
   // No entity id — a create/assemble path that names the provider directly.
   if (directProvider) return { providerEntityId: directProvider, patientId: null };
   return null;

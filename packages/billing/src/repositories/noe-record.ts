@@ -14,7 +14,7 @@
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
 // `window_breached_at` through `transitionToState` (or a same-state patch). No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -173,6 +173,31 @@ export class NoeRepository {
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
+  }
+
+  /**
+   * The notices the DDE work queue should hold work for (ADR-0052): in flight (state not terminal) with a filing
+   * window target on or before `throughDate` (`YYYY-MM-DD`, today plus the watchdog look-ahead), breached or not.
+   * Unlike `listWindowWatchCandidates` it does not wait for the target day. Soonest target first.
+   */
+  async listDdeWatchCandidates(
+    organizationId: string,
+    throughDate: string,
+    limit = 200,
+  ): Promise<readonly NoeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(
+        and(
+          eq(N.organizationId, organizationId),
+          notInArray(N.state, NOE_TERMINAL_DB),
+          lte(N.windowTargetAt, throughDate),
+        ),
+      )
+      .orderBy(asc(N.windowTargetAt))
+      .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNoeRecord);
   }
 
   /**

@@ -4,6 +4,7 @@ import {
   DDE_NOTES_MAX_LENGTH,
   DDE_WORK_ITEM_STATES,
   type DdeWorkItemState,
+  ddeDeadlineStatus,
   ddeWorkItemMachine,
   validateDdeNotes,
 } from "@wardenx/billing";
@@ -94,14 +95,12 @@ describe("validateDdeNotes", () => {
     expect(r).toEqual({ ok: false, reason: "NOTES_TOO_LONG" });
   });
 
-  it.each([
-    "1EG4-TE5-MK73",
-    "1EG4TE5MK73",
-    "see 1eg4-te5-mk73 for the patient",
-    "1EG4 TE5 MK73",
-  ])("rejects an MBI-shaped note: %s", (note) => {
-    expect(validateDdeNotes(note)).toEqual({ ok: false, reason: "NOTES_CONTAIN_MBI" });
-  });
+  it.each(["1EG4-TE5-MK73", "1EG4TE5MK73", "see 1eg4-te5-mk73 for the patient", "1EG4 TE5 MK73"])(
+    "rejects an MBI-shaped note: %s",
+    (note) => {
+      expect(validateDdeNotes(note)).toEqual({ ok: false, reason: "NOTES_CONTAIN_MBI" });
+    },
+  );
 
   it.each(["DCN 22123456789012345", "ICN: 2024123456789", "RTP code 37001", "NPI 1234567890"])(
     "does not reject a code or number that is not an MBI: %s",
@@ -109,4 +108,51 @@ describe("validateDdeNotes", () => {
       expect(validateDdeNotes(note)).toEqual({ ok: true });
     },
   );
+});
+
+describe("ddeDeadlineStatus", () => {
+  const base = { deadlineAt: "2026-10-10", macAcceptedOn: null } as const;
+
+  it("has no status without a deadline", () => {
+    expect(
+      ddeDeadlineStatus({ state: "queued", deadlineAt: null, macAcceptedOn: null }, "2026-10-01"),
+    ).toBe("none");
+  });
+
+  it("is on track while the deadline is far away", () => {
+    expect(ddeDeadlineStatus({ ...base, state: "queued" }, "2026-10-01")).toBe("on_track");
+  });
+
+  it("is at risk within two days of the deadline", () => {
+    expect(ddeDeadlineStatus({ ...base, state: "in_progress" }, "2026-10-08")).toBe("at_risk");
+    expect(ddeDeadlineStatus({ ...base, state: "in_progress" }, "2026-10-10")).toBe("at_risk");
+  });
+
+  it("keeps a submitted item with no acceptance date at risk, however early", () => {
+    expect(ddeDeadlineStatus({ ...base, state: "submitted" }, "2026-10-01")).toBe("at_risk");
+  });
+
+  it("is overdue once an open item passes the deadline", () => {
+    expect(ddeDeadlineStatus({ ...base, state: "submitted" }, "2026-10-11")).toBe("overdue");
+    expect(ddeDeadlineStatus({ ...base, state: "returned" }, "2026-10-11")).toBe("overdue");
+  });
+
+  it("is met only by a MAC acceptance date on or before the deadline", () => {
+    expect(
+      ddeDeadlineStatus({ ...base, state: "accepted", macAcceptedOn: "2026-10-10" }, "2026-10-20"),
+    ).toBe("met");
+    expect(
+      ddeDeadlineStatus({ ...base, state: "closed", macAcceptedOn: "2026-10-09" }, "2026-10-20"),
+    ).toBe("met");
+  });
+
+  it("is missed when the MAC accepted after the deadline", () => {
+    expect(
+      ddeDeadlineStatus({ ...base, state: "accepted", macAcceptedOn: "2026-10-11" }, "2026-10-20"),
+    ).toBe("missed");
+  });
+
+  it("has no status for a cancelled item", () => {
+    expect(ddeDeadlineStatus({ ...base, state: "cancelled" }, "2026-10-20")).toBe("none");
+  });
 });

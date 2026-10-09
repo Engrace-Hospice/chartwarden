@@ -32,6 +32,7 @@
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
 import { createHash } from "node:crypto";
 import {
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
   type ClaimDocument837i,
   type ClaimState,
   type ClaimTransitionEvent,
@@ -48,6 +49,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
@@ -489,6 +491,8 @@ export interface M23WorkerDeps {
   readonly enqueue?: JobEnqueuePort;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly jurisdictions?: MacJurisdictionListPort;
+  /** ADR-0052 — files a DDE work item for each at-risk NOE/NOTR the window-watch crons walk (absent ⇒ no item). */
+  readonly ddeWatchdog?: DdeWatchdogPort;
 }
 
 /** The empty-string system sentinel `withOrgContext` carries — the M4 trigger NULLIFs it (no acting user). */
@@ -1639,6 +1643,35 @@ export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
   await applyAcks(deps, acks);
 }
 
+/** ADR-0052 — file a DDE work item for each in-flight notice whose filing window is near, via the bound watchdog. */
+async function queueDdeWork(
+  deps: M23WorkerDeps,
+  tx: BillingDb,
+  organizationId: string,
+  kind: "noe" | "notr",
+  now: Date,
+): Promise<void> {
+  const watchdog = deps.ddeWatchdog;
+  if (!watchdog) return;
+  const through = new Date(now.getTime() + DDE_WATCHDOG_LOOKAHEAD_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const notices =
+    kind === "noe"
+      ? await new NoeRepository(tx).listDdeWatchCandidates(organizationId, through)
+      : await new NotrRepository(tx).listDdeWatchCandidates(organizationId, through);
+  for (const notice of notices) {
+    await watchdog.ensureNoticeItem(tx, {
+      organizationId,
+      itemType: kind,
+      noticeId: notice.id,
+      providerEntityId: notice.providerEntityId,
+      patientId: notice.patientId,
+      deadlineAt: notice.windowTargetAt,
+    });
+  }
+}
+
 /**
  * `noe.window-watch` (§4.8 cron, every 30 min): for each active org, walk the NOE rows whose 5-day window is
  * approaching and still un-acknowledged — emit `m23.noe.window_warning` at day 3 and, at day 5+1 (past target),
@@ -1658,6 +1691,9 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const noes = new NoeRepository(tx);
         const outbox = outboxOf(deps);
+        // ADR-0052 — queue the DDE work for every in-flight notice nearing (or past) its filing window, ahead of the
+        // target day. Idempotent: the watchdog files at most one item per notice.
+        await queueDdeWork(deps, tx, organizationId, "noe", now);
         const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
         for (const noe of candidates) {
           const days = daysToTarget(noe.windowTargetAt, now);
@@ -1729,6 +1765,9 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const notrs = new NotrRepository(tx);
         const outbox = outboxOf(deps);
+        // ADR-0052 — queue the DDE work for every in-flight notice nearing (or past) its filing window, ahead of the
+        // target day. Idempotent: the watchdog files at most one item per notice.
+        await queueDdeWork(deps, tx, organizationId, "notr", now);
         const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
         for (const notr of candidates) {
           const days = daysToTarget(notr.windowTargetAt, now);
@@ -2327,6 +2366,7 @@ export function buildM23WorkerDeps(deps: {
   enqueue?: JobEnqueuePort;
   activeOrgs?: ActiveOrgListPort;
   jurisdictions?: MacJurisdictionListPort;
+  ddeWatchdog?: DdeWatchdogPort;
 }): M23WorkerDeps {
   return {
     connection: deps.connection,
@@ -2343,6 +2383,7 @@ export function buildM23WorkerDeps(deps: {
     enqueue: deps.enqueue,
     activeOrgs: deps.activeOrgs,
     jurisdictions: deps.jurisdictions,
+    ddeWatchdog: deps.ddeWatchdog,
   };
 }
 

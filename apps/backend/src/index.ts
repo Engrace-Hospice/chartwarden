@@ -902,6 +902,8 @@ import {
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
+  buildDdeQueueService,
+  buildDdeWatchdog,
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
@@ -4804,6 +4806,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
             // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
             // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
+            // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
+            ddeQueueService: buildDdeQueueService(dbHandle.db, { outbox: m23OutboxPublisher }),
             transferNoticeService: buildTransferNoticeService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               jobs: buildM23OutboxBackedSubmissionGate({
@@ -6745,6 +6749,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       enqueue: m23WorkQueues?.port,
       // §4.4 HETS 270/271 — bound only when configured (see `m23HetsConfig` above).
       hets: m23Hets,
+      // ADR-0052 — the window-watch crons file a DDE work item for each at-risk NOE/NOTR (idempotent).
+      ddeWatchdog: buildDdeWatchdog({ outbox: m23OutboxPublisher }),
     });
     let m23Workers: Worker[] = [
       ...registerM23DomainWorkers(m23CoreWorkerDeps),

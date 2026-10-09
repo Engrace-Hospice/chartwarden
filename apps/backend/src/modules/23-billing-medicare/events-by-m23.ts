@@ -29,6 +29,16 @@ const isoInstant = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 const nullableInstant = Type.Union([isoInstant, Type.Null()]);
 const str = Type.String();
+const nullableStr = Type.Union([str, Type.Null()]);
+const ddeItemType = Type.Union([
+  Type.Literal("noe"),
+  Type.Literal("notr"),
+  Type.Literal("claim_entry"),
+  Type.Literal("rtp_correction"),
+  Type.Literal("adjustment"),
+  Type.Literal("cancel"),
+  Type.Literal("adr_response"),
+]);
 const cents = Type.Integer();
 const int = Type.Integer();
 /** Which date `payerStatusDate` is (migration 0378): the 277CA STC02, a 999's GS04 / ISA09, or our receipt date. */
@@ -37,6 +47,8 @@ const payerStatusDateSource = Type.Union([
   Type.Literal("999_gs04"),
   Type.Literal("999_isa09"),
   Type.Literal("receipt"),
+  // ADR-0052 D5: the MAC acceptance date an operator read off DDE and keyed into the DDE work queue.
+  Type.Literal("dde_manual"),
 ]);
 
 export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
@@ -392,7 +404,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       "The 277CA accepted the NOE; ACK_PENDING → ACK_ACCEPTED. `acceptedAt` is the acceptance date recorded on the NOE.",
     payloadSchema: Type.Object({
       noeId: id,
-      acknowledgmentId: id,
+      // Null when the acceptance was recorded by hand through the DDE work queue (no 277CA exists).
+      acknowledgmentId: nullableId,
       payerNoeControlNumber: str,
       acceptedAt: isoInstant,
       payerStatusDate: isoInstant,
@@ -513,7 +526,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       "The 277CA accepted the NOTR; ACK_PENDING → ACK_ACCEPTED. `acceptedAt` is the acceptance date recorded on the NOTR.",
     payloadSchema: Type.Object({
       notrId: id,
-      acknowledgmentId: id,
+      // Null when the acceptance was recorded by hand through the DDE work queue (no 277CA exists).
+      acknowledgmentId: nullableId,
       payerNotrControlNumber: str,
       acceptedAt: isoInstant,
       payerStatusDate: isoInstant,
@@ -728,6 +742,53 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     declaredConsumers: ["m1"],
     seamConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  // ── DDE work queue (ADR-0052) ─────────────────────────────────────────────────────────────────────
+  // Human work tracking for Medicare Direct Data Entry. Payloads carry ids, the item type, the state and codes
+  // (DCN / RTP reason / outcome) only — NEVER notes, names or an MBI. Outbox-only: no module consumes them yet
+  // (M33 reporting may read them later); they exist for the audit stream and future dashboards.
+  {
+    eventName: "m23.dde_item.created",
+    moduleOwner: "m23",
+    description:
+      "A DDE work item was queued (by an operator, or by the NOE/NOTR watchdog for an at-risk notice).",
+    payloadSchema: Type.Object({
+      ddeItemId: id,
+      itemType: ddeItemType,
+      subjectKind: Type.Union([
+        Type.Literal("claim"),
+        Type.Literal("noe_record"),
+        Type.Literal("notr_record"),
+      ]),
+      subjectId: id,
+      providerEntityId: id,
+      source: Type.Union([Type.Literal("manual"), Type.Literal("watchdog")]),
+      deadlineAt: nullableInstant,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.dde_item.state_changed",
+    moduleOwner: "m23",
+    description:
+      "A DDE work item changed state (assigned, started, keyed, accepted, returned, retried, closed or cancelled). Carries the PHI-free outcome codes.",
+    payloadSchema: Type.Object({
+      ddeItemId: id,
+      itemType: ddeItemType,
+      providerEntityId: id,
+      event: str,
+      fromState: str,
+      toState: str,
+      attemptNumber: int,
+      deadlineAt: nullableInstant,
+      macAcceptedOn: nullableInstant,
+      dcn: nullableStr,
+      rtpReasonCode: nullableStr,
+      outcomeCode: nullableStr,
+    }),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── M22 render handshake + ABN (§4.10) ────────────────────────────────────────────────────────────

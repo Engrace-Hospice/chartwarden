@@ -10255,6 +10255,7 @@ const M23NoticeAckAndCorrection = {
     Type.Literal("999_gs04"),
     Type.Literal("999_isa09"),
     Type.Literal("receipt"),
+    Type.Literal("dde_manual"),
     Type.Null(),
   ]),
   correctsNoticeId: Type.Union([Type.String(), Type.Null()]),
