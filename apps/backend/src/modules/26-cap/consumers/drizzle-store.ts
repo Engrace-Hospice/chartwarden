@@ -267,14 +267,15 @@ export function createDrizzleCapConsumerStore(
             // A replay, a re-delivery, or a re-pay after a recoup: only the two annotation columns may move,
             // NEVER the days.
             //   claim_id     stamped on a row written before the column existed (COALESCE: first identity wins);
-            //   reversed_at  cleared when this delivery was posted AFTER the reversal (a claim re-paid after a
-            //                recoup reuses the same claim_line ids); a stale re-delivery posted BEFORE the
-            //                reversal leaves it set.
+            //   reversed_at  cleared when this delivery was posted AT OR AFTER the reversal (a claim re-paid after
+            //                a recoup reuses the same claim_line ids, and one 835 can carry the CLP02=22 reversal
+            //                and the corrected payment at the same posting instant); a stale re-delivery posted
+            //                BEFORE the reversal leaves it set.
             await tx
               .update(IDL)
               .set({
                 claimId: sql`coalesce(${IDL.claimId}, ${day.claimId}::uuid)`,
-                reversedAt: sql`CASE WHEN ${IDL.reversedAt} IS NOT NULL AND ${day.postedAt}::timestamptz > ${IDL.reversedAt} THEN NULL ELSE ${IDL.reversedAt} END`,
+                reversedAt: sql`CASE WHEN ${IDL.reversedAt} IS NOT NULL AND ${day.postedAt}::timestamptz >= ${IDL.reversedAt} THEN NULL ELSE ${IDL.reversedAt} END`,
               })
               .where(
                 and(

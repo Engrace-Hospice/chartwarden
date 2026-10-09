@@ -646,6 +646,13 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
       expect(r.handled).toBe(true);
       const after = await inpatientAccrual(ORG_A, pid);
       expect(after.total_patient_days).toBe(before.total_patient_days - 10);
+
+      // One 835 can carry the CLP02=22 reversal AND the corrected payment at the SAME posting instant: the
+      // re-pay (posted at or after the reversal) must clear it, not lose the claim's days.
+      const sameInstant = new Date(Date.now() + 120_000).toISOString();
+      await finalized(CLAIM_PRE, LINE_PRE_GIP, "0656", 4, sameInstant);
+      await finalized(CLAIM_PRE, LINE_PRE_RHC, "0651", 6, sameInstant);
+      expect(await inpatientAccrual(ORG_A, pid)).toEqual(before);
     });
   });
 });
