@@ -44,6 +44,7 @@ import {
 import { Client } from "pg";
 import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
+import { anchorCareTeamSeats } from "./lib/care-team-seats";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
 
@@ -259,6 +260,13 @@ async function anchorDemoCaseload(
       [id, orgId, rnUserId],
     );
   }
+  // The persona seats (LPN, volunteer coordinator) — see lib/care-team-seats.ts.
+  const seats = await anchorCareTeamSeats(
+    db,
+    orgId,
+    patients.rows.map((r) => r.id),
+  );
+  if (seats.length > 0) console.log(`  ✓ demo care-team seats anchored: ${seats.join(", ")}`);
   console.log(
     `  ✓ demo caseload anchored: ${RN_CASE_MANAGER_EMAIL} is primary RN for ${patients.rowCount} patient(s)`,
   );

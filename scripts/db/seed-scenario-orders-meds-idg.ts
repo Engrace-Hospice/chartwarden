@@ -254,7 +254,9 @@ async function main(): Promise<void> {
 
     const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
       params: { path: { id: draftData.id } },
-      body: { signerDiscipline: "rn_case_manager" },
+      // The caller must hold the discipline it names (DISCIPLINE_NOT_HELD) and the drafter is the LPN;
+      // the RN case manager enters at cosign/sign below.
+      body: { signerDiscipline: "lpn" },
     });
     if (reqSig.error)
       throw new Error(`order request-signature failed: ${JSON.stringify(reqSig.error)}`);
@@ -312,7 +314,9 @@ async function main(): Promise<void> {
 
     const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
       params: { path: { id: draftData.id } },
-      body: { signerDiscipline: "rn_case_manager" },
+      // The caller must hold the discipline it names (DISCIPLINE_NOT_HELD) and the drafter is the LPN;
+      // the RN case manager enters at cosign/sign below.
+      body: { signerDiscipline: "lpn" },
     });
     if (reqSig.error)
       throw new Error(`pending-signature request failed: ${JSON.stringify(reqSig.error)}`);

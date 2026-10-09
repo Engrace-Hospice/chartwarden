@@ -241,10 +241,17 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
   await db.end();
 }
 
-/** Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. */
+/**
+ * Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. Returns
+ * false when the product itself cannot store one: the composition root (`apps/backend/src/index.ts`) never
+ * binds M23's `SecretCipherPort`, so `upsertMacCredential` answers 503 `SEAM_UNBOUND` on every deployment
+ * (fail-closed by design, the secret is never accepted-then-dropped). That is a product gap, not something
+ * a seed may route around, so the step is reported as skipped and the Medicare-assemble prerequisite it
+ * would have satisfied stays missing.
+ */
 async function seedMacSubmitterCredential(
   admin: Awaited<ReturnType<typeof signIn>>,
-): Promise<void> {
+): Promise<boolean> {
   await stepUpSession(admin.userId);
   const res = await admin.client.POST("/api/v1/billing/mac-credentials", {
     headers: { "Idempotency-Key": crypto.randomUUID() },
@@ -258,9 +265,12 @@ async function seedMacSubmitterCredential(
     },
   });
   // An existing credential answers 428 IF_MATCH_REQUIRED — already seeded is fine on a re-run.
+  const errorCode = (res.error as { error?: { code?: string } } | undefined)?.error?.code;
+  if (res.response.status === 503 && errorCode === "SEAM_UNBOUND") return false;
   if (res.error && res.response.status !== 428) {
     throw new Error(`MAC submitter credential upsert failed: ${JSON.stringify(res.error)}`);
   }
+  return true;
 }
 
 /** The federal fiscal year (Oct 1) an ISO date falls in, as its starting calendar year. */
@@ -273,10 +283,13 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@wardenx.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
 
-  // The census is caseload-scoped (F-096) and `org_admin` is a tenant administrator, not an org-wide patient
-  // reader, so the demo patient is looked up as the admin persona the admissions scenario uses.
-  const patientId = await findPatientIdByLastName(await signIn("admin@wardenx.local"), "Whitfield");
-  const cert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
+  // The census AND the chart's election/certification read are patient-scoped (F-096; `election.read` is
+  // `caseload_or_scope`), and `org_admin` is a tenant administrator, not an org-wide patient reader, so both
+  // are done as the admin persona the admissions scenario uses (attending on the demo caseload). The billing
+  // writes below stay with `orgadmin`, who holds the billing permissions and the PE/location scope.
+  const chartReader = await signIn("admin@wardenx.local");
+  const patientId = await findPatientIdByLastName(chartReader, "Whitfield");
+  const cert = await chartReader.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
   const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
@@ -305,7 +318,7 @@ async function main(): Promise<void> {
   // Medicare assemble for the demo org fails (it used to surface as PROVIDER_ENTITY_UNRESOLVED, now as
   // MAC_SUBMITTER_CREDENTIAL_MISSING). Oregon's home health & hospice MAC is CGS (J15). Dev credential
   // only — no clearinghouse is configured locally, so nothing is ever submitted with it.
-  await seedMacSubmitterCredential(admin);
+  const macCredentialSeeded = await seedMacSubmitterCredential(admin);
   // The demo provider (CCN 381588, Pendleton OR, ZIP 97801) wage index, taken from the CMS hospice geography
   // (migration 1058) instead of keyed by hand: the provider's ZIP is placed in its CBSA / rural area.
   const fiscalYear = fiscalYearStartingOf(serviceFrom);
@@ -316,7 +329,9 @@ async function main(): Promise<void> {
   });
   log.dup(`Medicare (M23): demo provider wage index seeded — ${demoWageIndex.join("; ")}`);
   log.dup(
-    "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
+    macCredentialSeeded
+      ? "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)"
+      : "Medicare (M23): MAC submitter credential SKIPPED — the product binds no M23 secret cipher (503 SEAM_UNBOUND), so Medicare assemble stays MAC_SUBMITTER_CREDENTIAL_MISSING; rate tables / sequestration are tenant-entered",
   );
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────

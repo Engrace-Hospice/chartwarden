@@ -219,6 +219,33 @@ const admissionDay = (): string => new Date(Date.now() - 86_400_000).toISOString
 // They are signed as the seeded Hospice Medical Director persona (db:seed:staff), set in main().
 let physicianSession: WxSession | null = null;
 
+/**
+ * The signing physician's §418.22(b)(3) narrative. The auto-seeded CTI draft carries none, and the
+ * sign route answers 422 `CTI_NARRATIVE_REQUIRED` unless the physician supplies >= 200 characters
+ * at signature, so the seed supplies one — as the real hospice physician does in the web app.
+ */
+const CTI_NARRATIVE =
+  "Synthetic demo narrative. Patient has a terminal illness with progressive functional decline, " +
+  "recurrent symptom burden and declining oral intake over recent months. In my clinical judgment, " +
+  "if the disease runs its normal course, life expectancy is six months or less. Hospice comfort " +
+  "care is appropriate and the patient and family have elected it.";
+
+/** A 418.26(b) physician discharge order signed now by the seeded Hospice Medical Director. */
+function physicianDischargeOrder(orderText: string): {
+  signedByUserId: string;
+  signedAt: string;
+  capacity: "medical_director";
+  orderText: string;
+} {
+  if (!physicianSession) throw new Error("physician session not initialised");
+  return {
+    signedByUserId: physicianSession.userId,
+    signedAt: new Date().toISOString(),
+    capacity: "medical_director",
+    orderText,
+  };
+}
+
 /** The shared prefix every non-transfer-in scenario needs: create → NOR → election → CTI → activate. */
 async function admitAndActivate(
   session: WxSession,
@@ -293,6 +320,7 @@ async function admitAndActivate(
     body: {
       signingPhysicianName: "Eleanor Whitfield MD",
       signingPhysicianNpi: "1003000001",
+      narrative: CTI_NARRATIVE,
       ifVersion: 0,
     },
   });
@@ -378,6 +406,12 @@ async function main(): Promise<void> {
         newLevel: "general_inpatient_care",
         effectiveStart: today(),
         facilityId: LOCATION_IPU_ID,
+        // D12: GIP is refused (412 GIP_DOCUMENTATION_INCOMPLETE) unless all three are attested true.
+        gipAttestations: {
+          symptomsNotManageableElsewhere: true,
+          intensityWarrantsGip: true,
+          inpatientSettingIdentified: true,
+        },
         reason:
           "Uncontrolled pain crisis with intractable nausea and vomiting requiring intensive palliative " +
           "symptom management not achievable at the routine home care level; admitted for inpatient " +
@@ -478,6 +512,9 @@ async function main(): Promise<void> {
         narrative:
           "Patient and family relocated outside the agency's certified service area; hospice benefit " +
           "coordinated for transfer to a receiving agency near the new residence.",
+        // 42 CFR 418.26(b): a live discharge on/after 2026-10-01 needs a written physician discharge
+        // order, signed by a user the server can back with the claimed signer capacity.
+        dischargeOrder: physicianDischargeOrder("Discharge: moved out of the service area."),
       },
     });
     if (dc.error) throw new Error(`discharge failed: ${JSON.stringify(dc.error)}`);

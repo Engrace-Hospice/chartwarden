@@ -12,6 +12,7 @@
  * Run:     bun run db:seed:clinical
  */
 import { Client } from "pg";
+import { anchorCareTeamSeats } from "./lib/care-team-seats";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -206,6 +207,9 @@ async function main(): Promise<void> {
   ]) {
     await db.query(`DELETE FROM ${t} WHERE patient_id = ANY($1)`, [ids]);
   }
+  // The cleanup above wiped the persona seats (LPN, volunteer coordinator) that the scenario seeds need
+  // for their caseload check; put them back. See lib/care-team-seats.ts.
+  await anchorCareTeamSeats(db, org, ids);
   await db.query(`DELETE FROM patient_identifier WHERE patient_id = ANY($1) AND kind = 'mbi'`, [
     ids,
   ]);
