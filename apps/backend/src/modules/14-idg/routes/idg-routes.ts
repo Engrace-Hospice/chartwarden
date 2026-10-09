@@ -13,6 +13,7 @@
 // through the meeting-specific predicate.
 import {
   type AbacTarget,
+  hasOrgWideScope,
   requireAbac,
   requirePermission,
   resolveActorPermissions,
@@ -38,7 +39,9 @@ import {
   type IdgCaseloadResolver,
   assertIdgPatientInScope,
   filterIdgPatientsInScope,
+  filterNullableIdgPatientsInScope,
   patientScopeFactsOf,
+  resolveIdgPatientIdsInScope,
   seamIdgCaseloadResolver,
 } from "./caseload-scope";
 import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
@@ -81,7 +84,7 @@ import {
   seamPacketDisclosurePort,
   sudDisclosureAllowedForPacket,
 } from "./packet-disclosure";
-import type { IdgRouteService } from "./service";
+import type { IdgRouteService, IdgScopedChildKind } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -122,9 +125,18 @@ const READ = P("idg.read");
 const ATTEND = P("idg.attend");
 const COORDINATE = P("idg.coordinate");
 const DECIDE = P("idg.decide");
-const ACT = P("idg.act");
 const SCHEDULE = P("idg.schedule");
 const AMEND = P("idg.amend_minutes");
+
+/** The spec grants action-item mutation to the assignee (`idg.act`) OR a coordinator. */
+const ACT_OR_COORDINATE: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("idg.act") && !granted.has("idg.coordinate")) {
+    throw new ForbiddenError("requires permission 'idg.act' or 'idg.coordinate'");
+  }
+};
 
 // §4.7 ABAC guards. `idg_meeting_scope` defaults its target to the route params (`:id` / `:meetingId`).
 const SCOPE = (action: string): PreHandler =>
@@ -166,15 +178,26 @@ const SUPERSEDE_QUORATE = requireAbac("idg.decide", "quorate_decision", {
  * it: a coordinator at location A could otherwise supersede a location-B decision by naming an A meeting). The
  * decision id carries no meeting, so it is resolved first; unknown/cross-tenant decision and an out-of-scope
  * meeting are both the non-leaking 404, and an active break-glass grant cannot stand in for this gate. */
-const SUPERSEDE_PRIOR_SCOPE = (service: IdgRouteService): PreHandler => {
+const SUPERSEDE_PRIOR_SCOPE = (
+  service: IdgRouteService,
+  caseload: IdgCaseloadResolver,
+): PreHandler => {
   return async (request, reply) => {
     const { organizationId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
-    const meetingId = await service.decisionMeetingId(organizationId, id);
-    if (meetingId === null) throw new NotFoundError("idg_decision");
+    const facts = await service.scopedChildFacts(organizationId, "decision", id);
+    if (facts === null) throw new NotFoundError("idg_decision");
+    if (facts.patientId !== null) {
+      await assertIdgPatientInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        facts.patientId,
+        caseload,
+      );
+    }
     await (
       requireAbac("idg.decide", "idg_meeting_scope", {
-        getTarget: () => ({ meetingId }),
+        getTarget: () => ({ meetingId: facts.meetingId }),
         notFoundOnDeny: true,
         breakGlassBypassable: false,
       }) as PreHandler
@@ -236,6 +259,41 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   const sudDisclosure = deps.sudDisclosure ?? seamPacketDisclosurePort;
   const caseload = deps.caseload ?? seamIdgCaseloadResolver;
 
+  const locationAllowed = (request: FastifyRequest, locationId: string): boolean => {
+    const ctx = request.context;
+    return Boolean(
+      ctx && (hasOrgWideScope(ctx.roles ?? []) || ctx.locationIds.includes(locationId)),
+    );
+  };
+
+  const assertLocationAllowed = (request: FastifyRequest, locationId: string): void => {
+    if (!locationAllowed(request, locationId)) throw new NotFoundError("location");
+  };
+
+  /** Resolve child → parent once, then enforce location and (where applicable) patient scope. */
+  const childScope = (
+    kind: IdgScopedChildKind,
+    resource: string,
+    options: { patient?: boolean; assigneeOrLocation?: boolean } = {},
+  ): PreHandler => {
+    return async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const facts = await service.scopedChildFacts(organizationId, kind, id);
+      if (!facts) throw new NotFoundError(resource);
+      const selfAssigned = options.assigneeOrLocation && facts.assignedToMembershipId === userId;
+      if (!selfAssigned) assertLocationAllowed(request, facts.locationId);
+      if (options.patient && facts.patientId !== null) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          facts.patientId,
+          caseload,
+        );
+      }
+    };
+  };
+
   // 1 — list the meeting schedule for a location/range (location-scoped server-side).
   app.get(
     "/api/v1/idg/schedule",
@@ -246,6 +304,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ScheduleQuerySchema, request.query);
+      assertLocationAllowed(request, q.location);
       return service.listSchedule(organizationId, { location: q.location, from: q.from, to: q.to });
     },
   );
@@ -254,6 +313,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   app.post("/api/v1/idg/recurring-policies", { preHandler: [SCHEDULE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(RecurringPolicyRequest, request.body);
+    assertLocationAllowed(request, b.locationId);
     const res = await service.createRecurringPolicy(organizationId, userId, b);
     return reply.code(201).send(res);
   });
@@ -266,6 +326,10 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecurringPolicyRequest, request.body);
+      const policyLocationId = await service.recurringPolicyLocationId(organizationId, id);
+      if (policyLocationId === null) throw new NotFoundError("idg_recurring_policy");
+      assertLocationAllowed(request, policyLocationId);
+      assertLocationAllowed(request, b.locationId);
       return service.updateRecurringPolicy(
         organizationId,
         userId,
@@ -282,7 +346,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   app.post("/api/v1/idg/meetings", { preHandler: [SCHEDULE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(ScheduleMeetingRequest, request.body);
-    if (!request.context?.locationIds.includes(b.locationId)) throw new NotFoundError("location");
+    assertLocationAllowed(request, b.locationId);
     const res = await service.scheduleMeeting(organizationId, userId, b);
     return reply.code(201).send(res);
   });
@@ -489,7 +553,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 11 — coordinator amends an attendance row.
   app.patch(
     "/api/v1/idg/attendance/:id",
-    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        COORDINATE,
+        childScope("attendance", "idg_attendance"),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -507,7 +578,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 12 — coordinator removes an erroneous attendance row (pre-start only; enforced in service).
   app.delete(
     "/api/v1/idg/attendance/:id",
-    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        COORDINATE,
+        childScope("attendance", "idg_attendance"),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -632,6 +710,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(AddAgendaItemRequest, request.body);
+      if (b.patientId !== undefined) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          b.patientId,
+          caseload,
+        );
+      }
       const res = await service.addAgendaItem(organizationId, userId, id, {
         kind: b.kind,
         patientId: b.patientId,
@@ -643,7 +729,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 16 — update an agenda item.
   app.patch(
     "/api/v1/idg/agenda/:id",
-    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        COORDINATE,
+        childScope("agenda_item", "idg_agenda_item", { patient: true }),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -655,7 +748,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 17 — delete an agenda item.
   app.delete(
     "/api/v1/idg/agenda/:id",
-    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        COORDINATE,
+        childScope("agenda_item", "idg_agenda_item", { patient: true }),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -676,7 +776,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       return withPatientDisplay(
         patientDisplay,
         organizationId,
-        await service.listAgenda(organizationId, id),
+        await filterNullableIdgPatientsInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          await service.listAgenda(organizationId, id),
+          caseload,
+        ),
         request.log,
       );
     },
@@ -690,6 +795,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordDecisionRequest, request.body);
+      if (b.patientId !== null) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          b.patientId,
+          caseload,
+        );
+      }
       const res = await service.recordDecision(organizationId, userId, id, {
         patientId: b.patientId,
         agendaItemId: b.agendaItemId,
@@ -704,7 +817,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // `If-Match` carries the version the caller read (428 absent, 400 malformed, 412 STALE_VERSION when stale).
   app.patch(
     "/api/v1/idg/decisions/:id",
-    { preHandler: [DECIDE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        DECIDE,
+        childScope("decision", "idg_decision", { patient: true }),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -726,7 +846,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       preHandler: [
         DECIDE,
         SUPERSEDE_VALIDATE,
-        SUPERSEDE_PRIOR_SCOPE(service),
+        SUPERSEDE_PRIOR_SCOPE(service, caseload),
         SUPERSEDE_SCOPE,
         SUPERSEDE_QUORATE,
       ],
@@ -762,7 +882,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       return withPatientDisplay(
         patientDisplay,
         organizationId,
-        await service.listDecisions(organizationId, id),
+        await filterNullableIdgPatientsInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          await service.listDecisions(organizationId, id),
+          caseload,
+        ),
         request.log,
       );
     },
@@ -776,6 +901,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateActionItemRequest, request.body);
+      if (b.patientId !== null) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          b.patientId,
+          caseload,
+        );
+      }
       // F-104 — the two D8 link fields travel together or not at all. A kind with no id can never be
       // matched when the artifact closes, and an id with no kind is matched by nothing: either alone
       // produces an item that LOOKS linked and will stay open forever, which is the failure the
@@ -808,7 +941,17 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 22 — update an action item (assignee self-service via idg.act, or coordinator).
   app.patch(
     "/api/v1/idg/action-items/:id",
-    { preHandler: [ACT, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        ACT_OR_COORDINATE,
+        childScope("action_item", "idg_action_item", {
+          patient: true,
+          assigneeOrLocation: true,
+        }),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -828,7 +971,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 23 — delete an action item (pre-adjourn only; enforced in service).
   app.delete(
     "/api/v1/idg/action-items/:id",
-    { preHandler: [COORDINATE, IF_MATCH, IDEMPOTENCY_KEY] },
+    {
+      preHandler: [
+        COORDINATE,
+        childScope("action_item", "idg_action_item", { patient: true }),
+        IF_MATCH,
+        IDEMPOTENCY_KEY,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -846,13 +996,32 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const q = parse(ActionItemListQuerySchema, request.query);
+      const granted = await resolveActorPermissions(request.context!);
+      const requestedAssignee = q.assignee === undefined || q.assignee === "me" ? userId : q.assignee;
+      const readingAnotherMember = requestedAssignee !== userId;
+      if (readingAnotherMember && !granted.has("idg.coordinate")) {
+        throw new ForbiddenError("requires permission 'idg.coordinate' to read another member's action items");
+      }
+      const patientIds = await resolveIdgPatientIdsInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        caseload,
+      );
       return withPatientDisplay(
         patientDisplay,
         organizationId,
-        await service.listActionItems(organizationId, userId, {
-          assignee: q.assignee,
-          status: q.status as IdgActionItemStatus | undefined,
-        }),
+        await service.listActionItems(
+          organizationId,
+          { status: q.status as IdgActionItemStatus | undefined },
+          {
+            assigneeMembershipId: requestedAssignee,
+            locationIds:
+              readingAnotherMember && !hasOrgWideScope(request.context?.roles ?? [])
+                ? request.context?.locationIds ?? []
+                : null,
+            patientIds,
+          },
+        ),
         request.log,
       );
     },
@@ -877,12 +1046,21 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         service.listAgenda(organizationId, id),
         service.listPackets(organizationId, id),
       ]);
-      const patientIds = [
+      const candidatePatientIds = [
         ...new Set([
           ...agenda.map((a) => a.patientId).filter((p): p is string => p !== null),
           ...packets.map((p) => p.patientId),
         ]),
       ];
+      const scopedPatientIds = await resolveIdgPatientIdsInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        caseload,
+      );
+      const patientIds =
+        scopedPatientIds === null
+          ? candidatePatientIds
+          : candidatePatientIds.filter((patientId) => scopedPatientIds.includes(patientId));
       let windows: ReadonlyMap<string, IdgRecertWindowFact> = new Map();
       if (recertPort !== undefined && patientIds.length > 0) {
         try {
@@ -935,6 +1113,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const q = parse(DisciplineNoteListQuerySchema, request.query);
+      if (q.patientId !== undefined) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          q.patientId,
+          caseload,
+        );
+      }
       const membershipId = request.context?.attributes.membershipId;
       const roles = request.context?.roles ?? [];
       const notes = await service.listDisciplineNotes(
@@ -961,10 +1147,16 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
             ),
         },
       );
+      const scopedNotes = await filterNullableIdgPatientsInScope(
+        patientScopeFactsOf(request),
+        organizationId,
+        notes,
+        caseload,
+      );
       return withAuthorNames(
         membershipDisplay,
         organizationId,
-        await withPatientDisplay(patientDisplay, organizationId, notes, request.log),
+        await withPatientDisplay(patientDisplay, organizationId, scopedNotes, request.log),
         request.log,
       );
     },
@@ -984,6 +1176,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateDisciplineNoteRequest, request.body);
+      if (b.patientId !== undefined && b.patientId !== null) {
+        await assertIdgPatientInScope(
+          patientScopeFactsOf(request),
+          organizationId,
+          b.patientId,
+          caseload,
+        );
+      }
       const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
       const note = await service.createDisciplineNote(
         organizationId,
@@ -1013,17 +1213,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         NOTE_WRITE,
         IDEMPOTENCY_KEY,
         IF_MATCH,
-        async (request, reply) => {
-          const { organizationId } = actorOf(request);
-          const { id } = parse(IdParamsSchema, request.params);
-          const meetingId = await service.disciplineNoteMeetingId(organizationId, id);
-          if (meetingId === null) throw new NotFoundError("idg_discipline_note");
-          await (
-            requireAbac("idg.attend", "idg_meeting_scope", {
-              getTarget: () => ({ meetingId }),
-            }) as PreHandler
-          )(request, reply);
-        },
+        childScope("discipline_note", "idg_discipline_note", { patient: true }),
       ],
     },
     async (request) => {
@@ -1068,7 +1258,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 26 — submit a minutes amendment (final minutes only; tenant-admin / compliance scope).
   app.post(
     "/api/v1/idg/minutes/:id/amendments",
-    { preHandler: [AMEND] },
+    { preHandler: [AMEND, childScope("minutes", "idg_minutes")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);

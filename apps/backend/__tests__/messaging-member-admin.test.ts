@@ -96,6 +96,11 @@ const ADMIN = { "x-test-user": "admin_1", "x-test-roles": "org_admin", "x-test-l
 function makeServer() {
   const service: MessagingRouteService = createInMemoryMessagingService({
     seed: {
+      eligibleStaff: [
+        { orgId: ORG, userId: "rn_9", displayName: "Nurse Nine", roles: ["Registered Nurse"] },
+        { orgId: ORG, userId: "lead_a", displayName: "Lead A", roles: ["Clinical Lead"] },
+        { orgId: ORG, userId: "lead_b", displayName: "Lead B", roles: ["Clinical Lead"] },
+      ],
       channels: [
         { channelId: CH_LOC, orgId: ORG, kind: "location", subjectId: LOC_A, members: [] },
         { channelId: CH_CT, orgId: ORG, kind: "care_team", subjectId: "pt_1", members: [] },
@@ -343,6 +348,7 @@ function fakeTx(selects: unknown[][], captured: { insert?: unknown; update?: unk
   const chain = (rows: unknown[]) => {
     const c: Record<string, unknown> = {};
     c.from = () => c;
+    c.innerJoin = () => c;
     c.where = () => c;
     c.limit = async () => rows;
     return c;
@@ -380,7 +386,7 @@ describe("DB service: authorizes and records the real actor", () => {
 
   it("addMember passes the actor userId (not empty) into withOrgContext", async () => {
     const captured: { insert?: unknown } = {};
-    txHolder.tx = fakeTx([[channelLoc], []], captured);
+    txHolder.tx = fakeTx([[channelLoc], [{ id: "membership-rn-9" }], []], captured);
     const svc = createDbMessagingRouteService({} as never);
     await svc.addMember(ORG, { channelId: CH_LOC, userId: "rn_9", actor: leadA });
     expect(txHolder.ctx[0]?.userId).toBe("lead_a");
@@ -413,7 +419,7 @@ describe("DB service: authorizes and records the real actor", () => {
 
   it("addMember on a care_team channel passes for a patient sited at the lead's location", async () => {
     const captured: { insert?: unknown } = {};
-    txHolder.tx = fakeTx([[channelCt("pt_1")], []], captured);
+    txHolder.tx = fakeTx([[channelCt("pt_1")], [{ id: "membership-rn-9" }], []], captured);
     const svc = createDbMessagingRouteService({} as never);
     await svc.addMember(ORG, { channelId: CH_CT, userId: "rn_9", actor: leadA });
     expect(captured.insert).toBeDefined();

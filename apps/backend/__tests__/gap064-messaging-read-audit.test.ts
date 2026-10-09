@@ -55,6 +55,9 @@ function makeServer() {
   const service = createInMemoryMessagingService({
     now: () => new Date("2026-06-15T12:00:00Z"),
     seed: {
+      eligibleStaff: [
+        { orgId: ORG, userId: "rn_1", displayName: "RN One", roles: ["clinical_rn"] },
+      ],
       channels: [
         {
           channelId: CT,

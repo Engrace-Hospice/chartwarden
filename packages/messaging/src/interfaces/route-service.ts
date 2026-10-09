@@ -124,6 +124,13 @@ export interface AlertInboxItem {
   readonly readAt: string | null;
 }
 
+/** Minimum-necessary staff projection for starting a direct conversation. */
+export interface DmEligibleStaffMember {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly roles: readonly string[];
+}
+
 /**
  * The §4.1–4.2 application service the M36 routes compose over. Mutations are idempotent where
  * the spec calls for it (openDm, markRead). Domain failures throw `WardenXError` subclasses the
@@ -183,6 +190,12 @@ export interface MessagingRouteService {
     userId: string,
     peerUserId: string,
   ): Promise<{ channelId: string; created: boolean }>;
+  /** Active staff in the bound organization who may be selected as a DM peer. */
+  searchDmEligibleStaff(
+    orgId: string,
+    userId: string,
+    query: string,
+  ): Promise<readonly DmEligibleStaffMember[]>;
   /** Add a manual member (admin override on auto channels — audited) (§4.2). The service itself
    *  enforces `mayManageChannelMembers` for `input.actor` (FORBIDDEN otherwise) and records the
    *  actor on the write-audit trail. */

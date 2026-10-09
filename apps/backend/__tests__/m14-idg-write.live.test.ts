@@ -248,6 +248,24 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(await eventsFor(m2)).toContain("m14.meeting.started");
   });
 
+  it("two concurrent starts produce one transition and one started event", async () => {
+    const m = await seedMeeting(ORG_A, "packets_ready");
+    const settled = await Promise.allSettled([
+      svc.startMeeting(ORG_A, MEMBER, m),
+      svc.startMeeting(ORG_A, MEMBER, m),
+    ]);
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(
+      settled.find((result): result is PromiseRejectedResult => result.status === "rejected")
+        ?.reason,
+    ).toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION" });
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.meeting.started'",
+      [m],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
   it("attendance record/update/remove (remove soft-excuses; no DELETE grant)", async () => {
     const m = await seedMeeting(ORG_A, "live");
     const att = await svc.recordAttendance(ORG_A, MEMBER, m, {
@@ -660,6 +678,87 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     }
   });
 
+  it("two concurrent adjournments finalize and emit exactly once", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const settled = await Promise.allSettled([
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+    ]);
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const loser = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(loser?.reason).toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION", statusCode: 409 });
+    const { rows } = await admin.query(
+      `SELECT event_type, count(*)::int AS n
+         FROM outbox_event
+        WHERE payload->>'meetingId' = $1
+          AND event_type IN ('m14.meeting.adjourned', 'm14.minutes.signed')
+        GROUP BY event_type`,
+      [m],
+    );
+    expect(rows.find((row) => row.event_type === "m14.meeting.adjourned")?.n).toBe(1);
+    expect(rows.find((row) => row.event_type === "m14.minutes.signed")?.n).toBe(1);
+    expect((await admin.query("SELECT count(*)::int AS n FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].n).toBe(1);
+  });
+
+  it("attendance racing adjournment is either frozen into minutes or refused", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const settled = await Promise.allSettled([
+      svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" }),
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+    ]);
+    expect(settled[1]?.status).toBe("fulfilled");
+    const attendance = settled[0];
+    const snapshot = (await admin.query("SELECT attendance_snapshot FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].attendance_snapshot as Array<{ attendanceId: string }>;
+    if (attendance?.status === "fulfilled") {
+      expect(snapshot.map((row) => row.attendanceId)).toContain(attendance.value.id);
+    } else {
+      expect(attendance?.reason).toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION" });
+    }
+  });
+
+  it("action-item creation racing adjournment is either frozen into minutes or refused", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const settled = await Promise.allSettled([
+      svc.createActionItem(ORG_A, MEMBER, m, {
+        patientId: PATIENT,
+        assignedToMembershipId: MEMBER,
+        dueDate: new Date().toISOString(),
+      }),
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+    ]);
+    expect(settled[1]?.status).toBe("fulfilled");
+    const creation = settled[0];
+    const snapshot = (await admin.query("SELECT action_item_list_snapshot FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].action_item_list_snapshot as Array<{ actionItemId: string }>;
+    if (creation?.status === "fulfilled") {
+      expect(snapshot.map((row) => row.actionItemId)).toContain(creation.value.id);
+    } else {
+      expect(creation?.reason).toMatchObject({ code: "MEETING_NOT_LIVE" });
+    }
+  });
+
+  it("action-item execution remains legal after adjournment while creation/removal are frozen", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const item = await svc.createActionItem(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      assignedToMembershipId: MEMBER,
+      dueDate: new Date().toISOString(),
+    });
+    await svc.adjournMeeting(ORG_A, MEMBER, m, true);
+    await expect(
+      svc.createActionItem(ORG_A, MEMBER, m, {
+        patientId: PATIENT,
+        assignedToMembershipId: MEMBER,
+        dueDate: new Date().toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "MEETING_NOT_LIVE" });
+    await expect(svc.removeActionItem(ORG_A, MEMBER, item.id)).rejects.toMatchObject({
+      code: "MEETING_ADJOURNED",
+    });
+    expect((await svc.updateActionItem(ORG_A, MEMBER, item.id, "in_progress")).status).toBe(
+      "in_progress",
+    );
+  });
+
   it("amendment before the minutes are final → MINUTES_NOT_IN_PROGRESS (409)", async () => {
     const m = await seedMeeting(ORG_A, "live");
     const min = await seedInProgressMinutes(ORG_A, m);
@@ -680,7 +779,11 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const started = await svc.updateActionItem(ORG_A, MEMBER, item.id, "in_progress");
     expect(started.status).toBe("in_progress");
     expect(await eventsFor(item.id)).toContain("m14.action_item.status_changed");
-    const worklist = await svc.listActionItems(ORG_A, MEMBER, { assignee: "me" });
+    const worklist = await svc.listActionItems(
+      ORG_A,
+      {},
+      { assigneeMembershipId: MEMBER, locationIds: null, patientIds: null },
+    );
     expect(worklist.some((i) => i.id === item.id)).toBe(true);
     const removed = await svc.removeActionItem(ORG_A, MEMBER, item.id);
     expect(removed.removed).toBe(true);
@@ -703,6 +806,28 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rescheduled.status).toBe("rescheduled");
     expect(await eventsFor(r)).toContain("m14.meeting.rescheduled");
     expect(await meetingStatus(r)).toBe("rescheduled");
+  });
+
+  it("cancellation freezes prepared attendance and agenda history", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const attendance = await svc.recordAttendance(ORG_A, MEMBER, m, {
+      membershipId: MEMBER,
+      discipline: "rn",
+    });
+    const agenda = await svc.addAgendaItem(ORG_A, MEMBER, m, {
+      kind: "patient_review",
+      patientId: PATIENT,
+    });
+    await svc.cancelMeeting(ORG_A, MEMBER, m, "meeting cancelled");
+    await expect(svc.updateAttendance(ORG_A, MEMBER, attendance.id, "excused")).rejects.toMatchObject({
+      code: "ILLEGAL_MEETING_TRANSITION",
+    });
+    await expect(svc.removeAgendaItem(ORG_A, MEMBER, agenda.id)).rejects.toMatchObject({
+      code: "ILLEGAL_MEETING_TRANSITION",
+    });
+    await expect(
+      svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other" }),
+    ).rejects.toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION" });
   });
 
   it("cancel / reschedule re-derive meeting_carry_forward_count in the same tx (a cancelled meeting is not counted — D8)", async () => {

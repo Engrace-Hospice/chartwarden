@@ -48,6 +48,7 @@ import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   IDG_REQUIRED_QUORUM,
+  IdgStateError,
   isActionableDecisionKind,
   planDecisionRecord,
   planDecisionSupersede,
@@ -60,7 +61,22 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
 import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
 import {
@@ -70,6 +86,7 @@ import {
   patientsNeedingRelease as patientsNeedingReleaseForMeeting,
 } from "./minutes-render-context";
 import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "./routes/idg-enrichment";
+import { assertMeetingWriteAllowed } from "./routes/meeting-write-policy";
 import { mapPacketContent } from "./routes/packet-content";
 import type {
   ActionItemPatchStatus,
@@ -80,6 +97,8 @@ import type {
   DisciplineAddendumRenderEntry,
   DisciplineNoteSnapshotEntry,
   DisciplineNoteView,
+  IdgScopedChildFacts,
+  IdgScopedChildKind,
   IdgRouteService,
   MeetingScheduleView,
   MeetingView,
@@ -920,18 +939,28 @@ export function createDbIdgBackend(
     },
 
     // ── action-item worklist ───────────────────────────────────────────────────────────────────────────
-    async listActionItems(orgId, userId, q): Promise<ActionItemView[]> {
-      const assignee = q.assignee === "me" ? userId : q.assignee;
+    async listActionItems(orgId, q, scope): Promise<ActionItemView[]> {
       return withOrg(orgId, async (tx) => {
         const filters = [
-          assignee !== undefined ? eq(ACT.assignedToMembershipId, assignee) : undefined,
+          eq(ACT.assignedToMembershipId, scope.assigneeMembershipId),
+          scope.locationIds === null
+            ? undefined
+            : scope.locationIds.length === 0
+              ? sql`false`
+              : inArray(MTG.locationId, [...scope.locationIds]),
+          scope.patientIds === null
+            ? undefined
+            : scope.patientIds.length === 0
+              ? isNull(ACT.patientId)
+              : or(isNull(ACT.patientId), inArray(ACT.patientId, [...scope.patientIds])),
           q.status !== undefined ? eq(ACT.status, q.status) : undefined,
         ].filter((f): f is NonNullable<typeof f> => f !== undefined);
         const rows = await tx
-          .select()
+          .select({ actionItem: ACT })
           .from(ACT)
-          .where(filters.length ? and(...filters) : undefined);
-        return rows.map(toActionItemView);
+          .innerJoin(MTG, eq(MTG.id, ACT.idgMeetingId))
+          .where(and(...filters));
+        return rows.map((row) => toActionItemView(row.actionItem));
       });
     },
 
@@ -1185,7 +1214,7 @@ export function createDbIdgBackend(
       overrideAuthorized = false,
     ): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, id);
+        const m = await lockMeeting(tx, id);
         // The route's `per_patient_review_floor_clear` ABAC gate already checked this (403 before the
         // handler runs, or the audited override per GAP-091); the service resolves the SAME facts again as
         // a defense-in-depth backstop for any caller reaching the service directly, and trusts the route's
@@ -1200,7 +1229,7 @@ export function createDbIdgBackend(
           breachingPatients: breaches,
         });
         const at = new Date();
-        await tx
+        const [cancelled] = await tx
           .update(MTG)
           .set({
             status: "cancelled",
@@ -1208,7 +1237,9 @@ export function createDbIdgBackend(
             version: m.version + 1,
             updatedAt: at,
           })
-          .where(eq(MTG.id, id));
+          .where(and(eq(MTG.id, id), eq(MTG.status, m.status), eq(MTG.version, m.version)))
+          .returning({ id: MTG.id });
+        if (!cancelled) throw staleRowError(m.version);
         // D8 — a cancelled meeting no longer counts toward any action item's carry-forward count: re-derive the
         // count of every item it had carried, in this same tx (cheap: one indexed read + ≤1 UPDATE per item).
         await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
@@ -1234,7 +1265,7 @@ export function createDbIdgBackend(
     },
     async rescheduleMeeting(orgId, userId, id, args): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
-        const prior = await loadMeeting(tx, id);
+        const prior = await lockMeeting(tx, id);
         const breaches = await computeReviewFloorBreaches(
           tx,
           orgId,
@@ -1251,10 +1282,12 @@ export function createDbIdgBackend(
           breachingPatients: breaches,
         });
         const at = new Date();
-        await tx
+        const [rescheduled] = await tx
           .update(MTG)
           .set({ status: "rescheduled", version: prior.version + 1, updatedAt: at })
-          .where(eq(MTG.id, id));
+          .where(and(eq(MTG.id, id), eq(MTG.status, prior.status), eq(MTG.version, prior.version)))
+          .returning({ id: MTG.id });
+        if (!rescheduled) throw staleRowError(prior.version);
         // D8 — a rescheduled-away meeting does not count either (its successor counts once if it carries the item).
         await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
         const [next] = await tx
@@ -1291,15 +1324,17 @@ export function createDbIdgBackend(
     },
     async buildPackets(orgId, _userId, id): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, id);
+        const m = await lockMeeting(tx, id);
         const pkts = await tx.select({ id: PKT.id }).from(PKT).where(eq(PKT.idgMeetingId, id));
         const n = pkts.length;
         transitionMeeting(m.status, { type: "BUILD_PACKETS", includedPatientCount: n });
         const at = new Date();
-        await tx
+        const [updated] = await tx
           .update(MTG)
           .set({ status: "packets_building", version: m.version + 1, updatedAt: at })
-          .where(eq(MTG.id, id));
+          .where(and(eq(MTG.id, id), eq(MTG.status, m.status), eq(MTG.version, m.version)))
+          .returning({ id: MTG.id });
+        if (!updated) throw staleRowError(m.version);
         await emit(tx, orgId, "m14.packets.build_started", "idg_meeting", id, {
           meetingId: id,
           includedPatientCount: n,
@@ -1309,13 +1344,15 @@ export function createDbIdgBackend(
     },
     async startMeeting(orgId, userId, id): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, id);
+        const m = await lockMeeting(tx, id);
         transitionMeeting(m.status, { type: "START" });
         const at = new Date();
-        await tx
+        const [updated] = await tx
           .update(MTG)
           .set({ status: "live", actualStart: at, version: m.version + 1, updatedAt: at })
-          .where(eq(MTG.id, id));
+          .where(and(eq(MTG.id, id), eq(MTG.status, "packets_ready"), eq(MTG.version, m.version)))
+          .returning({ id: MTG.id });
+        if (!updated) throw staleRowError(m.version);
         await emit(tx, orgId, "m14.meeting.started", "idg_meeting", id, {
           meetingId: id,
           startedByMembershipId: userId,
@@ -1328,14 +1365,16 @@ export function createDbIdgBackend(
       const minutesMemberNames = await resolveMinutesMemberNames(orgId, id);
       const minutesSite = await resolveMinutesSiteNames(orgId, id, false);
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, id);
+        const m = await lockMeeting(tx, id);
         // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
         transitionMeeting(m.status, { type: "ADJOURN", stepUpFresh });
         const at = new Date();
-        await tx
+        const [adjourned] = await tx
           .update(MTG)
           .set({ status: "adjourned", actualEnd: at, version: m.version + 1, updatedAt: at })
-          .where(eq(MTG.id, id));
+          .where(and(eq(MTG.id, id), eq(MTG.status, "live"), eq(MTG.version, m.version)))
+          .returning({ id: MTG.id });
+        if (!adjourned) throw staleRowError(m.version);
 
         // The commit point: emit every open decision (actionable + patient-scoped → the cross-module seam),
         // freeze packets, finalize the minutes (§2.7).
@@ -1345,10 +1384,17 @@ export function createDbIdgBackend(
           .where(and(eq(DEC.idgMeetingId, id), eq(DEC.status, "open")));
         let decisionsEmittedCount = 0;
         for (const d of openDecisions) {
-          await tx
+          const [emitted] = await tx
             .update(DEC)
             .set({ status: "emitted", emittedAt: at, updatedAt: at })
-            .where(eq(DEC.id, d.id));
+            .where(and(eq(DEC.id, d.id), eq(DEC.status, "open")))
+            .returning({ id: DEC.id });
+          if (!emitted) {
+            throw new IdgStateError(
+              "DECISION_NOT_OPEN",
+              "A decision changed while the meeting was being finalized.",
+            );
+          }
           if (isActionableDecisionKind(d.decisionKind) && d.patientId != null) {
             decisionsEmittedCount += 1;
             await emit(tx, orgId, "idg.decision_recorded", "idg_decision", d.id, {
@@ -1459,7 +1505,7 @@ export function createDbIdgBackend(
         });
 
         const minutesId = await ensureMinutes(tx, orgId, id);
-        await tx
+        const finalized = await tx
           .update(MIN)
           .set({
             status: "final",
@@ -1471,7 +1517,14 @@ export function createDbIdgBackend(
             disciplineNoteSnapshot,
             updatedAt: at,
           })
-          .where(eq(MIN.id, minutesId));
+          .where(and(eq(MIN.id, minutesId), eq(MIN.status, "in_progress")))
+          .returning({ id: MIN.id });
+        if (finalized.length === 0) {
+          throw new IdgStateError(
+            "MINUTES_NOT_IN_PROGRESS",
+            "The minutes have already been finalized.",
+          );
+        }
 
         await emit(tx, orgId, "m14.meeting.adjourned", "idg_meeting", id, {
           meetingId: id,
@@ -1505,7 +1558,8 @@ export function createDbIdgBackend(
     // ── attendance (writes) ────────────────────────────────────────────────────────────────────────────
     async recordAttendance(orgId, _userId, meetingId, args): Promise<AttendanceView> {
       return withOrg(orgId, async (tx) => {
-        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const meeting = await lockMeeting(tx, meetingId);
+        assertMeetingWriteAllowed(meeting.status, "attendance");
         const checkInAt = args.checkedInAt ? new Date(args.checkedInAt) : new Date();
         const status = args.status ?? "present";
         const [row] = await tx
@@ -1546,6 +1600,8 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ATT).where(eq(ATT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
+        const meeting = await lockMeeting(tx, row.idgMeetingId);
+        assertMeetingWriteAllowed(meeting.status, "attendance");
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         const bumped = await tx
           .update(ATT)
@@ -1575,11 +1631,13 @@ export function createDbIdgBackend(
       // No DELETE grant (compromise #2) → soft-remove to `excused` (out of the quorum present-set).
       return withOrg(orgId, async (tx) => {
         const [row] = await tx
-          .select({ id: ATT.id, version: ATT.version })
+          .select({ id: ATT.id, meetingId: ATT.idgMeetingId, version: ATT.version })
           .from(ATT)
           .where(eq(ATT.id, id))
           .limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
+        const meeting = await lockMeeting(tx, row.meetingId);
+        assertMeetingWriteAllowed(meeting.status, "attendance");
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         const bumped = await tx
           .update(ATT)
@@ -1594,7 +1652,8 @@ export function createDbIdgBackend(
     // ── agenda (writes) ────────────────────────────────────────────────────────────────────────────────
     async addAgendaItem(orgId, userId, meetingId, args): Promise<AgendaItemView> {
       return withOrg(orgId, async (tx) => {
-        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const meeting = await lockMeeting(tx, meetingId);
+        assertMeetingWriteAllowed(meeting.status, "agenda");
         const existing = await tx
           .select({ id: AGD.id })
           .from(AGD)
@@ -1624,6 +1683,8 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(AGD).where(eq(AGD.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
+        const meeting = await lockMeeting(tx, row.idgMeetingId);
+        assertMeetingWriteAllowed(meeting.status, "agenda");
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         return {
           id: row.id,
@@ -1643,11 +1704,13 @@ export function createDbIdgBackend(
       // No DELETE grant + no tombstone column on the append-only agenda (compromise #2) → tenant-checked no-op.
       return withOrg(orgId, async (tx) => {
         const [row] = await tx
-          .select({ id: AGD.id, version: AGD.version })
+          .select({ id: AGD.id, meetingId: AGD.idgMeetingId, version: AGD.version })
           .from(AGD)
           .where(eq(AGD.id, id))
           .limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
+        const meeting = await lockMeeting(tx, row.meetingId);
+        assertMeetingWriteAllowed(meeting.status, "agenda");
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         return { id, removed: true };
       });
@@ -1693,7 +1756,10 @@ export function createDbIdgBackend(
       ]);
       const addendumSite = await resolveMinutesSiteNames(orgId, meetingId, true);
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, meetingId);
+        // Serialize ordinary notes against adjournment so every committed live note is included in the
+        // frozen minutes snapshot. Late addenda take the same parent lock before the minutes lock, keeping
+        // one lock order for adjournment and addendum rendering.
+        const m = await lockMeeting(tx, meetingId);
         // live => an ordinary note; adjourned + in-window + reason => a LATE ADDENDUM (a new row — the frozen
         // minutes snapshot is never touched); anything else => 422. The server clock is the recorded-at.
         const nowAt = new Date();
@@ -1810,7 +1876,7 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [cur] = await tx.select().from(NOTE).where(eq(NOTE.id, id)).limit(1);
         if (!cur) throw new NotFoundError("idg_discipline_note");
-        const m = await loadMeeting(tx, cur.idgMeetingId);
+        const m = await lockMeeting(tx, cur.idgMeetingId);
         if (cur.isAddendum) throw addendumImmutableError(); // append-only: correct with a further addendum
         if (m.status !== "live") throw noteFrozenError();
         assertMayWriteDisciplineNote(
@@ -1861,6 +1927,95 @@ export function createDbIdgBackend(
       });
     },
 
+    async scopedChildFacts(
+      orgId,
+      kind: IdgScopedChildKind,
+      id,
+    ): Promise<IdgScopedChildFacts | null> {
+      return withOrg(orgId, async (tx) => {
+        if (kind === "agenda_item") {
+          const [row] = await tx
+            .select({
+              meetingId: AGD.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: AGD.patientId,
+            })
+            .from(AGD)
+            .innerJoin(MTG, eq(MTG.id, AGD.idgMeetingId))
+            .where(eq(AGD.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        if (kind === "attendance") {
+          const [row] = await tx
+            .select({ meetingId: ATT.idgMeetingId, locationId: MTG.locationId })
+            .from(ATT)
+            .innerJoin(MTG, eq(MTG.id, ATT.idgMeetingId))
+            .where(eq(ATT.id, id))
+            .limit(1);
+          return row ? { ...row, patientId: null, assignedToMembershipId: null } : null;
+        }
+        if (kind === "decision") {
+          const [row] = await tx
+            .select({
+              meetingId: DEC.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: DEC.patientId,
+            })
+            .from(DEC)
+            .innerJoin(MTG, eq(MTG.id, DEC.idgMeetingId))
+            .where(eq(DEC.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        if (kind === "action_item") {
+          const [row] = await tx
+            .select({
+              meetingId: ACT.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: ACT.patientId,
+              assignedToMembershipId: ACT.assignedToMembershipId,
+            })
+            .from(ACT)
+            .innerJoin(MTG, eq(MTG.id, ACT.idgMeetingId))
+            .where(eq(ACT.id, id))
+            .limit(1);
+          return row ?? null;
+        }
+        if (kind === "discipline_note") {
+          const [row] = await tx
+            .select({
+              meetingId: NOTE.idgMeetingId,
+              locationId: MTG.locationId,
+              patientId: NOTE.patientId,
+            })
+            .from(NOTE)
+            .innerJoin(MTG, eq(MTG.id, NOTE.idgMeetingId))
+            .where(eq(NOTE.id, id))
+            .limit(1);
+          return row ? { ...row, assignedToMembershipId: null } : null;
+        }
+        const [row] = await tx
+          .select({ meetingId: MIN.idgMeetingId, locationId: MTG.locationId })
+          .from(MIN)
+          .innerJoin(MTG, eq(MTG.id, MIN.idgMeetingId))
+          .where(eq(MIN.id, id))
+          .limit(1);
+        return row ? { ...row, patientId: null, assignedToMembershipId: null } : null;
+      });
+    },
+
+    async recurringPolicyLocationId(orgId, id): Promise<string | null> {
+      return withOrg(orgId, async (tx) => {
+        const [row] = await tx
+          .select({ locationId: POL.locationId })
+          .from(POL)
+          .where(eq(POL.id, id))
+          .limit(1);
+        return row?.locationId ?? null;
+      });
+    },
+
     // ── decisions (writes) ─────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args): Promise<DecisionView> {
       // Resolved BEFORE the write tx: the seam read opens its own request-scoped tx, and nesting it
@@ -1868,6 +2023,7 @@ export function createDbIdgBackend(
       const carePlanId = await resolveCarePlanIdForDecision(args.patientId, args.decisionKind);
       return withOrg(orgId, async (tx) => {
         const m = await lockMeeting(tx, meetingId); // serialise against a concurrent adjournment
+        assertMeetingWriteAllowed(m.status, "decision");
         // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
         const plan = planDecisionRecord({
           meetingIsLive: m.status === "live",
@@ -2000,7 +2156,8 @@ export function createDbIdgBackend(
     // ── action items (writes) ──────────────────────────────────────────────────────────────────────────
     async createActionItem(orgId, _userId, meetingId, args): Promise<ActionItemView> {
       return withOrg(orgId, async (tx) => {
-        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const meeting = await lockMeeting(tx, meetingId);
+        assertMeetingWriteAllowed(meeting.status, "action_item_create");
         const [row] = await tx
           .insert(ACT)
           .values({
@@ -2044,6 +2201,8 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ACT).where(eq(ACT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
+        const meeting = await lockMeeting(tx, row.idgMeetingId);
+        assertMeetingWriteAllowed(meeting.status, "action_item_follow_up");
         if (!isCoordinator && row.assignedToMembershipId !== userId)
           throw actionItemNotAssigneeError();
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
@@ -2089,12 +2248,9 @@ export function createDbIdgBackend(
           .where(eq(ACT.id, id))
           .limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
-        const [meeting] = await tx
-          .select({ status: MTG.status })
-          .from(MTG)
-          .where(eq(MTG.id, row.meetingId))
-          .limit(1);
-        if (meeting?.status === "adjourned") throw actionItemMeetingAdjournedError();
+        const meeting = await lockMeeting(tx, row.meetingId);
+        if (meeting.status === "adjourned") throw actionItemMeetingAdjournedError();
+        assertMeetingWriteAllowed(meeting.status, "action_item_remove");
         if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
         transitionActionItem(row.status, { type: "cancel" });
         const cancelled = await tx

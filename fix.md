@@ -92,6 +92,19 @@ So when there is something regarding a patient, everybody can see it - Ok
 - In the referral, we should be able to modify the Coverage / Payers, Residence address - Ok
 
 
-
 - RN permission in admission & care plan modules
 - If there is Caregivers & representatives, it should populate their name
+
+
+
+- In "Compose note" in encounters and in notifications under communication, we should not show enums like "nv.sp.assessment" to users
+- Give the possibility to toggle and collapse tabs when clicking on them
+- In Admission, take the tabs (on the sidebar) from "New admission" all the way to "Intake review" and put them as new tabs (All admissions - New admission - Referral Inbox - New referral - Readmit - Discharge/Transfer)
+- Take the tabs (in the sidebar) in the assessment subview and put them as new tabs in the assessment page (/hope, like in the admission)
+- Same for care plans, Orders, Medications, Scheduling (The tabs should be persisted in every pages), Reports, Administration, Organization, Users, Integrations
+- In the patient chart, change the name "Care plan" to "Plan of care"
+- Fix Privacy Requests page UI
+- Comment all about EVV
+- Work on messaging module. Put tags, alerts, handle scope
+- The admin can create users (username, role, temporary password then when the user login the first time he should reset his password) and assign their roles and also reset their passwords
+- We should be able to login via username too

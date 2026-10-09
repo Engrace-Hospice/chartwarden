@@ -196,11 +196,52 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
   });
 
   it("listActionItems + getMinutes return org A's rows", async () => {
-    const items = await service.listActionItems(ORG_A, USER, {});
+    const items = await service.listActionItems(
+      ORG_A,
+      {},
+      { assigneeMembershipId: USER, locationIds: null, patientIds: null },
+    );
     expect(items.some((i) => i.id === seeded[ORG_A].actionItem)).toBe(true);
     const minutes = await service.getMinutes(ORG_A, seeded[ORG_A].meeting);
     expect(minutes.id).toBe(seeded[ORG_A].minutes);
     expect(minutes.status).toBe("in_progress");
+  });
+
+  it("applies assignee, location and patient scope in the action-item SQL query", async () => {
+    await expect(
+      service.listActionItems(
+        ORG_A,
+        {},
+        { assigneeMembershipId: USER, locationIds: [], patientIds: null },
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      service.listActionItems(
+        ORG_A,
+        {},
+        { assigneeMembershipId: USER, locationIds: [seeded[ORG_A].location], patientIds: [] },
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      service.listActionItems(
+        ORG_A,
+        {},
+        { assigneeMembershipId: MEMBER_A, locationIds: null, patientIds: null },
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it("resolves child parent scope under RLS and hides a cross-tenant child", async () => {
+    await expect(
+      service.scopedChildFacts(ORG_A, "action_item", seeded[ORG_A].actionItem),
+    ).resolves.toMatchObject({
+      meetingId: seeded[ORG_A].meeting,
+      locationId: seeded[ORG_A].location,
+      patientId: PATIENT,
+    });
+    await expect(
+      service.scopedChildFacts(ORG_B, "action_item", seeded[ORG_A].actionItem),
+    ).resolves.toBeNull();
   });
 
   it("RLS: org B cannot see org A's meeting through the read service", async () => {

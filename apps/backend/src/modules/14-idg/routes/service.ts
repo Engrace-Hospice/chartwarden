@@ -35,6 +35,7 @@ import type {
 import { ForbiddenError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 import { type PacketContentView, mapPacketContent } from "./packet-content";
+import { assertMeetingWriteAllowed } from "./meeting-write-policy";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedIdgEvent {
@@ -638,6 +639,30 @@ export interface CreateActionItemArgs {
   readonly linkedArtifactId?: string;
 }
 
+/** Child resources whose public id does not itself identify the meeting/location authorization target. */
+export type IdgScopedChildKind =
+  | "agenda_item"
+  | "attendance"
+  | "decision"
+  | "action_item"
+  | "discipline_note"
+  | "minutes";
+
+/** Minimum facts needed to authorize a child route without returning the child itself first. */
+export interface IdgScopedChildFacts {
+  readonly meetingId: string;
+  readonly locationId: string;
+  readonly patientId: string | null;
+  readonly assignedToMembershipId: string | null;
+}
+
+/** SQL/read-model scope for the action-item worklist. `null` means a server-recognized org-wide scope. */
+export interface ActionItemListScope {
+  readonly assigneeMembershipId: string;
+  readonly locationIds: readonly string[] | null;
+  readonly patientIds: readonly string[] | null;
+}
+
 /** The §4.1 route service contract (the routes layer composes over this). */
 export interface IdgRouteService {
   // schedule + recurring policies
@@ -808,8 +833,8 @@ export interface IdgRouteService {
   ): Promise<{ id: string; removed: true }>;
   listActionItems(
     orgId: string,
-    userId: string,
-    q: { assignee?: string; status?: IdgActionItemStatus },
+    q: { status?: IdgActionItemStatus },
+    scope: ActionItemListScope,
   ): Promise<ActionItemView[]>;
   // discipline notes (spec extension)
   /**
@@ -845,6 +870,14 @@ export interface IdgRouteService {
   disciplineNoteMeetingId(orgId: string, id: string): Promise<string | null>;
   /** The owning meeting id of a decision (null when absent/cross-tenant) — for the supersede route's prior-meeting ABAC. */
   decisionMeetingId(orgId: string, id: string): Promise<string | null>;
+  /** Resolve the parent meeting/location (and patient when present) for a child-id route, under org RLS. */
+  scopedChildFacts(
+    orgId: string,
+    kind: IdgScopedChildKind,
+    id: string,
+  ): Promise<IdgScopedChildFacts | null>;
+  /** Resolve an existing recurring policy's location under org RLS. */
+  recurringPolicyLocationId(orgId: string, id: string): Promise<string | null>;
   // minutes
   getMinutes(orgId: string, meetingId: string): Promise<MinutesView>;
   submitAmendment(
@@ -970,6 +1003,7 @@ interface MinutesRow {
 }
 interface RecurringPolicyRow {
   id: string;
+  organizationId: string;
   locationId: string;
   cadenceDays: number;
   active: boolean;
@@ -1135,10 +1169,11 @@ export function createInMemoryIdgBackend(
           coordinatorMembershipId: m.coordinatorMembershipId,
         }));
     },
-    async createRecurringPolicy(_orgId, _userId, args) {
+    async createRecurringPolicy(orgId, _userId, args) {
       const id = nextId("idg-pol");
       const row: RecurringPolicyRow = {
         id,
+        organizationId: orgId,
         locationId: args.locationId,
         cadenceDays: args.cadenceDays,
         active: args.active ?? true,
@@ -1146,16 +1181,28 @@ export function createInMemoryIdgBackend(
       };
       policies.set(id, row);
       emit("m14.schedule.materialised", { recurringPolicyId: id, locationId: args.locationId });
-      return { ...row };
+      return {
+        id: row.id,
+        locationId: row.locationId,
+        cadenceDays: row.cadenceDays,
+        active: row.active,
+        version: row.version,
+      };
     },
-    async updateRecurringPolicy(_orgId, _userId, id, args, expectedVersion) {
+    async updateRecurringPolicy(orgId, _userId, id, args, expectedVersion) {
       const row = policies.get(id);
-      if (!row) throw new NotFoundError("idg_recurring_policy");
+      if (!row || row.organizationId !== orgId) throw new NotFoundError("idg_recurring_policy");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       row.cadenceDays = args.cadenceDays;
       row.active = args.active ?? row.active;
       row.version += 1;
-      return { ...row };
+      return {
+        id: row.id,
+        locationId: row.locationId,
+        cadenceDays: row.cadenceDays,
+        active: row.active,
+        version: row.version,
+      };
     },
 
     // ── meeting lifecycle ────────────────────────────────────────────────────────────────────────────────
@@ -1334,7 +1381,8 @@ export function createInMemoryIdgBackend(
 
     // ── attendance ───────────────────────────────────────────────────────────────────────────────────────
     async recordAttendance(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       const id = nextId("idg-att");
       const row: AttendanceRow = {
         id,
@@ -1359,7 +1407,8 @@ export function createInMemoryIdgBackend(
     async updateAttendance(orgId, _userId, id, status, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       row.status = status;
       row.version += 1;
@@ -1368,7 +1417,8 @@ export function createInMemoryIdgBackend(
     async removeAttendance(orgId, _userId, id, expectedVersion) {
       const row = attendance.get(id);
       if (!row) throw new NotFoundError("idg_attendance");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "attendance");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       attendance.delete(id);
       return { id, removed: true };
@@ -1455,7 +1505,8 @@ export function createInMemoryIdgBackend(
 
     // ── agenda ───────────────────────────────────────────────────────────────────────────────────────────
     async addAgendaItem(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       const id = nextId("idg-agd");
       const row: AgendaRow = {
         id,
@@ -1470,14 +1521,16 @@ export function createInMemoryIdgBackend(
     async updateAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       return { ...row };
     },
     async removeAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       agenda.delete(id);
       return { id, removed: true };
@@ -1491,6 +1544,7 @@ export function createInMemoryIdgBackend(
     // ── decisions ────────────────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args) {
       const m = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(m.status, "decision");
       // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
       const plan = planDecisionRecord({
         meetingIsLive: m.status === "live",
@@ -1600,7 +1654,8 @@ export function createInMemoryIdgBackend(
 
     // ── action items ─────────────────────────────────────────────────────────────────────────────────────
     async createActionItem(orgId, _userId, meetingId, args) {
-      meetingOf(orgId, meetingId);
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "action_item_create");
       planActionItemCreate();
       const id = nextId("idg-act");
       const row: ActionItemRow = {
@@ -1636,7 +1691,8 @@ export function createInMemoryIdgBackend(
     ) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
-      meetingOf(orgId, row.meetingId);
+      const meeting = meetingOf(orgId, row.meetingId);
+      assertMeetingWriteAllowed(meeting.status, "action_item_follow_up");
       if (!isCoordinator && row.assignedToMembershipId !== userId)
         throw actionItemNotAssigneeError();
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
@@ -1654,20 +1710,26 @@ export function createInMemoryIdgBackend(
     async removeActionItem(orgId, _userId, id, expectedVersion) {
       const row = actionItems.get(id);
       if (!row) throw new NotFoundError("idg_action_item");
-      if (meetingOf(orgId, row.meetingId).status === "adjourned")
-        throw actionItemMeetingAdjournedError();
+      const meeting = meetingOf(orgId, row.meetingId);
+      if (meeting.status === "adjourned") throw actionItemMeetingAdjournedError();
+      assertMeetingWriteAllowed(meeting.status, "action_item_remove");
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       actionItems.delete(id);
       return { id, removed: true };
     },
-    async listActionItems(orgId, userId, q) {
-      // `assignee=me` resolves to the caller's membership; in the slice the userId is the membership id.
-      const assignee = q.assignee === "me" ? userId : q.assignee;
+    async listActionItems(orgId, q, scope) {
       return [...actionItems.values()]
         .filter((a) => {
           const m = meetings.get(a.meetingId);
           if (!m || m.organizationId !== orgId) return false;
-          if (assignee !== undefined && a.assignedToMembershipId !== assignee) return false;
+          if (a.assignedToMembershipId !== scope.assigneeMembershipId) return false;
+          if (scope.locationIds !== null && !scope.locationIds.includes(m.locationId)) return false;
+          if (
+            a.patientId !== null &&
+            scope.patientIds !== null &&
+            !scope.patientIds.includes(a.patientId)
+          )
+            return false;
           if (q.status !== undefined && a.status !== q.status) return false;
           return true;
         })
@@ -1784,6 +1846,39 @@ export function createInMemoryIdgBackend(
       if (!row) return null;
       const m = meetings.get(row.meetingId);
       return m && m.organizationId === orgId ? row.meetingId : null;
+    },
+    async scopedChildFacts(orgId, kind, id) {
+      const child =
+        kind === "agenda_item"
+          ? agenda.get(id)
+          : kind === "attendance"
+            ? attendance.get(id)
+            : kind === "decision"
+              ? decisions.get(id)
+              : kind === "action_item"
+                ? actionItems.get(id)
+                : kind === "discipline_note"
+                  ? notes.get(id)
+                  : [...minutes.values()].find((row) => row.id === id);
+      if (!child) return null;
+      const meeting = meetings.get(child.meetingId);
+      if (!meeting || meeting.organizationId !== orgId) return null;
+      const patientId =
+        "patientId" in child && typeof child.patientId === "string" ? child.patientId : null;
+      const assignedToMembershipId =
+        "assignedToMembershipId" in child && typeof child.assignedToMembershipId === "string"
+          ? child.assignedToMembershipId
+          : null;
+      return {
+        meetingId: child.meetingId,
+        locationId: meeting.locationId,
+        patientId,
+        assignedToMembershipId,
+      };
+    },
+    async recurringPolicyLocationId(orgId, id) {
+      const row = policies.get(id);
+      return row?.organizationId === orgId ? row.locationId : null;
     },
 
     // ── minutes ──────────────────────────────────────────────────────────────────────────────────────────
