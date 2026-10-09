@@ -1097,6 +1097,8 @@ export const barcodeScanEvent = pgTable('barcode_scan_event', {
   scannedExpirationDate: date('scanned_expiration_date'),
   patientWristbandScannedAt: timestamp('patient_wristband_scanned_at', { withTimezone: true }),
   patientWristbandPayloadDigest: text('patient_wristband_payload_digest'), // hash; PHI-equivalent payload never logged
+  // As built (GAP-020): `patient_wristband_payload_digest` is the digest M5's verifier computed from the scanned payload (an OUTPUT, not an on-file comparand);
+  // plus wristband_check, wristband_generation, wristband_matched_patient_id, patient_id and medication_order_id (migration 0851) - see the As-built section.
 
   matchResult: text('match_result').notNull(),                             // 'match' | 'wrong_drug' | 'wrong_patient' | 'expired' | 'no_order_active'
 
@@ -2236,7 +2238,7 @@ Module 13 is "Locked" when every line below is checked.
 
 - [ ] Each individual right's mismatch produces a 422 with the specific failed-right names echoed.
 - [ ] The five-rights violation produces an audit business event even without a DB write.
-- [ ] BCMA scan integration adds the wristband-payload-digest verification; mismatch produces wrong-patient failure.
+- [x] BCMA scan integration verifies the scanned wristband through M5's `PatientWristbandVerifier` (a verdict, not a digest comparison); anything but `verified` produces a wrong-patient failure while the tenant requires a wristband (default). **As built (GAP-020, 2026-10-08):** see "As built - BCMA wristband verification" below. A scan is still optional: an administration with no `barcodeScan` skips BCMA (mandatory-scan-by-location is NOT built).
 
 ### Late-entry tier (D8)
 
@@ -2343,3 +2345,21 @@ Module 13 is "Locked" when every line below is checked.
 -----
 
 **Lock status:** All 18 decisions (D1–D18) resolved. Module 13 is buildable now. The following items are expected to complete only when their downstream modules exist and are tracked as forward seams, not open decisions: M14 IDG packet's administration-since-last-IDG view when M14 locks; M21 comfort-kit replenishment + return workflow when M21 locks (fixture-driven consumer ships today); M28 FHIR `MedicationAdministration` projection when M28 locks; M30 HQRP medication-administration measures when M30 locks; M31 portal caregiver-attested capture surface + lay-language administration summary when M31 locks; M33 operational dashboards when M33 locks; M37 IPU IV-pump verification overlay when M37 locks. The controlled-substance perpetual inventory log report (the dispense-vs-administered-vs-wasted-vs-remaining reconciliation per 21 CFR 1304) is a Phase-2 deliverable provisionally owned by M30; M13 ships the administration-side data today.
+
+---
+
+## As built - BCMA wristband verification (GAP-020, 2026-10-08)
+
+The `wrong_patient` arm of the §2.9 BCMA scan had no on-file value to compare against: nothing stored a wristband anywhere, so the arm was unreachable. It is armed now. **Scope boundary: this makes a scan that is submitted verify the patient. It does not make a scan mandatory** - an administration recorded with no `barcodeScan` still skips BCMA entirely; mandatory-scan-by-location (with a documented IPU override reason) is a separate product decision and is not built. Do not describe BCMA as "enforced".
+
+- **Verdict, not digest.** M13 holds no wristband material. `recordAdministration` and `recordCaregiverAttested` both call one helper (`administration-safety-gates.ts` `verifyBedsideWristband`) that sends the RAW scanned payload and the ORDER's patient to M5's `PatientWristbandVerifier` seam and reads back `{ status, generation, scannedDigest, matchedPatientId }`. The pure decider (`@wardenx/emar` `evaluateBarcodeScan`) takes `{ wristband: { required, status } }`: `verified` passes; with the policy on, every other status is `wrong_patient`; with it off, `not_presented`/`not_on_file` pass but a band that was scanned and is wrong (`mismatch`/`superseded`/`voided`/`malformed`) still refuses. Precedence is unchanged (no_order_active, patient, drug, expiry).
+- **Policy.** `administration_policy.bcma_wristband_required` (migration 0851, default TRUE, fail closed; `PUT /admin/administration-policy` carries it behind the existing step-up). The caregiver-attested path forces `required = false` (a family caregiver at home has no band): a bandless caregiver scan passes, a presented band is still verified. That is a product decision recorded in the design, not a code accident.
+- **Time.** `asOf` is SERVER time on every ordinary write, so a client cannot backdate a scan to resurrect a superseded band. Only the offline-sync replay (`offlineSync` sets an internal `viaOfflineSync` flag; it is never read from a request) verifies against the device's `wristbandScannedAt` (clamped to <= now, falling back to `offlineCapture.capturedAt`), in `offline_sync` mode: a band that was ACTIVE at the scan still verifies after a reprint for up to 72 h (`OFFLINE_WRISTBAND_MAX_AGE_MS`); a VOIDED generation never verifies. No mobile offline client exists in the repo yet, so this is proven only with synthetic `offlineCapture` rows in `m13-emar-write.live.test.ts`. `offlineSync` still loops `recordAdministration` and stops at the first failure (earlier rows are committed, later ones unprocessed) - a per-row result contract and the Sync Issues queue are NOT built.
+- **Fail closed.** An unbound verifier answers `not_on_file`; a verifier that throws (deny-stub, outage) is a 503 `WRISTBAND_VERIFIER_UNAVAILABLE`, never a pass. When the policy is off and no band is presented, M5 is not asked (an M5 outage must not block a tenant that does not use wristbands).
+- **Near misses are kept.** A refused scan (any unsafe `match_result`) writes its `barcode_scan_event` row (`administration_record_id` NULL, `patient_id`, `medication_order_id`, `wristband_matched_patient_id`) in its OWN committed transaction immediately before the `BARCODE_VERIFICATION_FAILED` throw, at both call sites; the M4 write-audit trigger on the table is the audit record (no separate `m13.*` event). An offline replay or double-submit can insert more than one near-miss row; that is accepted. The error carries `details[0].code = WRISTBAND_<STATUS>` so the UI can say what to do. The eraser removes near-miss rows by `patient_id`.
+- **Request shape.** `barcodeScan.patientWristbandPayload` (raw, max 64) and `wristbandScannedAt` replace the free-text `patientWristbandPayloadDigest`; the raw payload is never a column. Legacy free-text scans are `malformed` and refused when the policy is on.
+- **Order identity.** `patientWristbandPayloadDigest` is removed from the order-identity port: the order carries no patient-identity secrets.
+
+## Changelog addendum - 2026-10-08
+
+- GAP-020 residual: BCMA `wrong_patient` armed via M5's `PatientWristbandVerifier`; `administration_policy.bcma_wristband_required`; `barcode_scan_event` gains `wristband_check`, `wristband_generation`, `wristband_matched_patient_id`, `patient_id`, `medication_order_id`; refused scans persist a near-miss row.
