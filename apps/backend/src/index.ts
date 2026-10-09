@@ -825,6 +825,7 @@ import {
   M22_OUTBOX_EVENTS,
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
+  buildAppealPacketRenderGuard,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -1001,6 +1002,7 @@ import {
   buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
+  buildSeamAppealSourcePorts,
   createDrizzleRemittanceEraseStore,
   m25X12WorkerPortFromEnv,
   mountM25Routes,
@@ -4779,7 +4781,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
-            writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher),
+            // GAP-036 - the appeal packet reads the claim copy (M23) and the enclosure facts (M22) through their
+            // published seams, so a bad enclosure id is refused at submit.
+            writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher, {
+              appealSources: buildSeamAppealSourcePorts(),
+            }),
             ingestService: m25IngestService,
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
@@ -9406,6 +9412,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // seam — each opens its own `withOrgContext` per call, so sharing an instance would buy nothing.
           buildM22DocumentRequestConsumer({
             store: createDrizzleDocumentSeamStore(dbHandle.db),
+            // GAP-036 - the appeal packet re-verifies every enclosure it names (still visible, active, not Part 2)
+            // at render time: a document can change class between submit and render.
+            renderGuard: buildAppealPacketRenderGuard(() => getSeam("DocumentReader")),
             // A gate refusal is a settled decision, not a delivery failure — the row completes, so without
             // this sink a refused SUD/BAA render would be silent. Not the DLQ path (that is a throw).
             onRefusal: (r) =>

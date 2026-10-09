@@ -4,14 +4,20 @@
 // case under the acting org's RLS - never taken from the request. Only the biller's own narrative and the
 // documents they chose to attach come from the submit input.
 import { type DbClient, schema } from "@wardenx/db";
-import { type AppealPacketRenderPayload, buildAppealPacketRenderPayload } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import {
+  type AppealPacketRenderPayload,
+  NotFoundError,
+  WardenXError,
+  buildAppealPacketRenderPayload,
+} from "@wardenx/types";
 import { eq } from "drizzle-orm";
+import { type AppealSourcePorts, describeEnclosures, loadRemitCopy } from "./appeal-packet-sources";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 export interface SubmittedAppealFacts {
   readonly id: string;
+  readonly organizationId: string;
   readonly denialCaseId: string;
   readonly claimId: string;
   readonly tier: AppealPacketRenderPayload["tier"];
@@ -21,6 +27,8 @@ export interface SubmittedAppealFacts {
 export interface AppealPacketSubmitInput {
   readonly appealNarrative: string;
   readonly attachedDocumentIds: readonly string[];
+  /** An existing M22 document the biller assembled as the medical-records bundle; validated like any enclosure. */
+  readonly medicalRecordsBundleDocumentId?: string;
   readonly goodCauseJustification?: string;
 }
 
@@ -29,6 +37,7 @@ export async function loadAppealPacketPayload(
   appeal: SubmittedAppealFacts,
   input: AppealPacketSubmitInput,
   submittedAt: Date,
+  sources: AppealSourcePorts,
 ): Promise<AppealPacketRenderPayload> {
   const DC = schema.denialCase;
   const rows = await tx
@@ -43,6 +52,34 @@ export async function loadAppealPacketPayload(
     .limit(1);
   const denial = rows[0];
   if (!denial) throw new NotFoundError("denial case not found");
+
+  // The claim M23 holds (header, lines, and the patient every enclosure must belong to). Read, never assumed: a
+  // packet whose claim cannot be read is refused rather than filed with a reference and no content.
+  const claim = await sources.claims().claimCopyForAppeal(appeal.organizationId, appeal.claimId);
+  if (!claim) {
+    throw new WardenXError(
+      "APPEAL_CLAIM_UNAVAILABLE",
+      "the claim for this appeal cannot be read, so the packet cannot be assembled",
+      422,
+    );
+  }
+  const enclosures = await describeEnclosures(
+    sources.documents(),
+    appeal.organizationId,
+    claim.patientId,
+    input.attachedDocumentIds,
+    input.medicalRecordsBundleDocumentId,
+  );
+  const remitCopy = denial.remittanceLineId
+    ? await loadRemitCopy(tx, appeal.organizationId, denial.remittanceLineId)
+    : null;
+  if (denial.remittanceLineId && !remitCopy) {
+    throw new WardenXError(
+      "APPEAL_REMITTANCE_UNAVAILABLE",
+      "the remittance line for this denial cannot be read, so the packet cannot be assembled",
+      422,
+    );
+  }
   return buildAppealPacketRenderPayload({
     appealCaseId: appeal.id,
     denialCaseId: appeal.denialCaseId,
@@ -51,7 +88,10 @@ export async function loadAppealPacketPayload(
     tierDeadlineAt: appeal.tierDeadlineAt.toISOString(),
     submittedAt: submittedAt.toISOString(),
     appealNarrative: input.appealNarrative,
-    attachedDocumentIds: input.attachedDocumentIds,
+    attachedDocuments: enclosures.attached,
+    claimCopy: claim.copy,
+    ...(remitCopy ? { remitCopy } : {}),
+    ...(enclosures.bundle ? { medicalRecordsBundle: enclosures.bundle } : {}),
     denial: {
       carcCode: denial.carcCode,
       rarcCode: denial.rarcCode ?? null,

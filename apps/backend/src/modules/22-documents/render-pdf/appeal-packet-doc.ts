@@ -2,9 +2,131 @@
 // typed AppealPacketRenderPayload -> a {@link DocModel} (GAP-036). Pure. Unlike the tolerant builders, a packet
 // that fails its schema THROWS (the render consumer retries then dead-letters): this letter goes to a MAC / QIC /
 // ALJ, and a silently half-empty filing is worse than a visible failed render.
+//
+// What the filing carries (Layer 1): the letter, the as-submitted claim (header + lines), the 835 payment detail
+// (adjustments with CARC/group, remarks with RARC), and the enclosures NAMED (title, date, kind) - the supporting
+// documents themselves are delivered separately by the biller (merging document bytes is a separate, PHI-bearing
+// step). An 837I has no wet signature, so the claim enclosure is the as-submitted electronic claim.
 import { type AppealPacketRenderPayload, assertAppealPacketRenderPayload } from "@wardenx/types";
 import { type Block, type DocModel, latestInstant } from "./doc-model";
 import { fmtDate, fmtInstant, humanize, shortId } from "./shared";
+
+/** Integer cents -> "$12,345.00" (sign-aware; deterministic, never the viewer's locale). */
+export function fmtCents(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+function claimCopyBlocks(p: AppealPacketRenderPayload): Block[] {
+  const c = p.claimCopy;
+  return [
+    { kind: "heading", level: 2, text: "Enclosure A - As-submitted claim" },
+    {
+      kind: "paragraph",
+      text: "The electronic institutional claim (837I) as submitted to the payer. It carries a submission attestation, not a handwritten signature.",
+      muted: true,
+    },
+    {
+      kind: "facts",
+      rows: [
+        ["Claim control number", c.controlNumber],
+        ["Type of bill", c.tob],
+        ["Service period", `${fmtDate(c.serviceFrom)} to ${fmtDate(c.serviceTo)}`],
+        ["Total charges", fmtCents(c.totalChargeCents)],
+        ["Claim status", humanize(c.state)],
+      ],
+    },
+    {
+      kind: "table",
+      columns: [
+        { header: "Line", weight: 1 },
+        { header: "Rev code", weight: 2 },
+        { header: "HCPCS", weight: 2 },
+        { header: "Service dates", weight: 4 },
+        { header: "Units", weight: 1 },
+        { header: "Charge", weight: 3 },
+      ],
+      rows: c.lines.map((l) => [
+        String(l.lineNumber),
+        l.revenueCode,
+        l.hcpcsCode ?? "-",
+        `${fmtDate(l.serviceFrom)} - ${fmtDate(l.serviceTo)}`,
+        String(l.units),
+        fmtCents(l.chargeCents),
+      ]),
+      emptyText: "The claim carries no service lines.",
+    },
+  ];
+}
+
+function remitCopyBlocks(p: AppealPacketRenderPayload): Block[] {
+  const r = p.remitCopy;
+  if (!r) {
+    return [
+      { kind: "heading", level: 2, text: "Enclosure B - Remittance advice" },
+      {
+        kind: "paragraph",
+        text: "Not applicable: the denial was raised before a remittance advice (835) was issued.",
+        muted: true,
+      },
+    ];
+  }
+  return [
+    { kind: "heading", level: 2, text: "Enclosure B - Remittance advice (835)" },
+    {
+      kind: "facts",
+      rows: [
+        ["Received", fmtInstant(r.receivedAt)],
+        ["Payment method", humanize(r.paymentMethod)],
+        ["Check / EFT trace", r.checkOrEftTrace ?? "-"],
+        ["Payer claim number (ICN)", r.payerIcn ?? "-"],
+        ["Claim status code", String(r.claimStatusCode)],
+        ["Charged", fmtCents(r.chargeCents)],
+        ["Paid", fmtCents(r.paidCents)],
+        ["Patient responsibility", fmtCents(r.patientResponsibilityCents)],
+      ],
+    },
+    {
+      kind: "table",
+      columns: [
+        { header: "Group", weight: 2 },
+        { header: "Reason code (CARC)", weight: 3 },
+        { header: "Adjustment", weight: 3 },
+      ],
+      rows: r.adjustments.map((a) => [a.group, a.carc, fmtCents(a.amountCents)]),
+      emptyText: "No claim-level adjustments.",
+    },
+    {
+      kind: "table",
+      columns: [
+        { header: "Remark type", weight: 3 },
+        { header: "Remark code (RARC)", weight: 3 },
+      ],
+      rows: r.remarks.map((m) => [m.kind, m.rarc]),
+      emptyText: "No remark codes.",
+    },
+    {
+      kind: "table",
+      columns: [
+        { header: "Rev code", weight: 2 },
+        { header: "HCPCS", weight: 2 },
+        { header: "Charged", weight: 3 },
+        { header: "Paid", weight: 3 },
+      ],
+      rows: r.serviceLines.map((l) => [
+        l.revenueCode ?? "-",
+        l.hcpcsCode ?? "-",
+        fmtCents(l.chargeCents),
+        fmtCents(l.paidCents),
+      ]),
+      emptyText: "No service-line payment detail.",
+    },
+  ];
+}
 
 export function buildAppealPacketDoc(payload: unknown): DocModel {
   const p: AppealPacketRenderPayload = assertAppealPacketRenderPayload(payload);
@@ -15,7 +137,7 @@ export function buildAppealPacketDoc(payload: unknown): DocModel {
       rows: [
         ["Appeal case", shortId(p.appealCaseId)],
         ["Appeal level", humanize(p.tier)],
-        ["Claim", shortId(p.claimId)],
+        ["Claim control number", p.claimCopy.controlNumber],
         ["Denial reason (CARC)", p.denial.carcCode],
         ["Remark (RARC)", p.denial.rarcCode ?? "-"],
         ["Amount in dispute", `$${p.denial.dollarValue}`],
@@ -41,35 +163,37 @@ export function buildAppealPacketDoc(payload: unknown): DocModel {
   blocks.push(
     { kind: "heading", level: 1, text: "Statement of appeal" },
     { kind: "paragraph", text: p.appealNarrative },
-    { kind: "heading", level: 1, text: "Supporting documents" },
+    { kind: "heading", level: 1, text: "Enclosures" },
+    ...claimCopyBlocks(p),
+    ...remitCopyBlocks(p),
+    { kind: "heading", level: 2, text: "Enclosure C - Supporting documents" },
     {
       kind: "table",
       columns: [
         { header: "#", weight: 1 },
-        { header: "Document reference", weight: 6 },
+        { header: "Document", weight: 6 },
+        { header: "Type", weight: 3 },
+        { header: "Dated", weight: 3 },
       ],
-      rows: p.supportingDocuments.map((d) => [String(d.ordinal), shortId(d.documentId)]),
+      rows: p.supportingDocuments.map((d) => [
+        String(d.ordinal),
+        d.title,
+        humanize(d.documentKind),
+        fmtDate(d.documentDate),
+      ]),
       emptyText: "No supporting documents were attached.",
     },
-    { kind: "heading", level: 1, text: "Enclosures" },
-    {
-      kind: "facts",
-      rows: [
-        ["Signed claim copy", `Claim ${shortId(p.signedClaimCopyRef.claimId)}`],
-        [
-          "Remittance advice copy",
-          p.remitCopyRef.remittanceLineId
-            ? `Remittance line ${shortId(p.remitCopyRef.remittanceLineId)}`
-            : "Not applicable (denial raised before a remittance advice)",
-        ],
-        [
-          "Medical records bundle",
-          p.medicalRecordsBundleRef
-            ? `Document ${shortId(p.medicalRecordsBundleRef.documentId)}`
-            : "Not attached",
-        ],
-      ],
-    },
+    { kind: "heading", level: 2, text: "Enclosure D - Medical records bundle" },
+    p.medicalRecordsBundleRef
+      ? {
+          kind: "facts",
+          rows: [
+            ["Document", p.medicalRecordsBundleRef.title],
+            ["Type", humanize(p.medicalRecordsBundleRef.documentKind)],
+            ["Dated", fmtDate(p.medicalRecordsBundleRef.documentDate)],
+          ],
+        }
+      : { kind: "paragraph", text: "Not attached.", muted: true },
   );
   return {
     title: p.tierLetterTitle,

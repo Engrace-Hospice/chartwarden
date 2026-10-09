@@ -101,6 +101,44 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
 });
 
 describe("appeal_packet (GAP-036)", () => {
+  const DOC_A = "dddddddd-0000-4000-8000-000000000004";
+  const DOC_B = "eeeeeeee-0000-4000-8000-000000000005";
+  const REMIT_LINE = "ffffffff-0000-4000-8000-000000000006";
+  const claimCopy = {
+    controlNumber: "CCN-2026-0042",
+    tob: "811",
+    state: "denied",
+    serviceFrom: "2026-03-01",
+    serviceTo: "2026-03-31",
+    totalChargeCents: 1_234_500,
+    lines: [
+      {
+        lineNumber: 1,
+        revenueCode: "0651",
+        hcpcsCode: "Q5001",
+        serviceFrom: "2026-03-01",
+        serviceTo: "2026-03-31",
+        units: 31,
+        chargeCents: 1_234_500,
+      },
+    ],
+  };
+  const remitCopy = {
+    remittanceAdviceId: "99999999-0000-4000-8000-000000000009",
+    receivedAt: "2026-04-15T10:00:00.000Z",
+    paymentMethod: "eft",
+    checkOrEftTrace: "TRC123456",
+    payerIcn: "ICN-777",
+    claimStatusCode: 4,
+    chargeCents: 1_234_500,
+    paidCents: 0,
+    patientResponsibilityCents: 0,
+    adjustments: [{ group: "CO", carc: "50", amountCents: 1_234_500 }],
+    remarks: [{ kind: "rarc", rarc: "N115" }],
+    serviceLines: [
+      { revenueCode: "0651", hcpcsCode: "Q5001", chargeCents: 1_234_500, paidCents: 0 },
+    ],
+  };
   const facts = (over: Partial<Parameters<typeof buildAppealPacketRenderPayload>[0]> = {}) => ({
     appealCaseId: "aaaaaaaa-0000-4000-8000-000000000001",
     denialCaseId: "bbbbbbbb-0000-4000-8000-000000000002",
@@ -109,15 +147,27 @@ describe("appeal_packet (GAP-036)", () => {
     tierDeadlineAt: "2026-12-01T00:00:00.000Z",
     submittedAt: "2026-10-08T12:00:00.000Z",
     appealNarrative: "The patient was certified terminally ill; the F2F encounter was timely.",
-    attachedDocumentIds: [
-      "dddddddd-0000-4000-8000-000000000004",
-      "eeeeeeee-0000-4000-8000-000000000005",
+    attachedDocuments: [
+      {
+        documentId: DOC_A,
+        title: "Face-to-face encounter 2026-02-20",
+        documentDate: "2026-02-20T09:00:00.000Z",
+        documentKind: "f2f",
+      },
+      {
+        documentId: DOC_B,
+        title: "Certification of terminal illness",
+        documentDate: "2026-02-18T09:00:00.000Z",
+        documentKind: "cti",
+      },
     ],
+    claimCopy,
+    remitCopy,
     denial: {
       carcCode: "50",
       rarcCode: "N115",
       dollarValue: "1234.50",
-      remittanceLineId: "ffffffff-0000-4000-8000-000000000006",
+      remittanceLineId: REMIT_LINE,
     },
     ...over,
   });
@@ -126,9 +176,16 @@ describe("appeal_packet (GAP-036)", () => {
     const payload = buildAppealPacketRenderPayload(facts());
     expect(appealPacketViolations(payload)).toEqual([]);
     expect(payload.supportingDocuments.map((d) => d.ordinal)).toEqual([1, 2]);
+    expect(payload.supportingDocuments[0]?.title).toBe("Face-to-face encounter 2026-02-20");
     expect(payload.tierLetterTitle).toBe(APPEAL_TIER_LETTERS.redetermination.title);
     expect(payload.signedClaimCopyRef.claimId).toBe(facts().claimId);
-    expect(payload.remitCopyRef.remittanceLineId).toBe(facts().denial.remittanceLineId);
+    expect(payload.remitCopyRef.remittanceLineId).toBe(REMIT_LINE);
+    expect(payload.claimCopy.lines).toHaveLength(1);
+    expect(payload.remitCopy?.adjustments[0]).toEqual({
+      group: "CO",
+      carc: "50",
+      amountCents: 1_234_500,
+    });
   });
 
   it("requires the justification on a late good-cause filing and a non-empty narrative", () => {
@@ -143,7 +200,26 @@ describe("appeal_packet (GAP-036)", () => {
     );
   });
 
-  it("renders the narrative, the document index and the enclosure references as a real PDF", () => {
+  it("a remittance reference and its payment detail must travel together", () => {
+    const { remitCopy: _omit, ...withoutRemit } = facts();
+    expect(() => buildAppealPacketRenderPayload(withoutRemit)).toThrow(/remitCopy: required/);
+    expect(() =>
+      buildAppealPacketRenderPayload(
+        facts({ denial: { ...facts().denial, remittanceLineId: null } }),
+      ),
+    ).toThrow(/remitCopy: must be absent/);
+    // a pre-835 denial (no remittance line) is valid with no remit copy at all
+    expect(
+      appealPacketViolations(
+        buildAppealPacketRenderPayload({
+          ...withoutRemit,
+          denial: { ...facts().denial, remittanceLineId: null },
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("renders the claim lines, the 835 payment detail and the enclosures in words, not short ids", () => {
     const payload = buildAppealPacketRenderPayload(
       facts({
         tier: "reconsideration",
@@ -158,10 +234,48 @@ describe("appeal_packet (GAP-036)", () => {
     const text = textOf(expectValidPdf(bytes));
     expect(text).toContain("Request for Reconsideration");
     expect(text).toContain("The patient was certified terminally ill");
-    expect(text).toContain("dddddddd");
-    expect(text).toContain("eeeeeeee");
     expect(text).toContain("good cause");
     expect(text).toContain("The MAC notice was misdelivered.");
+    // the as-submitted claim: control number, type of bill, lines with revenue code / HCPCS / units / charge
+    expect(text).toContain("CCN-2026-0042");
+    expect(text).toContain("811");
+    expect(text).toContain("0651");
+    expect(text).toContain("Q5001");
+    expect(text).toContain("$12,345.00");
+    // the 835 payment: trace, adjustment (group + CARC + amount), remark
+    expect(text).toContain("TRC123456");
+    expect(text).toContain("ICN-777");
+    expect(text).toContain("CO");
+    expect(text).toContain("N115");
+    // the enclosures are named, not cited by uuid prefix
+    expect(text).toContain("Face-to-face encounter 2026-02-20");
+    expect(text).toContain("Certification of terminal illness");
+    // truthful wording: an 837I carries no wet signature
+    expect(text).toContain("As-submitted claim");
+    expect(text.toLowerCase()).not.toContain("signed claim");
+  });
+
+  it("lists a medical-records bundle by title when the biller attached one", () => {
+    const payload = buildAppealPacketRenderPayload(
+      facts({
+        medicalRecordsBundle: {
+          documentId: "12121212-0000-4000-8000-000000000012",
+          title: "Medical records March 2026",
+          documentDate: "2026-04-01T00:00:00.000Z",
+          documentKind: "encounter",
+        },
+      }),
+    );
+    const text = textOf(
+      expectValidPdf(
+        renderPdfForTemplate(
+          "appeal_packet",
+          { ...payload, aggregateId: payload.appealCaseId, patientId: null },
+          "Appeal Packet",
+        ),
+      ),
+    );
+    expect(text).toContain("Medical records March 2026");
   });
 
   it("fails the render closed on an empty payload instead of filing a blank appeal", () => {

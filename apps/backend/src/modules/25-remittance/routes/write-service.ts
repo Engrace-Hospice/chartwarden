@@ -61,6 +61,8 @@ export interface AppealCreateInput {
 export interface AppealSubmitInput {
   readonly appealNarrative: string;
   readonly attachedDocumentIds: readonly string[];
+  /** An existing M22 document the biller assembled as the medical-records bundle (validated like an enclosure). */
+  readonly medicalRecordsBundleDocumentId?: string;
 }
 /** M25-F03 — a late good-cause filing: the normal submit input plus the documented justification (>= 40). */
 export interface AppealLateGoodCauseInput extends AppealSubmitInput {
