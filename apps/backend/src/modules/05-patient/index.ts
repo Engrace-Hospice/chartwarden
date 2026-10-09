@@ -359,6 +359,7 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import type { M5OutboxPort } from "./deceased-db";
+import type { PatientIdentifierCipher } from "./identifiers/identifier-cipher";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientLifecyclePort as _dbLifecyclePort } from "./patient-lifecycle-db";
@@ -388,7 +389,11 @@ export function mountPatientRoutes(
   db: DbClient,
   outbox: M5OutboxPort,
   privacy: PrivacyOfficerPorts,
-  census: { readonly admissionSummary?: AdmissionCensusSummaryPort } = {},
+  census: {
+    readonly admissionSummary?: AdmissionCensusSummaryPort;
+    /** GAP-010: the per-tenant DEK envelope for ssn / state_id. Absent -> SSN capture answers 503. */
+    readonly identifierCipher?: PatientIdentifierCipher;
+  } = {},
 ): void {
   _registerPatientRoutes(app, {
     service: _dbPatientService(db, outbox, census),
@@ -397,7 +402,9 @@ export function mountPatientRoutes(
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
   _registerPatientAssignmentRoutes(app, { assignments: _dbAssignmentsPort(db, outbox) });
   // GAP-018/019/012 — status, death, identifiers, caregivers, the match queue, unmerge, amendment inbox.
-  _registerPatientLifecycleRoutes(app, { lifecycle: _dbLifecyclePort(db, outbox) });
+  _registerPatientLifecycleRoutes(app, {
+    lifecycle: _dbLifecyclePort(db, outbox, undefined, census.identifierCipher),
+  });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
@@ -412,6 +419,17 @@ export function mountPatientRoutes(
       }),
   });
 }
+
+// GAP-010 — the per-tenant DEK envelope over patient_identifier ssn / state_id (built at the composition root).
+export {
+  IdentifierCipherIntegrityError,
+  IdentifierCipherUnboundError,
+  UNBOUND_IDENTIFIER_CIPHER,
+  createPatientIdentifierCipher,
+  lazyIdentifierKeys,
+  type IdentifierKeyProvider,
+  type PatientIdentifierCipher,
+} from "./identifiers/identifier-cipher";
 
 // GAP-118 — the geocode consumer + the vendor port (fail-closed until a vendor is bound; see geocoder.ts).
 export { buildM5GeocodeAddressConsumer } from "./outbox-consumers/m5-geocode-address";

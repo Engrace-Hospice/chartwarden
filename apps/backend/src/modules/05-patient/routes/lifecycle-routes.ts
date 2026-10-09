@@ -25,6 +25,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidDeceasedDateError } from "../deceased";
 import { InvalidDeceasedTransitionError } from "../deceased-db";
 import {
+  IdentifierCipherIntegrityError,
+  IdentifierCipherUnboundError,
+} from "../identifiers/identifier-cipher";
+import {
   SelfMergeError,
   SourceAlreadyMergedError,
   TargetAlreadyMergedError,
@@ -47,7 +51,6 @@ import {
   type NewIdentifierKind,
   type PatientLifecyclePort,
   PrimaryCaregiverExistsError,
-  SensitiveIdentifierUnsupportedError,
   UnmergeWindowExpiredError,
 } from "../patient-lifecycle";
 import {
@@ -59,6 +62,7 @@ import {
   MatchQueueQuerySchema,
   NotAMatchBodySchema,
   PatchPatientBodySchema,
+  RevealParamsSchema,
   StatementBodySchema,
   StatusBodySchema,
   UnmergeBodySchema,
@@ -79,6 +83,18 @@ const chartScope = (action: string): PreHandler =>
 
 const perm = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const stepUp = (key: string): PreHandler => requireStepUp(key) as PreHandler;
+
+// GAP-010 (§4.7): storing an SSN / state id is a `phi.write_ssn` act on top of `patient.edit_identifiers`, and it
+// needs a fresh step-up. The decision reads the PARSED body (the kind arrives as a client value, so it can only
+// ever ADD a gate); a plain identifier kind passes straight through.
+const SENSITIVE_WRITE_PERMISSION = perm("phi.write_ssn");
+const SENSITIVE_WRITE_STEP_UP = stepUp("phi.write_ssn");
+const SENSITIVE_IDENTIFIER_WRITE_GATE: PreHandler = async (request, reply) => {
+  const kind = parse(IdentifierBodySchema, request.body).kind;
+  if (kind !== "ssn" && kind !== "state_id") return;
+  await SENSITIVE_WRITE_PERMISSION(request, reply);
+  await SENSITIVE_WRITE_STEP_UP(request, reply);
+};
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
@@ -118,8 +134,12 @@ export function mapLifecycleError(e: unknown): unknown {
   }
   if (e instanceof UnknownMergeFieldError) return err("UNKNOWN_MERGE_FIELD", e.message, 422);
   if (e instanceof IdentifierConflictError) return err("IDENTIFIER_CONFLICT", e.message, 409);
-  if (e instanceof SensitiveIdentifierUnsupportedError) {
-    return err("SENSITIVE_IDENTIFIER_UNSUPPORTED", e.message, 422);
+  // GAP-010: no tenant key bound / ring destroyed is a configuration state, not bad input: 503, distinct from 422.
+  if (e instanceof IdentifierCipherUnboundError) {
+    return err("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
+  }
+  if (e instanceof IdentifierCipherIntegrityError) {
+    return err("IDENTIFIER_INTEGRITY_FAILURE", e.message, 500);
   }
   if (e instanceof PrimaryCaregiverExistsError) {
     return err("PRIMARY_CAREGIVER_EXISTS", e.message, 409);
@@ -197,11 +217,15 @@ export function registerPatientLifecycleRoutes(
     },
   );
 
-  // --- §4.3 identifiers (MRN immutable; SSN/state-id deferred to the encrypted path) --------------
+  // --- §4.3 identifiers (MRN immutable; SSN / state-id envelope-encrypted, GAP-010) ----------------
   app.post(
     "/api/v1/patients/:id/identifiers",
     {
-      preHandler: [perm("patient.edit_identifiers"), chartScope("patient.edit_identifiers")],
+      preHandler: [
+        perm("patient.edit_identifiers"),
+        chartScope("patient.edit_identifiers"),
+        SENSITIVE_IDENTIFIER_WRITE_GATE,
+      ],
     },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
@@ -211,7 +235,20 @@ export function registerPatientLifecycleRoutes(
         throw err("MRN_IMMUTABLE", "the MRN is assigned once at creation and is immutable", 409);
       }
       if (body.kind === "ssn" || body.kind === "state_id") {
-        throw mapLifecycleError(new SensitiveIdentifierUnsupportedError(body.kind));
+        // The response carries the kind and last 4, NEVER the value; the SSN/state id is sealed in the port.
+        const stored = await run(() =>
+          lifecycle.addSensitiveIdentifier(
+            organizationId,
+            id,
+            {
+              kind: body.kind as "ssn" | "state_id",
+              value: body.value,
+              issuer: body.issuer ?? null,
+            },
+            userId,
+          ),
+        );
+        return reply.code(201).header("Cache-Control", "no-store").send(stored);
       }
       const created = await run(() =>
         lifecycle.addIdentifier(
@@ -227,6 +264,25 @@ export function registerPatientLifecycleRoutes(
         ),
       );
       return reply.code(201).send(created);
+    },
+  );
+
+  // --- GAP-010 / §4.7 reveal: the ONLY route that returns a decrypted SSN / state id -----------------
+  // POST so it is never cached or prefetched. `phi.read_ssn` + the per-chart scope (a refusal is a 404, never a
+  // 403 that confirms the chart) + a fresh step-up. The access audit is written inside the read's transaction, so
+  // a reveal that cannot be audited returns nothing (unlike the best-effort `auditRead` wrapper).
+  app.post(
+    "/api/v1/patients/:id/identifiers/:identifierId/reveal",
+    {
+      preHandler: [perm("phi.read_ssn"), chartScope("phi.read_ssn"), stepUp("phi.read_ssn")],
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, identifierId } = parse(RevealParamsSchema, request.params);
+      const revealed = await run(() =>
+        lifecycle.revealIdentifier(organizationId, id, identifierId, userId, request.id),
+      );
+      return reply.header("Cache-Control", "no-store").send(revealed);
     },
   );
 

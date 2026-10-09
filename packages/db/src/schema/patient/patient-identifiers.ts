@@ -82,7 +82,9 @@ export const patientIdentifiers = pgTable(
     ),
     ssnBlindIdx: index("patient_identifier_ssn_blind_idx")
       .on(t.organizationId, t.valueBlindIndex)
-      .where(sql`${t.kind} = 'ssn' AND ${t.effectiveTo} IS NULL AND ${t.valueBlindIndex} IS NOT NULL`),
+      .where(
+        sql`${t.kind} = 'ssn' AND ${t.effectiveTo} IS NULL AND ${t.valueBlindIndex} IS NOT NULL`,
+      ),
     publicKindsPlaintext: check(
       "patient_identifier_public_plaintext",
       sql`(${t.kind} IN ('ssn','state_id')) OR (${t.value} IS NOT NULL)`,

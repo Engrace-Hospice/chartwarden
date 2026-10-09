@@ -2,6 +2,7 @@
 // Pure normalizers the service applies to an incoming patient before matching: names upper-cased +
 // whitespace-collapsed, DOB kept ISO, MBI/SSN trimmed of separators, phone reduced to its last 7
 // digits, email lower-cased. Deterministic — same input, same comparable form.
+import { normalizeSsn } from "../identifiers/ssn";
 import type { MatchSubject } from "./matcher";
 
 /** Upper-case, trim, collapse internal whitespace (name comparison form). */
@@ -49,7 +50,9 @@ export function normalizeSubject(raw: RawSubject): MatchSubject {
     firstName: normName(raw.firstName),
     dob: raw.dob.trim(),
     mbi: normIdentifier(raw.mbi),
-    ssn: normIdentifier(raw.ssn),
+    // GAP-010: the nine-number form, so "123-45-6789" and "123456789" probe the same blind-index token. Only the
+    // INCOMING side is normalized here; stored candidates reach the matcher via the blind-index hit set.
+    ssn: normalizeSsn(raw.ssn),
     primaryAddress: raw.primaryAddress
       ? {
           line1: normName(raw.primaryAddress.line1),
