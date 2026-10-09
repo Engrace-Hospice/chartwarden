@@ -657,7 +657,7 @@ export function buildDdeQueueService(
 
     retry(actor, id, expectedVersion) {
       return mutate(actor, id, (tx, item) =>
-        applyEvent(tx, actor, item, expectedVersion, "retry", {}),
+        applyEvent(tx, actor, item, expectedVersion, "retry", { outcomeCode: null }),
       );
     },
 

@@ -186,8 +186,10 @@ function squash(text: string): string {
 
 /**
  * Best-effort mirror of the server's note screen (`looksLikeMbi` in @wardenx/billing): NFKD-normalise, drop marks and
- * everything that is not a letter or digit, turn a non-ASCII lookalike into a wildcard, and look for any MBI-shaped
- * 11-character window. The server is the authority; this only stops the obvious case before a request is sent.
+ * everything that is not a letter or digit, turn a non-ASCII lookalike into a wildcard of its own kind (a letter where
+ * the MBI has a letter, a numeral where it has a digit), and look for any MBI-shaped 11-character window. A letter
+ * lookalike for a DIGIT (Cyrillic Ze for 3) is a known, accepted gap. The server is the authority; this only stops
+ * the obvious case before a request is sent. Both screens are pinned by one shared vector table.
  */
 export function looksLikeMbi(text: string): boolean {
   return MBI_WINDOW.test(squash(text));
@@ -241,6 +243,7 @@ export function validateOutcome(
 /** True for a real calendar date written `YYYY-MM-DD` (2026-02-31 is not one). */
 export function isRealDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (Number(value.slice(0, 4)) < 1) return false; // Postgres has no year 0
   const d = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }

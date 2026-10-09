@@ -46,6 +46,8 @@ export function ddeDeadlineStatus(item: DdeDeadlineFacts, asOf: string): DdeDead
 /** True for a real calendar date written `YYYY-MM-DD` (2026-02-31 is not one). */
 export function isRealCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  // Postgres has no year 0 (and a JS Date maps 0000 to 1900-ish ranges): require year >= 1.
+  if (Number(value.slice(0, 4)) < 1) return false;
   const d = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }

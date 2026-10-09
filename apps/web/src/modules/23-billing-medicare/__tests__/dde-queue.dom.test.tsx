@@ -19,6 +19,7 @@ import {
   validateSubmission,
 } from "../dde-queue-model";
 import { clearAllDrafts, clearDraft, loadDraft, saveDraft } from "../write-workflow";
+import { MBI_CLEAN, MBI_DIGIT_LOOKALIKE_GAP, MBI_HIDDEN } from "./_mbi-vectors";
 
 const ITEM = "c3d4e5f6-0000-4000-8000-000000000001";
 const ITEM2 = "c3d4e5f6-0000-4000-8000-000000000002";
@@ -562,5 +563,23 @@ describe("dates and drafts", () => {
     expect(loadDraft("dde:x")).toBeTruthy();
     clearAllDrafts();
     expect(loadDraft("dde:x")).toBeUndefined();
+  });
+});
+
+describe("the shared MBI vectors (web mirror)", () => {
+  it.each(MBI_HIDDEN)("flags an MBI hidden by %s", (_n, note) => {
+    expect(looksLikeMbi(note)).toBe(true);
+  });
+  it.each(MBI_CLEAN)("passes ordinary text: %s", (note) => {
+    expect(looksLikeMbi(note)).toBe(false);
+  });
+  it.each(MBI_DIGIT_LOOKALIKE_GAP)(
+    "does not catch a letter used as a digit lookalike (accepted gap): %s",
+    (note) => {
+      expect(looksLikeMbi(note)).toBe(false);
+    },
+  );
+  it("refuses year 0000", () => {
+    expect(isRealDate("0000-01-01")).toBe(false);
   });
 });

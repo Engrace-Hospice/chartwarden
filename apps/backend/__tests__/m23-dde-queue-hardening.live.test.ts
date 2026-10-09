@@ -323,6 +323,40 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       ).rejects.toThrow(/outcome_state_chk/);
     });
 
+    it("clears the outcome code when a returned item is reopened", async () => {
+      const noe = await seedNoe(admin);
+      const [id, v] = await submitted("noe", noe);
+      const returned = await post(`/${id}/record-outcome`, asA(), {
+        expectedVersion: v,
+        outcome: "returned",
+        rtpReasonCode: "37001",
+        outcomeCode: "rtp",
+      });
+      expect(returned.json().outcomeCode).toBe("rtp");
+      const retried = await post(`/${id}/retry`, asA(), { expectedVersion: v + 1 });
+      expect(retried.json()).toMatchObject({ state: "in_progress", outcomeCode: null });
+    });
+
+    it("refuses year 0000 (Postgres has no year 0) for both dates with a 422, not a 500", async () => {
+      const noe = await seedNoe(admin);
+      const [id, v] = await submitted("noe", noe);
+      expect((await accept(id, v, { macAcceptedOn: "0000-01-01" })).statusCode).toBe(422);
+      const svc = buildDdeQueueService(live.handle.db as never);
+      await expect(
+        svc.create(
+          {
+            organizationId: ORG_A,
+            userId: USER_A,
+            roles: [],
+            membershipId: MEMBERSHIP_A,
+            stepUpRecent: false,
+            actorKind: "user",
+          },
+          { itemType: "adjustment", subjectId: randomUUID(), deadlineAt: "0000-01-01" },
+        ),
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
+
     it("refuses an impossible calendar date with a 422 (never a 500)", async () => {
       const noe = await seedNoe(admin);
       const [id, v] = await submitted("noe", noe);
@@ -333,6 +367,8 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
   });
 
   describe("the lookup index behind the watchdog's anti-join", () => {
+    // A PROXY for index usability, not a performance guarantee: with seq scans disabled the planner can only use the
+    // index if it matches the probe's columns. It proves the index fits the query; real-table cost is not measured.
     it("is used by the NOT EXISTS probe (planner with seq scans disabled, as it would be on a large table)", async () => {
       await seedNoe(admin);
       await admin.query("BEGIN");
@@ -360,6 +396,8 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       suspended: randomUUID(),
       revoked: randomUUID(),
       outOfReach: randomUUID(),
+      orgWide: randomUUID(),
+      otherOrg: randomUUID(),
     };
     const members: Record<string, string> = {};
     let realApp: FastifyInstance;
@@ -375,11 +413,48 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
         "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'billing.dde.work')",
         [ORG_A, role],
       );
+      // An org-wide billing role (org_admin) reaches every provider entity whatever the membership's own default.
+      const orgWideRole = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'org_admin','Org admin','admin_executive',true) RETURNING id",
+          [ORG_A],
+        )
+      ).rows[0].id;
+      await admin.query(
+        "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'billing.dde.work')",
+        [ORG_A, orgWideRole],
+      );
+      // A perfectly eligible member of ANOTHER organization.
+      const otherRole = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'dde-worker','DDE worker','clinical_staff',true) RETURNING id",
+          [ORG_B],
+        )
+      ).rows[0].id;
+      await admin.query(
+        "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'billing.dde.work')",
+        [ORG_B, otherRole],
+      );
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'otherorg@dde.test')`, [
+        userIds.otherOrg,
+      ]);
+      const otherMember = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,'active',$3) RETURNING id",
+          [userIds.otherOrg, ORG_B, PE_A],
+        )
+      ).rows[0].id;
+      members.otherOrg = otherMember;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [ORG_B, otherMember, otherRole],
+      );
       const plan: [keyof typeof userIds, string, string][] = [
         ["ok", "active", PE_A],
         ["suspended", "suspended", PE_A],
         ["revoked", "revoked", PE_A],
         ["outOfReach", "active", randomUUID()],
+        ["orgWide", "active", randomUUID()],
       ];
       for (const [k, status, pe] of plan) {
         await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
@@ -395,7 +470,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
         members[k] = m;
         await admin.query(
           "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
-          [ORG_A, m, role],
+          [ORG_A, m, k === "orgWide" ? orgWideRole : role],
         );
       }
       realApp = await buildDdeApp(live, {
@@ -406,6 +481,35 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
           ORG_WIDE_BILLING_SCOPE_ROLES,
         ),
       });
+    });
+
+    const freshItem = async (): Promise<string> => {
+      const noe = await seedNoe(admin);
+      return (
+        await realApp.inject({
+          method: "POST",
+          url: BASE,
+          headers: asA(),
+          payload: { itemType: "noe", subjectId: noe },
+        })
+      ).json().ddeWorkItemId;
+    };
+    const assignTo = (id: string, membership: string) =>
+      realApp.inject({
+        method: "POST",
+        url: `${BASE}/${id}/assign`,
+        headers: asA(),
+        payload: { expectedVersion: 0, assigneeMembershipId: membership },
+      });
+
+    it("accepts a member with an org-wide billing role even when their default entity differs", async () => {
+      const res = await assignTo(await freshItem(), members.orgWide as string);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it("refuses an eligible member of ANOTHER organization", async () => {
+      const res = await assignTo(await freshItem(), members.otherOrg as string);
+      expect(res.statusCode).toBe(422);
     });
 
     it("assigns an active member of the entity who holds billing.dde.work, and nobody else", async () => {
@@ -517,9 +621,11 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       expect((err as AggregateError).errors.map((e: Error) => e.message)).toContain("poison");
       expect(await itemFor(fine)).toBe(1);
       expect(await itemFor(poison)).toBe(0);
-      expect(
-        logged.some((l) => l.organizationId === ORG_A && !JSON.stringify(l).includes("notes")),
-      ).toBe(true);
+      const mine = logged.filter((l) => l.organizationId === ORG_A);
+      expect(mine.length).toBeGreaterThan(0);
+      // the message only, never the error object (a database error can embed bound parameters)
+      expect(mine[0]).toMatchObject({ error: "poison" });
+      expect(mine[0]).not.toHaveProperty("err");
     });
 
     it("reports the failures of every org together (an AggregateError), not just the first", async () => {

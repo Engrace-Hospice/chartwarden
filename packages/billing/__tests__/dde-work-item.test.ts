@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // @wardenx/billing — M23 DDE work-queue item lifecycle (ADR-0052 D4) and note rules (D7). PURE: no DB, no clock, no PHI.
 import {
   DDE_ITEM_TYPES,
@@ -12,6 +14,7 @@ import {
   validateDdeNotes,
 } from "@wardenx/billing";
 import { describe, expect, it } from "vitest";
+import { MBI_CLEAN, MBI_DIGIT_LOOKALIKE_GAP, MBI_HIDDEN } from "./_mbi-vectors";
 
 const m = ddeWorkItemMachine;
 const PRE_SUBMITTED: readonly DdeWorkItemState[] = ["queued", "assigned", "in_progress"];
@@ -278,5 +281,41 @@ describe("the Eastern (CMS) day around daylight-saving changes", () => {
     expect(ddeDeadlineStatus(item, medicareReceiptDay(new Date("2026-03-09T04:00:00Z")))).toBe(
       "overdue",
     );
+  });
+});
+
+describe("the shared MBI vectors (server screen)", () => {
+  it.each(MBI_HIDDEN)("flags an MBI hidden by %s", (_n, note) => {
+    expect(validateDdeNotes(note)).toEqual({ ok: false, reason: "NOTES_CONTAIN_MBI" });
+  });
+  it.each(MBI_CLEAN)("passes ordinary text: %s", (note) => {
+    expect(validateDdeNotes(note)).toEqual({ ok: true });
+  });
+  it.each(MBI_DIGIT_LOOKALIKE_GAP)(
+    "does not catch a letter used as a digit lookalike (accepted gap): %s",
+    (note) => {
+      expect(validateDdeNotes(note)).toEqual({ ok: true });
+    },
+  );
+});
+
+describe("isRealCalendarDate year bound", () => {
+  it("refuses year 0000, which Postgres cannot cast", () => {
+    expect(isRealCalendarDate("0000-01-01")).toBe(false);
+    expect(isRealCalendarDate("0001-01-01")).toBe(true);
+  });
+});
+
+describe("the web mirror shares the vector table", () => {
+  it("keeps apps/web's _mbi-vectors.ts byte-identical to this package's, so the two screens cannot diverge silently", () => {
+    const here = readFileSync(join(__dirname, "_mbi-vectors.ts"), "utf8");
+    const web = readFileSync(
+      join(
+        __dirname,
+        "../../../apps/web/src/modules/23-billing-medicare/__tests__/_mbi-vectors.ts",
+      ),
+      "utf8",
+    );
+    expect(web).toBe(here);
   });
 });

@@ -103,7 +103,7 @@ path accepted the notice first, the notice is left untouched and the item takes 
   from the M5 patient chart under existing reveal controls; this ADR does not extend the M23-only
   `MbiUnlockReader` seam.
 - DCN/ICN/receipt numbers and RTP reason codes are stored; free-text `notes` are capped, never copied
-  into events or logs, and rejected when they match the MBI format.
+  into events or logs, and rejected when they match the MBI format. The screen is best-effort (NFKD, marks and non-alphanumerics stripped, non-ASCII lookalikes treated as wildcards of their own kind) and has one known, accepted gap: a non-ASCII *letter* standing in for a *digit* (Cyrillic Ze for 3, Che for 4) is not caught, because allowing letter wildcards at digit positions would flag ordinary non-Latin prose. It guards against accidents, not against a determined attempt to hide an identifier.
 - Attachments, if added later, go through M22 with its access controls rather than the queue table.
 
 ### D8 — Data shape (illustrative)

@@ -1723,7 +1723,11 @@ function reportDdeFailures(
   for (const { organizationId, failures } of byOrg) {
     for (const err of failures) {
       all.push(err);
-      deps.logger?.error({ organizationId, kind, err }, "dde watchdog failed");
+      // The message only: a database error can embed bound parameters, and the full set is already in the AggregateError.
+      deps.logger?.error(
+        { organizationId, kind, error: err instanceof Error ? err.message : String(err) },
+        "dde watchdog failed",
+      );
     }
   }
   if (all.length === 0) return;

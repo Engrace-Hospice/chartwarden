@@ -7,7 +7,8 @@
 // failures before terminating the session, and the step-up screen's "That code didn't verify. Try
 // again" branch, which no longer had a way to render.
 import { describe, expect, it } from "vitest";
-import { signalForStatus } from "./global-response-signal";
+import { loadDraft, saveDraft } from "./ceremony-drafts";
+import { setGlobalResponseSignal, signalForStatus } from "./global-response-signal";
 
 const ORIGIN = "http://localhost:5173";
 
@@ -40,5 +41,21 @@ describe("signalForStatus", () => {
     });
     expect(signalForStatus(200, `${ORIGIN}/api/v1/patients`)).toBeNull();
     expect(signalForStatus(403, `${ORIGIN}/api/v1/patients`)).toBeNull();
+  });
+});
+
+describe("ceremony drafts and a dead session", () => {
+  it("forgets every draft when the session expires, so the next sign-in on this tab cannot restore it", () => {
+    saveDraft("dde:item-1", { panel: "submit", submit: { dcn: "", notes: "PHI-bearing text" } });
+    setGlobalResponseSignal({ kind: "session-expired" });
+    expect(loadDraft("dde:item-1")).toBeUndefined();
+    setGlobalResponseSignal(null);
+  });
+
+  it("keeps drafts through a 503 (the service is down, the session is not)", () => {
+    saveDraft("dde:item-2", { panel: "outcome" });
+    setGlobalResponseSignal({ kind: "service-unavailable" });
+    expect(loadDraft("dde:item-2")).toBeTruthy();
+    setGlobalResponseSignal(null);
   });
 });

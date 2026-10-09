@@ -11,10 +11,13 @@ export const DDE_NOTES_MAX_LENGTH = 500;
 // Best-effort screen. The text is NFKD-normalised (full-width digits become ASCII, accented letters lose their marks),
 // every combining mark is dropped, and what is left is squashed to letters and digits: spaces, tabs, NBSP, dots,
 // dashes and zero-width characters vanish. A remaining NON-ASCII letter (a Cyrillic or Greek lookalike) becomes the
-// wildcard `~` and a non-ASCII number becomes `#` instead of being deleted, so one lookalike cannot shorten the string
-// and slip an MBI through; a wildcard only stands in at a position of its own kind (a letter where the MBI has a
-// letter, a digit where it has a digit), so ordinary non-Latin prose is not flagged. Then ANY 11-character MBI-shaped
-// window is searched, with no boundary assumptions. It can false-positive on odd text; that is the safe side.
+// wildcard `~` and a non-ASCII number becomes `#` instead of being deleted, so one lookalike cannot shorten the string.
+// A wildcard only stands in at a position of its own kind: a letter lookalike where the MBI has a letter, a numeral
+// where it has a digit. KNOWN GAP (accepted): a non-ASCII LETTER used as a lookalike for a DIGIT (Cyrillic Ze for 3,
+// O for 0, Che for 4) becomes `~` at a digit position and does not match, so `1EG4-TE5-MK7<Ze>` passes. Allowing a
+// letter wildcard at digit positions would flag ordinary non-Latin prose, which the screen must not do. Then ANY
+// 11-character MBI-shaped window is searched, with no boundary assumptions. It can false-positive on odd text; that
+// is the safe side. This is a guard against accidents, not a defence against someone determined to hide an MBI.
 const ALPHA = "[AC-HJKMNP-RT-Y~]";
 const ALNUM = "[AC-HJKMNP-RT-Y0-9~#]";
 const DIGIT = "[0-9#]";
