@@ -16,6 +16,7 @@ import type { Rule } from "@wardenx/billing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
 import type { ClaimAssemblyActor, ClaimAssemblySeams } from "../services/claim-assembly";
+import { computeClaimSia } from "../services/claim-assembly-facts";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
@@ -341,7 +342,18 @@ describe("D10 — cosignature-wait visits are excluded from the assembled line b
 
 describe("SIA add-on across Oct 1 — priced with the fiscal year of the death date", () => {
   /** A claim Sep 25 - Oct 5 (2025) with a death on `deceasedDate`, an RN visit in the SIA window, and per-year inputs. */
-  const crossingSeams = (deceasedDate: string, chcCalls: unknown[]) => {
+  const crossingSeams = (
+    deceasedDate: string,
+    chcCalls: unknown[],
+    opts: {
+      locTo?: string;
+      /** wageIndexForCcn answer by fiscal-year start; absent key = the default 1.0000 */
+      providerIndex?: Record<number, string | null>;
+      /** wageIndexForArea answer by fiscal-year start */
+      areaIndex?: Record<number, string | null>;
+      withVisits?: boolean;
+    } = {},
+  ) => {
     const base = buildSeams();
     return buildSeams({
       admission: {
@@ -373,7 +385,7 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
             levelOfCarePeriodId: "loc-1",
             levelOfCare: "routine_home_care",
             from: "2025-09-25",
-            to: "2025-10-05",
+            to: opts.locTo ?? "2025-10-05",
             chcDocumentedHours: null,
             gipAdmissionCriteriaDocumented: null,
           },
@@ -381,17 +393,20 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
       },
       billableEncounters: { forRange: async () => [] },
       signedEncounters: {
-        inWindow: async () => [
-          {
-            encounterId: "rn-1",
-            serviceDate: deceasedDate,
-            discipline: "RN",
-            signed: true,
-            cosignRequired: false,
-            cosigned: false,
-            durationMinutes: 120,
-          },
-        ],
+        inWindow: async () =>
+          opts.withVisits === false
+            ? []
+            : [
+                {
+                  encounterId: "rn-1",
+                  serviceDate: deceasedDate,
+                  discipline: "RN",
+                  signed: true,
+                  cosignRequired: false,
+                  cosigned: false,
+                  durationMinutes: 120,
+                },
+              ],
       },
       referenceData: {
         ...base.referenceData,
@@ -399,6 +414,10 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
           fiscalYearStarting === 2024
             ? RATE_TABLE
             : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+        wageIndexForCcn: async (_ccn, fiscalYearStarting) => {
+          const answer = opts.providerIndex?.[fiscalYearStarting];
+          return answer === null ? null : { factorDecimal: answer ?? "1.0000", cbsaCode: null };
+        },
         chcHourlyRateCents: async (fiscalYearStarting, wageIndexFactor, scope) => {
           chcCalls.push([fiscalYearStarting, wageIndexFactor, scope.serviceFrom]);
           return fiscalYearStarting === 2024 ? 6_000 : 7_000;
@@ -407,7 +426,11 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
       cbsa: {
         // The same reported code, a different published index per fiscal year.
         wageIndexForArea: async (_code, fiscalYearStarting) =>
-          fiscalYearStarting === 2024 ? "0.9000" : "1.2000",
+          opts.areaIndex && fiscalYearStarting in opts.areaIndex
+            ? (opts.areaIndex[fiscalYearStarting] ?? null)
+            : fiscalYearStarting === 2024
+              ? "0.9000"
+              : "1.2000",
         areasFor: async () => ({
           residence: {
             status: "resolved",
@@ -415,7 +438,7 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
             areaKind: "rural",
             countyFips: "41059",
             via: "zip",
-            wageIndex: "1.2000",
+            wageIndex: "0.9000", // the claim-end (or, for a Sep 30 claim, FY2025-start) index
           },
           facility: null,
         }),
@@ -443,6 +466,108 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
     ).assemble(ACTOR, CROSSING);
     expect(chcCalls).toEqual([[2024, "0.9000", "2025-09-25"]]);
     expect(store.sia[0].siaAddOnCents).toBe(12_000); // 2h x 6000
+  });
+
+  const ENDS_SEP_30 = { ...REQUEST, serviceFrom: "2025-09-25", serviceTo: "2025-09-30" };
+
+  it("a claim ending Sep 30 with a death on Oct 1 prices SIA with the death year's rate, index and rate-table date (no silent fallback)", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-01", chcCalls, { locTo: "2025-09-30" }),
+    ).assemble(ACTOR, ENDS_SEP_30);
+    expect(chcCalls).toEqual([[2025, "1.2000", "2025-10-01"]]);
+    expect(store.sia[0].siaAddOnCents).toBe(14_000);
+  });
+
+  it("fails closed with a typed 422 when the death year's provider index is missing", async () => {
+    await expect(
+      buildClaimAssemblyService(
+        makeFakeDb() as never,
+        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", providerIndex: { 2025: null } }),
+      ).assemble(ACTOR, ENDS_SEP_30),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("fails closed with a typed 422 when the death year's area index is missing", async () => {
+    await expect(
+      buildClaimAssemblyService(
+        makeFakeDb() as never,
+        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", areaIndex: { 2025: null } }),
+      ).assemble(ACTOR, ENDS_SEP_30),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("a death on Sep 30 stays in the first fiscal year; a death on Oct 1 moves to the second, on a claim spanning both", async () => {
+    const sep: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-09-30", sep),
+    ).assemble(ACTOR, CROSSING);
+    expect(sep).toEqual([[2024, "0.9000", "2025-09-25"]]);
+
+    store.reset();
+    const oct: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-01", oct),
+    ).assemble(ACTOR, CROSSING);
+    expect(oct).toEqual([[2025, "1.2000", "2025-10-01"]]);
+  });
+
+  it("does not resolve any SIA wage index when no SIA is payable (an all-inpatient deceased claim with an unresolved residence assembles)", async () => {
+    const chcCalls: unknown[] = [];
+    const base = crossingSeams("2025-10-03", chcCalls, { withVisits: false });
+    const seams = buildSeams({
+      ...base,
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-gip",
+            levelOfCare: "general_inpatient_care",
+            from: "2025-09-25",
+            to: "2025-10-05",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: true,
+          },
+        ],
+      },
+      cbsa: {
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async () => ({
+          residence: { status: "unresolved", reason: "zip_unknown" }, // never needed: all care is inpatient
+          facility: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "1.0000",
+          },
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, CROSSING);
+    expect(store.claims.size).toBe(1);
+    expect(chcCalls).toEqual([]); // no SIA payable -> no CHC rate read, no residence index needed
+    expect(store.sia).toHaveLength(0);
+  });
+
+  it("the revalidation path (the same computeClaimSia) resolves nothing and cannot 422 when no SIA is payable", async () => {
+    const untouched = () => {
+      throw new Error("no rate or index may be read when no SIA is payable");
+    };
+    const seams = {
+      referenceData: { chcHourlyRateCents: untouched, wageIndexForCcn: untouched },
+    } as never;
+    const facts = {
+      admission: { deceasedDate: "2025-10-03" },
+      signedEncounters: [],
+      fiscalYearPricing: new Map(), // an unresolved residence would have thrown had the factor been resolved
+    } as never;
+    await expect(computeClaimSia(seams, facts)).resolves.toBeNull();
   });
 
   it("persists each segment's fiscal year and wage-index factor so the second-year math is reproducible", async () => {

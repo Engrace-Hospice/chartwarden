@@ -406,56 +406,107 @@ export async function computeClaimSia(
   seams: ClaimAssemblySeams,
   facts: AssemblyFacts,
 ): Promise<ReturnType<typeof calculateSia> | null> {
-  const { admission, fiscalYearStarting, wageIndex, rateScope, signedEncounters } = facts;
+  const { admission, signedEncounters } = facts;
   if (admission.deceasedDate === null) return null;
-  // The SIA is paid at the CHC hourly rate of the fiscal year the PATIENT DIED in (the SIA window ends on the death
-  // date), wage-adjusted on the same basis as the claim's continuous-home-care days: the residence area index of
-  // that year where the claim is priced by area, else the provider's index. A claim that crosses Oct 1 therefore
-  // prices a death after Oct 1 with the second year's rate and index.
-  const deathFiscalYear = hospiceFiscalYearStarting(admission.deceasedDate);
-  const pricing = facts.fiscalYearPricing.get(deathFiscalYear);
-  let siaFiscalYear = fiscalYearStarting;
-  let siaWageIndex = wageIndex.factorDecimal;
-  let siaScope = rateScope;
-  if (pricing) {
-    siaFiscalYear = deathFiscalYear;
-    try {
-      siaWageIndex = wageIndexFactorForLevelOfCare(
-        "continuous_home_care",
-        pricing.wageIndexFactorDecimal,
-        pricing.wageIndexAreaFactors,
-      );
-    } catch (err) {
-      if (err instanceof WageIndexAreaError) {
-        throw new WardenXError(
-          "WAGE_INDEX_AREA_UNRESOLVED",
-          `${err.message}; correct the patient residence address (ZIP code) and retry`,
-          422,
-        );
-      }
-      throw err;
-    }
-    // The rate table is the version effective on the date priced: the claim's first day, or the death date when it
-    // falls in a later fiscal year.
-    if (deathFiscalYear !== fiscalYearStarting) {
-      siaScope = { ...rateScope, serviceFrom: admission.deceasedDate };
-    }
-  }
+  const encounters = signedEncounters.map((e) => ({
+    encounterId: e.encounterId,
+    serviceDate: e.serviceDate,
+    discipline: e.discipline,
+    durationMinutes: e.durationMinutes,
+    signed: e.signed,
+  }));
+  // Is an SIA payable at all? Presence depends only on the qualifying visits, not on any rate - so nothing about the
+  // CHC rate or the wage index is resolved (and none of their failures can surface) for a claim with no SIA.
+  const payable = calculateSia({
+    deceasedDate: admission.deceasedDate,
+    chcHourlyRateCents: 0,
+    signedEncounters: encounters,
+  });
+  if (!payable.present) return null;
+
+  const { siaFiscalYear, siaWageIndex, siaScope } = await siaPricing(
+    seams,
+    facts,
+    admission.deceasedDate,
+  );
   const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
     siaFiscalYear,
     siaWageIndex,
     siaScope,
   );
-  const sia = calculateSia({
+  return calculateSia({
     deceasedDate: admission.deceasedDate,
     chcHourlyRateCents,
-    signedEncounters: signedEncounters.map((e) => ({
-      encounterId: e.encounterId,
-      serviceDate: e.serviceDate,
-      discipline: e.discipline,
-      durationMinutes: e.durationMinutes,
-      signed: e.signed,
-    })),
+    signedEncounters: encounters,
   });
-  return sia.present ? sia : null;
+}
+
+/**
+ * What the SIA is priced with. The SIA is paid at the CHC hourly rate of the fiscal year the PATIENT DIED in (the SIA
+ * window ends on the death date), wage-adjusted on the same basis as the claim's continuous-home-care days: that
+ * year's index for the claim's reported residence CBSA where the claim is priced by area, else the provider's index.
+ * The death can fall in a fiscal year the claim does not touch (a claim ending Sep 30, a death on Oct 1), so that
+ * year's inputs are read on demand; if they are unavailable this FAILS CLOSED (typed 422) - there is no fallback to
+ * the claim's first year or the provider's index.
+ */
+async function siaPricing(
+  seams: ClaimAssemblySeams,
+  facts: AssemblyFacts,
+  deceasedDate: string,
+): Promise<{
+  siaFiscalYear: number;
+  siaWageIndex: string;
+  siaScope: AssemblyFacts["rateScope"];
+}> {
+  const { fiscalYearStarting, rateScope, pe, valueAreas } = facts;
+  const deathFiscalYear = hospiceFiscalYearStarting(deceasedDate);
+  let pricing:
+    | Pick<FiscalYearPricing, "wageIndexFactorDecimal" | "wageIndexAreaFactors">
+    | undefined = facts.fiscalYearPricing.get(deathFiscalYear);
+  if (!pricing) {
+    const providerIndex = await seams.referenceData.wageIndexForCcn(
+      pe.ccn,
+      deathFiscalYear,
+      rateScope.orgId,
+    );
+    if (!providerIndex) {
+      throw new WardenXError(
+        "WAGE_INDEX_UNAVAILABLE",
+        `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${deathFiscalYear} (D12), the year of the death; the SIA add-on is priced with it. Enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
+        422,
+      );
+    }
+    const areas =
+      valueAreas && seams.cbsa
+        ? await indexedForFiscalYear(seams.cbsa, valueAreas, deathFiscalYear)
+        : valueAreas;
+    pricing = {
+      wageIndexFactorDecimal: providerIndex.factorDecimal,
+      ...(areas ? { wageIndexAreaFactors: wageIndexAreaFactorsOf(areas) } : {}),
+    };
+  }
+  let siaWageIndex: string;
+  try {
+    siaWageIndex = wageIndexFactorForLevelOfCare(
+      "continuous_home_care",
+      pricing.wageIndexFactorDecimal,
+      pricing.wageIndexAreaFactors,
+    );
+  } catch (err) {
+    if (err instanceof WageIndexAreaError) {
+      throw new WardenXError(
+        "WAGE_INDEX_AREA_UNRESOLVED",
+        `${err.message}; the SIA add-on is priced as continuous home care. Correct the patient residence address (ZIP code) and retry`,
+        422,
+      );
+    }
+    throw err;
+  }
+  // The rate table is the version effective on the date priced: the claim's first day, or the death date when it
+  // falls in a different fiscal year than the claim's first.
+  const siaScope =
+    deathFiscalYear === fiscalYearStarting
+      ? rateScope
+      : { ...rateScope, serviceFrom: deceasedDate };
+  return { siaFiscalYear: deathFiscalYear, siaWageIndex, siaScope };
 }
