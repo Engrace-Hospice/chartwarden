@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1485,
-    "enriched": 1485,
+    "routes": 1494,
+    "enriched": 1494,
     "deficit": 0,
-    "mutating": 846,
+    "mutating": 851,
     "mutatingNoBody": 1,
-    "gets": 604,
+    "gets": 608,
     "getsNoResponse": 8
   },
   "modules": [
@@ -191,12 +191,12 @@
     },
     {
       "module": "20-field-safety",
-      "routes": 30,
-      "enriched": 30,
+      "routes": 33,
+      "enriched": 33,
       "deficit": 0,
       "mutating": 17,
       "mutatingNoBody": 0,
-      "gets": 12,
+      "gets": 15,
       "getsNoResponse": 0
     },
     {
@@ -391,12 +391,12 @@
     },
     {
       "module": "40-mdm",
-      "routes": 19,
-      "enriched": 19,
+      "routes": 25,
+      "enriched": 25,
       "deficit": 0,
-      "mutating": 12,
+      "mutating": 17,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 8,
       "getsNoResponse": 0
     },
     {

@@ -12030,6 +12030,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mdm/psap-jurisdictions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's PSAP jurisdiction catalog (active by default) */
+        get: operations["getApiV1MdmPsapjurisdictions"];
+        put?: never;
+        /** Add a PSAP jurisdiction (stamped verified now by the caller) */
+        post: operations["postApiV1MdmPsapjurisdictions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/psap-jurisdictions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a PSAP jurisdiction; changing the number or its coverage clears the verification until re-verified */
+        patch: operations["patchApiV1MdmPsapjurisdictionsById"];
+        trace?: never;
+    };
+    "/api/v1/mdm/psap-jurisdictions/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a PSAP jurisdiction (never deleted) */
+        post: operations["postApiV1MdmPsapjurisdictionsByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/psap-jurisdictions/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a retired PSAP jurisdiction */
+        post: operations["postApiV1MdmPsapjurisdictionsByIdReactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mdm/psap-jurisdictions/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stamp a PSAP jurisdiction verified by the caller, now */
+        post: operations["postApiV1MdmPsapjurisdictionsByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/permissions": {
         parameters: {
             query?: never;
@@ -18832,6 +18918,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/safety/admin/terminus-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Can this deployment actually page ops, place the contact call and resolve a PSAP? Degraded while the pager is unbound or terminus work is stuck */
+        get: operations["getApiV1SafetyAdminTerminusreadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/safety/check-ins": {
         parameters: {
             query?: never;
@@ -19177,6 +19280,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/safety/sos/{sosAlertId}/psap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant-curated PSAP administrative line for an alert at the emergency terminus (409 otherwise); the static 911 line is always shown by the client */
+        get: operations["getApiV1SafetySosBySosAlertIdPsap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/safety/sos/{sosAlertId}/resolve": {
         parameters: {
             query?: never;
@@ -19188,6 +19308,23 @@ export interface paths {
         put?: never;
         /** Resolve, or convert into an incident (dispatches on the flag) */
         post: operations["postApiV1SafetySosBySosAlertIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/safety/sos/{sosAlertId}/terminus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ledger status of each emergency-terminus effect (ops page, contact call, PSAP resolution); reason codes only, never a number */
+        get: operations["getApiV1SafetySosBySosAlertIdTerminus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -57018,6 +57155,296 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MdmPsapjurisdictions: {
+        parameters: {
+            query?: {
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            name: string;
+                            state: string;
+                            countyFips: string | null;
+                            hasPolygon: boolean;
+                            psapName: string;
+                            psapPhone: string;
+                            secondaryPhone: string | null;
+                            appliesToLocationId: string | null;
+                            isOrgDefault: boolean;
+                            source: string;
+                            sourceRef: string | null;
+                            verifiedAt: string;
+                            verifyEveryDays: number;
+                            stale: boolean;
+                            isActive: boolean;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmPsapjurisdictions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    state: string;
+                    countyFips?: string | null;
+                    polygon?: [
+                        number,
+                        number
+                    ][][] | null;
+                    psapName: string;
+                    psapPhone: string;
+                    secondaryPhone?: string | null;
+                    appliesToLocationId?: string | null;
+                    isOrgDefault?: boolean;
+                    sourceRef?: string | null;
+                    verifyEveryDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        state: string;
+                        countyFips: string | null;
+                        hasPolygon: boolean;
+                        psapName: string;
+                        psapPhone: string;
+                        secondaryPhone: string | null;
+                        appliesToLocationId: string | null;
+                        isOrgDefault: boolean;
+                        source: string;
+                        sourceRef: string | null;
+                        verifiedAt: string;
+                        verifyEveryDays: number;
+                        stale: boolean;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MdmPsapjurisdictionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    state?: string;
+                    countyFips?: string | null;
+                    polygon?: [
+                        number,
+                        number
+                    ][][] | null;
+                    psapName?: string;
+                    psapPhone?: string;
+                    secondaryPhone?: string | null;
+                    appliesToLocationId?: string | null;
+                    isOrgDefault?: boolean;
+                    sourceRef?: string | null;
+                    verifyEveryDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        state: string;
+                        countyFips: string | null;
+                        hasPolygon: boolean;
+                        psapName: string;
+                        psapPhone: string;
+                        secondaryPhone: string | null;
+                        appliesToLocationId: string | null;
+                        isOrgDefault: boolean;
+                        source: string;
+                        sourceRef: string | null;
+                        verifiedAt: string;
+                        verifyEveryDays: number;
+                        stale: boolean;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmPsapjurisdictionsByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        state: string;
+                        countyFips: string | null;
+                        hasPolygon: boolean;
+                        psapName: string;
+                        psapPhone: string;
+                        secondaryPhone: string | null;
+                        appliesToLocationId: string | null;
+                        isOrgDefault: boolean;
+                        source: string;
+                        sourceRef: string | null;
+                        verifiedAt: string;
+                        verifyEveryDays: number;
+                        stale: boolean;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmPsapjurisdictionsByIdReactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        state: string;
+                        countyFips: string | null;
+                        hasPolygon: boolean;
+                        psapName: string;
+                        psapPhone: string;
+                        secondaryPhone: string | null;
+                        appliesToLocationId: string | null;
+                        isOrgDefault: boolean;
+                        source: string;
+                        sourceRef: string | null;
+                        verifiedAt: string;
+                        verifyEveryDays: number;
+                        stale: boolean;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MdmPsapjurisdictionsByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        state: string;
+                        countyFips: string | null;
+                        hasPolygon: boolean;
+                        psapName: string;
+                        psapPhone: string;
+                        secondaryPhone: string | null;
+                        appliesToLocationId: string | null;
+                        isOrgDefault: boolean;
+                        source: string;
+                        sourceRef: string | null;
+                        verifiedAt: string;
+                        verifyEveryDays: number;
+                        stale: boolean;
+                        isActive: boolean;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MePermissions: {
         parameters: {
             query?: never;
@@ -75964,6 +76391,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1SafetyAdminTerminusreadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        opsPagerBound: boolean;
+                        contactCallerBound: boolean;
+                        contactDialEnabled: boolean;
+                        psapReaderBound: boolean;
+                        stuckActionCount: number;
+                        degraded: boolean;
+                        degradedReasons: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1SafetyCheckins: {
         parameters: {
             query?: never;
@@ -77342,6 +77799,43 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1SafetySosBySosAlertIdPsap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sosAlertId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sosAlertId: string;
+                        emergencyLine: string;
+                        psap: {
+                            jurisdictionId: string;
+                            name: string;
+                            psapName: string;
+                            phone: string;
+                            secondaryPhone: string | null;
+                            verifiedAt: string;
+                            stale: boolean;
+                        } | null;
+                        reason: "resolved" | "none" | "unavailable" | "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1SafetySosBySosAlertIdResolve: {
         parameters: {
             query?: never;
@@ -77399,6 +77893,40 @@ export interface operations {
                             acknowledgedAt: string;
                             actionTaken: string;
                             outcome: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SafetySosBySosAlertIdTerminus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sosAlertId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sosAlertId: string;
+                        actions: {
+                            actionKind: string;
+                            loopIteration: number;
+                            attemptNo: number;
+                            status: string;
+                            outcomeCode: string | null;
+                            settledAt: string | null;
                         }[];
                     };
                 };
