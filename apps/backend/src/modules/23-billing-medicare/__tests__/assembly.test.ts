@@ -960,6 +960,68 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     expect(store.claims.size).toBe(0);
   });
 
+  it("prices a claim crossing Oct 1 with each day's own fiscal year (rate table and wage index)", async () => {
+    const base = buildSeams();
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            hospiceAdmissionDate: "2025-09-01",
+          }) as never,
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-29",
+            to: "2025-10-02",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      referenceData: {
+        ...base.referenceData,
+        // FY2025 (starting 2024) before Oct 1; FY2026 (starting 2025) from Oct 1 - a higher rate AND a higher index.
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+        wageIndexForCcn: async (_ccn, fiscalYearStarting) => ({
+          factorDecimal: fiscalYearStarting === 2024 ? "1.0000" : "1.1000",
+          cbsaCode: null,
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, {
+      ...REQUEST,
+      serviceFrom: "2025-09-29",
+      serviceTo: "2025-10-02",
+    });
+    const rhc = store.lines.filter((l: { revenueCode: string }) => l.revenueCode === "0651");
+    expect(
+      rhc.map((l: { unitCount: number; unitRateCents: number }) => [l.unitCount, l.unitRateCents]),
+    ).toEqual([
+      [2, 20_000], // 29-30 Sep: FY2025 table, index 1.0000
+      [2, 22_386], // 1-2 Oct: FY2026 table 21000 x (0.66 x 1.1 + 0.34), index 1.1000
+    ]);
+  });
+
   it("records the admission type and point of origin from the M6 admission on the claim", async () => {
     const base = buildSeams();
     const seams = buildSeams({

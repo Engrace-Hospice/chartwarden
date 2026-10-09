@@ -103,7 +103,7 @@ export {
 };
 
 /**
- * The 25 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule and the claim-total balance rule). This is the canonical platform-floor set
+ * The 26 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule, the claim-total balance rule, the unreportable-visit warning, and the admission-code and CBSA value-code rules). This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */

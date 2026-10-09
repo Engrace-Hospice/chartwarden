@@ -1,5 +1,5 @@
-import type { IdgMeetingStatus } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
+import type { IdgMeetingStatus } from "@wardenx/types";
 import {
   type IdgMeetingWriteOperation,
   assertMeetingWriteAllowed,

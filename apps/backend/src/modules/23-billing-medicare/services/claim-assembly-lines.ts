@@ -130,9 +130,15 @@ export function visitLineInputs(args: {
     );
   }
   return args.result.lines.map((visit, idx) => {
-    // Non-null: `missingVisitCharges` above found a charge for every line.
-    const unitRateCents =
-      visitUnitChargeOn(args.chargeVersions, visit.serviceDate, visit.discipline) ?? 0;
+    const unitRateCents = visitUnitChargeOn(args.chargeVersions, visit.serviceDate, visit.discipline);
+    if (unitRateCents === null) {
+      // `missingVisitCharges` above found a charge for every line, so this is a logic error — never bill it as free.
+      throw new WardenXError(
+        "VISIT_CHARGE_MISSING",
+        `no visit charge resolved for ${visit.discipline} on ${visit.serviceDate} after the schedule check passed`,
+        422,
+      );
+    }
     return {
       organizationId: args.orgId,
       claimId: "", // filled once the claim id is minted

@@ -33,7 +33,7 @@ export const hippsCalculation = pgTable(
       .notNull()
       .references(() => claim.id, { onDelete: "restrict" }),
 
-    hippsCode: text("hipps_code").notNull(), // 5-char HIPPS string e.g. "C2HJF"
+    hippsCode: text("hipps_code").notNull(), // 5-char INTERNAL per-diem class code e.g. "R1000" (hospice has no Medicare HIPPS code; never emitted on a claim)
     hippsRateCents: bigint("hipps_rate_cents", { mode: "number" }).notNull(),
 
     // Wage-index applied at calculation time (snapshot, not pointer — wage-index file is platform-shared
