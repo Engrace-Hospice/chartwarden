@@ -63,6 +63,7 @@ export {
   type WriteOutboxPort,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildMacSecretCipherFromEnv,
   buildDrizzleRateTableService,
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,

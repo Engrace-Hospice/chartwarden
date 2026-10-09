@@ -921,6 +921,7 @@ import {
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
   buildMacJurisdictionLister,
+  buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
@@ -3692,6 +3693,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m24CredentialCipher = process.env.M24_CREDENTIAL_ENCRYPTION_KEY
     ? buildCredentialCipherPort()
     : undefined;
+  // M23 — the MAC-portal client-secret cipher (`POST /billing/mac-credentials`). Same custody model and KEK as the M24
+  // cipher above (domain-separated per module); built once at boot so a malformed key fails the boot, not the first
+  // write. Unset => the write path answers 503 SEAM_UNBOUND (production requires the key via env.ts).
+  const m23MacSecretCipher = buildMacSecretCipherFromEnv(process.env);
   // M24 (WX-PR-011) — the per-PE trading-partner credential resolver the submit/poll workers decrypt
   // through. Requires BOTH a db handle and the cipher port; absent either, the worker construction below
   // stays gated off (RULE 4 — never fabricate a credential, never submit without one).
@@ -4767,6 +4772,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
+              ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
               // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
               ...(m23LaunchGateway
                 ? {

@@ -74,6 +74,12 @@ export type {
 
 export { type M23ReadServicePorts, buildDrizzleM23ReadService } from "./read-service-drizzle";
 export { buildDrizzleM23WriteService } from "./write-service-drizzle";
+export {
+  type MacSecretCipher,
+  buildMacSecretCipher,
+  buildMacSecretCipherFromEnv,
+  loadMacSecretKek,
+} from "./secret-cipher";
 
 /** The combined READ + WRITE route service (no method-name overlap — the M27 combined-service precedent). */
 export type M23CombinedRouteService = M23ReadRouteService & M23WriteRouteService;

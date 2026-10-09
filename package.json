@@ -426,6 +426,7 @@
     "test:m22:document-seam-store:live": "vitest run apps/backend/__tests__/gap-095-document-seam-store-live.test.ts",
     "test:m23:billed-days-seam:live": "vitest run apps/backend/__tests__/m23-billed-days-seam.live.test.ts",
     "test:m23:visit-lines-assembly:live": "vitest run apps/backend/__tests__/m23-visit-lines-assembly.live.test.ts",
+    "test:m23:mac-credential-cipher:live": "vitest run apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
     "test:m23:draft-claim-delete:live": "vitest run apps/backend/__tests__/m23-draft-claim-delete.live.test.ts",
     "test:m23:visit-charge-schedule:live": "vitest run apps/backend/__tests__/m23-visit-charge-schedule.live.test.ts",
     "test:m23:hospice-cbsa:live": "vitest run apps/backend/__tests__/m23-hospice-cbsa.live.test.ts",

@@ -296,7 +296,11 @@ const denyCcn: ProviderCcnPort = {
 };
 const denyCipher: SecretCipherPort = {
   encrypt: async () => {
-    throw new WardenXError("SEAM_UNBOUND", "the secret-cipher port is not bound", 503);
+    throw new WardenXError(
+      "SEAM_UNBOUND",
+      "the MAC credential secret cipher is not bound (set M24_CREDENTIAL_ENCRYPTION_KEY, 32 bytes base64)",
+      503,
+    );
   },
 };
 const denyAudit: AuditEventPort = {

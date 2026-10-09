@@ -338,6 +338,7 @@
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
+        "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
