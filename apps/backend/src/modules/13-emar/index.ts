@@ -63,6 +63,8 @@ function buildEmarBackend(db: DbClient, outbox?: EmarWriteOutboxPort) {
     // GAP-107 — M37's IV-continuous safety overlay (M37 §2.6 / D7), through its published seam; thunked so it
     // resolves per call, after M37 has registered over the deny-stub.
     () => getSeam("IpuIvSafetyOverlayProvider"),
+    // GAP-020 -- M5's wristband verdict for the BCMA wrong_patient arm (a verdict only; M13 never holds a digest).
+    () => getSeam("PatientWristbandVerifier"),
   );
 }
 

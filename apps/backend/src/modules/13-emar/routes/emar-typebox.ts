@@ -64,7 +64,14 @@ const BARCODE_SCAN = Type.Object({
   scannedRxnormRxcui: Type.Optional(Type.String({ maxLength: 64 })),
   scannedLotNumber: Type.Optional(Type.String({ maxLength: 64 })),
   scannedExpirationDate: Type.Optional(Type.String({ maxLength: 10 })),
-  patientWristbandPayloadDigest: Type.Optional(Type.String({ maxLength: 128 })),
+  /**
+   * GAP-020 -- the RAW scanned wristband (`WXB1.<base32>.<crc>`, 36 chars). It is a transport value only: M5
+   * hashes it, M13 never stores or logs it. Anything that is not that exact shape is `malformed` and refused
+   * when the tenant requires a wristband (the legacy free-text "digest" box is therefore no longer accepted).
+   */
+  patientWristbandPayload: Type.Optional(Type.String({ maxLength: 64 })),
+  /** When an OFFLINE device scanned the band (honoured only by the offline-sync replay, clamped to <= now). */
+  wristbandScannedAt: Type.Optional(Type.String({ format: "date-time" })),
 });
 
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
@@ -228,6 +235,7 @@ export const AdministrationPolicyRequest = Type.Object({
   graceWindowMinutes: Type.Optional(Type.Integer({ minimum: 0, maximum: 1440 })),
   prnMinimumIntervalMinutes: Type.Optional(Type.Integer({ minimum: 0, maximum: 1440 })),
   emarPdfOnCommit: Type.Optional(Type.Boolean()),
+  bcmaWristbandRequired: Type.Optional(Type.Boolean()),
 });
 
 // ── params + queries ────────────────────────────────────────────────────────────────────────────────────
@@ -412,6 +420,7 @@ export const AdministrationPolicyViewSchema = Type.Object({
   graceWindowMinutes: Type.Integer(),
   prnMinimumIntervalMinutes: Type.Integer(),
   emarPdfOnCommit: Type.Boolean(),
+  bcmaWristbandRequired: Type.Boolean(),
 });
 
 /** The §2.6 D7 witness-attestation token the mint route returns. The token is a SERVER-MINTED, single-use

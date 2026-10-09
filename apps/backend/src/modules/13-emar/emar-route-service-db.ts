@@ -42,9 +42,11 @@
 //       to give" from "discontinued / replaced / never signed" instead of refusing everything.
 //       [CLOSED, GAP-020] the §5.11 five-rights validation (route / over-dose / unit / future instant) and
 //       the §2.9 BCMA scan (against the ORDER's RxCUI/NDC and active state) run on the clinician and the
-//       caregiver path against the order projection (`administration-safety-gates.ts`). Still open: no
-//       patient wristband digest is on file anywhere, so the `wrong_patient` BCMA arm has nothing to
-//       compare a scanned wristband with (the port carries `patientWristbandPayloadDigest`, always null);
+//       caregiver path against the order projection (`administration-safety-gates.ts`).
+//       [CLOSED, GAP-020 residual] the `wrong_patient` arm asks M5's `PatientWristbandVerifier` (a verdict,
+//       never a digest) about the scanned wristband; a REFUSED scan persists a `barcode_scan_event` near-miss
+//       row in its own committed transaction. NOT built: a scan is still optional (an administration with no
+//       `barcodeScan` skips BCMA entirely) - mandatory-scan-by-location is a separate product decision.
 //   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
 //       still pass an explicit encounterId);
 //   (5) [CLOSED, TASK-008] the witness-attestation secret is externalized via `M13_WITNESS_SIGNING_KEY`
@@ -64,6 +66,7 @@ import {
   ADMINISTRATION_MODE_CATALOG,
   AdministrationStateError,
   type BarcodeMatchResult,
+  type BarcodeScanInput,
   type IvSegment,
   type IvSegmentMode,
   WITNESS_ELIGIBLE_DISCIPLINES,
@@ -81,14 +84,25 @@ import {
   witnessTokenDigest,
 } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type MedClass, NotFoundError, ValidationError } from "@wardenx/types";
+import {
+  type MedClass,
+  NotFoundError,
+  type PatientWristbandVerifier,
+  ValidationError,
+} from "@wardenx/types";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type {
   CaregiverReviewAbacFacts,
   EmarScopeRefKind,
   WitnessAbacFacts,
 } from "./abac-predicates";
-import { assertOrderFiveRights, barcodeContextsOf } from "./administration-safety-gates";
+import {
+  type BedsideWristbandCheck,
+  assertOrderFiveRights,
+  barcodeContextsOf,
+  verifyBedsideWristband,
+  wristbandRefusalDetails,
+} from "./administration-safety-gates";
 import {
   type EmarIvOverlayPort,
   UNBOUND_IV_OVERLAY,
@@ -231,8 +245,6 @@ export interface EmarMedicationOrderPort {
     readonly ndc?: string | null;
     /** GAP-021 -- the order's PRN minimum interval in minutes (`sigStructured.prnPolicy`); null = none stated. */
     readonly prnMinimumIntervalMinutes?: number | null;
-    /** The patient's on-file wristband payload digest; null/absent = none on file. */
-    readonly patientWristbandPayloadDigest?: string | null;
   } | null>;
   /**
    * GAP-023 -- the ids of the patient's CURRENTLY ACTIVE medication orders: the m12_active lines a
@@ -255,6 +267,17 @@ export interface EmarMedicationOrderPort {
 const UNBOUND_MEDICATION_ORDER: EmarMedicationOrderPort = {
   async administrationIdentity() {
     return null;
+  },
+};
+
+/**
+ * Fail-closed default for the wristband verdict (GAP-020): an unbound verifier states that NO band is on file,
+ * so a harness that never wired M5 cannot wave a scan through as "patient verified" (the `UNBOUND_MEDICATION_ORDER`
+ * precedent). The composition root binds the real `PatientWristbandVerifier` seam.
+ */
+const UNBOUND_WRISTBAND_VERIFIER: PatientWristbandVerifier = {
+  async verify() {
+    return { status: "not_on_file", generation: null, scannedDigest: null, matchedPatientId: null };
   },
 };
 
@@ -305,6 +328,7 @@ const DEFAULT_POLICY: AdministrationPolicyView = {
   graceWindowMinutes: 30,
   prnMinimumIntervalMinutes: 60,
   emarPdfOnCommit: false,
+  bcmaWristbandRequired: true,
 };
 
 const iso = (d: Date | string | null): string | null =>
@@ -382,6 +406,11 @@ export function createDbEmarBackend(
    * Unbound (slice/unit harnesses) = no overlay applies; the composition root binds the seam.
    */
   ivOverlay: () => EmarIvOverlayPort = () => UNBOUND_IV_OVERLAY,
+  /**
+   * GAP-020 -- M5's `PatientWristbandVerifier` (is the scanned wristband this patient's?), a THUNK for the same
+   * reason: seams register after the route mount. Unbound = every scan reads `not_on_file` (fail closed).
+   */
+  wristbandVerifier: () => PatientWristbandVerifier = () => UNBOUND_WRISTBAND_VERIFIER,
 ): EmarRouteService {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, fn as never) as Promise<T>;
@@ -405,6 +434,106 @@ export function createDbEmarBackend(
       aggregateKind,
       aggregateId,
     });
+  }
+
+  /** GAP-020 -- does the tenant require M5 to verify the wristband on a BCMA scan? Default TRUE (fail closed). */
+  async function wristbandRequired(tx: DbClient): Promise<boolean> {
+    const [p] = await tx.select({ required: POL.bcmaWristbandRequired }).from(POL).limit(1);
+    return p?.required ?? DEFAULT_POLICY.bcmaWristbandRequired;
+  }
+
+  /** The `barcode_scan_event` row for one scan. The RAW wristband payload is never a column; only M5's digest. */
+  function scanEventValues(
+    orgId: string,
+    scan: BarcodeScanInput,
+    gate: { matchResult: BarcodeMatchResult; wristband: BedsideWristbandCheck },
+    ids: {
+      administrationRecordId: string | null;
+      patientId: string;
+      medicationOrderId: string;
+    },
+  ): typeof BSE.$inferInsert {
+    const { verdict } = gate.wristband;
+    const presented = (scan.patientWristbandPayload?.trim() ?? "").length > 0;
+    return {
+      organizationId: orgId,
+      administrationRecordId: ids.administrationRecordId,
+      patientId: ids.patientId,
+      medicationOrderId: ids.medicationOrderId,
+      scannedNdc: scan.scannedNdc ?? null,
+      scannedRxnormRxcui: scan.scannedRxnormRxcui ?? null,
+      scannedLotNumber: scan.scannedLotNumber ?? null,
+      scannedExpirationDate: scan.scannedExpirationDate ?? null,
+      patientWristbandPayloadDigest: verdict.scannedDigest,
+      patientWristbandScannedAt: presented ? new Date(gate.wristband.asOf) : null,
+      wristbandCheck: gate.wristband.check,
+      wristbandGeneration: verdict.generation,
+      wristbandMatchedPatientId: verdict.matchedPatientId,
+      matchResult: gate.matchResult,
+    };
+  }
+
+  /**
+   * §2.9 BCMA -- verify the wristband with M5, re-derive the canonical `match_result`, and on an unsafe result
+   * PERSIST the near miss before refusing. Shared by the clinician and the caregiver-attested paths so they cannot
+   * drift. The near-miss row is written in its OWN committed transaction, immediately before the throw: the caller's
+   * transaction is about to roll back, and a caught wrong-patient scan must not vanish with it (QAPI / surveyors).
+   * Offline replays and double-submits can insert more than one near-miss row; that is accepted (each is a real
+   * scan event).
+   */
+  async function runBarcodeGate(
+    tx: DbClient,
+    orgId: string,
+    a: {
+      scan: BarcodeScanInput;
+      identity: Parameters<typeof barcodeContextsOf>[0];
+      patientId: string;
+      medicationOrderId: string;
+      administeredAt: string;
+      mode: "online" | "offline_sync";
+      capturedAt?: string | null;
+      /** A family caregiver at home has no band, so the policy's `required` does not apply (a presented band is still verified). */
+      caregiver: boolean;
+    },
+  ): Promise<{ matchResult: BarcodeMatchResult; wristband: BedsideWristbandCheck }> {
+    const wristband = await verifyBedsideWristband({
+      verifier: wristbandVerifier(),
+      organizationId: orgId,
+      patientId: a.patientId,
+      scan: a.scan,
+      required: a.caregiver ? false : await wristbandRequired(tx),
+      mode: a.mode,
+      nowIso: new Date().toISOString(),
+      capturedAt: a.capturedAt ?? null,
+    });
+    // GAP-020 -- the REAL order/patient context (it used to be an empty one, under which only `expired` could
+    // fire and wrong_drug / wrong_patient were structurally unreachable).
+    const ctx = barcodeContextsOf(a.identity, wristband.context.wristband);
+    const matchResult = evaluateBarcodeScan(
+      a.scan,
+      ctx.order,
+      ctx.patient,
+      a.administeredAt.slice(0, 10),
+    );
+    if (!barcodeScanBlocks(matchResult)) return { matchResult, wristband };
+
+    const ids = {
+      administrationRecordId: null,
+      patientId: a.patientId,
+      medicationOrderId: a.medicationOrderId,
+    };
+    await withOrg(orgId, (nearMissTx) =>
+      nearMissTx
+        .insert(BSE)
+        .values(scanEventValues(orgId, a.scan, { matchResult, wristband }, ids)),
+    );
+    throw new AdministrationStateError(
+      "BARCODE_VERIFICATION_FAILED",
+      `barcode verification failed: ${matchResult}`,
+      matchResult === "wrong_patient"
+        ? wristbandRefusalDetails(wristband.verdict.status)
+        : undefined,
+    );
   }
 
   /** Load a single administration_record (RLS-scoped) or the non-leaking 404. */
@@ -809,6 +938,7 @@ export function createDbEmarBackend(
             grace: POL.defaultGraceWindowMinutes,
             prn: POL.defaultPrnReassessmentWindowMinutes,
             pdf: POL.emarPerAdministrationPdfEnabled,
+            wristband: POL.bcmaWristbandRequired,
           })
           .from(POL)
           .limit(1);
@@ -817,6 +947,7 @@ export function createDbEmarBackend(
               graceWindowMinutes: p.grace,
               prnMinimumIntervalMinutes: p.prn,
               emarPdfOnCommit: p.pdf,
+              bcmaWristbandRequired: p.wristband,
             }
           : { ...DEFAULT_POLICY };
       });
@@ -1057,21 +1188,21 @@ export function createDbEmarBackend(
         // §2.9 BCMA — evaluate the scan against the order + patient context; a wrong/expired scan
         // hard-blocks. Persisted after the administration row (it back-refs the new id).
         let barcodeMatchResult: BarcodeMatchResult | null = null;
+        let barcodeGate: Awaited<ReturnType<typeof runBarcodeGate>> | null = null;
         if (args.barcodeScan) {
-          // GAP-020 -- the REAL order/patient context (it used to be an empty one, under which only
-          // `expired` could fire and wrong_drug / wrong_patient were structurally unreachable).
-          const scanContext = barcodeContextsOf(identity);
-          barcodeMatchResult = evaluateBarcodeScan(
-            args.barcodeScan,
-            scanContext.order,
-            scanContext.patient,
-            args.administeredAt.slice(0, 10),
-          );
-          if (barcodeScanBlocks(barcodeMatchResult))
-            throw new AdministrationStateError(
-              "BARCODE_VERIFICATION_FAILED",
-              `barcode verification failed: ${barcodeMatchResult}`,
-            );
+          barcodeGate = await runBarcodeGate(tx, orgId, {
+            scan: args.barcodeScan,
+            identity,
+            patientId,
+            medicationOrderId: args.medicationOrderId,
+            administeredAt: args.administeredAt,
+            // Only the offline-sync replay (set by `offlineSync`, never by the request body) may use the
+            // device's scan time; every other write verifies against SERVER time.
+            mode: args.viaOfflineSync ? "offline_sync" : "online",
+            capturedAt: args.offlineCapture?.capturedAt ?? null,
+            caregiver: false,
+          });
+          barcodeMatchResult = barcodeGate.matchResult;
         }
 
         // GAP-021 -- the §2.4 D3 PRN minimum-interval gate runs BEFORE the administration row exists, so a
@@ -1153,16 +1284,14 @@ export function createDbEmarBackend(
             attestationTokenDigest: witnessDigest ?? "",
           });
 
-        if (args.barcodeScan)
-          await tx.insert(BSE).values({
-            organizationId: orgId,
-            administrationRecordId: inserted.id,
-            scannedNdc: args.barcodeScan.scannedNdc ?? null,
-            scannedRxnormRxcui: args.barcodeScan.scannedRxnormRxcui ?? null,
-            scannedExpirationDate: args.barcodeScan.scannedExpirationDate ?? null,
-            patientWristbandPayloadDigest: args.barcodeScan.patientWristbandPayloadDigest ?? null,
-            matchResult: barcodeMatchResult ?? "match",
-          });
+        if (args.barcodeScan && barcodeGate)
+          await tx.insert(BSE).values(
+            scanEventValues(orgId, args.barcodeScan, barcodeGate, {
+              administrationRecordId: inserted.id,
+              patientId,
+              medicationOrderId: args.medicationOrderId,
+            }),
+          );
 
         await emit(tx, orgId, "m13.administration.recorded", "administration_record", inserted.id, {
           administrationRecordId: inserted.id,
@@ -1362,19 +1491,21 @@ export function createDbEmarBackend(
           discreteDose: true,
         });
         let barcodeMatchResult: BarcodeMatchResult | null = null;
+        let barcodeGate: Awaited<ReturnType<typeof runBarcodeGate>> | null = null;
         if (args.barcodeScan) {
-          const scanContext = barcodeContextsOf(identity);
-          barcodeMatchResult = evaluateBarcodeScan(
-            args.barcodeScan,
-            scanContext.order,
-            scanContext.patient,
-            args.administeredAt.slice(0, 10),
-          );
-          if (barcodeScanBlocks(barcodeMatchResult))
-            throw new AdministrationStateError(
-              "BARCODE_VERIFICATION_FAILED",
-              `barcode verification failed: ${barcodeMatchResult}`,
-            );
+          barcodeGate = await runBarcodeGate(tx, orgId, {
+            scan: args.barcodeScan,
+            identity,
+            patientId: args.patientId,
+            medicationOrderId: args.medicationOrderId,
+            administeredAt: args.administeredAt,
+            mode: "online",
+            // Decision for the owner (recorded in the design's decisionsNeeded): a home caregiver has no
+            // band, so a bandless caregiver scan is not refused - but a band they DO scan is verified and a
+            // contradiction still refuses.
+            caregiver: true,
+          });
+          barcodeMatchResult = barcodeGate.matchResult;
         }
         const inserted = (
           await tx
@@ -1413,16 +1544,14 @@ export function createDbEmarBackend(
             requiresRnReview: true,
           },
         );
-        if (args.barcodeScan)
-          await tx.insert(BSE).values({
-            organizationId: orgId,
-            administrationRecordId: inserted.id,
-            scannedNdc: args.barcodeScan.scannedNdc ?? null,
-            scannedRxnormRxcui: args.barcodeScan.scannedRxnormRxcui ?? null,
-            scannedExpirationDate: args.barcodeScan.scannedExpirationDate ?? null,
-            patientWristbandPayloadDigest: args.barcodeScan.patientWristbandPayloadDigest ?? null,
-            matchResult: barcodeMatchResult ?? "match",
-          });
+        if (args.barcodeScan && barcodeGate)
+          await tx.insert(BSE).values(
+            scanEventValues(orgId, args.barcodeScan, barcodeGate, {
+              administrationRecordId: inserted.id,
+              patientId: args.patientId,
+              medicationOrderId: args.medicationOrderId,
+            }),
+          );
         return toAdminView(inserted, barcodeMatchResult);
       });
     },
@@ -1639,7 +1768,12 @@ export function createDbEmarBackend(
       rows,
     ): Promise<{ synced: number; results: AdministrationView[] }> {
       const results: AdministrationView[] = [];
-      for (const r of rows) results.push(await this.recordAdministration(orgId, userId, r));
+      // `viaOfflineSync` is set HERE, not by the request: only a replay of queued rows may verify a wristband
+      // against the device's scan time (the grace window); a single online write always uses server time.
+      for (const r of rows)
+        results.push(
+          await this.recordAdministration(orgId, userId, { ...r, viaOfflineSync: true }),
+        );
       return { synced: results.length, results };
     },
 
@@ -2043,6 +2177,10 @@ export function createDbEmarBackend(
             patch.emarPdfOnCommit ??
             existing?.emarPerAdministrationPdfEnabled ??
             DEFAULT_POLICY.emarPdfOnCommit,
+          bcmaWristbandRequired:
+            patch.bcmaWristbandRequired ??
+            existing?.bcmaWristbandRequired ??
+            DEFAULT_POLICY.bcmaWristbandRequired,
         };
         await tx
           .insert(POL)
@@ -2051,6 +2189,7 @@ export function createDbEmarBackend(
             defaultGraceWindowMinutes: next.graceWindowMinutes,
             defaultPrnReassessmentWindowMinutes: next.prnMinimumIntervalMinutes,
             emarPerAdministrationPdfEnabled: next.emarPdfOnCommit,
+            bcmaWristbandRequired: next.bcmaWristbandRequired,
           })
           .onConflictDoUpdate({
             target: POL.organizationId,
@@ -2058,6 +2197,7 @@ export function createDbEmarBackend(
               defaultGraceWindowMinutes: next.graceWindowMinutes,
               defaultPrnReassessmentWindowMinutes: next.prnMinimumIntervalMinutes,
               emarPerAdministrationPdfEnabled: next.emarPdfOnCommit,
+              bcmaWristbandRequired: next.bcmaWristbandRequired,
               updatedAt: new Date(),
             },
           });

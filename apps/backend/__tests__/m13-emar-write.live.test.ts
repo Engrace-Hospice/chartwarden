@@ -19,6 +19,8 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { issuePatientWristband } from "../src/modules/05-patient/wristband-db";
+import { buildPatientWristbandVerifier } from "../src/modules/05-patient/wristband-verifier";
 import {
   type EmarMedicationOrderPort,
   type EmarWriteOutboxPort,
@@ -52,6 +54,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEmarBackend>;
+  let orderPort: EmarMedicationOrderPort;
   const memberOf: Record<string, string> = {};
   const member2Of: Record<string, string> = {};
   const providerOf: Record<string, string> = {};
@@ -196,6 +199,18 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
         )
       ).rows[0].id as string;
     }
+    // GAP-020 -- the wristband verifier is M5's: it reads `patient` + `patient_wristband` under RLS, so the two
+    // patients this suite writes administrations for exist as real rows.
+    for (const [id, last] of [
+      [PATIENT, "Alpha"],
+      [OTHER_PATIENT, "Bravo"],
+    ] as const)
+      await admin.query(
+        `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob,
+           sex_assigned_at_birth, status)
+         VALUES ($1,$2,$3,'Pat',$4,'1950-01-01','female','active')`,
+        [id, ORG_A, `mrn-m13-${last}`, last],
+      );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
@@ -256,8 +271,45 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
         return activeOrderIds;
       },
     };
-    svc = createDbEmarBackend(handle.db, outbox, undefined, () => medicationOrder);
+    orderPort = medicationOrder;
+    // The REAL M5 verifier over the real tables (not a stub): the wrong_patient arm is proven end to end.
+    svc = createDbEmarBackend(
+      handle.db,
+      outbox,
+      undefined,
+      () => medicationOrder,
+      undefined,
+      () => buildPatientWristbandVerifier(handle.db),
+    );
   }, 120_000);
+
+  /** Print a real band for `patientId` through M5's own issue path; returns the RAW payload (shown once). */
+  async function printBand(
+    patientId: string,
+    reason = "first_issue",
+    expected: number | null = null,
+  ) {
+    return (
+      await issuePatientWristband(
+        handle.db,
+        { organizationId: ORG_A, userId: USER },
+        { patientId, reason: reason as never, expectedCurrentGeneration: expected },
+      )
+    ).payload;
+  }
+  const resetBands = async () => {
+    await admin.query("DELETE FROM patient_wristband");
+    await admin.query("DELETE FROM barcode_scan_event");
+    await admin.query("UPDATE administration_policy SET bcma_wristband_required = true");
+  };
+  const scanEvents = async () =>
+    (
+      await admin.query(
+        `SELECT match_result, wristband_check, wristband_generation, wristband_matched_patient_id,
+                administration_record_id, patient_id, patient_wristband_payload_digest, patient_wristband_scanned_at
+           FROM barcode_scan_event ORDER BY created_at, id`,
+      )
+    ).rows;
 
   afterAll(async () => {
     await handle?.close();
@@ -1038,19 +1090,273 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   });
 
   it("GAP-020: a BCMA scan is verified against the ORDER's drug (wrong_drug reaches the write path)", async () => {
+    await resetBands();
+    const band = await printBand(PATIENT);
     await expect(
       svc.recordAdministration(
         ORG_A,
         memberOf[ORG_A],
-        recordArgs({ barcodeScan: { scannedRxnormRxcui: "rx-some-other-drug" } }),
+        recordArgs({
+          barcodeScan: { scannedRxnormRxcui: "rx-some-other-drug", patientWristbandPayload: band },
+        }),
       ),
     ).rejects.toMatchObject({ code: "BARCODE_VERIFICATION_FAILED", statusCode: 422 });
     const ok = await svc.recordAdministration(
       ORG_A,
       memberOf[ORG_A],
-      recordArgs({ barcodeScan: { scannedRxnormRxcui: "rx-morphine" } }),
+      recordArgs({
+        barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: band },
+      }),
     );
     expect(ok.barcodeMatchResult).toBe("match");
+  });
+
+  it("GAP-020 (a): a scan of the patient's own printed band is `match`, recorded as verified with the generation + digest, never the raw payload", async () => {
+    await resetBands();
+    const band = await printBand(PATIENT);
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: band },
+      }),
+    );
+    expect(view.barcodeMatchResult).toBe("match");
+    const [row] = await scanEvents();
+    expect(row).toMatchObject({
+      match_result: "match",
+      wristband_check: "verified",
+      wristband_generation: 1,
+      administration_record_id: view.id,
+      patient_id: PATIENT,
+    });
+    expect(row.patient_wristband_payload_digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.patient_wristband_scanned_at).toBeInstanceOf(Date);
+    // The raw payload is in no column anywhere in the scan or the administration row.
+    const dump = JSON.stringify(
+      (await admin.query("SELECT * FROM barcode_scan_event")).rows.concat(
+        (await admin.query("SELECT * FROM administration_record WHERE id=$1", [view.id])).rows,
+      ),
+    );
+    expect(dump).not.toContain(band);
+    expect(dump).not.toContain(band.slice(0, band.lastIndexOf(".")));
+  });
+
+  it("GAP-020 (b): patient B's band against patient A's order is refused, NO administration is written, but the near miss is kept with B's id", async () => {
+    await resetBands();
+    await printBand(PATIENT);
+    const bandB = await printBand(OTHER_PATIENT);
+    const before = Number(
+      (await admin.query("SELECT count(*)::int n FROM administration_record")).rows[0].n,
+    );
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({
+          barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: bandB },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "BARCODE_VERIFICATION_FAILED",
+      statusCode: 422,
+      details: [expect.objectContaining({ code: "WRISTBAND_MISMATCH" })],
+    });
+    expect(
+      Number((await admin.query("SELECT count(*)::int n FROM administration_record")).rows[0].n),
+    ).toBe(before);
+    const rows = await scanEvents();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      match_result: "wrong_patient",
+      wristband_check: "mismatch",
+      wristband_matched_patient_id: OTHER_PATIENT,
+      administration_record_id: null,
+      patient_id: PATIENT,
+    });
+    // The M4 trigger audited the near-miss insert (the QAPI / surveyor trail).
+    const audit = await admin.query(
+      `SELECT 1 FROM audit_event WHERE event_type='barcode_scan_event.insert' AND resource_id=
+         (SELECT id FROM barcode_scan_event LIMIT 1)`,
+    );
+    expect(audit.rowCount).toBe(1);
+  });
+
+  it("GAP-020 (c): no band on file + required -> refused WRISTBAND_NOT_ON_FILE; policy off -> a bandless scan passes", async () => {
+    await resetBands();
+    const scan = { scannedRxnormRxcui: "rx-morphine" };
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ barcodeScan: scan })),
+    ).rejects.toMatchObject({
+      code: "BARCODE_VERIFICATION_FAILED",
+      details: [expect.objectContaining({ code: "WRISTBAND_NOT_ON_FILE" })],
+    });
+    // A patient WITH a band who scans none is `not_presented`.
+    await printBand(PATIENT);
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ barcodeScan: scan })),
+    ).rejects.toMatchObject({
+      details: [expect.objectContaining({ code: "WRISTBAND_NOT_PRESENTED" })],
+    });
+
+    await svc.putPolicy(ORG_A, { bcmaWristbandRequired: false });
+    const ok = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ barcodeScan: scan }),
+    );
+    expect(ok.barcodeMatchResult).toBe("match");
+    const last = (await scanEvents()).at(-1);
+    expect(last).toMatchObject({
+      wristband_check: "skipped_policy_off",
+      administration_record_id: ok.id,
+    });
+    // ...but a band that WAS scanned and is wrong still refuses with the policy off.
+    const bandB = await printBand(OTHER_PATIENT);
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ barcodeScan: { ...scan, patientWristbandPayload: bandB } }),
+      ),
+    ).rejects.toMatchObject({ details: [expect.objectContaining({ code: "WRISTBAND_MISMATCH" })] });
+    expect((await svc.getPolicy(ORG_A)).bcmaWristbandRequired).toBe(false);
+  });
+
+  it("GAP-020 (d): after a reprint the OLD band is refused online (superseded) and the new one passes", async () => {
+    await resetBands();
+    const oldBand = await printBand(PATIENT);
+    const newBand = await printBand(PATIENT, "reprint_lost", 1);
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({
+          barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: oldBand },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [expect.objectContaining({ code: "WRISTBAND_SUPERSEDED" })],
+    });
+    const ok = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: newBand },
+      }),
+    );
+    expect(ok.barcodeMatchResult).toBe("match");
+  });
+
+  it("GAP-020 (e): an offline_sync row scanned before the reprint syncs OK; a >72 h-old scan and a voided band are rejected", async () => {
+    await resetBands();
+    const oldBand = await printBand(PATIENT);
+    await admin.query("UPDATE patient_wristband SET issued_at = now() - interval '30 hours'");
+    await printBand(PATIENT, "reprint_damaged", 1);
+    await admin.query(
+      "UPDATE patient_wristband SET superseded_at = now() - interval '2 hours' WHERE generation = 1",
+    );
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const row = (scannedAt: string, extra: Record<string, unknown> = {}) =>
+      recordArgs({
+        administeredAt: hoursAgo(3),
+        lateEntryReason: "Offline capture synced after the shift; scan taken at the bedside.",
+        barcodeScan: {
+          scannedRxnormRxcui: "rx-morphine",
+          patientWristbandPayload: oldBand,
+          wristbandScannedAt: scannedAt,
+        },
+        offlineCapture: {
+          deviceId: "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1",
+          localId: crypto.randomUUID(),
+          capturedAt: hoursAgo(3),
+        },
+        ...extra,
+      });
+    // Inside the band's life -> accepted through the offline-sync replay.
+    const synced = await svc.offlineSync(ORG_A, memberOf[ORG_A], [row(hoursAgo(3.5))] as never);
+    expect(synced.synced).toBe(1);
+    expect((await scanEvents()).at(-1)).toMatchObject({
+      wristband_check: "verified",
+      wristband_generation: 1,
+    });
+    // The SAME scan time claimed on a plain ONLINE write is refused: only the replay gets the grace window.
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], row(hoursAgo(3.5)) as never),
+    ).rejects.toMatchObject({
+      details: [expect.objectContaining({ code: "WRISTBAND_SUPERSEDED" })],
+    });
+    // After the band was superseded -> rejected even offline.
+    await expect(
+      svc.offlineSync(ORG_A, memberOf[ORG_A], [row(hoursAgo(1))] as never),
+    ).rejects.toMatchObject({
+      details: [expect.objectContaining({ code: "WRISTBAND_SUPERSEDED" })],
+    });
+    // A voided generation is rejected both ways.
+    await admin.query(
+      "UPDATE patient_wristband SET voided_at = now(), void_reason = 'compromised' WHERE generation = 1",
+    );
+    await expect(
+      svc.offlineSync(ORG_A, memberOf[ORG_A], [row(hoursAgo(3.5))] as never),
+    ).rejects.toMatchObject({ details: [expect.objectContaining({ code: "WRISTBAND_VOIDED" })] });
+  });
+
+  it("GAP-020 (f): the caregiver-attested path passes without a band, and refuses a wrong band", async () => {
+    await resetBands();
+    await printBand(PATIENT);
+    const bandB = await printBand(OTHER_PATIENT);
+    const base = {
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      administeredAt: new Date().toISOString(),
+      caregiverSessionId: "9c9c9c9c-9c9c-4c9c-8c9c-9c9c9c9c9c9c",
+      route: "oral",
+      doseAmount: 5,
+      doseUnit: "mg",
+    };
+    const ok = await svc.recordCaregiverAttested(ORG_A, {
+      ...base,
+      barcodeScan: { scannedRxnormRxcui: "rx-morphine" },
+    });
+    expect(ok.barcodeMatchResult).toBe("match");
+    await expect(
+      svc.recordCaregiverAttested(ORG_A, {
+        ...base,
+        barcodeScan: { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: bandB },
+      }),
+    ).rejects.toMatchObject({ code: "BARCODE_VERIFICATION_FAILED" });
+    expect((await scanEvents()).at(-1)).toMatchObject({
+      match_result: "wrong_patient",
+      administration_record_id: null,
+    });
+  });
+
+  it("GAP-020 (g): an unbound verifier fails closed (not_on_file), and a throwing verifier is a 503 -- never a pass", async () => {
+    await resetBands();
+    const band = await printBand(PATIENT);
+    const scan = { scannedRxnormRxcui: "rx-morphine", patientWristbandPayload: band };
+    const unbound = createDbEmarBackend(handle.db, undefined, undefined, () => orderPort);
+    await expect(
+      unbound.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ barcodeScan: scan })),
+    ).rejects.toMatchObject({
+      code: "BARCODE_VERIFICATION_FAILED",
+      details: [expect.objectContaining({ code: "WRISTBAND_NOT_ON_FILE" })],
+    });
+    const throwing = createDbEmarBackend(
+      handle.db,
+      undefined,
+      undefined,
+      () => orderPort,
+      undefined,
+      () => ({
+        async verify() {
+          throw new Error("connection refused: postgres://secret");
+        },
+      }),
+    );
+    await expect(
+      throwing.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ barcodeScan: scan })),
+    ).rejects.toMatchObject({ code: "WRISTBAND_VERIFIER_UNAVAILABLE", statusCode: 503 });
   });
 
   it("GAP-020: the caregiver path runs the same five-rights gate (wrong route -> 422), and files the real admission", async () => {
