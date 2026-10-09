@@ -359,6 +359,8 @@
     "arch:test-typecheck": "bun run scripts/check-test-typecheck-coverage.ts",
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:error-envelope": "bun run scripts/check-error-envelope.ts",
+    "arch:pdf-templates": "bun run scripts/check-pdf-template-coverage.ts",
+    "test:golden:m22": "vitest run apps/backend/__tests__/m22-forms-golden.test.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",
     "arch:route-reachability": "bun run scripts/check-route-reachability.ts",
     "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",

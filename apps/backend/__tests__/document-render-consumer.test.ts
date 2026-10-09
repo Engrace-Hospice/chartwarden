@@ -38,6 +38,7 @@ import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
+import { NOR } from "./_m22-form-fixtures";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -418,16 +419,18 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
   // statement, the face-to-face encounter, the notice of rights, the revocation and the discharge summary.
   // Every one has a published template and a `document_id` column, and none was ever rendered.
 
+  // GAP-033 — most of these carry a typed `renderPayload` the producer built (an id-only event is refused below).
+  const TYPED = { renderPayload: { schemaVersion: 2 } };
   it.each([
     ["m6.election.signed", "election_statement", { electionStatementId: ORDER }],
-    ["m6.cti.signed", "cti", { ctiId: ORDER }],
-    ["m6.f2f.attested", "f2f", { f2fId: ORDER }],
-    ["m6.nor.acknowledged", "nor", { norAcknowledgmentId: ORDER }],
-    ["m6.revocation.created", "revocation", { revocationEventId: ORDER }],
-    ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER }],
-    ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER }],
+    ["m6.cti.signed", "cti", { ctiId: ORDER, ...TYPED }],
+    ["m6.f2f.attested", "f2f", { f2fId: ORDER, ...TYPED }],
+    ["m6.nor.acknowledged", "nor", { norAcknowledgmentId: ORDER, ...TYPED }],
+    ["m6.revocation.created", "revocation", { revocationEventId: ORDER, ...TYPED }],
+    ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER, ...TYPED }],
+    ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER, ...TYPED }],
     // F-192 (#248) — M6's seventh artifact, the transfer summary (both directions, one template).
-    ["m6.transfer.created", "discharge_summary_transfer", { transferEventId: ORDER }],
+    ["m6.transfer.created", "discharge_summary_transfer", { transferEventId: ORDER, ...TYPED }],
     // FY2027 — the election statement addendum (content rides `renderPayload`).
     [
       "m6.election_addendum.furnished",
@@ -448,6 +451,37 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.templateKey).toBe(templateKey);
     expect(payload.aggregateId).toBe(ORDER);
     expect(payload.patientId).toBe(PAT);
+  });
+
+  it.each([
+    ["m6.cti.signed", { ctiId: ORDER }],
+    ["m6.f2f.attested", { f2fId: ORDER }],
+    ["m6.nor.acknowledged", { norAcknowledgmentId: ORDER }],
+    ["m6.revocation.created", { revocationEventId: ORDER }],
+    ["m6.discharge.created", { dischargeEventId: ORDER }],
+    ["m6.discharge.cosigned", { dischargeEventId: ORDER }],
+    ["m6.transfer.created", { transferEventId: ORDER }],
+  ])(
+    "%s with no typed renderPayload (id-only legacy event) is refused, never drawn",
+    (eventType, ids) => {
+      expect(() =>
+        normalizeDocumentRequest({
+          eventType,
+          organizationId: ORG,
+          payload: { ...ids, patientId: PAT },
+        }),
+      ).toThrow(/carries no typed 'renderPayload'/);
+    },
+  );
+
+  it("the explicit drain-window flag passes an id-only legacy event through marked legacyUntyped", () => {
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m6.cti.signed",
+      organizationId: ORG,
+      payload: { ctiId: ORDER, patientId: PAT },
+      legacyUntypedFallback: true,
+    });
+    expect(payload.content).toMatchObject({ ctiId: ORDER, legacyUntyped: true });
   });
 
   // F-224 (#248) — ONE event, TWO artifacts, discriminated by `recipientKind`; the aggregate is the CALL.
@@ -868,6 +902,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         aggregateId: ADMISSION,
         payload: {
           norAcknowledgmentId: ORDER,
+          renderPayload: { ...NOR, patient: { ...NOR.patient, patientId: PAT } },
           patientId: PAT,
           // Exactly what `runEffects` writes: the transition ran on the ADMISSION, so its id is in the
           // body beside the NOR's own.

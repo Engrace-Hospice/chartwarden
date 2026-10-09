@@ -79,6 +79,12 @@ interface RequestShape {
    * source transition can legitimately recur against the same aggregate.
    */
   readonly appends?: boolean;
+  /**
+   * GAP-033 - the event's content blob MUST be a typed `renderPayload` the producer built (the six M6 CoP
+   * documents). An id-only event is a malformed request - retry then DLQ - never a generic dump of identifiers
+   * drawn as a legal document. {@link NormalizeInput.legacyUntypedFallback} is the explicit drain-window escape.
+   */
+  readonly requiresRenderPayload?: boolean;
 }
 
 /** The §4.11 wire shapes, one per LIVE consumed event (see {@link M22_DOCUMENT_REQUEST_EVENTS}). */
@@ -208,22 +214,40 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["electionStatementId"],
     templateKey: "election_statement",
   },
-  "m6.cti.signed": { aggregateIdFields: ["ctiId"], templateKey: "cti" },
-  "m6.f2f.attested": { aggregateIdFields: ["f2fId"], templateKey: "f2f" },
+  // GAP-033 - the six CoP documents below carry a typed `renderPayload` built by M6 in the signing transaction
+  // (packages/types render-payloads). They previously carried identifiers only, so a layout had nothing to draw.
+  "m6.cti.signed": {
+    aggregateIdFields: ["ctiId"],
+    templateKey: "cti",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
+  },
+  "m6.f2f.attested": {
+    aggregateIdFields: ["f2fId"],
+    templateKey: "f2f",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
+  },
   "m6.nor.acknowledged": {
     // The outbox ENVELOPE for this one is the ADMISSION (the transition runs on the admission row), so
     // the identity must come from the body — reading the envelope would file every tenant's NOR against
     // an admission id and collide with anything else that renders under an admission.
     aggregateIdFields: ["norAcknowledgmentId"],
     templateKey: "nor",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   "m6.revocation.created": {
     aggregateIdFields: ["revocationEventId"],
     templateKey: "revocation",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   "m6.discharge.created": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   // F-176 (#248) — M22 spec §4.11/§7.17: a for-cause cosign renders a NEW VERSION of the discharge summary. Fires on
   // the SAME `discharge_event` id `.created` rendered, so it appends (F-168's per-request idempotency key). If the
@@ -232,6 +256,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m6.discharge.cosigned": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
     appends: true,
   },
   // FY2027 (CMS-1851-F) — the election statement addendum, one DOCUMENT per addendum VERSION (an update after a
@@ -340,6 +366,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m6.transfer.created": {
     aggregateIdFields: ["transferEventId"],
     templateKey: "discharge_summary_transfer",
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   // ── F-166 (#248) — five GENESIS-only source-event renders M22's own survey-then-build pass on the
   // `handlers-unbound` group found buildable (see decide-document-request.ts's own comment on each).
@@ -465,6 +493,21 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   },
 };
 
+/**
+ * Every template key the request table names STATICALLY (a fixed `templateKey`, or a `templateKeyByField` map
+ * value). Keys read off a payload field at runtime (`templateKeyField`) are not enumerable and are excluded.
+ * `arch:pdf-templates` asserts each one is a published template, so a request can never name a key the
+ * renderer will refuse (the M13 reconciliation worksheet did exactly that until GAP-033).
+ */
+export function staticRequestTemplateKeys(): readonly string[] {
+  const keys = new Set<string>();
+  for (const shape of Object.values(REQUEST_SHAPES)) {
+    if (shape.templateKey) keys.add(shape.templateKey);
+    for (const k of Object.values(shape.templateKeyByField?.map ?? {})) keys.add(k);
+  }
+  return [...keys].sort();
+}
+
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,
  * missing aggregate id, or a template key the payload never names). The dispatcher retries then
  * dead-letters — a malformed render request is evidence, never a silent skip. */
@@ -488,13 +531,25 @@ const str = (v: unknown): string | undefined =>
  * @throws MalformedRenderRequestError when the event is not a known §4.11 request or the payload lacks the
  * aggregate identity / template key the render needs.
  */
-export function normalizeDocumentRequest(delivered: {
+export interface NormalizeInput {
   readonly eventType: string;
   readonly organizationId: string;
   /** The outbox row's own `aggregate_id` — the identity for shapes that carry it on the envelope. */
   readonly aggregateId?: string;
   readonly payload: unknown;
-}): { event: DocumentRequestEvent; payload: DocumentRequestPayload } {
+  /**
+   * Drain-window escape for {@link RequestShape.requiresRenderPayload}: an id-only legacy event is passed through
+   * marked `legacyUntyped` and drawn by the generic builder (the pre-GAP-033 behaviour) instead of dead-lettering.
+   * Off by default - a legal document must be drawn from typed content. Enable only while the outbox drains rows
+   * queued before the producer deploy, then turn it off (see docs/history/gates-pdf-templates.md).
+   */
+  readonly legacyUntypedFallback?: boolean;
+}
+
+export function normalizeDocumentRequest(delivered: NormalizeInput): {
+  event: DocumentRequestEvent;
+  payload: DocumentRequestPayload;
+} {
   const { eventType, organizationId, payload: rawPayload } = delivered;
   const shape = (REQUEST_SHAPES as Record<string, RequestShape | undefined>)[eventType];
   if (!shape) throw new MalformedRenderRequestError(eventType, "not a §4.11 render-request event");
@@ -535,8 +590,18 @@ export function normalizeDocumentRequest(delivered: {
   }
 
   const rawContent = shape.contentField ? p[shape.contentField] : p;
-  const content =
-    rawContent && typeof rawContent === "object" ? (rawContent as Record<string, unknown>) : {};
+  const typedContent = rawContent !== null && typeof rawContent === "object";
+  if (shape.requiresRenderPayload && !typedContent && delivered.legacyUntypedFallback !== true) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `the event carries no typed '${shape.contentField}' (an id-only legacy event); the producer must build it`,
+    );
+  }
+  const content: Record<string, unknown> = typedContent
+    ? (rawContent as Record<string, unknown>)
+    : shape.requiresRenderPayload
+      ? { ...p, legacyUntyped: true }
+      : {};
 
   // The chart-target patient may live on the envelope (M21/M23 style) or inside the content blob (M11/M12
   // thread it through `renderPayload`, whose schema is `Type.Unknown()` — no catalog change needed).
@@ -590,6 +655,8 @@ export interface DocumentRequestConsumerDeps {
    * through `document.(aggregate_type, aggregate_id)`; the source row's column simply stays NULL.
    */
   readonly emitRendered?: (event: DocumentRenderedEmit) => Promise<void>;
+  /** See {@link NormalizeInput.legacyUntypedFallback}. Defaults to the `M22_M6_LEGACY_UNTYPED_RENDER=1` env flag. */
+  readonly legacyUntypedFallback?: boolean;
 }
 
 /** The `m22.document.rendered` payload (see ../events-by-m22.ts) as the consumer hands it to the emitter. */
@@ -632,13 +699,18 @@ export function buildM22DocumentRequestConsumer(
 ): OutboxConsumerBinding {
   const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
   const renderer = deps.renderer ?? getDocumentRenderer;
+  const legacyUntyped =
+    deps.legacyUntypedFallback ?? process.env.M22_M6_LEGACY_UNTYPED_RENDER === "1";
 
   return {
     consumerName: M22_DOCUMENT_RENDER_CONSUMER,
     consumerModule: "m22",
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
-      const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
+      const { event: sourceEvent, payload } = normalizeDocumentRequest({
+        ...event,
+        legacyUntypedFallback: legacyUntyped,
+      });
       // F-168 (#248) — two-tier idempotency, per event shape. Most events are GENESIS-only (their real
       // source transition fires exactly once per real-world occurrence — an order is signed once), so
       // `alreadyRendered` stays keyed on `(aggregateType, aggregateId)`: this is what makes a PRODUCER-

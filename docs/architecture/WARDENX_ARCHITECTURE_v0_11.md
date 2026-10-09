@@ -427,7 +427,7 @@ wardenx/
 
 ### PDF generation
 
-- react-pdf for structured clinical forms
+- structured clinical forms: declarative `FormSpec` forms compiled to the in-repo standard-font PDF writer (`react-pdf` is not installed; see the divergence banner above)
 - Puppeteer for cost report worksheets and complex layouts
 
 ### E-prescribe
@@ -1827,7 +1827,7 @@ Each module is a complete spec produced as a separate document under `docs/modul
 - **Storage:** MinIO with per-tenant bucket scope; signed URLs
 - **OCR:** Docling worker processes uploads; LangExtract worker extracts structured data per schema
 - **DocLens (see §10.6):** Full patient intake document extraction pipeline — classifier, per-type schemas (11 supported), Claude verification on high-risk fields, side-by-side review UI, chart writeback to Modules 5/7/9/11/12, full provenance, HearthNote selection seeding
-- **PDF generation:** react-pdf for forms, Puppeteer for complex layouts
+- **PDF generation:** declarative `FormSpec` forms over the in-repo standard-font PDF writer (`react-pdf` and `puppeteer` are not installed; see the implementation-divergence banner near the top of this document)
 - **Form template library:** NOE, NOTR, Election Statement, Revocation, Certification of Terminal Illness, Face-to-Face Encounter, CMS-485 (Plan of Care), NOMNC, Discharge Summary, GIP transition documentation, ABN, HIPAA Privacy Notice, code status directive transcription form
 - **AI capabilities consumed:** DocLens classifier and verification (Module 32), HearthNote narrative engine for form sections, Form prefill from chart data, narrative section drafting
 

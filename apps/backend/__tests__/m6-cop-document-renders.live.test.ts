@@ -34,6 +34,7 @@ import {
   M6_OUTBOX_EVENTS,
   buildM6DocumentBackrefConsumer,
 } from "../src/modules/06-admission/index";
+import type { RenderSourcesPort } from "../src/modules/06-admission/render-payloads";
 import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
@@ -64,6 +65,7 @@ import {
   createDrizzleDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
+import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
@@ -75,6 +77,7 @@ import {
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { dbRenderSources } from "./_m6-render-sources";
 const F2F_ATTESTATION_NARRATIVE =
   "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
@@ -119,7 +122,10 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
+  let svcNoIdentity: ReturnType<typeof createDbAdmissionRouteService>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
+  let objects: ReturnType<typeof createInMemoryObjectStore>;
+  let publisher: ReturnType<typeof buildTxOutboxPublisher>;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -156,6 +162,20 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       [aggregateType, aggregateId],
     );
     return rows[0] ?? null;
+  }
+  /** The text drawn on the stored PDF of one source row's LATEST version (read back from the object store). */
+  async function renderedText(aggregateType: string, aggregateId: string): Promise<string> {
+    const { rows } = await admin.query(
+      `SELECT v.minio_object_key FROM document d JOIN document_version v ON v.document_id = d.id
+        WHERE d.aggregate_type=$1 AND d.aggregate_id=$2 ORDER BY v.version_number DESC LIMIT 1`,
+      [aggregateType, aggregateId],
+    );
+    const bytes = objects.objects.get(`${deriveTenantBucket(ORG_A)}/${rows[0]?.minio_object_key}`);
+    expect(bytes, `${aggregateType} bytes not stored`).toBeDefined();
+    const raw = Buffer.from(bytes as Uint8Array).toString("latin1");
+    return [...raw.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
+      .map((m) => (m[1] as string).replace(/\\([()\\])/g, "$1"))
+      .join("\n");
   }
   async function backref(table: string, id: string): Promise<string | null> {
     const { rows } = await admin.query(`SELECT document_id FROM ${table} WHERE id=$1`, [id]);
@@ -233,7 +253,7 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     // Every write's `app.user_id` is an FK the M4 audit trigger dereferences, so each signing identity
     // has to be a real M1 user.
     await admin.query(
-      `INSERT INTO "user" (id,email) VALUES ($1,'f100a@x.test'),($2,'f100md@x.test'),($3,'f100at@x.test')`,
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f100a@x.test','Una User'),($2,'f100md@x.test','Imani Okafor'),($3,'f100at@x.test','Atul Attending')`,
       [USER, MD, ATTENDING],
     );
     await admin.query(
@@ -282,25 +302,41 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       M33_OUTBOX_EVENTS,
       M37_OUTBOX_EVENTS,
     ]);
-    const publisher = buildTxOutboxPublisher(catalog);
+    publisher = buildTxOutboxPublisher(catalog);
 
-    svc = createDbAdmissionRouteService(
-      handle.db,
-      { publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m6" }) },
-      undefined,
-      {
-        async belongsToOrg(organizationId: string, providerEntityId: string) {
-          const { rows } = await admin.query(
-            "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
-            [providerEntityId, organizationId],
-          );
-          return rows.length > 0;
-        },
+    const renderSources = dbRenderSources(admin); // GAP-033 - real patient / user rows
+    const m6Outbox = {
+      publish: (tx: unknown, e: Record<string, unknown>) =>
+        publisher.publish(tx as never, { ...e, callerModule: "m6" } as never),
+    };
+    const orgCheck = {
+      async belongsToOrg(organizationId: string, providerEntityId: string) {
+        const { rows } = await admin.query(
+          "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+          [providerEntityId, organizationId],
+        );
+        return rows.length > 0;
       },
-    );
+    };
+    const buildSvc = (sources: RenderSourcesPort) =>
+      createDbAdmissionRouteService(
+        handle.db,
+        m6Outbox as never,
+        undefined,
+        orgCheck,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        sources,
+      );
+    svc = buildSvc(renderSources);
+    // The same service with an M5 reader that never resolves the patient (an unavailable source).
+    svcNoIdentity = buildSvc({ ...renderSources, patient: async () => null });
 
     const store = createDrizzleDocumentSeamStore(handle.db);
-    const objects = createInMemoryObjectStore();
+    objects = createInMemoryObjectStore();
     const renderConsumer = buildM22DocumentRequestConsumer({
       store,
       renderer: () => createDocumentRenderer({ store, objects: objects.store }),
@@ -514,6 +550,175 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       [filed.id, ORG_B],
     );
     expect(rows[0].n).toBe(0);
+  });
+
+  // ── GAP-033 — the document is DRAWN from what was signed, not from identifiers ─────────────────────────
+  it("GAP-033: the CTI and NOR are drawn from the typed payload M6 built in the signing transaction", async () => {
+    const patientId = randomUUID();
+    const adm = await activeAdmission(patientId);
+    await settle();
+    const cti = await renderedText("cti", adm.ctiId);
+    expect(cti).toContain("Certification of Terminal Illness");
+    expect(cti).toContain("Test Patient"); // identity from the real M5 row, never the request
+    expect(cti).toContain(`MRN-${patientId}`);
+    expect(cti).toContain("C34.90");
+    expect(cti).toContain("Metastatic non-small-cell lung cancer");
+    expect(cti).toContain("Electronically signed by Dr. Imani Okafor, MD (NPI 1234567893)");
+    expect(cti).toContain("Meaning of signature: Certification");
+    const nor = await renderedText("nor", adm.norId);
+    expect(nor).toContain("Notice of Patient Rights");
+    expect(nor).toContain("Test Patient");
+    // The PDF /Title is the constant template title - never the patient (PHI-free file metadata).
+    const { rows } = await admin.query(
+      "SELECT title FROM document WHERE aggregate_type='cti' AND aggregate_id=$1",
+      [adm.ctiId],
+    );
+    expect(rows[0].title).toBe("Certification of Terminal Illness");
+  });
+
+  it("GAP-033: the face-to-face attestation names its performer and carries the written attestation", async () => {
+    const patientId = randomUUID();
+    const { admissionId } = await activeAdmission(patientId);
+    const next = await svc.createElectionPeriod(ORG_A, admissionId);
+    await admin.query("UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1", [
+      next.id,
+    ]);
+    const f2f = await svc.scheduleF2f(ORG_A, {
+      admissionId,
+      electionPeriodId: next.id,
+      scheduledClinicianId: MD,
+      clinicianRole: "hospice_md",
+      actor: SYSTEM_F2F_ACTOR,
+      scheduledDate: new Date().toISOString().slice(0, 10) as never,
+    });
+    const done = await svc.completeF2f(
+      ORG_A,
+      f2f.id,
+      f2f.version,
+      new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+    );
+    await svc.attestF2f(ORG_A, f2f.id, done.version, MD, F2F_ATTESTATION_NARRATIVE);
+    await settle();
+    const text = await renderedText("f2f", f2f.id);
+    expect(text).toContain("Face-to-Face Encounter Attestation");
+    expect(text).toContain("Face-to-face encounter performed by the hospice clinician");
+    expect(text).toContain("Electronically signed by Imani Okafor");
+    expect(text).toContain("Test Patient");
+  });
+
+  it("GAP-033: the revocation and the for-cause discharge (v1 pending cosign, v2 cosigned) carry their signatures", async () => {
+    const revPatient = randomUUID();
+    const revAdm = await activeAdmission(revPatient);
+    const rev = await svc.createRevocation(
+      ORG_A,
+      revAdm.admissionId,
+      {
+        revocationDate: new Date().toISOString().slice(0, 10),
+        narrative: "patient elected to revoke hospice care to pursue curative treatment",
+        signingPatientName: "Pat Test",
+        signingRole: "patient",
+        revocationReason: "seek_curative_treatment",
+      },
+      USER,
+    );
+    await settle();
+    const revText = await renderedText("revocation", rev.id);
+    expect(revText).toContain("Revocation of Hospice Election");
+    expect(revText).toContain("Seek Curative Treatment");
+    expect(revText).toContain("Test Patient");
+
+    const patientId = randomUUID();
+    const adm = await activeAdmission(patientId);
+    const filed = await svc.discharge(
+      ORG_A,
+      adm.admissionId,
+      {
+        reason: "for_cause",
+        dischargeDate: "2026-05-05",
+        narrative: "Discharge for cause; safety of staff could not be assured.",
+        forCauseReason:
+          "Staff safety could not be assured at the residence after repeated incidents.",
+      } as never,
+      USER,
+    );
+    await settle();
+    const v1 = await renderedText("discharge_summary", filed.id);
+    expect(v1).toContain("Discharge Summary");
+    expect(v1).toContain("awaiting medical-director cosign");
+    expect(v1).not.toContain("Medical-director cosign\n");
+    await svc.cosignDischarge(
+      ORG_A,
+      filed.id,
+      {
+        cosignerName: "Dr Director",
+        cosignerNpi: "1234567893",
+        actorRoleKeys: ["medical_director"],
+      },
+      filed.version,
+      MD,
+    );
+    await settle();
+    const v2 = await renderedText("discharge_summary", filed.id);
+    expect(v2).toContain("Medical-director cosign");
+    expect(v2).toContain("Electronically signed by Dr Director (NPI 1234567893)");
+    expect(v2).not.toContain("awaiting medical-director cosign");
+  });
+
+  it("GAP-033: an id-only legacy event is refused (retry -> DLQ path), never drawn as a form", async () => {
+    const ctiId = randomUUID();
+    const patientId = randomUUID();
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
+      publisher.publish(tx as never, {
+        eventName: "m6.cti.signed",
+        payload: {
+          ctiId,
+          electionPeriodId: randomUUID(),
+          signedAt: new Date().toISOString(),
+          patientId,
+        },
+        organizationId: ORG_A,
+        aggregateKind: "certification_of_terminal_illness",
+        aggregateId: ctiId,
+        callerModule: "m6",
+      }),
+    );
+    await settle();
+    expect(await documentFor("cti", ctiId)).toBeNull();
+    const { rows } = await admin.query(
+      "SELECT status, attempt_count, last_error FROM outbox_event WHERE aggregate_id=$1 AND event_type='m6.cti.signed'",
+      [ctiId],
+    );
+    expect(rows[0].status).not.toBe("dispatched");
+    expect(rows[0].attempt_count).toBeGreaterThanOrEqual(1);
+    expect(rows[0].last_error).toContain("typed 'renderPayload'");
+  });
+
+  it("GAP-033: a source that does not resolve publishes id-only (loudly refused) instead of failing the signature", async () => {
+    // The M5 reader does not resolve the patient: the CTI signature itself still succeeds (a lookup never fails
+    // a clinical signature), and no document is drawn from a missing identity.
+    const patientId = randomUUID();
+    const { admissionId } = await admitViaQualifiedReferral(svcNoIdentity, admin, {
+      hospicePhysicianId: MD,
+      organizationId: ORG_A,
+      actorUserId: USER,
+      patientId,
+    });
+    const periods = await svcNoIdentity.listElectionPeriods(ORG_A, admissionId);
+    const cti = await svcNoIdentity.draftCti(
+      ORG_A,
+      {
+        electionPeriodId: periods?.[0]?.id as string,
+        hospiceMedicalDirectorId: MD,
+        attendingPhysicianId: ATTENDING,
+        ...CTI_CLINICAL,
+        isRecert: false,
+      },
+      USER,
+    );
+    const signed = await svcNoIdentity.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+    expect(signed.state).toBe("signed");
+    await settle();
+    expect(await documentFor("cti", cti.id)).toBeNull();
   });
 
   it("every one of the six is a published template M22 renders and M6 stamps", async () => {
