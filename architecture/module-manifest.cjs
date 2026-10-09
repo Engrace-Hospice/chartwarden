@@ -200,6 +200,7 @@ exports.MODULES = [
     // M04-F02: audit_denylist_catalog + audit_action_catalog added (platform-shared reference).
     ownedTables: [
       "legal_hold",
+      "legal_hold_audit_event",
       "destruction_certificate",
       "state_retention_override",
       "audit_export",

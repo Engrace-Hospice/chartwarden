@@ -72,6 +72,7 @@ export * from "./collaborator-links";
 // audit_denylist_catalog, audit_action_catalog are platform-shared reference (NON_ORG_SCOPED per the
 // check-tenancy allowlist). None are PHI tables, so the PE/location columns do not apply.
 export * from "./legal-holds";
+export * from "./legal-hold-audit-events";
 export * from "./destruction-certificates";
 export * from "./state-retention-overrides";
 export * from "./audit-exports";

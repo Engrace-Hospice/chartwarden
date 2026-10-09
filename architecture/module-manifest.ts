@@ -252,6 +252,7 @@ export const MODULES: ModuleDef[] = [
     // the M4 spec creates). The audit_event table itself stays M1-owned + helper-only.
     ownedTables: [
       "legal_hold",
+      "legal_hold_audit_event",
       "destruction_certificate",
       "state_retention_override",
       "audit_export",

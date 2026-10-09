@@ -24,10 +24,12 @@ import {
   type AuditEventRecord,
   type EraseInput,
   type EraserPorts,
+  type ReconcileOrgResult,
   type RetentionCandidate,
   type RetentionScanPorts,
   audit,
   createDbAuditQuery,
+  reconcileOrgHolds,
   renderAuditExport,
   runExecuteDestruction,
   runRetentionScan,
@@ -70,6 +72,8 @@ interface RetentionEventLike {
   readonly createdAt: string;
   readonly retentionClass: RetentionClass;
   readonly context?: Record<string, unknown>;
+  /** GAP-008 (ADR-0051): an ACTIVE legal hold covers this row, so its EFFECTIVE class is `legal_hold` whatever the hashed base says. */
+  readonly legalHold?: boolean;
 }
 
 const monthKey = (iso: string): string => iso.slice(0, 7); // YYYY-MM
@@ -88,7 +92,10 @@ export function groupRetentionCandidates(
   const out = new Map<string, RetentionCandidate>();
   for (const e of events) {
     const month = monthKey(e.createdAt);
-    const key = `${month}|${e.retentionClass}`;
+    // A held row reports as `legal_hold` (the scan then skips it with an explicit reason); the retention YEARS still follow the
+    // base class, which is what the row's natural due date is.
+    const effectiveClass: RetentionClass = e.legalHold === true ? "legal_hold" : e.retentionClass;
+    const key = `${month}|${effectiveClass}`;
     if (out.has(key)) continue;
     const years =
       e.retentionClass === "operational" ? OPERATIONAL_RETENTION_YEARS : COMPLIANCE_RETENTION_YEARS;
@@ -99,8 +106,8 @@ export function groupRetentionCandidates(
     out.set(key, {
       partition: `audit_event_${month.replace("-", "_")}`,
       organizationId,
-      dataClass: `${DATA_CLASS_PREFIX}${e.retentionClass}`,
-      retentionClass: e.retentionClass,
+      dataClass: `${DATA_CLASS_PREFIX}${effectiveClass}`,
+      retentionClass: effectiveClass,
       expiresAt: expiresAt.toISOString(),
       patient: null,
     });
@@ -343,7 +350,51 @@ export function buildRetentionScanPorts(
 export const runRetentionScanForOrg = (deps: AuditJobOpsDeps, organizationId: string) =>
   runRetentionScan(buildRetentionScanPorts(deps, organizationId));
 
+// --- legal_hold_materialise --------------------------------------------------------------------------
+
+/**
+ * GAP-008 (ADR-0051): bring every ACTIVE hold's overlay (`legal_hold_audit_event`) up to date - holds applied since the last
+ * tick, holds the migration left `pending`, and the rows an open-ended hold gains as time passes. A SWEEP (like export /
+ * destruction): the apply route stays a plain insert and a lost job costs nothing, because the next tick resumes from each
+ * hold's `materialised_through`. Supremacy does not wait on it - the structural group check and the DELETE guard cover rows
+ * the overlay has not reached yet. A hold that fails is re-raised AFTER the others ran, so the job never reports green over it.
+ */
+export async function runLegalHoldMaterialiseForOrg(
+  deps: AuditJobOpsDeps,
+  organizationId: string,
+): Promise<ReconcileOrgResult> {
+  const now = (deps.now ?? (() => new Date()))();
+  const result = await reconcileOrgHolds(deps.db, organizationId, now);
+  deps.log?.("m4.legal_hold_materialise.org", {
+    organizationId,
+    holds: result.holds,
+    newRows: result.newRows,
+    failed: result.failed.length,
+  });
+  if (result.failed.length > 0) {
+    throw new Error(
+      `M4_LEGAL_HOLD_MATERIALISE: ${result.failed.length} hold(s) failed for org ${organizationId}: ${result.failed.join(",")}`,
+    );
+  }
+  return result;
+}
+
 // --- execute_destruction -----------------------------------------------------------------------------
+
+/**
+ * The certificate's terminal status once overlay-held rows are accounted for: a run that erased everything it was handed is
+ * still only `partial_refused` when some rows of the certificate's range were kept under an active hold, and a certificate
+ * whose every row is held touched nothing (`held`). The eraser's own status (group-level refusals) wins otherwise.
+ */
+export function certificateStatusWithHeldRows(
+  status: "executed" | "partial_refused" | "held",
+  heldRows: number,
+  erasableGroups: number,
+): "executed" | "partial_refused" | "held" {
+  if (heldRows === 0) return status;
+  if (erasableGroups === 0) return "held";
+  return status === "executed" ? "partial_refused" : status;
+}
 
 /** Execute every `approved` certificate of one org through the eraser. */
 export async function runDestructionSweepForOrg(
@@ -371,8 +422,15 @@ export async function runDestructionSweepForOrg(
     });
     const groups = new Map<string, EraseInput>();
     const spans = new Map<string, { from: string; to: string }>();
+    // GAP-008 (ADR-0051): rows an ACTIVE legal hold covers (the overlay) are not destruction candidates at all. The executor's
+    // DELETE and the database trigger refuse them too; excluding them here keeps the certificate honest about what it can destroy.
+    let heldRows = 0;
     for (const r of rows) {
       if (r.retentionClass !== retentionClass) continue;
+      if (r.legalHold === true) {
+        heldRows += 1;
+        continue;
+      }
       const resourceId = r.resourceId ?? r.id;
       const patientId =
         typeof r.context?.patientId === "string" ? (r.context.patientId as string) : undefined;
@@ -423,9 +481,11 @@ export async function runDestructionSweepForOrg(
             await tx
               .update(CERT)
               .set({
-                status,
-                recordCount: rows.length,
-                ...(status === "held" ? {} : { executedAt: now() }),
+                status: certificateStatusWithHeldRows(status, heldRows, groups.size),
+                recordCount: rows.length - heldRows,
+                ...(certificateStatusWithHeldRows(status, heldRows, groups.size) === "held"
+                  ? {}
+                  : { executedAt: now() }),
               })
               .where(eq(CERT.id, certificateId));
           }),
