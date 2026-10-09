@@ -112,30 +112,49 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   orgId: string,
   userId: string,
   candidates: readonly T[],
+  part2Gate: Part2ChannelGate,
 ): Promise<T[]> {
-  const patientIds = [
+  const careTeamPatientIds = [
     ...new Set(
       candidates.flatMap((candidate) =>
-        candidate.kind === "care_team" && candidate.memberSource === "auto" && candidate.subjectId
-          ? [candidate.subjectId]
-          : [],
+        candidate.kind === "care_team" && candidate.subjectId ? [candidate.subjectId] : [],
       ),
     ),
   ];
+  const automaticPatientIds = new Set(
+    candidates.flatMap((candidate) =>
+      candidate.kind === "care_team" && candidate.memberSource === "auto" && candidate.subjectId
+        ? [candidate.subjectId]
+        : [],
+    ),
+  );
   const currentCareTeamPatients = new Set<string>();
+  const part2AllowedPatients = new Set<string>();
 
   // A sidebar is bounded by the user's memberships, but do not turn a large caseload into an
   // unbounded burst of seam/database reads. The seam deliberately runs outside M36 transactions.
   let nextPatient = 0;
-  const workers = Array.from({ length: Math.min(8, patientIds.length) }, async () => {
-    while (nextPatient < patientIds.length) {
-      const patientId = patientIds[nextPatient++];
+  const workers = Array.from({ length: Math.min(8, careTeamPatientIds.length) }, async () => {
+    while (nextPatient < careTeamPatientIds.length) {
+      const patientId = careTeamPatientIds[nextPatient++];
       if (!patientId) continue;
-      const roster = await getSeam("CareTeamProvider").careTeamMembers({
-        organizationId: orgId,
-        patientId,
-      });
-      if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
+      try {
+        const allowed = await part2Gate.allowedUserIds({
+          organizationId: orgId,
+          patientId,
+          userIds: [userId],
+        });
+        if (allowed.has(userId)) part2AllowedPatients.add(patientId);
+        if (automaticPatientIds.has(patientId)) {
+          const roster = await getSeam("CareTeamProvider").careTeamMembers({
+            organizationId: orgId,
+            patientId,
+          });
+          if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
+        }
+      } catch {
+        // An unavailable clinical/consent seam is an authorization denial, never a stale grant.
+      }
     }
   });
   await Promise.all(workers);
@@ -143,8 +162,10 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   return candidates.filter((candidate) => {
     if (candidate.kind === "announcement") return true;
     if (!candidate.memberSource) return false;
-    if (candidate.kind !== "care_team" || candidate.memberSource !== "auto") return true;
-    return !!candidate.subjectId && currentCareTeamPatients.has(candidate.subjectId);
+    if (candidate.kind !== "care_team") return true;
+    if (!candidate.subjectId || !part2AllowedPatients.has(candidate.subjectId)) return false;
+    if (candidate.memberSource !== "auto") return true;
+    return currentCareTeamPatients.has(candidate.subjectId);
   });
 }
 
@@ -237,8 +258,8 @@ const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
   severityOverride: "critical",
 };
 
-function iso(d: Date | null): string | null {
-  return d === null ? null : d.toISOString();
+function iso(d: Date | null | undefined): string | null {
+  return d == null ? null : d.toISOString();
 }
 
 /** Aggregate per-recipient × channel delivery rows into the inbox item's single status (§4.2). */
@@ -265,6 +286,13 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } | null 
   } catch {
     return null;
   }
+}
+
+/** Keep inbox previews compact and text-only. The plaintext exists only in the authorized response
+ * path and is never written to logs, caches, or denormalized storage. */
+function messagePreview(body: string): string {
+  const compact = body.replace(/\s+/g, " ").trim();
+  return compact.length > 140 ? `${compact.slice(0, 137)}…` : compact;
 }
 
 function toRuleView(r: typeof AR.$inferSelect): AlertRuleView {
@@ -452,10 +480,11 @@ export function createDbMessagingRouteService(
           memberSource: row.memberSource as ChannelMemberSource,
         }));
       });
-      const rows = await effectivelyVisibleChannels(orgId, userId, candidates);
+      const rows = await effectivelyVisibleChannels(orgId, userId, candidates, part2Gate);
       if (rows.length === 0) return [];
 
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const channelIds = rows.map((row) => row.channelId);
         // Unread = delivered-but-unread receipts for this user, grouped by channel (the SD-028
         // partial index `(user_id, status) WHERE status='delivered'` is exactly this path). Scope the
         // aggregation to the already-authorized set so stale channels contribute no metadata at all.
@@ -471,24 +500,134 @@ export function createDbMessagingRouteService(
               eq(MR.organizationId, orgId),
               eq(MR.userId, userId),
               eq(MR.status, "delivered"),
-              inArray(
-                MSG.channelId,
-                rows.map((row) => row.channelId),
-              ),
+              inArray(MSG.channelId, channelIds),
             ),
           )
           .groupBy(MSG.channelId);
         const unread = new Map(unreadRows.map((r) => [r.channelId, Number(r.count)]));
-        return rows.map(
-          (r): ChannelSummary => ({
-            channelId: r.channelId,
-            kind: r.kind,
-            title: r.title,
-            subjectId: r.subjectId,
-            archivedAt: r.isArchived ? (iso(r.archivesAt) ?? iso(r.updatedAt)) : null,
-            unreadCount: unread.get(r.channelId) ?? 0,
-          }),
+
+        // One bounded query yields the latest row for every already-authorized channel. Decryption
+        // happens only after effective visibility has removed stale clinical memberships.
+        const latestRows = await tx
+          .selectDistinctOn([MSG.channelId], {
+            channelId: MSG.channelId,
+            messageId: MSG.id,
+            bodyCipher: MSG.bodyCipher,
+            status: MSG.status,
+            createdAt: MSG.createdAt,
+            authorDisplayName: USER.name,
+          })
+          .from(MSG)
+          .leftJoin(USER, eq(USER.id, MSG.authorUserId))
+          .where(and(eq(MSG.organizationId, orgId), inArray(MSG.channelId, channelIds)))
+          .orderBy(MSG.channelId, desc(MSG.createdAt), desc(MSG.id));
+        const latest = new Map(latestRows.map((row) => [row.channelId, row]));
+
+        // DM labels are server-derived from the other active channel member. This is a single
+        // tenant-scoped join for the entire inbox, never a client-supplied title or per-row query.
+        const dmChannelIds = rows.filter((row) => row.kind === "dm").map((row) => row.channelId);
+        const peerRows =
+          dmChannelIds.length === 0
+            ? []
+            : await tx
+                .select({ channelId: CM.channelId, userId: CM.userId, displayName: USER.name })
+                .from(CM)
+                .innerJoin(USER, eq(USER.id, CM.userId))
+                .where(
+                  and(
+                    eq(CM.organizationId, orgId),
+                    inArray(CM.channelId, dmChannelIds),
+                    isNull(CM.removedAt),
+                    sql`${CM.userId} <> ${userId}::uuid`,
+                  ),
+                );
+        const peerByChannel = new Map(peerRows.map((peer) => [peer.channelId, peer]));
+        const peerUserIds = [...new Set(peerRows.map((peer) => peer.userId))];
+        const peerMemberships =
+          peerUserIds.length === 0
+            ? []
+            : await tx
+                .select({ membershipId: MEMBERSHIP.id, userId: MEMBERSHIP.userId })
+                .from(MEMBERSHIP)
+                .where(
+                  and(
+                    eq(MEMBERSHIP.organizationId, orgId),
+                    eq(MEMBERSHIP.status, "active"),
+                    inArray(MEMBERSHIP.userId, peerUserIds),
+                  ),
+                );
+        const peerRoleRows =
+          peerMemberships.length === 0
+            ? []
+            : await tx
+                .select({ membershipId: MEMBERSHIP_ROLE.membershipId, roleName: ROLE.name })
+                .from(MEMBERSHIP_ROLE)
+                .innerJoin(ROLE, eq(ROLE.id, MEMBERSHIP_ROLE.roleId))
+                .where(
+                  and(
+                    eq(MEMBERSHIP_ROLE.organizationId, orgId),
+                    inArray(
+                      MEMBERSHIP_ROLE.membershipId,
+                      peerMemberships.map((membership) => membership.membershipId),
+                    ),
+                    eq(ROLE.enabled, true),
+                    or(
+                      isNull(MEMBERSHIP_ROLE.expiresAt),
+                      sql`${MEMBERSHIP_ROLE.expiresAt} > now()`,
+                    ),
+                  ),
+                );
+        const peerUserByMembership = new Map(
+          peerMemberships.map((membership) => [membership.membershipId, membership.userId]),
         );
+        const rolesByUser = new Map<string, string[]>();
+        for (const role of peerRoleRows) {
+          const peerUserId = peerUserByMembership.get(role.membershipId);
+          if (!peerUserId) continue;
+          const roles = rolesByUser.get(peerUserId) ?? [];
+          roles.push(role.roleName);
+          rolesByUser.set(peerUserId, roles);
+        }
+
+        return rows
+          .map(
+            (r): ChannelSummary => ({
+              channelId: r.channelId,
+              kind: r.kind,
+              title:
+                r.kind === "dm"
+                  ? peerByChannel.get(r.channelId)?.displayName?.trim() || "Direct message"
+                  : r.title,
+              subjectId: r.subjectId,
+              archivedAt: r.isArchived ? (iso(r.archivesAt) ?? iso(r.updatedAt)) : null,
+              unreadCount: unread.get(r.channelId) ?? 0,
+              participantRoles:
+                r.kind === "dm"
+                  ? [
+                      ...(rolesByUser.get(peerByChannel.get(r.channelId)?.userId ?? "") ?? []),
+                    ].sort()
+                  : [],
+              lastActivityAt: iso(latest.get(r.channelId)?.createdAt) ?? iso(r.updatedAt)!,
+              lastMessage: (() => {
+                const message = latest.get(r.channelId);
+                if (!message) return null;
+                return {
+                  messageId: message.messageId,
+                  preview:
+                    message.status === "deleted"
+                      ? "Message deleted"
+                      : messagePreview(cipher.open(orgId, message.bodyCipher)),
+                  createdAt: message.createdAt.toISOString(),
+                  authorDisplayName: message.authorDisplayName?.trim() || null,
+                };
+              })(),
+            }),
+          )
+          .sort(
+            (a, b) =>
+              b.lastActivityAt.localeCompare(a.lastActivityAt) ||
+              a.channelId.localeCompare(b.channelId),
+          );
       });
     },
 
@@ -535,6 +674,9 @@ export function createDbMessagingRouteService(
           patientId: ch.kind === "care_team" ? ch.subjectId : null,
           archivedAt: ch.isArchived ? (iso(ch.archivesAt) ?? iso(ch.updatedAt)) : null,
           unreadCount: Number(ur[0]?.count ?? 0),
+          participantRoles: [],
+          lastActivityAt: iso(ch.updatedAt)!,
+          lastMessage: null,
           members: members.map((m) => ({
             userId: m.userId,
             role: m.role as ChannelMemberRole,
@@ -555,13 +697,22 @@ export function createDbMessagingRouteService(
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
         const where: SQL[] = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
         const cur = input.cursor ? decodeCursor(input.cursor) : null;
-        // Keyset (created_at, id) ASC — strictly after the cursor (oldest-first, like the slice).
-        if (cur) where.push(sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`);
+        const backward = input.direction === "backward";
+        // Stable keyset over (created_at, id). Forward preserves the original contract; backward
+        // starts at the newest rows and walks toward older history.
+        if (cur) {
+          where.push(
+            backward
+              ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cur.createdAt}, ${cur.id})`
+              : sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`,
+          );
+        }
         const rows = await tx
           .select({
             id: MSG.id,
             channelId: MSG.channelId,
             authorUserId: MSG.authorUserId,
+            authorDisplayName: USER.name,
             bodyCipher: MSG.bodyCipher,
             bodyKind: MSG.bodyKind,
             status: MSG.status,
@@ -569,27 +720,33 @@ export function createDbMessagingRouteService(
             parentMessageId: MSG.parentMessageId,
           })
           .from(MSG)
+          .leftJoin(USER, eq(USER.id, MSG.authorUserId))
           .where(and(...where))
-          .orderBy(asc(MSG.createdAt), asc(MSG.id))
+          .orderBy(
+            backward ? desc(MSG.createdAt) : asc(MSG.createdAt),
+            backward ? desc(MSG.id) : asc(MSG.id),
+          )
           .limit(limit + 1);
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
+        const chronologicalRows = backward ? [...pageRows].reverse() : pageRows;
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
-        const page = pageRows.map(
+        const page = chronologicalRows.map(
           (m): ResolvedMessage => ({
             messageId: m.id,
             channelId: m.channelId,
             authorUserId: m.authorUserId,
+            authorDisplayName: m.authorDisplayName?.trim() || null,
             body: m.status === "deleted" ? "" : cipher.open(orgId, m.bodyCipher),
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
           }),
         );
-        const lastRow = pageRows[pageRows.length - 1];
+        const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
-          hasMore && lastRow ? encodeCursor(lastRow.createdAt, lastRow.id) : undefined;
+          hasMore && cursorRow ? encodeCursor(cursorRow.createdAt, cursorRow.id) : undefined;
         return {
           messages: page,
           nextCursor,
@@ -635,7 +792,7 @@ export function createDbMessagingRouteService(
         };
       });
       if (!candidate) return false;
-      return (await effectivelyVisibleChannels(orgId, userId, [candidate])).length === 1;
+      return (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1;
     },
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----

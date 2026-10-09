@@ -126,6 +126,7 @@ export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter
 // ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
 export type {
   MessagingRouteService,
+  ChannelLastMessage,
   ChannelSummary,
   ChannelDetail,
   ChannelMemberView,

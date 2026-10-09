@@ -156045,7 +156045,10 @@
                           "title",
                           "subjectId",
                           "archivedAt",
-                          "unreadCount"
+                          "unreadCount",
+                          "participantRoles",
+                          "lastActivityAt",
+                          "lastMessage"
                         ],
                         "properties": {
                           "channelId": {
@@ -156115,6 +156118,52 @@
                           },
                           "unreadCount": {
                             "type": "integer"
+                          },
+                          "participantRoles": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "lastActivityAt": {
+                            "type": "string"
+                          },
+                          "lastMessage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "messageId",
+                                  "preview",
+                                  "createdAt",
+                                  "authorDisplayName"
+                                ],
+                                "properties": {
+                                  "messageId": {
+                                    "type": "string"
+                                  },
+                                  "preview": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "authorDisplayName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -156164,6 +156213,9 @@
                     "subjectId",
                     "archivedAt",
                     "unreadCount",
+                    "participantRoles",
+                    "lastActivityAt",
+                    "lastMessage",
                     "patientId",
                     "members"
                   ],
@@ -156235,6 +156287,52 @@
                     },
                     "unreadCount": {
                       "type": "integer"
+                    },
+                    "participantRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "lastActivityAt": {
+                      "type": "string"
+                    },
+                    "lastMessage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "messageId",
+                            "preview",
+                            "createdAt",
+                            "authorDisplayName"
+                          ],
+                          "properties": {
+                            "messageId": {
+                              "type": "string"
+                            },
+                            "preview": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "authorDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "patientId": {
                       "anyOf": [
@@ -156449,6 +156547,23 @@
               "maximum": 100,
               "type": "integer"
             }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "forward",
+                  "type": "string"
+                },
+                {
+                  "const": "backward",
+                  "type": "string"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -156471,6 +156586,7 @@
                           "messageId",
                           "channelId",
                           "authorUserId",
+                          "authorDisplayName",
                           "body",
                           "bodyKind",
                           "createdAt",
@@ -156484,6 +156600,16 @@
                             "type": "string"
                           },
                           "authorUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authorDisplayName": {
                             "anyOf": [
                               {
                                 "type": "string"

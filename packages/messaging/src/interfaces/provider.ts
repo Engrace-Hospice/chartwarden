@@ -31,6 +31,7 @@ export interface ResolvedMessage {
   readonly messageId: string;
   readonly channelId: string;
   readonly authorUserId: string | null; // null ⇒ system-authored (§3.4 author_kind)
+  readonly authorDisplayName: string | null;
   readonly body: string; // decrypted under the tenant DEK for entitled readers only
   readonly bodyKind: MessageBodyKind;
   readonly createdAt: string; // ISO-8601

@@ -9,6 +9,7 @@ import {
   LoadingSpinner,
   Panel,
   StatusPill,
+  humanizeIdentifier,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -633,7 +634,7 @@ export function MeetingDetail(): JSX.Element {
                     <StatusPill label="Attested by coordinator" tone="warning" />
                   ) : null}
                   <StatusPill
-                    label={r.status}
+                    label={humanizeIdentifier(r.status)}
                     tone={PRESENT_STATUSES.has(r.status) ? "success" : "neutral"}
                   />
                 </li>

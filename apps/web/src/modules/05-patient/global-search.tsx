@@ -7,6 +7,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  humanizeIdentifier,
   setSearchTerm,
   useApiClient,
   useSearchTerm,
@@ -340,7 +341,7 @@ export function GlobalSearchResults(): JSX.Element {
                       <ResultCell row={row} />
                     </td>
                     <td style={tdStyle}>
-                      <StatusPill label={row.status} tone={row.tone} />
+                      <StatusPill label={humanizeIdentifier(row.status)} tone={row.tone} />
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       <Button

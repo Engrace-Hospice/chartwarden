@@ -366,6 +366,49 @@ describe("M36-T07 messaging route inventory", () => {
       expect(forged.statusCode).toBe(403);
       await app.close();
     });
+
+    it("retrieves the latest page first and walks backward without duplicates", async () => {
+      const { app } = makeServer();
+      for (const body of ["first update", "second update", "latest update"]) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/api/v1/messaging/channels/${CT}/messages`,
+          headers: RN1,
+          payload: { body },
+        });
+        expect(response.statusCode).toBe(201);
+      }
+
+      const latest = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}/messages?direction=backward&limit=2`,
+        headers: RN1,
+      });
+      expect(latest.statusCode).toBe(200);
+      expect(latest.json().messages.map((message: { body: string }) => message.body)).toEqual([
+        "second update",
+        "latest update",
+      ]);
+      expect(latest.json().messages[0].authorDisplayName).toBe("Nurse One");
+
+      const older = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}/messages?direction=backward&limit=2&cursor=${encodeURIComponent(latest.json().nextCursor)}`,
+        headers: RN1,
+      });
+      expect(older.statusCode).toBe(200);
+      expect(older.json().messages.map((message: { body: string }) => message.body)).toEqual([
+        "first update",
+      ]);
+      expect(
+        new Set(
+          [...latest.json().messages, ...older.json().messages].map(
+            (message: { messageId: string }) => message.messageId,
+          ),
+        ).size,
+      ).toBe(3);
+      await app.close();
+    });
   });
 
   describe("§4.2 DM (idempotent)", () => {
@@ -405,6 +448,63 @@ describe("M36-T07 messaging route inventory", () => {
       await app.close();
     });
 
+    it("returns an authorized peer label, preview, activity and confirmed unread count", async () => {
+      const { app } = makeServer();
+      const open = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/dm",
+        headers: RN1,
+        payload: { userId: "rn_2" },
+      });
+      const channelId = open.json().channelId as string;
+      const sent = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: RN2,
+        payload: { body: "Thanks for the update\nI will follow up." },
+      });
+      expect(sent.statusCode).toBe(201);
+
+      const inbox = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels",
+        headers: RN1,
+      });
+      const summary = inbox
+        .json()
+        .channels.find((channel: { channelId: string }) => channel.channelId === channelId);
+      expect(summary).toMatchObject({
+        title: "Nurse Two",
+        participantRoles: ["Registered Nurse"],
+        unreadCount: 1,
+        lastActivityAt: "2026-06-15T12:00:00.000Z",
+        lastMessage: {
+          preview: "Thanks for the update I will follow up.",
+          authorDisplayName: "Nurse Two",
+        },
+      });
+
+      const read = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/messages/${sent.json().messageId}/read`,
+        headers: RN1,
+        payload: { upTo: true },
+      });
+      expect(read.statusCode).toBe(204);
+      const refreshed = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels",
+        headers: RN1,
+      });
+      expect(
+        refreshed
+          .json()
+          .channels.find((channel: { channelId: string }) => channel.channelId === channelId)
+          .unreadCount,
+      ).toBe(0);
+      await app.close();
+    });
+
     it("does not reveal or open DMs with suspended or foreign-tenant users", async () => {
       const { app } = makeServer();
       for (const userId of ["suspended_1", "foreign_1"]) {
@@ -415,7 +515,7 @@ describe("M36-T07 messaging route inventory", () => {
           payload: { userId },
         });
         expect(response.statusCode).toBe(404);
-        expect(response.json().code).toBe("NOT_FOUND");
+        expect(response.json().error.code).toBe("NOT_FOUND");
       }
       await app.close();
     });

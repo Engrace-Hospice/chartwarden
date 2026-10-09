@@ -9,6 +9,7 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/04-audit — Audit Log Viewer (M4, Track A).
@@ -332,7 +333,7 @@ function AuditTable({
               </td>
               <td style={tdStyle}>
                 <div style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
-                  {e.eventType}
+                  {humanizeIdentifier(e.eventType)}
                 </div>
                 <div className="wx-data-md" style={mutedCodeStyle}>
                   {e.id}
@@ -386,7 +387,7 @@ function EntityCell({ event }: { event: AuditEvent }): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
       <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {event.resourceKind}
+        {humanizeIdentifier(event.resourceKind)}
       </span>
       {event.resourceId ? (
         <span className="wx-data-md" style={mutedCodeStyle}>
@@ -428,11 +429,11 @@ function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => voi
           {event.actorRole ? `, ${label(event.actorRole)}` : ""})
         </>,
       )}
-      {row("Action", event.eventType)}
+      {row("Action", humanizeIdentifier(event.eventType))}
       {row(
         "Entity",
         <>
-          {event.resourceKind}
+          {humanizeIdentifier(event.resourceKind)}
           {event.resourceId ? (
             <>
               {" · "}

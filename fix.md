@@ -97,7 +97,7 @@ So when there is something regarding a patient, everybody can see it - Ok
 
 
 
-- In "Compose note" in encounters and in notifications under communication, we should not show enums like "nv.sp.assessment" to users
+- In "Compose note" in encounters and in notifications under communication, we should not show enums (eg. "nv.sp.assessment" or "m20.safety.coverage_gap_detected") to users - Ok
 - Give the possibility to toggle and collapse tabs when clicking on them - Ok
 - In Admission, take the tabs (on the sidebar) from "New admission" all the way to "Intake review" and put them as new tabs (All admissions - New admission - Referral Inbox - New referral - Readmit - Discharge/Transfer) - OK
 - Take the tabs (in the sidebar) in the assessment subview and put them as new tabs in the assessment page (/hope, like in the admission) - Ok

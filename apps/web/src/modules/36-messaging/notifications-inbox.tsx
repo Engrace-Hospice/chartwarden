@@ -9,6 +9,7 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
+  humanizeIdentifier,
 } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
@@ -50,8 +51,6 @@ const SEVERITY_GLYPH: Record<string, GlyphName> = {
   warn: "alert",
   info: "info",
 };
-const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
-
 function relTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
@@ -86,7 +85,9 @@ export function NotificationsInbox(): JSX.Element {
         q.length === 0 ||
         alert.summary.toLowerCase().includes(q) ||
         alert.category.toLowerCase().includes(q) ||
+        humanizeIdentifier(alert.category).toLowerCase().includes(q) ||
         alert.eventType.toLowerCase().includes(q) ||
+        humanizeIdentifier(alert.eventType).toLowerCase().includes(q) ||
         alert.alertId.toLowerCase().includes(q);
       const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
       const matchesDelivery = deliveryFilter === "all" || alert.deliveryStatus === deliveryFilter;
@@ -347,18 +348,18 @@ export function NotificationsInbox(): JSX.Element {
                       </td>
                       <td style={tdStyle}>
                         <span style={sourceChipStyle}>
-                          {cap(alert.category.replace(/_/g, " "))}
+                          {humanizeIdentifier(alert.category)}
                         </span>
                       </td>
                       <td style={tdStyle}>
                         <StatusPill
-                          label={cap(alert.severity)}
+                          label={humanizeIdentifier(alert.severity)}
                           tone={SEVERITY_TONE[alert.severity] ?? "neutral"}
                         />
                       </td>
                       <td style={tdStyle}>
                         <StatusPill
-                          label={cap(alert.deliveryStatus)}
+                          label={humanizeIdentifier(alert.deliveryStatus)}
                           tone={DELIVERY_TONE[alert.deliveryStatus]}
                         />
                       </td>
@@ -450,9 +451,7 @@ function NotificationCell({ alert }: { alert: AlertInboxItem }): JSX.Element {
       </span>
       <div style={cellTextStyle}>
         <span style={primaryTextStyle}>{alert.summary}</span>
-        <code className="wx-data-md" style={secondaryCodeStyle}>
-          {alert.eventType}
-        </code>
+        <span style={secondaryLabelStyle}>{humanizeIdentifier(alert.eventType)}</span>
       </div>
     </div>
   );
@@ -536,7 +535,7 @@ const primaryTextStyle: CSSProperties = {
   fontWeight: 600,
   color: "var(--color-on-surface)",
 };
-const secondaryCodeStyle: CSSProperties = {
+const secondaryLabelStyle: CSSProperties = {
   fontSize: "0.75rem",
   color: "var(--color-on-surface-variant)",
 };

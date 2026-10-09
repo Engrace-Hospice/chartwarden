@@ -58,7 +58,7 @@ interface PanelProps {
   readonly onChanged: () => void;
 }
 
-/** A refusal rendered verbatim (code + the server's message); step-up gets the real ceremony link. */
+/** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
 function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
   const path = `${window.location.pathname}${window.location.search}`;
   const stepUp = authFailureRedirect(
@@ -70,11 +70,7 @@ function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
   const redirect = stepUp ?? (failure.status === 401 ? "/login" : null);
   return (
     <div role="alert" style={alertBox}>
-      <span>
-        {failure.status ? `${failure.status} ` : ""}
-        {failure.code ? `${failure.code}: ` : ""}
-        {failure.message}
-      </span>
+      <span>{failure.message}</span>
       {redirect ? (
         <Link to={redirect} style={alertLink}>
           {failure.status === 401 ? "Sign in again" : "Re-authenticate"}

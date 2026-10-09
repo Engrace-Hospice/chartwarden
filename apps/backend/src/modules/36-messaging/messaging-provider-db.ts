@@ -204,6 +204,7 @@ export function createDbMessagingProvider(
             messageId: m.id,
             channelId: m.channelId,
             authorUserId: m.authorUserId,
+            authorDisplayName: null,
             body: m.status === "deleted" ? "" : cipher.open(orgId, m.bodyCipher),
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),

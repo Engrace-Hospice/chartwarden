@@ -11,6 +11,7 @@ import {
   type StatusTone,
   ageYears,
   cardSurface,
+  humanizeIdentifier,
   useApiClient,
   useToast,
 } from "@wardenx/ui";
@@ -1295,7 +1296,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                     }}
                   >
                     <div style={recordTitleRow}>
-                      <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
+                      <strong>{humanizeIdentifier(address.kind)}</strong>
                       {address.isPrimary ? <span style={badge("primary")}>primary</span> : null}
                       {address.geocodeLat && address.geocodeLng ? (
                         <span
@@ -1336,7 +1337,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                   <div key={address.id} style={recordRowMuted}>
                     <div>
                       <div style={recordTitleRow}>
-                        <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
+                        <strong>{humanizeIdentifier(address.kind)}</strong>
                         {address.isPrimary ? (
                           <span style={badge("neutral")}>was primary</span>
                         ) : null}

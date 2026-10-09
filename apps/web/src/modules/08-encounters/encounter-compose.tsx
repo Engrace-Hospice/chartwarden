@@ -570,16 +570,14 @@ export function EncounterCompose(): JSX.Element {
                                 <span style={entryContent}>
                                   <span style={entryText}>{entry.label}</span>
 
-                                  <span style={entryMetaRow}>
-                                    <code style={entryCode}>{entry.code}</code>
-
-                                    {entry.bodySystem ? (
+                                  {entry.bodySystem ? (
+                                    <span style={entryMetaRow}>
                                       <StatusPill
                                         label={humanize(entry.bodySystem)}
                                         tone="neutral"
                                       />
-                                    ) : null}
-                                  </span>
+                                    </span>
+                                  ) : null}
                                 </span>
                               </label>
 
@@ -1246,14 +1244,6 @@ const entryMetaRow: CSSProperties = {
   alignItems: "center",
   flexWrap: "wrap",
   gap: "0.4rem",
-};
-
-const entryCode: CSSProperties = {
-  padding: "0.12rem 0.32rem",
-  borderRadius: "0.3rem",
-  fontSize: "0.64rem",
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
 };
 
 const slotPanel: CSSProperties = {

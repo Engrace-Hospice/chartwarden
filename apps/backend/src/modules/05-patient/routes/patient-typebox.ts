@@ -156,6 +156,10 @@ export const MessagingPatientSearchResponseSchema = Type.Object({
     }),
   ),
 });
+export const MessagingPatientSearchQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 120 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 25 })),
+});
 
 // GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.
 // `total` is the count of all patients in the org; `byStatus` is the count per lifecycle status

@@ -30,7 +30,15 @@ import type {
 } from "./kinds";
 import type { AttachmentInput, ResolvedMessage } from "./provider";
 
-/** A channel as listed in the sidebar (§4.2 GET /channels) — no message bodies. */
+/** Minimum authorized last-message projection for the conversation inbox. */
+export interface ChannelLastMessage {
+  readonly messageId: string;
+  readonly preview: string;
+  readonly createdAt: string;
+  readonly authorDisplayName: string | null;
+}
+
+/** A channel as listed in the sidebar (§4.2 GET /channels). */
 export interface ChannelSummary {
   readonly channelId: string;
   readonly kind: ChannelKind;
@@ -38,6 +46,12 @@ export interface ChannelSummary {
   readonly subjectId: string | null;
   readonly archivedAt: string | null;
   readonly unreadCount: number;
+  /** Server-derived peer roles for DMs; empty for other channel kinds. */
+  readonly participantRoles: readonly string[];
+  /** Message activity, falling back to channel activity for an empty conversation. */
+  readonly lastActivityAt: string;
+  /** Decrypted only after effective channel authorization; null when the channel is empty. */
+  readonly lastMessage: ChannelLastMessage | null;
 }
 
 /** A channel member as returned on channel detail (§4.2 GET /channels/:id). */
@@ -159,6 +173,9 @@ export interface MessagingRouteService {
       userId: string;
       cursor?: string;
       limit?: number;
+      /** `forward` preserves the original oldest-first contract; `backward` retrieves the latest
+       *  page initially and progressively older pages from the returned cursor. */
+      direction?: "forward" | "backward";
     },
   ): Promise<{
     messages: readonly ResolvedMessage[];

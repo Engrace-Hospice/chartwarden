@@ -272,6 +272,63 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect(count.rows[0].count).toBe(1);
   });
 
+  it("builds tenant-scoped DM summaries and stable latest-to-older history pages", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const dm = await service.openDm(orgA, concurrentA, concurrentB);
+    const sent = [];
+    for (const body of ["oldest", "middle", "newest"]) {
+      sent.push(
+        await service.sendMessage(orgA, {
+          channelId: dm.channelId,
+          authorUserId: concurrentB,
+          body,
+        }),
+      );
+    }
+
+    const summary = (await service.listChannels(orgA, concurrentA)).find(
+      (channel) => channel.channelId === dm.channelId,
+    );
+    expect(summary).toMatchObject({
+      title: "G104 concurrent-b",
+      unreadCount: 3,
+      lastMessage: { preview: "newest", authorDisplayName: "G104 concurrent-b" },
+    });
+    expect(
+      (await service.listChannels(orgB, dualMember)).map((channel) => channel.channelId),
+    ).not.toContain(dm.channelId);
+
+    const latest = await service.listMessages(orgA, {
+      channelId: dm.channelId,
+      userId: concurrentA,
+      direction: "backward",
+      limit: 2,
+    });
+    expect(latest.messages.map((message) => message.body)).toEqual(["middle", "newest"]);
+    const older = await service.listMessages(orgA, {
+      channelId: dm.channelId,
+      userId: concurrentA,
+      direction: "backward",
+      cursor: latest.nextCursor,
+      limit: 2,
+    });
+    expect(older.messages.map((message) => message.body)).toEqual(["oldest"]);
+    expect(
+      new Set([...latest.messages, ...older.messages].map((message) => message.messageId)).size,
+    ).toBe(3);
+
+    await service.markRead(orgA, {
+      userId: concurrentA,
+      messageId: sent.at(-1)!.messageId,
+      upTo: true,
+    });
+    expect(
+      (await service.listChannels(orgA, concurrentA)).find(
+        (channel) => channel.channelId === dm.channelId,
+      )?.unreadCount,
+    ).toBe(0);
+  });
+
   it("opens patient care-team channels idempotently and collapses concurrent creation", async () => {
     const provider = createDbMessagingProvider(handle.db);
     const service = createDbMessagingRouteService(handle.db, {
@@ -408,13 +465,13 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     registerSeam("ConsentEvaluator", createDbConsentEvaluator(handle.db));
     const service = createDbMessagingRouteService(handle.db);
     const provider = createDbMessagingProvider(handle.db);
-    const ensureMembership = async (userId: string) =>
-      admin.query(
-        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
-        [userId, orgA],
-      );
-    await ensureMembership(rn);
-    await ensureMembership(manual);
+    const ensureActiveMembership = async (userId: string) =>
+      admin.query(`UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2`, [
+        userId,
+        orgA,
+      ]);
+    await ensureActiveMembership(rn);
+    await ensureActiveMembership(manual);
     // unflagged: the consent evaluator is never consulted and access is unchanged
     expect(await service.canViewChannel(orgA, rn, channelId)).toBe(true);
 
