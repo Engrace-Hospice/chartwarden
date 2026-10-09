@@ -1,7 +1,7 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 23 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 24 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
@@ -10,14 +10,15 @@
 // note is reconciled here to the spec table's 19 rows (the authoritative enumeration), plus
 // `rhc_carry_over_hets_fresh` (the cross-hospice RHC day-count warning) and the two FY2027 rules
 // (`f2f_telehealth_g0679`, CR 14495; `election_addendum_signed`, 42 CFR 418.24(c)), plus
-// `claim_total_matches_lines` (the 837I claim charge balances to its line charges). Every default is
+// `claim_total_matches_lines` (the 837I claim charge balances to its line charges) and `visit_lines_reportable`
+// (visits skipped for lack of a documented duration). Every default is
 // `regulatoryRequired: true` (the platform floor a tenant cannot disable, D5) except
 // `eligibility_check_freshness_30d`, `evv_bracket_coherence` (ADR-0008) and `rhc_carry_over_hets_fresh`.
 export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 23 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 24 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
 import { aggregateCapProjection } from "./aggregate-cap-projection";
@@ -56,9 +57,11 @@ import { POS_BY_QCODE, POS_LABEL_ALIASES, placeOfServiceConsistency } from "./pl
 import { rhcCarryOverHetsFresh } from "./rhc-carry-over-hets";
 import { siaCalculationCorrect } from "./sia-calculation";
 import { tobAndDatesConsistency } from "./tob-dates-consistency";
+import { visitLinesReportable } from "./visit-lines-reportable";
 
 export {
   claimTotalMatchesLines,
+  visitLinesReportable,
   patientEligibilityPartAActive,
   eligibilityCheckFreshness30d,
   electionPeriodActive,
@@ -96,7 +99,7 @@ export {
 };
 
 /**
- * The 23 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule and the claim-total balance rule). This is the canonical platform-floor set
+ * The 24 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule and the claim-total balance rule). This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */
@@ -126,10 +129,12 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   electionAddendumSigned,
   // 837I CLM02 balances to the service-line charges (payment add-ons are never billed charges).
   claimTotalMatchesLines,
+  // CMS ch. 11 §30.3 — billable visits that could not be reported as lines (warn; ids only).
+  visitLinesReportable,
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 23 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 24 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */

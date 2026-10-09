@@ -35,8 +35,6 @@ import {
   G0679_UNIT_CHARGE_CENTS,
   type IsoDate,
   type LevelOfCare,
-  POS_BY_QCODE,
-  POS_LABEL_ALIASES,
   type RuleResult,
   applySequestrationPolicy,
   claimPhysicianNpis,
@@ -56,7 +54,12 @@ import {
   hospiceFiscalYearStarting,
   readAssemblyFacts,
 } from "./claim-assembly-facts";
-import { buildVisitLineInputs, perDiemLineAmounts } from "./claim-assembly-lines";
+import {
+  perDiemLineAmounts,
+  qCodeForPlaceOfService,
+  visitLineInputs,
+  visitLinesFor,
+} from "./claim-assembly-lines";
 import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
 import { persistedRemediation } from "./persisted-remediation";
 import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
@@ -104,28 +107,6 @@ const REVENUE_BY_LOC: Record<LevelOfCare, "0651" | "0652" | "0655" | "0656"> = {
   inpatient_respite_care: "0655",
   general_inpatient_care: "0656",
 };
-
-/**
- * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table now lives in
- * `@wardenx/billing`'s `place_of_service_consistency` rule; deriving from it rather than carrying a
- * second, independently-authored mapping is what makes it impossible for this function and that rule to
- * disagree about which Q-code a given place resolves to again (they used to, on three of nine places).
- */
-const QCODE_BY_POS: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(POS_BY_QCODE).map(([qcode, pos]) => [pos, qcode]),
-);
-
-/**
- * Map the resolved place of service to its CMS hospice Q-code. An unrecognized or absent place resolves
- * to Q5009 — CMS's own "place N.O.S." catch-all — never a specific site: the prior version defaulted to
- * Q5006 ("inpatient hospice facility") under a doc comment that called it "unspecified", which asserted a
- * real, specific place of care for a patient whose location was never actually assessed (F-125).
- */
-function qCodeForPlaceOfService(pos: string | null): repositories.NewClaimLineInput["qCode"] {
-  const label = (pos ?? "").toLowerCase();
-  const canonical = POS_LABEL_ALIASES[label] ?? label;
-  return (QCODE_BY_POS[canonical] ?? "Q5009") as repositories.NewClaimLineInput["qCode"];
-}
 
 /** Map a per-rule `RuleResult` to the `validation_result.outcome` enum value. */
 function resultOutcome(r: RuleResult): "pass" | "fail" | "warn" | "info" {
@@ -390,33 +371,18 @@ export function buildClaimAssemblyService(
 
         // ── 3c. CMS ch. 11 §30.3 — one dated line per visit by hospice staff, in 15-minute units ──────
         // The MAC prices the end-of-life SIA from the RN (G0299) / social-work (G0155) lines, so a claim
-        // without them leaves the add-on unpayable. A visit at a hospice's own inpatient facility (Q5006)
-        // is reported weekly instead — not implemented, so it is deferred rather than mis-reported.
-        const visitLines = buildVisitLineInputs({
+        // without them leaves the add-on unpayable. A visit that cannot be reported (no documented duration,
+        // no covering level-of-care period) is SKIPPED — never given guessed units — and surfaced by the
+        // `visit_lines_reportable` warning; a visit at a hospice's own inpatient facility (Q5006) is reported
+        // weekly instead, which is not implemented, so it is deferred rather than mis-reported.
+        const visitResult = visitLinesFor({
+          billableEncounters,
+          resolvedLoc,
+          qCode: placeOfService,
+        });
+        const visitLines = visitLineInputs({
           orgId,
-          visits: {
-            encounters: billableEncounters.flatMap((e) =>
-              e.discipline === undefined
-                ? []
-                : [
-                    {
-                      encounterId: e.encounterId,
-                      serviceDate: e.serviceDate,
-                      billability: e.billability,
-                      discipline: e.discipline,
-                      encounterType: e.encounterType ?? null,
-                      durationMinutes: e.durationMinutes ?? null,
-                    },
-                  ],
-            ),
-            levelOfCarePeriods: resolvedLoc.map((p) => ({
-              levelOfCarePeriodId: p.levelOfCarePeriodId,
-              levelOfCare: p.levelOfCare,
-              from: p.from,
-              to: p.to,
-            })),
-            inpatientHospiceFacility: placeOfService === "Q5006",
-          },
+          result: visitResult,
           qCode: placeOfService,
           icdPointerPositions,
           firstLineNumber: lineInputs.length + g0679Lines.length + 1,

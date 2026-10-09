@@ -66,7 +66,8 @@ export type RuleCategory =
   | "modifiers"
   | "evv"
   | "election"
-  | "charges";
+  | "charges"
+  | "visits";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -88,6 +89,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "evv",
   "election",
   "charges",
+  "visits",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -482,6 +484,19 @@ export interface SeamAvailabilityFlags {
 }
 
 /**
+ * Which billable visits the assembly could NOT turn into a claim line (CMS Pub. 100-04 ch. 11 §30.3), so the
+ * `visit_lines_reportable` rule can warn without a guess having been made. Encounter ids and reason codes only.
+ */
+export interface VisitReportingSnapshot {
+  readonly unresolved: readonly {
+    readonly encounterId: string;
+    readonly reason: "duration_missing" | "no_level_of_care_period";
+  }[];
+  /** Visits whose reporting rule is not implemented (inpatient hospice facility weekly summaries). */
+  readonly deferredCount: number;
+}
+
+/**
  * The injected, aggregate, plain-data, PHI-free snapshot every rule evaluates against. The Phase-3
  * validation SERVICE materializes it by walking each reader seam once; rules are pure functions of this
  * value (deterministic, clock-free, no I/O). Carries ids + structural/aggregate facts only — never the
@@ -527,6 +542,8 @@ export interface ValidationContext {
    * still type-checks.
    */
   readonly electionAddendum?: ElectionAddendumSnapshot;
+  /** Visits the assembly could not report as lines; absent when not materialized (the rule then SKIPs). */
+  readonly visitReporting?: VisitReportingSnapshot;
 
   readonly seams: SeamAvailabilityFlags;
 }

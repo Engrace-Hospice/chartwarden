@@ -32,7 +32,7 @@ export const validationRun = pgTable(
     trigger: m23ValidationRunTrigger("trigger").notNull(),
     outcome: m23ValidationRunOutcome("outcome").notNull(),
 
-    // Idempotency: identical (claim_id, trigger, run_input_hash) collapses to one row.
+    // Idempotency: identical (organization_id, claim_id, trigger, run_input_hash) collapses to one row.
     runInputHash: text("run_input_hash").notNull(), // sha256 of claim version + upstream-reader fingerprints
 
     // Run stats:
@@ -50,7 +50,10 @@ export const validationRun = pgTable(
   },
   (t) => ({
     claimRecent: index("validation_run_claim_recent_idx").on(t.claimId, t.startedAt),
+    // Matches migration 0076 (`organization_id` leads the index) — the repository's ON CONFLICT target must
+    // list exactly these columns for Postgres to infer the arbiter index.
     idempotency: uniqueIndex("validation_run_idempotency_uq").on(
+      t.organizationId,
       t.claimId,
       t.trigger,
       t.runInputHash,

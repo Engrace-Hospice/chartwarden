@@ -695,19 +695,40 @@ describe("CMS ch. 11 §30.3 — every visit by hospice staff is its own dated, 1
     expect(store.lines).toHaveLength(1);
   });
 
-  it("fails closed (422) naming the encounter when a billable visit has no documented duration", async () => {
+  it("assembles WITHOUT the line (never guessing units) when a billable visit has no documented duration, and warns", async () => {
+    const registry = new BillingRuleRegistry();
+    registry.registerRule(billing.visitLinesReportable);
+    registry.freeze();
     const seams = buildSeams({
-      billableEncounters: { forRange: async () => [visit({ durationMinutes: 0 })] },
+      ruleRegistry: registry,
+      billableEncounters: {
+        forRange: async () => [
+          visit({ durationMinutes: 0 }),
+          visit({ encounterId: "enc-ok", durationMinutes: 30 }),
+        ],
+      },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
-    const err = await svc.assemble(ACTOR, REQUEST).then(
-      () => null,
-      (e: unknown) => e as { code: string; statusCode: number; message: string },
+
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    // The claim assembled: the per-diem line plus ONLY the documented visit.
+    expect(res.initialValidationOutcome).toBe("all_pass"); // a warning never fails the run
+    type StoredLine = { backingEncounterIds: string[]; revenueCode: string };
+    const stored = store.lines as StoredLine[];
+    expect(stored.map((l) => l.backingEncounterIds)).toContainEqual(["enc-ok"]);
+    expect(stored.some((l) => l.backingEncounterIds.includes("enc-rn") && l.revenueCode === "0551")).toBe(false);
+    // …and the skipped visit is surfaced as a warning naming the encounter id only.
+    const warning = [...store.results.values()].find(
+      (r: { ruleKey: string }) => r.ruleKey === "visit_lines_reportable",
     );
-    expect(err).toMatchObject({ code: "VISIT_LINES_UNRESOLVED", statusCode: 422 });
-    expect(err?.message).toContain("enc-rn");
-    expect(err?.message).toContain("duration_missing");
-    expect(store.claims.size).toBe(0);
+    expect(warning).toMatchObject({ outcome: "warn", severity: "warn" });
+    expect(warning.remediation.defects).toEqual([
+      expect.objectContaining({
+        code: "VISIT_DURATION_MISSING",
+        refs: { encounterId: "enc-rn" },
+      }),
+    ]);
   });
 
   it("does not guess visit lines at an inpatient hospice facility (Q5006 weekly reporting is deferred)", async () => {

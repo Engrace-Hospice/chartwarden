@@ -16,6 +16,7 @@ import type {
   repositories,
 } from "@wardenx/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
+import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 import { claimDischargeCodes } from "./claim-discharge";
 
 /** The claim-row facts the rules read (the rest of `ClaimSnapshot` comes from the admission/diagnosis facts). */
@@ -166,6 +167,14 @@ export function assembleValidationContext(
       cbsaCode: wageIndex.cbsaCode,
     },
     ...(electionAddendum ? { electionAddendum } : {}),
+    // The visits the assembly could not report (the SAME derivation the assembly built its lines from).
+    visitReporting: visitReportingOf(
+      visitLinesFor({
+        billableEncounters,
+        resolvedLoc,
+        qCode: qCodeForPlaceOfService(mdmResolution.placeOfService),
+      }),
+    ),
     seams: {
       capProjectionBound,
       mdmResolverBound: true,

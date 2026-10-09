@@ -1,23 +1,48 @@
 // apps/backend/src/modules/23-billing-medicare/services/claim-assembly-lines.ts — the claim-line construction the
 // assembly delegates (CMS Pub. 100-04 ch. 11 §30.3): the per-diem line amounts (CHC in 15-minute units) and the
 // per-visit lines. The pure derivations live in `@wardenx/billing` (`claim-lines/`); this file only maps their
-// output onto `claim_line` insert rows and fails closed on a visit it cannot report.
+// output onto `claim_line` insert rows. It is shared by the assembly and by re-validation
+// (`validation-context.ts`), so both see the same visits skipped and the same lines.
 import {
+  type BillableEncounterSnapshot,
   type BuildVisitLinesInput,
   type HippsSegmentResult,
+  POS_BY_QCODE,
+  POS_LABEL_ALIASES,
+  type VisitLinesResult,
+  type VisitReportingSnapshot,
   buildVisitLines,
   chcLineFromSegment,
   type repositories,
 } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
 
 type NewClaimLineInput = repositories.NewClaimLineInput;
 
 /**
+ * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table lives in `@wardenx/billing`'s
+ * `place_of_service_consistency` rule; deriving from it rather than carrying a second, independently-authored
+ * mapping is what makes it impossible for this function and that rule to disagree about which Q-code a given place
+ * resolves to again (they used to, on three of nine places).
+ */
+const QCODE_BY_POS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(POS_BY_QCODE).map(([qcode, pos]) => [pos, qcode]),
+);
+
+/**
+ * Map the resolved place of service to its CMS hospice Q-code. An unrecognized or absent place resolves to Q5009 —
+ * CMS's own "place N.O.S." catch-all — never a specific site: the prior version defaulted to Q5006 ("inpatient
+ * hospice facility") under a doc comment that called it "unspecified", which asserted a real, specific place of
+ * care for a patient whose location was never actually assessed (F-125).
+ */
+export function qCodeForPlaceOfService(pos: string | null): NewClaimLineInput["qCode"] {
+  const label = (pos ?? "").toLowerCase();
+  const canonical = POS_LABEL_ALIASES[label] ?? label;
+  return (QCODE_BY_POS[canonical] ?? "Q5009") as NewClaimLineInput["qCode"];
+}
+
+/**
  * The unit charge of a visit line. Charges on visit lines are informational — the visit is bundled into the level
- * -of-care payment and "no additional payment is made on the visit revenue lines" (ch. 11 §30.3) — and WardenX has
- * no tenant charge master, so visit lines are reported at zero charge. OPEN PRODUCT DECISION: a tenant charge
- * schedule per discipline would replace this.
+ * -of-care payment and "no additional payment is made on the visit revenue lines" (ch. 11 §30.3).
  */
 export const VISIT_UNIT_CHARGE_CENTS = 0;
 
@@ -36,28 +61,63 @@ export function perDiemLineAmounts(segment: HippsSegmentResult): {
   };
 }
 
+/** What the visit derivation reads from the assembly facts (shared by the assembly and re-validation). */
+export interface VisitFacts {
+  readonly billableEncounters: readonly BillableEncounterSnapshot[];
+  readonly resolvedLoc: readonly {
+    readonly levelOfCarePeriodId: string;
+    readonly levelOfCare: BuildVisitLinesInput["levelOfCarePeriods"][number]["levelOfCare"];
+    readonly from: string;
+    readonly to: string;
+  }[];
+  readonly qCode: NewClaimLineInput["qCode"];
+}
+
 /**
- * The visit lines for the claim, numbered from `firstLineNumber`. A billable visit whose duration is undocumented,
- * or that no level-of-care period covers, cannot be reported honestly and fails the assembly with the encounter ids
- * (ids only — no PHI); visits whose reporting rule is not implemented are skipped (see the builder's `deferred`).
+ * Derive the claim's visit lines from the facts. An encounter from a reader that predates visit reporting (no
+ * discipline) is not a visit. NEVER throws: a visit that cannot be reported comes back in `unresolved` and is
+ * skipped, so the claim still assembles and the `visit_lines_reportable` warning names it.
  */
-export function buildVisitLineInputs(args: {
+export function visitLinesFor(facts: VisitFacts): VisitLinesResult {
+  return buildVisitLines({
+    encounters: facts.billableEncounters.flatMap((e) =>
+      e.discipline === undefined
+        ? []
+        : [
+            {
+              encounterId: e.encounterId,
+              serviceDate: e.serviceDate,
+              billability: e.billability,
+              discipline: e.discipline,
+              encounterType: e.encounterType ?? null,
+              durationMinutes: e.durationMinutes ?? null,
+            },
+          ],
+    ),
+    levelOfCarePeriods: facts.resolvedLoc.map((p) => ({
+      levelOfCarePeriodId: p.levelOfCarePeriodId,
+      levelOfCare: p.levelOfCare,
+      from: p.from,
+      to: p.to,
+    })),
+    inpatientHospiceFacility: facts.qCode === "Q5006",
+  });
+}
+
+/** The PHI-free snapshot the `visit_lines_reportable` rule reads. */
+export function visitReportingOf(result: VisitLinesResult): VisitReportingSnapshot {
+  return { unresolved: result.unresolved, deferredCount: result.deferred.length };
+}
+
+/** The `claim_line` rows for a visit derivation, numbered from `firstLineNumber`. */
+export function visitLineInputs(args: {
   readonly orgId: string;
-  readonly visits: BuildVisitLinesInput;
+  readonly result: VisitLinesResult;
   readonly qCode: NewClaimLineInput["qCode"];
   readonly icdPointerPositions: readonly number[];
   readonly firstLineNumber: number;
 }): NewClaimLineInput[] {
-  const { lines, unresolved } = buildVisitLines(args.visits);
-  if (unresolved.length > 0) {
-    const detail = unresolved.map((u) => `${u.encounterId} (${u.reason})`).join(", ");
-    throw new WardenXError(
-      "VISIT_LINES_UNRESOLVED",
-      `${unresolved.length} billable visit(s) cannot be reported on the claim: ${detail}; document the visit start/end times (or the level of care covering the visit date) and retry`,
-      422,
-    );
-  }
-  return lines.map((visit, idx) => ({
+  return args.result.lines.map((visit, idx) => ({
     organizationId: args.orgId,
     claimId: "", // filled once the claim id is minted
     lineNumber: args.firstLineNumber + idx,
