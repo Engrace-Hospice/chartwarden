@@ -14314,8 +14314,25 @@ export interface paths {
         /** Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2) */
         get: operations["getApiV1PatientsByIdIdentifiers"];
         put?: never;
-        /** Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers) */
+        /** Add an identifier; MRN immutable (409). ssn/state_id are envelope-encrypted (phi.write_ssn + step-up; 503 IDENTIFIER_CIPHER_UNBOUND when no tenant key is bound) and the response carries only the last 4 (patient.edit_identifiers) */
         post: operations["postApiV1PatientsByIdIdentifiers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/identifiers/{identifierId}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reveal one stored ssn/state_id (phi.read_ssn + step-up + chart scope); the access audit patient_identifier.reveal is written in the same transaction; Cache-Control: no-store */
+        post: operations["postApiV1PatientsByIdIdentifiersByIdentifierIdReveal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -63996,6 +64013,29 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdIdentifiersByIdentifierIdReveal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                identifierId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1470,
-    "coveredRoutes": 1470,
-    "directRoutesReferenced": 1408
+    "routes": 1471,
+    "coveredRoutes": 1471,
+    "directRoutesReferenced": 1409
   },
   "modules": [
     {
@@ -71,7 +71,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 39,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -88,7 +88,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 39
+      "directRoutesReferenced": 40
     },
     {
       "module": "06-admission",

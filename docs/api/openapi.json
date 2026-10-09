@@ -169659,7 +169659,7 @@
         "tags": [
           "05-patient"
         ],
-        "summary": "Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers)",
+        "summary": "Add an identifier; MRN immutable (409). ssn/state_id are envelope-encrypted (phi.write_ssn + step-up; 503 IDENTIFIER_CIPHER_UNBOUND when no tenant key is bound) and the response carries only the last 4 (patient.edit_identifiers)",
         "parameters": [
           {
             "name": "id",
@@ -169748,6 +169748,44 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/identifiers/{identifierId}/reveal": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdIdentifiersByIdentifierIdReveal",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Reveal one stored ssn/state_id (phi.read_ssn + step-up + chart scope); the access audit patient_identifier.reveal is written in the same transaction; Cache-Control: no-store",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "identifierId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
