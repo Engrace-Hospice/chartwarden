@@ -37326,11 +37326,16 @@
                   },
                   "attachedDocumentIds": {
                     "minItems": 1,
+                    "maxItems": 50,
                     "type": "array",
                     "items": {
                       "format": "uuid",
                       "type": "string"
                     }
+                  },
+                  "medicalRecordsBundleDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -37406,11 +37411,16 @@
                   },
                   "attachedDocumentIds": {
                     "minItems": 1,
+                    "maxItems": 50,
                     "type": "array",
                     "items": {
                       "format": "uuid",
                       "type": "string"
                     }
+                  },
+                  "medicalRecordsBundleDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
                   },
                   "goodCauseJustification": {
                     "minLength": 40,
