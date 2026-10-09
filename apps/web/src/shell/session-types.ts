@@ -34,6 +34,10 @@ export interface Session {
   membershipId?: string;
   /** The actor's M3-resolved role keys in the bound org. */
   roles?: string[];
+  /** Server-derived location memberships used only to narrow selectors; backend ABAC remains authoritative. */
+  locationIds?: string[];
+  /** The shared authorization decision for org-wide patient scope. */
+  orgWidePatientScope?: boolean;
   /** The actor's effective permission keys (M3-resolved) — for nav/Role-Home gating only. */
   permissions?: string[];
   /** Whether the actor holds the org_admin role (FB-T15). */

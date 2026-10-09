@@ -15,17 +15,37 @@ import { ApiClientProvider, createApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AdmissionLookupField } from "./entity-lookups";
+import { AdmissionLookupField, MembershipLookupField } from "./entity-lookups";
+import { SessionProvider } from "./session";
 
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const OPEN_ADMISSION = "11111111-8888-4888-8888-111111111111";
 const DISCHARGED_ADMISSION = "22222222-9999-4999-8999-222222222222";
+const MEMBERSHIP = "33333333-aaaa-4aaa-8aaa-333333333333";
+const CLINICIAN_USER = "44444444-bbbb-4bbb-8bbb-444444444444";
 
 let paths: string[] = [];
 
 async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  paths.push(new URL(url, "http://localhost").pathname);
+  const path = new URL(url, "http://localhost").pathname;
+  paths.push(path);
+  if (path === "/api/v1/orgs/org-1/members") {
+    return new Response(
+      JSON.stringify({
+        members: [
+          {
+            membershipId: MEMBERSHIP,
+            userId: CLINICIAN_USER,
+            displayName: "Jordan Clinician",
+            email: "jordan@example.test",
+            status: "active",
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
   return new Response(
     JSON.stringify({
       items: [
@@ -112,5 +132,44 @@ describe("F-066 — AdmissionLookupField is patient-scoped", () => {
     rerender(mount(OTHER));
     fireEvent.focus(screen.getByRole("combobox"));
     await waitFor(() => expect(paths).toContain(`/api/v1/patients/${OTHER}/admissions`));
+  });
+});
+
+describe("MembershipLookupField identifier spaces", () => {
+  it("keeps membershipId as the selected value and carries the corresponding userId as metadata", async () => {
+    let selectedValue = "";
+    let selectedUserId = "";
+    render(
+      <MemoryRouter>
+        <ApiClientProvider
+          client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+        >
+          <SessionProvider
+            session={{
+              userId: "viewer-user",
+              organizationId: "org-1",
+              membershipId: "viewer-membership",
+              roles: [],
+              permissions: [],
+              isAdmin: false,
+            }}
+          >
+            <MembershipLookupField
+              label="Clinician"
+              value=""
+              onChange={(value, option) => {
+                selectedValue = value;
+                selectedUserId = option?.metadata?.userId ?? "";
+              }}
+            />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.focus(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: /Jordan Clinician/i }));
+    expect(selectedValue).toBe(MEMBERSHIP);
+    expect(selectedUserId).toBe(CLINICIAN_USER);
   });
 });

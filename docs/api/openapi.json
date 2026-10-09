@@ -39463,6 +39463,8 @@
                     "membershipId",
                     "displayName",
                     "roles",
+                    "locationIds",
+                    "orgWidePatientScope",
                     "isAdmin",
                     "permissions"
                   ],
@@ -39515,6 +39517,15 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "locationIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "orgWidePatientScope": {
+                      "type": "boolean"
                     },
                     "isAdmin": {
                       "type": "boolean"
@@ -115802,8 +115813,16 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "me",
+                  "type": "string"
+                },
+                {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              ]
             }
           },
           {
@@ -149093,6 +149112,76 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/dm/staff": {
+      "get": {
+        "operationId": "getApiV1MessagingDmStaff",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search active staff eligible for a direct conversation",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "staff"
+                  ],
+                  "properties": {
+                    "staff": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "displayName",
+                          "roles"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "minLength": 1,
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "roles": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
