@@ -177,6 +177,7 @@ export const DdeItemViewSchema = Type.Object({
   rtpReasonCode: nullable(Type.String()),
   outcomeCode: nullable(Type.String()),
   notes: nullable(Type.String()),
+  respawnedFromId: nullable(uuid()),
   allowedActions: Type.Array(ACTION),
   version: Type.Integer(),
   createdAt: Type.String({ format: "date-time" }),

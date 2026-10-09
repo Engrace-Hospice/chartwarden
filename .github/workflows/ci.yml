@@ -1007,6 +1007,7 @@ jobs:
           - { name: "M23 transfer notice", scripts: "test:m23:transfer-notice:live" }
           - { name: "M23 DDE work queue", scripts: "test:m23:dde-queue:live" }
           - { name: "M23 DDE work queue hardening", scripts: "test:m23:dde-queue-hardening:live" }
+          - { name: "M23 DDE work queue scope and respawn", scripts: "test:m23:dde-queue-scope:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.
           - { name: "M23 revalidate triggers", scripts: "test:m23:revalidate-triggers:live" }
           # F-162 (#248) — the seventh revalidate trigger, m18.evv.late_check_resolved, over a new M8

@@ -254,9 +254,27 @@ async function resolveBillingScopeFacts(
  * `provider_entity_scope` source) must include it. Fail-closed: not in scope ⇒ false.
  */
 function inProviderScope(context: AbacContext, providerEntityId: string): boolean {
-  if (isSystemPrincipal(context)) return true;
-  if (ORG_WIDE_BILLING_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
-  return context.providerEntityIds.includes(providerEntityId);
+  const reach = billingScopeReach(context);
+  return reach.all || reach.providerEntityIds.includes(providerEntityId);
+}
+
+/**
+ * The provider entities an actor's billing scope spans, as DATA, from the very rule {@link inProviderScope} applies to
+ * one entity (one definition, two uses): the system principal and the org-wide billing roles reach every provider in
+ * the organization (`all`); anyone else reaches exactly their server-assembled `providerEntityIds`. An actor with
+ * no reach has an EMPTY list, which means nothing, never everything. List routes apply this in their query, so a
+ * list agrees with the object-level `provider_entity_billing_scope` check on the detail route.
+ */
+export function billingScopeReach(context: {
+  readonly roles: readonly string[];
+  readonly providerEntityIds: readonly string[];
+  readonly attributes: Readonly<Record<string, unknown>>;
+}): { readonly all: boolean; readonly providerEntityIds: readonly string[] } {
+  if (context.attributes.actorKind === "system") return { all: true, providerEntityIds: [] };
+  if (ORG_WIDE_BILLING_SCOPE_ROLES.some((r) => context.roles.includes(r))) {
+    return { all: true, providerEntityIds: [] };
+  }
+  return { all: false, providerEntityIds: context.providerEntityIds };
 }
 
 /** The override role a rule demands, or `undefined` if the rule is unknown / requires none. */

@@ -70,6 +70,7 @@ export { ClaimAcknowledgmentRepository } from "./claim-acknowledgment";
 export {
   DdeWorkEventRepository,
   DdeWorkItemRepository,
+  type DdeListScope,
   type DdeWorkEventRecord,
   type DdeWorkItemListFilter,
   type DdeWorkItemPatch,

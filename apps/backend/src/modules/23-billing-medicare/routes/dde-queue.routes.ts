@@ -9,6 +9,7 @@
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
 // server-side. Notes never reach a log or an event.
 import type { FastifyInstance } from "fastify";
+import { billingScopeReach } from "../abac-predicates";
 import type { DdeQueueService } from "../services/dde-queue-service";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { parse } from "./billing-typebox";
@@ -61,7 +62,14 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
     async (request) => {
       const q = parse(DdeItemListQuerySchema, request.query);
       const { cursor, limit, ...filter } = q;
-      return service.list(actorOf(request), filter, cursor, limit);
+      // The list is scoped like the detail route: the same reach rule, applied in the query.
+      return service.list(
+        actorOf(request),
+        filter,
+        cursor,
+        limit,
+        billingScopeReach(request.context),
+      );
     },
   );
 

@@ -39,6 +39,7 @@ export const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export const MEMBERSHIP_A = "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1";
 export const MEMBERSHIP_B = "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1";
 export const PE_A = "77777777-7777-4777-8777-777777777777";
+export const PE_B = "88888888-8888-4888-8888-888888888888";
 export const BASE = "/api/v1/billing/dde-items";
 
 export function headerAuth(request: FastifyRequest): void {
@@ -47,7 +48,14 @@ export function headerAuth(request: FastifyRequest): void {
   const orgB = user === USER_B;
   request.context.userId = user;
   request.context.organizationId = orgB ? ORG_B : ORG_A;
-  request.context.roles = ["org_admin"];
+  // Default: an org-wide billing role. `x-test-roles` / `x-test-pe` narrow the actor to a provider-entity reach.
+  const roles = request.headers["x-test-roles"];
+  request.context.roles =
+    typeof roles === "string" ? roles.split(",").filter((r) => r.length > 0) : ["org_admin"];
+  const pe = request.headers["x-test-pe"];
+  if (typeof pe === "string") {
+    request.context.providerEntityIds = pe.split(",").filter((r) => r.length > 0);
+  }
   request.context.attributes.membershipId = orgB ? MEMBERSHIP_B : MEMBERSHIP_A;
   if (request.headers["x-test-step-up"] === "1") request.context.attributes.stepUpRecent = true;
 }
@@ -154,7 +162,13 @@ export async function buildDdeApp(
 /** Seed an NOE directly as the superuser (logical FKs only, so random ids are fine). */
 export async function seedNoe(
   admin: Client,
-  over: Partial<{ state: string; windowTarget: string; electionDate: string; orgId: string }> = {},
+  over: Partial<{
+    state: string;
+    windowTarget: string;
+    electionDate: string;
+    orgId: string;
+    providerEntityId: string;
+  }> = {},
 ): Promise<string> {
   const id = randomUUID();
   await admin.query(
@@ -164,7 +178,7 @@ export async function seedNoe(
     [
       id,
       over.orgId ?? ORG_A,
-      PE_A,
+      over.providerEntityId ?? PE_A,
       randomUUID(),
       randomUUID(),
       randomUUID(),

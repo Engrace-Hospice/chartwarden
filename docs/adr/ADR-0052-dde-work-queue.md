@@ -68,6 +68,17 @@ Pure reducer in `@wardenx/billing`, shape-identical to `machines/noe.ts` (flat t
 pre-`submitted` state. `returned` (RTP, rejection or ADR request) opens a new attempt: `returned → in_progress`
 with `attempt_number` incremented. The history of each transition is an append-only event row.
 
+**Filing-window watch (respawn rule).** The NOE/NOTR window-watch crons queue work for an in-flight notice whose
+filing window target is within three Eastern calendar days (or past). Per notice and item type: a notice that never
+had an item gets one (`source = watchdog`); a notice whose **latest item is `closed` with no recorded MAC acceptance**,
+with no open item and whose closure has not been respawned, gets a new item linked to the closed one
+(`respawned_from_id`). **Each closed item can be followed by at most one respawn, ever** (unique index
+`dde_work_item_respawn_once_uq`): a tick cannot loop, two concurrent ticks create one, and a second closure of the
+respawned item earns one more respawn, each only after a human closed the previous item. A `cancelled` latest item
+**never** respawns (cancelling is an explicit human decision), an open item blocks it, and a closure that followed an
+accepted outcome never respawns (its notice is accepted, and the candidate query also requires no MAC acceptance on
+the closed item, so the query and the rule agree). Decided 2026-10 (closes the respawn open question).
+
 ### D5 — Deadline rule: acceptance, not submission
 
 For `noe` (and `notr`) items the deadline is the existing `window_target_at` (election effective date + 5
@@ -90,7 +101,12 @@ path accepted the notice first, the notice is left untouched and the item takes 
   conferring the notice's acceptance authority**: the holder can walk a ready NOE/NOTR to `ack_accepted` with no
   `billing.noe.*` permission, as an operator attestation (audited, step-up gated, date-bounded). Assigning an item
   requires an assignee who is an active member holding `billing.dde.work` whose provider-entity reach covers it.
-- **ABAC:** the `provider_entity_billing_scope` predicate, as other M23 filing actions.
+- **ABAC:** the `provider_entity_billing_scope` predicate, as other M23 filing actions. **The list is scoped too**
+  (decided 2026-10): `GET /dde-items` returns only items of provider entities the actor may reach, by the same rule
+  (`billingScopeReach`: org-wide billing roles and the system principal see the organization; anyone else only their
+  `providerEntityIds`; no reach means nothing), applied in the repository query so cursors and pages stay correct.
+  An explicit `providerEntityId` filter outside the reach returns an empty page. Counts and the overdue / at-risk
+  summaries are computed in the client from the loaded (scoped) page; there is no separate aggregate endpoint.
 - **Tenancy:** org-scoped table, three-column rule, RLS ENABLED and FORCEd.
 - **Audit:** every state change writes an audit event; reads are read-audited with a `resourceIdParam`.
 - **Events:** `m23.dde_item.*` outbox events carry ids, type, state and codes only — no notes, no names.

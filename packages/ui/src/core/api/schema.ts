@@ -35592,6 +35592,7 @@ export interface operations {
                             rtpReasonCode: string | null;
                             outcomeCode: string | null;
                             notes: string | null;
+                            respawnedFromId: string | null;
                             allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                             version: number;
                             /** Format: date-time */
@@ -35668,6 +35669,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -35724,6 +35726,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -35807,6 +35810,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -35873,6 +35877,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -35939,6 +35944,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36005,6 +36011,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36082,6 +36089,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36158,6 +36166,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36228,6 +36237,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36294,6 +36304,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
@@ -36360,6 +36371,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
+                        respawnedFromId: string | null;
                         allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */

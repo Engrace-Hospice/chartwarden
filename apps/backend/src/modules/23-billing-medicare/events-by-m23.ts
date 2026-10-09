@@ -765,6 +765,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       providerEntityId: id,
       source: Type.Union([Type.Literal("manual"), Type.Literal("watchdog")]),
       deadlineAt: nullableInstant,
+      // The closed item the filing-window watch re-queued; null for a first item.
+      respawnedFromId: Type.Optional(nullableId),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

@@ -57,6 +57,8 @@ export interface DdeItem {
   rtpReasonCode: string | null;
   outcomeCode: string | null;
   notes: string | null;
+  /** The closed item the filing-window watch re-queued, if this item is such a respawn. */
+  respawnedFromId?: string | null;
   allowedActions: DdeAction[];
   version: number;
   createdAt: string;

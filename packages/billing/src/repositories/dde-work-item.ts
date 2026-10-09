@@ -33,7 +33,15 @@ const OPEN_STATES: schema.DdeStateValue[] = [
   "returned",
 ];
 
+/** The provider entities a list may span: everything in the org (`all`), or only these ids (empty = nothing). */
+export interface DdeListScope {
+  readonly all: boolean;
+  readonly providerEntityIds: readonly string[];
+}
+
 export interface DdeWorkItemListFilter {
+  /** REQUIRED: the actor's provider-entity reach, applied in the query so cursors and pages stay correct. */
+  readonly scope: DdeListScope;
   readonly state?: schema.DdeStateValue;
   readonly itemType?: schema.DdeItemTypeValue;
   readonly assigneeMembershipId?: string;
@@ -99,35 +107,49 @@ export class DdeWorkItemRepository {
     return row ?? null;
   }
 
-  /** True when ANY item (open or finished) of this type exists on the subject (the watchdog files at most one). */
-  async existsForSubject(
+  /**
+   * What the filing-window watch should do for a notice (ADR-0052 D4):
+   *   - `none`    an OPEN item exists, or the latest item was cancelled (an explicit human decision that stays),
+   *               or it was closed AFTER an accepted outcome (the notice is accepted), or its closure was already
+   *               followed by a respawn;
+   *   - `create`  the notice has never had an item;
+   *   - `respawn` the latest item is `closed` with no MAC acceptance and has not been respawned yet: re-queue, linked
+   *               to it. Each closed item can be followed by at most one respawn, ever.
+   */
+  async watchdogAction(
     subjectKind: schema.DdeSubjectKindValue,
     subjectId: string,
     itemType: schema.DdeItemTypeValue,
-  ): Promise<boolean> {
-    const [row] = await this.db
-      .select({ id: I.id })
+  ): Promise<
+    { readonly kind: "none" | "create" } | { readonly kind: "respawn"; readonly fromId: string }
+  > {
+    const items = await this.db
+      .select()
       .from(I)
       .where(
         and(eq(I.subjectKind, subjectKind), eq(I.subjectId, subjectId), eq(I.itemType, itemType)),
       )
-      .limit(1);
-    return row !== undefined;
+      .orderBy(desc(I.createdAt), desc(I.id));
+    const latest = items[0];
+    if (!latest) return { kind: "create" };
+    if (items.some((r) => OPEN_STATES.includes(r.state))) return { kind: "none" };
+    if (latest.state !== "closed" || latest.macAcceptedOn !== null) return { kind: "none" };
+    if (items.some((r) => r.respawnedFromId === latest.id)) return { kind: "none" };
+    return { kind: "respawn", fromId: latest.id };
   }
 
   /**
-   * Insert, or return null when an OPEN item of the same (subject, type) already exists. The partial unique index
-   * `dde_work_item_open_subject_uq` is the race-safe arbiter, so the NOE/NOTR watchdog and a manual create can
+   * Insert, or return null when an OPEN item of the same (subject, type) already exists, or the closed item being
+   * respawned already was. The partial unique indexes `dde_work_item_open_subject_uq` and
+   * `dde_work_item_respawn_once_uq` are the race-safe arbiters, so the NOE/NOTR watchdog and a manual create can
    * never duplicate work.
    */
   async insertIfNoOpen(input: NewDdeWorkItemInput): Promise<DdeWorkItemRecord | null> {
     const [row] = await this.db
       .insert(I)
       .values(input)
-      .onConflictDoNothing({
-        target: [I.subjectKind, I.subjectId, I.itemType],
-        where: sql`state IN ('queued','assigned','in_progress','submitted','returned')`,
-      })
+      // Any unique violation: an open item for the subject, or a closure that was already respawned.
+      .onConflictDoNothing()
       .returning();
     return row ?? null;
   }
@@ -141,6 +163,13 @@ export class DdeWorkItemRepository {
     const size = pageSizeOf(limit);
     const conditions: (SQL | undefined)[] = [
       eq(I.organizationId, organizationId),
+      // Reach first: an actor with no reach sees nothing (never everything), and an explicit providerEntityId outside
+      // the reach simply matches no row, so it reveals nothing about that entity.
+      filter.scope.all
+        ? undefined
+        : filter.scope.providerEntityIds.length === 0
+          ? sql`false`
+          : inArray(I.providerEntityId, [...filter.scope.providerEntityIds]),
       filter.state ? eq(I.state, filter.state) : undefined,
       filter.itemType ? eq(I.itemType, filter.itemType) : undefined,
       filter.assigneeMembershipId

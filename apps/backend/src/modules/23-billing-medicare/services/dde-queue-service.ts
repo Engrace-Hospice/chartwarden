@@ -90,11 +90,13 @@ export interface DdeQueueServicePorts {
 }
 
 export interface DdeQueueService {
+  /** `scope` is the actor's provider-entity reach (see `billingScopeReach`); it is applied in the query. */
   list(
     actor: DdeQueueReadActor,
     filter: DdeListFilter,
     cursor: string | undefined,
     limit: number | undefined,
+    scope: repositories.DdeListScope,
   ): Promise<DdeItemListView>;
   get(actor: DdeQueueReadActor, id: string): Promise<DdeItemDetailView>;
   create(actor: BillingWriteActor, body: CreateBody): Promise<DdeItemView>;
@@ -196,6 +198,7 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     rtpReasonCode: row.rtpReasonCode,
     outcomeCode: row.outcomeCode,
     notes: row.notes,
+    respawnedFromId: row.respawnedFromId,
     allowedActions: [...ACTIONS_BY_STATE[row.state]],
     version: row.version,
     createdAt: row.createdAt.toISOString(),
@@ -377,11 +380,11 @@ export function buildDdeQueueService(
   };
 
   return {
-    async list(actor, filter, cursor, limit) {
+    async list(actor, filter, cursor, limit, scope) {
       const page = await inOrg(actor, (tx) =>
         new repositories.DdeWorkItemRepository(tx).listByOrgPage(
           actor.organizationId,
-          { ...filter, asOf: toIsoDate(now()), atRiskDays: DDE_AT_RISK_DAYS },
+          { ...filter, scope, asOf: toIsoDate(now()), atRiskDays: DDE_AT_RISK_DAYS },
           cursor,
           limit,
         ),

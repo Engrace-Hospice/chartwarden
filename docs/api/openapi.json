@@ -57159,6 +57159,7 @@
                           "rtpReasonCode",
                           "outcomeCode",
                           "notes",
+                          "respawnedFromId",
                           "allowedActions",
                           "version",
                           "createdAt",
@@ -57399,6 +57400,17 @@
                               }
                             ]
                           },
+                          "respawnedFromId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "allowedActions": {
                             "type": "array",
                             "items": {
@@ -57527,6 +57539,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -57767,6 +57780,17 @@
                         }
                       ]
                     },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "allowedActions": {
                       "type": "array",
                       "items": {
@@ -57947,6 +57971,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -58188,6 +58213,17 @@
                         }
                       ]
                     },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "allowedActions": {
                       "type": "array",
                       "items": {
@@ -58388,6 +58424,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -58621,6 +58658,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -58775,6 +58823,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -59008,6 +59057,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -59157,6 +59217,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -59390,6 +59451,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -59539,6 +59611,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -59772,6 +59845,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -59921,6 +60005,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -60154,6 +60239,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -60335,6 +60431,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -60568,6 +60665,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -60759,6 +60867,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -60992,6 +61101,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -61151,6 +61271,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -61384,6 +61505,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -61533,6 +61665,7 @@
                     "rtpReasonCode",
                     "outcomeCode",
                     "notes",
+                    "respawnedFromId",
                     "allowedActions",
                     "version",
                     "createdAt",
@@ -61766,6 +61899,17 @@
                     "notes": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
                           "type": "string"
                         },
                         {

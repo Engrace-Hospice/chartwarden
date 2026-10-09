@@ -15,8 +15,8 @@
 --   4. Permission catalog rows + admin-role grants for billing.dde.{read,work,mark_submitted,admin}.
 -- Idempotent.
 --
--- NOTE (edited in place before merge): the CHECK constraints below (dcn 13-23 chars, closed outcome codes tied to
--- the state, the extra lookup index) were tightened after a first draft of this file. A dev / Docker database that
+-- NOTE (edited in place before merge): the constraints below (dcn 13-23 chars, closed outcome codes tied to
+-- the state, the extra lookup index, the respawn link and its once-per-closure index) were tightened after a first draft of this file. A dev / Docker database that
 -- already applied the EARLIER 1060 keeps the old constraints (the guarded statements skip objects that already
 -- exist): recreate that database (`bun run db:reset`) rather than re-running this file. Nothing was ever released with
 -- the old version, so there is no production migration to write.
@@ -42,11 +42,17 @@ CREATE TABLE IF NOT EXISTS "dde_work_item" (
 	"rtp_reason_code" text,
 	"outcome_code" text,
 	"notes" text,
+	-- The earlier, CLOSED item this one re-queues (the filing-window watch only; ADR-0052 D4). Each closed item can be
+	-- followed by at most one respawn, ever (dde_work_item_respawn_once_uq).
+	"respawned_from_id" uuid,
 	"version" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "dde_work_item_organization_id_organization_id_fk"
 		FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE restrict,
+	CONSTRAINT "dde_work_item_respawned_from_fk"
+		FOREIGN KEY ("respawned_from_id") REFERENCES "dde_work_item"("id"),
+	CONSTRAINT "dde_work_item_respawn_source_chk" CHECK ("respawned_from_id" IS NULL OR "source" = 'watchdog'),
 	CONSTRAINT "dde_work_item_type_chk" CHECK ("item_type" IN
 		('noe', 'notr', 'claim_entry', 'rtp_correction', 'adjustment', 'cancel', 'adr_response')),
 	CONSTRAINT "dde_work_item_subject_kind_chk" CHECK ("subject_kind" IN ('claim', 'noe_record', 'notr_record')),
@@ -87,6 +93,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "dde_work_item_open_subject_uq" ON "dde_work_i
 	WHERE "state" IN ('queued', 'assigned', 'in_progress', 'submitted', 'returned');--> statement-breakpoint
 -- The watchdog's anti-join (`NOT EXISTS ... subject_kind, subject_id, item_type`) and any per-subject lookup: the
 -- partial open-items index above cannot serve a finished item.
+-- One respawn per closed item, ever: two concurrent watchdog ticks cannot both re-queue the same closure.
+CREATE UNIQUE INDEX IF NOT EXISTS "dde_work_item_respawn_once_uq" ON "dde_work_item" ("respawned_from_id")
+	WHERE "respawned_from_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "dde_work_item_subject_idx" ON "dde_work_item" ("organization_id", "subject_kind", "subject_id", "item_type");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "dde_work_item_worklist_idx" ON "dde_work_item" ("organization_id", "state", "deadline_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "dde_work_item_assignee_idx" ON "dde_work_item" ("organization_id", "assignee_membership_id")

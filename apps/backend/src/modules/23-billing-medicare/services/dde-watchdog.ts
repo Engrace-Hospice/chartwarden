@@ -1,11 +1,15 @@
 // apps/backend/src/modules/23-billing-medicare/services/dde-watchdog.ts — the NOE / NOTR window-watch crons' second
 // duty (ADR-0052 "Consequences"): when a notice is at risk of missing its 5-day window, queue the DDE work for it.
 //
-// Idempotent and never duplicating: the watchdog files at most ONE item per (notice, type) for the notice's whole
-// life. It skips when ANY item of that type already exists on the notice (open, finished or cancelled), so a
-// cancelled item does not respawn on the next 30-minute tick, and the partial unique index
-// `dde_work_item_open_subject_uq` backstops a race with a manual create. Runs on the cron's org-scoped tx (system
-// actor, `source = 'watchdog'`, no membership). Payloads carry ids, type and the deadline only.
+// Idempotent and never duplicating. Per notice and item type, `watchdogAction` decides (ADR-0052 D4):
+//   - never had an item        -> create one;
+//   - latest item `closed`, no MAC acceptance, closure not yet respawned, no open item -> RESPAWN one, linked to the
+//     closed item (`respawned_from_id`). Each closed item can be followed by at most one respawn, ever, enforced by the
+//     unique index `dde_work_item_respawn_once_uq`, so a tick cannot loop and two concurrent ticks create one;
+//   - anything else (an open item, a `cancelled` latest item, a closure that followed an accepted outcome, an already
+//     respawned closure) -> nothing. A cancelled item is an explicit human decision and never respawns.
+// Runs on the cron's org-scoped tx (system actor, `source = 'watchdog'`, no membership). Payloads carry ids, type and
+// the deadline only.
 import { repositories } from "@wardenx/billing";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
@@ -34,9 +38,9 @@ export function buildDdeWatchdog(
     async ensureNoticeItem(tx, notice) {
       const subjectKind = notice.itemType === "noe" ? "noe_record" : "notr_record";
       const items = new repositories.DdeWorkItemRepository(tx);
-      if (await items.existsForSubject(subjectKind, notice.noticeId, notice.itemType)) {
-        return { created: false };
-      }
+      const action = await items.watchdogAction(subjectKind, notice.noticeId, notice.itemType);
+      if (action.kind === "none") return { created: false };
+      const respawnedFromId = action.kind === "respawn" ? action.fromId : null;
       const created = await items.insertIfNoOpen({
         organizationId: notice.organizationId,
         providerEntityId: notice.providerEntityId,
@@ -47,6 +51,7 @@ export function buildDdeWatchdog(
         priority: WATCHDOG_PRIORITY,
         source: "watchdog",
         deadlineAt: notice.deadlineAt,
+        respawnedFromId,
       });
       if (!created) return { created: false };
       await new repositories.DdeWorkEventRepository(tx).append({
@@ -58,7 +63,7 @@ export function buildDdeWatchdog(
         attemptNumber: 1,
         actorMembershipId: null,
         actorKind: "system",
-        detail: { source: "watchdog" },
+        detail: respawnedFromId ? { source: "watchdog", respawnedFromId } : { source: "watchdog" },
       });
       if (ports.outbox) {
         await ports.outbox.publish(tx, {
@@ -74,6 +79,7 @@ export function buildDdeWatchdog(
             providerEntityId: created.providerEntityId,
             source: created.source,
             deadlineAt: created.deadlineAt,
+            respawnedFromId: created.respawnedFromId,
           },
         });
       }

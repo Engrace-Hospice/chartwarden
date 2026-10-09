@@ -83,6 +83,8 @@ export const ddeWorkItem = pgTable(
     rtpReasonCode: text("rtp_reason_code"),
     outcomeCode: text("outcome_code"),
     notes: text("notes"),
+    // The closed item this one re-queues (filing-window watch only); at most one respawn per closed item.
+    respawnedFromId: uuid("respawned_from_id"),
 
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -93,6 +95,9 @@ export const ddeWorkItem = pgTable(
     openSubjectUq: uniqueIndex("dde_work_item_open_subject_uq")
       .on(t.subjectKind, t.subjectId, t.itemType)
       .where(sql`state IN ('queued','assigned','in_progress','submitted','returned')`),
+    respawnOnceUq: uniqueIndex("dde_work_item_respawn_once_uq")
+      .on(t.respawnedFromId)
+      .where(sql`respawned_from_id IS NOT NULL`),
     worklistIdx: index("dde_work_item_worklist_idx").on(t.organizationId, t.state, t.deadlineAt),
     assigneeIdx: index("dde_work_item_assignee_idx")
       .on(t.organizationId, t.assigneeMembershipId)
