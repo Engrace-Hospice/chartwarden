@@ -63,13 +63,15 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
         read.getPatientProjection(actor, capPeriodId, patientId),
         read.getPeriod(actor, capPeriodId),
       ]);
-      if (!period) return null;
+      // GAP-037 — no per-patient snapshot means the patient is not projected (not on the cap ledger yet): answer
+      // null, never a fabricated "safe, 0%" view that would make M23's pre-submission rule see a safe patient.
+      if (!period || !snap) return null;
       const base = toAgencyView(period.capYear, snap, period);
       return {
         ...base,
         patientId,
-        perBeneficiaryAllocatedCap: cents(snap?.capAmountCents ?? period.aggregateCapAmountCents),
-        contributionToAgency: cents(snap?.paidYtdCents ?? 0),
+        perBeneficiaryAllocatedCap: cents(snap.capAmountCents ?? period.aggregateCapAmountCents),
+        contributionToAgency: cents(snap.paidYtdCents),
         methodology: (period.methodology ?? "streamlined") as "streamlined" | "proportional",
       } satisfies PatientProjectionView;
     },
@@ -101,12 +103,17 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
 
   const inpatient: InpatientCapProvider = {
     async getInpatientProjection(orgId, capPeriodId) {
-      const snap = await read.getInpatientProjection(systemActor(orgId), capPeriodId);
+      const actor = systemActor(orgId);
+      const [snap, acc] = await Promise.all([
+        read.getInpatientProjection(actor, capPeriodId),
+        read.getInpatientAccrual(actor, capPeriodId),
+      ]);
       if (!snap) return null;
       return {
         capPeriodId,
         inpatientDayCount: snap.inpatientDaysYtd ?? 0,
-        totalDayCount: 0,
+        // GAP-038 - the all-level-of-care denominator the utilisation was computed over (was a hard-coded 0).
+        totalDayCount: acc?.totalPatientDays ?? 0,
         utilizationPct: asPercent(snap.pctOfCap),
         band: toInpatientBandLabel(snap.alertBand),
         computedAt: snap.computedAt,
@@ -225,9 +232,11 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
     },
   };
 
-  // Recipient resolution for M36's generic AlertEmitter (M36-F03). The default population is every user
-  // holding cap.event.read; the M3 user-permission query binds when M36 consumes this seam (deferred) —
-  // the empty floor is fail-safe (no spurious recipients), the seam interface ships now.
+  // Recipient resolution for M36's generic AlertEmitter (M36-F03). Cap alerts are delivered by M36's own
+  // `cap-threshold-alerts` consumer against the seeded platform `alert_rule` role sets (cfo / billing_manager,
+  // + compliance_officer / org_admin on a breach), so this seam is not on the delivery path. The M3
+  // user-permission query binds here when M36 moves to cap.event.read holders; the empty floor is fail-safe
+  // (no spurious recipients).
   const subscribers: CapAlertSubscriberProvider = {
     async listSubscribers() {
       return [];

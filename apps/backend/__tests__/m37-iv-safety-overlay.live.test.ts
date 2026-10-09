@@ -228,7 +228,7 @@ describe.skipIf(!DB_URL)("M37 IV-continuous safety overlay (GAP-107) — LIVE Po
     medClass: "standard" as const,
     mode: mode as never,
     administeredAt: new Date().toISOString(),
-    route: "intravenous",
+    route: "iv_continuous",
     doseAmount: 1,
     doseUnit: "mg",
     data,

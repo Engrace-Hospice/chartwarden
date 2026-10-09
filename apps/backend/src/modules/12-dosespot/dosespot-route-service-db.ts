@@ -23,8 +23,8 @@ import { type DbClient, schema } from "@wardenx/db";
 // actor (the acting membership is the passed `userId`, stored where a column exists); (2) provider/location
 // siting is null (mig 0132); (3) medication_order has NO prescriber_discipline / signed_by / discontinuation_
 // reason column, so requestSignature's eligibility reads the threaded `signerDiscipline` arg and the read view
-// surfaces the stable defaults; (4) the M11 `OrderSignatureProvider` sign seam is not threaded — signing
-// UPDATEs the order status directly (no order_signature row; COSIGN goes through the seam, GAP-034); the medication-history read + reconcile are
+// surfaces the stable defaults; (4) [CLOSED, GAP-018] the M11 `OrderSignatureProvider` seam is threaded for the
+// standard and EPCS sign as well as cosign (GAP-034) and verbal: every signed prescription has an `order_signature` row; the medication-history read + reconcile are
 // real since F-238 (`medication_history_record`, DoseSpot + DocLens rows) but reconcile NEVER mints an order
 // (`resultingOrderId` is always null — D12 for DocLens rows, the D10 carry-forward draft is unbuilt); (5) the refill-SLA / controlled-substance policies have no
 // table in Phase 1 — the put* routes apply their tighten-only guards and return the computed view without
@@ -45,7 +45,19 @@ import {
   WardenXError,
   assertCoverageDetermination,
 } from "@wardenx/types";
-import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
 import {
@@ -82,7 +94,7 @@ import type {
   RefillInboxPolicyView,
   RefillRequestView,
 } from "./routes/service";
-import { MEDICATION_ORDER_LIST_LIMIT } from "./routes/service";
+import { MEDICATION_ORDER_LIST_LIMIT, RX_BENEFIT_UNKNOWN } from "./routes/service";
 import { enqueueTransmissionIfBound } from "./transmission-enqueue";
 
 const MO = schema.medicationOrders;
@@ -90,6 +102,7 @@ const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
 const MHR = schema.medicationHistoryRecords;
+const RXB = schema.rxBenefitCache;
 
 /** ACTIVE roster rows that carry an MDM id (the valid verbal-order named prescribers). RLS scopes the org. */
 async function activeNamedPrescribers(tx: DbClient): Promise<NamedPrescriberView[]> {
@@ -385,6 +398,43 @@ export function createDbDoseSpotBackend(
    * forgetting it is precisely the failure being fixed. An order that DOES owe a transmission is
    * untouched — the machine refuses the arm, and this never reaches it.
    */
+  /**
+   * GAP-018 -- every signed prescription has a signature record. M11 owns the signature ledger (M12 never
+   * writes it directly), so the standard / EPCS sign records the signer, discipline and server-stamped time
+   * through the published OrderSignatureProvider seam, exactly as cosign and verbal do. The discipline is the
+   * SESSION's (never the body's). One primary signature per target is enforced by the ledger's unique index,
+   * so a replayed sign cannot mint a second record.
+   *
+   * Called LAST in the sign transaction: the seam commits in its own request-scoped transaction (it cannot
+   * join this one), so doing it after every other write keeps the window in which a later failure could
+   * strand a ledger row down to the commit itself. A seam failure (including the unique index) rolls the
+   * whole sign back -- a prescription is never `signed` without its signature record.
+   */
+  async function recordSignature(
+    organizationId: string,
+    signerMembershipId: string,
+    orderId: string,
+    signerDisciplines: readonly string[],
+    signedAtClient?: string,
+  ): Promise<void> {
+    const signerDiscipline = signerDisciplines.find((d) => d.trim().length > 0);
+    if (!signerDiscipline)
+      throw new WardenXError(
+        "DISCIPLINE_NOT_HELD",
+        "The caller holds no prescriber discipline to sign under.",
+        422,
+      );
+    await getOrderSignatureProvider().signOrderTarget({
+      organizationId,
+      targetKind: "medication_order",
+      targetId: orderId,
+      signerMembershipId,
+      signerDiscipline,
+      signedAtClient: signedAtClient ?? new Date().toISOString(),
+      signatureKind: "signature",
+    });
+  }
+
   async function activateIfNotTransmitting(
     tx: DbClient,
     organizationId: string,
@@ -888,6 +938,13 @@ export function createDbDoseSpotBackend(
         });
         await emitDocumentRequest(tx, organizationId, r, at);
         await activateIfNotTransmitting(tx, organizationId, r, at);
+        await recordSignature(
+          organizationId,
+          userId,
+          id,
+          args.signerDisciplines,
+          args.signedAtClient,
+        );
         return readOrder(tx, id);
       });
     },
@@ -908,7 +965,7 @@ export function createDbDoseSpotBackend(
         return { nonce: id, expiresAt: new Date().toISOString(), requiredFactor: "totp" as const };
       });
     },
-    async signControlledComplete(organizationId, userId, id) {
+    async signControlledComplete(organizationId, userId, id, args) {
       // Phase-1 deny path: completing requires epcs_identity_pending, only reachable when EPCS is certified
       // (OFF) — the machine refuses the transition otherwise. No DB write on the (unreachable) success path.
       return withOrg(organizationId, async (tx) => {
@@ -933,6 +990,7 @@ export function createDbDoseSpotBackend(
         });
         await emitDocumentRequest(tx, organizationId, r, at);
         await activateIfNotTransmitting(tx, organizationId, r, at);
+        await recordSignature(organizationId, userId, id, args?.signerDisciplines ?? []);
         return readOrder(tx, id);
       });
     },
@@ -1415,8 +1473,33 @@ export function createDbDoseSpotBackend(
         return { status: "denied" as const };
       });
     },
-    async rxBenefitLookup(_organizationId, _patientId, _rxnormRxcui) {
-      return { covered: true, copayCents: null };
+    async rxBenefitLookup(organizationId, patientId, rxnormRxcui) {
+      // GAP-019 -- a CACHED lookup, tenant-scoped (RLS) and patient-scoped. The cache is filled only from a
+      // real vendor RxBenefit response (jobs/rx-benefit-prewarm.ts); with no fresh row the honest answer is
+      // `unknown`, never `covered: true`.
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(RXB)
+          .where(
+            and(
+              eq(RXB.organizationId, organizationId),
+              eq(RXB.patientId, patientId),
+              eq(RXB.rxnormRxcui, rxnormRxcui),
+              gt(RXB.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        if (!row) return RX_BENEFIT_UNKNOWN;
+        return {
+          status: row.covered ? ("covered" as const) : ("not_covered" as const),
+          covered: row.covered,
+          copayCents: null,
+          copayTier: row.copayTier ?? null,
+          priorAuthRequired: row.priorAuthRequired,
+          lookedUpAt: row.lookedUpAt.toISOString(),
+        };
+      });
     },
 
     // ── Prescriber roster (§2.4) ─────────────────────────────────────────────────────────────────────

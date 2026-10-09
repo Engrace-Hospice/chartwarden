@@ -51,6 +51,10 @@ import { getSeam, registerSeam } from "../../bootstrap/index";
 import { resolveReportableScope } from "./abac-predicates";
 import { buildDrizzleReportingAbacResolver } from "./abac-resolver-db";
 import {
+  type DrilldownTenantKeyProvider,
+  createDrilldownFilterEncryption,
+} from "./drilldown-crypto";
+import {
   CronExpressionInvalidError,
   type CronPort,
   type M33ExportDrilldownRouteService,
@@ -463,12 +467,14 @@ export function buildDrizzleM33WriteService(deps: {
  * aggregate the reply keys back by (`report_export` / the exportId). The payload carries the executed rows,
  * so this is a real handshake, not a request M22 could never answer.
  *
- * STILL fail-closed (a genuine infra gap, not this file's to invent): `drilldownEncryption` (→
- * `DrilldownDekUnavailable` deny — the M1 envelope-DEK/KMS provider does not exist anywhere in this
- * codebase yet).
+ * `drilldownEncryption` is BOUND over `deps.tenantKeys` (GAP-056; the M34 per-tenant DEK provider the other
+ * modules seal under). Fail-closed still holds when no provider is passed: the emit denies with
+ * `DrilldownDekUnavailable` rather than storing the filter context in the clear.
  */
 export function buildDrizzleM33ExportDrilldownService(deps: {
   db: DbClient;
+  /** GAP-056 - per-tenant DEK provider the drilldown filter envelope seals under (absent => fail-closed deny). */
+  tenantKeys?: DrilldownTenantKeyProvider;
   outbox?: {
     publish(
       tx: DbClient,
@@ -575,5 +581,8 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
     csvOutbox,
     drilldownOutbox,
     exportOutbox,
+    drilldownEncryption: deps.tenantKeys
+      ? createDrilldownFilterEncryption(deps.tenantKeys)
+      : undefined,
   });
 }

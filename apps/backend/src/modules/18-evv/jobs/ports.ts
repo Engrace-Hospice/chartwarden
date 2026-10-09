@@ -3,6 +3,7 @@
 // another module's tables and never names a vendor (the §25.14 adapter mandate).
 import type {
   AggregatorCredentialStore,
+  AggregatorCredentials,
   EvvAggregatorAdapter,
   StateAggregatorConfig,
   StateAggregatorRegistry,
@@ -99,4 +100,73 @@ export function parseEvvAggregatorStateConfigs(raw: string | undefined): StateAg
       operatingModel: operatingModel as StateAggregatorConfig["operatingModel"],
     };
   });
+}
+
+/** Name of the env var carrying per-(provider entity, vendor, state) aggregator credentials. */
+export const EVV_AGGREGATOR_CREDENTIALS_ENV = "EVV_AGGREGATOR_CREDENTIALS";
+
+interface CredentialEntry {
+  readonly providerEntityId: string;
+  readonly vendor: string;
+  readonly stateCode: string;
+  readonly secrets: Readonly<Record<string, string>>;
+}
+
+/**
+ * Parse `EVV_AGGREGATOR_CREDENTIALS` — a JSON array of `{providerEntityId, vendor, stateCode, secrets}` where
+ * `secrets` is a flat string map the vendor adapter interprets. Absent/blank => no credentials (the store stays
+ * fail-closed). A malformed value throws at boot rather than silently dropping a tenant's credentials.
+ */
+export function parseEvvAggregatorCredentials(raw: string | undefined): CredentialEntry[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV} must be valid JSON`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV} must be a JSON array`);
+  }
+  return parsed.map((entry, i) => {
+    const e = (entry ?? {}) as Record<string, unknown>;
+    const { providerEntityId, vendor, stateCode, secrets } = e;
+    if (typeof providerEntityId !== "string" || providerEntityId === "") {
+      throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV}[${i}].providerEntityId is required`);
+    }
+    if (typeof vendor !== "string" || vendor === "") {
+      throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV}[${i}].vendor is required`);
+    }
+    if (typeof stateCode !== "string" || !/^[A-Z]{2}$/.test(stateCode)) {
+      throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV}[${i}].stateCode must be a 2-letter code`);
+    }
+    const map = (secrets ?? {}) as Record<string, unknown>;
+    const values = Object.values(map);
+    if (values.length === 0 || !values.every((v) => typeof v === "string" && v !== "")) {
+      throw new Error(`${EVV_AGGREGATOR_CREDENTIALS_ENV}[${i}].secrets must be non-empty strings`);
+    }
+    return { providerEntityId, vendor, stateCode, secrets: map as Record<string, string> };
+  });
+}
+
+/**
+ * Config-driven credential store: an exact `(providerEntityId, vendor, stateCode)` match or the same fail-closed
+ * `EvvAggregatorPortUnboundError` the unbound store throws. Never falls back to another tenant's entry.
+ */
+export function createConfiguredAggregatorCredentialStore(
+  entries: readonly CredentialEntry[],
+): AggregatorCredentialStore {
+  if (entries.length === 0) return createUnboundAggregatorCredentialStore();
+  return {
+    async resolve({ providerEntityId, vendor, stateCode }): Promise<AggregatorCredentials> {
+      const hit = entries.find(
+        (c) =>
+          c.providerEntityId === providerEntityId &&
+          c.vendor === vendor &&
+          c.stateCode === stateCode,
+      );
+      if (!hit) throw new EvvAggregatorPortUnboundError("AggregatorCredentialStore");
+      return { providerEntityId, secrets: { ...hit.secrets } };
+    },
+  };
 }

@@ -65,6 +65,10 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
+import {
+  type DrilldownTenantKeyProvider,
+  createDrilldownFilterEncryption,
+} from "../drilldown-crypto";
 import { snapshotScopeKind, viewVisibleTo } from "../routes/schedule-authz";
 import { buildDrizzleTileSqlExecutor } from "../sql-executor";
 import { M33_PLATFORM_JOB_ID } from "../wiring";
@@ -130,6 +134,8 @@ export interface M33WorkerDeps {
    * unwired reader yields less data, never the whole organization's.
    */
   readonly adminMemberships?: AdminMembershipReader;
+  /** GAP-056 - per-tenant DEK provider for the drilldown-audit filter envelope. ABSENT => the flush denies (fail-closed). */
+  readonly tenantKeys?: DrilldownTenantKeyProvider;
   /** Injected clock (deterministic in tests; the package workers stamp every instant through this). */
   now?: () => Date;
   /**
@@ -729,15 +735,17 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
     now,
     newRowId: () => randomUUID(),
     newTraceId: () => randomUUID(),
-    encryption: {
-      // ★ FAIL-CLOSED: until the M1 envelope-DEK helper is bound, every drilldown audit is DENIED
-      //   (DrilldownDekUnavailable) rather than stored un-encrypted — the load-bearing §3.6 invariant.
-      encryptFilters: () =>
-        unbound(
-          "drilldownAuditFlush.encryption.encryptFilters",
-          "bind to the M1 per-tenant envelope-DEK encrypt helper (no envelope seam registered yet) — drilldown denies until bound",
-        ),
-    },
+    encryption: deps.tenantKeys
+      ? createDrilldownFilterEncryption(deps.tenantKeys)
+      : {
+          // FAIL-CLOSED: without a tenant key provider every drilldown audit is DENIED (DrilldownDekUnavailable)
+          // rather than stored un-encrypted - the load-bearing section 3.6 invariant.
+          encryptFilters: () =>
+            unbound(
+              "drilldownAuditFlush.encryption.encryptFilters",
+              "pass tenantKeys (the M34 per-tenant DEK provider) to buildM33WorkerDeps - drilldown denies until bound",
+            ),
+        },
     audit: {
       async append(row) {
         await drilldownRepo.append(row);
@@ -1065,6 +1073,7 @@ export function buildM33WorkerDeps(deps: {
   primaryDb?: DbClient;
   platformDb?: DbClient;
   auditBypass?: PlatformBypassAuditor<DbClient>;
+  tenantKeys?: DrilldownTenantKeyProvider;
   outboxPublisher?: M33WorkerDeps["outboxPublisher"];
   lagProbeRedis?: Redis;
   mvRefreshEnqueue?: MvRefreshQueuePort;
@@ -1078,6 +1087,7 @@ export function buildM33WorkerDeps(deps: {
     auditBypass: deps.auditBypass,
     // F-059 — the scheduled-run snapshot's owner-scope decision. Same reader M2's member roster uses.
     adminMemberships: createDbAdminMembershipReader(deps.db),
+    tenantKeys: deps.tenantKeys,
     outboxPublisher: deps.outboxPublisher,
     lagProbeRedis: deps.lagProbeRedis,
     mvRefreshEnqueue: deps.mvRefreshEnqueue,

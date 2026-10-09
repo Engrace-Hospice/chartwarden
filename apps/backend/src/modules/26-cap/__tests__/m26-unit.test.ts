@@ -75,6 +75,24 @@ describe("M26 §4.7 ABAC predicates", () => {
     expect(await locked.cap_period_methodology_unlocked!(ctx(), target("cp-1"))).toBe(false);
   });
 
+  it("cap_period_methodology_unlocked still allows the first lock once a projection promoted the period (GAP-039)", async () => {
+    // recompute() promotes open -> active on the first accrual even with methodology unset; the lock must stay
+    // reachable (and through in_settlement/reopened) or the period can never be settled (METHODOLOGY_UNSET).
+    for (const status of ["active", "in_settlement", "reopened"]) {
+      const p = buildM26AbacPredicates({ resolver: resolver({ status, methodology: null }, null) });
+      expect(await p.cap_period_methodology_unlocked!(ctx(), target("cp-1")), status).toBe(true);
+    }
+    const settled = buildM26AbacPredicates({
+      resolver: resolver({ status: "settled", methodology: null }, null),
+    });
+    expect(await settled.cap_period_methodology_unlocked!(ctx(), target("cp-1"))).toBe(false);
+    // A set methodology is never re-lockable, whatever the status (the one-time lock holds).
+    const set = buildM26AbacPredicates({
+      resolver: resolver({ status: "active", methodology: "proportional" }, null),
+    });
+    expect(await set.cap_period_methodology_unlocked!(ctx(), target("cp-1"))).toBe(false);
+  });
+
   it("cap_platform_admin checks the role (no period target)", async () => {
     const p = buildM26AbacPredicates({ resolver: resolver(null, null) });
     expect(await p.cap_platform_admin!(ctx(["platform_admin"]), target())).toBe(true);

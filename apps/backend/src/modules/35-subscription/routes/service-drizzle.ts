@@ -14,6 +14,14 @@
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@wardenx/db";
+import {
+  PaymentMethodRejectedError,
+  type PaymentMethodVerifier,
+  type RefundRequestCheck,
+  type VerifiedPaymentMethod,
+  checkRefundRequest,
+  committedRefundCents,
+} from "@wardenx/subscription-billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
@@ -78,7 +86,8 @@ export interface WriteOutboxPort {
     input: {
       readonly eventName: string;
       readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
+      /** `null` publishes PLATFORM-WIDE (e.g. the monthly revenue snapshot, which belongs to no tenant). */
+      readonly organizationId: string | null;
       readonly aggregateKind: string;
       readonly aggregateId: string;
     },
@@ -107,6 +116,11 @@ export interface M35RouteServiceDeps {
   /** M2 `OrganizationReader` seam — labels cross-tenant platform-ops list rows with an org display NAME
    *  (M35A-T03). Absent → names resolve to "" (the console falls back to the raw id); never fabricated. */
   readonly organizationReader?: OrganizationReader;
+  /**
+   * GAP-060 - verifies a client-supplied `stripePaymentMethodId` against Stripe (it must be attached to THIS
+   * org's customer). Unset => attaching a payment method fails closed (503): nothing is trusted from the body.
+   */
+  readonly paymentMethodVerifier?: PaymentMethodVerifier;
   readonly now?: () => Date;
 }
 
@@ -174,6 +188,25 @@ function meterView(mIn: MeterRow | undefined): MeterAdminView {
     billingAggregation: m.billingAggregation,
     warningThresholdPercent: m.warningThresholdPercent,
   };
+}
+
+/** GAP-061 — map a failed {@link checkRefundRequest} onto the typed error the route replies with. */
+function refundRejection(verdict: Extract<RefundRequestCheck, { ok: false }>): WardenXError {
+  if (verdict.reason === "invoice_not_paid") {
+    return new WardenXError("REFUND_INVOICE_NOT_PAID", "only a paid invoice can be refunded", 422);
+  }
+  if (verdict.reason === "amount_invalid") {
+    return new WardenXError(
+      "VALIDATION_FAILED",
+      "the refund amount must be a positive integer",
+      400,
+    );
+  }
+  return new WardenXError(
+    "REFUND_EXCEEDS_REFUNDABLE",
+    `the refund exceeds what remains refundable on the invoice (${verdict.refundableCents} cents)`,
+    422,
+  );
 }
 
 /** Narrow a `.returning()` / point-read result, or fail (a write must return exactly one row). */
@@ -371,9 +404,13 @@ export function buildDrizzleM35RouteService(
   const PMTR = schema.planMeter;
 
   const ctxRead = (a: M35ReadActor) => ({ organizationId: a.organizationId, userId: a.userId });
+  // The M4 write-audit trigger stamps `actor_user_id` from `app.user_id`, which is a foreign key to `user(id)`.
+  // A MEMBERSHIP id is never a user id, so binding it here made every audited tenant write (payment methods,
+  // subscriptions, ...) fail with an FK violation in a real database. The membership is still stamped on the
+  // rows that carry it explicitly (`actorMembershipId`, `requestedByMembershipId`, ...).
   const ctxWrite = (a: M35WriteActor) => ({
     organizationId: a.organizationId,
-    userId: a.membershipId,
+    userId: a.userId,
   });
 
   const emit = async (
@@ -664,6 +701,28 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PL.slug, args.planSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!plan) throw new NotFoundError("plan not found or inactive");
+        // GAP-060 - a supplied payment method must be an ACTIVE one of THIS org (the column is a bare uuid
+        // with no FK, so nothing else stops another tenant's, or a random, id landing here).
+        if (args.paymentMethodId) {
+          const [ownPm] = await tx
+            .select({ id: PM.id })
+            .from(PM)
+            .where(
+              and(
+                eq(PM.id, args.paymentMethodId),
+                eq(PM.organizationId, actor.organizationId),
+                eq(PM.isActive, true),
+              ),
+            )
+            .limit(1);
+          if (!ownPm) {
+            throw new WardenXError(
+              "PAYMENT_METHOD_NOT_FOUND",
+              "the payment method does not belong to this organization",
+              422,
+            );
+          }
+        }
         const at = now();
         const status = plan.trialPeriodDays > 0 ? "trialing" : "active";
         const trialEndsAt =
@@ -899,20 +958,90 @@ export function buildDrizzleM35RouteService(
     },
 
     async attachPaymentMethod(actor, args: AttachPaymentMethodArgs): Promise<PaymentMethodView> {
+      // GAP-060 — the id in the body is a CLAIM, never a fact. Resolve this org's Stripe customer, have Stripe
+      // confirm the payment method is attached to it (i.e. came out of a completed SetupIntent for it), and
+      // mirror Stripe's metadata, not the client's. No verifier bound => refuse rather than trust.
+      const verifier = deps.paymentMethodVerifier;
+      if (!verifier) {
+        throw new WardenXError(
+          "STRIPE_UNAVAILABLE",
+          "payment methods cannot be attached: the Stripe transport is not configured for this deployment",
+          503,
+        );
+      }
+      const customerId = await withOrgContext(db, ctxWrite(actor), async (tx) => {
+        const [sub] = await tx
+          .select({ stripeCustomerId: S.stripeCustomerId })
+          .from(S)
+          .where(eq(S.organizationId, actor.organizationId))
+          .orderBy(desc(S.startedAt))
+          .limit(1);
+        return sub?.stripeCustomerId ?? null;
+      });
+      if (!customerId) {
+        throw new ConflictError(
+          "this organization has no Stripe customer yet; start a subscription before adding a payment method",
+        );
+      }
+      let verified: VerifiedPaymentMethod;
+      try {
+        verified = await verifier.verifyAttachable({
+          stripeCustomerId: customerId,
+          stripePaymentMethodId: args.stripePaymentMethodId,
+        });
+      } catch (err) {
+        if (err instanceof PaymentMethodRejectedError) {
+          throw new WardenXError("PAYMENT_METHOD_REJECTED", err.message, 422);
+        }
+        throw new WardenXError(
+          "STRIPE_UNAVAILABLE",
+          "the payment method could not be verified with Stripe; try again shortly",
+          503,
+        );
+      }
       return withOrgContext(db, ctxWrite(actor), async (tx) => {
         const at = now();
+        const [taken] = await tx
+          .select({ id: PM.id })
+          .from(PM)
+          .where(eq(PM.stripePaymentMethodId, args.stripePaymentMethodId))
+          .limit(1);
+        if (taken) throw new ConflictError("this payment method is already attached");
+        if (args.setAsDefault) {
+          await tx
+            .update(PM)
+            .set({ isDefault: false })
+            .where(and(eq(PM.organizationId, actor.organizationId), eq(PM.isDefault, true)));
+        }
         const [pm] = await tx
           .insert(PM)
           .values({
             organizationId: actor.organizationId,
             stripePaymentMethodId: args.stripePaymentMethodId,
-            kind: "card",
+            kind: verified.kind,
+            cardBrand: verified.cardBrand,
+            cardLast4: verified.cardLast4,
+            cardExpMonth: verified.cardExpMonth,
+            cardExpYear: verified.cardExpYear,
+            achBankName: verified.achBankName,
+            achAccountLast4: verified.achAccountLast4,
+            achAccountType: verified.achAccountType,
+            sepaCountry: verified.sepaCountry,
+            sepaLast4: verified.sepaLast4,
+            // The card is valid THROUGH its expiry month: the first instant of the next month is "expired".
+            expiresAt:
+              verified.cardExpYear !== null && verified.cardExpMonth !== null
+                ? new Date(Date.UTC(verified.cardExpYear, verified.cardExpMonth, 1))
+                : null,
             isDefault: args.setAsDefault ?? false,
             isActive: true,
             attachedAt: at,
           })
+          // The unique index is GLOBAL across tenants and RLS hides the other tenant's row from the lookup
+          // above, so a payment method another org already holds surfaces here as a conflict, not a 500.
+          .onConflictDoNothing({ target: PM.stripePaymentMethodId })
           .returning();
-        if (!pm) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+        if (!pm) throw new ConflictError("this payment method is already attached");
         if (args.setAsDefault) {
           const [sub] = await tx
             .select({ id: S.id })
@@ -1425,8 +1554,25 @@ export function buildDrizzleM35RouteService(
     // ── platform-ops: refunds ──────────────────────────────────────────────────────────────────────
     async requestRefund(actor, args: RequestRefundArgs): Promise<RefundView> {
       return platform(async (tx) => {
-        const [inv] = await tx.select().from(INV).where(eq(INV.id, args.invoiceId)).limit(1);
+        // GAP-061 — lock the invoice row so two concurrent requests serialize on the cumulative cap.
+        const [inv] = await tx
+          .select()
+          .from(INV)
+          .where(eq(INV.id, args.invoiceId))
+          .limit(1)
+          .for("update");
         if (!inv) throw new NotFoundError("invoice not found");
+        const prior = await tx
+          .select({ status: REF.status, amountCents: REF.amountCents })
+          .from(REF)
+          .where(eq(REF.invoiceId, inv.id));
+        const verdict = checkRefundRequest({
+          invoiceStatus: inv.status,
+          amountPaidCents: inv.amountPaidCents,
+          committedRefundCents: committedRefundCents(prior),
+          amountCents: args.amountCents,
+        });
+        if (!verdict.ok) throw refundRejection(verdict);
         const [ref] = await tx
           .insert(REF)
           .values({

@@ -182,7 +182,10 @@ export const RecordTimepointSchema = Type.Object({
   sourceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
   dischargeReason: Type.Optional(DISCHARGE_REASON),
   lateCompletionReasonCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  // GAP-015: honoured ONLY for a holder of `hope.admin.late_deadline_override`, with a justification
+  // (enforced in the route); the flag alone never lifts the hard cutoff.
   adminOverride: Type.Optional(Type.Boolean()),
+  adminOverrideJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
   // #48 — the window this capture completes, as the timepoint worklist hands it to the clinician.
   // (`lateCompletionReasonCode` stays a free string at the boundary: the §4.4 capture gate enforces the
   // CMS codelist exactly when the capture is late, and the capture workspace sends free text.)
@@ -194,6 +197,7 @@ export const RecordSfvSchema = Type.Object({
   targetDate: Type.String({ format: "date-time" }),
   authorDiscipline: AUTHOR_DISCIPLINE,
   adminOverride: Type.Optional(Type.Boolean()),
+  adminOverrideJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
   data: HopeData,
 });
 export const UpdateDraftSchema = Type.Object({ data: HopeData });

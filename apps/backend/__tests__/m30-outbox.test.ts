@@ -101,7 +101,7 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         closedAt: AT,
         closedBy: { membershipId: ACTOR, role: "qapi_coordinator" },
         nominatedCosigner: { membershipId: NOMINEE, role: "medical_director" },
-        cosignerAttested: false,
+        cosignerAttested: true,
       }),
     ).toBe(true);
     // a PIP need not hang off a project — the nullable FK is emitted as `null`, not an empty id.
@@ -114,7 +114,7 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         closedAt: AT,
         closedBy: { membershipId: ACTOR, role: "qapi_coordinator" },
         nominatedCosigner: { membershipId: NOMINEE, role: "medical_director" },
-        cosignerAttested: false,
+        cosignerAttested: true,
       }),
     ).toBe(true);
   });
@@ -151,10 +151,10 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         openFindingsAtClose: 2,
         closedBy: { membershipId: ACTOR, role: "hipaa_security_officer" },
         nominatedCosigner: { membershipId: NOMINEE, role: "compliance_officer" },
-        cosignerAttested: false,
+        cosignerAttested: true,
       }),
     ).toBe(true);
-    // the nominee never attested: a payload claiming attestation, or lacking the nominee, is refused
+    // the event is published only after the nominee attested: a payload claiming otherwise, or lacking the nominee, is refused
     const base = {
       orgId: ORG,
       cycleId: CYCLE,
@@ -164,7 +164,7 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
       nominatedCosigner: { membershipId: NOMINEE, role: "compliance_officer" },
     };
     expect(
-      Value.Check(schemaFor("m30.sra.cycle_closed"), { ...base, cosignerAttested: true }),
+      Value.Check(schemaFor("m30.sra.cycle_closed"), { ...base, cosignerAttested: false }),
     ).toBe(false);
     expect(
       Value.Check(schemaFor("m30.sra.cycle_closed"), { ...base, nominatedCosigner: undefined }),

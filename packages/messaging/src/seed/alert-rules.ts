@@ -8,28 +8,12 @@
 // resolution engine lives, M36-T04) so the §7.4 invariants are unit-assertable without live infra
 // and the boot slice can UPSERT it. The `severityFloor` here is the legacy `alert_severity`
 // ladder on `alert_rule` (§3.2), distinct from the `alert_payload_severity` catalog ladder (§3.11).
-import type {
-  AlertCategory,
-  AlertRecipientResolver,
-  AlertSeverity,
-  NotificationChannel,
-} from "../interfaces/kinds";
+import type { AlertCategory, AlertRecipientResolver, AlertSeverity } from "../interfaces/kinds";
 import type { ResolverArgs } from "../resolution";
+import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
+import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
 
-/** One platform-default `alert_rule` (organization_id IS NULL). Typed against the §3.2 enum
- *  unions so `tsc` rejects an invalid category/severity/resolver/channel at authoring time. */
-export interface PlatformAlertRuleSeed {
-  readonly eventType: string;
-  readonly category: AlertCategory;
-  readonly severityFloor: AlertSeverity;
-  readonly recipientResolver: AlertRecipientResolver;
-  readonly resolverArgs: ResolverArgs;
-  /** null ⇒ use recipient preferences (no channel override, §3.6). */
-  readonly channelsOverride: readonly NotificationChannel[] | null;
-  /** true ⇒ tenants cannot disable or loosen this rule (§7.4). */
-  readonly systemLocked: boolean;
-  readonly enabled: boolean;
-}
+export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
 /**
  * The platform-default alert rules (§3.10). Each org's effective catalog is the union of these
@@ -670,6 +654,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
       enabled: true,
     }),
   ),
+  // GAP-035 — the M23 window/ack crons, M25 denial/appeal crons, M26 cap crons and M27 filing-deadline tiers.
+  ...BILLING_CAP_ALERT_RULES,
   {
     eventType: "cap.approaching",
     category: "administrative",
@@ -775,6 +761,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // is being accepted on that feed, so the audience is the one that can fix the feed: compliance + org admins.
   {
     eventType: "external_feed.listener_blocked",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-043 — an ACTIVE inbound HL7 feed went silent (no frame for the §4.11.5 down-threshold) while its listener is
+  // not serving (`evaluateListenerCircuit` tripped OPEN). Inbound ADT / lab results are not arriving: same audience as
+  // `listener_blocked` — the people who can fix the feed.
+  {
+    eventType: "external_feed.listener_down",
     category: "administrative",
     severityFloor: "critical",
     recipientResolver: "role_set",
@@ -1113,12 +1112,102 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-049 (M30 spec §4.9) — the quality alerts raised by M36's `quality-alerts` outbox consumer (sentinel / abuse
+  // incident submitted, outbreak opened, threshold breached, CAHPS sample ready) and by the M30
+  // `review_overdue_sweep` cron (mortality review due, CoP re-attestation overdue). Previously rule-less, so no
+  // m30.* event ever reached a person. Payloads are ids / enums / counts only — no PHI.
+  {
+    eventType: "m30.alerts.incident_sentinel",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: ["administrator", "compliance_officer", "medical_director", "qapi_coordinator"],
+    },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.incident_abuse_allegation",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["administrator", "compliance_officer", "medical_director"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.outbreak_detected",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["infection_control_lead", "medical_director", "administrator"] },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.measure_threshold_breached",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator", "medical_director"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.cahps_sample_ready",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["qapi_coordinator"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.mortality_review_due",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["medical_director", "qapi_coordinator"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m30.alerts.cop_review_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "administrator"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "mdm.baa_expiring",
     category: "administrative",
     severityFloor: "info",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-068 — M40 §4.7.2: the NPPES source deactivated a physician record this organisation prefers. Raised by
+  // the M40 NPPES consumer / fallback job through AlertEmitter; without a rule the emit persists an alert with
+  // recipientCount 0. Tenant admins + referral/intake coordinators, in-app + email; payload `{ canonicalId, npi,
+  // kind, deepLink, message }` — an NPI is a public identifier, no PHI.
+  {
+    eventType: "mdm.physician_deactivated",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "intake_coordinator", "intake_supervisor"] },
     channelsOverride: ["in_app", "email"],
     systemLocked: false,
     enabled: true,

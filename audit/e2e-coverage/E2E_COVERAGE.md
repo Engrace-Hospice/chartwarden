@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 170 statically-routable `web` screen(s) — 19/170 E2E-reached, 163/170 axe-reached.
+**Coverage:** 172 statically-routable `web` screen(s) — 19/172 E2E-reached, 165/172 axe-reached.
 
 ## Zero E2E coverage
 
@@ -14,6 +14,7 @@
 | `evv.metrics` | 18-evv | `/admin/evv-metrics` | evv.read_metrics |
 | `documents.template-library` | 22-documents | `/admin/forms/templates` | documents.read_templates |
 | `saas.onboarding` | 34-saas | `/admin/onboarding` | onboarding.read_own |
+| `portal.admin` | 31-portal | `/admin/portal` | portal.account.read_list |
 | `prescribing.prescriber-roster` | 12-dosespot | `/admin/prescribers` | prescribing.admin.roster |
 | `prescribing.policy` | 12-dosespot | `/admin/prescribing-policy` | prescribing.admin.policy |
 | `assessment.scale-licenses` | 09-assessments | `/admin/scales/licenses` | assessment.license_read |
@@ -147,6 +148,7 @@
 | `supplies.items` | 21-supplies | `/supplies/items` | supplies.item.read |
 | `supplies.par_stock` | 21-supplies | `/supplies/par-stock` | par_stock.read |
 | `supplies.vendor_routing` | 21-supplies | `/supplies/vendor-routing` | vendor_routing.read |
+| `portal.telehealth` | 31-portal | `/telehealth` | telehealth.read_list |
 | `terminology.admin` | 38-terminology | `/terminology` | terminology.read |
 | `triage.queue` | 19-oncall | `/triage` | triage.read |
 | `triage.escalations` | 19-oncall | `/triage/escalations` | triage.read_escalations |

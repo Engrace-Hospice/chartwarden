@@ -601,6 +601,7 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     at: LocalDate,
+    args?: { lateEntryReason?: string },
   ): Promise<{ status: "finalized"; version: number }>;
   /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
    *  there is no `enhanced: true` arm to return yet (#123). */
@@ -614,7 +615,7 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
-    args: { at: LocalDate },
+    args: { at: LocalDate; lateEntryReason?: string },
   ): Promise<{
     status: "signed" | "cosign_pending";
     signedAt: string;

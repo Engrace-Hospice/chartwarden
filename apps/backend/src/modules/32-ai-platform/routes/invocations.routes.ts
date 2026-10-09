@@ -43,9 +43,31 @@ export interface InvocationRouteDeps {
  * `zdr_confirmed` is D19's claim about what happened to it there. Naming the three cipher columns would
  * declare an audit for fields no caller can reach.
  */
-const INVOCATION_PHI = {
+const INVOCATION_PHI_FIELDS = [
+  "patient_id",
+  "capability_key",
+  "backend_key",
+  "model_version_pin",
+  "zdr_confirmed",
+] as const;
+
+/**
+ * R16 is a collection: `list: true` takes the list-read branch (a `list_viewed` row with a count), because
+ * the single-resource branch would write an empty `resource_id` that the uuid column rejects — and the
+ * best-effort emitter swallows that failure, leaving the read with no trail (GAP-055).
+ */
+export const INVOCATION_SEARCH_AUDIT = {
   resourceKind: "ai_invocation",
-  fields: ["patient_id", "capability_key", "backend_key", "model_version_pin", "zdr_confirmed"],
+  fields: INVOCATION_PHI_FIELDS,
+  list: true,
+} as const;
+
+/** R17 is one row: the row id is the audited resource; the response's `patientId` is the disclosure subject. */
+export const INVOCATION_ROW_AUDIT = {
+  resourceKind: "ai_invocation",
+  fields: INVOCATION_PHI_FIELDS,
+  resourceIdParam: "invocationId",
+  patientIdPayloadPath: "patientId",
 } as const;
 
 export function registerInvocationRoutes(app: FastifyInstance, deps: InvocationRouteDeps): void {
@@ -59,7 +81,7 @@ export function registerInvocationRoutes(app: FastifyInstance, deps: InvocationR
     "/api/v1/ai/invocations",
     {
       preHandler: [P("ai.invocation.read"), ABAC_INVOCATION_SEARCH("ai.invocation.read")],
-      config: { auditRead: INVOCATION_PHI },
+      config: { auditRead: INVOCATION_SEARCH_AUDIT },
     },
     async (request) => {
       const actor = await actorOf(request);
@@ -82,7 +104,7 @@ export function registerInvocationRoutes(app: FastifyInstance, deps: InvocationR
     "/api/v1/ai/invocations/:invocationId",
     {
       preHandler: [P("ai.invocation.read"), ABAC_INVOCATION_ROW("ai.invocation.read")],
-      config: { auditRead: INVOCATION_PHI },
+      config: { auditRead: INVOCATION_ROW_AUDIT },
     },
     async (request) => {
       const actor = await actorOf(request);

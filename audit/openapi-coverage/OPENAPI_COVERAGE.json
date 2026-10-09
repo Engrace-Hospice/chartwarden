@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1477,
-    "enriched": 1477,
+    "routes": 1482,
+    "enriched": 1482,
     "deficit": 0,
-    "mutating": 840,
+    "mutating": 843,
     "mutatingNoBody": 1,
-    "gets": 603,
+    "gets": 604,
     "getsNoResponse": 8
   },
   "modules": [
@@ -161,12 +161,12 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 35,
-      "enriched": 35,
+      "routes": 38,
+      "enriched": 38,
       "deficit": 0,
-      "mutating": 19,
+      "mutating": 20,
       "mutatingNoBody": 0,
-      "gets": 15,
+      "gets": 16,
       "getsNoResponse": 0
     },
     {
@@ -291,10 +291,10 @@
     },
     {
       "module": "30-quality",
-      "routes": 61,
-      "enriched": 61,
+      "routes": 63,
+      "enriched": 63,
       "deficit": 0,
-      "mutating": 36,
+      "mutating": 38,
       "mutatingNoBody": 0,
       "gets": 25,
       "getsNoResponse": 0

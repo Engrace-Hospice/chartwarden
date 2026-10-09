@@ -245,6 +245,7 @@ jobs:
           # F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
           # order_record.transmission_status and re-publish M11's own D16-decisive events.
           - { name: "M11 lab-transmission applier", scripts: "test:m11:lab-transmission-applier:live" }
+          - { name: "M11 lab-results applier", scripts: "test:m11:lab-results-applier:live" }
           - { name: "M11 lab ORM producer (F-181)", scripts: "test:m11:orm-requested:live" }
           - { name: "M11 lab ORM resend (F-182)", scripts: "test:m11:orm-resend:live" }
           - { name: "M11 lab ORM attested recovery + never-pending (F-187)", scripts: "test:m11:orm-recovery:live" }
@@ -320,7 +321,7 @@ jobs:
               name: "M17 Scheduling",
               scripts:
                 "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
-                test:m17:membership-credential:live",
+                test:m17:membership-credential:live test:m17:oncall-roster:live",
             }
           # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
           - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
@@ -642,6 +643,8 @@ jobs:
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
           - { name: "M5 write outbox", scripts: "test:m5:write-outbox:live" }
+          # GAP-009/010 — admit matcher inputs (address/phone/email), persistence, bypass critical audit.
+          - { name: "M5 admit matching", scripts: "test:m5:admit-matching:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {
@@ -654,13 +657,13 @@ jobs:
           # m18.evv.aggregator_rejected.
           - {
               name: "M25 denial-worklist seed consumers",
-              scripts: "test:m25:denial-seed-consumers:live",
+              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live",
             }
           # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
           - {
               name: "M26 Cap Management",
-              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live test:m26:projections-alerts:live",
             }
           - {
               name: "M30 HQRP & Quality",
@@ -699,6 +702,9 @@ jobs:
           # the collaborator / funeral-home link redemption (durable hash-only single-use link -> Better Auth session).
           - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
           - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
+          - { name: "M2 auth audit trail + MFA matrix", scripts: "test:m2:auth-hardening:live" }
+          - { name: "M3 role-template materialization", scripts: "test:m3:role-templates:live" }
+          - { name: "M4 legal-hold supremacy at destruction", scripts: "test:m4:legal-hold-supremacy:live" }
           # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
           - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
@@ -967,7 +973,10 @@ jobs:
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           # M23 §4.4 — HETS 270/271 eligibility (sandbox transport) + hospice-periods read + MBI non-persistence.
-          - { name: "M23 HETS eligibility", scripts: "test:m23:hets-eligibility:live" }
+          - {
+              name: "M23 HETS eligibility",
+              scripts: "test:m23:hets-eligibility:live test:m23:eligibility-read-audit:live",
+            }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # The receiving hospice's transfer notice (TOB 8xC): drafted on transfer-in, held until the
           # transferring hospice's billing is confirmed, submitted, acked; same-CCN / once-per-period refusals.
@@ -987,6 +996,11 @@ jobs:
           # F-172 (#248) — the real PseudonymKeyProvider (KEK envelope over the platform-singleton
           # patient_pseudonym_key) + the 3 remaining D21 consumers it unblocks.
           - { name: "M35 pseudonym-key provider", scripts: "test:m35:pseudonym-key-provider:live" }
+          # GAP-058/059/060/061 - M35 billing runtime: payment-method trust, refund cap + execution, signed
+          # webhook -> dunning -> suspension, expiry watch, usage thresholds, revenue snapshot, reconciler.
+          - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
+          # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
+          - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

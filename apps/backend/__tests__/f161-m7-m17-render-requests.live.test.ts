@@ -268,7 +268,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
       2,
       "rn_case_manager",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      { userId: USER, membershipId: MEMBER, roles: ["rn_case_manager"] },
       "Patient verbalized understanding",
     );
     await carePlan.signVersion(
@@ -278,7 +278,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
       3,
       "hospice_physician",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      { userId: USER, membershipId: MEMBER, roles: ["hospice_physician"] },
     );
     return boot.initialVersionId;
   }
@@ -337,7 +337,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
       2,
       "rn_case_manager",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER },
+      { userId: USER, membershipId: MEMBER, roles: ["rn_case_manager"] },
       "Patient verbalized understanding",
     );
 

@@ -56,8 +56,9 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A projection crossed into a higher alert band; a cap_threshold_event was raised.",
     payloadSchema: ThresholdCrossedPayload,
-    declaredConsumers: [],
-    seamConsumers: ["m36", "m33"],
+    // GAP-040 - M36's `cap-threshold-alerts` consumer turns a band escalation into the typed cap alert.
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

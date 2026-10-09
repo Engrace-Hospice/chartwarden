@@ -110,6 +110,8 @@ function makeServer(
     userEmails?: Record<string, string>;
     /** GAP-009 — `null` binds NO identity reader (accept must then fail closed). */
     bindUserIdentity?: boolean;
+    /** GAP-005 — the MFA matrix gate select-organization consults. */
+    mfaGate?: IdentityRouteDeps["mfaGate"];
   } = {},
 ) {
   const guardCalls: Array<{ inviterUserId: string; roleKeys: readonly string[] }> = [];
@@ -176,6 +178,7 @@ function makeServer(
       ? {}
       : { proposedRoleGuard: opts.proposedRoleGuard ?? defaultGuard }),
     ...(opts.bindUserIdentity === false ? {} : { userIdentity: identity }),
+    ...(opts.mfaGate ? { mfaGate: opts.mfaGate } : {}),
   };
   registerIdentityRoutes(app, deps);
   return {
@@ -314,6 +317,36 @@ describe("M2-T06 identity route inventory", () => {
         organizationName: "Engrace",
       });
       await app.close();
+    });
+
+    it("GAP-005 select-organization refuses to bind while the MFA matrix is unmet (403), binds once met", async () => {
+      const denied = makeServer({
+        seed,
+        mfaGate: {
+          forMembership: async () => ({ requirement: "second_factor", satisfied: false }),
+        },
+      });
+      const res = await denied.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { "x-test-user": "user_rn" },
+        payload: { organizationId: "org_a" },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("MFA_ENROLMENT_REQUIRED");
+      await denied.app.close();
+      const met = makeServer({
+        seed,
+        mfaGate: { forMembership: async () => ({ requirement: "second_factor", satisfied: true }) },
+      });
+      const ok = await met.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { "x-test-user": "user_rn" },
+        payload: { organizationId: "org_a" },
+      });
+      expect(ok.statusCode).toBe(200);
+      await met.app.close();
     });
 
     it("selecting an org without an active membership → 403 NO_ACTIVE_MEMBERSHIP", async () => {

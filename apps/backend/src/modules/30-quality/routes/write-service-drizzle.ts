@@ -65,9 +65,14 @@ import type { M30WriteActor } from "./actor";
 import {
   PIP_CLOSE_ROLES,
   SRA_CLOSE_ROLES,
-  buildCloseAttestation,
-  buildPipClosureColumns,
-  buildSraClosureColumns,
+  buildConfirmedCloseAttestation,
+  buildPipConfirmColumns,
+  buildPipPendingCloseColumns,
+  buildSraConfirmColumns,
+  buildSraPendingCloseColumns,
+  pendingCloseView,
+  readPendingClose,
+  resolveCloseConfirmation,
   resolveCloseCosigners,
 } from "./close-cosign";
 import { incidentOwnedBy } from "./incident-ownership";
@@ -107,6 +112,7 @@ import type {
   CloseQapiPipArgs,
   CloseSraCycleArgs,
   CompleteMortalityReviewArgs,
+  ConfirmCloseArgs,
   CreateCahpsExportArgs,
   CreateIncidentArgs,
   CreateQapiIndicatorArgs,
@@ -610,6 +616,30 @@ export function buildDrizzleM30WriteService(
     completedAt: row.status === "completed" ? row.updatedAt.toISOString() : null,
   });
 
+  const pipCosignOf = (
+    signers: { readonly first: string; readonly second: string; readonly callerRole: string },
+    charteredByMembershipId: string,
+  ): PipClosureCosign => {
+    const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
+    return {
+      qapiCoordinatorMembershipId: callerIsCoordinator ? signers.first : signers.second,
+      medicalDirectorMembershipId: callerIsCoordinator ? signers.second : signers.first,
+      charteredByMembershipId,
+    };
+  };
+
+  const sraCosignOf = (signers: {
+    readonly first: string;
+    readonly second: string;
+    readonly callerRole: string;
+  }): SraClosureCosign => {
+    const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
+    return {
+      securityOfficerMembershipId: callerIsSecurityOfficer ? signers.first : signers.second,
+      complianceOfficerMembershipId: callerIsSecurityOfficer ? signers.second : signers.first,
+    };
+  };
+
   const mapPip = (row: schema.QapiPip, charteredByMembershipId: string): QapiPipView => ({
     pipId: row.id,
     organizationId: row.organizationId,
@@ -619,6 +649,7 @@ export function buildDrizzleM30WriteService(
     charteredByMembershipId,
     outcome: row.conclusionText ?? null,
     closedAt: iso(row.closedAt),
+    ...pendingCloseView(row),
   });
 
   const mapMinutes = (
@@ -646,6 +677,7 @@ export function buildDrizzleM30WriteService(
     ownerMembershipId: row.openedByMembershipId,
     openedAt: row.openedAt.toISOString(),
     closedAt: iso(row.closedAt),
+    ...pendingCloseView(row),
   });
 
   const mapFinding = (
@@ -1142,6 +1174,9 @@ export function buildDrizzleM30WriteService(
       });
     },
 
+    // GAP-046: closing is two-step. INITIATE (this method) stamps the closer's slot, names the nominee and leaves
+    // the PIP OPEN; the nominee then calls `confirmQapiPipClose` in their own session. Re-initiating while a close
+    // is pending replaces the nomination (the closer's authority + a fresh step-up are re-proved every time).
     async closeQapiPip(actor, pipId, args: CloseQapiPipArgs): Promise<QapiPipView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new QapiRepository(tx);
@@ -1167,28 +1202,75 @@ export function buildDrizzleM30WriteService(
           recentStepUp: args.recentStepUp,
           roles: PIP_CLOSE_ROLES,
         });
-        // Nominee-based one-step close: the closer alone signs; the nominee is recorded un-attested both in the
-        // event payload and on the row (migration 0335: nominee slot `_at` NULL + `closure_cosign_attested`
-        // false; V-11 requires both `_at` only for attested closes).
-        const attestation = buildCloseAttestation(signers);
-        const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
-        const cosign: PipClosureCosign = {
-          qapiCoordinatorMembershipId: callerIsCoordinator ? signers.first : signers.second,
-          medicalDirectorMembershipId: callerIsCoordinator ? signers.second : signers.first,
-          charteredByMembershipId,
-        };
+        // Dry-run the pure PIP machine now so an illegal phase / closer-is-charterer SoD fails at initiation,
+        // not after the nominee has been paged. The status it returns is deliberately NOT persisted here.
+        transitionQapiPip(pip.status, {
+          type: "conclude",
+          conclusionText: args.conclusionText,
+          cosign: pipCosignOf(signers, charteredByMembershipId),
+        });
+        const at = now();
+        const row = await repo.updatePip(pipId, {
+          conclusionText: args.conclusionText,
+          closureOutcome: args.outcome,
+          ...buildPipPendingCloseColumns(signers, at),
+          updatedAt: at,
+          version: pip.version + 1,
+        });
+        return mapPip(row, charteredByMembershipId);
+      });
+    },
+
+    // GAP-046: the nominee's own confirmation. Authority is the SESSION membership vs the persisted nominee —
+    // nothing about the confirmer is read off the wire.
+    async confirmQapiPipClose(actor, pipId, args: ConfirmCloseArgs): Promise<QapiPipView> {
+      return inOrgCtx(actor, async (tx) => {
+        const repo = new QapiRepository(tx);
+        const pip = await repo.findPipById(pipId);
+        if (!pip || pip.organizationId !== actor.organizationId)
+          throw new NotFoundError("qapi pip");
+        const project = pip.linkedProjectId
+          ? await repo.findProjectById(pip.linkedProjectId)
+          : null;
+        const charteredByMembershipId = project?.ownerMembershipId ?? "";
+        const pending = resolveCloseConfirmation({
+          pending: readPendingClose(
+            {
+              closedAt: pip.closedAt,
+              closureClosedByMembershipId: pip.closureClosedByMembershipId,
+              closureNomineeMembershipId: pip.closureNomineeMembershipId,
+              slotMembershipIds: [
+                pip.cosignQapiCoordinatorMembershipId,
+                pip.cosignMedicalDirectorMembershipId,
+              ],
+            },
+            PIP_CLOSE_ROLES,
+          ),
+          actorMembershipId: actor.membershipId,
+          actorRoles: actor.roles,
+          actorLiveRoleKeys: await selectActiveMemberRoleKeys(
+            tx,
+            actor.organizationId,
+            actor.membershipId,
+          ),
+          recentStepUp: args.recentStepUp,
+        });
+        const qcId = pip.cosignQapiCoordinatorMembershipId ?? "";
+        const mdId = pip.cosignMedicalDirectorMembershipId ?? "";
         // The pure PIP machine enforces the V-11 two-person split + closer-≠-charterer SoD via the cosign.
         const status = transitionQapiPip(pip.status, {
           type: "conclude",
-          conclusionText: args.conclusionText,
-          cosign,
+          conclusionText: pip.conclusionText ?? "",
+          cosign: {
+            qapiCoordinatorMembershipId: qcId,
+            medicalDirectorMembershipId: mdId,
+            charteredByMembershipId,
+          },
         });
         const at = now();
         const row = await repo.updatePip(pipId, {
           status,
-          conclusionText: args.conclusionText,
-          ...buildPipClosureColumns(signers, at),
-          closedAt: at,
+          ...buildPipConfirmColumns(pending, at),
           updatedAt: at,
           version: pip.version + 1,
         });
@@ -1201,9 +1283,9 @@ export function buildDrizzleM30WriteService(
             orgId: actor.organizationId,
             projectId: pip.linkedProjectId ?? null,
             pipId,
-            outcome: args.outcome,
+            outcome: pip.closureOutcome ?? pip.conclusionText ?? "",
             closedAt: at.toISOString(),
-            ...attestation,
+            ...buildConfirmedCloseAttestation(pending),
           },
         });
         return mapPip(row, charteredByMembershipId);
@@ -1391,6 +1473,8 @@ export function buildDrizzleM30WriteService(
       });
     },
 
+    // GAP-046: INITIATE the cycle close — the closer's slot is stamped, the nominee named, the cycle stays OPEN
+    // until the nominee confirms via `confirmSraCycleClose` in their own session.
     async closeSraCycle(actor, cycleId, args: CloseSraCycleArgs): Promise<SraCycleView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new SraRepository(tx);
@@ -1411,24 +1495,64 @@ export function buildDrizzleM30WriteService(
           recentStepUp: args.recentStepUp,
           roles: SRA_CLOSE_ROLES,
         });
-        // Nominee-based one-step close: see closeQapiPip — the closer alone signs, the nominee slot's `_at` stays NULL.
-        const attestation = buildCloseAttestation(signers);
-        const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
-        const cosign: SraClosureCosign = {
-          securityOfficerMembershipId: callerIsSecurityOfficer ? signers.first : signers.second,
-          complianceOfficerMembershipId: callerIsSecurityOfficer ? signers.second : signers.first,
-        };
+        // Dry-run the pure SRA machine so an illegal state fails at initiation; its status is NOT persisted yet.
+        transitionSraCycle(cycle.status, {
+          type: "close",
+          cosign: sraCosignOf(signers),
+          recentStepUp: args.recentStepUp,
+        });
+        const at = now();
+        const row = await repo.updateCycle(cycleId, {
+          ...buildSraPendingCloseColumns(signers, at),
+          updatedAt: at,
+          version: cycle.version + 1,
+        });
+        return mapCycle(row);
+      });
+    },
+
+    // GAP-046: the nominee's own confirmation (session membership vs the persisted nominee; fresh step-up).
+    async confirmSraCycleClose(actor, cycleId, args: ConfirmCloseArgs): Promise<SraCycleView> {
+      return inOrgCtx(actor, async (tx) => {
+        const repo = new SraRepository(tx);
+        const cycle = await repo.findCycleById(cycleId);
+        if (!cycle || cycle.organizationId !== actor.organizationId)
+          throw new NotFoundError("sra cycle");
+        const pending = resolveCloseConfirmation({
+          pending: readPendingClose(
+            {
+              closedAt: cycle.closedAt,
+              closureClosedByMembershipId: cycle.closureClosedByMembershipId,
+              closureNomineeMembershipId: cycle.closureNomineeMembershipId,
+              slotMembershipIds: [
+                cycle.cosignSecurityOfficerMembershipId,
+                cycle.cosignComplianceOfficerMembershipId,
+              ],
+            },
+            SRA_CLOSE_ROLES,
+          ),
+          actorMembershipId: actor.membershipId,
+          actorRoles: actor.roles,
+          actorLiveRoleKeys: await selectActiveMemberRoleKeys(
+            tx,
+            actor.organizationId,
+            actor.membershipId,
+          ),
+          recentStepUp: args.recentStepUp,
+        });
         // The pure SRA machine re-asserts the V-12 split; the step-up is the REAL freshness, not a constant.
         const status = transitionSraCycle(cycle.status, {
           type: "close",
-          cosign,
+          cosign: {
+            securityOfficerMembershipId: cycle.cosignSecurityOfficerMembershipId ?? "",
+            complianceOfficerMembershipId: cycle.cosignComplianceOfficerMembershipId ?? "",
+          },
           recentStepUp: args.recentStepUp,
         });
         const at = now();
         const row = await repo.updateCycle(cycleId, {
           status,
-          ...buildSraClosureColumns(signers, at),
-          closedAt: at,
+          ...buildSraConfirmColumns(pending, at),
           updatedAt: at,
           version: cycle.version + 1,
         });
@@ -1445,7 +1569,7 @@ export function buildDrizzleM30WriteService(
             cycleId,
             closedAt: at.toISOString(),
             openFindingsAtClose: open,
-            ...attestation,
+            ...buildConfirmedCloseAttestation(pending),
           },
         });
         return mapCycle(row);

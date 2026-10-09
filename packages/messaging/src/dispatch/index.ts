@@ -12,6 +12,26 @@ export {
   createDenyTransports,
   createFakeTransports,
 } from "./transports";
+export type { VendorFetch } from "./vendor-http";
+export {
+  type TwilioSender,
+  type TwilioSmsOptions,
+  type TwilioVoiceOptions,
+  createTwilioSmsTransport,
+  createTwilioVoiceTransport,
+  sendTwilioSms,
+} from "./twilio-transports";
+export {
+  type PostmarkAlertEmailOptions,
+  createPostmarkAlertEmailTransport,
+  sendPostmarkEmail,
+} from "./postmark-alert-transport";
+export {
+  type WebPushOptions,
+  buildVapidAuthorization,
+  createWebPushTransport,
+  encryptWebPushPayload,
+} from "./web-push-transport";
 export {
   DELIVERY_CLAIM_LEASE_MS,
   DELIVERY_SWEEP_BATCH_LIMIT,

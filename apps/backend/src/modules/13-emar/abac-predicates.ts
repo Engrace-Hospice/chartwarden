@@ -139,6 +139,11 @@ export interface EmarAbacResolver {
   loadScopePatientId(orgId: string, kind: EmarScopeRefKind, id: string): Promise<string | null>;
   /** GAP-005 — the order's medication class (M12's, never the request's); null when unresolvable. */
   loadOrderMedClass(orgId: string, medicationOrderId: string): Promise<string | null>;
+  /**
+   * GAP-024 -- the order a scheduled dose was materialized from; null when absent / cross-tenant. Lets the
+   * dose-keyed intentional-hold route resolve the order's class for `administering_clinician_eligible`.
+   */
+  loadScheduledDoseOrderId?(orgId: string, scheduledDoseId: string): Promise<string | null>;
 }
 
 /** Caseload membership check — the M5 `CaseloadProvider.isInCaseload` shape. */
@@ -188,7 +193,14 @@ export function buildEmarAbacPredicates(
 
   return {
     administering_clinician_eligible: async (context, target) => {
-      const medicationOrderId = targetStr(target, "medicationOrderId");
+      // The order is named directly, or (GAP-024: the dose-keyed intentional-hold route) through the
+      // scheduled dose it was materialized from. Either way the class is the ORDER's, never the body's.
+      const scheduledDoseId = targetStr(target, "scheduledDoseId");
+      const medicationOrderId =
+        targetStr(target, "medicationOrderId") ??
+        (scheduledDoseId && resolver.loadScheduledDoseOrderId
+          ? await resolver.loadScheduledDoseOrderId(context.organizationId, scheduledDoseId)
+          : null);
       if (!medicationOrderId) return false; // no order named → deny (fail-closed)
       const medClass = await resolver.loadOrderMedClass(context.organizationId, medicationOrderId);
       if (!medClass) return false; // unresolvable order → deny (fail-closed)

@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
   }
   async function inpatientAccrual(organizationId: string, capPeriodId: string) {
     const { rows } = await admin.query(
-      `SELECT gip_days, irc_days FROM cap_inpatient_accrual
+      `SELECT gip_days, irc_days, total_patient_days FROM cap_inpatient_accrual
          WHERE organization_id = $1 AND cap_period_id = $2`,
       [organizationId, capPeriodId],
     );
@@ -337,7 +337,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
       [ORG_A, capYear],
     );
     const acc = await inpatientAccrual(ORG_A, periodRows[0].id);
-    expect(acc).toEqual({ gip_days: 3, irc_days: 2 });
+    expect(acc).toEqual({ gip_days: 3, irc_days: 2, total_patient_days: 5 });
 
     // redelivery of the first day-line is an idempotent no-op — no double count
     const replay = await store.recordInpatientDay({
@@ -352,7 +352,26 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     });
     expect(replay).toEqual({ recorded: false });
     const accAfterReplay = await inpatientAccrual(ORG_A, periodRows[0].id);
-    expect(accAfterReplay).toEqual({ gip_days: 3, irc_days: 2 }); // unchanged
+    expect(accAfterReplay).toEqual({ gip_days: 3, irc_days: 2, total_patient_days: 5 }); // unchanged
+
+    // GAP-038 - a routine-home-care day line grows ONLY the denominator, and is replay-safe too.
+    const rhc = {
+      organizationId: ORG_A,
+      patientId: PATIENT_A,
+      sourceId: "dddddddd-0000-4000-8000-000000000003",
+      revCode: "0651" as const,
+      days: 20,
+      serviceFrom: `${window.startsOn.slice(0, 4)}-11-13`,
+      serviceTo: `${window.startsOn.slice(0, 4)}-12-02`,
+      postedAt: `${midYear}T00:00:00.000Z`,
+    };
+    expect(await store.recordInpatientDay(rhc)).toEqual({ recorded: true });
+    expect(await store.recordInpatientDay(rhc)).toEqual({ recorded: false });
+    expect(await inpatientAccrual(ORG_A, periodRows[0].id)).toEqual({
+      gip_days: 3,
+      irc_days: 2,
+      total_patient_days: 25,
+    });
   });
 
   it("freezes the patient's accrual row on the (first) death/revocation date, idempotently", async () => {

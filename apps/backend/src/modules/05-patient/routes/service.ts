@@ -20,12 +20,16 @@ export interface AdmitInput {
   readonly ssn?: string | null;
   readonly primaryAddress?: {
     line1: string;
+    line2?: string | null;
     city: string;
+    state?: string | null;
     postalCode: string;
   } | null;
   readonly phone?: string | null;
   readonly email?: string | null;
   readonly bypassMatchReview?: boolean;
+  /** GAP-009: the required reason a permissioned actor skipped the duplicate pipeline (audited). */
+  readonly bypassJustification?: string;
 }
 
 /** The admit outcome (§7.1). hard_block → 409; soft_review/created → 201. */

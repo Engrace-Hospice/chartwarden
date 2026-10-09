@@ -76,3 +76,14 @@ export {
   type PatientActivePeriodConsumerDeps,
   buildM35PatientActivePeriodConsumer,
 } from "./outbox-consumers/m5-patient-active-period";
+
+// GAP-058 / GAP-059 / GAP-060 / GAP-061 - the Stripe transport binding, the webhook ingest + handler, the
+// refund executor and the BullMQ worker set (dunning, usage, expiry watch, revenue, reconciler).
+export { loadM35StripeConfig, type M35StripeConfig } from "./billing-runtime/stripe-config";
+export { buildM35WebhookIngest } from "./billing-runtime/webhook-ingest";
+export {
+  M35_JOBS_PLATFORM_JOB_ID,
+  registerM35Workers,
+  scheduleM35Jobs,
+} from "./billing-runtime/workers";
+export type { M35JobDeps } from "./billing-runtime/jobs";

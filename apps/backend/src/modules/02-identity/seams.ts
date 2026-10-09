@@ -76,6 +76,9 @@ export interface IdentitySeamDeps {
   db?: DbClient;
   /** Separate least-privilege platform credential for organization-spine creation/cross-tenant reads. */
   organizationDb?: DbClient;
+  /** GAP-006 - runs when the tenant org is confirmed/created (M3's role-template materializer, bound by the
+   *  composition root because M2 may not import M3). Absent => the org is confirmed without roles. */
+  onTenantOrganizationAvailable?: (organizationId: string) => Promise<void>;
 }
 
 /** Register M2's published seams into the M1 registry (M2-T07; call before validateSeams()). */
@@ -132,7 +135,14 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   // fail-closed deny-stub stands in slice/tests).
   const organizationDb = deps.organizationDb ?? deps.db;
   if (organizationDb) {
-    registerSeam("TenantOrgCreationProvider", createTenantOrgCreationProvider(organizationDb));
+    registerSeam(
+      "TenantOrgCreationProvider",
+      createTenantOrgCreationProvider(organizationDb, {
+        ...(deps.onTenantOrganizationAvailable
+          ? { onOrganizationAvailable: deps.onTenantOrganizationAvailable }
+          : {}),
+      }),
+    );
     // M35A-T03 — the real org display-metadata reader M35's platform-ops admin lists label rows through
     // (the registry's graceful deny-stub, which resolves no names, stands in slice/tests without a db).
     registerSeam("OrganizationReader", createOrganizationReader(organizationDb));

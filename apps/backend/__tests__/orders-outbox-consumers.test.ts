@@ -174,6 +174,8 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       },
       // F-187 (#248) — the worker's row-less refusals, so an order is never silently stuck `pending`.
       { eventName: "m29.lab_order.dispatch_refused", consumerName: "m11.lab-transmission-applier" },
+      // GAP-016 — `LabResultsApplier`: a returned lab flips the order's results_status.
+      { eventName: "m29.lab_observation.attached", consumerName: "m11.lab-results-applier" },
       // F-187 (#248) — SELF-consumption: the lab-order supersession alert (T-29.08 defines no outbound cancel).
       { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
       { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },

@@ -95,6 +95,18 @@ describe("deriveIdempotencyKey (§4.13)", () => {
     expect(deriveIdempotencyKey(ev)).toBe(deriveIdempotencyKey(ev));
   });
 
+  it("keeps one key across attempts when idempotencyAttemptIndex pins it (a refund is never re-issued under a new key)", () => {
+    const keyAt = (attemptIndex: number) =>
+      deriveIdempotencyKey({
+        operation: "refund.create",
+        businessKey: "r-1",
+        attemptIndex,
+        idempotencyAttemptIndex: 0,
+      });
+    expect(keyAt(0)).toBe(keyAt(3));
+    expect(keyAt(4)).toBe(`${STRIPE_IDEMPOTENCY_PREFIX}-refund.create-r-1-0`);
+  });
+
   it("changes with the attempt index (each attempt is individually keyed)", () => {
     const a = deriveIdempotencyKey({
       operation: "invoice.pay",
@@ -326,6 +338,34 @@ describe("dispatchStripeCall (§4.13)", () => {
     const deps: StripeDispatcherDeps = { client, auditStore: store, mirror, nowMs: () => 0 };
     await expect(dispatchStripeCall(deps, { ...dispatchEvent, attemptIndex: 1 })).rejects.toBe(err);
     expect(calls.failure).toBe(1);
+  });
+
+  it("a pinned-key retry sends the SAME Stripe key on every attempt, yet the retry ceiling still follows attemptIndex", async () => {
+    const { store } = fakeAuditStore();
+    const err: StripeApiError = { message: "timeout", statusCode: 0, retryable: true };
+    const execute = vi.fn(async () => Promise.reject(err));
+    const deps: StripeDispatcherDeps = {
+      client: { execute },
+      auditStore: store,
+      mirror: { apply: vi.fn() },
+      nowMs: () => 0,
+    };
+    const pinned = {
+      ...dispatchEvent,
+      operation: "refund.create",
+      idempotencyAttemptIndex: 0,
+    } as const;
+    await expect(dispatchStripeCall(deps, { ...pinned, attemptIndex: 1 })).rejects.toBe(err);
+    await expect(dispatchStripeCall(deps, { ...pinned, attemptIndex: 3 })).rejects.toBe(err);
+    const keys = execute.mock.calls.map(
+      (c) => (c as unknown as [unknown, { idempotencyKey: string }])[1].idempotencyKey,
+    );
+    expect(new Set(keys).size).toBe(1);
+    const ceiling = await dispatchStripeCall(deps, {
+      ...pinned,
+      attemptIndex: STRIPE_MAX_ATTEMPTS,
+    });
+    expect(ceiling.kind).toBe("failed_permanent");
   });
 
   it("returns the api_call_failed outbox intent on a permanent failure", async () => {

@@ -156,8 +156,26 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
   };
 }
 
+/** GAP-057 — the org-scoped "active members holding any of these role keys" lookup the composition root
+ *  hands to other modules' recipient resolvers (M34's `compliance_officer_for_tenant`), so they bind the
+ *  SAME join the built-in `role_set` resolver uses instead of re-implementing it. Returns user ids. */
+export function createDrizzleRoleSetMembersReader(
+  db: DbClient,
+): (orgId: string, roleKeys: readonly string[]) => Promise<readonly string[]> {
+  const ports = buildRecipientPorts(db);
+  return (orgId, roleKeys) => ports.roleSetMembers(orgId, roleKeys);
+}
+
+/** Optional composition-root extensions to the Drizzle {@link AlertEmitterPorts} (GAP-057). */
+export interface DrizzleAlertEmitterOptions {
+  readonly extendResolvers?: AlertEmitterPorts["extendResolvers"];
+}
+
 /** Build the real {@link AlertEmitterPorts} over `db` (GAP-096). */
-export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts {
+export function createDrizzleAlertEmitterPorts(
+  db: DbClient,
+  options: DrizzleAlertEmitterOptions = {},
+): AlertEmitterPorts {
   const AR = schema.alertRules;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
@@ -348,12 +366,16 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
     },
 
     now: () => new Date(),
+    ...(options.extendResolvers ? { extendResolvers: options.extendResolvers } : {}),
   };
 }
 
 /** Build the real production {@link AlertEmitter} (GAP-096). */
-export function createDrizzleAlertEmitter(db: DbClient): AlertEmitter {
-  return createAlertEmitter(createDrizzleAlertEmitterPorts(db));
+export function createDrizzleAlertEmitter(
+  db: DbClient,
+  options: DrizzleAlertEmitterOptions = {},
+): AlertEmitter {
+  return createAlertEmitter(createDrizzleAlertEmitterPorts(db, options));
 }
 
 /** Resolve a membership id to its ACTIVE user id within `orgId` (or null when unknown / not active). Used by outbox

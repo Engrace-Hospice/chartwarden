@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 1477/1477 routes enriched (100%) · **1/840 mutating routes read a body they publish none for** · 8/603 GETs carry no response schema
+**Totals:** 1482/1482 routes enriched (100%) · **1/843 mutating routes read a body they publish none for** · 8/604 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -26,7 +26,7 @@
 | 14-idg | 36 | 36 (100%) | 0 | 20 | 0 | 13 | 0 |
 | 15-discipline-care-plans | 28 | 28 (100%) | 0 | 17 | 0 | 11 | 0 |
 | 16-bereavement | 34 | 34 (100%) | 0 | 27 | 0 | 7 | 0 |
-| 17-scheduling | 35 | 35 (100%) | 0 | 19 | 0 | 15 | 0 |
+| 17-scheduling | 38 | 38 (100%) | 0 | 20 | 0 | 16 | 0 |
 | 18-evv | 25 | 25 (100%) | 0 | 15 | 0 | 10 | 0 |
 | 19-oncall | 40 | 40 (100%) | 0 | 28 | 0 | 12 | 0 |
 | 20-field-safety | 30 | 30 (100%) | 0 | 17 | 0 | 12 | 0 |
@@ -39,7 +39,7 @@
 | 27-cost-report | 45 | 45 (100%) | 0 | 28 | 0 | 16 | 0 |
 | 28-fhir | 35 | 35 (100%) | 0 | 18 | 0 | 16 | 0 |
 | 29-external-interfaces | 33 | 33 (100%) | 0 | 16 | 0 | 17 | 0 |
-| 30-quality | 61 | 61 (100%) | 0 | 36 | 0 | 25 | 0 |
+| 30-quality | 63 | 63 (100%) | 0 | 38 | 0 | 25 | 0 |
 | 31-portal | 58 | 58 (100%) | 0 | 28 | 0 | 30 | 0 |
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 42 | 42 (100%) | 0 | 22 | 0 | 20 | 0 |

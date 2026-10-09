@@ -95,6 +95,7 @@ export {
   createDrizzleAlertEmitterPorts,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
+  createDrizzleRoleSetMembersReader,
 } from "./alert-emitter-drizzle";
 export type { MembershipsHoldingPermissionPort } from "./alert-emitter-drizzle";
 export { buildM36ClinicalAlertConsumer } from "./outbox-consumers/clinical-alerts";
@@ -136,6 +137,7 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import {
   buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
@@ -155,8 +157,17 @@ import {
  * routes resolve live; the write paths are live too (no route returns 501). Backs the staff-messaging +
  * notifications-inbox screens (FB-T04).
  */
-export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {
-  const service = _createDbMessagingRouteService(db);
+export function mountMessagingRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  opts: { sendEndpointVerificationCode?: EndpointVerificationSender } = {},
+): void {
+  // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
+  const service = _createDbMessagingRouteService(db, {
+    ...(opts.sendEndpointVerificationCode
+      ? { sendEndpointVerificationCode: opts.sendEndpointVerificationCode }
+      : {}),
+  });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   _registerMessagingRoutes(app, { service });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
@@ -192,6 +203,11 @@ export {
   registerM36DeliveryWorkers,
   scheduleM36DeliveryJobs,
 } from "./delivery/delivery-workers";
+export {
+  type EndpointVerificationSender,
+  type OutOfBandBinding,
+  bindOutOfBandTransports,
+} from "./delivery/transport-binding";
 export { createDbMessagingWebhookService } from "./delivery/webhook-service-db";
 export {
   type MessagingWebhookConfig,

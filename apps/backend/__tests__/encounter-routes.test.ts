@@ -107,6 +107,16 @@ const PERMISSION_SEED = [
   { userId: "lpn_cos", permissions: ["encounter.read", "encounter.cosign"] },
   { userId: "viewer_1", permissions: ["encounter.read"] },
   { userId: "svc_m22", permissions: ["encounter.read_internal"] },
+  // GAP-014 — the three override routes (D13: step-up; §6: caseload scope on release + late-entry).
+  {
+    userId: "ovr_1",
+    permissions: [
+      "encounter.read",
+      "encounter.late_entry_override",
+      "encounter.administrative_override",
+      "encounter.cosign_supervisor_release",
+    ],
+  },
 ];
 
 function makeServer(
@@ -450,6 +460,74 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     });
     expect(sign.statusCode).toBe(403);
   });
+});
+
+describe("GAP-014 — override routes compose D13 step-up and caseload scope", () => {
+  const OVERRIDER = {
+    "x-test-user": "ovr_1",
+    "x-test-org": ORG,
+    "x-test-roles": "clinical_director",
+  };
+  const STALE = {
+    sessionId: "ovr_1",
+    userId: "ovr_1",
+    membershipId: "ovr_1",
+    organizationId: ORG,
+    roles: [],
+    providerEntityIds: [],
+    locationIds: [],
+    lastStepUpAt: new Date(Date.now() - 10 * 60 * 1000),
+    lastStepUpFactor: "webauthn" as const,
+    sessionClass: "staff",
+    portalAccountId: null,
+    sessionPatientId: null,
+  };
+  const AT = new Date().toISOString();
+  const ROUTES = [
+    ["late-entry-override", { reason: "x".repeat(45), stepUpAuthAt: AT }],
+    ["administrative-override", { reason: "x".repeat(105), stepUpAuthAt: AT }],
+    ["cosignature/supervisor-release", { reason: "x".repeat(45), stepUpAuthAt: AT }],
+  ] as const;
+
+  for (const [route, payload] of ROUTES) {
+    it(`${route}: a stale step-up is refused with STEP_UP_REQUIRED`, async () => {
+      const { app, sessions } = makeServer();
+      sessions.put(STALE);
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${ENC_BY_LPN}/${route}`,
+        headers: OVERRIDER,
+        payload,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+    });
+
+    it(`${route}: a fresh step-up passes the step-up gate`, async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${ENC_BY_LPN}/${route}`,
+        headers: OVERRIDER,
+        payload,
+      });
+      expect(res.json()?.error?.code).not.toBe("STEP_UP_REQUIRED");
+      expect(res.statusCode).not.toBe(404);
+    });
+  }
+
+  for (const [route, payload] of ROUTES.filter(([r]) => r !== "administrative-override")) {
+    it(`${route}: an out-of-caseload overrider gets a 404`, async () => {
+      const { app } = makeServer({ isInCaseload: async () => false });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${ENC_BY_LPN}/${route}`,
+        headers: OVERRIDER,
+        payload,
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  }
 });
 
 describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {

@@ -54,6 +54,7 @@ import {
   type MembershipStatus,
   type MembershipView,
 } from "../identity-ports";
+import { mfaEnrolmentRequired } from "../mfa-enrolment-gate";
 import { registerLinkRoutes } from "./link-routes";
 import {
   auditContextFor,
@@ -229,6 +230,18 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     if (deps.organizations) {
       const status = await deps.organizations.getStatus(organizationId);
       if (status !== null && status !== "active") throw organizationNotActive();
+    }
+
+    // GAP-005 - the MFA matrix is checked BEFORE the org is bound: a password alone binds nothing. The membership
+    // id (not the session) names the roles, because the session is not org-bound yet.
+    if (deps.mfaGate) {
+      const verdict = await deps.mfaGate.forMembership({
+        userId: actor.userId,
+        sessionId: actor.sessionId,
+        organizationId,
+        membershipId: membership.membershipId,
+      });
+      if (!verdict.satisfied) throw mfaEnrolmentRequired(verdict.requirement, verdict.reason);
     }
 
     const binding = await deps.sessions.bindOrganization({

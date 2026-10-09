@@ -41,6 +41,7 @@ import { remittanceScreens } from "./modules/25-remittance";
 import { capScreens } from "./modules/26-cap";
 import { costReportScreens } from "./modules/27-cost-report";
 import { qualityScreens } from "./modules/30-quality";
+import { portalStaffScreens } from "./modules/31-portal";
 import { aiPlatformScreens } from "./modules/32-ai-platform";
 import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
@@ -100,6 +101,7 @@ registry.register(remittanceScreens); // M25 Remittance & Denials (R2, ADR-0030,
 registry.register(capScreens); // M26 Cap Management (R2, ADR-0030, §5)
 registry.register(costReportScreens); // M27 Cost Report (R2, ADR-0030, §5)
 registry.register(qualityScreens); // M30 HQRP & Quality (R2, ADR-0030, §5.1)
+registry.register(portalStaffScreens); // M31 staff portal-admin + clinician telehealth panes (GAP-054, ADR-0030)
 registry.register(aiPlatformScreens); // M32 AI Platform — tenant §5.2-§5.4 (GAP-049, ADR-0030)
 registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)

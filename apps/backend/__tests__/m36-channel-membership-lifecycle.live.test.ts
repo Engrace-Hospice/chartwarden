@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/index";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
@@ -26,6 +27,7 @@ import {
   setCareTeamChannelArchived,
 } from "../src/modules/36-messaging/messaging-provider-db";
 import { buildM36ChannelMembershipSyncConsumer } from "../src/modules/36-messaging/outbox-consumers/channel-membership-sync";
+import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -306,5 +308,72 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
   it("death archives the channel", async () => {
     await run("m5.patient.deceased", orgA, { patientId: patientA });
     expect((await channelRow()).is_archived).toBe(true);
+  });
+
+  // GAP-065 / M36 spec §7.13 — the M39 Part 2 consent gate, against the REAL privacy-flag reader and the
+  // REAL ConsentEvaluator over RLS. Runs last: it flags the patient SUD.
+  it("a SUD-flagged patient's care_team channel is gated per member by the Part 2 release (pull + push)", async () => {
+    registerSeam("ConsentEvaluator", createDbConsentEvaluator(handle.db));
+    const service = createDbMessagingRouteService(handle.db);
+    const provider = createDbMessagingProvider(handle.db);
+    const ensureMembership = async (userId: string) =>
+      admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+        [userId, orgA],
+      );
+    await ensureMembership(rn);
+    await ensureMembership(manual);
+    // unflagged: the consent evaluator is never consulted and access is unchanged
+    expect(await service.canViewChannel(orgA, rn, channelId)).toBe(true);
+
+    await admin.query(
+      `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags) VALUES ($1,$2,'{sud}')`,
+      [patientA, orgA],
+    );
+    // flagged + NO Part 2 release on file: nobody is admitted (fail closed), including the manual override
+    expect(await service.canViewChannel(orgA, rn, channelId)).toBe(false);
+    expect(await service.canViewChannel(orgA, manual, channelId)).toBe(false);
+
+    // an active program-wide release (names no workforce member) admits the care team again
+    await admin.query(
+      `INSERT INTO consent_type_catalog (type_key, display_name_en, scope_discriminator,
+         default_expiration_seconds, max_term_seconds, capture_method_floor,
+         reminder_cadence_floor, revocation_cascade_kind, is_per_recipient, is_per_named_agent,
+         is_post_mortem_eligible, requires_jurisdiction_code, cfr_42_part_2_compliant,
+         hipaa_164_508_compliant, body_text_template_key, m22_template_version)
+       VALUES ('42_cfr_part_2_release','42 CFR Part 2 SUD Records Release','per_recipient',31536000,
+         31536000,ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'immediate',
+         true,false,false,false,true,false,'42_cfr_part_2_release_v1','1.0.0')
+       ON CONFLICT DO NOTHING`,
+    );
+    const consentId = (
+      await admin.query(
+        `INSERT INTO consent_record (organization_id,patient_id,type_key,scope_descriptor,grantor_kind,
+           effective_at,status,capture_method,capture_evidence_jsonb,created_by_id,version,
+           signed_at,signed_by_id)
+         VALUES ($1,$2,'42_cfr_part_2_release','{}'::jsonb,'patient_self',now() - interval '1 day','active',
+           'typed_signature_in_app','{}'::jsonb,$3,1,now() - interval '1 day',$3) RETURNING id`,
+        [orgA, patientA, rn],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO consent_record_recipient (organization_id,consent_record_id,recipient_kind,
+         recipient_free_text,recipient_resolved_display_name,added_by_id)
+       VALUES ($1,$2,'free_text','Treating program','Treating program',$3)`,
+      [orgA, consentId, rn],
+    );
+    expect(await service.canViewChannel(orgA, rn, channelId)).toBe(true);
+
+    // revocation closes the PULL half at once, and the next re-sync (PUSH) removes the auto member
+    await admin.query(
+      `UPDATE consent_record SET status='revoked', revoked_at=now(), revoked_via_id=gen_random_uuid() WHERE id=$1`,
+      [consentId],
+    );
+    expect(await service.canViewChannel(orgA, rn, channelId)).toBe(false);
+    await provider.syncCareTeamChannel(orgA, patientA);
+    expect(await activeMembers()).not.toContain(rn);
+    // the admin-override member is still a row (the reconciler never removes manual members), but is not visible
+    expect(await activeMembers()).toContain(manual);
+    expect(await service.canViewChannel(orgA, manual, channelId)).toBe(false);
   });
 });

@@ -826,7 +826,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       code: "ILLEGAL_MEETING_TRANSITION",
     });
     await expect(
-      svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other", patientId: null }),
+      svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other" }),
     ).rejects.toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION" });
   });
 

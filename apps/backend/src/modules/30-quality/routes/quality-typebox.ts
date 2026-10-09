@@ -701,6 +701,8 @@ export const QapiPipViewSchema = Type.Object({
   charteredByMembershipId: Type.String(),
   outcome: m30Nullable(Type.String()),
   closedAt: m30Nullable(Type.String()),
+  closePending: Type.Optional(Type.Boolean()),
+  closeNomineeMembershipId: Type.Optional(m30Nullable(Type.String())),
 });
 export const QapiPipListResponseSchema = m30PageOf(QapiPipViewSchema);
 
@@ -728,6 +730,8 @@ export const SraCycleViewSchema = Type.Object({
   ownerMembershipId: Type.String(),
   openedAt: Type.String(),
   closedAt: m30Nullable(Type.String()),
+  closePending: Type.Optional(Type.Boolean()),
+  closeNomineeMembershipId: Type.Optional(m30Nullable(Type.String())),
 });
 export const SraCycleListResponseSchema = m30PageOf(SraCycleViewSchema);
 

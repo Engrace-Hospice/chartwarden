@@ -6,7 +6,11 @@
 // injected, so this stays M1-owned and unit-testable. Roles come from the resolver (M2 over the M1
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
-import { DEVICE_ATTESTATION_ATTRIBUTE, type SessionTimeoutEnforcer } from "@wardenx/auth";
+import {
+  DEVICE_ATTESTATION_ATTRIBUTE,
+  type SessionTimeoutEnforcer,
+  sessionClassRequiresMfa,
+} from "@wardenx/auth";
 import { type OrgScope, type SessionContextResolver, WardenXError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
@@ -54,6 +58,12 @@ const AUDITOR_ENROLMENT_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/v1/auditors/enrolment/verify",
 ]);
 
+/**
+ * GAP-003 - the prefixes an MFA-enrolment-stage session may still call: Better Auth's own surface (enrol TOTP /
+ * passkey, sign out) and the pre-org account routes. Everything else is refused until the factor exists.
+ */
+const MFA_ENROLMENT_ALLOWED_PREFIXES: readonly string[] = ["/api/auth/", "/api/v1/auth/"];
+
 /** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
 const BACKGROUND_HEADER = "x-wardenx-background";
 
@@ -76,6 +86,18 @@ export interface SessionAuthenticateDeps {
    * timeout check.
    */
   sessionTimeout?: Pick<SessionTimeoutEnforcer, "enforce">;
+  /**
+   * GAP-003 / GAP-005 - the MFA matrix (M2 section 2.3). Called for an org-bound STAFF session with its resolved
+   * roles; `satisfied: false` holds the session at the enrolment stage (only {@link MFA_ENROLMENT_ALLOWED_PREFIXES}
+   * stay reachable) - the same shape as the auditor enrolment stage. Absent means the matrix is not enforced.
+   */
+  mfaEnrolment?: {
+    check(input: {
+      userId: string;
+      sessionId: string;
+      roleKeys: readonly string[];
+    }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
+  };
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -177,6 +199,27 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // layer, not the only one). The only mutation allowed is signing out.
     if (actor.sessionClass === "auditor") {
       assertAuditorMayCall(request, actor.auditorStage ?? null);
+    }
+    if (deps.mfaEnrolment && sessionClassRequiresMfa(actor.sessionClass)) {
+      const verdict = await deps.mfaEnrolment.check({
+        userId: actor.userId,
+        sessionId: snap.sessionId,
+        roleKeys: actor.roles,
+      });
+      if (!verdict.satisfied) {
+        const path = request.url.split("?")[0] ?? "";
+        if (!MFA_ENROLMENT_ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+          throw new WardenXError(
+            "MFA_ENROLMENT_REQUIRED",
+            verdict.reason === "not_verified"
+              ? "sign in again with your second factor before continuing (required for your role)"
+              : verdict.requirement === "passkey"
+                ? "register a passkey before continuing (required for your role)"
+                : "enrol an authenticator app or passkey before continuing (required for your role)",
+            403,
+          );
+        }
+      }
     }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];

@@ -191,6 +191,11 @@ const fromBody: TargetOf = (request) =>
 const BY_ADMINISTRATION = fromParam("administrationId");
 const BY_WORKSHEET = fromParam("worksheetId");
 const BY_DEPLOYMENT = fromParam("deploymentId");
+const ABAC_ADMINISTER_HOLD = requireAbac(
+  "administration.record_missed",
+  "administering_clinician_eligible",
+  { getTarget: (request) => fromParam("scheduledDoseId")(request as FastifyRequest) },
+) as PreHandler;
 
 const witnessHeader = (request: FastifyRequest): string | undefined => {
   const h = request.headers["x-witness-attestation"];
@@ -210,6 +215,32 @@ const dataFieldsOf = (data: unknown): DataFields => {
     route: typeof d.route === "string" ? d.route : undefined,
     doseAmount: typeof d.administeredAmount === "number" ? d.administeredAmount : null,
     doseUnit: typeof d.administeredUnit === "string" ? d.administeredUnit : null,
+  };
+};
+
+// §2.4 D3 -- who may override the PRN minimum interval (spec §4.6: clinical supervisor, medical director,
+// hospice physician). Resolved from the SESSION's roles, never from the body; the body supplies only the reason.
+const PRN_OVERRIDE_ROLES: ReadonlySet<string> = new Set([
+  "clinical_supervisor",
+  "medical_director",
+  "hospice_physician",
+]);
+type PrnBody = {
+  triggeringPrnReason: string;
+  requestedByKind: string;
+  intervalOverride?: { reason: string };
+};
+const prnOf = (request: FastifyRequest, prn: PrnBody | undefined) => {
+  if (!prn) return undefined;
+  const hasPermission = (request.context?.roles ?? []).some((r) =>
+    PRN_OVERRIDE_ROLES.has(r.trim().toLowerCase()),
+  );
+  return {
+    triggeringPrnReason: prn.triggeringPrnReason,
+    requestedByKind: prn.requestedByKind,
+    ...(prn.intervalOverride
+      ? { intervalOverride: { hasPermission, reason: prn.intervalOverride.reason } }
+      : {}),
   };
 };
 
@@ -237,12 +268,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         // lifted `route`/`administeredAmount`/`administeredUnit` out of it for the §5.11 rights and dropped
         // the rest, so an IV rate or a titration reason a caller sent was parsed, validated, and discarded.
         data: b.data,
-        prn: b.prn
-          ? {
-              triggeringPrnReason: b.prn.triggeringPrnReason,
-              requestedByKind: b.prn.requestedByKind,
-            }
-          : undefined,
+        prn: prnOf(request, b.prn),
         lateEntryReason: b.lateEntryReason,
         offlineCapture: b.offlineCapture,
         witnessToken: witnessHeader(request),
@@ -493,6 +519,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
             encounterId: r.encounterId,
             ivSessionId: r.ivSessionId,
             data: r.data,
+            prn: prnOf(request, r.prn),
             offlineCapture: r.offlineCapture,
             barcodeScan: r.barcodeScan,
             route: data.route,
@@ -530,13 +557,16 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       preHandler: [
         RECORD_MISSED,
         SCOPE("administration.record_missed", fromParam("scheduledDoseId")),
+        // Spec route 14 (§4.1) -- the same administering-clinician floor as the record route, keyed on the
+        // ORDER the dose was materialized from (GAP-024).
+        ABAC_ADMINISTER_HOLD,
       ],
     },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      parse(IntentionalHoldRequest, request.body);
-      return service.intentionalHold(organizationId, userId, id);
+      const b = parse(IntentionalHoldRequest, request.body);
+      return service.intentionalHold(organizationId, userId, id, b.reason);
     },
   );
 
@@ -644,10 +674,10 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     "/api/v1/reconciliation/worksheets/:id/add-caregiver-reported-line",
     { preHandler: [RECON_DECIDE, SCOPE("reconciliation.decide", BY_WORKSHEET)] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(AddCaregiverReportedLineRequest, request.body);
-      const res = await service.addCaregiverReportedLine(organizationId, id, b.drugName);
+      const res = await service.addCaregiverReportedLine(organizationId, userId, id, b.drugName);
       return reply.code(201).send(res);
     },
   );

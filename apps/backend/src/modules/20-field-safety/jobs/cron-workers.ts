@@ -81,11 +81,13 @@ import {
   M20_SOS_WATCHDOG_JOB_NAME,
 } from "./index";
 import { runOverdueDetectorCron } from "./overdue-detector";
+import type { SosTerminusPort } from "./terminus-port";
 import {
   type ActiveOrgListPort,
   type M20WorkerDeps,
   M20_WORKER_SYSTEM_USER_ID,
   activeOrgsOf,
+  logM20Cron,
 } from "./worker-support";
 
 export type { ActiveOrgListPort, M20WorkerDeps } from "./worker-support";
@@ -103,6 +105,7 @@ export function buildM20WorkerDeps(deps: {
   outbox: WriteOutboxPort;
   policy: SafetyPolicyProvider;
   alerts?: AlertPort;
+  terminus?: SosTerminusPort;
   activeOrgs?: ActiveOrgListPort;
   locationTimezone?: M20WorkerDeps["locationTimezone"];
 }): M20WorkerDeps {
@@ -112,6 +115,7 @@ export function buildM20WorkerDeps(deps: {
     outbox: deps.outbox,
     policy: deps.policy,
     ...(deps.alerts ? { alerts: deps.alerts } : {}),
+    ...(deps.terminus ? { terminus: deps.terminus } : {}),
     activeOrgs: deps.activeOrgs,
     ...(deps.locationTimezone ? { locationTimezone: deps.locationTimezone } : {}),
     now: () => new Date(),
@@ -262,16 +266,21 @@ async function applyEscalate(
   atIso: IsoInstant,
   log: (msg: string, meta: Record<string, unknown>) => void,
 ): Promise<void> {
+  // GAP-032 — the terminus rung is entered only when the platform page was actually delivered. Without a
+  // bound pager the rung is still refused (and logged loudly); with one, a page failure throws out of this
+  // tx so nothing is recorded as "terminus reached" while nobody was paged.
+  let opsPaged = false;
   if (transition.to === "emergency_terminus") {
-    log(
-      "m20.sos-sla-watchdog: tier-3 SLA breach, terminus rung refused (no caller-owned effects impl)",
-      {
+    if (!deps.terminus) {
+      log("m20.sos-sla-watchdog: tier-3 SLA breach, terminus rung refused (no ops pager bound)", {
         organizationId: row.organizationId,
         sosAlertId,
         sosTerminusUnsupported: true,
-      },
-    );
-    return;
+      });
+      return;
+    }
+    opsPaged = await attemptOpsPage(deps.terminus, row, sosAlertId, 0, atIso, log);
+    if (!opsPaged) return; // not recorded as reached: the next tick retries the page from tier 3
   }
 
   const patch = await runEffects(tx, transition.effects, {
@@ -298,8 +307,14 @@ async function applyEscalate(
         escalatedAt: atIso,
         reasonCode: "sla_breach",
       },
+      "m20.safety.sos_terminus_reached": terminusPayload(row, sosAlertId, atIso, 0, opsPaged),
     },
     alertPayloads: {
+      ...(opsPaged
+        ? {
+            "m20.safety.sos_terminus_reached": terminusAlert(row, sosAlertId, atIso, 0),
+          }
+        : {}),
       "m20.safety.sos_alert_escalated": buildSosEscalatedAlert({
         orgId: row.organizationId as never,
         providerEntityId: row.providerEntityId as never,
@@ -384,6 +399,10 @@ async function applyTerminusRepage(
   at: Date,
   atIso: IsoInstant,
 ): Promise<void> {
+  // A failed re-page is still a tenant-facing re-alert (best effort); the payload reports the page honestly.
+  const opsPaged = deps.terminus
+    ? await attemptOpsPage(deps.terminus, row, sosAlertId, loopIteration, atIso, logM20Cron)
+    : false;
   await runEffects(tx, effects, {
     organizationId: row.organizationId,
     providerEntityId: row.providerEntityId,
@@ -398,30 +417,90 @@ async function applyTerminusRepage(
     aggregateKind: "safety_sos_alert",
     aggregateId: sosAlertId,
     payloads: {
-      "m20.safety.sos_terminus_reached": {
-        orgId: row.organizationId,
-        providerEntityId: row.providerEntityId,
-        occurredAt: atIso,
+      "m20.safety.sos_terminus_reached": terminusPayload(
+        row,
         sosAlertId,
-        terminusReachedAt: atIso,
+        atIso,
         loopIteration,
-        emergencyContactCallInitiated: false,
-        psapJurisdictionId: null,
-        wardenxOpsPaged: false,
-      },
+        opsPaged,
+      ),
     },
     alertPayloads: {
-      "m20.safety.sos_terminus_reached": buildSosTerminusAlert({
-        orgId: row.organizationId as never,
-        providerEntityId: row.providerEntityId as never,
-        sosAlertId: sosAlertId as never,
-        terminusReachedAt: atIso,
-        loopIteration,
-        emergencyContactCallInitiated: false,
-        psapNumberAvailable: false,
-      }) as unknown as Record<string, unknown>,
+      "m20.safety.sos_terminus_reached": terminusAlert(row, sosAlertId, atIso, loopIteration),
     },
   });
+}
+
+/** Page WardenX ops; `true` only when the receiver acknowledged. A failure is logged loudly, never thrown, so
+ *  one unreachable receiver cannot abort the rest of the org's alerts in the same tick. */
+async function attemptOpsPage(
+  port: SosTerminusPort,
+  row: { organizationId: string; providerEntityId: string },
+  sosAlertId: string,
+  loopIteration: number,
+  atIso: IsoInstant,
+  log: (msg: string, meta: Record<string, unknown>) => void,
+): Promise<boolean> {
+  try {
+    await port.pageOps({
+      organizationId: row.organizationId,
+      providerEntityId: row.providerEntityId,
+      sosAlertId,
+      loopIteration,
+      at: atIso,
+    });
+    return true;
+  } catch (error) {
+    log("m20.sos-sla-watchdog: ops page FAILED for an alert at the emergency terminus", {
+      organizationId: row.organizationId,
+      sosAlertId,
+      loopIteration,
+      sosTerminusPageFailed: true,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/** The §4.10 `sos_terminus_reached` payload. `emergencyContactCallInitiated` and `psapJurisdictionId` are
+ *  never derived from consent or config: the dial (M36 voice) and the PSAP lookup (M40) have no
+ *  implementer, so they did not happen and the payload says so. `wardenxOpsPaged` is true only when the
+ *  platform page was delivered. */
+function terminusPayload(
+  row: { organizationId: string; providerEntityId: string },
+  sosAlertId: string,
+  atIso: IsoInstant,
+  loopIteration: number,
+  wardenxOpsPaged: boolean,
+): Record<string, unknown> {
+  return {
+    orgId: row.organizationId,
+    providerEntityId: row.providerEntityId,
+    occurredAt: atIso,
+    sosAlertId,
+    terminusReachedAt: atIso,
+    loopIteration,
+    emergencyContactCallInitiated: false,
+    psapJurisdictionId: null,
+    wardenxOpsPaged,
+  };
+}
+
+function terminusAlert(
+  row: { organizationId: string; providerEntityId: string },
+  sosAlertId: string,
+  atIso: IsoInstant,
+  loopIteration: number,
+): Record<string, unknown> {
+  return buildSosTerminusAlert({
+    orgId: row.organizationId as never,
+    providerEntityId: row.providerEntityId as never,
+    sosAlertId: sosAlertId as never,
+    terminusReachedAt: atIso,
+    loopIteration,
+    emergencyContactCallInitiated: false,
+    psapNumberAvailable: false,
+  }) as unknown as Record<string, unknown>;
 }
 
 /** Decide-and-apply for one alert, in its own transaction so a lost race or a failure never aborts the

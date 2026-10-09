@@ -75,6 +75,7 @@ interface CaptureBinding {
   readonly authority: EvvCaptureAuthority;
   readonly claimedDeviceId: string | undefined;
 }
+import { classifyCapture } from "./capture-classification";
 import { decideCaptureGeofence } from "./capture-geofence";
 import {
   type EvvCoordsCipher,
@@ -250,6 +251,8 @@ export function createDbEvvBackend(
         patientAddressId: VISIT_REGISTRATION.patientAddressId,
         assignedMembershipId: VISIT_REGISTRATION.assignedMembershipId,
         scheduledStartedAt: VISIT_REGISTRATION.scheduledStartedAt,
+        serviceTypeCode: VISIT_REGISTRATION.serviceTypeCode,
+        assignedDiscipline: VISIT_REGISTRATION.assignedDiscipline,
       })
       .from(VISIT_REGISTRATION)
       .where(eq(VISIT_REGISTRATION.visitId, visitId))
@@ -449,6 +452,8 @@ export function createDbEvvBackend(
     const visit = await resolveVisit(tx, input.visitId);
     const device = await resolveCaptureDevice(tx, userId, binding);
     const policy = await effectivePolicy(tx);
+    // GAP-027 — the aggregator service-type code and posting discipline come from the registration, not the client.
+    const classification = classifyCapture(visit);
 
     // GAP-054 — gps-quality / geofence decision from the haversine distance to the address baseline.
     const { gpsQuality, decision, computedDistanceM } = decideCaptureGeofence({
@@ -473,9 +478,9 @@ export function createDbEvvBackend(
         patientId: visit.patientId,
         patientAddressId: visit.patientAddressId,
         kind,
-        serviceTypeCode: "",
+        serviceTypeCode: classification.serviceTypeCode,
         postingMembershipId: userId,
-        postingDisciplineAtRecording: "",
+        postingDisciplineAtRecording: classification.postingDisciplineAtRecording,
         evvDeviceId: device.id,
         capturedAt,
         eventAt: capturedAt,

@@ -657,6 +657,7 @@ export const MODULES: ModuleDef[] = [
     ownedTables: [
       "clinician_availability",
       "membership_credential", // GAP-093 — the clinical-license/certification roster (§1.1 D8)
+      "oncall_rotation_entry", // GAP-029 — the on-call rotation source behind tonightsOnCallRoster (§4.3)
       "recurring_visit",
       "route_segment",
       "time_off",
@@ -1040,7 +1041,12 @@ export const MODULES: ModuleDef[] = [
   {
     id: 31,
     name: "Patient/Family Portal & Telehealth",
-    codePaths: ["packages/telehealth-client", "apps/portal", "apps/backend/src/modules/31-portal"],
+    codePaths: [
+      "packages/telehealth-client",
+      "apps/portal",
+      "apps/backend/src/modules/31-portal",
+      "apps/web/src/modules/31-portal", // GAP-054: staff portal-admin + clinician telehealth panes (ADR-0030)
+    ],
     dependsOn: [1, 5, 7, 8, 22, 36, 39], // +1: M31-T03 consumes the M39 ConsentEvaluator + M16 BereavedPortalScopeProvider seams OPAQUELY via the M1-owned bootstrap registry (getSeam); the seam-task precedent every consuming module carries
     ownedTables: [
       "portal_access_grant",

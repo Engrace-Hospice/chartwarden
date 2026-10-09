@@ -56,13 +56,18 @@ export function consentChangeToPrivacyPayload(event: {
   };
 }
 
-/** m5.patient.merged → re-point this org's consent records to the survivor + emit repointed. */
+/** m5.patient.merged → re-point this org's consent records to the survivor + emit repointed.
+ *  The M5 payload's `patientId` is the SURVIVOR and `sourcePatientId` the chart folded away. */
 export function decidePatientMergeRepoint(event: {
   organizationId: string;
   patientId: string;
-  mergedIntoId: string;
-}): { repointTo: string; emit: "m39.consent.repointed" } {
-  return { repointTo: event.mergedIntoId, emit: "m39.consent.repointed" };
+  sourcePatientId: string;
+}): { repointFrom: string; repointTo: string; emit: "m39.consent.repointed" } {
+  return {
+    repointFrom: event.sourcePatientId,
+    repointTo: event.patientId,
+    emit: "m39.consent.repointed",
+  };
 }
 
 /** m22.document.rendered (consent_record template) → the consent_document_link stamp (D15). */

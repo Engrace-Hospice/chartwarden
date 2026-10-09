@@ -238,6 +238,9 @@ export interface QapiPipView {
   readonly charteredByMembershipId: string;
   readonly outcome: string | null;
   readonly closedAt: string | null;
+  /** GAP-046 — a close was initiated and awaits the nominee's own confirmation. */
+  readonly closePending?: boolean;
+  readonly closeNomineeMembershipId?: string | null;
 }
 
 /** A QAPI governance-committee minutes entry (R-33; chronological). */
@@ -263,6 +266,9 @@ export interface SraCycleView {
   readonly ownerMembershipId: string;
   readonly openedAt: string;
   readonly closedAt: string | null;
+  /** GAP-046 — a close was initiated and awaits the nominee's own confirmation. */
+  readonly closePending?: boolean;
+  readonly closeNomineeMembershipId?: string | null;
 }
 
 /** A single SRA finding (NIST control reference; R-42 detail child). */

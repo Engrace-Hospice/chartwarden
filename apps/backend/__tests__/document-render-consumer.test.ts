@@ -3,6 +3,7 @@
 // consumer's execution of every {@link decideDocumentRequest} outcome. No DB — the seam store and the
 // renderer are the in-memory slices; the live end-to-end proof over real Postgres + the real dispatcher is
 // ./gap-023-024-038-render-handshake.live.test.ts.
+import { buildAppealPacketRenderPayload } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
@@ -776,7 +777,27 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       {
         eventType: "m25.appeal_packet.render_requested",
         aggregateKind: "appeal_case",
-        payload: { appealCaseId: ORDER, tier: "redetermination", payload: {} },
+        payload: {
+          appealCaseId: ORDER,
+          tier: "redetermination",
+          // GAP-036 - the render now validates the typed packet, so the request must carry one.
+          payload: buildAppealPacketRenderPayload({
+            appealCaseId: ORDER,
+            denialCaseId: RUN,
+            claimId: EXPORT,
+            tier: "redetermination",
+            tierDeadlineAt: "2026-12-01T00:00:00.000Z",
+            submittedAt: "2026-08-13T00:00:00.000Z",
+            appealNarrative: "Timely certification enclosed.",
+            attachedDocumentIds: [],
+            denial: {
+              carcCode: "50",
+              rarcCode: null,
+              dollarValue: "10.00",
+              remittanceLineId: null,
+            },
+          }),
+        },
         templateKey: "appeal_packet",
         aggregateType: "appeal_packet",
         patientId: null,

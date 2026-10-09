@@ -13249,6 +13249,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oncall-rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GAP-029: the on-call rotation M19's roster-sync reads (cancelled entries opt-in) */
+        get: operations["getApiV1Oncallrotation"];
+        put?: never;
+        /** GAP-029: add an on-call rotation entry (201) */
+        post: operations["postApiV1Oncallrotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oncall-rotation/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** GAP-029: cancel an on-call rotation entry (204) */
+        delete: operations["deleteApiV1OncallrotationById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/oncall/current": {
         parameters: {
             query?: never;
@@ -16917,8 +16952,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close a PIP */
+        /** Initiate a PIP close (first of two steps; the nominee confirms) */
         post: operations["postApiV1QualityQapiPipsByPipIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality/qapi/pips/{pipId}/close/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a pending PIP close as the nominated co-signer */
+        post: operations["postApiV1QualityQapiPipsByPipIdCloseConfirm"];
         delete?: never;
         options?: never;
         head?: never;
@@ -17091,8 +17143,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close an SRA cycle (two-person close) */
+        /** Initiate an SRA cycle close (first of two steps; the nominee confirms) */
         post: operations["postApiV1QualitySraCyclesByCycleIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality/sra/cycles/{cycleId}/close/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a pending SRA cycle close as the nominated co-signer */
+        post: operations["postApiV1QualitySraCyclesByCycleIdCloseConfirm"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27393,6 +27462,7 @@ export interface operations {
                     targetDate: string;
                     authorDiscipline: "RN" | "NP" | "MD";
                     adminOverride?: boolean;
+                    adminOverrideJustification?: string;
                     data: {
                         I?: {
                             primaryDiagnosisIcd10?: string;
@@ -27493,6 +27563,7 @@ export interface operations {
                     dischargeReason?: "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
                     lateCompletionReasonCode?: string;
                     adminOverride?: boolean;
+                    adminOverrideJustification?: string;
                     /** Format: uuid */
                     scheduleId?: string;
                     data: {
@@ -45795,6 +45866,7 @@ export interface operations {
                 "application/json": {
                     /** @constant */
                     attestationConfirmed: true;
+                    lateEntryReason?: string;
                 };
             };
         };
@@ -46014,6 +46086,7 @@ export interface operations {
                 "application/json": {
                     /** @constant */
                     attestationConfirmed: true;
+                    lateEntryReason?: string;
                 };
             };
         };
@@ -46109,7 +46182,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    lateEntryReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -46448,6 +46527,7 @@ export interface operations {
                 "application/json": {
                     /** @constant */
                     attestationConfirmed: true;
+                    lateEntryReason?: string;
                 };
             };
         };
@@ -59107,6 +59187,7 @@ export interface operations {
                         subjectId: string | null;
                         archivedAt: string | null;
                         unreadCount: number;
+                        patientId: string | null;
                         members: {
                             userId: string;
                             role: "owner" | "member" | "read_only" | "portal_caregiver";
@@ -59202,6 +59283,7 @@ export interface operations {
                             parentMessageId: string | null;
                         }[];
                         nextCursor?: string;
+                        patientId: string | null;
                     };
                 };
             };
@@ -60160,6 +60242,108 @@ export interface operations {
         };
     };
     postApiV1NotrrecordsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Oncallrotation: {
+        parameters: {
+            query?: {
+                includeCancelled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        cancelledAt: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Oncallrotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain";
+                    /** Format: date-time */
+                    startsAt: string;
+                    /** Format: date-time */
+                    endsAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1OncallrotationById: {
         parameters: {
             query?: never;
             header?: never;
@@ -63102,12 +63286,15 @@ export interface operations {
                     ssn?: string | null;
                     primaryAddress?: {
                         line1: string;
+                        line2?: string | null;
                         city: string;
+                        state?: string | null;
                         postalCode: string;
                     } | null;
                     phone?: string | null;
                     email?: string | null;
                     bypassMatchReview?: boolean;
+                    bypassJustification?: string;
                 };
             };
         };
@@ -70368,6 +70555,28 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1QualityQapiPipsByPipIdCloseConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1QualityQapiPrograms: {
         parameters: {
             query?: {
@@ -70603,6 +70812,8 @@ export interface operations {
                             charteredByMembershipId: string;
                             outcome: string | null;
                             closedAt: string | null;
+                            closePending?: boolean;
+                            closeNomineeMembershipId?: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -70730,6 +70941,8 @@ export interface operations {
                             ownerMembershipId: string;
                             openedAt: string;
                             closedAt: string | null;
+                            closePending?: boolean;
+                            closeNomineeMembershipId?: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -70792,6 +71005,8 @@ export interface operations {
                         ownerMembershipId: string;
                         openedAt: string;
                         closedAt: string | null;
+                        closePending?: boolean;
+                        closeNomineeMembershipId?: string | null;
                     } & {
                         progress: {
                             findingsCount: number;
@@ -70843,6 +71058,28 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1QualitySraCyclesByCycleIdCloseConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {

@@ -316,10 +316,13 @@ export function buildPortalAbacPredicates(
       const portalAccountId = targetStr(target, "portalAccountId");
       const patientId = targetStr(target, "patientId");
       if (portalAccountId === null || patientId === null) return false;
-      const grant = await resolver
-        .activeGrant(context.organizationId, portalAccountId, patientId)
-        .catch(() => null);
-      if (grant === null) return false;
+      // GAP-050: a grant outlives a suspension (suspend flips the account row only), so the account must be
+      // checked HERE - this predicate is the only account/grant guard on every PHI route.
+      const [account, grant] = await Promise.all([
+        resolver.loadAccount(context.organizationId, portalAccountId).catch(() => null),
+        resolver.activeGrant(context.organizationId, portalAccountId, patientId).catch(() => null),
+      ]);
+      if (!decidePortalAccountActive(account) || grant === null) return false;
       return ports.consentActive({
         organizationId: context.organizationId,
         patientId,
@@ -338,7 +341,7 @@ export function buildPortalAbacPredicates(
         resolver.loadAccount(context.organizationId, portalAccountId).catch(() => null),
         resolver.activeGrant(context.organizationId, portalAccountId, patientId).catch(() => null),
       ]);
-      if (grant === null || account === null) return false;
+      if (grant === null || !decidePortalAccountActive(account)) return false;
       // Only reach M5 when the family-caregiver arm needs the primary check.
       const primaryCaregiverUserId =
         grant.grantKind === "family_caregiver"
@@ -353,6 +356,10 @@ export function buildPortalAbacPredicates(
       const portalAccountId = targetStr(target, "portalAccountId");
       const patientId = targetStr(target, "patientId");
       if (portalAccountId === null || patientId === null) return false;
+      const account = await resolver
+        .loadAccount(context.organizationId, portalAccountId)
+        .catch(() => null);
+      if (!decidePortalAccountActive(account)) return false;
       return ports.bereavedWindowOpen({
         organizationId: context.organizationId,
         portalAccountId,

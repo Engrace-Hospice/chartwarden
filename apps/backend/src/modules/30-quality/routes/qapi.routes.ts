@@ -254,10 +254,10 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
     },
   );
 
-  // R-31 — close a PIP. NOMINEE-BASED ONE-STEP close: the caller is the only signer; `cosignerMembershipId`
-  // is validated as an eligible QAPI Coordinator/Medical Director but is recorded as a NOMINATED co-signer
-  // (`cosignerAttested: false`), never as an attester. Pending-close + nominee confirmation is the logged
-  // follow-up. (V-11.) RBAC gates `qapi.close`; the route passes the cosigner +
+  // R-31 — INITIATE a PIP close (GAP-046: the first of two steps). The caller signs their own slot;
+  // `cosignerMembershipId` is validated as an eligible QAPI Coordinator/Medical Director and recorded as the
+  // NOMINEE. The PIP stays open (`closePending: true`) until that nominee confirms in their own session via
+  // `.../close/confirm`. (V-11.) RBAC gates `qapi.close`; the route passes the cosigner +
   // actor to the write service, where `assertPipCloseSplitActor` enforces the split-actor invariant against
   // the service-injected (persisted) charterer — the closer ≠ charterer SoD is never read off the wire. §4.1.
   app.post(
@@ -274,6 +274,23 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
         // `charteredByMembershipId` is injected by the service from the persisted PIP row (V-11 SoD).
         cosignerMembershipId: body.cosignerMembershipId,
         // Real freshness from the server-assembled session — never a body field or a constant.
+        recentStepUp: await requestStepUpFresh(request, "qapi.close"),
+      });
+      return reply.code(200).send(res);
+    },
+  );
+
+  // R-31 (GAP-046) — the nominee's own confirmation of a pending PIP close. The confirmer is the SESSION
+  // membership compared with the nominee persisted on the row (the service enforces it); there is deliberately
+  // no body and no identity on the wire. RBAC `qapi.close` + a fresh step-up in THIS session; the close is
+  // complete (and `m30.qapi.pip_closed` published) only here.
+  app.post(
+    "/api/v1/quality/qapi/pips/:pipId/close/confirm",
+    { preHandler: [QAPI_CLOSE, QAPI_CLOSE_STEPUP, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { pipId } = parse(PipIdParamsSchema, request.params);
+      const res = await service.confirmQapiPipClose(actor, pipId, {
         recentStepUp: await requestStepUpFresh(request, "qapi.close"),
       });
       return reply.code(200).send(res);

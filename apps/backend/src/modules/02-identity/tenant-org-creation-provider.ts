@@ -16,6 +16,12 @@ import type {
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 
+/** Composition-root hooks (M2 may not import M3, so the role materializer arrives as a port). */
+export interface TenantOrgCreationHooks {
+  /** Runs once the org row exists, on every (idempotent) confirm. A throw resolves the confirm `unavailable`. */
+  readonly onOrganizationAvailable?: (organizationId: string) => Promise<void>;
+}
+
 /** Slugify a legal name to the `organization.slug` shape (lowercase, hyphenated, bounded). */
 const slugify = (s: string): string =>
   s
@@ -30,7 +36,20 @@ const slugify = (s: string): string =>
  * stands until then. The org table is the tenancy root (NON_ORG_SCOPED), so the write is M2's prerogative
  * and needs no `app.org_id` scope.
  */
-export function createTenantOrgCreationProvider(db: DbClient): TenantOrgCreationProvider {
+export function createTenantOrgCreationProvider(
+  db: DbClient,
+  hooks: TenantOrgCreationHooks = {},
+): TenantOrgCreationProvider {
+  /** GAP-006: an org that resolves `available` also gets its roles (idempotent), or the confirm fails closed (`unavailable` makes M34's worker retry). */
+  const confirmed = async (organizationId: string): Promise<TenantOrgCreationResult> => {
+    if (!hooks.onOrganizationAvailable) return { kind: "available", organizationId };
+    try {
+      await hooks.onOrganizationAvailable(organizationId);
+      return { kind: "available", organizationId };
+    } catch {
+      return { kind: "unavailable", reason: "m2_org_creation_not_yet_locked" };
+    }
+  };
   return {
     async createOrganizationForTenant(
       intent: TenantOrgCreationIntent,
@@ -40,7 +59,7 @@ export function createTenantOrgCreationProvider(db: DbClient): TenantOrgCreation
         .from(schema.organizations)
         .where(eq(schema.organizations.id, intent.organizationId))
         .limit(1);
-      if (existing[0]) return { kind: "available", organizationId: existing[0].id };
+      if (existing[0]) return confirmed(existing[0].id);
 
       // Phase-3 self-serve create path: mint the org spine with a deterministic, collision-free slug.
       const slug = `${slugify(intent.legalBusinessName)}-${intent.organizationId.slice(0, 8)}`;
@@ -54,7 +73,7 @@ export function createTenantOrgCreationProvider(db: DbClient): TenantOrgCreation
         })
         .onConflictDoNothing({ target: schema.organizations.id })
         .returning({ id: schema.organizations.id });
-      if (inserted[0]) return { kind: "available", organizationId: inserted[0].id };
+      if (inserted[0]) return confirmed(inserted[0].id);
 
       // A concurrent provision won the insert race — re-confirm before failing closed.
       const after = await db
@@ -63,7 +82,7 @@ export function createTenantOrgCreationProvider(db: DbClient): TenantOrgCreation
         .where(eq(schema.organizations.id, intent.organizationId))
         .limit(1);
       return after[0]
-        ? { kind: "available", organizationId: after[0].id }
+        ? confirmed(after[0].id)
         : { kind: "unavailable", reason: "m2_org_creation_not_yet_locked" };
     },
   };

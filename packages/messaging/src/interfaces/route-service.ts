@@ -49,6 +49,9 @@ export interface ChannelMemberView {
 
 /** Channel detail + recent members (§4.2 GET /channels/:id). */
 export interface ChannelDetail extends ChannelSummary {
+  /** The patient a `care_team` channel is about (server-derived from the channel row; null for every other kind).
+   *  Carried so the read-audit emitter can attribute the read to a patient (§164.528, GAP-064). */
+  readonly patientId: string | null;
   readonly members: readonly ChannelMemberView[];
 }
 
@@ -149,7 +152,12 @@ export interface MessagingRouteService {
       cursor?: string;
       limit?: number;
     },
-  ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
+  ): Promise<{
+    messages: readonly ResolvedMessage[];
+    nextCursor?: string;
+    /** The care_team channel's patient, for read-audit attribution (GAP-064); null for other kinds. */
+    patientId: string | null;
+  }>;
   /** Post a message; CHANNEL_ARCHIVED (410) on an archived channel (§4.2). */
   sendMessage(
     orgId: string,

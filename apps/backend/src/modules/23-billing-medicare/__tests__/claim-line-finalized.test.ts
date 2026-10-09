@@ -22,13 +22,19 @@ describe("buildClaimLineFinalizedEmissions", () => {
     finalizedAt: "2026-02-01T00:00:00.000Z",
   };
 
-  it("emits one event per 0655/0656 line and skips every other revenue code", () => {
+  it("emits one event per hospice level-of-care line and skips every other revenue code", () => {
     const out = buildClaimLineFinalizedEmissions({
       ...base,
-      lines: [line("l1", "0651", 30), line("l2", "0656", 3), line("l3", "0655", 2)],
+      lines: [
+        line("l0", "0250", 4),
+        line("l1", "0651", 30),
+        line("l2", "0656", 3),
+        line("l3", "0655", 2),
+      ],
     });
-    expect(out.map((e) => e.aggregateId)).toEqual(["l2", "l3"]);
-    expect(out[0]?.payload).toMatchObject({
+    // GAP-038 — RHC (0651) days are the 20% cap's denominator, so they are emitted too.
+    expect(out.map((e) => e.aggregateId)).toEqual(["l1", "l2", "l3"]);
+    expect(out[1]?.payload).toMatchObject({
       claimId: "c1",
       claimLineId: "l2",
       revenueCode: "0656",
@@ -37,6 +43,11 @@ describe("buildClaimLineFinalizedEmissions", () => {
       serviceTo: "2026-01-07",
       days: 3,
     });
+  });
+
+  it("counts a continuous-home-care line (hourly units) as its inclusive service-date span", () => {
+    const [chc] = buildClaimLineFinalizedEmissions({ ...base, lines: [line("l9", "0652", 16)] });
+    expect(chc?.payload).toMatchObject({ revenueCode: "0652", days: 3 }); // 2026-01-05..07
   });
 
   it("skips a zero-day line", () => {

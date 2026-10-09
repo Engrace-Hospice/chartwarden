@@ -46,6 +46,7 @@
     "web/26-cap",
     "web/27-cost-report",
     "web/30-quality",
+    "web/31-portal",
     "web/32-ai-platform",
     "web/33-reporting",
     "web/34-saas",
@@ -2000,6 +2001,22 @@
       "id": "quality.mortality",
       "path": "/quality/mortality",
       "permission": "mortality.read"
+    },
+    {
+      "app": "web",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.admin",
+      "path": "/admin/portal",
+      "permission": "portal.account.read_list"
+    },
+    {
+      "app": "web",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.telehealth",
+      "path": "/telehealth",
+      "permission": "telehealth.read_list"
     },
     {
       "app": "web",

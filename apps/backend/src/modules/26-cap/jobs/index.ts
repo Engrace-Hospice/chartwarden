@@ -68,9 +68,10 @@ export interface M26WorkerDeps {
   now?: () => Date;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly alerts?: WorkerAlertPort;
-  /** GAP-078 — the `cap:psr-reconcile` worker is only constructed when both are bound (it would otherwise
-   *  have no file to read / nowhere to publish `psr_variance_raised`). */
+  /** GAP-078 - the `cap:psr-reconcile` worker is only constructed when `psrFiles` is bound (it would otherwise
+   *  have no file to read). */
   readonly psrFiles?: PsrFileStorePort;
+  /** The transactional-outbox publisher for the cron projection/close events (GAP-041) and the PS&R worker. */
   readonly outbox?: WriteOutboxPort;
 }
 
@@ -81,14 +82,19 @@ export interface PsrReconcileJobData {
 }
 
 /** Build the Drizzle-backed cron stores over a db handle (exported for the live system-actor suite). */
-export function buildStores(db: DbClient): {
+export function buildStores(
+  db: DbClient,
+  outbox?: WriteOutboxPort,
+): {
   projection: NightlyProjectionStore;
   close: CapYearCloseStore;
   watchdog: PsrWatchdogStore;
 } {
   const P = schema.capPeriod;
   const PR = schema.capPsrReconciliation;
-  const write = buildDrizzleM26WriteService(db);
+  // GAP-041 - the cron recompute/close MUST publish through the real outbox: with none bound the write
+  // service falls back to a no-op publisher and projection_updated / threshold_crossed / year_closing are lost.
+  const write = buildDrizzleM26WriteService(db, outbox);
   return {
     projection: {
       async listOpenPeriods(orgId) {
@@ -100,7 +106,7 @@ export function buildStores(db: DbClient): {
         );
       },
       async recompute(orgId, periodId) {
-        await write.recompute(sysWriteActor(orgId), periodId);
+        await write.recompute(sysWriteActor(orgId), periodId, "nightly_batch");
       },
     },
     close: {
@@ -145,7 +151,7 @@ export function registerM26CronWorkers(deps: M26WorkerDeps): Worker[] {
   const now = deps.now ?? (() => new Date());
   const activeOrgs = deps.activeOrgs ?? FAIL_CLOSED_ORGS;
   const alerts = deps.alerts ?? NOOP_ALERTS;
-  const stores = buildStores(deps.db);
+  const stores = buildStores(deps.db, deps.outbox);
   const opts = { connection: deps.connection } as const;
 
   const nightly = new Worker(

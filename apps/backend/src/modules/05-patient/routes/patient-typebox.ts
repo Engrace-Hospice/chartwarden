@@ -61,7 +61,12 @@ export const AdmitBodySchema = Type.Object({
     Type.Union([
       Type.Object({
         line1: Type.String(),
+        line2: Type.Optional(Type.Union([Type.String(), Type.Null()])),
         city: Type.String(),
+        // GAP-010: persisting the address needs the state (patient_address_us_state_required).
+        state: Type.Optional(
+          Type.Union([Type.String({ minLength: 2, maxLength: 2 }), Type.Null()]),
+        ),
         postalCode: Type.String(),
       }),
       Type.Null(),
@@ -70,6 +75,9 @@ export const AdmitBodySchema = Type.Object({
   phone: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
   email: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
   bypassMatchReview: Type.Optional(Type.Boolean()),
+  // GAP-009 (§2.3): why the duplicate pipeline is being skipped. Required whenever `bypassMatchReview`
+  // is true (checked in the route, beside the permission + step-up gate); recorded on the critical audit.
+  bypassJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
 });
 
 // POST /api/v1/patients/:id/addresses (§4.2; §7.4 cascade)

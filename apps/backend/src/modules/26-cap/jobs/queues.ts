@@ -2,6 +2,12 @@
 // queues, their cron schedules (UTC — SD-018: the nightly fan-out is cross-tenant, no single tenant-local
 // clock is meaningful), and the per-queue retry/backoff/concurrency + DLQ params. The constants are the
 // single source of truth the worker construction (cron-workers.ts) + the schedule registration agree on.
+//
+// Two catalogued queues have NO worker, deliberately (GAP-040): `thresholdEvaluator` is subsumed by the inline
+// band-transition check in `recompute()` (routes/persist-snapshot.ts raises the cap_threshold_event and publishes
+// `m26.cap.threshold_crossed` in the same tx; M36's cap-threshold-alerts consumer delivers it), so a separate
+// evaluator would only re-derive the same transition. `platformConstantRefresh` (the Aug-15 reminder that next
+// year's CMS cap amount is due) needs a platform-ops audience and a CMS publication source that are not wired.
 
 export interface M26BackoffOptions {
   readonly type: "exponential" | "fixed";

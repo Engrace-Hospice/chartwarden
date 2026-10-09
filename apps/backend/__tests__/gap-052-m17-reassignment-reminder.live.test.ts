@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/events-by-m17";
 import { NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDbSchedulingBackend } from "../src/modules/17-scheduling/scheduling-route-service-db";
+import { M17_SYSTEM_USER_ID } from "../src/modules/17-scheduling/system-actor";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -248,13 +249,13 @@ describe.skipIf(!DB_URL)("GAP-052 — M17 reassignment scan + caregiver reminder
     await requestAndApprove(ORG_B, base + 10 * DAY, base + 11 * DAY); // B's own PTO, no overlap
 
     const before = (await events(ORG_A, "m17.reassignment_needed")).length;
-    const first = await svc.scanTimeOffReassignmentsForOrg(ORG_A, "");
+    const first = await svc.scanTimeOffReassignmentsForOrg(ORG_A, M17_SYSTEM_USER_ID);
     expect(first.visitsFlagged).toBe(1);
     const afterFirst = await events(ORG_A, "m17.reassignment_needed");
     expect(afterFirst).toHaveLength(before + 1);
     expect(afterFirst.at(-1)?.aggregate_id).toBe(late);
 
-    const second = await svc.scanTimeOffReassignmentsForOrg(ORG_A, "");
+    const second = await svc.scanTimeOffReassignmentsForOrg(ORG_A, M17_SYSTEM_USER_ID);
     expect(second).toEqual({ timeOffsScanned: 0, visitsFlagged: 0 });
     expect(await events(ORG_A, "m17.reassignment_needed")).toHaveLength(before + 1);
 
@@ -276,18 +277,22 @@ describe.skipIf(!DB_URL)("GAP-052 — M17 reassignment scan + caregiver reminder
     await seedVisit(ORG_A, now.getTime() + 5 * HOUR, { optIn: true, status: "cancelled" });
     const dueB = await seedVisit(ORG_B, now.getTime() + 6 * HOUR, { optIn: true });
 
-    const first = await svc.emitCaregiverRemindersForOrg(ORG_A, "", { now });
+    const first = await svc.emitCaregiverRemindersForOrg(ORG_A, M17_SYSTEM_USER_ID, { now });
     expect(first.remindersEmitted).toBe(1);
     const ev = await events(ORG_A, "m17.caregiver_reminder_due");
     expect(ev.map((e) => e.aggregate_id)).toEqual([due]);
     expect(ev[0]?.payload.channel).toBe("email");
 
-    expect((await svc.emitCaregiverRemindersForOrg(ORG_A, "", { now })).remindersEmitted).toBe(0);
+    expect(
+      (await svc.emitCaregiverRemindersForOrg(ORG_A, M17_SYSTEM_USER_ID, { now })).remindersEmitted,
+    ).toBe(0);
     expect(await events(ORG_A, "m17.caregiver_reminder_due")).toHaveLength(1);
 
     // org B was not touched by org A's run, and still gets its own when its turn comes.
     expect(await events(ORG_B, "m17.caregiver_reminder_due")).toHaveLength(0);
-    expect((await svc.emitCaregiverRemindersForOrg(ORG_B, "", { now })).remindersEmitted).toBe(1);
+    expect(
+      (await svc.emitCaregiverRemindersForOrg(ORG_B, M17_SYSTEM_USER_ID, { now })).remindersEmitted,
+    ).toBe(1);
     expect((await events(ORG_B, "m17.caregiver_reminder_due"))[0]?.aggregate_id).toBe(dueB);
   });
 

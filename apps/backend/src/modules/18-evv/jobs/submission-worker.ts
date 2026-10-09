@@ -19,6 +19,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import type { BuildSubmissionPayloadArgs } from "@wardenx/evv-aggregators";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { submissionServiceTypeCode } from "../capture-classification";
 import { transitionAggregatorSubmission } from "../domain/aggregator-submission";
 import type { EvvSideEffect } from "../domain/effects";
 import type { EvvWriteOutboxPort } from "../evv-route-service-db";
@@ -202,7 +203,11 @@ async function resolveSubmitContext(
   if (!row.checkInEventId || !row.checkOutEventId) {
     throw new Error(`submission ${row.id} has no event pair`);
   }
-  const { checkIn, checkOut, providerEntityId } = await loadEventPair(deps, organizationId, row);
+  const { checkIn, checkOut, providerEntityId, registrationServiceTypeCode } = await loadEventPair(
+    deps,
+    organizationId,
+    row,
+  );
   const patientStateIdentifier = await deps.aggregator.facts.patientStateIdentifier(
     organizationId,
     checkOut.patientId,
@@ -230,7 +235,10 @@ async function resolveSubmitContext(
       visitId: row.visitId as BuildSubmissionPayloadArgs["visitId"],
       checkInEventId: row.checkInEventId,
       checkOutEventId: row.checkOutEventId,
-      serviceTypeCode: checkOut.serviceTypeCode,
+      serviceTypeCode: submissionServiceTypeCode(
+        checkOut.serviceTypeCode,
+        registrationServiceTypeCode,
+      ),
       clinicianNpi,
       patientStateIdentifier,
       encounterDurationMinutes: Math.max(0, minutes),
@@ -263,7 +271,10 @@ async function loadEventPair(
     const checkIn = events.find((e) => e.id === row.checkInEventId);
     const checkOut = events.find((e) => e.id === row.checkOutEventId);
     const [registration] = await tx
-      .select({ providerEntityId: REGISTRATION.providerEntityId })
+      .select({
+        providerEntityId: REGISTRATION.providerEntityId,
+        serviceTypeCode: REGISTRATION.serviceTypeCode,
+      })
       .from(REGISTRATION)
       .where(
         and(eq(REGISTRATION.organizationId, organizationId), eq(REGISTRATION.visitId, row.visitId)),
@@ -274,7 +285,12 @@ async function loadEventPair(
         `submission ${row.id}: event pair or visit registration not found in this org`,
       );
     }
-    return { checkIn, checkOut, providerEntityId: registration.providerEntityId };
+    return {
+      checkIn,
+      checkOut,
+      providerEntityId: registration.providerEntityId,
+      registrationServiceTypeCode: registration.serviceTypeCode,
+    };
   });
 }
 

@@ -468,6 +468,9 @@ export * from "./scheduling/route-segments";
 // (organization_id + membership_id only, no patient/PE/location reference — the volunteer_compliance_gate
 // precedent for the same reason). RLS + grants + M4 audit trigger land in migration 0191.
 export * from "./scheduling/membership-credentials";
+// M17 owns a 9th table (GAP-029): oncall_rotation_entry — the on-call rotation source behind
+// `VisitAssignmentReader.tonightsOnCallRoster` (staff-scoped, org-only tenancy; migration 0660).
+export * from "./scheduling/oncall-rotation";
 
 // ---------------------------------------------------------------------------
 // M18 owns 6 tables (M18-T02, §3.3): evv_event (the §2.2.1 D2 append-only discrete check-in/check-out ledger

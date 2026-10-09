@@ -114,4 +114,17 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.device.attested", "A device passed the §12.4 posture check and was attested."),
   compliance("m2.device.attestation_failed", "A device failed the §12.4 posture check."),
   compliance("m2.device.attestation_revoked", "A device attestation was revoked by an administrator."),
+  // GAP-002 / GAP-004 - the M2 section 8.1 authentication trail. Payloads carry hashes and ip prefixes only:
+  // never a password, token, TOTP / backup code or raw email.
+  compliance("m2.auth.login_succeeded", "A sign-in completed (password, passkey or second factor)."),
+  compliance("m2.auth.login_failed", "A sign-in credential or second factor was refused."),
+  compliance("m2.auth.account_locked", "A sign-in was refused because the failed-attempt budget is spent."),
+  compliance("m2.auth.logout", "A user signed out."),
+  compliance("m2.auth.password_reset", "A password was reset through the single-use reset link."),
+  compliance("m2.auth.2fa_enrolled", "A user began or completed authenticator (TOTP) enrolment."),
+  compliance("m2.auth.2fa_disabled", "A user disabled their authenticator (TOTP) second factor."),
+  compliance("m2.auth.backup_code_used", "A single-use backup code was spent to sign in."),
+  compliance("m2.passkey.registered", "A passkey was registered."),
+  compliance("m2.passkey.removed", "A passkey was removed."),
+  compliance("m2.session.revoked", "One or more sessions were revoked by their owner."),
 ];

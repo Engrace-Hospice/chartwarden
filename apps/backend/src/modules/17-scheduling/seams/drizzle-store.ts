@@ -40,6 +40,7 @@ import type {
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { getMileagePayrollReader } from "./consumed";
+import { createDrizzleOnCallRotationStore } from "./oncall-rotation-store";
 import type {
   SchedulingMetricsCounts,
   SchedulingRouteEfficiency,
@@ -68,18 +69,17 @@ const PORTAL_VISIT_PURPOSE_LABEL = "Scheduled visit";
 const ACTIVE_ASSIGNMENT_STATUSES = ["published", "en_route", "in_visit"] as const;
 
 /**
- * M17 owns NO on-call rotation table (`clinician_availability` is weekday working hours, not an on-call
- * roster; `on_call_shift` is M19-owned and downstream of THIS seam). An empty array here would be a lie
- * with teeth: M19's shift-sync reconciler reads `[]` as "nobody is on call tonight" and cancels every
- * scheduled shift, while a THROW lands in its §2.7 class-D-C "M17 unreadable" branch (the roster path goes
- * silent and the last committed shifts stand). So the Drizzle store refuses loudly — the ABAC-registry
- * posture: a data source that does not exist yet is a registered refusal that says why, never a
- * fabricated empty.
+ * Thrown by `onCallRoster` for a tenant that has NEVER entered an `oncall_rotation_entry` row (GAP-029: M17
+ * now owns that table). An empty array here would be a lie with teeth: M19's shift-sync reconciler reads `[]`
+ * as "nobody is on call tonight" and cancels every scheduled shift, while a THROW lands in its §2.7 class-D-C
+ * "M17 unreadable" branch (the roster path goes silent and the last committed shifts stand). A tenant that
+ * has not adopted the M17 rotation therefore stays on its hand-scheduled shifts; the first rotation row
+ * makes the roster authoritative for that tenant.
  */
 export class SchedulingOnCallRosterUnavailableError extends Error {
   constructor() {
     super(
-      "VisitAssignmentReader.tonightsOnCallRoster: M17 owns no on-call rotation table — the roster read is unreadable (not empty) until an M17 on-call source lands (M19 shift-sync treats this throw as its §2.7 class-D-C degraded path)",
+      "VisitAssignmentReader.tonightsOnCallRoster: this tenant has no M17 on-call rotation entries — the roster read is unreadable (not empty) until one is entered (M19 shift-sync treats this throw as its §2.7 class-D-C degraded path)",
     );
     this.name = "SchedulingOnCallRosterUnavailableError";
   }
@@ -231,6 +231,7 @@ export async function onTimeVisitCountsForOrg(
 
 /** Build the Drizzle-backed §4.3 scheduling seam store (production; injected via `registerSchedulingSeams`). */
 export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamStore {
+  const rotationStore = createDrizzleOnCallRotationStore(db);
   return {
     // ── visit reads (VisitReader) ──────────────────────────────────────────────────────────────────────
     async visitById(visitId) {
@@ -291,11 +292,14 @@ export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamSt
       });
     },
 
-    async onCallRoster(_asOfIso): Promise<ReadonlyArray<OnCallRosterEntry>> {
-      // SCHEMA GAP — refuse, never fabricate. See {@link SchedulingOnCallRosterUnavailableError}: an empty
-      // roster means "nobody is on call"; an unreadable roster must throw so M19's reconciler keeps its
-      // last committed shifts (§2.7 class D-C) instead of cancelling them all.
-      throw new SchedulingOnCallRosterUnavailableError();
+    async onCallRoster(asOfIso): Promise<ReadonlyArray<OnCallRosterEntry>> {
+      // GAP-029 — M17's own `oncall_rotation_entry` is the source. A tenant that has never entered a
+      // rotation row is UNREADABLE (not empty): M19's reconciler reads `[]` as "nobody is on call" and would
+      // cancel every shift that tenant scheduled by hand, whereas a throw lands in its §2.7 D-C branch (the
+      // last committed shifts stand). See {@link SchedulingOnCallRosterUnavailableError}.
+      const read = await rotationStore.rosterAsOf(asOfIso);
+      if (read.kind === "none_configured") throw new SchedulingOnCallRosterUnavailableError();
+      return read.entries;
     },
 
     async currentVisitForClinician(membershipId) {

@@ -5,7 +5,9 @@
 // dormant. GAP-098 needs one of them (`tenant_export.oversized_hold`) to actually fire, which forced
 // the seed to exist.
 //
-// The seed is PARTIAL on purpose, and these tests pin the reason. M36's resolver registry THROWS
+// (GAP-057 update: the seed is now COMPLETE — M34's two resolvers are registered at boot via
+// `AlertEmitterPorts.extendResolvers`. The paragraph below is the history of why it was partial.)
+// The seed was PARTIAL on purpose, and these tests pinned the reason. M36's resolver registry THROWS
 // `UnknownRecipientResolverError` on an unregistered name, and M34's own two resolvers are implemented
 // (`registerM34AlertResolvers`) but never bound at boot — so seeding a rule that names one would turn a
 // dormant rule into a FAILING emit. Only rules naming an M36 built-in are seeded. If someone later binds
@@ -51,23 +53,14 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     expect(seedableM34AlertRules().some((r) => r.ruleKey === rule?.ruleKey)).toBe(true);
   });
 
-  it("seeds ONLY rules whose resolver is an M36 built-in", () => {
-    for (const rule of seedableM34AlertRules()) {
-      expect(
-        M36_BUILT_IN_RESOLVERS.includes(rule.recipientResolver),
-        `${rule.ruleKey} names ${rule.recipientResolver}`,
-      ).toBe(true);
-    }
-  });
-
-  it("skips — does not seed — every rule naming an M34 resolver that is unbound at boot", () => {
-    const seeded = new Set(seedableM34AlertRules().map((r) => r.ruleKey));
-    const unbound = M34_ALERT_RULES.filter((r) =>
+  it("seeds EVERY rule once M34's resolvers are registered at boot (GAP-057)", () => {
+    expect(seedableM34AlertRules()).toEqual(M34_ALERT_RULES);
+    const m34Named = M34_ALERT_RULES.filter((r) =>
       (M34_ALERT_RESOLVER_NAMES as readonly string[]).includes(r.recipientResolver),
     );
-    // The gap is real and this test documents its size rather than asserting it away.
-    expect(unbound.length).toBeGreaterThan(0);
-    for (const rule of unbound) expect(seeded.has(rule.ruleKey)).toBe(false);
+    expect(m34Named.length).toBeGreaterThan(0);
+    const seeded = new Set(seedableM34AlertRules().map((r) => r.ruleKey));
+    for (const rule of m34Named) expect(seeded.has(rule.ruleKey)).toBe(true);
   });
 
   it("every rule names either an M36 built-in or one of M34's two declared resolvers", () => {

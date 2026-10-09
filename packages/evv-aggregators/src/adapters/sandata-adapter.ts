@@ -125,6 +125,10 @@ export class SandataAdapter implements EvvAggregatorAdapter {
   async buildSubmissionPayload(
     args: BuildSubmissionPayloadArgs,
   ): Promise<{ body: unknown; idempotencyKey: string }> {
+    // GAP-027 — an empty service code is a guaranteed vendor rejection; refuse before a transport call.
+    if (args.serviceTypeCode.trim() === "") {
+      throw new Error("sandata: refusing to build a submission with an empty serviceTypeCode");
+    }
     const body: SandataSubmissionBody = {
       providerNpi: args.clinicianNpi,
       memberMedicaidId: args.patientStateIdentifier,

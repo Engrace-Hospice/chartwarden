@@ -157,6 +157,17 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
     duration = { durationValue, durationUnit };
   }
   const asNeededReasonCode = str(src.asNeededReasonCode);
+  // M13 §2.4 D3 -- `sigStructured.prnPolicy.minimumIntervalMinutes` (nested, per the spec) or the flat key.
+  const prnPolicySrc =
+    typeof src.prnPolicy === "object" && src.prnPolicy !== null
+      ? (src.prnPolicy as Record<string, unknown>)
+      : undefined;
+  const prnMinimumIntervalRaw =
+    num(prnPolicySrc?.minimumIntervalMinutes) ?? num(src.prnMinimumIntervalMinutes);
+  const prnMinimumIntervalMinutes =
+    prnMinimumIntervalRaw !== undefined && prnMinimumIntervalRaw > 0
+      ? prnMinimumIntervalRaw
+      : undefined;
 
   // §2.11 D11 titration bounds. Copied only when BOTH ends are real numbers and the window is not
   // inverted: a half-written policy is not a narrower policy, it is an unusable one, and M13 refuses a
@@ -181,6 +192,7 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
     asNeeded: typeof src.asNeeded === "boolean" ? src.asNeeded : false,
     ...(duration !== undefined ? { duration } : {}),
     ...(asNeededReasonCode !== undefined ? { asNeededReasonCode } : {}),
+    ...(prnMinimumIntervalMinutes !== undefined ? { prnMinimumIntervalMinutes } : {}),
     ...(ivContinuousPolicy !== undefined ? { ivContinuousPolicy } : {}),
   };
 }

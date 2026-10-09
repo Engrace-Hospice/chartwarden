@@ -17,6 +17,7 @@ import type { AlertCategory, AlertSeverity, NotificationChannel } from "../inter
 import {
   type PlannedDelivery,
   type RecipientPreferences,
+  type RecipientResolverFn,
   type RecipientSourcePorts,
   type ResolverArgs,
   createRecipientResolverRegistry,
@@ -74,6 +75,13 @@ export interface AlertEmitterPorts {
   persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }>;
   /** Evaluation clock — explicit so quiet-hours/vacation are deterministic in tests. */
   now(): Date;
+  /**
+   * GAP-057 — the composition root's hook to register OTHER modules' recipient resolvers (M34's
+   * `compliance_officer_for_tenant` / `platform_security_owner`, ADR-0024 style) onto the registry this
+   * emitter resolves against. M36 cannot import those modules, so they are injected here. Called once at
+   * construction, after the seven built-ins are in place.
+   */
+  readonly extendResolvers?: (registry: Map<string, RecipientResolverFn>) => void;
 }
 
 /**
@@ -86,6 +94,7 @@ export interface AlertEmitterPorts {
  */
 export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
   const registry = createRecipientResolverRegistry(ports.recipients);
+  ports.extendResolvers?.(registry);
 
   return {
     async emit(orgId, input) {

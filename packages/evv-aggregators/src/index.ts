@@ -19,6 +19,11 @@ export {
   createDenySandataTransport,
   createSandataSandboxTransport,
 } from "./adapters/sandata-adapter";
+export {
+  type FetchLike,
+  type HttpSandataTransportOptions,
+  createHttpSandataTransport,
+} from "./adapters/sandata-http-transport";
 export { type OpenModelSubmissionBody, OpenModelAdapter } from "./open-model";
 export {
   CareBridgeAdapter,

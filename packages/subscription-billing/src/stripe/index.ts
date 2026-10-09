@@ -13,3 +13,5 @@ export * from "./webhook-verifier";
 export * from "./client";
 export * from "./dispatcher";
 export * from "./webhook-handler";
+export * from "./payment-method-verifier";
+export * from "./http-transport";

@@ -105,6 +105,22 @@ describe("M13-T09 — §2.9 evaluateBarcodeScan", () => {
     ).toBe("match");
   });
 
+  it("a scanned wristband with NO digest on file is refused, never a false match (fail closed)", () => {
+    const noneOnFile: BarcodePatientContext = { wristbandPayloadDigest: null };
+    expect(
+      evaluateBarcodeScan(
+        { scannedRxnormRxcui: "313782", patientWristbandPayloadDigest: "sha256:patient-a" },
+        ORDER,
+        noneOnFile,
+        ASOF,
+      ),
+    ).toBe("wrong_patient");
+    // A wristband-less scan still has nothing to contradict.
+    expect(evaluateBarcodeScan({ scannedRxnormRxcui: "313782" }, ORDER, noneOnFile, ASOF)).toBe(
+      "match",
+    );
+  });
+
   it("wrong_patient is checked before wrong_drug (the most safety-critical catch wins)", () => {
     const r = evaluateBarcodeScan(
       { scannedRxnormRxcui: "999999", patientWristbandPayloadDigest: "sha256:patient-b" },

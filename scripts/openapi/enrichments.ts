@@ -1396,6 +1396,7 @@ import {
   EncounterViewResponseSchema as M8EncounterViewResponseSchema,
   EvvReconcileResponseSchema as M8EvvReconcileResponseSchema,
   EvvReconcileSchema as M8EvvReconcileSchema,
+  FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
   HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
@@ -1644,6 +1645,7 @@ import {
   AvailabilityViewSchema as M17AvailabilityViewSchema,
   CancelTimeOffRequest as M17CancelTimeOffRequest,
   CancelVisitRequest as M17CancelVisitRequest,
+  CreateOnCallRotationRequest as M17CreateOnCallRotationRequest,
   CreateRecurringVisitRequest as M17CreateRecurringVisitRequest,
   CreateVisitRequest as M17CreateVisitRequest,
   CredentialListResponseSchema as M17CredentialListResponseSchema,
@@ -1661,6 +1663,9 @@ import {
   MapViewResponseSchema as M17MapViewResponseSchema,
   MetricsQuerySchema as M17MetricsQuerySchema,
   NoShowVisitRequest as M17NoShowVisitRequest,
+  OnCallRotationListResponseSchema as M17OnCallRotationListResponseSchema,
+  OnCallRotationQuerySchema as M17OnCallRotationQuerySchema,
+  OnCallRotationViewSchema as M17OnCallRotationViewSchema,
   OptimizeDayRequest as M17OptimizeDayRequest,
   OptimizeDayResponseSchema as M17OptimizeDayResponseSchema,
   PortalUpcomingQuerySchema as M17PortalUpcomingQuerySchema,
@@ -2794,8 +2799,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: AddQapiPipBodySchema,
   },
   "POST /api/v1/quality/qapi/pips/:pipId/close": {
-    summary: "Close a PIP",
+    summary: "Initiate a PIP close (first of two steps; the nominee confirms)",
     body: CloseQapiPipBodySchema,
+  },
+  "POST /api/v1/quality/qapi/pips/:pipId/close/confirm": {
+    summary: "Confirm a pending PIP close as the nominated co-signer",
   },
   "POST /api/v1/quality/qapi/governance": {
     summary: "Record QAPI governance minutes",
@@ -2837,8 +2845,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: UpdateSraRemediationBodySchema,
   },
   "POST /api/v1/quality/sra/cycles/:cycleId/close": {
-    summary: "Close an SRA cycle (two-person close)",
+    summary: "Initiate an SRA cycle close (first of two steps; the nominee confirms)",
     body: CloseSraCycleBodySchema,
+  },
+  "POST /api/v1/quality/sra/cycles/:cycleId/close/confirm": {
+    summary: "Confirm a pending SRA cycle close as the nominated co-signer",
   },
 
   // ── M23 Billing — Medicare (§4.1 route surface) ──────────────────────────────────────────────────────
@@ -4342,6 +4353,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/finalize": {
     summary: "Finalize the encounter (Layer-3 gate preview)",
+    body: M8FinalizeEncounterSchema,
     response: M8FinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance": {
@@ -5538,6 +5550,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/memberships/:membershipId/credentials/:credentialId": {
     summary: "GAP-093: revoke a credential (204)",
     body: M17RevokeCredentialRequest,
+  },
+  "GET /api/v1/oncall-rotation": {
+    summary: "GAP-029: the on-call rotation M19's roster-sync reads (cancelled entries opt-in)",
+    query: M17OnCallRotationQuerySchema,
+    response: M17OnCallRotationListResponseSchema,
+  },
+  "POST /api/v1/oncall-rotation": {
+    summary: "GAP-029: add an on-call rotation entry (201)",
+    body: M17CreateOnCallRotationRequest,
+    response: M17OnCallRotationViewSchema,
+  },
+  "DELETE /api/v1/oncall-rotation/:id": {
+    summary: "GAP-029: cancel an on-call rotation entry (204)",
   },
 });
 

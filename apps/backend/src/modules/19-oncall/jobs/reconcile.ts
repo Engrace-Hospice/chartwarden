@@ -15,17 +15,13 @@
 //
 // THE ROSTER READER IS AN INJECTED PORT, DEFAULTING TO THE REAL `readOnCallRoster`
 // (`../consumers/trigger-context`) — not hardwired — for exactly one reason: M17's OWN
-// `VisitAssignmentReader.tonightsOnCallRoster` implementation is a PERMANENT, DOCUMENTED deny-stub
-// (`17-scheduling/seams/drizzle-store.ts`'s `SchedulingOnCallRosterUnavailableError` — "M17 owns no
-// on-call rotation table ... until an M17 on-call source lands"), which this pass's own scope does not
-// build (a whole M17-side data-model addition, a different module's gap). Every real production call to
-// `reconcileOrgOnCallRoster` therefore resolves `readOnCallRoster` → `{kind: "unavailable"}` today, and
+// `VisitAssignmentReader.tonightsOnCallRoster` now reads M17's own `oncall_rotation_entry` table
+// (GAP-029). A tenant that has never entered a rotation row still resolves `readOnCallRoster` →
+// `{kind: "unavailable"}` (`SchedulingOnCallRosterUnavailableError` — unreadable, deliberately NOT empty), and
 // §2.7 class D-C is what the pure `reconcileOnCallRoster` planner does with that: an empty plan, existing
-// `on_call_shift` rows preserved untouched, `degraded: true` reported. That is the CORRECT, honest
-// behavior — not a bug this file works around — and it is exactly why the roster reader is a port: the
-// live test proves the debounce/claim/apply machinery for real by injecting a roster WITH entries, the
-// same way `m20-sos-sla-watchdog.live.test.ts` and the M12 sync-trigger suites inject their own vendor/seam
-// doubles rather than waiting on an unrelated module's real implementation.
+// `on_call_shift` rows preserved untouched, `degraded: true` reported — so a tenant that schedules shifts by
+// hand is never silently emptied. The port stays injectable so the debounce/claim/apply machinery can be
+// proven with a roster of the test's choosing.
 import { type DbClient, schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant, OncallModel, OrgId } from "@wardenx/types";
@@ -175,8 +171,8 @@ export interface OrgReconcileResult {
   readonly providerEntitiesReconciled: number;
   readonly created: number;
   readonly cancelled: number;
-  /** True if ANY of the org's PE passes came back degraded (§2.7 D-C) — today, always true, since
-   *  M17's own roster seam is a permanent deny-stub (see the file header). */
+  /** True if ANY of the org's PE passes came back degraded (§2.7 D-C) — i.e. M17's roster read was
+   *  unavailable. Since GAP-029 that is only a tenant with no `oncall_rotation_entry` rows. */
   readonly degraded: boolean;
 }
 

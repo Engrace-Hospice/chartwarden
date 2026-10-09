@@ -36,6 +36,7 @@ export {
   type PatientReaderStore,
   type PatientMutatorStore,
   CASELOAD_MEMBERSHIP_PREDICATE,
+  caseloadMembershipPredicate,
   FORBIDDEN_PATCH_FIELDS,
   MAX_MERGE_HOPS,
   createCaseloadProvider,

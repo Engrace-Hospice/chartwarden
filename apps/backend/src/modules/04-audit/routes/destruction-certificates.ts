@@ -94,7 +94,23 @@ function toCertificateView(row: typeof CERT.$inferSelect) {
  *  matching is the safe direction here — see file header). A hold with no `resourceKinds`
  *  restriction covers everything; one that lists `resourceKinds` covers `dataClass` only when it
  *  names it (mirrors `createDrizzleAuditEraserPorts.legalHoldFor`'s conservative substring match). */
-function holdCoversDataClass(criteria: LegalHoldCriteria, dataClass: string): boolean {
+function holdCoversDataClass(
+  criteria: LegalHoldCriteria,
+  dataClass: string,
+  range: { start: Date; end: Date },
+): boolean {
+  // GAP-008: a hold whose date range does not touch the certificate's range cannot cover any of its rows.
+  if (criteria.dateRange) {
+    const from = Date.parse(criteria.dateRange.from);
+    const to = Date.parse(criteria.dateRange.to);
+    if (
+      !Number.isNaN(from) &&
+      !Number.isNaN(to) &&
+      (to < range.start.getTime() || from > range.end.getTime())
+    ) {
+      return false;
+    }
+  }
   if (!criteria.resourceKinds || criteria.resourceKinds.length === 0) return true;
   return criteria.resourceKinds.some((k) => dataClass.includes(k) || k.includes(dataClass));
 }
@@ -174,7 +190,10 @@ export function registerDestructionCertificatesRoutes(
             .from(HOLD)
             .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.status, "active")));
           const held = activeHolds.some((h) =>
-            holdCoversDataClass(h.criteria as LegalHoldCriteria, cert.dataClass),
+            holdCoversDataClass(h.criteria as LegalHoldCriteria, cert.dataClass, {
+              start: cert.dateRangeStart,
+              end: cert.dateRangeEnd,
+            }),
           );
           if (held) {
             throw new WardenXError(

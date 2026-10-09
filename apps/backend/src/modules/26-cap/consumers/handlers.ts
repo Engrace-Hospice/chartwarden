@@ -16,12 +16,12 @@ export interface AccrualLineToRecord {
   readonly postedAt: string;
 }
 
-/** The inpatient-day-line write the m23 line_finalized consumer produces (rev 0655/0656 only). */
+/** The level-of-care day-line write the m23 line_finalized consumer produces (rev 0651/0652/0655/0656). */
 export interface InpatientDayToRecord {
   readonly organizationId: string;
   readonly patientId: string;
   readonly sourceId: string;
-  readonly revCode: "0655" | "0656";
+  readonly revCode: "0651" | "0652" | "0655" | "0656";
   readonly days: number;
   readonly serviceFrom: string;
   readonly serviceTo: string;
@@ -115,7 +115,8 @@ export async function handleClaimReversed(
 }
 
 /**
- * m23.claim.line_finalized (rev 0655/0656) → record an inpatient day line for the 20% cap. GAP-077: the
+ * m23.claim.line_finalized (hospice LOC rev 0651/0652/0655/0656) → record a level-of-care day line for the 20%
+ * cap: 0655/0656 days are its numerator, every code's days its denominator (GAP-038). GAP-077: the
  * catalogued payload is `{claimId, claimLineId, revenueCode, patientId, serviceFrom, serviceTo, days,
  * finalizedAt}` (M23 emits it when a paid/partially-paid claim's 835 posts); the tenant comes from the
  * dispatcher envelope. A payload without a service period or a positive day count is refused.
@@ -125,7 +126,8 @@ export async function handleInpatientDay(
   p: Record<string, unknown>,
 ): Promise<{ recorded: boolean }> {
   const revCode = str(p.revenueCode);
-  if (revCode !== "0655" && revCode !== "0656") return { recorded: false };
+  if (revCode !== "0651" && revCode !== "0652" && revCode !== "0655" && revCode !== "0656")
+    return { recorded: false };
   const organizationId = str(p.organizationId);
   const patientId = str(p.patientId);
   const sourceId = str(p.claimLineId);

@@ -235,6 +235,7 @@ export class QapiRepository {
         | "closureClosedByMembershipId"
         | "closureNomineeMembershipId"
         | "closureCosignAttested"
+        | "closureOutcome"
         | "closedAt"
         | "suspendReason"
         | "documentId"

@@ -19,7 +19,7 @@
 // `encounter_signature` provenance row (see the §3.3/D13 block below) and the HearthNote selection /
 // Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
   enhanceNarrative,
@@ -27,10 +27,12 @@ import {
   requiredScalesFor,
 } from "@wardenx/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
+  type EvvBracketResolution,
   ForbiddenError,
   type LocalDate,
   NotFoundError,
@@ -62,6 +64,7 @@ import {
 } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import { deriveEvvAtSign } from "./evv-at-sign";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -70,6 +73,12 @@ import {
   runEncounterComplianceGate,
 } from "./gate/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import {
+  decideAdministrativeLateOverride,
+  decideSignificantLateOverride,
+} from "./late-entry/override";
+import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-entry/resolve";
+import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
 import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
@@ -92,7 +101,12 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections, buildTemplateMenu } from "./routes/service";
-import { getCarePlanReader, getCareTeamProvider, getLatestAssessmentProvider } from "./seams/index";
+import {
+  getCarePlanReader,
+  getCareTeamProvider,
+  getEvvBracketResolver,
+  getLatestAssessmentProvider,
+} from "./seams/index";
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -394,7 +408,12 @@ export function createDbEncounterRouteService(
   db: DbClient,
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
   ciphers?: HearthnoteCiphers,
+  clock: () => Date = () => new Date(),
 ): EncounterRouteService {
+  /** GAP-013: the org-local calendar day (org timezone, never the request's UTC date) the late-entry tier is measured on. */
+  const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
+    localDateInTimeZone(clock(), await organizationTimezone(t, organizationId)) as LocalDate;
+
   const freeTextCipher = ciphers?.freeText;
   const narrativeCipher = ciphers?.narrative;
 
@@ -791,6 +810,32 @@ export function createDbEncounterRouteService(
       organizationId: org,
       recordedAt: signedAt.toISOString(),
     });
+  }
+
+  /** GAP-070 — the M18 bracket for the encounter's visit, or null (no visit / nothing bracketed / M18
+   *  unreachable). Unreachable reads as "not resolved": EVV is never a sign gate (ADR-0008), and an
+   *  unresolved bracket reports `evv_missing_documented`, so it can never count as EVV-verified. */
+  async function resolveEvvBracketFor(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<EvvBracketResolution | null> {
+    const row = await loadRow(organizationId, encounterId);
+    if (!row?.visitId) return null;
+    try {
+      return await getEvvBracketResolver().resolveBracket({
+        organizationId,
+        visitId: row.visitId,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /** The encounter columns sign writes when it newly resolved an EVV bracket (empty otherwise). */
+  function evvPersistence(
+    evv: ReturnType<typeof deriveEvvAtSign>,
+  ): Partial<typeof ENC.$inferInsert> {
+    return evv.persist ?? {};
   }
 
   /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
@@ -1707,10 +1752,24 @@ export function createDbEncounterRouteService(
     },
 
     // ── Finalize (§2.3 — Layer-3 gate preview + pin the vocab version D11) ─────────────────────────────
-    async finalize(organizationId, encounterId, at) {
+    async finalize(organizationId, encounterId, at, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // GAP-013 §2.5 — the tier is COMPUTED here from service_date vs the org-local day and reified on the
+        // row; a note > 24h late must carry the clinician's reason (422 LATE_ENTRY_REASON_REQUIRED). The
+        // significant / administrative tiers cannot be written to the column before their override exists
+        // (the encounter_*_consistency CHECKs), so they are recomputed — and gated — at sign.
+        const late = resolveLateEntry({
+          serviceDate: r.serviceDate as LocalDate,
+          asOfDate: await orgLocalToday(t, organizationId),
+          persistedReason: r.lateEntryReason,
+          suppliedReason: args?.lateEntryReason ?? null,
+          significantOverridePresent: r.significantLateOverrideBy !== null,
+          administrativeOverridePresent: r.administrativeOverrideBy !== null,
+          requireOverride: false,
+        });
+        const reifiedTier = reifiableTier(r.lateEntryTier, late.tier);
         // §2.3 — the gate runs as a PREVIEW here: a failure raises the 422 + remediation list and the
         // row stays in draft, which is the transition not happening at all.
         const trans = transitionEncounter(r.status, {
@@ -1752,6 +1811,8 @@ export function createDbEncounterRouteService(
             .set({
               status: trans.to,
               vocabVersionId, // D11 pin (immutable thereafter)
+              lateEntryTier: reifiedTier,
+              ...(late.reason !== null ? { lateEntryReason: late.reason } : {}),
               version: Number(r.version) + 1,
               updatedAt: new Date(),
             })
@@ -1775,7 +1836,7 @@ export function createDbEncounterRouteService(
           encounterId,
           vocabVersionId,
           layer2Involved: false,
-          lateEntryTier: r.lateEntryTier,
+          lateEntryTier: late.tier,
         });
         return { status: "finalized", version: Number(updated.version) };
       });
@@ -1819,6 +1880,9 @@ export function createDbEncounterRouteService(
 
     // ── Sign (§2.3 — the LOCKED clinical-record trigger; §7.4 D1 F2F dual-write + LPN/CHHA cosign) ──────
     async sign(organizationId, encounterId, actor, args) {
+      // GAP-070 — the M18 bracket is resolved BEFORE the write tx (the resolver opens its own tenant
+      // context; nesting it would bind the GUC on an already-bound connection).
+      const evvResolution = await resolveEvvBracketFor(organizationId, encounterId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -1834,12 +1898,28 @@ export function createDbEncounterRouteService(
           r.serviceDate as LocalDate,
           admission,
         );
+        // GAP-013 §2.5 — the tier is recomputed at SIGN from service_date vs the org-local day (it can only
+        // have risen since finalize): the reason must be on the row, and a significant / administrative
+        // tier must already carry its recorded override. A higher override satisfies a lower tier.
+        const late = resolveLateEntry({
+          serviceDate: r.serviceDate as LocalDate,
+          asOfDate: await orgLocalToday(t, organizationId),
+          persistedReason: r.lateEntryReason,
+          suppliedReason: args.lateEntryReason ?? null,
+          significantOverridePresent:
+            r.significantLateOverrideBy !== null || r.administrativeOverrideBy !== null,
+          administrativeOverridePresent: r.administrativeOverrideBy !== null,
+          requireOverride: true,
+        });
+        const lateColumns = {
+          lateEntryTier: reifiableTier(r.lateEntryTier, late.tier),
+          ...(late.reason !== null ? { lateEntryReason: late.reason } : {}),
+        };
         // The REAL caller signs, not the encounter's author (that was the pre-fix bug — see the
         // module-header compromise list above, item (2)).
         const signedByMembershipId = actor.membershipId;
-        const evvBracketState = (r.evvBracketState ?? "evv_present") as
-          | "evv_present"
-          | "evv_missing_documented";
+        const evvAtSign = deriveEvvAtSign(r.evvBracketState, evvResolution);
+        const evvBracketState = evvAtSign.state;
         const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
         if (!r.providerEntityId || !r.locationId) {
           throw new EncounterStateError(
@@ -1872,7 +1952,13 @@ export function createDbEncounterRouteService(
           });
           await t
             .update(ENC)
-            .set({ status: plan.encounter.to, signedAt: now, updatedAt: now })
+            .set({
+              status: plan.encounter.to,
+              signedAt: now,
+              updatedAt: now,
+              ...lateColumns,
+              ...evvPersistence(evvAtSign),
+            })
             .where(eq(ENC.id, encounterId));
           await t.insert(SIG).values({
             organizationId,
@@ -1897,7 +1983,7 @@ export function createDbEncounterRouteService(
             discipline: r.discipline,
             signedByMembershipId,
             signedAt: now.toISOString(),
-            lateEntryTier: r.lateEntryTier,
+            lateEntryTier: late.tier,
             layer2Involved: false,
             evvBracketState,
             evvMissingReason: r.evvMissingReason,
@@ -1927,7 +2013,13 @@ export function createDbEncounterRouteService(
         const requiresCosign = trans.to === "cosign_pending";
         await t
           .update(ENC)
-          .set({ status: trans.to, signedAt: now, updatedAt: now })
+          .set({
+            status: trans.to,
+            signedAt: now,
+            updatedAt: now,
+            ...lateColumns,
+            ...evvPersistence(evvAtSign),
+          })
           .where(eq(ENC.id, encounterId));
         await t.insert(SIG).values({
           organizationId,
@@ -1952,7 +2044,7 @@ export function createDbEncounterRouteService(
           discipline: r.discipline,
           signedByMembershipId,
           signedAt: now.toISOString(),
-          lateEntryTier: r.lateEntryTier,
+          lateEntryTier: late.tier,
           layer2Involved: false,
           evvBracketState,
           evvMissingReason: r.evvMissingReason,
@@ -2008,11 +2100,29 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // GAP-013 — the tier is the SERVER's computation, so an override on an encounter that is not
+        // actually in the significant tier (too early, or already administrative) is a 409. The route's
+        // permission + step-up guards stand behind `isSupervisor` / `stepUpFresh` (GAP-014).
+        const tier = computeLateEntryTier({
+          serviceDate: r.serviceDate as LocalDate,
+          asOfDate: await orgLocalToday(t, organizationId),
+        });
+        decideSignificantLateOverride({
+          tier,
+          isSupervisor: true,
+          reason: args.reason,
+          stepUpFresh: true,
+        });
+        const daysLate = lateDaysBetween(
+          r.serviceDate as LocalDate,
+          await orgLocalToday(t, organizationId),
+        );
         await t
           .update(ENC)
           .set({
             lateEntryTier: "significant_late_entry",
-            lateEntryReason: args.reason,
+            // keep the author's own reason when it is already good enough; the CHECK needs one >= 40.
+            lateEntryReason: keepOrReplaceReason(r.lateEntryReason, args.reason),
             significantLateOverrideBy: args.actorMembershipId,
             significantLateOverrideReason: args.reason,
             updatedAt: new Date(),
@@ -2028,7 +2138,7 @@ export function createDbEncounterRouteService(
             encounterId,
             overrideBy: args.actorMembershipId,
             overrideReason: args.reason,
-            daysLate: 0,
+            daysLate,
           },
         );
         return { status: r.status };
@@ -2038,11 +2148,20 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        const asOfDate = await orgLocalToday(t, organizationId);
+        const tier = computeLateEntryTier({ serviceDate: r.serviceDate as LocalDate, asOfDate });
+        decideAdministrativeLateOverride({
+          tier,
+          isDirector: true,
+          reason: args.reason,
+          stepUpFresh: true,
+        });
+        const daysLate = lateDaysBetween(r.serviceDate as LocalDate, asOfDate);
         await t
           .update(ENC)
           .set({
             lateEntryTier: "administrative_override",
-            lateEntryReason: args.reason,
+            lateEntryReason: keepOrReplaceReason(r.lateEntryReason, args.reason),
             administrativeOverrideBy: args.actorMembershipId,
             administrativeOverrideReason: args.reason,
             updatedAt: new Date(),
@@ -2058,7 +2177,7 @@ export function createDbEncounterRouteService(
             encounterId,
             overrideBy: args.actorMembershipId,
             overrideReason: args.reason,
-            daysLate: 0,
+            daysLate,
           },
         );
         return { status: r.status };

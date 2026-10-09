@@ -90,6 +90,33 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // ack-pull crons. Before, a rejected NOE looked valid and a rejected NOTR counted as filed.
       "m23.noe.rejected",
       "m23.notr.rejected",
+      // GAP-035 — cron alert codes that previously persisted with zero recipients.
+      "m23.noe.window_breached",
+      "m23.noe.window_warning",
+      "m23.notr.window_breached",
+      "m23.notr.window_warning",
+      "m23.claim.submission_stalled",
+      "m23.eligibility.expired",
+      "m23.mac_portal.unavailable",
+      "m23.mac_portal.recovered",
+      "m23.taxonomy.unmapped_taxonomy_alert",
+      "denial.aging_threshold_breached",
+      "denial.high_value",
+      "appeal.deadline_approaching",
+      "m26.cap.agency_watch_90",
+      "m26.cap.agency_warn_95",
+      "m26.cap.agency_breach_100",
+      "m26.cap.patient_watch_90",
+      "m26.cap.patient_warn_95",
+      "m26.cap.patient_breach_100",
+      "m26.cap.inpatient_watch_18",
+      "m26.cap.inpatient_breach",
+      "m26.cap.year_close_reminder",
+      "m26.cap.psr_variance_detected",
+      "m27.filing_deadline.t4_months_due",
+      "m27.filing_deadline.t4_5_months_due",
+      "m27.filing_deadline.t4_75_months_due",
+      "m27.filing_deadline.past_deadline",
       "cap.approaching",
       "noe.late_risk",
       "system.integration_failure",
@@ -103,6 +130,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "external_feed.baa_missing",
       // GAP-086 — the MLLP listener could not bind an active inbound feed (not a BAA refusal).
       "external_feed.listener_blocked",
+      // GAP-043 — an active inbound feed went silent with its listener not serving (circuit OPEN).
+      "external_feed.listener_down",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
       // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
@@ -137,11 +166,28 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m39.consent.revoked_cascade_failed",
       "mdm.license_expiring",
       "m30.incident.cap_overdue",
+      // GAP-049 — M30 quality alerts (M36 `quality-alerts` consumer + the M30 review-overdue sweep).
+      "m30.alerts.incident_sentinel",
+      "m30.alerts.incident_abuse_allegation",
+      "m30.alerts.outbreak_detected",
+      "m30.alerts.measure_threshold_breached",
+      "m30.alerts.cahps_sample_ready",
+      "m30.alerts.mortality_review_due",
+      "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
+      "mdm.physician_deactivated",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
     }
+  });
+
+  it("seeds a role_set rule with recipients for mdm.physician_deactivated (GAP-068)", () => {
+    const rule = toNewAlertRuleRows().find((r) => r.eventType === "mdm.physician_deactivated");
+    expect(rule).toBeDefined();
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.enabled).toBe(true);
+    expect((rule?.resolverArgs as { roleKeys: string[] }).roleKeys).toContain("org_admin");
   });
 
   it("has no duplicate event types and is valid out of the box", () => {

@@ -16,6 +16,7 @@ import {
   SandataAdapter,
   StateAggregatorRegistry,
   createDenySandataTransport,
+  createHttpSandataTransport,
 } from "@wardenx/evv-aggregators";
 import { withOrgContext } from "@wardenx/tenancy";
 import { buildFoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
@@ -23,7 +24,8 @@ import {
   type EvvAggregatorDeps,
   EvvAggregatorPortUnboundError,
   type EvvSubmissionFactsPort,
-  createUnboundAggregatorCredentialStore,
+  createConfiguredAggregatorCredentialStore,
+  parseEvvAggregatorCredentials,
   parseEvvAggregatorStateConfigs,
 } from "./ports";
 
@@ -50,20 +52,35 @@ export function createEvvSubmissionFactsPort(db: DbClient): EvvSubmissionFactsPo
   };
 }
 
-/** Build the aggregator deps. `rawStates` is `process.env.EVV_AGGREGATOR_STATES` (blank ⇒ nothing is submitted). */
+/** GAP-028 — the optional, config-driven vendor bindings. Each absent value keeps its fail-closed default. */
+export interface EvvAggregatorBindingConfig {
+  /** `EVV_AGGREGATOR_STATES`. */
+  readonly rawStates: string | undefined;
+  /** `SANDATA_API_BASE_URL` — when set, the HTTPS Sandata transport replaces the deny transport. */
+  readonly sandataApiBaseUrl?: string | undefined;
+  /** `EVV_AGGREGATOR_CREDENTIALS` — the per-(provider, vendor, state) secrets. */
+  readonly rawCredentials?: string | undefined;
+}
+
+/** Build the aggregator deps (blank states => nothing is submitted; unset bindings stay fail-closed). */
 export function buildEvvAggregatorDeps(
   db: DbClient,
-  rawStates: string | undefined,
+  config: EvvAggregatorBindingConfig | string | undefined,
 ): EvvAggregatorDeps {
-  const registry = new StateAggregatorRegistry(parseEvvAggregatorStateConfigs(rawStates), {
-    defaultAdapters: [
-      new SandataAdapter({ transport: createDenySandataTransport() }),
-      new OpenModelAdapter(),
-    ],
+  const cfg: EvvAggregatorBindingConfig =
+    typeof config === "object" ? config : { rawStates: config };
+  const baseUrl = cfg.sandataApiBaseUrl?.trim();
+  const transport = baseUrl
+    ? createHttpSandataTransport({ baseUrl })
+    : createDenySandataTransport();
+  const registry = new StateAggregatorRegistry(parseEvvAggregatorStateConfigs(cfg.rawStates), {
+    defaultAdapters: [new SandataAdapter({ transport }), new OpenModelAdapter()],
   });
   return {
     registry,
-    credentials: createUnboundAggregatorCredentialStore(),
+    credentials: createConfiguredAggregatorCredentialStore(
+      parseEvvAggregatorCredentials(cfg.rawCredentials),
+    ),
     facts: createEvvSubmissionFactsPort(db),
   };
 }

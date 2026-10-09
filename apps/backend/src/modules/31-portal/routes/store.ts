@@ -247,7 +247,29 @@ export interface PortalOwnedTableOps {
 export type PortalStore = M31SeamStores & PortalOwnedTableOps;
 
 /** Build the Drizzle-backed {@link PortalStore} (the seven seams + the §4.1 route ops). */
-export function buildDrizzlePortalStore(db: DbClient, events?: M31EventEmitter): PortalStore {
+/**
+ * GAP-052 - where the section 164.528 portal-disclosure lines come from. M22 owns `document_access_log`, so M31 takes
+ * the reader as a port bound at the composition root instead of naming that table. ABSENT => the seam reports no lines.
+ */
+export type PortalDisclosureSource = (
+  organizationId: string,
+  patientId: string,
+  from: Date,
+  to: Date,
+) => Promise<
+  readonly {
+    readonly portalAccountId: string;
+    readonly patientId: string;
+    readonly documentId: string;
+    readonly accessedAt: Date;
+  }[]
+>;
+
+export function buildDrizzlePortalStore(
+  db: DbClient,
+  events?: M31EventEmitter,
+  disclosureSource?: PortalDisclosureSource,
+): PortalStore {
   const activeGrantsFor = async (
     orgId: string,
     portalAccountId: string,
@@ -480,11 +502,24 @@ export function buildDrizzlePortalStore(db: DbClient, events?: M31EventEmitter):
       },
     },
 
-    // ── seam 7: PortalDisclosureAccountingProvider — the §164.528 log is M4's audit trail, not an owned
-    //    table; M31 exposes it via M4 read-audit, so the store returns [] (M4 is the source) ─────────────
+    // ── seam 7: PortalDisclosureAccountingProvider - the section 164.528 lines for a patient are the PORTAL-accessor
+    //    rows of M22`s `document_access_log`, read through the injected {@link PortalDisclosureSource} (GAP-052) ──
     disclosures: {
-      async disclosuresForPatient(): Promise<PortalDisclosureRecord[]> {
-        return [];
+      async disclosuresForPatient(
+        orgId,
+        patientId,
+        fromIso,
+        toIso,
+      ): Promise<PortalDisclosureRecord[]> {
+        if (!disclosureSource) return [];
+        const rows = await disclosureSource(orgId, patientId, new Date(fromIso), new Date(toIso));
+        return rows.map((r) => ({
+          portalAccountId: r.portalAccountId as PortalDisclosureRecord["portalAccountId"],
+          patientId: r.patientId as PortalDisclosureRecord["patientId"],
+          routePath: `/portal/documents/${r.documentId}`,
+          dataCategoriesDisclosed: ["documents"],
+          viewedAt: r.accessedAt.toISOString() as PortalDisclosureRecord["viewedAt"],
+        }));
       },
     },
 

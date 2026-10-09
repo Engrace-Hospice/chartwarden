@@ -65,6 +65,42 @@ export function validateVerbalWindowHours(windowHours: number): void {
   );
 }
 
+/** GAP-017 -- tolerated client clock skew when a verbal order's `receivedAt` is ahead of the server. */
+export const VERBAL_RECEIVED_AT_SKEW_MINUTES = 5;
+
+/**
+ * GAP-017 -- how long before the server's receipt a verbal order may claim to have been RECEIVED. A night
+ * order recorded the next morning is legitimate; a `receivedAt` days in the past would start the 48h clock
+ * already (nearly) expired, and one in the future would stretch it. 24h covers any plausible shift gap.
+ */
+export const VERBAL_RECEIVED_AT_MAX_LOOKBACK_HOURS = 24;
+
+/**
+ * GAP-017 -- the 48h signature clock (42 CFR 418.104(b)) starts at `receivedAt`, so it must not be a free
+ * client-supplied value: a `receivedAt` in the future (beyond skew) would postpone the deadline and the
+ * expiry worker indefinitely, one far in the past would manufacture an instant expiry. Rejects both with
+ * `VERBAL_RECEIVED_AT_OUT_OF_RANGE` (422). Pure -- `nowIso` is injected (the server's clock, never the client's).
+ */
+export function assertVerbalReceivedAtPlausible(receivedAt: IsoInstant, nowIso: IsoInstant): void {
+  const receivedMs = Date.parse(receivedAt);
+  const nowMs = Date.parse(nowIso);
+  require_(
+    Number.isFinite(receivedMs) && Number.isFinite(nowMs),
+    "VERBAL_RECEIVED_AT_OUT_OF_RANGE",
+    "the verbal order's receivedAt is not a valid instant.",
+  );
+  require_(
+    receivedMs <= nowMs + VERBAL_RECEIVED_AT_SKEW_MINUTES * 60_000,
+    "VERBAL_RECEIVED_AT_OUT_OF_RANGE",
+    "the verbal order's receivedAt is in the future; the signature clock starts when the order was actually received.",
+  );
+  require_(
+    receivedMs >= nowMs - VERBAL_RECEIVED_AT_MAX_LOOKBACK_HOURS * HOUR_MS,
+    "VERBAL_RECEIVED_AT_OUT_OF_RANGE",
+    `the verbal order's receivedAt is more than ${VERBAL_RECEIVED_AT_MAX_LOOKBACK_HOURS}h before now; record the order closer to when it was received.`,
+  );
+}
+
 /** Defensive bound on the business-hours loop (a year of hours) against a pathological all-holiday set. */
 const MAX_BUSINESS_HOURS_ITERATIONS = 366 * 24;
 

@@ -227,6 +227,14 @@ export {
   buildM11LabTransmissionApplierConsumer,
   type LabTransmissionApplierDeps,
 } from "./outbox-consumers/m29-lab-transmission-applier";
+// GAP-016 — `LabResultsApplier`: `m29.lab_observation.attached` flips `order_record.results_status` and emits
+// `m11.order.results_received` / `_critical` (the lab-results review queue and M22's results render read them).
+export {
+  LAB_CRITICAL_ABNORMAL_FLAGS,
+  M11_LAB_RESULTS_APPLIER_CONSUMER,
+  buildM11LabResultsApplierConsumer,
+  type LabResultsApplierDeps,
+} from "./outbox-consumers/m29-lab-results-applier";
 // F-187 (#248) — the operator alert for a lab order superseded after its ORM may already be at the lab.
 export {
   M11_LAB_CANCELLATION_ALERT_TYPE,

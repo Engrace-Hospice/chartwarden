@@ -131,6 +131,10 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   // M30 HQRP & Quality — incidents (incl. abuse allegations), mortality reviews, infection
   // surveillance, CAHPS decedents. The QAPI/SRA/risk-register/measure reads carry justified waivers.
   "/api/v1/quality",
+  // M29 External interfaces — lab results (/api/clinical/labs) and the admin HL7 surface carry patient
+  // ids, result values and ADT proposals; every GET declares emission or a justified waiver (GAP-044/045).
+  "/api/clinical",
+  "/api/admin/external-interfaces",
   // M23 Billing (Medicare) — a claim carries patient_id, dates of service and diagnosis codes.
   "/api/v1/billing",
   "/api/v1/claims",
@@ -246,6 +250,12 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   // WX-PR-020 (OPS-004) — the operator outbox view. A row's `payload`/`aggregateId` can reference
   // clinical/patient aggregates depending on event type, so this is covered like any other read.
   "/api/v1/ops",
+  // M36 Messaging (GAP-064) — channel history decrypts clinical message bodies and the alert inbox
+  // surfaces clinical alert summaries; the spec requires message reads to be audited. Every GET under
+  // these is annotated (an emission config, or a justified waiver for the self-only preferences).
+  "/api/v1/messaging",
+  "/api/v1/alerts",
+  "/api/v1/notifications",
 ];
 
 /**

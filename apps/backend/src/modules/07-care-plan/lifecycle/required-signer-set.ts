@@ -98,3 +98,80 @@ export function decideRecordSignature(
   );
   return { quorumMet: after === 0 };
 }
+
+/** The signer roles a signature may be captured under — the M3 role key IS the signer role (GAP-011). */
+const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set<CarePlanSignerRole>([
+  "rn_case_manager",
+  "hospice_physician",
+  "nurse_practitioner",
+  "msw",
+  "chaplain",
+  "medical_director",
+]);
+
+/**
+ * GAP-011 — the claimed `signerRole` is a BODY field; it is only a valid attestation if the AUTHENTICATED
+ * actor holds that role. Without this the `signer_role_match` edge predicate (which passes when the caller
+ * holds ANY slot's role) let a one-role user stamp whichever seat they liked. Mirrors M15's GAP-045.
+ */
+export function assertActorHoldsSignerRole(
+  actorRoles: ReadonlyArray<string>,
+  signerRole: CarePlanSignerRole,
+): void {
+  require_(
+    actorRoles.includes(signerRole),
+    "SIGNER_ROLE_MISMATCH",
+    "the caller does not hold the requested signer role",
+  );
+}
+
+/** GAP-011 — one membership fills at most ONE slot per version, so one person can never fill a quorum. */
+export function assertMembershipNotAlreadySigned(
+  signedMembershipIds: ReadonlyArray<string | null>,
+  membershipId: string,
+): void {
+  require_(
+    !signedMembershipIds.includes(membershipId),
+    "SIGNER_ALREADY_SIGNED",
+    "this membership has already signed a slot of this version",
+  );
+}
+
+/**
+ * GAP-012 — a caller may TIGHTEN the floor quorum but never loosen it (§11 D5). Comparing array LENGTH
+ * (the old check) let `[rn_case_manager, chaplain]` replace `[physician|NP, rn_case_manager]`: same
+ * length, physician seat gone. The requested set must COVER every floor slot — each floor slot is matched
+ * to a distinct requested slot whose roles are a non-empty subset of the floor slot's roles and whose count
+ * is at least the floor's — and every requested role must be a known signer role. Extra slots are the
+ * tightening. Returns the set to store (the requested one) or throws REQUIRED_SIGNER_SET_UNMET.
+ */
+export function resolveTightenedSignerSet(
+  floor: RequiredSignerSet,
+  requested: RequiredSignerSet,
+): RequiredSignerSet {
+  for (const slot of requested) {
+    const tokens = slot.role.split("|");
+    require_(
+      tokens.every((t) => KNOWN_SIGNER_ROLES.has(t)) && slot.count >= 1,
+      "REQUIRED_SIGNER_SET_UNMET",
+      "the Required Signer Set names an unknown signer role or a zero count",
+    );
+  }
+  const used = new Set<number>();
+  for (const floorSlot of floor) {
+    const floorRoles = new Set(floorSlot.role.split("|"));
+    const index = requested.findIndex(
+      (slot, i) =>
+        !used.has(i) &&
+        slot.count >= floorSlot.count &&
+        slot.role.split("|").every((t) => floorRoles.has(t)),
+    );
+    require_(
+      index >= 0,
+      "REQUIRED_SIGNER_SET_UNMET",
+      `the Required Signer Set may not loosen the floor quorum (missing '${floorSlot.role}')`,
+    );
+    used.add(index);
+  }
+  return requested;
+}

@@ -182,7 +182,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // the read-time redirect is itself still unwired (a real, separate M22-owned gap: a DB-backed
     // `MergeFacts` + threading it through M22's document-fetch routes), reported here rather than built,
     // since it touches M22's read surface broadly and is not an outbox-consumer build.
-    declaredConsumers: ["m35"],
+    // GAP-067 — m39 ADDED: M39 spec §4.6 re-points consent_record.patient_id (Part 2 releases and revocations
+    // included) to the survivor (`39-consent/m5-patient-merged-consumer.ts`), emitting `m39.consent.repointed`.
+    declaredConsumers: ["m35", "m39"],
     seamConsumers: ["m22"],
     isOutboxOnly: true,
   },

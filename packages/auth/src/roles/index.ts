@@ -44,3 +44,21 @@ export {
   isTenantRoleReserved,
   roleConfersKey,
 } from "./platform-reserved";
+export {
+  FULL_CATALOG_ROLE_KEYS,
+  type MirrorPermission,
+  PLATFORM_PERMISSION_CATEGORY,
+  type PlannedRole,
+  planRoleTemplateMaterialization,
+} from "./template-materialization";
+export {
+  type GrantInput,
+  type GrantScopeParse,
+  type GrantViolation,
+  type MembershipReach,
+  type RoleGrantScope,
+  TIME_BOUND_ROLE_CATEGORY,
+  effectiveReach,
+  parseRoleGrantScope,
+  validateRoleGrant,
+} from "./grant-scope";

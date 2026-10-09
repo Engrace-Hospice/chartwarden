@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1465,
-    "coveredRoutes": 1465,
-    "directRoutesReferenced": 1406
+    "routes": 1471,
+    "coveredRoutes": 1471,
+    "directRoutesReferenced": 1409
   },
   "modules": [
     {
@@ -26,12 +26,14 @@
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
+        "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
+        "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
@@ -48,7 +50,8 @@
         "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
-        "apps/backend/__tests__/m2-auditor-redemption.live.test.ts"
+        "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
+        "apps/backend/__tests__/m2-auth-hardening.live.test.ts"
       ],
       "directRoutesReferenced": 16
     },
@@ -252,7 +255,7 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 35,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
@@ -331,6 +334,7 @@
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
@@ -400,7 +404,7 @@
     },
     {
       "module": "30-quality",
-      "routes": 61,
+      "routes": 63,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-091-m30-phi-scope.test.ts",
@@ -408,7 +412,7 @@
         "apps/backend/__tests__/m30-mortality-patient-display.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
-      "directRoutesReferenced": 61
+      "directRoutesReferenced": 63
     },
     {
       "module": "31-portal",
@@ -459,15 +463,17 @@
       "routes": 54,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
       "directRoutesReferenced": 54
     },
     {
       "module": "36-messaging",
-      "routes": 24,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
@@ -476,7 +482,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 23
+      "directRoutesReferenced": 24
     },
     {
       "module": "37-ipu",

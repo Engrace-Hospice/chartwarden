@@ -139,6 +139,23 @@ export function createDbSessionStepUpWriter(db: DbClient): SessionStepUpWriter {
 }
 
 /**
+ * The second factor the session proved at sign-in (`last_step_up_factor`), or null for a password-only session or
+ * an unknown id. The MFA matrix gate reads this: enrolment is not assurance (GAP-003/005).
+ */
+export function createDbSessionProofReader(
+  db: DbClient,
+): (sessionId: string) => Promise<string | null> {
+  return async (sessionId) => {
+    const [row] = await db
+      .select({ factor: schema.sessions.lastStepUpFactor })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.id, sessionId))
+      .limit(1);
+    return row?.factor ?? null;
+  };
+}
+
+/**
  * Whether the user has the factor enrolled AND usable.
  *
  * `two_factor.verified` matters: Better Auth writes the row at the START of TOTP enrolment, before the
