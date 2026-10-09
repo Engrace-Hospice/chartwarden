@@ -117,6 +117,7 @@ describe("M26 §4.4 consumer dispatch", () => {
         payload: {
           organizationId: "o1",
           patientId: "p1",
+          claimId: "c1",
           claimLineId: "cl1",
           revenueCode: "0656",
           days: 3,
@@ -134,6 +135,7 @@ describe("M26 §4.4 consumer dispatch", () => {
         payload: {
           organizationId: "o1",
           patientId: "p1",
+          claimId: "c1",
           claimLineId: "cl2",
           revenueCode: "0250",
           days: 3,
@@ -152,6 +154,7 @@ describe("M26 §4.4 consumer dispatch", () => {
         payload: {
           organizationId: "o1",
           patientId: "p1",
+          claimId: "c1",
           claimLineId: "cl3",
           revenueCode: "0651",
           days: 30,

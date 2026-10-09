@@ -9,7 +9,7 @@
 //
 // `from_state` is NULL on the initial creation row. No PHI / MBI is ever stored here (D13, §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {
   type BillingDb,
@@ -49,6 +49,15 @@ function toRecord(row: schema.ClaimStateHistory): ClaimStateHistoryRecord {
     fromState: row.fromState ? claimStateCodec.fromDb(row.fromState) : null,
     toState: claimStateCodec.fromDb(row.toState),
   };
+}
+
+/** A claim that has ever reached PAID / PARTIAL_PAID, with the instants the cap-day replay needs (GAP-038). */
+export interface PaidTransitionSummary {
+  readonly claimId: string;
+  /** The claim's MOST RECENT transition into PAID / PARTIAL_PAID. */
+  readonly paidAt: Date;
+  /** The earliest transition AFTER {@link paidAt} (the payment was taken back / corrected), or null if none. */
+  readonly leftPaidAt: Date | null;
 }
 
 /** Data port for `claim_state_history` (APPEND-ONLY: append + read; NO update/delete surface). */
@@ -113,5 +122,41 @@ export class ClaimStateHistoryRepository {
       .orderBy(desc(H.at), desc(H.id))
       .limit(1);
     return row ? toRecord(row) : null;
+  }
+
+  /**
+   * GAP-038 - one keyset page (by `claim_id` ascending) of the claims that have EVER been paid, each with its
+   * latest paid instant and the first transition after it. The cap-day replay (`replayLineFinalizedPage`)
+   * pairs this with each claim's CURRENT state: still paid => re-emit its day lines; no longer paid => its
+   * days must be taken back. RLS scopes the statement to `app.org_id` at the service layer.
+   */
+  async listPaidTransitionsPage(
+    afterClaimId: string | undefined,
+    limit: number,
+  ): Promise<readonly PaidTransitionSummary[]> {
+    const paidStates = [claimStateCodec.toDb("paid"), claimStateCodec.toDb("partial_paid")];
+    const rows = await this.db
+      .select({
+        claimId: H.claimId,
+        paidAt: sql<Date>`max(${H.at})`.mapWith(H.at),
+      })
+      .from(H)
+      .where(
+        and(inArray(H.toState, paidStates), afterClaimId ? gt(H.claimId, afterClaimId) : undefined),
+      )
+      .groupBy(H.claimId)
+      .orderBy(asc(H.claimId))
+      .limit(limit);
+    const out: PaidTransitionSummary[] = [];
+    for (const row of rows) {
+      const [next] = await this.db
+        .select({ at: H.at })
+        .from(H)
+        .where(and(eq(H.claimId, row.claimId), gt(H.at, row.paidAt)))
+        .orderBy(asc(H.at))
+        .limit(1);
+      out.push({ claimId: row.claimId, paidAt: row.paidAt, leftPaidAt: next?.at ?? null });
+    }
+    return out;
   }
 }

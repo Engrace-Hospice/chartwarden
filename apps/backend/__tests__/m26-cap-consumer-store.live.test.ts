@@ -26,6 +26,7 @@ import { mbiNormalizedForPatient } from "../src/modules/05-patient/seams/mbi-rea
 import { firstElectionEffectiveDateInRangeForOrg } from "../src/modules/06-admission/seams/cap-election-context";
 import { createDrizzleCapConsumerStore } from "../src/modules/26-cap/consumers/drizzle-store";
 import { handleClaimReversed } from "../src/modules/26-cap/consumers/handlers";
+import { dispatchM26UpstreamEvent } from "../src/modules/26-cap/consumers/index";
 import { M26_OUTBOX_EVENTS } from "../src/modules/26-cap/events-by-m26";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -38,6 +39,7 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT_A = "aaaaaaaa-0000-4000-8000-0000000000a1"; // has an MBI, an election in FY2026
 const PATIENT_NO_MBI = "aaaaaaaa-0000-4000-8000-0000000000a2"; // no patient_identifier row at all
 const MBI_A = "1EG4TE5MK73";
+const CLAIM_D = "dddddddd-1111-4000-8000-000000000001";
 
 describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () => {
   let admin: Client;
@@ -310,6 +312,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     const midYear = `${window.startsOn.slice(0, 4)}-11-10`;
     const r1 = await store.recordInpatientDay({
       organizationId: ORG_A,
+      claimId: CLAIM_D,
       patientId: PATIENT_A,
       sourceId: "dddddddd-0000-4000-8000-000000000001",
       revCode: "0656", // GIP
@@ -322,6 +325,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
 
     const r2 = await store.recordInpatientDay({
       organizationId: ORG_A,
+      claimId: CLAIM_D,
       patientId: PATIENT_A,
       sourceId: "dddddddd-0000-4000-8000-000000000002",
       revCode: "0655", // IRC
@@ -342,6 +346,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     // redelivery of the first day-line is an idempotent no-op — no double count
     const replay = await store.recordInpatientDay({
       organizationId: ORG_A,
+      claimId: CLAIM_D,
       patientId: PATIENT_A,
       sourceId: "dddddddd-0000-4000-8000-000000000001",
       revCode: "0656",
@@ -357,6 +362,7 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     // GAP-038 - a routine-home-care day line grows ONLY the denominator, and is replay-safe too.
     const rhc = {
       organizationId: ORG_A,
+      claimId: CLAIM_D,
       patientId: PATIENT_A,
       sourceId: "dddddddd-0000-4000-8000-000000000003",
       revCode: "0651" as const,
@@ -463,6 +469,183 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
       expect(result).toEqual({ recorded: false });
       const after = await accrualRow(ORG_A, PATIENT_A);
       expect(Number(after.paid_cents)).toBe(Number(before.paid_cents)); // untouched
+    });
+  });
+
+  // GAP-038 - the day ledger's claim identity, the roll-up reconcile and the reversal path, live as the real
+  // NOBYPASSRLS wardenx_app role through the real dispatcher.
+  describe("GAP-038 day ledger - heal, reverse, re-pay", () => {
+    const year = () => window.startsOn.slice(0, 4);
+    const dayEvent = (o: {
+      claimId: string;
+      line: string;
+      rev: "0651" | "0655" | "0656";
+      days: number;
+      postedAt: string;
+    }) => ({
+      organizationId: ORG_A,
+      claimId: o.claimId,
+      claimLineId: o.line,
+      patientId: PATIENT_A,
+      revenueCode: o.rev,
+      days: o.days,
+      serviceFrom: `${year()}-10-01`,
+      serviceTo: `${year()}-10-02`,
+      finalizedAt: o.postedAt,
+    });
+    const periodId = async () =>
+      (
+        await admin.query(
+          "SELECT id FROM cap_period WHERE organization_id = $1 AND cap_year = $2",
+          [ORG_A, capYear],
+        )
+      ).rows[0].id as string;
+    const lineState = async (line: string) =>
+      (
+        await admin.query(
+          "SELECT claim_id, reversed_at FROM cap_inpatient_day_line WHERE organization_id = $1 AND source_id = $2",
+          [ORG_A, line],
+        )
+      ).rows[0];
+    const finalized = (
+      claimId: string,
+      line: string,
+      rev: "0651" | "0656",
+      days: number,
+      at: string,
+    ) =>
+      dispatchM26UpstreamEvent(
+        {
+          topic: "m23.claim.line_finalized",
+          payload: dayEvent({ claimId, line, rev, days, postedAt: at }),
+        },
+        store,
+      );
+
+    const CLAIM_PRE = "dddddddd-2222-4000-8000-000000000001";
+    const LINE_PRE_GIP = "dddddddd-2222-4000-8000-0000000000a1";
+    const LINE_PRE_RHC = "dddddddd-2222-4000-8000-0000000000a2";
+
+    it("a replay heals a ledger row written before the denominator fix (gip_days > 0, total_patient_days = 0)", async () => {
+      const pid = await periodId();
+      const base = await inpatientAccrual(ORG_A, pid);
+      // The pre-fix state: the 0656 line sits in the ledger with no claim identity, and the roll-up grew
+      // gip_days only. Raw insert as the superuser, exactly what the old consumer left behind.
+      await admin.query(
+        `INSERT INTO cap_inpatient_day_line (organization_id, cap_period_id, patient_id, source_id, rev_code, days,
+           service_from, service_to, posted_at)
+         VALUES ($1,$2,$3,$4,'0656',4,$5,$6,$7)`,
+        [
+          ORG_A,
+          pid,
+          PATIENT_A,
+          LINE_PRE_GIP,
+          `${year()}-10-01`,
+          `${year()}-10-04`,
+          `${year()}-10-05T00:00:00Z`,
+        ],
+      );
+      await admin.query(
+        "UPDATE cap_inpatient_accrual SET gip_days = gip_days + 4 WHERE organization_id = $1 AND cap_period_id = $2",
+        [ORG_A, pid],
+      );
+      expect((await lineState(LINE_PRE_GIP)).claim_id).toBeNull();
+
+      // Replaying the finalized event (the old behaviour: a conflict that increments nothing)...
+      const r = await finalized(CLAIM_PRE, LINE_PRE_GIP, "0656", 4, `${year()}-10-05T00:00:00Z`);
+      expect(r.handled).toBe(false); // not a NEW line
+      // ...now stamps the identity and rebuilds the roll-up from the ledger: the days are in the denominator.
+      expect((await lineState(LINE_PRE_GIP)).claim_id).toBe(CLAIM_PRE);
+      const healed = await inpatientAccrual(ORG_A, pid);
+      expect(healed.gip_days).toBe(base.gip_days + 4);
+      expect(healed.total_patient_days).toBe(base.total_patient_days + 4);
+
+      // A routine day for the same claim is a genuinely new line: delta path, same totals as a rebuild.
+      expect(
+        (await finalized(CLAIM_PRE, LINE_PRE_RHC, "0651", 6, `${year()}-10-05T00:00:00Z`)).handled,
+      ).toBe(true);
+      const after = await inpatientAccrual(ORG_A, pid);
+      expect(after.total_patient_days).toBe(base.total_patient_days + 10);
+      expect(after.gip_days).toBe(base.gip_days + 4);
+    });
+
+    it("m23.claim.replaced (keyed on originalClaimId) reverses the claim's days; an unrelated id reverses nothing", async () => {
+      const pid = await periodId();
+      const before = await inpatientAccrual(ORG_A, pid);
+      const replaced = (original: string) => ({
+        topic: "m23.claim.replaced",
+        payload: {
+          organizationId: ORG_A,
+          originalClaimId: original,
+          replacementClaimId: "dddddddd-9999-4000-8000-00000000000a",
+          reason: "x",
+        },
+      });
+      const noop = await dispatchM26UpstreamEvent(
+        replaced("dddddddd-9999-4000-8000-000000000009"),
+        store,
+      );
+      expect(noop.handled).toBe(false);
+      expect(await inpatientAccrual(ORG_A, pid)).toEqual(before);
+
+      const r = await dispatchM26UpstreamEvent(replaced(CLAIM_PRE), store);
+      expect(r.handled).toBe(true);
+      expect((await lineState(LINE_PRE_GIP)).reversed_at).not.toBeNull();
+      expect((await lineState(LINE_PRE_RHC)).reversed_at).not.toBeNull();
+      const after = await inpatientAccrual(ORG_A, pid);
+      expect(after.gip_days).toBe(before.gip_days - 4);
+      expect(after.total_patient_days).toBe(before.total_patient_days - 10);
+      // idempotent: a second delivery hits nothing and changes nothing
+      await dispatchM26UpstreamEvent(replaced(CLAIM_PRE), store);
+      expect(await inpatientAccrual(ORG_A, pid)).toEqual(after);
+    });
+
+    it("a stale re-delivery posted BEFORE the reversal leaves it reversed; the re-pay (later posting) clears it with the SAME line ids", async () => {
+      const pid = await periodId();
+      const reversedTotals = await inpatientAccrual(ORG_A, pid);
+      await finalized(CLAIM_PRE, LINE_PRE_GIP, "0656", 4, `${year()}-10-05T00:00:00Z`);
+      expect((await lineState(LINE_PRE_GIP)).reversed_at).not.toBeNull();
+      expect(await inpatientAccrual(ORG_A, pid)).toEqual(reversedTotals);
+
+      // The corrected 835 re-posts the claim: same claim_line ids, a posting instant after the reversal.
+      const repostedAt = new Date(Date.now() + 60_000).toISOString();
+      await finalized(CLAIM_PRE, LINE_PRE_GIP, "0656", 4, repostedAt);
+      await finalized(CLAIM_PRE, LINE_PRE_RHC, "0651", 6, repostedAt);
+      expect((await lineState(LINE_PRE_GIP)).reversed_at).toBeNull();
+      expect((await lineState(LINE_PRE_RHC)).reversed_at).toBeNull();
+      const repaid = await inpatientAccrual(ORG_A, pid);
+      expect(repaid.gip_days).toBe(reversedTotals.gip_days + 4);
+      expect(repaid.total_patient_days).toBe(reversedTotals.total_patient_days + 10); // no double count
+    });
+
+    it("m25.remittance.claim_recouped reverses by claimId; another tenant naming the same claim id changes nothing", async () => {
+      const pid = await periodId();
+      const before = await inpatientAccrual(ORG_A, pid);
+      const recoup = (org: string, postedAt: string) => ({
+        topic: "m25.remittance.claim_recouped",
+        payload: {
+          organizationId: org,
+          claimId: CLAIM_PRE,
+          patientId: null,
+          serviceFrom: null,
+          serviceTo: null,
+          postedAt,
+        },
+      });
+      await dispatchM26UpstreamEvent(
+        recoup(ORG_B, new Date(Date.now() + 90_000).toISOString()),
+        store,
+      );
+      expect(await inpatientAccrual(ORG_A, pid)).toEqual(before);
+      expect((await lineState(LINE_PRE_GIP)).reversed_at).toBeNull();
+
+      const r = await dispatchM26UpstreamEvent(
+        recoup(ORG_A, new Date(Date.now() + 120_000).toISOString()),
+        store,
+      );
+      expect(r.handled).toBe(true);
+      const after = await inpatientAccrual(ORG_A, pid);
+      expect(after.total_patient_days).toBe(before.total_patient_days - 10);
     });
   });
 });

@@ -21,6 +21,10 @@ export const HOSPICE_LOC_REVENUE_CODES: ReadonlySet<string> = new Set([
   "0655",
   "0656",
 ]);
+/** Whether `revenueCode` is a hospice level-of-care code the cap-day ledger records. */
+export function isHospiceLocRevenueCode(revenueCode: string): boolean {
+  return HOSPICE_LOC_REVENUE_CODES.has(revenueCode);
+}
 const CHC_REVENUE_CODE = "0652";
 const MS_PER_DAY = 86_400_000;
 

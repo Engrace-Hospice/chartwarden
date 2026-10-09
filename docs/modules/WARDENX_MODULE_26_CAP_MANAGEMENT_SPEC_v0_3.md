@@ -2569,6 +2569,8 @@ After the patch is applied:
 - The boot validation walk should report all six M26-published seams registered and matched against documented consumers
 - The dependency-cruiser rule `no-cross-schema-imports` should pass with zero violations involving the `packages/cap-management/` path
 
+> **As-built decision (GAP-038) - the inpatient day ledger is the source of truth, the roll-up is its cache.** `cap_inpatient_day_line` (migration 1000) gains `claim_id` (the M23 claim; null on rows written before the column) and `reversed_at`. `cap_inpatient_accrual` is rebuilt from the ledger rows with `reversed_at IS NULL` (`consumers/inpatient-reconcile.ts`), on every replayed/un-reversed/reversed delivery and at the top of every nightly projection recompute, so a pre-fix row (`gip_days > 0`, `total_patient_days = 0`) self-heals. The ledger stays append-only for every other column: `wardenx_app` holds a column-level `UPDATE (claim_id, reversed_at)` grant only. Reversal: `m23.claim.replaced` / `m23.claim.voided` (keyed on `originalClaimId`, never the replacement/void claim) and `m25.remittance.claim_recouped` (keyed on `claimId`) annotate the claim's live lines; a claim re-paid after a recoup reuses its `claim_line` ids, and the re-delivered `line_finalized` clears `reversed_at` only when posted after the reversal. Historical days are backfilled by the platform-ops script `scripts/backfill-line-finalized.ts` (M23 replays `m23.claim.line_finalized` for still-paid claims in cap years the tenant has opened, M26 reverses the days of claims no longer paid); years with no `cap_period`, or with a sealed one, are reported, never written. Overage cents still come from the national rate table (billed-rate differential deferred).
+
 -----
 
 ## End of Spec

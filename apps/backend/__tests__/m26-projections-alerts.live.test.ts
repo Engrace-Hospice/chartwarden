@@ -317,6 +317,7 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
     });
     const day = (n: number, revCode: "0651" | "0655" | "0656", days: number) => ({
       organizationId: ORG,
+      claimId: "dddddddd-0000-4000-8000-0000000000c1",
       patientId: PAT_HIGH,
       sourceId: `dddddddd-0000-4000-8000-00000000000${n}`,
       revCode,
