@@ -57424,6 +57424,10 @@
                                   "type": "string"
                                 },
                                 {
+                                  "const": "record_acceptance",
+                                  "type": "string"
+                                },
+                                {
                                   "const": "retry",
                                   "type": "string"
                                 },
@@ -57785,6 +57789,10 @@
                           },
                           {
                             "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
                             "type": "string"
                           },
                           {
@@ -58202,6 +58210,10 @@
                           },
                           {
                             "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
                             "type": "string"
                           },
                           {
@@ -58641,6 +58653,10 @@
                             "type": "string"
                           },
                           {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -59024,6 +59040,10 @@
                             "type": "string"
                           },
                           {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -59399,6 +59419,10 @@
                           },
                           {
                             "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
                             "type": "string"
                           },
                           {
@@ -59780,6 +59804,10 @@
                             "type": "string"
                           },
                           {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -59839,13 +59867,13 @@
         }
       }
     },
-    "/api/v1/billing/dde-items/{id}/record-outcome": {
+    "/api/v1/billing/dde-items/{id}/record-acceptance": {
       "post": {
-        "operationId": "postApiV1BillingDdeitemsByIdRecordoutcome",
+        "operationId": "postApiV1BillingDdeitemsByIdRecordacceptance",
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Record what came back: accepted (with the MAC date; an NOE/NOTR then takes its existing acceptance transition with payer_status_date source dde_manual) or returned (with an RTP reason code)",
+        "summary": "Record that the MAC ACCEPTED the item (step-up, billing.dde.mark_submitted). On an NOE/NOTR the notice takes its existing acceptance transition with the entered date as payer_status_date (source dde_manual); the date is not before the election/termination date and not in the future",
         "parameters": [
           {
             "name": "id",
@@ -60158,6 +60186,436 @@
                             "type": "string"
                           },
                           {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "retry",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "close",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "type": "integer"
+                  },
+                  "macAcceptedOn": {
+                    "format": "date",
+                    "description": "The date FISS/the MAC accepted it (operator-entered). Required for an NOE/NOTR, where it is stored as the notice's payer_status_date with source dde_manual; not before the election/termination date, not in the future.",
+                    "type": "string"
+                  },
+                  "dcn": {
+                    "pattern": "^[A-Za-z0-9]{13,23}$",
+                    "description": "The DCN / ICN / receipt number FISS showed (13 to 23 characters).",
+                    "type": "string"
+                  },
+                  "outcomeCode": {
+                    "description": "What came back, from a closed set.",
+                    "anyOf": [
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "accepted_with_edits",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rtp",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "adr_requested",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "maxLength": 500,
+                    "description": "Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/dde-items/{id}/record-outcome": {
+      "post": {
+        "operationId": "postApiV1BillingDdeitemsByIdRecordoutcome",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Record a RETURNED / rejected outcome with its RTP reason code (an accepted outcome is record-acceptance)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ddeWorkItemId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "itemType",
+                    "subjectKind",
+                    "subjectId",
+                    "state",
+                    "attemptNumber",
+                    "assigneeMembershipId",
+                    "priority",
+                    "source",
+                    "deadlineAt",
+                    "deadlineStatus",
+                    "submittedAt",
+                    "macAcceptedOn",
+                    "dcn",
+                    "rtpReasonCode",
+                    "outcomeCode",
+                    "notes",
+                    "allowedActions",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "ddeWorkItemId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "itemType": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "claim_entry",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rtp_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjustment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancel",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adr_response",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectKind": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "noe_record",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr_record",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "returned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "attemptNumber": {
+                      "type": "integer"
+                    },
+                    "assigneeMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priority": {
+                      "type": "integer"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "watchdog",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineStatus": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "on_track",
+                          "type": "string"
+                        },
+                        {
+                          "const": "at_risk",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overdue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "met",
+                          "type": "string"
+                        },
+                        {
+                          "const": "missed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "macAcceptedOn": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rtpReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outcomeCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "notes": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "claim",
+                            "type": "string"
+                          },
+                          {
+                            "const": "assign",
+                            "type": "string"
+                          },
+                          {
+                            "const": "start",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_submission",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -60203,7 +60661,8 @@
                 "type": "object",
                 "required": [
                   "expectedVersion",
-                  "outcome"
+                  "outcome",
+                  "rtpReasonCode"
                 ],
                 "properties": {
                   "expectedVersion": {
@@ -60212,35 +60671,47 @@
                     "type": "integer"
                   },
                   "outcome": {
+                    "const": "returned",
+                    "type": "string"
+                  },
+                  "rtpReasonCode": {
+                    "pattern": "^[A-Z0-9]{1,8}$",
+                    "description": "The RTP / reject reason code.",
+                    "type": "string"
+                  },
+                  "dcn": {
+                    "pattern": "^[A-Za-z0-9]{13,23}$",
+                    "description": "The DCN / ICN / receipt number FISS showed (13 to 23 characters).",
+                    "type": "string"
+                  },
+                  "outcomeCode": {
+                    "description": "What came back, from a closed set.",
                     "anyOf": [
                       {
                         "const": "accepted",
                         "type": "string"
                       },
                       {
-                        "const": "returned",
+                        "const": "accepted_with_edits",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rtp",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "adr_requested",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
                         "type": "string"
                       }
                     ]
-                  },
-                  "macAcceptedOn": {
-                    "format": "date",
-                    "description": "The date FISS/the MAC accepted it (operator-entered). Required for an accepted NOE/NOTR; stored as the notice's payer_status_date with source dde_manual.",
-                    "type": "string"
-                  },
-                  "dcn": {
-                    "pattern": "^[A-Za-z0-9]{1,23}$",
-                    "description": "The DCN / ICN / receipt number FISS showed.",
-                    "type": "string"
-                  },
-                  "rtpReasonCode": {
-                    "pattern": "^[A-Z0-9]{1,8}$",
-                    "description": "The RTP / reject reason code. Required when returned.",
-                    "type": "string"
-                  },
-                  "outcomeCode": {
-                    "pattern": "^[A-Za-z0-9_]{1,32}$",
-                    "type": "string"
                   },
                   "notes": {
                     "maxLength": 500,
@@ -60573,6 +61044,10 @@
                             "type": "string"
                           },
                           {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -60626,8 +61101,8 @@
                     "type": "integer"
                   },
                   "dcn": {
-                    "pattern": "^[A-Za-z0-9]{1,23}$",
-                    "description": "The DCN / ICN / receipt number FISS showed.",
+                    "pattern": "^[A-Za-z0-9]{13,23}$",
+                    "description": "The DCN / ICN / receipt number FISS showed (13 to 23 characters).",
                     "type": "string"
                   },
                   "notes": {
@@ -60958,6 +61433,10 @@
                           },
                           {
                             "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
                             "type": "string"
                           },
                           {
@@ -61336,6 +61815,10 @@
                           },
                           {
                             "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
                             "type": "string"
                           },
                           {
