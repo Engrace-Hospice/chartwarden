@@ -1,0 +1,17 @@
+--- page 1 ---
+Electronic Visit Verification Record
+Document date
+2026-10-12 17:02 UTC
+This record confirms that the electronic visit verification submission identified below was accepted by the state
+aggregator on the date shown. It records acceptance only.
+Submission
+Submission reference
+33333333
+Visit reference
+11111111
+State
+OR
+Aggregator transaction
+TXN-88-2041
+Accepted
+2026-10-12 17:02 UTC

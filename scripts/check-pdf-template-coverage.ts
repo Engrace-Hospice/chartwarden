@@ -9,6 +9,7 @@
  *
  * WHAT IT ENFORCES
  *  1. Every renderer key has a bespoke builder OR is in GENERIC_ALLOWLIST with a reason (no silent default).
+ *     A reason must name a verified blocker: a placeholder ("scheduled", "wave N", TODO) or a stub fails.
  *  2. RATCHET: a GENERIC_ALLOWLIST entry that now has a builder, or names no renderer key, fails - delete it.
  *  3. Every forms-registry key is a renderer key, or in FORMS_KEY_ALIASES (target must be a renderer key), or in
  *     FORMS_ONLY_KEYS (and then must truly have no renderer key). A forms key in none of them is drift.
@@ -23,6 +24,11 @@ import { staticRequestTemplateKeys } from "../apps/backend/src/modules/22-docume
 import { DEFAULT_PDF_RENDERERS } from "../apps/backend/src/modules/22-documents/render-pdf";
 import { PLATFORM_TEMPLATE_TABLE } from "../apps/backend/src/modules/22-documents/seams/renderer";
 import { FORMS_KEY_ALIASES, FORMS_ONLY_KEYS, GENERIC_ALLOWLIST } from "./pdf-generic-allowlist";
+
+/** A reason shorter than this cannot name a verified blocker ("no data", "later"). */
+export const MIN_REASON_LENGTH = 40;
+/** Placeholders that defer rather than explain: "scheduled", "wave N", TODO / TBD. */
+const PLACEHOLDER_REASON = /\b(scheduled|todo|tbd|wave\s*\d)\b/i;
 
 export interface CoverageInput {
   readonly rendererKeys: readonly string[];
@@ -54,6 +60,13 @@ export function checkCoverage(input: CoverageInput): string[] {
   }
   for (const [key, reason] of Object.entries(input.genericAllowlist)) {
     if (reason.trim() === "") out.push(`GENERIC_ALLOWLIST '${key}' has no reason`);
+    else if (PLACEHOLDER_REASON.test(reason)) {
+      out.push(
+        `GENERIC_ALLOWLIST '${key}' reason is a placeholder (scheduled / wave / TODO): name the verified blocker`,
+      );
+    } else if (reason.trim().length < MIN_REASON_LENGTH) {
+      out.push(`GENERIC_ALLOWLIST '${key}' reason is too short to name a blocker`);
+    }
     if (!renderer.has(key))
       out.push(`GENERIC_ALLOWLIST '${key}' is not a renderer key: delete the entry`);
     else if (builders.has(key)) {

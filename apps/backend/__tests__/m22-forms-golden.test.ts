@@ -15,9 +15,10 @@ import {
   ORDER_RECORD,
   REVOCATION,
   TRANSFER,
+  WAVE4_FIXTURES,
 } from "./_m22-form-fixtures";
 
-describe("M22 form goldens (waves 1-3)", () => {
+describe("M22 form goldens (waves 1-4)", () => {
   it("cti", () => expectGolden("cti", COMPILED_FORMS.cti(CTI)));
   it("cti (multi-page narrative)", () =>
     expectGolden(
@@ -100,5 +101,10 @@ describe("M22 form goldens (waves 1-3)", () => {
   // Wave 3 - billing correspondence.
   for (const key of Object.keys(BILLING_FIXTURES) as Array<keyof typeof BILLING_FIXTURES>) {
     it(key, () => expectGolden(key, COMPILED_FORMS[key](BILLING_FIXTURES[key] as never)));
+  }
+
+  // Wave 4 - operational documents (visit confirmation, EVV verification, DSAR sheet, tenant-export cover).
+  for (const key of Object.keys(WAVE4_FIXTURES) as Array<keyof typeof WAVE4_FIXTURES>) {
+    it(key, () => expectGolden(key, COMPILED_FORMS[key](WAVE4_FIXTURES[key] as never)));
   }
 });

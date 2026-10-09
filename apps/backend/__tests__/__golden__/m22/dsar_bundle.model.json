@@ -1,0 +1,44 @@
+{
+  "title": "Patient Data Export - Transmittal Sheet",
+  "createdAtIso": "2000-01-01T00:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Patient Data Export - Transmittal Sheet"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": []
+    },
+    {
+      "kind": "legalText",
+      "id": "transmittal_statement",
+      "text": "This sheet accompanies the data export prepared for a patient access request. It records the export reference, the integrity digest of the archive and whether Part 2 redaction was applied. To confirm the archive is complete and unaltered, compute the SHA-256 digest of the file received and compare it with the value below."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Export"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Export reference",
+          "55555555"
+        ],
+        [
+          "Archive SHA-256",
+          "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        ]
+      ]
+    },
+    {
+      "kind": "banner",
+      "tone": "info",
+      "text": "42 CFR Part 2 redaction was applied to the export: substance use disorder treatment records the patient has not consented to release were excluded."
+    }
+  ],
+  "runningHeader": "Patient Data Export - Transmittal Sheet",
+  "discloseDegradedGlyphs": true
+}

@@ -6,7 +6,10 @@ const base: CoverageInput = {
   builderKeys: ["a"],
   formsKeys: ["a", "b", "c_letter", "only_form"],
   requestKeys: ["a", "b"],
-  genericAllowlist: { b: "wave 2", c: "wave 3" },
+  genericAllowlist: {
+    b: "producer event carries identifiers only: nothing to draw",
+    c: "producer payload is an untyped blob with no schema to validate",
+  },
   aliases: { c_letter: "c" },
   formsOnly: { only_form: "no render path" },
 };
@@ -52,6 +55,39 @@ describe("arch:pdf-templates", () => {
   it("fails a render request that names a template the renderer refuses (M13 reconciliation worksheet class)", () => {
     const v = checkCoverage({ ...base, requestKeys: ["a", "ghost"] });
     expect(v.join("\n")).toContain("names template 'ghost'");
+  });
+
+  it("fails a placeholder reason ('scheduled', 'wave N', TODO): a reason must name a verified blocker", () => {
+    for (const reason of [
+      "bereavement layout scheduled",
+      "GAP-033 wave 4: bespoke layout later",
+      "TODO write a layout",
+      "tbd",
+    ]) {
+      const v = checkCoverage({
+        ...base,
+        genericAllowlist: { b: reason, c: "ok - a real, specific blocker" },
+      });
+      expect(v.join("\n")).toContain("GENERIC_ALLOWLIST 'b' reason is a placeholder");
+    }
+  });
+
+  it("fails a reason too short to name a blocker", () => {
+    const v = checkCoverage({
+      ...base,
+      genericAllowlist: { b: "no data", c: "ok - a real, specific blocker" },
+    });
+    expect(v.join("\n")).toContain("GENERIC_ALLOWLIST 'b' reason is too short");
+  });
+
+  it("every renderer key is exactly one of: bespoke builder, allow-listed generic (a partition)", () => {
+    const input = currentInput();
+    const bespoke = new Set(input.builderKeys);
+    const allowed = new Set(Object.keys(input.genericAllowlist));
+    for (const key of input.rendererKeys) {
+      expect(bespoke.has(key) !== allowed.has(key), key).toBe(true);
+    }
+    expect(bespoke.size + allowed.size).toBe(input.rendererKeys.length);
   });
 
   it("the live registries are consistent", () => {

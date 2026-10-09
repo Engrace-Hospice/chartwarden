@@ -14,16 +14,16 @@
 /**
  * GAP-033 - why a key is still on the readable generic builder instead of a bespoke form. Each reason names the
  * SPECIFIC blocker verified against the producer's code (waves 2-3 were investigated key by key); "scheduled" is
- * never a reason on its own. Wave 1 (CoP documents), the signed order documents (`order_record`,
- * `medication_order`) and the billing correspondence (NOE / NOTR receipts, claim acknowledgments, denial letters)
- * have bespoke forms and are not listed here.
+ * never a reason on its own. Keys with a bespoke form (the CoP documents, the signed order documents, the billing correspondence
+ * and the operational sheets: visit confirmation, EVV verification, DSAR transmittal, tenant-export cover letter)
+ * are not listed here.
  */
 const ID_ONLY =
   "producer event carries identifiers only: a bespoke layout has nothing to draw until the owning module builds a typed renderPayload in its signing transaction (the M6 / M11 / M12 pattern) and M22 validates it";
 const NO_PRODUCER =
   "no module emits a render request for this template yet, so there is no producer payload to lay out";
-const OPERATIONAL_WAVE4 =
-  "GAP-033 wave 4 (patient-facing / operational): readable via the generic structured builder; bespoke layout scheduled.";
+const BEREAVEMENT_WORDING =
+  "the fixed condolence / program wording of each letter is program-authored content that compliance and the bereavement program must supply (as for the ABN): it is not invented in code";
 const TABULAR_BY_DESIGN =
   "Arbitrary column sets owned by M33: a dedicated tabular-report builder (not a form) is the target; the generic builder is the correct path until then.";
 const DATA_ARTIFACT =
@@ -64,12 +64,8 @@ export const GENERIC_ALLOWLIST: Readonly<Record<string, string>> = {
   body_release_authorization: `m37.body_release.document_requested carries {bodyReleaseId, patientId}: ${ID_ONLY}`,
   comfort_kit_return_receipt: `m21.supply_request.document_requested carries {supplyRequestId, dispatchId, documentKind}; the DEA-1304 receipt needs the reconciled lot / quantity manifest from M21's rows: ${ID_ONLY}`,
   supply_bill_of_lading: `m21.supply_request.document_requested carries {supplyRequestId, dispatchId, documentKind}; the bill of lading needs the dispatch manifest from M21's rows: ${ID_ONLY}`,
-  bereavement_letter: OPERATIONAL_WAVE4,
-  bereavement_welcome_packet: OPERATIONAL_WAVE4,
-  visit_confirmation: OPERATIONAL_WAVE4,
-  evv_verification: OPERATIONAL_WAVE4,
-  dsar_bundle: OPERATIONAL_WAVE4,
-  tenant_export_cover_letter: OPERATIONAL_WAVE4,
+  bereavement_letter: `m16.bereavement.outreach_artifact_requested ships payloadJsonb {outreachKind, anniversaryMark, deathDate, dueAt} only: no decedent name, no recipient (bereaved_contact.display_name is plaintext but is not on the wire), no counselor or hospice name, so a letter has no addressee; and ${BEREAVEMENT_WORDING} (seven outreach kinds).`,
+  bereavement_welcome_packet: `the plan-open request ships payloadJsonb {deathDate} only: no decedent or recipient name, no counselor, no hospice contact details, and ${BEREAVEMENT_WORDING}.`,
   report_export: TABULAR_BY_DESIGN,
   scheduled_report: TABULAR_BY_DESIGN,
 };

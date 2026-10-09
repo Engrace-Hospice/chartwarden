@@ -302,3 +302,42 @@ export const BILLING_FIXTURES = {
   denial_appeal_cover_letter: DENIAL_COVER,
   denial_resolution_letter: DENIAL_RESOLUTION,
 } as const;
+
+// ── GAP-033 Wave 4 - operational documents whose producers already ship the whole content ──────────────
+export const VISIT_CONFIRMATION = {
+  visitId: "11111111-0000-4000-8000-0000000000a1",
+  patientId: "22222222-0000-4000-8000-0000000000b2",
+  channel: "sms",
+  scheduledStartedAt: "2026-10-12T15:30:00.000Z",
+} as const;
+export const EVV_VERIFICATION = {
+  submissionId: "33333333-0000-4000-8000-0000000000c3",
+  visitId: "11111111-0000-4000-8000-0000000000a1",
+  stateCode: "OR",
+  aggregatorTransactionId: "TXN-88-2041",
+  acceptedAt: "2026-10-12T17:02:00.000Z",
+} as const;
+export const DSAR_BUNDLE = {
+  organizationId: "44444444-0000-4000-8000-0000000000d4",
+  patientId: "22222222-0000-4000-8000-0000000000b2",
+  aggregateId: "55555555-0000-4000-8000-0000000000e5",
+  aggregateType: "other",
+  retentionClass: "compliance",
+  bundleMinioObjectKey: "exports/dsar/55555555.ndjson.gz",
+  bundleSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  partTwoRedactionApplied: true,
+  title: "DSAR export for Pat Sentinel",
+} as const;
+export const TENANT_EXPORT_COVER = {
+  organizationId: "44444444-0000-4000-8000-0000000000d4",
+  aggregateId: "66666666-0000-4000-8000-0000000000f6",
+  bundleSha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+} as const;
+
+/** Wave 4 forms with their rich payload (patient-independent: no patient identity on the page). */
+export const WAVE4_FIXTURES = {
+  visit_confirmation: VISIT_CONFIRMATION,
+  evv_verification: EVV_VERIFICATION,
+  dsar_bundle: DSAR_BUNDLE,
+  tenant_export_cover_letter: TENANT_EXPORT_COVER,
+} as const;

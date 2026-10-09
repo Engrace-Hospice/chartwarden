@@ -1,0 +1,13 @@
+--- page 1 ---
+Visit Confirmation Reminder
+Document date
+2026-10-12 15:30 UTC
+This is a reminder that a hospice visit is scheduled to begin at the time shown. If the time does not work, contact the
+hospice care team as soon as possible so the visit can be rescheduled.
+Visit
+Scheduled start
+2026-10-12 15:30 UTC
+Visit reference
+11111111
+Reminder sent by
+Text message

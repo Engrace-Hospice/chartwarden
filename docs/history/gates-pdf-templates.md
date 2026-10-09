@@ -116,3 +116,24 @@ Live (private pgvector container, `wardenx_app`, real publisher / dispatcher / c
 services and reads the stored PDF back (patient, ordering physician, signer manifestation, the no-contract note, the
 published-contract lines), publishes the six billing letters through the catalog-validating publisher under their
 modules' own schemas and reads each back; `f168` appends a transmission version onto a typed medication order.
+
+## GAP-033 stage 3 - Wave 4 and closure
+
+Four operational documents whose producers already put the whole content on the wire now have bespoke FormSpec forms
+(`render-pdf/forms/operational-forms.ts`, schemas in `packages/types/src/render-payloads/operational.ts`): the M17
+`visit_confirmation` reminder, the M18 `evv_verification` record, the M34 `dsar_bundle` transmittal sheet and the M34
+`tenant_export_cover_letter`. No producer changed. Each is patient-independent (the payloads hold ids, never a name),
+has a constant PHI-free title, prints ids shortened, and draws only declared fields: the DSAR payload's `title`,
+`bundleMinioObjectKey` and `patientId` are never drawn. The two archive digests must be 64 lowercase hex (the sheet
+exists so the recipient can verify the file). The EVV record makes no geo claim: the `planEvvVerificationRender`
+geo/map content is not on the real `m18.evv.aggregator_accepted` event.
+
+**Not built, with the verified blocker.** `bereavement_letter` and `bereavement_welcome_packet`: the M16 request ships
+`payloadJsonb {outreachKind, anniversaryMark, deathDate, dueAt}` / `{deathDate}` only (no addressee, decedent, counselor
+or hospice name), and the fixed condolence / program wording per outreach kind is program-authored content that
+compliance and the bereavement program must supply, as for the ABN. Both are allow-listed with that reason.
+`report_export` / `scheduled_report` stay generic by design (M33 column sets; a tabular builder is the target).
+
+**Closure gate.** `arch:pdf-templates` now also refuses a placeholder reason ("scheduled", "wave N", TODO/TBD) and a
+reason too short to name a blocker, and a test asserts the partition: every renderer key is exactly one of bespoke
+builder / allow-listed generic. State at closure: 26 bespoke, 25 allow-listed (of 51 renderer keys).

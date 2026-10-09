@@ -73,6 +73,11 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     "medicaid_claim_acknowledgment_letter",
     "denial_appeal_cover_letter",
     "denial_resolution_letter",
+    // Wave 4 (m22-forms-wave4.test.ts): the operational documents.
+    "visit_confirmation",
+    "evv_verification",
+    "dsar_bundle",
+    "tenant_export_cover_letter",
   ]);
 
   it("covers the full template table (guards against the loop matching nothing)", () => {

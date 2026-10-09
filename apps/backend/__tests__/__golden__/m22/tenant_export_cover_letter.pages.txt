@@ -1,0 +1,11 @@
+--- page 1 ---
+Organization Data Export - Cover Letter
+This letter accompanies the whole-organization data archive prepared at the organization's request. To confirm the
+archive is complete and unaltered, compute the SHA-256 digest of the file received and compare it with the value
+below.
+Export
+Export reference
+66666666
+Archive SHA-256
+2c26b46b68ffc68ff99b453c1d30413413422d706483b
+fa0f98a5e886266e7ae

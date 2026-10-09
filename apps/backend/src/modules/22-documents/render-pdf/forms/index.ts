@@ -13,6 +13,12 @@ import { dischargeForm, transferForm } from "./discharge-form";
 import { f2fForm } from "./f2f-form";
 import { medicationOrderForm } from "./medication-order-form";
 import { norForm } from "./nor-form";
+import {
+  dsarBundleForm,
+  evvVerificationForm,
+  tenantExportCoverForm,
+  visitConfirmationForm,
+} from "./operational-forms";
 import { orderRecordForm } from "./order-record-form";
 import { revocationForm } from "./revocation-form";
 
@@ -40,6 +46,11 @@ export const COMPILED_FORMS = {
   medicaid_claim_acknowledgment_letter: medicaidClaimAcknowledgmentForm,
   denial_appeal_cover_letter: denialAppealCoverForm,
   denial_resolution_letter: denialResolutionForm,
+  // GAP-033 Wave 4 - operational documents whose producers (M17, M18, M34) already ship the whole content.
+  visit_confirmation: visitConfirmationForm,
+  evv_verification: evvVerificationForm,
+  dsar_bundle: dsarBundleForm,
+  tenant_export_cover_letter: tenantExportCoverForm,
 } as const;
 
 /** The keys whose PDF title is the form's constant, PHI-free title (never payload-derived). */
