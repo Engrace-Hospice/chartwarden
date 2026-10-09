@@ -34,8 +34,8 @@ import type {
 } from "@wardenx/types";
 import { ForbiddenError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
-import { type PacketContentView, mapPacketContent } from "./packet-content";
 import { assertMeetingWriteAllowed } from "./meeting-write-policy";
+import { type PacketContentView, mapPacketContent } from "./packet-content";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedIdgEvent {

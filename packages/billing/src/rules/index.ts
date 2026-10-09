@@ -1,7 +1,7 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 25 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 26 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
@@ -18,12 +18,13 @@ export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 25 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 26 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
 import { admissionCodesPresent } from "./admission-codes-present";
 import { aggregateCapProjection } from "./aggregate-cap-projection";
 import { bereavementDischargeLegitimacy } from "./bereavement-discharge";
+import { cbsaValueCodesPresent } from "./cbsa-value-codes-present";
 import { claimTotalMatchesLines } from "./claim-total-matches-lines";
 import { ctiSignedPerPeriod } from "./cti-signed";
 import { duplicateBillingCheck } from "./duplicate-billing";
@@ -62,6 +63,7 @@ import { visitLinesReportable } from "./visit-lines-reportable";
 
 export {
   admissionCodesPresent,
+  cbsaValueCodesPresent,
   claimTotalMatchesLines,
   visitLinesReportable,
   patientEligibilityPartAActive,
@@ -135,10 +137,12 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   visitLinesReportable,
   // UB-04 FL 14/15 — the recorded admission type + point of origin (blocks; never invented).
   admissionCodesPresent,
+  // CMS ch. 11 §30.3 — value codes 61 / G8 (the wage-index CBSA); blocks when one cannot be resolved.
+  cbsaValueCodesPresent,
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 25 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 26 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */

@@ -898,9 +898,9 @@ import {
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
-  buildDrizzleVisitChargeService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
+  buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
@@ -1473,6 +1473,7 @@ import {
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
   facilityKindsForIds,
+  facilityPostalCodesForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
   registerM40CronWorkers,
@@ -2985,6 +2986,31 @@ function buildM23AssemblyPorts(db: DbClient): {
       },
       facilityKinds: {
         kindsFor: (facilityIds) => facilityKindsForIds(db, facilityIds),
+      },
+    },
+    // Wage-index value codes 61 / G8 (CMS ch. 11 s30.3): the residence ZIP on the claim's last day (M5) and the ZIP of
+    // the latest facility the patient resided in over the claim range (M5 spans + M40 facility address). Resolved
+    // lazily per call, like placeOfService above.
+    claimZips: {
+      residencePostalCode: async (orgId, patientId, asOf) =>
+        (
+          await (getSeam("PatientAddressReader") as PatientAddressReader).residenceAt(
+            orgId,
+            patientId,
+            asOf,
+          )
+        )?.postalCode ?? null,
+      inpatientFacilityPostalCode: async (orgId, patientId, range) => {
+        const spans = await (
+          getSeam("PatientAddressReader") as PatientAddressReader
+        ).residencesBetween(orgId, patientId, range.from, range.to);
+        const latest = [...spans]
+          .filter((s) => s.kind === "facility" && s.facilityId)
+          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+        if (!latest?.facilityId) return null;
+        return (
+          (await facilityPostalCodesForIds(db, [latest.facilityId])).get(latest.facilityId) ?? null
+        );
       },
     },
   };

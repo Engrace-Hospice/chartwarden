@@ -92,6 +92,12 @@ export const claim = pgTable(
       .notNull()
       .default([]),
 
+    // Wage-index value codes (migration 1059) FL 39-41 / HI*BE: 61 = residence CBSA, G8 = inpatient-facility CBSA.
+    valueCodes: jsonb("value_codes")
+      .$type<{ code: "61" | "G8"; cbsaCode: string }[]>()
+      .notNull()
+      .default([]),
+
     // Physician NPIs for UB-04 FL 76 / FL 78 (migration 1054): provider identifiers resolved from M40 at assembly
     // and refreshed on every re-validation. The certifying NPI is only set when it differs from the attending.
     // Names are resolved at generation time, never stored.

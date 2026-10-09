@@ -39,6 +39,7 @@ export * from "./sequestration-policy";
 export * from "./hospice-rate-table";
 export * from "./hospice-visit-charge-schedule";
 export * from "./wage-index-factor";
+export * from "./hospice-cbsa-reference";
 export * from "./tenant-wage-index";
 export * from "./mac-submitter-credential";
 export * from "./eligibility-check";

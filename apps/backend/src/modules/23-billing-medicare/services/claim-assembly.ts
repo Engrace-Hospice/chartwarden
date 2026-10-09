@@ -39,6 +39,7 @@ import {
   applySequestrationPolicy,
   claimAdmissionCodes,
   claimPhysicianNpis,
+  claimValueCodes,
   deriveControlNumber,
   deriveTypeOfBill,
   isSkipped,
@@ -253,6 +254,7 @@ export function buildClaimAssemblyService(
         capProjectionBound,
         capProjectionCtx,
         signedEncounters,
+        valueAreas,
       } = facts;
       const firstPeriod = resolvedPeriods[0];
       const lastPeriod = resolvedPeriods[resolvedPeriods.length - 1];
@@ -472,6 +474,15 @@ export function buildClaimAssemblyService(
           ...claimPhysicianNpis(mdmResolution),
           // UB-04 FL 14 / FL 15 (migration 1057) from the M6 admission; also refreshed on re-validation.
           ...claimAdmissionCodes(admission),
+          // UB-04 FL 39-41 value codes 61 / G8 (migration 1059), also refreshed on re-validation.
+          valueCodes: valueAreas
+            ? [
+                ...claimValueCodes(
+                  allLineInputs.map((l) => l.revenueCode),
+                  valueAreas,
+                ).values,
+              ]
+            : [],
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(

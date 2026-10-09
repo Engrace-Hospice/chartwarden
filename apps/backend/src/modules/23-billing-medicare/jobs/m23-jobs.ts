@@ -729,6 +729,8 @@ export function claimDocumentFor(
     /** Migration 1057 — UB-04 FL 14 / FL 15, from the M6 admission. Absent on a pre-1057 caller shape. */
     readonly admissionTypeCode?: string | null;
     readonly admissionSourceCode?: string | null;
+    /** Migration 1059 — wage-index value codes 61 / G8. Absent on a pre-1059 caller shape. */
+    readonly valueCodes?: unknown;
   },
   claimControlNumber: string,
 ): ClaimDocument837i {
@@ -765,6 +767,14 @@ export function claimDocumentFor(
     serviceTo: claim.serviceTo,
     admissionTypeCode: claim.admissionTypeCode ?? null,
     admissionSourceCode: claim.admissionSourceCode ?? null,
+    valueCodes: Array.isArray(claim.valueCodes)
+      ? claim.valueCodes.flatMap((v: unknown) => {
+          const r = v as { code?: unknown; cbsaCode?: unknown } | null;
+          return r && typeof r.code === "string" && typeof r.cbsaCode === "string"
+            ? [{ code: r.code, cbsaCode: r.cbsaCode }]
+            : [];
+        })
+      : [],
     dischargeCodes: { patientStatus: claim.patientStatusCode, conditionCodes, occurrenceCodes },
     occurrenceSpans,
   };

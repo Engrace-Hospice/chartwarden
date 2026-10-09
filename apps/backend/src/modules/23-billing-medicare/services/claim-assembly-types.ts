@@ -24,7 +24,7 @@ import type {
   TerminologyResolution,
   VisitChargeVersion,
 } from "@wardenx/billing";
-import type { repositories } from "@wardenx/billing";
+import type { ValueCodeAreas, repositories } from "@wardenx/billing";
 
 type BillingDb = repositories.BillingDb;
 
@@ -320,6 +320,15 @@ export interface ElectionAddendumComplianceReader {
   forAdmission(orgId: string, admissionId: string): Promise<ElectionAddendumSnapshot>;
 }
 
+/**
+ * The CBSA each wage-index value code is read from (61 residence, G8 inpatient facility), already resolved from the
+ * patient's / facility's ZIP against the platform geography. Optional: absent ⇒ the claim carries no value codes and
+ * the `cbsa_value_codes_present` rule SKIPs.
+ */
+export interface HospiceCbsaReader {
+  areasFor(orgId: string, patientId: string, range: DateRange): Promise<ValueCodeAreas>;
+}
+
 /** The full injected seam bundle the assembly service depends on. */
 export interface ClaimAssemblySeams {
   readonly patientPayer: PatientPayerReader; // M5
@@ -336,6 +345,8 @@ export interface ClaimAssemblySeams {
   readonly terminology: TerminologyProvider; // M38
   readonly capProjection: CapProjectionProvider; // M26 — §11.A pre-submission cap rules (degrades, D8)
   readonly referenceData: BillingReferenceDataReader; // platform reference data (M23/M1-owned)
+  /** M5/M40 ZIPs + M23 geography — the wage-index value codes 61 / G8. Optional: absent ⇒ rule SKIPs. */
+  readonly cbsa?: HospiceCbsaReader;
   /** M6 — FY2027 election addendum facts. Optional: absent ⇒ the rule SKIPs `seam_not_bound`. */
   readonly electionAddendum?: ElectionAddendumComplianceReader;
   /** The §11.A rule registry — built + FROZEN at composition (platform-default + MAC + tenant overlays). */

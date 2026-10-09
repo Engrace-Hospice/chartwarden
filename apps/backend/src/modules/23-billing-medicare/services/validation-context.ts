@@ -15,7 +15,7 @@ import type {
   calculateHipps,
   repositories,
 } from "@wardenx/billing";
-import { claimAdmissionCodes } from "@wardenx/billing";
+import { claimAdmissionCodes, claimValueCodes } from "@wardenx/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
 import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 import { claimDischargeCodes } from "./claim-discharge";
@@ -75,6 +75,7 @@ export function assembleValidationContext(
     capProjectionCtx,
     signedEncounters,
     electionAddendum,
+    valueAreas,
   } = facts;
   // One derivation for the assembly and every re-validation (claim-discharge.ts): a revocation or transfer-out
   // ends the stay too, not only a completed discharge_event.
@@ -108,6 +109,14 @@ export function assembleValidationContext(
       dischargeClaimCodes,
       dischargeSourceEventId: discharge?.sourceEventId ?? null,
       ...claimAdmissionCodes(admission),
+      ...(valueAreas
+        ? {
+            valueCodes: claimValueCodes(
+              lines.map((l) => l.revenueCode),
+              valueAreas,
+            ),
+          }
+        : {}),
     },
     lines: lines.map((row) => ({
       claimLineId: row.id,

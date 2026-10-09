@@ -3,6 +3,10 @@ import {
   ADMISSION_SOURCE_LABELS,
   ADMISSION_TYPE_CODES,
   ADMISSION_TYPE_LABELS,
+  type AdmissionSourceCode,
+  type AdmissionTypeCode,
+  isAdmissionSourceCode,
+  isAdmissionTypeCode,
 } from "@wardenx/types";
 // apps/web/src/modules/06-admission — the UB-04 Type of Admission (FL 14) and Point of Origin (FL 15) pickers. The
 // codes are facts about the admission that M6 owns; M23 prints them on every claim (the claim is blocked without
@@ -36,12 +40,16 @@ const SOURCE_OPTIONS = [
 
 /** The request-body fragment for the chosen codes (a blank choice sends nothing — never a default). */
 export function admissionCodesBody(draft: AdmissionCodesDraft): {
-  admissionTypeCode?: string;
-  admissionSourceCode?: string;
+  admissionTypeCode?: AdmissionTypeCode;
+  admissionSourceCode?: AdmissionSourceCode;
 } {
   return {
-    ...(draft.admissionTypeCode ? { admissionTypeCode: draft.admissionTypeCode } : {}),
-    ...(draft.admissionSourceCode ? { admissionSourceCode: draft.admissionSourceCode } : {}),
+    ...(isAdmissionTypeCode(draft.admissionTypeCode)
+      ? { admissionTypeCode: draft.admissionTypeCode }
+      : {}),
+    ...(isAdmissionSourceCode(draft.admissionSourceCode)
+      ? { admissionSourceCode: draft.admissionSourceCode }
+      : {}),
   };
 }
 

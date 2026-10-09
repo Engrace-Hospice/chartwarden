@@ -780,6 +780,9 @@ exports.MODULES = [
       "validation_rule_config",
       "validation_run",
       "wage_index_factor",
+      "hospice_zip_county",
+      "hospice_cbsa_county",
+      "hospice_cbsa_wage_index",
     ],
   },
   {

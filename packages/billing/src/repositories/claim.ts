@@ -389,6 +389,26 @@ export class ClaimRepository {
   }
 
   /**
+   * Keep the claim's wage-index value codes (migration 1059; UB-04 FL 39-41 — 61 residence CBSA, G8 inpatient-facility
+   * CBSA) in step with the ZIP-to-CBSA resolution the latest validation run saw. A derived projection like
+   * {@link refreshAdmissionCodes}: no version bump, no-op when unchanged. Returns whether the row changed.
+   */
+  async refreshValueCodes(
+    id: string,
+    valueCodes: readonly { readonly code: "61" | "G8"; readonly cbsaCode: string }[],
+  ): Promise<boolean> {
+    const next = valueCodes.map((v) => ({ code: v.code, cbsaCode: v.cbsaCode }));
+    const rows = await this.db
+      .update(C)
+      .set({ valueCodes: next, updatedAt: new Date() })
+      .where(
+        and(eq(C.id, id), sql`${C.valueCodes} IS DISTINCT FROM ${JSON.stringify(next)}::jsonb`),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
    * Keep the claim's Type of Admission / Point of Origin (migration 1057; UB-04 FL 14 / FL 15) in step with the
    * M6 admission the latest validation run read — a biller recording the missing codes after assembly must not
    * need a new claim. A derived projection like {@link refreshPhysicianNpis}: no version bump, no-op when unchanged.

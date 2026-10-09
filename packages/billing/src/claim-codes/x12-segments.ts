@@ -39,6 +39,8 @@ export interface ClaimDocument837i {
   readonly admissionTypeCode?: string | null;
   /** UB-04 FL 15 Point of Origin / CL102 (Stedi `admissionSourceCode`). */
   readonly admissionSourceCode?: string | null;
+  /** UB-04 FL 39-41 / HI*BE — value code 61 (residence CBSA) / G8 (inpatient-facility CBSA); empty = none resolved. */
+  readonly valueCodes?: readonly { readonly code: string; readonly cbsaCode: string }[];
   readonly dischargeCodes: {
     /** UB-04 FL 17 / CL103. */
     readonly patientStatus: string;

@@ -1,3 +1,4 @@
+import type { ClaimValueCodes } from "../cbsa";
 import type { DischargeClaimCodes } from "../claim-codes";
 // @wardenx/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
@@ -68,7 +69,8 @@ export type RuleCategory =
   | "election"
   | "charges"
   | "visits"
-  | "admission";
+  | "admission"
+  | "wage";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -92,6 +94,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "charges",
   "visits",
   "admission",
+  "wage",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -215,6 +218,11 @@ export interface ClaimSnapshot {
    */
   readonly admissionTypeCode?: string | null;
   readonly admissionSourceCode?: string | null;
+  /**
+   * The wage-index value codes (61 / G8) the claim's lines require and what the ZIP-to-CBSA resolution produced;
+   * `undefined` = no resolution was materialized (the `cbsa_value_codes_present` rule then skips).
+   */
+  readonly valueCodes?: ClaimValueCodes;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */
