@@ -25,6 +25,10 @@ export type BillingEraseTableCounts = Record<string, number>;
  */
 export const M23_PATIENT_CASCADE_ORDER = [
   "eligibility_check",
+  // ADR-0052 migration 1060 — the DDE work queue: free-text notes may mention the patient, so a patient's items go
+  // with them (history rows first: `dde_work_event.work_item_id` RESTRICTs the item).
+  "dde_work_event",
+  "dde_work_item",
   "claim_acknowledgment",
   "claim_submission",
   "claim_state_history",
