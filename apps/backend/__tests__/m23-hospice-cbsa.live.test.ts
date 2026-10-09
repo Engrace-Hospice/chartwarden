@@ -44,9 +44,12 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
       facilitySpans: async () => [
         { effectiveFrom: "2026-01-01", effectiveTo: null, postalCode: facilityZip },
       ],
-    }).areasFor(ORG, "patient-1", { from: "2026-03-01", to: end }, [
-      { from: "2026-03-05", to: "2026-03-08" },
-    ]);
+    }).areasFor(
+      ORG,
+      "patient-1",
+      { from: "2026-03-01", to: end },
+      facilityZip === null ? [] : [{ from: "2026-03-05", to: "2026-03-08" }],
+    );
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -306,6 +309,20 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
     } finally {
       await c.end();
     }
+  });
+
+  it("migration 1058 is idempotent: re-applying it changes nothing and does not error", async () => {
+    const count = async () =>
+      (
+        await admin.query(
+          `SELECT (SELECT count(*) FROM hospice_zip_county) AS z, (SELECT count(*) FROM hospice_zip3_area) AS z3,
+                  (SELECT count(*) FROM hospice_cbsa_county) AS c, (SELECT count(*) FROM hospice_cbsa_wage_index) AS w`,
+        )
+      ).rows[0];
+    const before = await count();
+    const sql = readFileSync(join(MIGRATIONS_DIR, "1058_m23_hospice_cbsa_reference.sql"), "utf8");
+    await admin.query(sql);
+    expect(await count()).toEqual(before);
   });
 
   it("adds claim.value_codes as a jsonb array", async () => {
