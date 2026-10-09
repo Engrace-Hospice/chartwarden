@@ -14459,6 +14459,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/wristband": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wristband status for the chart badge (GAP-020) - whether an active band exists; never a token or digest */
+        get: operations["getApiV1PatientsByIdWristband"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/wristbands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Print / reprint the patient wristband (GAP-020; patient.wristband.issue) - returns the RAW payload ONCE (Cache-Control: no-store; not Idempotency-Key captured); a stale expectedCurrentGeneration is a 409 */
+        post: operations["postApiV1PatientsByIdWristbands"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/wristbands/{generation}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void a wristband generation (GAP-020; patient.wristband.void + step-up) - identity error or compromise; a voided band never verifies */
+        post: operations["postApiV1PatientsByIdWristbandsByGenerationVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/admissions": {
         parameters: {
             query?: never;
@@ -24865,6 +24916,7 @@ export interface operations {
                         graceWindowMinutes: number;
                         prnMinimumIntervalMinutes: number;
                         emarPdfOnCommit: boolean;
+                        bcmaWristbandRequired: boolean;
                     };
                 };
             };
@@ -24885,6 +24937,7 @@ export interface operations {
                     graceWindowMinutes?: number;
                     prnMinimumIntervalMinutes?: number;
                     emarPdfOnCommit?: boolean;
+                    bcmaWristbandRequired?: boolean;
                 };
             };
         };
@@ -24899,6 +24952,7 @@ export interface operations {
                         graceWindowMinutes: number;
                         prnMinimumIntervalMinutes: number;
                         emarPdfOnCommit: boolean;
+                        bcmaWristbandRequired: boolean;
                     };
                 };
             };
@@ -26642,7 +26696,9 @@ export interface operations {
                         scannedRxnormRxcui?: string;
                         scannedLotNumber?: string;
                         scannedExpirationDate?: string;
-                        patientWristbandPayloadDigest?: string;
+                        patientWristbandPayload?: string;
+                        /** Format: date-time */
+                        wristbandScannedAt?: string;
                     };
                     notes?: string;
                 };
@@ -26967,7 +27023,9 @@ export interface operations {
                         scannedRxnormRxcui?: string;
                         scannedLotNumber?: string;
                         scannedExpirationDate?: string;
-                        patientWristbandPayloadDigest?: string;
+                        patientWristbandPayload?: string;
+                        /** Format: date-time */
+                        wristbandScannedAt?: string;
                     };
                     notes?: string;
                 };
@@ -27094,7 +27152,9 @@ export interface operations {
                             scannedRxnormRxcui?: string;
                             scannedLotNumber?: string;
                             scannedExpirationDate?: string;
-                            patientWristbandPayloadDigest?: string;
+                            patientWristbandPayload?: string;
+                            /** Format: date-time */
+                            wristbandScannedAt?: string;
                         };
                         notes?: string;
                     }[];
@@ -64373,6 +64433,105 @@ export interface operations {
                 "application/json": {
                     toStatus: "active" | "on_hold" | "discharged";
                     reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdWristband: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        state: "none" | "active";
+                        generation: number | null;
+                        issuedAt: string | null;
+                        everIssued: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdWristbands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "first_issue" | "reprint_lost" | "reprint_damaged" | "reprint_other" | "identity_correction";
+                    expectedCurrentGeneration: number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        generation: number;
+                        payload: string;
+                        /** Format: date-time */
+                        issuedAt: string;
+                        label: {
+                            name: string;
+                            mrn: string;
+                            dob: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdWristbandsByGenerationVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                generation: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "identity_error" | "compromised";
                 };
             };
         };

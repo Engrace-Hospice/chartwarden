@@ -17,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import type { M5OutboxPort } from "./deceased-db";
 import { type FieldResolutions, type PatientMergeSubject, planMerge } from "./merges";
 import { SOURCE_PRIOR_STATUS_KEY } from "./patient-lifecycle";
+import { voidPatientWristbandsInTx } from "./wristband-db";
 
 const P = schema.patients;
 const PM = schema.patientMerges;
@@ -135,6 +136,15 @@ export async function mergePatientsInTx(
       .update(P)
       .set({ status: "merged", mergedIntoId: input.targetPatientId, updatedAt: new Date() })
       .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.sourcePatientId)));
+
+    // GAP-020 -- the merged-away patient's printed band must stop verifying in the same commit. The survivor
+    // needs a fresh print; until then a scan fails closed (`not_on_file` / `not_presented`).
+    await voidPatientWristbandsInTx(tx, {
+      organizationId: input.organizationId,
+      patientId: input.sourcePatientId,
+      reason: "patient_merged",
+      actorUserId: input.actorUserId || null,
+    });
 
     const [mergeRow] = await tx
       .insert(PM)

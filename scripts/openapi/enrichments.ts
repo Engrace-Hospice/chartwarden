@@ -782,6 +782,12 @@ import {
   RestrictedPatientsQuerySchema as M5ERestrictedPatientsQuerySchema,
   RestrictedPatientsResponseSchema as M5ERestrictedPatientsResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/privacy-typebox";
+import {
+  IssueWristbandBodySchema as M5IssueWristbandBodySchema,
+  IssuedWristbandSchema as M5IssuedWristbandSchema,
+  VoidWristbandBodySchema as M5VoidWristbandBodySchema,
+  WristbandStatusSchema as M5WristbandStatusSchema,
+} from "../../apps/backend/src/modules/05-patient/routes/wristband-typebox";
 
 // M15 Discipline Care Plans — request schemas (§4.2) + response DTOs (§4.1 views, pinned by `Conforms`
 // in m15-typebox.ts). Every symbol M15-aliased. Merge into the existing top-of-file import in
@@ -6468,6 +6474,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mark an allergy entered-in-error (reason required; the row is kept for the survey trail)",
     body: M5EEnteredInErrorAllergyBodySchema,
     response: M5EPatientAllergyViewSchema,
+  },
+  "POST /api/v1/patients/:id/wristbands": {
+    summary:
+      "Print / reprint the patient wristband (GAP-020; patient.wristband.issue) - returns the RAW payload ONCE (Cache-Control: no-store; not Idempotency-Key captured); a stale expectedCurrentGeneration is a 409",
+    body: M5IssueWristbandBodySchema,
+    response: M5IssuedWristbandSchema,
+  },
+  "GET /api/v1/patients/:id/wristband": {
+    summary:
+      "Wristband status for the chart badge (GAP-020) - whether an active band exists; never a token or digest",
+    response: M5WristbandStatusSchema,
+  },
+  "POST /api/v1/patients/:id/wristbands/:generation/void": {
+    summary:
+      "Void a wristband generation (GAP-020; patient.wristband.void + step-up) - identity error or compromise; a voided band never verifies",
+    body: M5VoidWristbandBodySchema,
   },
   "GET /api/v1/patients/:id/assignments": {
     summary:

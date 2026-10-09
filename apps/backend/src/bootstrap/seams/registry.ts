@@ -137,6 +137,7 @@ import {
   patientPrivacyFlagReaderDenyStub,
   patientReaderDenyStub,
   patientSitingReaderDenyStub,
+  patientWristbandVerifierDenyStub,
   planCatalogReaderDenyStub,
   portalDocumentReaderDenyStub,
   portalSessionBinderDenyStub,
@@ -275,6 +276,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientAllergyReaderDenyStub,
+  },
+  // M5 -- GAP-020: the wristband verdict M13's BCMA wrong_patient arm reads. PHI (identity material).
+  {
+    key: "PatientWristbandVerifier",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientWristbandVerifierDenyStub,
   },
   {
     key: "PatientPrivacyFlagReader",

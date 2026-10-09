@@ -359,6 +359,7 @@ export const MODULES: ModuleDef[] = [
       "patient_email",
       "patient_payer",
       "patient_allergy", // F-238 — architecture §10.6.6 "Allergies → Module 5"
+      "patient_wristband", // GAP-020 - the on-file side of the BCMA wrong_patient arm (digest only)
       "caregiver",
       "patient_caregiver",
       "emergency_contact",

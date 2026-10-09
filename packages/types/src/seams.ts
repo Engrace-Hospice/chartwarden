@@ -100,6 +100,7 @@ import type {
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
+  PatientWristbandVerifier,
 } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -170,6 +171,7 @@ export type SeamName =
   | "NonCoveredMedicationsReader" // M12 — COP27: active medication orders determined NOT hospice-covered (M6 election addendum, 42 CFR 418.24(c))
   | "NonCoveredDmeSuppliesReader" // M21 — COP27: active dme/supply requests determined NOT hospice-covered (M6 election addendum)
   | "PatientAllergyReader" // M5 — the patient's current allergy list (M12 requestSignature allergy gate, GAP-036)
+  | "PatientWristbandVerifier" // M5 — is the scanned wristband this patient's? verdict only (M13 BCMA wrong_patient arm, GAP-020)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
@@ -1065,6 +1067,7 @@ export interface SeamContracts {
   PatientCaregiverRosterReader: PatientCaregiverRosterReader;
   PatientAddressReader: PatientAddressReader;
   PatientAllergyReader: PatientAllergyReader;
+  PatientWristbandVerifier: PatientWristbandVerifier;
   NonCoveredMedicationsReader: NonCoveredItemsReader;
   NonCoveredDmeSuppliesReader: NonCoveredItemsReader;
   PatientPrivacyFlagReader: PatientPrivacyFlagReader;

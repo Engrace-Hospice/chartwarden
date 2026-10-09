@@ -9625,7 +9625,8 @@
                   "required": [
                     "graceWindowMinutes",
                     "prnMinimumIntervalMinutes",
-                    "emarPdfOnCommit"
+                    "emarPdfOnCommit",
+                    "bcmaWristbandRequired"
                   ],
                   "properties": {
                     "graceWindowMinutes": {
@@ -9635,6 +9636,9 @@
                       "type": "integer"
                     },
                     "emarPdfOnCommit": {
+                      "type": "boolean"
+                    },
+                    "bcmaWristbandRequired": {
                       "type": "boolean"
                     }
                   }
@@ -9667,7 +9671,8 @@
                   "required": [
                     "graceWindowMinutes",
                     "prnMinimumIntervalMinutes",
-                    "emarPdfOnCommit"
+                    "emarPdfOnCommit",
+                    "bcmaWristbandRequired"
                   ],
                   "properties": {
                     "graceWindowMinutes": {
@@ -9677,6 +9682,9 @@
                       "type": "integer"
                     },
                     "emarPdfOnCommit": {
+                      "type": "boolean"
+                    },
+                    "bcmaWristbandRequired": {
                       "type": "boolean"
                     }
                   }
@@ -9709,6 +9717,9 @@
                     "type": "integer"
                   },
                   "emarPdfOnCommit": {
+                    "type": "boolean"
+                  },
+                  "bcmaWristbandRequired": {
                     "type": "boolean"
                   }
                 }
@@ -15211,8 +15222,12 @@
                         "maxLength": 10,
                         "type": "string"
                       },
-                      "patientWristbandPayloadDigest": {
-                        "maxLength": 128,
+                      "patientWristbandPayload": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      "wristbandScannedAt": {
+                        "format": "date-time",
                         "type": "string"
                       }
                     }
@@ -17011,8 +17026,12 @@
                         "maxLength": 10,
                         "type": "string"
                       },
-                      "patientWristbandPayloadDigest": {
-                        "maxLength": 128,
+                      "patientWristbandPayload": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      "wristbandScannedAt": {
+                        "format": "date-time",
                         "type": "string"
                       }
                     }
@@ -17647,8 +17666,12 @@
                               "maxLength": 10,
                               "type": "string"
                             },
-                            "patientWristbandPayloadDigest": {
-                              "maxLength": 128,
+                            "patientWristbandPayload": {
+                              "maxLength": 64,
+                              "type": "string"
+                            },
+                            "wristbandScannedAt": {
+                              "format": "date-time",
                               "type": "string"
                             }
                           }
@@ -170938,6 +170961,277 @@
                     "minLength": 1,
                     "maxLength": 500,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/wristband": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdWristband",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Wristband status for the chart badge (GAP-020) - whether an active band exists; never a token or digest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "state",
+                    "generation",
+                    "issuedAt",
+                    "everIssued"
+                  ],
+                  "properties": {
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "generation": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "issuedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "everIssued": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/wristbands": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdWristbands",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Print / reprint the patient wristband (GAP-020; patient.wristband.issue) - returns the RAW payload ONCE (Cache-Control: no-store; not Idempotency-Key captured); a stale expectedCurrentGeneration is a 409",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "generation",
+                    "payload",
+                    "issuedAt",
+                    "label"
+                  ],
+                  "properties": {
+                    "generation": {
+                      "type": "integer"
+                    },
+                    "payload": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "mrn",
+                        "dob"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "mrn": {
+                          "type": "string"
+                        },
+                        "dob": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "expectedCurrentGeneration"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "first_issue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reprint_lost",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reprint_damaged",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reprint_other",
+                        "type": "string"
+                      },
+                      {
+                        "const": "identity_correction",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "expectedCurrentGeneration": {
+                    "anyOf": [
+                      {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/wristbands/{generation}/void": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdWristbandsByGenerationVoid",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Void a wristband generation (GAP-020; patient.wristband.void + step-up) - identity error or compromise; a voided band never verifies",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "generation",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "identity_error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compromised",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

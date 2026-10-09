@@ -7,6 +7,7 @@ import type {
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
+  PatientWristbandVerifier,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/05-patient/seams — M5's published cross-module seams (M5-T07/T08).
@@ -22,6 +23,7 @@ import { buildPatientCoverageReader } from "../coverage-reader";
 import { buildPatientHopeAdmissionPrefillReader } from "../hope-admission-prefill-reader";
 import { buildMbiUnlockReader } from "../mbi-unlock-reader";
 import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
+import { buildPatientWristbandVerifier } from "../wristband-verifier";
 import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import { createDbPatientIntakeResolver } from "./patient-intake-resolver";
@@ -132,6 +134,8 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // posture again: registered only with a db present. The deny-stub's throw is the honest answer for a
   // db-less boot, and M37 refuses the bed assignment on it rather than reading "no roommates".
   if (deps.db) registerSeam("PatientAllergyReader", buildPatientAllergyReader(deps.db));
+  // GAP-020 -- the wristband verdict M13's BCMA wrong_patient arm reads. db-less boot keeps the deny-stub (throws).
+  if (deps.db) registerSeam("PatientWristbandVerifier", buildPatientWristbandVerifier(deps.db));
   if (deps.db) registerSeam("PatientPrivacyFlagReader", buildPatientPrivacyFlagReader(deps.db));
   if (deps.db)
     registerSeam("PatientAdmissionClearanceReader", buildPatientAdmissionClearanceReader(deps.db));

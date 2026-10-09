@@ -150,6 +150,28 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** A wristband-driven BCMA refusal (GAP-020): the machine `code` (`WRISTBAND_NOT_ON_FILE`, ...) and its sentence. */
+export interface WristbandRefusal {
+  readonly code: string;
+  readonly message: string;
+}
+
+/**
+ * The wristband reason behind a `BARCODE_VERIFICATION_FAILED`, read from the error envelope's `details`, or null
+ * when the refusal is about something else (wrong drug, expired). The UI uses the code to say what to DO:
+ * print a band, scan the new one, or rescan.
+ */
+export function wristbandRefusalOf(error: unknown): WristbandRefusal | null {
+  const body = error as
+    | { error?: { details?: { code?: string; message?: string }[] } }
+    | null
+    | undefined;
+  const hit = body?.error?.details?.find(
+    (d) => typeof d.code === "string" && d.code.startsWith("WRISTBAND_"),
+  );
+  return hit?.code ? { code: hit.code, message: hit.message ?? hit.code } : null;
+}
+
 /** True when the failure is the §2.6 D7 refusal to commit a controlled substance without a live witness
  *  token — the one 422 whose remedy is a second clinician rather than a corrected field. */
 export function isWitnessRequired(error: unknown): boolean {

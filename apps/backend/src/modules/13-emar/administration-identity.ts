@@ -32,9 +32,8 @@ export function toAdministrationIdentity(ctx: AdministrationContext) {
     ndc: ctx.order.ndc ?? null,
     // GAP-021 -- the order's PRN minimum interval (absent = no minimum stated).
     prnMinimumIntervalMinutes: sig.prnMinimumIntervalMinutes ?? null,
-    // No wristband payload digest is on file for any patient (no column, no M5 seam), so the wrong_patient
-    // BCMA arm has no on-file value to compare against. Null is honest: it is "not on file", not "matches".
-    patientWristbandPayloadDigest: null,
+    // GAP-020 -- deliberately NO wristband material here: the order identity carries no patient-identity
+    // secrets. The wrong_patient arm asks M5's PatientWristbandVerifier for a verdict instead.
     ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
     allowAdministration: ctx.allowAdministration,
     blockedReasons: ctx.blockedReasons,
