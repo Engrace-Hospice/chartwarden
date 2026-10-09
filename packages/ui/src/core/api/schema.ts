@@ -76460,7 +76460,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "draft" | "published" | "archived";
-   ,             authorship?: "system" | "tenant";
+                authorship?: "system" | "tenant";
                 cursor?: string;
                 limit?: number;
             };
