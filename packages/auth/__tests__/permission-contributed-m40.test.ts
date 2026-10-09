@@ -28,7 +28,7 @@ const KINDS = [
 ];
 
 describe("M40-T07 MDM permission keys (§4.4 handshake)", () => {
-  it("registers three keys per kind plus the governance keys (29 total)", () => {
+  it("registers three keys per kind plus the governance keys (31 total)", () => {
     const expected = [
       ...KINDS.flatMap((k) => [`mdm.${k}.read`, `mdm.${k}.propose`, `mdm.${k}.overlay`]),
       "mdm.baa.read",
@@ -39,9 +39,11 @@ describe("M40-T07 MDM permission keys (§4.4 handshake)", () => {
       "mdm.merge.approve",
       "mdm.grief_resource.read",
       "mdm.grief_resource.manage",
+      "mdm.psap_jurisdiction.read",
+      "mdm.psap_jurisdiction.manage",
     ];
     expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS).sort()).toEqual(expected.sort());
-    expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS)).toHaveLength(29);
+    expect(Object.keys(M40_CONTRIBUTED_PERMISSIONS)).toHaveLength(31);
   });
 
   it("every key is namespaced under `mdm.` and dot-segmented", () => {

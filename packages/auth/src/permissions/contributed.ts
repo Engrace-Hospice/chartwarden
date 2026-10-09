@@ -595,6 +595,19 @@ export const M40_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- PSAP jurisdiction catalog (GAP-032; tenant-curated emergency_service_jurisdiction) ---
+  "mdm.psap_jurisdiction.read": {
+    resource: "psap_jurisdiction",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "mdm.psap_jurisdiction.manage": {
+    resource: "psap_jurisdiction",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   "mdm.merge.read": { resource: "merge", action: "read", category: "platform", abac: "none" },
   "mdm.merge.approve": { resource: "merge", action: "approve", category: "platform", abac: "none" },
 } as const satisfies Record<string, PermissionDef>;

@@ -100,6 +100,7 @@ export type {
   PatientMutator,
   IntakeMetricsProvider,
   ExternalGriefResourceReader,
+  EmergencyServiceJurisdictionReader,
   PatientAddressReader,
   PatientCaregiverRosterReader,
   PatientAdmissionClearanceReader,

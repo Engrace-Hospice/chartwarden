@@ -92,7 +92,7 @@
       "mutatingNoBody": 0
     },
     "20-field-safety": {
-      "routes": 30,
+      "routes": 33,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -192,7 +192,7 @@
       "mutatingNoBody": 0
     },
     "40-mdm": {
-      "routes": 19,
+      "routes": 25,
       "deficit": 0,
       "mutatingNoBody": 0
     },

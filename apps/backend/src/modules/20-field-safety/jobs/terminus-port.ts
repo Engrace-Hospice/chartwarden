@@ -1,19 +1,11 @@
-// apps/backend/src/modules/20-field-safety/jobs/terminus-port.ts — GAP-032: the one terminus effect M20 can
-// truly execute today, the platform page to WardenX ops (§2.2.2 (c) / INT-031).
-//
-// The terminus rung used to be refused outright because none of its three caller-owned effects
-// (`dial_emergency_contact`, `surface_psap_number`, `page_wardenx_ops`) had an implementer, so a tier-3 alert
-// breaching its SLA stalled silently. The page is the effect that needs no vendor-specific telephony or M40
-// master data: an authenticated HTTPS webhook (PagerDuty/Opsgenie/Slack-style receiver) chosen by
+// apps/backend/src/modules/20-field-safety/jobs/terminus-port.ts - GAP-032: the platform page to WardenX ops
+// (§2.2.2 (c) / INT-031). An authenticated HTTPS webhook (PagerDuty/Opsgenie/Slack-style receiver) chosen by
 // configuration. It carries IDS ONLY (no PHI, no coordinates, no contact numbers).
 //
-// What this does NOT do, and the terminus payload says so rather than claiming it:
-//   • `dial_emergency_contact` needs an M36 voice dispatch to the consented contact — still unbound, so
-//     `emergencyContactCallInitiated` stays false.
-//   • `surface_psap_number` is fetched by the responder's client from M40 against a jurisdiction id; no M40
-//     reader exists yet, so `psapJurisdictionId` stays null.
-// The terminus is only entered when the page was actually delivered; a failed page throws (the watchdog tick
-// rolls the transition back and retries) so the ledger never says "terminus reached" with nobody paged.
+// This is only the TRANSPORT. WHEN to page, retry, de-duplicate and record the outcome is the terminus
+// ledger's business (`../terminus/`): the executor calls this OUTSIDE any tenant transaction, so a slow or
+// down receiver can neither hold a pooled connection nor hide the terminus. `dedupKey` (`sos:{alertId}`)
+// lets the receiver coalesce the per-period re-pages into one incident instead of N.
 
 export interface SosTerminusPageInput {
   readonly organizationId: string;
@@ -22,9 +14,22 @@ export interface SosTerminusPageInput {
   /** 0 on the terminus entry, then the re-page loop count. */
   readonly loopIteration: number;
   readonly at: string;
+  /** The ledger row's idempotency key, so a receiver can drop an exact replay. */
+  readonly idempotencyKey?: string;
 }
 
-/** Pages WardenX ops. Resolves only once the receiver acknowledged; rejects otherwise. */
+/** A failed page, classified for the ledger's closed outcome vocabulary. */
+export class OpsPageError extends Error {
+  constructor(
+    readonly outcome: "receiver_non_2xx" | "timeout",
+    message: string,
+  ) {
+    super(message);
+    this.name = "OpsPageError";
+  }
+}
+
+/** Pages WardenX ops. Resolves only once the receiver acknowledged; rejects with {@link OpsPageError} otherwise. */
 export interface SosTerminusPort {
   pageOps(input: SosTerminusPageInput): Promise<void>;
 }
@@ -60,22 +65,32 @@ export function createWebhookOpsPager(options: WebhookOpsPagerOptions): SosTermi
   const timeoutMs = options.timeoutMs ?? PAGE_TIMEOUT_MS;
   return {
     async pageOps(input) {
-      const response = await doFetch(options.url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
-        },
-        body: JSON.stringify({
-          source: "wardenx.m20.sos_terminus",
-          severity: "critical",
-          summary: "SOS alert reached the emergency terminus without an acknowledgment",
-          ...input,
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      let response: FetchResponse;
+      try {
+        response = await doFetch(options.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+          },
+          body: JSON.stringify({
+            source: "wardenx.m20.sos_terminus",
+            severity: "critical",
+            summary: "SOS alert reached the emergency terminus without an acknowledgment",
+            dedupKey: `sos:${input.sosAlertId}`,
+            ...input,
+          }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch {
+        // Unreachable or timed out. The underlying error text can carry the URL, so it is not propagated.
+        throw new OpsPageError("timeout", "m20: ops page webhook unreachable or timed out");
+      }
       if (response.status < HTTP_OK_MIN || response.status > HTTP_OK_MAX) {
-        throw new Error(`m20: ops page webhook answered HTTP ${response.status}`);
+        throw new OpsPageError(
+          "receiver_non_2xx",
+          `m20: ops page webhook answered HTTP ${response.status}`,
+        );
       }
     },
   };

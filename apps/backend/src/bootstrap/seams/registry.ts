@@ -68,6 +68,7 @@ import {
   electionPeriodReaderDenyStub,
   elevatedApprovalReaderDenyStub,
   embeddingsProviderDenyStub,
+  emergencyServiceJurisdictionReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
@@ -297,6 +298,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 40,
     phi: false,
     denyStub: externalGriefResourceReaderDenyStub,
+  },
+  // M40 - GAP-032: the tenant-curated PSAP jurisdiction M20's SOS terminus resolves. Not PHI (a public
+  // administrative number). Unbound => the terminus records `jurisdiction_unavailable`, never `none`.
+  {
+    key: "EmergencyServiceJurisdictionReader",
+    ownerModule: 40,
+    phi: false,
+    denyStub: emergencyServiceJurisdictionReaderDenyStub,
   },
   // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).

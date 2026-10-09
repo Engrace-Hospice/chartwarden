@@ -60,6 +60,50 @@ const SMS_MAX_CHARS = 160;
 /** The fixed voice script (§4.7) — a pre-recorded text-to-speech line, never PHI. */
 const VOICE_SCRIPT = "WardenX field safety alert. Please open the app.";
 
+// ── GAP-032: the SOS terminus emergency-contact call (spec §4.7 amendment) ─────────────────────────────
+//
+// The fixed voice script above never speaks a name. This is the one deliberate exception: an automated safety
+// call to a clinician's CONSENTED emergency contact (a third party), which is useless if it cannot say who is
+// calling about whom. It is its own function with a fixed template and an allowlist of exactly two
+// variables - the agency name and the clinician's display name (D10 consent covers both). No patient,
+// location, coordinate or alert id has a parameter, so none can be spoken. The names are cleaned to a
+// conservative character set and capped; the Twilio transport XML-escapes the result.
+
+const CONTACT_CALL_NAME_MAX = 80;
+const CONTACT_CALL_NAME_DISALLOWED = /[^\p{L}\p{N} .,'&-]/gu;
+const CONTACT_CALL_AGENCY_FALLBACK = "your home health agency";
+const CONTACT_CALL_SUBJECT_FALLBACK = "a member of the care team";
+
+function cleanSpokenName(raw: string, fallback: string): string {
+  const cleaned = raw
+    .replace(CONTACT_CALL_NAME_DISALLOWED, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CONTACT_CALL_NAME_MAX)
+    .trim();
+  return cleaned === "" ? fallback : cleaned;
+}
+
+/** The only payload that may cross to the voice vendor for the SOS emergency-contact call. */
+export function sanitizeForEmergencyContactCall(input: {
+  readonly idempotencyKey: string;
+  readonly agencyName: string;
+  readonly subjectDisplayName: string;
+}): SanitizedNotification {
+  const agency = cleanSpokenName(input.agencyName, CONTACT_CALL_AGENCY_FALLBACK);
+  const subject = cleanSpokenName(input.subjectDisplayName, CONTACT_CALL_SUBJECT_FALLBACK);
+  return {
+    notificationDeliveryId: input.idempotencyKey,
+    short: [
+      `This is an automated safety call from ${agency}. ${subject} listed you as an emergency contact,`,
+      "and a safety alert they raised has not been answered. Please try to reach them now.",
+      "If you cannot reach them and you are concerned for their safety, contact your local emergency services.",
+      "This call does not involve any patient.",
+    ].join(" "),
+    deepLink: "",
+  };
+}
+
 /** Generic, PHI-free `short` per alert category (§4.7: "no category specifics beyond the
  *  generic short"). Deliberately content-free — the recipient learns only that something needs
  *  attention and follows the deep link into the authenticated app for any detail. */

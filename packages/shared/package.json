@@ -7,10 +7,13 @@
     ".": "./src/index.ts",
     "./money": "./src/money/kernel.ts",
     "./dates": "./src/dates/org-local-date.ts",
-    "./rhc": "./src/rhc/carry-chain.ts"
+    "./rhc": "./src/rhc/carry-chain.ts",
+    "./phone": "./src/phone/e164.ts",
+    "./geo": "./src/geo/point-in-rings.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "decimal.js": "^10.6.0"
+    "decimal.js": "^10.6.0",
+    "libphonenumber-js": "^1.13.15"
   }
 }

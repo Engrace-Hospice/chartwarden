@@ -669,6 +669,11 @@ import {
   GriefResourceListQuery as M40GriefResourceListQuery,
   GriefResourcePatchSchema as M40GriefResourcePatch,
 } from "../../apps/backend/src/modules/40-mdm/grief-resources";
+import {
+  PsapJurisdictionBodySchema as M40PsapJurisdictionBody,
+  PsapJurisdictionListQuery as M40PsapJurisdictionListQuery,
+  PsapJurisdictionPatchSchema as M40PsapJurisdictionPatch,
+} from "../../apps/backend/src/modules/40-mdm/psap-jurisdictions";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
@@ -7312,6 +7317,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M20LocationStreamQuery,
     response: M20SosLocationStreamResponse,
   },
+  // terminus.routes.ts (GAP-032) - the SOS emergency terminus read surfaces
+  "GET /api/v1/safety/sos/:sosAlertId/psap": {
+    summary:
+      "The tenant-curated PSAP administrative line for an alert at the emergency terminus (409 otherwise); the static 911 line is always shown by the client",
+    response: Type.Object({
+      sosAlertId: Type.String(),
+      emergencyLine: Type.String(),
+      psap: Type.Union([
+        Type.Object({
+          jurisdictionId: Type.String(),
+          name: Type.String(),
+          psapName: Type.String(),
+          phone: Type.String(),
+          secondaryPhone: Type.Union([Type.String(), Type.Null()]),
+          verifiedAt: Type.String(),
+          stale: Type.Boolean(),
+        }),
+        Type.Null(),
+      ]),
+      reason: Type.Union([
+        Type.Literal("resolved"),
+        Type.Literal("none"),
+        Type.Literal("unavailable"),
+        Type.Literal("pending"),
+      ]),
+    }),
+  },
+  "GET /api/v1/safety/sos/:sosAlertId/terminus": {
+    summary:
+      "Ledger status of each emergency-terminus effect (ops page, contact call, PSAP resolution); reason codes only, never a number",
+    response: Type.Object({
+      sosAlertId: Type.String(),
+      actions: Type.Array(
+        Type.Object({
+          actionKind: Type.String(),
+          loopIteration: Type.Integer(),
+          attemptNo: Type.Integer(),
+          status: Type.String(),
+          outcomeCode: Type.Union([Type.String(), Type.Null()]),
+          settledAt: Type.Union([Type.String(), Type.Null()]),
+        }),
+      ),
+    }),
+  },
+  "GET /api/v1/safety/admin/terminus-readiness": {
+    summary:
+      "Can this deployment actually page ops, place the contact call and resolve a PSAP? Degraded while the pager is unbound or terminus work is stuck",
+    response: Type.Object({
+      opsPagerBound: Type.Boolean(),
+      contactCallerBound: Type.Boolean(),
+      contactDialEnabled: Type.Boolean(),
+      psapReaderBound: Type.Boolean(),
+      stuckActionCount: Type.Integer(),
+      degraded: Type.Boolean(),
+      degradedReasons: Type.Array(Type.String()),
+    }),
+  },
 
   // incidents.routes.ts (rows 12-17)
   "POST /api/v1/safety/incidents": {
@@ -11980,5 +12042,56 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/mdm/grief-resources/:id/reactivate": {
     summary: "Reactivate a retired grief resource",
     response: _M40GriefResourceView,
+  },
+});
+
+// M40 PSAP jurisdiction catalog (GAP-032): the tenant-curated emergency-service lines the SOS terminus resolves.
+const _M40PsapJurisdictionView = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  state: Type.String(),
+  countyFips: Type.Union([Type.String(), Type.Null()]),
+  hasPolygon: Type.Boolean(),
+  psapName: Type.String(),
+  psapPhone: Type.String(),
+  secondaryPhone: Type.Union([Type.String(), Type.Null()]),
+  appliesToLocationId: Type.Union([Type.String(), Type.Null()]),
+  isOrgDefault: Type.Boolean(),
+  source: Type.String(),
+  sourceRef: Type.Union([Type.String(), Type.Null()]),
+  verifiedAt: Type.String(),
+  verifyEveryDays: Type.Integer(),
+  stale: Type.Boolean(),
+  isActive: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/mdm/psap-jurisdictions": {
+    summary: "The tenant's PSAP jurisdiction catalog (active by default)",
+    query: M40PsapJurisdictionListQuery,
+    response: Type.Object({ items: Type.Array(_M40PsapJurisdictionView) }),
+  },
+  "POST /api/v1/mdm/psap-jurisdictions": {
+    summary: "Add a PSAP jurisdiction (stamped verified now by the caller)",
+    body: M40PsapJurisdictionBody,
+    response: _M40PsapJurisdictionView,
+  },
+  "PATCH /api/v1/mdm/psap-jurisdictions/:id": {
+    summary:
+      "Edit a PSAP jurisdiction; changing the number or its coverage clears the verification until re-verified",
+    body: M40PsapJurisdictionPatch,
+    response: _M40PsapJurisdictionView,
+  },
+  "POST /api/v1/mdm/psap-jurisdictions/:id/verify": {
+    summary: "Stamp a PSAP jurisdiction verified by the caller, now",
+    response: _M40PsapJurisdictionView,
+  },
+  "POST /api/v1/mdm/psap-jurisdictions/:id/deactivate": {
+    summary: "Retire a PSAP jurisdiction (never deleted)",
+    response: _M40PsapJurisdictionView,
+  },
+  "POST /api/v1/mdm/psap-jurisdictions/:id/reactivate": {
+    summary: "Reactivate a retired PSAP jurisdiction",
+    response: _M40PsapJurisdictionView,
   },
 });

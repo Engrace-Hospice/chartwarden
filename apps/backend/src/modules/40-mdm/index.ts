@@ -104,6 +104,7 @@ import {
   createDbMdmRouteService as _createDbMdmRouteService,
   createDbMdmStore as _createDbMdmStore,
 } from "./mdm-store-db";
+import { createPsapJurisdictionStore, registerPsapJurisdictionRoutes } from "./psap-jurisdictions";
 import { registerMdmRoutes as _registerMdmRoutes } from "./routes/mdm-routes";
 
 /**
@@ -117,6 +118,8 @@ export function mountMdmRoutes(app: FastifyInstance, db: DbClient): void {
   _registerMdmRoutes(app, { provider, service: _createDbMdmRouteService(db) });
   // GAP-158 - the tenant-curated grief-resource catalog (M16 referrals + the M31 bereaved portal read it).
   registerGriefResourceRoutes(app, { store: createGriefResourceStore(db) });
+  // GAP-032 - the tenant-curated PSAP catalog behind M20's SOS-terminus `surface_psap_number` effect.
+  registerPsapJurisdictionRoutes(app, { store: createPsapJurisdictionStore(db) });
 }
 
 // GAP-158 - the M40 grief-resource catalog (store, seam reader, routes).
@@ -128,3 +131,14 @@ export {
   createGriefResourceStore,
   registerGriefResourceRoutes,
 } from "./grief-resources";
+
+// GAP-032 - the M40 PSAP jurisdiction catalog (store, seam reader, pure resolver, routes).
+export {
+  type PsapJurisdictionInput,
+  type PsapJurisdictionStore,
+  type PsapJurisdictionView,
+  buildEmergencyServiceJurisdictionReader,
+  createPsapJurisdictionStore,
+  registerPsapJurisdictionRoutes,
+} from "./psap-jurisdictions";
+export { type JurisdictionRowFacts, resolveJurisdiction } from "./psap-resolve";

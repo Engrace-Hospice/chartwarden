@@ -1917,6 +1917,8 @@ Validation failure throws `AlertPayloadValidationError` and the dispatch is refu
 
 ### 4.7 The PHI Sanitization Wrapper (the only path to out-of-band channels)
 
+> **As-built amendment (GAP-032) - one deliberate exception to "the voice script never speaks a name".** Alert/message voice stays the fixed `VOICE_SCRIPT`. The M20 SOS-terminus call to a clinician's CONSENTED emergency contact (a third party with no user and no verified endpoint) is useless if anonymous, so `sanitizeForEmergencyContactCall` (`packages/messaging/src/notification/sanitize.ts`) is a second chokepoint function with a fixed template and an allowlist of exactly two variables - the agency name and the clinician's display name (covered by the clinician's D10 consent), cleaned to a conservative character set and length-capped. It has no parameter for a patient, location, coordinate or alert id, so none can be spoken; the dependency-cruiser rule is unchanged because the call still leaves only through the bound Twilio voice transport (`createSosContactCaller`). The call is not a `notification_delivery` row (its recipient is not a user) and its vendor call id is recorded on M20's `safety_sos_terminus_action` ledger row.
+
 ```typescript
 // packages/messaging/src/notification/sanitize.ts
 

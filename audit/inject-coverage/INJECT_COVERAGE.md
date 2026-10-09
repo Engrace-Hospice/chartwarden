@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1475/1475 route defs sit behind a covered module · 1413/1475 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1484/1484 route defs sit behind a covered module · 1415/1484 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -26,7 +26,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 17-scheduling | 38 | ✅ | 33/38 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/scheduling-caseload-scope.test.ts, apps/backend/__tests__/scheduling-inject.test.ts, apps/backend/__tests__/scheduling-own-vs-any.test.ts |
 | 18-evv | 25 | ✅ | 25/25 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 40 | ✅ | 39/40 | apps/backend/__tests__/oncall-inject.test.ts |
-| 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts, apps/backend/__tests__/m20-routes.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
+| 20-field-safety | 33 | ✅ | 32/33 | apps/backend/__tests__/field-safety-inject.test.ts, apps/backend/__tests__/m20-routes.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
 | 21-supplies | 40 | ✅ | 40/40 | apps/backend/__tests__/cop27-hospice-coverage.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts, apps/backend/__tests__/supplies-inject.test.ts |
 | 22-documents | 58 | ✅ | 54/58 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts, apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts, apps/backend/__tests__/f238-pending-address.test.ts, apps/backend/__tests__/f238-prospect-summary.test.ts, apps/backend/__tests__/f238-records-request-expiry.test.ts, apps/backend/__tests__/f238-records-request.test.ts, apps/backend/__tests__/m22-doclens-sud-gate.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
 | 23-billing-medicare | 72 | ✅ | 61/72 | apps/backend/__tests__/admission-clinical-site-scope.test.ts, apps/backend/__tests__/admission-intake-scope.test.ts, apps/backend/__tests__/billing-medicare-inject.test.ts, apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts, apps/backend/__tests__/m23-rate-table-routes.test.ts, apps/backend/__tests__/m23-sequestration-policy-routes.test.ts, apps/backend/__tests__/m23-wage-index-routes.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
@@ -46,4 +46,4 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 37-ipu | 52 | ✅ | 52/52 | apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts, apps/backend/__tests__/ipu-inject.test.ts, apps/backend/__tests__/ipu-step-up-assertion.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
 | 38-terminology | 19 | ✅ | 19/19 | apps/backend/__tests__/m38-terminology-search.live.test.ts, apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-abac.test.ts, apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m16-routes.live.test.ts |
-| 40-mdm | 19 | ✅ | 11/19 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |
+| 40-mdm | 25 | ✅ | 11/25 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

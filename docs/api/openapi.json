@@ -139679,6 +139679,1056 @@
         }
       }
     },
+    "/api/v1/mdm/psap-jurisdictions": {
+      "get": {
+        "operationId": "getApiV1MdmPsapjurisdictions",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "The tenant's PSAP jurisdiction catalog (active by default)",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "state",
+                          "countyFips",
+                          "hasPolygon",
+                          "psapName",
+                          "psapPhone",
+                          "secondaryPhone",
+                          "appliesToLocationId",
+                          "isOrgDefault",
+                          "source",
+                          "sourceRef",
+                          "verifiedAt",
+                          "verifyEveryDays",
+                          "stale",
+                          "isActive",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "countyFips": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasPolygon": {
+                            "type": "boolean"
+                          },
+                          "psapName": {
+                            "type": "string"
+                          },
+                          "psapPhone": {
+                            "type": "string"
+                          },
+                          "secondaryPhone": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appliesToLocationId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isOrgDefault": {
+                            "type": "boolean"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "sourceRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedAt": {
+                            "type": "string"
+                          },
+                          "verifyEveryDays": {
+                            "type": "integer"
+                          },
+                          "stale": {
+                            "type": "boolean"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MdmPsapjurisdictions",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Add a PSAP jurisdiction (stamped verified now by the caller)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "countyFips",
+                    "hasPolygon",
+                    "psapName",
+                    "psapPhone",
+                    "secondaryPhone",
+                    "appliesToLocationId",
+                    "isOrgDefault",
+                    "source",
+                    "sourceRef",
+                    "verifiedAt",
+                    "verifyEveryDays",
+                    "stale",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "countyFips": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPolygon": {
+                      "type": "boolean"
+                    },
+                    "psapName": {
+                      "type": "string"
+                    },
+                    "psapPhone": {
+                      "type": "string"
+                    },
+                    "secondaryPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliesToLocationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isOrgDefault": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "sourceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "verifyEveryDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "state",
+                  "psapName",
+                  "psapPhone"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "countyFips": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9]{5}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "polygon": {
+                    "anyOf": [
+                      {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "minItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "additionalItems": false,
+                            "minItems": 2,
+                            "maxItems": 2
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "psapName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "psapPhone": {
+                    "pattern": "^\\+[1-9][0-9]{6,14}$",
+                    "type": "string"
+                  },
+                  "secondaryPhone": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\+[1-9][0-9]{6,14}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "appliesToLocationId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "isOrgDefault": {
+                    "type": "boolean"
+                  },
+                  "sourceRef": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "verifyEveryDays": {
+                    "minimum": 30,
+                    "maximum": 730,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/psap-jurisdictions/{id}": {
+      "patch": {
+        "operationId": "patchApiV1MdmPsapjurisdictionsById",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Edit a PSAP jurisdiction; changing the number or its coverage clears the verification until re-verified",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "countyFips",
+                    "hasPolygon",
+                    "psapName",
+                    "psapPhone",
+                    "secondaryPhone",
+                    "appliesToLocationId",
+                    "isOrgDefault",
+                    "source",
+                    "sourceRef",
+                    "verifiedAt",
+                    "verifyEveryDays",
+                    "stale",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "countyFips": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPolygon": {
+                      "type": "boolean"
+                    },
+                    "psapName": {
+                      "type": "string"
+                    },
+                    "psapPhone": {
+                      "type": "string"
+                    },
+                    "secondaryPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliesToLocationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isOrgDefault": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "sourceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "verifyEveryDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "countyFips": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9]{5}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "polygon": {
+                    "anyOf": [
+                      {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "minItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "additionalItems": false,
+                            "minItems": 2,
+                            "maxItems": 2
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "psapName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "psapPhone": {
+                    "pattern": "^\\+[1-9][0-9]{6,14}$",
+                    "type": "string"
+                  },
+                  "secondaryPhone": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\+[1-9][0-9]{6,14}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "appliesToLocationId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "isOrgDefault": {
+                    "type": "boolean"
+                  },
+                  "sourceRef": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "verifyEveryDays": {
+                    "minimum": 30,
+                    "maximum": 730,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/psap-jurisdictions/{id}/deactivate": {
+      "post": {
+        "operationId": "postApiV1MdmPsapjurisdictionsByIdDeactivate",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Retire a PSAP jurisdiction (never deleted)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "countyFips",
+                    "hasPolygon",
+                    "psapName",
+                    "psapPhone",
+                    "secondaryPhone",
+                    "appliesToLocationId",
+                    "isOrgDefault",
+                    "source",
+                    "sourceRef",
+                    "verifiedAt",
+                    "verifyEveryDays",
+                    "stale",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "countyFips": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPolygon": {
+                      "type": "boolean"
+                    },
+                    "psapName": {
+                      "type": "string"
+                    },
+                    "psapPhone": {
+                      "type": "string"
+                    },
+                    "secondaryPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliesToLocationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isOrgDefault": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "sourceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "verifyEveryDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/psap-jurisdictions/{id}/reactivate": {
+      "post": {
+        "operationId": "postApiV1MdmPsapjurisdictionsByIdReactivate",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Reactivate a retired PSAP jurisdiction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "countyFips",
+                    "hasPolygon",
+                    "psapName",
+                    "psapPhone",
+                    "secondaryPhone",
+                    "appliesToLocationId",
+                    "isOrgDefault",
+                    "source",
+                    "sourceRef",
+                    "verifiedAt",
+                    "verifyEveryDays",
+                    "stale",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "countyFips": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPolygon": {
+                      "type": "boolean"
+                    },
+                    "psapName": {
+                      "type": "string"
+                    },
+                    "psapPhone": {
+                      "type": "string"
+                    },
+                    "secondaryPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliesToLocationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isOrgDefault": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "sourceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "verifyEveryDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/mdm/psap-jurisdictions/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1MdmPsapjurisdictionsByIdVerify",
+        "tags": [
+          "40-mdm"
+        ],
+        "summary": "Stamp a PSAP jurisdiction verified by the caller, now",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "countyFips",
+                    "hasPolygon",
+                    "psapName",
+                    "psapPhone",
+                    "secondaryPhone",
+                    "appliesToLocationId",
+                    "isOrgDefault",
+                    "source",
+                    "sourceRef",
+                    "verifiedAt",
+                    "verifyEveryDays",
+                    "stale",
+                    "isActive",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "countyFips": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPolygon": {
+                      "type": "boolean"
+                    },
+                    "psapName": {
+                      "type": "string"
+                    },
+                    "psapPhone": {
+                      "type": "string"
+                    },
+                    "secondaryPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliesToLocationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isOrgDefault": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "sourceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "verifyEveryDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/me/permissions": {
       "get": {
         "operationId": "getApiV1MePermissions",
@@ -210859,6 +211909,69 @@
         }
       }
     },
+    "/api/v1/safety/admin/terminus-readiness": {
+      "get": {
+        "operationId": "getApiV1SafetyAdminTerminusreadiness",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Can this deployment actually page ops, place the contact call and resolve a PSAP? Degraded while the pager is unbound or terminus work is stuck",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "opsPagerBound",
+                    "contactCallerBound",
+                    "contactDialEnabled",
+                    "psapReaderBound",
+                    "stuckActionCount",
+                    "degraded",
+                    "degradedReasons"
+                  ],
+                  "properties": {
+                    "opsPagerBound": {
+                      "type": "boolean"
+                    },
+                    "contactCallerBound": {
+                      "type": "boolean"
+                    },
+                    "contactDialEnabled": {
+                      "type": "boolean"
+                    },
+                    "psapReaderBound": {
+                      "type": "boolean"
+                    },
+                    "stuckActionCount": {
+                      "type": "integer"
+                    },
+                    "degraded": {
+                      "type": "boolean"
+                    },
+                    "degradedReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/safety/check-ins": {
       "post": {
         "operationId": "postApiV1SafetyCheckins",
@@ -219001,6 +220114,126 @@
         }
       }
     },
+    "/api/v1/safety/sos/{sosAlertId}/psap": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertIdPsap",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The tenant-curated PSAP administrative line for an alert at the emergency terminus (409 otherwise); the static 911 line is always shown by the client",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sosAlertId",
+                    "emergencyLine",
+                    "psap",
+                    "reason"
+                  ],
+                  "properties": {
+                    "sosAlertId": {
+                      "type": "string"
+                    },
+                    "emergencyLine": {
+                      "type": "string"
+                    },
+                    "psap": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "jurisdictionId",
+                            "name",
+                            "psapName",
+                            "phone",
+                            "secondaryPhone",
+                            "verifiedAt",
+                            "stale"
+                          ],
+                          "properties": {
+                            "jurisdictionId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "psapName": {
+                              "type": "string"
+                            },
+                            "phone": {
+                              "type": "string"
+                            },
+                            "secondaryPhone": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "type": "string"
+                            },
+                            "stale": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/safety/sos/{sosAlertId}/resolve": {
       "post": {
         "operationId": "postApiV1SafetySosBySosAlertIdResolve",
@@ -219505,6 +220738,100 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/terminus": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertIdTerminus",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Ledger status of each emergency-terminus effect (ops page, contact call, PSAP resolution); reason codes only, never a number",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sosAlertId",
+                    "actions"
+                  ],
+                  "properties": {
+                    "sosAlertId": {
+                      "type": "string"
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "actionKind",
+                          "loopIteration",
+                          "attemptNo",
+                          "status",
+                          "outcomeCode",
+                          "settledAt"
+                        ],
+                        "properties": {
+                          "actionKind": {
+                            "type": "string"
+                          },
+                          "loopIteration": {
+                            "type": "integer"
+                          },
+                          "attemptNo": {
+                            "type": "integer"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "outcomeCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "settledAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

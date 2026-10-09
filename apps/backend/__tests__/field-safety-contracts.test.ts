@@ -31,6 +31,7 @@ import {
   M20_ERASER_DATA_CLASS,
   M20_EVENT_IDEMPOTENCY_KEYS,
   M20_EVENT_NAMES,
+  M20_LATER_TABLE_NAMES,
   M20_SUBSCRIBED_EVENT_NAMES,
   M20_SYSTEM_LOCKED_ALERT_TYPES,
   M20_TABLE_NAMES,
@@ -242,7 +243,11 @@ describe("§3.3 owned tables ↔ the manifest", () => {
 
   it("mirrors the manifest's ownedTables exactly — the manifest is the source of truth", () => {
     expect(m20).toBeDefined();
-    expect([...M20_TABLE_NAMES].sort()).toEqual([...(m20?.ownedTables ?? [])].sort());
+    // The original thirteen (migration 0110) plus the tables added later by reviewed manifest edits
+    // (GAP-032: `safety_sos_terminus_action`, the INT-031 terminus fallback record).
+    expect([...M20_TABLE_NAMES, ...M20_LATER_TABLE_NAMES].sort()).toEqual(
+      [...(m20?.ownedTables ?? [])].sort(),
+    );
   });
 
   it("owns thirteen tables and does NOT claim §3.2 Phase E's platform polygon table", () => {

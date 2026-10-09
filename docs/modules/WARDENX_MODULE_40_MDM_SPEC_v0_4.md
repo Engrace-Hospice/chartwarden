@@ -1068,6 +1068,8 @@ Module 40 contributes the following keys to Module 3's permission catalog (`pack
 
 > **Why three keys per entity kind, not one:** read/propose/overlay are different blast radii. Read is broad; propose creates a provisional that will become canonical (touches global state); overlay edits this-tenant's-opinion. Collapsing them would make "anyone who can read can propose" — which is the dedup-spam vector this module is built to prevent.
 
+> **As-built (GAP-032) - `emergency_service_jurisdiction`.** M20's spec cites an M40 `EmergencyServiceJurisdiction` canonical that this spec never defined. It is now a TENANT-CURATED table (migration 0901; `external_grief_resource` precedent): per tenant, a drawn polygon, a per-location default or one org default, each with the PSAP administrative line (E.164), `verified_at` / `verify_every_days` (a stale row is still returned but flagged) and `source` (`platform_seed` reserved for a future licensed dataset - none ships). Keys `mdm.psap_jurisdiction.read|manage`; routes `/api/v1/mdm/psap-jurisdictions` (list, create, patch, verify, deactivate, reactivate; an edit of the number or its coverage clears the verification). Seam `EmergencyServiceJurisdictionReader` (`forSosAlert` three-valued: resolved / none / unavailable; `byId`), resolved by M20's SOS terminus in order point-in-polygon (smallest area), location default, org default. There is no admin screen yet and no stale-verification / coverage-gap scan job.
+
 ### 4.5 The `MdmEntityProvider` Seam (the contract every consumer imports)
 
 ```typescript

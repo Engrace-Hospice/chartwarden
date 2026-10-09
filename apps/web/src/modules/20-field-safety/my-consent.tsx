@@ -286,7 +286,7 @@ export function MyConsentScreen(): JSX.Element {
                     value={contactPhone}
                     onChange={setContactPhone}
                     type="tel"
-                    hint="Stored encrypted. It is not shown back on any screen."
+                    hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
                   />
                   <TextField
                     label="Relationship to you (optional)"

@@ -1,3 +1,4 @@
+import { pointInRings } from "@wardenx/shared/geo";
 import { getRequestContext } from "@wardenx/tenancy";
 // apps/backend/src/modules/20-field-safety/seams/providers.ts — M20-T05, the §4.3 seam implementations:
 // pure orchestration over an injected {@link SafetySeamStore}. Each returns the leaf-typed seam interface
@@ -200,21 +201,9 @@ export function pointInPolygon(
   rings: SafetyPolygonRings,
   point: SafetyRoundedCoordinates,
 ): boolean {
-  let inside = false;
-  for (const ring of rings) {
-    if (ring.length < 3) continue;
-    let ringInside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i] as readonly [number, number];
-      const [xj, yj] = ring[j] as readonly [number, number];
-      const intersects =
-        yi > point.latitude3 !== yj > point.latitude3 &&
-        point.longitude3 < ((xj - xi) * (point.latitude3 - yi)) / (yj - yi) + xi;
-      if (intersects) ringInside = !ringInside;
-    }
-    if (ringInside) inside = !inside;
-  }
-  return inside;
+  // GAP-032: the ray-cast itself moved to the leaf `@wardenx/shared/geo` so M40's PSAP resolver (which may
+  // not import M20) shares ONE implementation. This wrapper keeps M20's rounded-coordinate signature.
+  return pointInRings(rings, { latitude: point.latitude3, longitude: point.longitude3 });
 }
 
 /**

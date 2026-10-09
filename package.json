@@ -130,6 +130,7 @@
     "test:m20:sos-sla-watchdog:live": "vitest run apps/backend/__tests__/m20-sos-sla-watchdog.live.test.ts",
     "test:m20:overdue-detector:live": "vitest run apps/backend/__tests__/m20-overdue-detector.live.test.ts",
     "test:m20:routes:live": "vitest run apps/backend/__tests__/m20-routes.live.test.ts",
+    "test:m40:psap-jurisdiction:live": "vitest run apps/backend/__tests__/m40-psap-jurisdiction.live.test.ts",
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
     "test:gap007:idempotency-claim:live": "vitest run apps/backend/__tests__/gap-007-idempotency-claim.live.test.ts",
     "test:m28:fhir-gateway:live": "vitest run apps/backend/__tests__/m28-fhir-gateway.live.test.ts",

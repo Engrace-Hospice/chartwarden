@@ -74,6 +74,14 @@ export type SafetySosAlertView = Ok<operations["getApiV1SafetySosBySosAlertId"]>
  *  the promise the screen makes and the audit row the server writes cannot drift apart. */
 export type SosLocationStreamPage = Ok<operations["getApiV1SafetySosBySosAlertIdLocationstream"]>;
 
+/** GAP-032 - the tenant-curated PSAP administrative line for an alert AT the emergency terminus. Supplementary
+ *  to the static 911 line (always shown); carries who verified it and when. */
+export type SosPsapView = Ok<operations["getApiV1SafetySosBySosAlertIdPsap"]>;
+
+/** GAP-032 - the ledger status of each emergency-terminus effect (ops page, contact call, PSAP resolution).
+ *  Reason codes only: it never carries a phone number. */
+export type SosTerminusView = Ok<operations["getApiV1SafetySosBySosAlertIdTerminus"]>;
+
 /** §4.1 row 11 — the active-SOS board tile. */
 export type ActiveSosView = Ok<operations["getApiV1SafetySosActive"]>;
 
@@ -286,6 +294,30 @@ export async function getSosAlert(
   });
   if (res.error) return { alert: null, error: res.error };
   return { alert: res.data, error: null };
+}
+
+/** GAP-032 - the PSAP line for an alert at the terminus (409 for any other state). */
+export async function getSosPsap(
+  client: ApiClient,
+  sosAlertId: string,
+): Promise<{ psap: SosPsapView | null; error: unknown }> {
+  const res = await client.GET("/api/v1/safety/sos/{sosAlertId}/psap", {
+    params: { path: { sosAlertId } },
+  });
+  if (res.error) return { psap: null, error: res.error };
+  return { psap: res.data, error: null };
+}
+
+/** GAP-032 - what the emergency terminus has (and has not) managed to do for this alert. */
+export async function getSosTerminus(
+  client: ApiClient,
+  sosAlertId: string,
+): Promise<{ terminus: SosTerminusView | null; error: unknown }> {
+  const res = await client.GET("/api/v1/safety/sos/{sosAlertId}/terminus", {
+    params: { path: { sosAlertId } },
+  });
+  if (res.error) return { terminus: null, error: res.error };
+  return { terminus: res.data, error: null };
 }
 
 /**

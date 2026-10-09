@@ -64,6 +64,44 @@ export type SafetyEmergencyContactConsentId = string;
 export type SafetyDeviceId = string;
 export type PsapJurisdictionId = string;
 
+// ── GAP-032 terminus action ledger (`safety_sos_terminus_action`, migration 0900) ──────────────────────
+// text + CHECK rather than pgEnums: the vocabulary is closed and mirrored here (a test pins it against the
+// migration). Reason codes only - the ledger never holds PHI, a phone number or a coordinate.
+export const SAFETY_TERMINUS_ACTION_KINDS = ["page_ops", "dial_contact", "resolve_psap"] as const;
+export type SafetyTerminusActionKind = (typeof SAFETY_TERMINUS_ACTION_KINDS)[number];
+
+export const SAFETY_TERMINUS_ACTION_STATUSES = [
+  "pending",
+  "attempting",
+  "succeeded",
+  "failed",
+  "skipped",
+  "superseded",
+] as const;
+export type SafetyTerminusActionStatus = (typeof SAFETY_TERMINUS_ACTION_STATUSES)[number];
+
+export const SAFETY_TERMINUS_OUTCOME_CODES = [
+  "ok",
+  "consent_absent",
+  "consent_unavailable",
+  "consent_expired_or_revoked",
+  "contact_unreadable",
+  "number_invalid",
+  "voice_unbound",
+  "dial_disabled",
+  "pager_unbound",
+  "vendor_refused",
+  "receiver_non_2xx",
+  "timeout",
+  "superseded_ack",
+  "cap_reached",
+  "spacing",
+  "jurisdiction_none",
+  "jurisdiction_unavailable",
+  "possible_duplicate",
+] as const;
+export type SafetyTerminusOutcomeCode = (typeof SAFETY_TERMINUS_OUTCOME_CODES)[number];
+
 // ── §3.2 Phase-A pgEnum value mirrors (kept in lock-step with `packages/db/src/enums.ts`) ─────────────
 
 /** `safety_check_in_kind` — §1.1 / D2. The three visit-bracketing kinds REQUIRE a `visitId`; the other
@@ -336,6 +374,11 @@ export type M20TableName =
   | "safety_sos_alert_state_history"
   | "safety_sos_location_stream"
   | "safety_supervisor_subscription";
+
+/** Tables added to the manifest AFTER the original thirteen (a reviewed manifest edit each). They are NOT in
+ *  {@link M20_TABLE_NAMES}: that list is the migration-0110/0111 set the schema and trigger proofs iterate.
+ *  `safety_sos_terminus_action` (migration 0900, GAP-032) is the INT-031 terminus fallback record. */
+export const M20_LATER_TABLE_NAMES = ["safety_sos_terminus_action"] as const;
 
 /** The same thirteen as a runtime list (the M4 trigger loop and the §9.3 RLS proof both iterate it). */
 export const M20_TABLE_NAMES = [
@@ -1432,3 +1475,68 @@ export interface SafetySupervisorProvider {
 //   `packages/scheduling-client`. None exists (M20-F13 already corrected two of the three in the spec's
 //   own dependency list): M17's, M18's and M19's seam CONTRACTS all live in `@wardenx/types`, which is
 //   where M20 imports them from, with no `dependsOn` edge.
+
+// ── GAP-032 terminus contracts (leaf; M20 consumes, M40 / M36 implement) ──────────────────────────────
+
+/** How a PSAP jurisdiction was matched to an SOS (most to least specific). */
+export type PsapResolutionConfidence = "point_in_polygon" | "location_default" | "org_default";
+
+/**
+ * M40 `EmergencyServiceJurisdictionReader.forSosAlert` answer. THREE-VALUED on purpose: `unavailable`
+ * ("M40 is down / unbound") must never collapse into `none` ("this tenant has no jurisdiction for the
+ * place"), because the ledger records different truths for the two.
+ */
+export type PsapResolution =
+  | {
+      readonly kind: "resolved";
+      readonly jurisdictionId: PsapJurisdictionId;
+      readonly confidence: PsapResolutionConfidence;
+      /** Past its `verify_every_days`: still returned (a labelled old number beats none), flagged. */
+      readonly stale: boolean;
+    }
+  | { readonly kind: "none" }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+/** The publishable face of one tenant-curated PSAP administrative line. A PUBLIC number, not PHI. */
+export interface PsapJurisdictionSummary {
+  readonly jurisdictionId: PsapJurisdictionId;
+  readonly name: string;
+  readonly psapName: string;
+  readonly phone: string;
+  readonly secondaryPhone: string | null;
+  readonly verifiedAt: IsoInstant;
+  readonly stale: boolean;
+}
+
+/** M40's seam: which tenant-curated PSAP covers a place. Never returns a number it was not given. */
+export interface EmergencyServiceJurisdictionReader {
+  forSosAlert(input: {
+    readonly orgId: OrgId;
+    /** Plain in-memory point (decrypted inside M20, never persisted or logged), or null when unknown. */
+    readonly point: { readonly latitude: number; readonly longitude: number } | null;
+    readonly locationId: LocationId | null;
+  }): Promise<PsapResolution>;
+  byId(orgId: OrgId, jurisdictionId: PsapJurisdictionId): Promise<PsapJurisdictionSummary | null>;
+}
+
+/** What M36's voice transport needs to place the emergency-contact call. The number lives in memory only. */
+export interface SosContactCallInput {
+  readonly organizationId: string;
+  readonly idempotencyKey: string;
+  readonly toE164: string;
+  readonly agencyName: string;
+  readonly subjectDisplayName: string;
+}
+
+export type SosContactCallResult =
+  | { readonly kind: "accepted"; readonly vendorCallId: string }
+  | {
+      readonly kind: "refused";
+      readonly reason: "transport_not_configured" | "vendor_refused" | "timeout";
+      readonly retryable: boolean;
+    };
+
+/** M36-implemented: place ONE automated safety call to a consented third-party emergency contact. */
+export interface SosContactCaller {
+  place(input: SosContactCallInput): Promise<SosContactCallResult>;
+}

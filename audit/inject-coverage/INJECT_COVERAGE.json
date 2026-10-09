@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1475,
-    "coveredRoutes": 1475,
-    "directRoutesReferenced": 1413
+    "routes": 1484,
+    "coveredRoutes": 1484,
+    "directRoutesReferenced": 1415
   },
   "modules": [
     {
@@ -288,14 +288,14 @@
     },
     {
       "module": "20-field-safety",
-      "routes": 30,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/field-safety-inject.test.ts",
         "apps/backend/__tests__/m20-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 30
+      "directRoutesReferenced": 32
     },
     {
       "module": "21-supplies",
@@ -527,7 +527,7 @@
     },
     {
       "module": "40-mdm",
-      "routes": 19,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
