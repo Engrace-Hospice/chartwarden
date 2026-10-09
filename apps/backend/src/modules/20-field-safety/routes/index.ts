@@ -119,4 +119,7 @@ import type { M20WriteService } from "./write-service";
 export interface M20RouteServices {
   readonly readService: M20ReadService;
   readonly writeService: M20WriteService;
+  /** GAP-032 - the SOS-terminus read surfaces (PSAP line, ledger status, readiness). Optional: a slice
+   *  without a database mounts the rest of M20 unchanged. */
+  readonly terminus?: import("./terminus.routes").TerminusRouteDeps;
 }

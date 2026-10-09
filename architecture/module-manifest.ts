@@ -340,6 +340,7 @@ export const MODULES: ModuleDef[] = [
       "mdm_provisional",
       "merge_request",
       "nppes_sync_coordination",
+      "emergency_service_jurisdiction",
       "external_grief_resource",
       "nppes_sync_log",
       "payer",

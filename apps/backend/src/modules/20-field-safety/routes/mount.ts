@@ -16,12 +16,14 @@ import { registerDashboardRoutes } from "./dashboard.routes";
 import { registerIncidentRoutes } from "./incidents.routes";
 import type { M20RouteServices } from "./index";
 import { registerSosRoutes } from "./sos.routes";
+import { registerTerminusRoutes } from "./terminus.routes";
 
 export { registerCheckInRoutes, type CheckInRouteDeps } from "./check-ins.routes";
 export { registerSosRoutes, type SosRouteDeps } from "./sos.routes";
 export { registerIncidentRoutes, type IncidentRouteDeps } from "./incidents.routes";
 export { registerAdminRoutes, type AdminRouteDeps } from "./admin.routes";
 export { registerDashboardRoutes, type DashboardRouteDeps } from "./dashboard.routes";
+export { registerTerminusRoutes, type TerminusRouteDeps } from "./terminus.routes";
 
 /** Mount every M20 §4.1 route plugin over the Drizzle-backed READ + WRITE services. */
 export function mountM20Routes(app: FastifyInstance, services: M20RouteServices): void {
@@ -31,4 +33,5 @@ export function mountM20Routes(app: FastifyInstance, services: M20RouteServices)
   registerIncidentRoutes(app, { readService, writeService });
   registerAdminRoutes(app, { readService, writeService });
   registerDashboardRoutes(app, { readService, writeService });
+  if (services.terminus) registerTerminusRoutes(app, services.terminus);
 }

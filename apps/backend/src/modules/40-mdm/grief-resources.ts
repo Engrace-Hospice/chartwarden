@@ -178,7 +178,7 @@ export const GriefResourceListQuery = Type.Object({
   includeInactive: Type.Optional(Type.Boolean()),
 });
 
-function parseOrThrow<T extends import("@sinclair/typebox").TSchema>(
+export function parseOrThrow<T extends import("@sinclair/typebox").TSchema>(
   schemaOf: T,
   raw: unknown,
 ): import("@sinclair/typebox").Static<T> {
@@ -196,9 +196,12 @@ function parseOrThrow<T extends import("@sinclair/typebox").TSchema>(
   return converted as import("@sinclair/typebox").Static<T>;
 }
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-function actorOf(request: FastifyRequest): { organizationId: string; membershipId: string | null } {
+export function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  membershipId: string | null;
+} {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   const membershipId = ctx.attributes?.membershipId;

@@ -41,6 +41,12 @@ import {
   runSosSlaWatchdogCron,
   runTerminusExecutorForOrg,
 } from "../src/modules/20-field-safety/index";
+import {
+  psapForAlert,
+  terminusActionsForAlert,
+  terminusReadiness,
+} from "../src/modules/20-field-safety/routes/terminus.routes";
+import { buildEmergencyServiceJurisdictionReader } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -799,6 +805,119 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     expect((asA.rows[0] as { n: number }).n).toBeGreaterThan(0);
     expect((asB.rows[0] as { n: number }).n).toBe(0);
     expect(sosAlertId).toBeTruthy();
+  });
+
+  it("GAP-032: end to end with the REAL M40 reader - the ledger resolves the tenant's PSAP and the /psap read returns its line, never the number in events", async () => {
+    await admin.query(
+      `INSERT INTO emergency_service_jurisdiction
+         (organization_id, name, state, psap_name, psap_phone, is_org_default, verified_at)
+       VALUES ($1,'Org default','OR','Cedar County PSAP','+15035550123',true,'2026-08-15T00:00:00Z')`,
+      [ORG_A],
+    );
+    const sosAlertId = await seedTier3();
+    const { bag } = terminusBag({ jurisdiction: "unbound" });
+    const real = buildEmergencyServiceJurisdictionReader(handle.db, () => clock);
+    await runSosSlaWatchdogCron({
+      ...singleOrg(),
+      terminus: { ...bag, jurisdictions: () => real },
+    });
+    expect(await kindRows(sosAlertId, "resolve_psap")).toEqual([
+      expect.objectContaining({ status: "succeeded", outcome_code: "ok" }),
+    ]);
+
+    const routeDeps = {
+      db: handle.db,
+      jurisdictions: () => real,
+      terminus: () => bag,
+      now: () => clock,
+    };
+    const psap = await psapForAlert(routeDeps, ORG_A, sosAlertId);
+    expect(psap.reason).toBe("resolved");
+    expect(psap.emergencyLine).toMatch(/911/);
+    expect(psap.psap).toMatchObject({
+      psapName: "Cedar County PSAP",
+      phone: "+15035550123",
+      stale: false,
+    });
+
+    // The number never travels in the outbox / alert payloads - only the opaque jurisdiction id.
+    const events = await outboxFor(sosAlertId);
+    expect(JSON.stringify(events)).not.toContain("5550123");
+
+    // Another tenant cannot read this alert's PSAP (the alert is invisible to it under RLS).
+    await expect(psapForAlert(routeDeps, ORG_B, sosAlertId)).rejects.toThrow();
+
+    const actions = await terminusActionsForAlert(routeDeps, ORG_A, sosAlertId);
+    expect(actions.actions.map((a) => a.actionKind).sort()).toEqual([
+      "dial_contact",
+      "page_ops",
+      "resolve_psap",
+    ]);
+    expect(JSON.stringify(actions)).not.toMatch(/\+1\d{10}/);
+  });
+
+  it("GAP-032: /psap is refused (409) for an alert that is not at the terminus, and 'none' is reported truthfully", async () => {
+    const postedAt = new Date("2026-09-01T16:00:00.000Z");
+    const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
+    const early = await seedSos({
+      org: ORG_A,
+      lifecycleState: "escalation_tier_1",
+      postedAt,
+      policyVersionId,
+    });
+    const { bag } = terminusBag({ jurisdiction: "none" });
+    const routeDeps = {
+      db: handle.db,
+      jurisdictions: () => {
+        throw new Error("unbound");
+      },
+      terminus: () => bag,
+      now: () => clock,
+    };
+    await expect(psapForAlert(routeDeps, ORG_A, early)).rejects.toThrow(
+      /not at the emergency terminus/,
+    );
+
+    const atTerminus = await seedTier3();
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+    const none = await psapForAlert(routeDeps, ORG_A, atTerminus);
+    expect(none).toMatchObject({ psap: null, reason: "none" });
+    expect(none.emergencyLine).toMatch(/911/);
+  });
+
+  it("GAP-032: readiness reports a missing pager as degraded and stuck terminus work", async () => {
+    const sosAlertId = await seedTier3();
+    await runSosSlaWatchdogCron(singleOrg()); // no pager bound
+    const bare = await terminusReadiness(
+      {
+        db: handle.db,
+        jurisdictions: () => {
+          throw new Error("x");
+        },
+        terminus: () => undefined,
+        now: () => new Date(clock.getTime() + 600_000),
+      },
+      ORG_A,
+    );
+    expect(bare).toMatchObject({ opsPagerBound: false, degraded: true });
+    expect(bare.degradedReasons).toContain("ops_pager_unbound");
+
+    const { bag } = terminusBag({ pagerFails: true });
+    await admin.query("DELETE FROM safety_sos_terminus_action");
+    await admin.query("DELETE FROM safety_sos_alert_state_history WHERE sos_alert_id=$1", [
+      sosAlertId,
+    ]);
+    const downAlert = await seedTier3();
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+    const later = new Date(clock.getTime() + 600_000);
+    const ready = await terminusReadiness(
+      { db: handle.db, jurisdictions: () => ({}) as never, terminus: () => bag, now: () => later },
+      ORG_A,
+    );
+    expect(ready.opsPagerBound).toBe(true);
+    expect(ready.stuckActionCount).toBeGreaterThan(0);
+    expect(ready.degradedReasons).toContain("unsettled_actions");
+    expect(downAlert).toBeTruthy();
   });
 
   it("an alert already in emergency_terminus gets re-paged on its loop, one event per period", async () => {

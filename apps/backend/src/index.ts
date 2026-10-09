@@ -3768,6 +3768,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     env: process.env,
     log: (line) => process.stderr.write(`${line}\n`),
   });
+  // GAP-032 - the M20 SOS-terminus effect bag. Built where the cron workers are wired (it needs the queue-side
+  // deps); the route layer's readiness probe reads it lazily through this holder.
+  let m20TerminusBag: ReturnType<typeof buildM20TerminusDeps> | undefined;
   // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
   // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
@@ -5008,6 +5011,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             decipher: m20Ciphers.decipher,
           });
           mountM20Routes(app, {
+            // GAP-032 - PSAP line / terminus ledger status / readiness for the SOS terminus.
+            terminus: {
+              db: dbHandle.db,
+              jurisdictions: () => getSeam("EmergencyServiceJurisdictionReader"),
+              terminus: () => m20TerminusBag,
+            },
             readService: m20ReadService,
             writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
               outbox: m20OutboxPublisher,
@@ -7527,6 +7536,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       jobId: M20_PLATFORM_JOB_ID,
       reason: "M20 §4.8 SOS SLA watchdog cron fan-out (active-org enumeration)",
     });
+    m20TerminusBag = buildM20TerminusDeps({
+      env: process.env,
+      db: dbHandle.db,
+      caller: createSosContactCaller(outOfBandBinding.transports.voice),
+      decipher: createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider)).decipher,
+      log: (line) => process.stderr.write(`${line}\n`),
+    });
     const m20WorkerDeps = buildM20WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -7536,13 +7552,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // to the consented emergency contact (gated OFF by WARDENX_SOS_CONTACT_DIAL), and the M40 PSAP
       // lookup. An unbound port degrades to a RECORDED ledger skip and a loud boot line - it never stops
       // the terminus being entered (see 20-field-safety/terminus/build.ts).
-      terminus: buildM20TerminusDeps({
-        env: process.env,
-        db: dbHandle.db,
-        caller: createSosContactCaller(outOfBandBinding.transports.voice),
-        decipher: createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider)).decipher,
-        log: (line) => process.stderr.write(`${line}\n`),
-      }),
+      terminus: m20TerminusBag,
       activeOrgs: m20ActiveOrgs,
       // GAP-061 — the overdue detector's D14 after-hours zone, through M1's owner reader (M20 reads no
       // `location` row itself).
