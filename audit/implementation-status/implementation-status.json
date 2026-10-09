@@ -451,15 +451,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 72,
-        "enriched": 72
+        "routes": 77,
+        "enriched": 77
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 21,
-        "covered": 21
+        "tables": 26,
+        "covered": 26
       }
     },
     {

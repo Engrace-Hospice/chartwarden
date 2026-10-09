@@ -309,7 +309,18 @@ export async function billableEncountersInRangeForOrg(
   providerEntityId: string,
   patientId: string,
   range: { readonly from: string; readonly to: string },
-): Promise<ReadonlyArray<EncounterBillability & { readonly serviceDate: string }>> {
+): Promise<
+  ReadonlyArray<
+    EncounterBillability & {
+      readonly serviceDate: string;
+      /** What M23 codes the hospice visit line from (CMS Pub. 100-04 ch. 11 §30.3). */
+      readonly discipline: string;
+      readonly encounterType: string;
+      /** The start-to-end bracket in minutes; `null` = unresolved (a gap is never fabricated into a duration). */
+      readonly durationMinutes: number | null;
+    }
+  >
+> {
   return withOrgContext(
     db,
     { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
@@ -325,6 +336,8 @@ export async function billableEncountersInRangeForOrg(
           significantLateOverrideBy: E.significantLateOverrideBy,
           administrativeOverrideBy: E.administrativeOverrideBy,
           serviceDate: E.serviceDate,
+          startedAt: E.startedAt,
+          endedAt: E.endedAt,
         })
         .from(E)
         .where(
@@ -351,7 +364,13 @@ export async function billableEncountersInRangeForOrg(
             r.administrativeOverrideBy,
           ),
         });
-        return { ...verdict, serviceDate: r.serviceDate };
+        return {
+          ...verdict,
+          serviceDate: r.serviceDate,
+          discipline: r.discipline,
+          encounterType: r.encounterType,
+          durationMinutes: bracketMinutes(r.startedAt, r.endedAt),
+        };
       });
     },
   );

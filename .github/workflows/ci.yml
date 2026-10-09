@@ -1014,6 +1014,15 @@ jobs:
           # (D13): a new `unmapped_taxonomy_occurrence` occurrence tracker + a 30-day/50-occurrence
           # threshold alert through the existing WorkerAlertPort — not the revalidate.consumer queue.
           - { name: "M23 taxonomy occurrence", scripts: "test:m23:taxonomy-occurrence:live" }
+          # Phase 3 (DDE/Stedi plan) — hospice claim-line assembly: 15-minute visit lines, CHC quarter-hour units,
+          # a claim total that balances to its lines (SIA out of the billed total), physician NPIs (migration 1054).
+          - { name: "M23 visit lines assembly", scripts: "test:m23:visit-lines-assembly:live" }
+          # Migration 1056 — the tenant-entered visit-charge schedule: append-only versions, EXCLUDE no-overlap, RLS,
+          # audit trail, and the windowed read claim assembly fails closed on.
+          - { name: "M23 visit charge schedule", scripts: "test:m23:visit-charge-schedule:live" }
+          # Migrations 1058/1059 — the CMS hospice wage-index geography (ZIP -> county -> CBSA) behind value codes 61 / G8:
+          # real ZIPs resolve to the CMS code for the fiscal year, unplaceable ones fail closed, tenants read but never write.
+          - { name: "M23 hospice CBSA geography", scripts: "test:m23:hospice-cbsa:live" }
           # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
           # organization activate/suspend/close triggers.
           - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }

@@ -460,6 +460,16 @@ import {
   TransferNoticeViewSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/transfer-notice-typebox";
 import {
+  CreateVisitChargeBodySchema,
+  SupersedeVisitChargeBodySchema,
+  VisitChargeEffectiveQuerySchema,
+  VisitChargeEffectiveResponseSchema,
+  VisitChargeGetQuerySchema,
+  VisitChargeListQuerySchema,
+  VisitChargeListResponseSchema,
+  VisitChargeViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/visit-charge-typebox";
+import {
   CreateWageIndexBodySchema,
   SupersedeWageIndexBodySchema,
   WageIndexEffectiveQuerySchema,
@@ -10071,7 +10081,7 @@ const M23ValidationRunView = Type.Object({
 const M23ClaimPricingView = Type.Object({
   hipps: Type.Union([
     Type.Object({
-      hippsCode: Type.String(),
+      perDiemClassCode: Type.String(),
       hippsRateCents: Type.Integer(),
       wageIndexCcn: Type.String(),
       wageIndexFiscalYear: Type.Integer(),
@@ -10568,6 +10578,39 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
     body: SupersedeRateTableBodySchema,
     response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  // ── Migration 1056: the tenant-entered hospice visit-charge schedule (visit-charge.routes.ts) ──
+  "GET /api/v1/billing/visit-charge-schedules": {
+    summary:
+      "List a ProviderEntity's hospice visit-charge schedule versions, newest window first (includeSuperseded=true adds history)",
+    query: VisitChargeListQuerySchema,
+    response: VisitChargeListResponseSchema,
+  },
+  "GET /api/v1/billing/visit-charge-schedules/effective": {
+    summary: "The live visit-charge schedule claim assembly would bill a visit date from, or null",
+    query: VisitChargeEffectiveQuerySchema,
+    response: VisitChargeEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/visit-charge-schedules/:id": {
+    summary: "Read one hospice visit-charge schedule version",
+    query: VisitChargeGetQuerySchema,
+    response: VisitChargeViewSchema,
+  },
+  "POST /api/v1/billing/visit-charge-schedules": {
+    summary:
+      "Enter a hospice visit-charge schedule version - whole-cent charges per 15-minute unit per discipline; non-overlapping",
+    body: CreateVisitChargeBodySchema,
+    response: VisitChargeViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/visit-charge-schedules/:id/supersede": {
+    summary:
+      "Supersede a live visit-charge schedule version with a corrected one; the old version is kept as history",
+    body: SupersedeVisitChargeBodySchema,
+    response: VisitChargeViewSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },

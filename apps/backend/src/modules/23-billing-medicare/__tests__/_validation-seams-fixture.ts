@@ -111,6 +111,7 @@ export function fixedValidationSeams(
         effectiveFrom: "2025-01-01",
         effectiveTo: null,
       }),
+      visitChargeVersions: async () => [],
     },
     ruleRegistry: new BillingRuleRegistry(),
     outbox: { publish: async () => undefined },

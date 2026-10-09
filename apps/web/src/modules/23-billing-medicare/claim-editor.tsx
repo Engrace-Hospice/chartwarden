@@ -44,7 +44,7 @@ import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-w
 const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
 
 interface HippsPricing {
-  hippsCode: string;
+  perDiemClassCode: string;
   hippsRateCents: number;
   wageIndexCcn: string;
   wageIndexFiscalYear: number;
@@ -594,21 +594,21 @@ function ClaimSummaryGrid({ claim }: { claim: ClaimDetail }): JSX.Element {
   );
 }
 
-// ── HIPPS / SIA pricing cards ─────────────────────────────────────────────────────────────────────────
+// ── Per-diem (internal class) / SIA pricing cards ─────────────────────────────────────────────────────────────────────────
 function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
   const { hipps, sia } = claim.pricing;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
       <section style={{ ...cardStyle, minWidth: "16rem", flex: "1 1 16rem" }}>
-        <h3 style={cardTitleStyle}>HIPPS</h3>
+        <h3 style={cardTitleStyle}>Per-diem pricing</h3>
         {!hipps ? (
           <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Not priced.
           </span>
         ) : (
           <>
-            <Field label="HIPPS code" value={hipps.hippsCode} mono />
-            <Field label="HIPPS rate" value={dollars(hipps.hippsRateCents)} />
+            <Field label="Per-diem class (internal)" value={hipps.perDiemClassCode} mono />
+            <Field label="Per-diem rate" value={dollars(hipps.hippsRateCents)} />
             <Field label="Wage-index CCN" value={hipps.wageIndexCcn} mono />
             <Field
               label="Wage index"

@@ -359,6 +359,86 @@ export class ClaimRepository {
   }
 
   /**
+   * Keep the claim's physician NPIs (migration 1054; UB-04 FL 76 attending / FL 78 certifying) in step with the M40
+   * resolution the latest validation run saw. A derived projection like {@link refreshDischargeCodes}: no version
+   * bump, a no-op when unchanged; the write-audit trigger records the change. Returns whether the row changed.
+   */
+  async refreshPhysicianNpis(
+    id: string,
+    npis: {
+      readonly attendingPhysicianNpi: string | null;
+      readonly certifyingPhysicianNpi: string | null;
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        attendingPhysicianNpi: npis.attendingPhysicianNpi,
+        certifyingPhysicianNpi: npis.certifyingPhysicianNpi,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`(${C.attendingPhysicianNpi} IS DISTINCT FROM ${npis.attendingPhysicianNpi}
+            OR ${C.certifyingPhysicianNpi} IS DISTINCT FROM ${npis.certifyingPhysicianNpi})`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Keep the claim's wage-index value codes (migration 1059; UB-04 FL 39-41 — 61 residence CBSA, G8 inpatient-facility
+   * CBSA) in step with the ZIP-to-CBSA resolution the latest validation run saw. A derived projection like
+   * {@link refreshAdmissionCodes}: no version bump, no-op when unchanged. Returns whether the row changed.
+   */
+  async refreshValueCodes(
+    id: string,
+    valueCodes: readonly { readonly code: "61" | "G8"; readonly cbsaCode: string }[],
+  ): Promise<boolean> {
+    const next = valueCodes.map((v) => ({ code: v.code, cbsaCode: v.cbsaCode }));
+    const rows = await this.db
+      .update(C)
+      .set({ valueCodes: next, updatedAt: new Date() })
+      .where(
+        and(eq(C.id, id), sql`${C.valueCodes} IS DISTINCT FROM ${JSON.stringify(next)}::jsonb`),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Keep the claim's Type of Admission / Point of Origin (migration 1057; UB-04 FL 14 / FL 15) in step with the
+   * M6 admission the latest validation run read — a biller recording the missing codes after assembly must not
+   * need a new claim. A derived projection like {@link refreshPhysicianNpis}: no version bump, no-op when unchanged.
+   */
+  async refreshAdmissionCodes(
+    id: string,
+    codes: {
+      readonly admissionTypeCode: string | null;
+      readonly admissionSourceCode: string | null;
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        admissionTypeCode: codes.admissionTypeCode,
+        admissionSourceCode: codes.admissionSourceCode,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`(${C.admissionTypeCode} IS DISTINCT FROM ${codes.admissionTypeCode}
+            OR ${C.admissionSourceCode} IS DISTINCT FROM ${codes.admissionSourceCode})`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
    * Re-type an UNSUBMITTED normal-cadence claim whose stored Type of Bill no longer matches the one the resolver
    * derives from current M6 facts (e.g. assembled as interim 812/813 before a revocation or transfer-out was
    * counted as the end of the stay; now final 811/814). Guarded on the stored value (`fromTob`) so a concurrent

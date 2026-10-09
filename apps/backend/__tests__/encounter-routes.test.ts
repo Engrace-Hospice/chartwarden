@@ -280,6 +280,34 @@ describe("M8-T09 — encounter routes (§4.1, §4.5 RBAC gating)", () => {
     expect(res.json().error.code).toBe("INVALID_ENCOUNTER_DISCIPLINE_PAIR");
   });
 
+  it("a therapist role authors a pt_visit as `pt` (201); an RN cannot author as `pt` (403) and `pt` cannot file an RN visit type (422)", async () => {
+    const { app } = makeServer();
+    const PT = { ...RN, "x-test-roles": "pt" };
+    const create = (headers: Record<string, string>, encounterType: string, discipline: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/encounters",
+        headers,
+        payload: {
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          encounterType,
+          discipline,
+          serviceDate: "2026-06-20",
+        },
+      });
+
+    const ok = await create(PT, "pt_visit", "pt");
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().status).toBe("draft");
+
+    expect((await create(RN, "pt_visit", "pt")).statusCode).toBe(403);
+
+    const illegal = await create(PT, "routine_visit", "pt");
+    expect(illegal.statusCode).toBe(422);
+    expect(illegal.json().error.code).toBe("INVALID_ENCOUNTER_DISCIPLINE_PAIR");
+  });
+
   it("403 when the caller lacks encounter.author", async () => {
     const { app } = makeServer();
     const res = await app.inject({

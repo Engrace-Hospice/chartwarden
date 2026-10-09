@@ -900,6 +900,7 @@ import {
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
+  buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
@@ -941,6 +942,10 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import {
+  composeFacilitySpans,
+  toFacilitySpans,
+} from "./modules/23-billing-medicare/services/claim-cbsa";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -1417,6 +1422,7 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
+import { inpatientFacilityIdsForPeriodsForOrg } from "./modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   M38_PLATFORM_JOB_ID,
@@ -1472,6 +1478,7 @@ import {
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
   facilityKindsForIds,
+  facilityPostalCodesForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
   registerM40CronWorkers,
@@ -2984,6 +2991,45 @@ function buildM23AssemblyPorts(db: DbClient): {
       },
       facilityKinds: {
         kindsFor: (facilityIds) => facilityKindsForIds(db, facilityIds),
+      },
+    },
+    // Wage-index value codes 61 / G8 (CMS ch. 11 s30.3): the residence ZIP on the claim's last day (M5) and the
+    // patient's facility residence spans (M5) with each facility's address (M40); G8 is the facility overlapping the
+    // inpatient dates. Resolved lazily per call, like placeOfService above.
+    claimZips: {
+      residencePostalCode: async (orgId, patientId, asOf) =>
+        (
+          await (getSeam("PatientAddressReader") as PatientAddressReader).residenceAt(
+            orgId,
+            patientId,
+            asOf,
+          )
+        )?.postalCode ?? null,
+      facilitySpans: async (orgId, patientId, range, stays) => {
+        // M37 (`ipu_admission`) is the system of record for where an inpatient stay was delivered; M5's facility
+        // residence spans stand in only for stays M37 does not know.
+        const m37Facilities = await inpatientFacilityIdsForPeriodsForOrg(
+          db,
+          orgId,
+          stays.map((s) => s.levelOfCarePeriodId),
+        );
+        const spans = await (
+          getSeam("PatientAddressReader") as PatientAddressReader
+        ).residencesBetween(orgId, patientId, range.from, range.to);
+        const facilityIds = [
+          ...new Set([
+            ...m37Facilities.values(),
+            ...spans.flatMap((s) => (s.kind === "facility" && s.facilityId ? [s.facilityId] : [])),
+          ]),
+        ];
+        const postal = await facilityPostalCodesForIds(db, facilityIds);
+        const m37Postal = new Map(
+          [...m37Facilities].map(([periodId, facilityId]) => [
+            periodId,
+            postal.get(facilityId) ?? null,
+          ]),
+        );
+        return composeFacilitySpans(stays, m37Postal, toFacilitySpans(spans, postal));
       },
     },
   };
@@ -4662,6 +4708,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
+            // The tenant-entered hospice visit-charge schedule (`/billing/visit-charge-schedules`); the SAME table the
+            // assembly service reads the charge each visit line is billed at (M23-owned, over `dbHandle.db`).
+            visitChargeService: buildDrizzleVisitChargeService(dbHandle.db),
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
             platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),

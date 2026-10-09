@@ -997,10 +997,13 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const q = parse(ActionItemListQuerySchema, request.query);
       const granted = await resolveActorPermissions(request.context!);
-      const requestedAssignee = q.assignee === undefined || q.assignee === "me" ? userId : q.assignee;
+      const requestedAssignee =
+        q.assignee === undefined || q.assignee === "me" ? userId : q.assignee;
       const readingAnotherMember = requestedAssignee !== userId;
       if (readingAnotherMember && !granted.has("idg.coordinate")) {
-        throw new ForbiddenError("requires permission 'idg.coordinate' to read another member's action items");
+        throw new ForbiddenError(
+          "requires permission 'idg.coordinate' to read another member's action items",
+        );
       }
       const patientIds = await resolveIdgPatientIdsInScope(
         patientScopeFactsOf(request),
@@ -1017,7 +1020,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
             assigneeMembershipId: requestedAssignee,
             locationIds:
               readingAnotherMember && !hasOrgWideScope(request.context?.roles ?? [])
-                ? request.context?.locationIds ?? []
+                ? (request.context?.locationIds ?? [])
                 : null,
             patientIds,
           },

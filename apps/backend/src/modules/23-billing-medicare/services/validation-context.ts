@@ -15,7 +15,9 @@ import type {
   calculateHipps,
   repositories,
 } from "@wardenx/billing";
+import { claimAdmissionCodes, claimValueCodes } from "@wardenx/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
+import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 import { claimDischargeCodes } from "./claim-discharge";
 
 /** The claim-row facts the rules read (the rest of `ClaimSnapshot` comes from the admission/diagnosis facts). */
@@ -73,6 +75,7 @@ export function assembleValidationContext(
     capProjectionCtx,
     signedEncounters,
     electionAddendum,
+    valueAreas,
   } = facts;
   // One derivation for the assembly and every re-validation (claim-discharge.ts): a revocation or transfer-out
   // ends the stay too, not only a completed discharge_event.
@@ -105,6 +108,15 @@ export function assembleValidationContext(
       deathDate: discharge?.deathDate ?? null,
       dischargeClaimCodes,
       dischargeSourceEventId: discharge?.sourceEventId ?? null,
+      ...claimAdmissionCodes(admission),
+      ...(valueAreas
+        ? {
+            valueCodes: claimValueCodes(
+              lines.map((l) => l.revenueCode),
+              valueAreas,
+            ),
+          }
+        : {}),
     },
     lines: lines.map((row) => ({
       claimLineId: row.id,
@@ -130,7 +142,7 @@ export function assembleValidationContext(
     terminology,
     mdm: mdmResolution,
     hipps: {
-      hippsCode: hipps.hippsCode,
+      perDiemClassCode: hipps.perDiemClassCode,
       perDiemRateCents: hipps.perDiemRateCents,
       wageIndexFactorApplied: wageIndex.factorDecimal,
       segments: hipps.segments.map((s) => ({
@@ -166,6 +178,14 @@ export function assembleValidationContext(
       cbsaCode: wageIndex.cbsaCode,
     },
     ...(electionAddendum ? { electionAddendum } : {}),
+    // The visits the assembly could not report (the SAME derivation the assembly built its lines from).
+    visitReporting: visitReportingOf(
+      visitLinesFor({
+        billableEncounters,
+        resolvedLoc,
+        qCode: qCodeForPlaceOfService(mdmResolution.placeOfService),
+      }),
+    ),
     seams: {
       capProjectionBound,
       mdmResolverBound: true,

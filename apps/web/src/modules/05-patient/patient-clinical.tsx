@@ -284,6 +284,9 @@ const ENCOUNTER_LABEL: Record<string, string> = {
   volunteer_visit: "Volunteer Visit",
   bereavement_contact: "Bereavement",
   idg_followup: "IDG Follow-up",
+  pt_visit: "PT Visit",
+  ot_visit: "OT Visit",
+  slp_visit: "SLP Visit",
 };
 
 const DX_DOTS = [

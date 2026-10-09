@@ -128,6 +128,36 @@ export function buildFakeRepositories(): {
       store.claims.set(id, { ...c, occurrenceSpans: [...spans], updatedAt: new Date() });
       return true;
     }
+    /** Mirrors the real repo: refresh the derived physician NPIs (migration 1054) without bumping `version`. */
+    async refreshPhysicianNpis(
+      id: string,
+      npis: { attendingPhysicianNpi: string | null; certifyingPhysicianNpi: string | null },
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, ...npis, updatedAt: new Date() });
+      return true;
+    }
+    /** Mirrors the real repo: refresh the wage-index value codes (migration 1059) without bumping `version`. */
+    async refreshValueCodes(
+      id: string,
+      valueCodes: readonly { code: string; cbsaCode: string }[],
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, valueCodes, updatedAt: new Date() });
+      return true;
+    }
+    /** Mirrors the real repo: refresh the admission type + point of origin (migration 1057) without bumping `version`. */
+    async refreshAdmissionCodes(
+      id: string,
+      codes: { admissionTypeCode: string | null; admissionSourceCode: string | null },
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, ...codes, updatedAt: new Date() });
+      return true;
+    }
     /** Mirrors the real repo: re-type a claim guarded on its stored TOB, without bumping `version`. */
     async refreshTypeOfBill(id: string, fromTob: string, toTob: string): Promise<boolean> {
       const c = store.claims.get(id);

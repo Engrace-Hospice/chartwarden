@@ -613,6 +613,13 @@ export function createDrizzleBillingEraseStore(
             .where(eq(schema.hospiceRateTable.organizationId, organizationId))
             .returning({ id: schema.hospiceRateTable.id })
         ).length;
+        // Migration 1056 — the tenant-entered visit-charge schedule (the destruction role is granted SELECT+DELETE).
+        const hospiceVisitChargeSchedules = (
+          await tx
+            .delete(schema.hospiceVisitChargeSchedule)
+            .where(eq(schema.hospiceVisitChargeSchedule.organizationId, organizationId))
+            .returning({ id: schema.hospiceVisitChargeSchedule.id })
+        ).length;
         // F-211 — the tenant-entered wage index (migration 0280 grants the destruction role SELECT+DELETE).
         const tenantWageIndexes = (
           await tx
@@ -623,6 +630,7 @@ export function createDrizzleBillingEraseStore(
         return {
           tenant_wage_index: tenantWageIndexes,
           hospice_rate_table: hospiceRateTables,
+          hospice_visit_charge_schedule: hospiceVisitChargeSchedules,
           mac_submitter_credential: macCredentials,
           sequestration_policy: sequestrationPolicies,
           validation_rule_config: ruleConfigs,

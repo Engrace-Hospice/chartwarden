@@ -53,12 +53,20 @@ export * from "./sia";
 export * from "./rate-table";
 // F-211 the tenant-entered wage index's pure validation + tenant-then-authoritative-platform precedence.
 export * from "./wage-index";
+export * from "./cbsa";
+export * from "./cbsa/facility-zip";
+export * from "./cbsa/wage-index-seed";
 // D11 the pure sequestration applier (active-policy-or-platform-default percentage over money.ts).
 export * from "./sequestration";
 // D4 / D14 the pure Type-of-Bill derivation (811/812/813/814/817/818 from admission + claim cadence).
 export * from "./tob";
 // CMS Pub. 100-04 Ch. 11 §30.3 the pure discharge claim codes (patient status, condition 52/H2, occurrence 42/55).
 export * from "./claim-codes";
+// CMS Pub. 100-04 Ch. 11 §30.3 the pure hospice visit lines (rev 042x-057x + G-codes, 15-minute units), CHC
+// quarter-hour units and the CBSA value code by level of care.
+export * from "./claim-lines";
+// The tenant-entered visit-charge schedule domain (a charge per 15-minute unit per discipline; fail-closed lookup).
+export * from "./visit-charges";
 export * from "./notice";
 // §4.1 / §4.2 the TypeBox route request/response SHAPE contracts (one module per route group).
 // Routed via the `./route-contracts` hop (see that file) so the barrel carries no schema-path import

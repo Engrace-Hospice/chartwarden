@@ -68,8 +68,8 @@ export function requiredVitalsFor(template: HearthnoteTemplate): readonly VitalF
 /**
  * Sec 2.6 check 3 -- the M9 clinical scales an ENCOUNTER TYPE mandates (consulted via
  * `LatestAssessmentProvider` -- WHICH patient/whether it is present is a service-layer fact, not this
- * file's). Every one of the 14 types is given an explicit, decided value per #125's acceptance
- * criterion; thirteen of them are a deliberate `[]` because the spec never names one for them, not an
+ * file's). Every one of the encounter types is given an explicit, decided value per #125's acceptance
+ * criterion; every type but `recert_visit` is a deliberate `[]` because the spec never names one for them, not an
  * oversight.
  */
 export const REQUIRED_SCALES: Readonly<Record<EncounterType, readonly ScaleType[]>> = {
@@ -87,6 +87,9 @@ export const REQUIRED_SCALES: Readonly<Record<EncounterType, readonly ScaleType[
   volunteer_visit: [],
   bereavement_contact: [],
   idg_followup: [],
+  pt_visit: [],
+  ot_visit: [],
+  slp_visit: [],
 };
 
 /** Resolver form of {@link REQUIRED_SCALES}, mirroring {@link requiredVitalsFor}'s call shape. */

@@ -384,6 +384,8 @@ describe("New admission — benefit period field", () => {
     await waitFor(() => expect(seq.value).toBe("2"));
     expect(screen.getByText(/Not confirmed against HETS/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Use the readmission workflow" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Type of admission/), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText(/Point of origin/), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.change(await screen.findByLabelText(/Hospice medical director/), {
       target: { value: PHYS },
@@ -400,6 +402,8 @@ describe("New admission — benefit period field", () => {
         patientId: PATIENT,
         intakeMethod: "in_person",
         hospiceMedicalDirectorId: PHYS,
+        admissionTypeCode: "3",
+        admissionSourceCode: "1",
         benefitPeriod: { sequence: 2, source: "internal_history" },
       },
     });

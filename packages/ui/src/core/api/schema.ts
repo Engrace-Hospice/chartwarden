@@ -4919,6 +4919,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/visit-charge-schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a ProviderEntity's hospice visit-charge schedule versions, newest window first (includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingVisitchargeschedules"];
+        put?: never;
+        /** Enter a hospice visit-charge schedule version - whole-cent charges per 15-minute unit per discipline; non-overlapping */
+        post: operations["postApiV1BillingVisitchargeschedules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one hospice visit-charge schedule version */
+        get: operations["getApiV1BillingVisitchargeschedulesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live visit-charge schedule version with a corrected one; the old version is kept as history */
+        post: operations["postApiV1BillingVisitchargeschedulesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live visit-charge schedule claim assembly would bill a visit date from, or null */
+        get: operations["getApiV1BillingVisitchargeschedulesEffective"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/wage-indexes": {
         parameters: {
             query?: never;
@@ -27497,6 +27566,10 @@ export interface operations {
                     attendingPhysicianId?: string;
                     /** Format: uuid */
                     hospiceMedicalDirectorId: string;
+                    /** @description UB-04 FL 14 Type of Admission: 1 emergency, 2 urgent, 3 elective, 5 trauma, 9 information not available. */
+                    admissionTypeCode?: "1" | "2" | "3" | "5" | "9";
+                    /** @description UB-04 FL 15 Point of Origin: 1 non-health care facility, 2 clinic/physician office, 4 hospital transfer, 5 SNF/ICF transfer, 6 other health care facility, 8 court/law enforcement, 9 information not available. */
+                    admissionSourceCode?: "1" | "2" | "4" | "5" | "6" | "8" | "9";
                     /** @description A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context). */
                     readmittedFromAdmissionId?: string;
                     benefitPeriod?: {
@@ -27909,6 +27982,8 @@ export interface operations {
                             npi?: string | null;
                         } | null;
                         attendingPhysicianId?: string | null;
+                        admissionTypeCode?: string | null;
+                        admissionSourceCode?: string | null;
                         admissionRecommendation?: {
                             recommendedByUserId: string;
                             capacity: "medical_director" | "physician_designee" | "idg_physician_member";
@@ -27950,6 +28025,8 @@ export interface operations {
                     providerEntityId?: string;
                     /** Format: uuid */
                     locationId?: string;
+                    admissionTypeCode?: ("1" | "2" | "3" | "5" | "9") | null;
+                    admissionSourceCode?: ("1" | "2" | "4" | "5" | "6" | "8" | "9") | null;
                     ifVersion: number;
                 };
             };
@@ -34764,7 +34841,7 @@ export interface operations {
                         } | null;
                         pricing: {
                             hipps: {
-                                hippsCode: string;
+                                perDiemClassCode: string;
                                 hippsRateCents: number;
                                 wageIndexCcn: string;
                                 wageIndexFiscalYear: number;
@@ -35228,7 +35305,7 @@ export interface operations {
                         /** @constant */
                         state: "DRAFT";
                         totalChargeCents: number;
-                        hippsCode: string;
+                        perDiemClassCode: string;
                         hippsRateCents: number;
                         lineCount: number;
                         /** Format: uuid */
@@ -37193,6 +37270,278 @@ export interface operations {
                         nextCursor: string | null;
                         hasMore: boolean;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedules: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeSchedules: {
+                            visitChargeScheduleId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            rnUnitChargeCents: number | null;
+                            lpnUnitChargeCents: number | null;
+                            aideUnitChargeCents: number | null;
+                            mswUnitChargeCents: number | null;
+                            ptUnitChargeCents: number | null;
+                            otUnitChargeCents: number | null;
+                            slpUnitChargeCents: number | null;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingVisitchargeschedules: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    rnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    lpnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    aideUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    mswUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    ptUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    otUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    slpUnitChargeCents?: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedulesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingVisitchargeschedulesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    rnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    lpnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    aideUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    mswUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    ptUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    otUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    slpUnitChargeCents?: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedulesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -45772,8 +46121,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -45831,8 +46180,8 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     visitId?: string;
-                    encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                    encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                     /** Format: date */
                     serviceDate: string;
                     /** Format: uuid */
@@ -45886,8 +46235,8 @@ export interface operations {
                         patientId: string;
                         admissionId: string;
                         visitId: string | null;
-                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                         serviceDate: string;
                         status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                         lateEntryTier: string;
@@ -46796,8 +47145,8 @@ export interface operations {
                         encounterId: string;
                         templateKey: string;
                         vocabVersion: string;
-                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                         sections: {
                             sectionId: string;
                             heading: string;
@@ -47029,8 +47378,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -47094,8 +47443,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -54078,8 +54427,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;

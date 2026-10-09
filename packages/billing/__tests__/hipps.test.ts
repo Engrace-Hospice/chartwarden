@@ -6,7 +6,7 @@ import {
   applyWageIndexFactor,
   applyWageIndexToLaborShare,
   calculateHipps,
-  deriveHippsCode,
+  derivePerDiemClassCode,
   levelOfCareToCode,
 } from "@wardenx/billing";
 // @wardenx/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `hipps_calculation`) pure-domain tests.
@@ -400,7 +400,7 @@ describe("calculateHipps — gap days (uncovered by any LOC period)", () => {
     expect(r.segments).toHaveLength(0);
     expect(r.totalCents).toBe(0);
     expect(r.perDiemRateCents).toBe(0);
-    expect(r.hippsCode).toBe("00000");
+    expect(r.perDiemClassCode).toBe("00000");
   });
 });
 
@@ -497,7 +497,7 @@ describe("calculateHipps — invariants + invalid input", () => {
   });
 });
 
-describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
+describe("derivePerDiemClassCode — internal placeholder encoding (not a Medicare HIPPS code)", () => {
   function seg(over: Partial<HippsSegmentResult>): HippsSegmentResult {
     return {
       levelOfCare: "routine_home_care",
@@ -508,6 +508,8 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
       baseRatePerDiemCents: 20_000,
       ratePerDiemCents: 20_000,
       rhcDayBucket: "days_1_60",
+      wageIndexFactorApplied: "1.0000",
+      wageIndexFiscalYear: 2025,
       chcHours: null,
       chcAdjustedHourlyRateCents: null,
       hippsCharPosition: 1,
@@ -517,20 +519,20 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
   }
 
   it("returns the all-filler placeholder for an empty segment list", () => {
-    expect(deriveHippsCode([])).toBe("00000");
+    expect(derivePerDiemClassCode([])).toBe("00000");
   });
 
   it("encodes RHC days_1_60 as R1000", () => {
-    expect(deriveHippsCode([seg({ rhcDayBucket: "days_1_60" })])).toBe("R1000");
+    expect(derivePerDiemClassCode([seg({ rhcDayBucket: "days_1_60" })])).toBe("R1000");
   });
 
   it("encodes RHC days_61_plus as R6000", () => {
-    expect(deriveHippsCode([seg({ rhcDayBucket: "days_61_plus" })])).toBe("R6000");
+    expect(derivePerDiemClassCode([seg({ rhcDayBucket: "days_61_plus" })])).toBe("R6000");
   });
 
   it("encodes a CHC first segment as C0000 (bucket n/a → 0)", () => {
     expect(
-      deriveHippsCode([
+      derivePerDiemClassCode([
         seg({ levelOfCare: "continuous_home_care", levelOfCareCode: "CHC", rhcDayBucket: "n/a" }),
       ]),
     ).toBe("C0000");
@@ -538,7 +540,7 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
 
   it("encodes an IRC first segment as I0000", () => {
     expect(
-      deriveHippsCode([
+      derivePerDiemClassCode([
         seg({ levelOfCare: "inpatient_respite_care", levelOfCareCode: "IRC", rhcDayBucket: "n/a" }),
       ]),
     ).toBe("I0000");
@@ -546,14 +548,14 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
 
   it("encodes a GIP first segment as G0000", () => {
     expect(
-      deriveHippsCode([
+      derivePerDiemClassCode([
         seg({ levelOfCare: "general_inpatient_care", levelOfCareCode: "GIP", rhcDayBucket: "n/a" }),
       ]),
     ).toBe("G0000");
   });
 
   it("derives the code from the FIRST segment only", () => {
-    const code = deriveHippsCode([
+    const code = derivePerDiemClassCode([
       seg({ levelOfCare: "general_inpatient_care", levelOfCareCode: "GIP", rhcDayBucket: "n/a" }),
       seg({ rhcDayBucket: "days_1_60" }),
     ]);

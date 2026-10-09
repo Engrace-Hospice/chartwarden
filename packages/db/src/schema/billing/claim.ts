@@ -92,6 +92,22 @@ export const claim = pgTable(
       .notNull()
       .default([]),
 
+    // Wage-index value codes (migration 1059) FL 39-41 / HI*BE: 61 = residence CBSA, G8 = inpatient-facility CBSA.
+    valueCodes: jsonb("value_codes")
+      .$type<{ code: "61" | "G8"; cbsaCode: string }[]>()
+      .notNull()
+      .default([]),
+
+    // Physician NPIs for UB-04 FL 76 / FL 78 (migration 1054): provider identifiers resolved from M40 at assembly
+    // and refreshed on every re-validation. The certifying NPI is only set when it differs from the attending.
+    // Names are resolved at generation time, never stored.
+    attendingPhysicianNpi: text("attending_physician_npi"),
+    certifyingPhysicianNpi: text("certifying_physician_npi"),
+    // Migration 1057 — the snapshot of the admission's UB-04 Type of Admission (FL 14 / 837I CL101) and Point of Origin
+    // (FL 15 / CL102), taken at assembly and refreshed on every re-validation. NULL = not recorded on the admission.
+    admissionTypeCode: text("admission_type_code"),
+    admissionSourceCode: text("admission_source_code"),
+
     // Document back-ref (populated by m22.document.rendered consumer):
     acknowledgmentDocumentId: uuid("acknowledgment_document_id"), // M22 — set after ACK_ACCEPTED + render
 

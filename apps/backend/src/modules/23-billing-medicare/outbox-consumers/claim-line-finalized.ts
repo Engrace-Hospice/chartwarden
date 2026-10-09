@@ -7,7 +7,7 @@
 // level-of-care revenue code is emitted (GAP-038): 0655 IRC + 0656 GIP are the 20% cap's numerator (D13), and
 // 0651 RHC + 0652 CHC complete its denominator (total hospice days) — without them the inpatient utilisation
 // read 0%. The day count is the line's own `unit_count` for per-diem lines (0651/0655/0656); a continuous-
-// home-care line (0652) bills hourly units, so its days are the inclusive service-date span. Pure — the
+// home-care line (0652) bills 15-minute units, so its days are the inclusive service-date span. Pure — the
 // caller owns the transaction and the publish.
 import type { schema } from "@wardenx/db";
 import type { OutboxEmitInput } from "../services/claim-state-service";
@@ -28,7 +28,7 @@ export function isHospiceLocRevenueCode(revenueCode: string): boolean {
 const CHC_REVENUE_CODE = "0652";
 const MS_PER_DAY = 86_400_000;
 
-/** Billable hospice days on a line: per-diem units, except CHC (hourly units) = the inclusive date span. */
+/** Billable hospice days on a line: per-diem units, except CHC (15-minute units) = the inclusive date span. */
 function lineDays(line: ClaimLineFacts): number {
   if (line.revenueCode !== CHC_REVENUE_CODE) return line.unitCount;
   const from = Date.parse(`${line.serviceDateFrom}T00:00:00Z`);

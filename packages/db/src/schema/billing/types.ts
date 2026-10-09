@@ -48,6 +48,14 @@ export const m23ClaimLineRevenueCode = pgEnum("m23_claim_line_revenue_code", [
   "0656", // general inpatient (GIP)
   "0657", // physician services
   "0659", // other hospice services
+  // Visit lines (migration 1054; CMS Pub. 100-04 ch. 11 §30.3) — one dated line per visit, 15-minute units.
+  "0421", // physical therapy (G0151)
+  "0431", // occupational therapy (G0152)
+  "0441", // speech-language pathology (G0153)
+  "0551", // skilled nursing (G0299 RN / G0300 LPN)
+  "0561", // medical social services visit (G0155)
+  "0569", // medical social worker phone call (G0155)
+  "0571", // hospice aide (G0156)
   "0294", // SNF R&B (hospice in SNF)
   "0942", // bereavement services
 ]);
@@ -199,6 +207,11 @@ export interface HippsCalculationSegment {
   dateTo: string; // ISO date
   ratePerDiemCents: number;
   hippsCharPosition: number;
+  /** The fiscal year (starting calendar year) and the wage-index factor this segment was priced with - one claim can
+   *  span two fiscal years, so the per-claim `wage_index_*` columns alone cannot reproduce the second year's math.
+   *  Optional: rows written before this field carry neither. */
+  wageIndexFiscalYear?: number;
+  wageIndexFactor?: string;
 }
 export type HippsCalculationSegments = HippsCalculationSegment[];
 

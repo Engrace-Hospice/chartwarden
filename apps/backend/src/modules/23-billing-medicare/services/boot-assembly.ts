@@ -1,3 +1,5 @@
+import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
+import { WardenXError } from "@wardenx/types";
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
 //
@@ -100,8 +102,7 @@
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
 // silently fabricates a claim from absent clinical facts.
-import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { type ClaimZipPorts, buildHospiceCbsaReader } from "./claim-cbsa";
 
 import type { ProviderCcnPort } from "../routes/write-service";
 import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
@@ -182,6 +183,9 @@ export interface M23BootAssemblyPorts {
   /** FY2027 — M6's `electionAddendumComplianceForOrg` (42 CFR 418.24(c)). Absent, the
    *  `election_addendum_signed` rule SKIPs `seam_not_bound`. */
   readonly m6ElectionAddendum?: ElectionAddendumComplianceReader;
+  /** The patient / facility ZIPs behind the wage-index value codes 61 / G8 (M5 residence + M40 facility). Absent,
+   *  the claim carries no value codes and the `cbsa_value_codes_present` rule SKIPs. */
+  readonly claimZips?: ClaimZipPorts;
 }
 
 /**
@@ -263,6 +267,7 @@ export function buildM23BootAssemblySeams(
     // over `db` — no injected port; `RATE_TABLE_MISSING`/422 when no table covers the service date).
     referenceData: buildM23ReferenceDataAdapter(db),
     ...(ports.m6ElectionAddendum ? { electionAddendum: ports.m6ElectionAddendum } : {}),
+    ...(ports.claimZips ? { cbsa: buildHospiceCbsaReader(db, ports.claimZips) } : {}),
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };

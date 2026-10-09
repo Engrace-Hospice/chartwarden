@@ -16,6 +16,7 @@ import type { Rule } from "@wardenx/billing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
 import type { ClaimAssemblyActor, ClaimAssemblySeams } from "../services/claim-assembly";
+import { computeClaimSia } from "../services/claim-assembly-facts";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
@@ -58,6 +59,21 @@ const RATE_TABLE = {
   chcLaborShare: "0.6600",
   ircLaborShare: "0.5400",
   gipLaborShare: "0.6400",
+} as const;
+
+/** The tenant-entered visit-charge schedule (per 15-minute unit) every scenario bills visits from unless it overrides. */
+const VISIT_CHARGES = {
+  effectiveFrom: "2025-01-01",
+  effectiveTo: null,
+  charges: {
+    rn: 2_500,
+    lpn: 2_400,
+    chha: 1_500,
+    msw: 3_000,
+    pt: 3_500,
+    ot: 3_400,
+    slp: 3_300,
+  },
 } as const;
 
 /** One trivial always-pass rule so the initial validation run executes deterministically (all_pass). */
@@ -177,6 +193,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         effectiveFrom: "2025-01-01",
         effectiveTo: null,
       }),
+      visitChargeVersions: async () => [VISIT_CHARGES],
     },
     ruleRegistry: buildRegistry(),
     outbox: {
@@ -249,7 +266,7 @@ describe("server-authoritative assembly — produces claim + lines + hipps in on
     // Response shape: a DRAFT claim with one all-RHC days-1-7 segment over the 7-day window.
     expect(res.state).toBe("DRAFT");
     expect(res.lineCount).toBe(1);
-    expect(res.hippsCode).toBe("R1000");
+    expect(res.perDiemClassCode).toBe("R1000");
     // 7 days × $200.00 wage-adjusted (factor 1.0000) = $1,400.00.
     expect(res.totalChargeCents).toBe(140_000);
     expect(res.initialValidationOutcome).toBe("all_pass");
@@ -323,8 +340,255 @@ describe("D10 — cosignature-wait visits are excluded from the assembled line b
   });
 });
 
+describe("SIA add-on across Oct 1 — priced with the fiscal year of the death date", () => {
+  /** A claim Sep 25 - Oct 5 (2025) with a death on `deceasedDate`, an RN visit in the SIA window, and per-year inputs. */
+  const crossingSeams = (
+    deceasedDate: string,
+    chcCalls: unknown[],
+    opts: {
+      locTo?: string;
+      /** wageIndexForCcn answer by fiscal-year start; absent key = the default 1.0000 */
+      providerIndex?: Record<number, string | null>;
+      /** wageIndexForArea answer by fiscal-year start */
+      areaIndex?: Record<number, string | null>;
+      withVisits?: boolean;
+    } = {},
+  ) => {
+    const base = buildSeams();
+    return buildSeams({
+      admission: {
+        resolveForRange: async () => ({
+          admissionId: "adm-1",
+          hospiceAdmissionDate: "2025-09-01",
+          dischargeDate: null,
+          dischargeReason: null,
+          deceasedDate,
+          placeOfDeath: null,
+          transferOut: null,
+        }),
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-25",
+            to: opts.locTo ?? "2025-10-05",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      signedEncounters: {
+        inWindow: async () =>
+          opts.withVisits === false
+            ? []
+            : [
+                {
+                  encounterId: "rn-1",
+                  serviceDate: deceasedDate,
+                  discipline: "RN",
+                  signed: true,
+                  cosignRequired: false,
+                  cosigned: false,
+                  durationMinutes: 120,
+                },
+              ],
+      },
+      referenceData: {
+        ...base.referenceData,
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+        wageIndexForCcn: async (_ccn, fiscalYearStarting) => {
+          const answer = opts.providerIndex?.[fiscalYearStarting];
+          return answer === null ? null : { factorDecimal: answer ?? "1.0000", cbsaCode: null };
+        },
+        chcHourlyRateCents: async (fiscalYearStarting, wageIndexFactor, scope) => {
+          chcCalls.push([fiscalYearStarting, wageIndexFactor, scope.serviceFrom]);
+          return fiscalYearStarting === 2024 ? 6_000 : 7_000;
+        },
+      },
+      cbsa: {
+        // The same reported code, a different published index per fiscal year.
+        wageIndexForArea: async (_code, fiscalYearStarting) =>
+          opts.areaIndex && fiscalYearStarting in opts.areaIndex
+            ? (opts.areaIndex[fiscalYearStarting] ?? null)
+            : fiscalYearStarting === 2024
+              ? "0.9000"
+              : "1.2000",
+        areasFor: async () => ({
+          residence: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "0.9000", // the claim-end (or, for a Sep 30 claim, FY2025-start) index
+          },
+          facility: null,
+        }),
+      },
+    });
+  };
+  const CROSSING = { ...REQUEST, serviceFrom: "2025-09-25", serviceTo: "2025-10-05" };
+
+  it("a death on Oct 3 prices SIA with the second fiscal year's CHC rate, area index and rate-table date", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-03", chcCalls),
+    ).assemble(ACTOR, CROSSING);
+    expect(chcCalls).toEqual([[2025, "1.2000", "2025-10-03"]]);
+    // 120 min of RN at the FY2026 hourly rate 7000: 2h x 7000
+    expect(store.sia[0].siaAddOnCents).toBe(14_000);
+  });
+
+  it("a death in September prices SIA with the first fiscal year", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-09-28", chcCalls),
+    ).assemble(ACTOR, CROSSING);
+    expect(chcCalls).toEqual([[2024, "0.9000", "2025-09-25"]]);
+    expect(store.sia[0].siaAddOnCents).toBe(12_000); // 2h x 6000
+  });
+
+  const ENDS_SEP_30 = { ...REQUEST, serviceFrom: "2025-09-25", serviceTo: "2025-09-30" };
+
+  it("a claim ending Sep 30 with a death on Oct 1 prices SIA with the death year's rate, index and rate-table date (no silent fallback)", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-01", chcCalls, { locTo: "2025-09-30" }),
+    ).assemble(ACTOR, ENDS_SEP_30);
+    expect(chcCalls).toEqual([[2025, "1.2000", "2025-10-01"]]);
+    expect(store.sia[0].siaAddOnCents).toBe(14_000);
+  });
+
+  it("fails closed with a typed 422 when the death year's provider index is missing", async () => {
+    await expect(
+      buildClaimAssemblyService(
+        makeFakeDb() as never,
+        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", providerIndex: { 2025: null } }),
+      ).assemble(ACTOR, ENDS_SEP_30),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("fails closed with a typed 422 when the death year's area index is missing", async () => {
+    await expect(
+      buildClaimAssemblyService(
+        makeFakeDb() as never,
+        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", areaIndex: { 2025: null } }),
+      ).assemble(ACTOR, ENDS_SEP_30),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("a death on Sep 30 stays in the first fiscal year; a death on Oct 1 moves to the second, on a claim spanning both", async () => {
+    const sep: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-09-30", sep),
+    ).assemble(ACTOR, CROSSING);
+    expect(sep).toEqual([[2024, "0.9000", "2025-09-25"]]);
+
+    store.reset();
+    const oct: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-01", oct),
+    ).assemble(ACTOR, CROSSING);
+    expect(oct).toEqual([[2025, "1.2000", "2025-10-01"]]);
+  });
+
+  it("does not resolve any SIA wage index when no SIA is payable (an all-inpatient deceased claim with an unresolved residence assembles)", async () => {
+    const chcCalls: unknown[] = [];
+    const base = crossingSeams("2025-10-03", chcCalls, { withVisits: false });
+    const seams = buildSeams({
+      ...base,
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-gip",
+            levelOfCare: "general_inpatient_care",
+            from: "2025-09-25",
+            to: "2025-10-05",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: true,
+          },
+        ],
+      },
+      cbsa: {
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async () => ({
+          residence: { status: "unresolved", reason: "zip_unknown" }, // never needed: all care is inpatient
+          facility: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "1.0000",
+          },
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, CROSSING);
+    expect(store.claims.size).toBe(1);
+    expect(chcCalls).toEqual([]); // no SIA payable -> no CHC rate read, no residence index needed
+    expect(store.sia).toHaveLength(0);
+  });
+
+  it("the revalidation path (the same computeClaimSia) resolves nothing and cannot 422 when no SIA is payable", async () => {
+    const untouched = () => {
+      throw new Error("no rate or index may be read when no SIA is payable");
+    };
+    const seams = {
+      referenceData: { chcHourlyRateCents: untouched, wageIndexForCcn: untouched },
+    } as never;
+    const facts = {
+      admission: { deceasedDate: "2025-10-03" },
+      signedEncounters: [],
+      fiscalYearPricing: new Map(), // an unresolved residence would have thrown had the factor been resolved
+    } as never;
+    await expect(computeClaimSia(seams, facts)).resolves.toBeNull();
+  });
+
+  it("persists each segment's fiscal year and wage-index factor so the second-year math is reproducible", async () => {
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-03", []),
+    ).assemble(ACTOR, CROSSING);
+    const segments = store.hipps[0].segments as {
+      dateFrom: string;
+      wageIndexFiscalYear: number;
+      wageIndexFactor: string;
+    }[];
+    expect(segments.map((s) => [s.dateFrom, s.wageIndexFiscalYear, s.wageIndexFactor])).toEqual([
+      ["2025-09-25", 2024, "0.9000"],
+      ["2025-10-01", 2025, "1.2000"],
+    ]);
+  });
+});
+
 describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produces a sia_calculation row", () => {
-  it("writes one sia_calculation and folds the add-on into the claim's gross charge", async () => {
+  it("writes one sia_calculation; the add-on is expected PAYMENT, never a billed charge", async () => {
     const seams = buildSeams({
       admission: {
         resolveForRange: async () => ({
@@ -358,8 +622,13 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
     expect(store.sia).toHaveLength(1);
     // 120 min capped (≤240) priced at the CHC hourly rate $60.00 → 2h × $60.00 = $120.00.
     expect(store.sia[0].siaAddOnCents).toBe(12_000);
-    // Gross = HIPPS $1,400.00 + SIA $120.00 = $1,520.00.
-    expect(res.totalChargeCents).toBe(152_000);
+    // The billed total is the sum of the line charges only ($1,400.00): the MAC derives the SIA from the visit
+    // lines, so it is never a charge (the 837I claim total must balance to its lines).
+    expect(res.totalChargeCents).toBe(140_000);
+    const claim = [...store.claims.values()][0];
+    expect(claim.totalChargeCents).toBe(140_000);
+    // Expected payment keeps the add-on: gross $1,520.00 less 2% sequestration ($30.40) = $1,489.60.
+    expect(claim.totalExpectedPaymentCents).toBe(148_960);
   });
 
   it("writes NO sia_calculation for a living patient", async () => {
@@ -475,6 +744,7 @@ describe("F-212 - no sequestration policy fails CLOSED with an actionable error 
         chcHourlyRateCents: async () => 6_000,
         wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
         activeSequestrationPolicy: async () => null,
+        visitChargeVersions: async () => [],
       },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -592,5 +862,646 @@ describe("two-tier RHC carry-over — our earlier stay + another hospice's days 
     await svc.assemble(ACTOR, REQUEST);
     expect(store.hipps[0].rhcCarryOver).toMatchObject({ priorDays: 11, basis: "internal_only" });
     expect(store.hipps[0].rhcDays1to60).toBe(7);
+  });
+});
+
+describe("CMS ch. 11 §30.3 — every visit by hospice staff is its own dated, 15-minute-unit claim line", () => {
+  const visit = (over: Record<string, unknown>) => ({
+    encounterId: "enc-rn",
+    serviceDate: "2025-11-03",
+    billability: "billable" as const,
+    discipline: "rn",
+    encounterType: "routine_visit",
+    durationMinutes: 45,
+    ...over,
+  });
+
+  it("emits a 0551/G0299 line (3 units) after the per-diem line, backed by the visit's encounter", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    expect(store.lines).toHaveLength(2);
+    expect(store.lines[0].revenueCode).toBe("0651");
+    expect(store.lines[1]).toMatchObject({
+      lineNumber: 2,
+      revenueCode: "0551",
+      hcpcsCode: "G0299",
+      serviceDateFrom: "2025-11-03",
+      serviceDateTo: "2025-11-03",
+      unitCount: 3,
+      levelOfCare: "routine_home_care",
+      levelOfCarePeriodId: "loc-1",
+      backingEncounterIds: ["enc-rn"],
+      modifiers: [],
+    });
+    expect(res.lineCount).toBe(2);
+  });
+
+  it("bills a visit line at the tenant's charge per 15-minute unit; the total is the sum of the line charges and expected payment is untouched", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] }, // 45 minutes = 3 units, RN
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    expect(store.lines[1]).toMatchObject({
+      unitCount: 3,
+      unitRateCents: 2_500,
+      lineChargeCents: 7_500,
+    });
+    const sum = store.lines.reduce(
+      (s: number, l: { lineChargeCents: number }) => s + l.lineChargeCents,
+      0,
+    );
+    expect(res.totalChargeCents).toBe(140_000 + 7_500);
+    expect(res.totalChargeCents).toBe(sum);
+    // The informational visit charge never reaches the payment: gross $1,400.00 less 2% sequestration.
+    expect([...store.claims.values()][0].totalExpectedPaymentCents).toBe(137_200);
+  });
+
+  it("looks the charge up per visit date and discipline from the schedule version covering that date", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        ...buildSeams().referenceData,
+        visitChargeVersions: async () => [
+          {
+            ...VISIT_CHARGES,
+            effectiveTo: "2025-11-03",
+            charges: { ...VISIT_CHARGES.charges, rn: 2_000 },
+          },
+          {
+            ...VISIT_CHARGES,
+            effectiveFrom: "2025-11-04",
+            charges: { ...VISIT_CHARGES.charges, rn: 2_200 },
+          },
+        ],
+      },
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "a", serviceDate: "2025-11-03", durationMinutes: 15 }),
+          visit({ encounterId: "b", serviceDate: "2025-11-05", durationMinutes: 15 }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines.slice(1).map((l: { unitRateCents: number }) => l.unitRateCents)).toEqual([
+      2_000, 2_200,
+    ]);
+  });
+
+  it("fails closed (422 VISIT_CHARGE_MISSING) naming the disciplines, not the encounters, when a billed discipline has no charge", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        ...buildSeams().referenceData,
+        visitChargeVersions: async () => [
+          { ...VISIT_CHARGES, charges: { ...VISIT_CHARGES.charges, pt: null, msw: null } },
+        ],
+      },
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "e1" }), // rn: has a charge
+          visit({ encounterId: "e2", discipline: "pt", encounterType: "pt_visit" }),
+          visit({ encounterId: "e3", discipline: "msw", encounterType: "msw_followup" }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "VISIT_CHARGE_MISSING", statusCode: 422 });
+    expect(err?.message).toContain("msw, pt");
+    expect(err?.message).toContain("POST /api/v1/billing/visit-charge-schedules");
+    expect(err?.message).toContain("billing.visit_charge.admin");
+    expect(err?.message).not.toContain("e2");
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("fails closed when no schedule exists at all, but needs none for a claim with no visit lines", async () => {
+    const noSchedule = {
+      ...buildSeams().referenceData,
+      visitChargeVersions: async () => [],
+    };
+    const withVisit = buildSeams({
+      referenceData: noSchedule,
+      billableEncounters: { forRange: async () => [visit({})] },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, withVisit).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "VISIT_CHARGE_MISSING" });
+
+    store.reset();
+    const noVisit = buildSeams({ referenceData: noSchedule }); // only the cosign-wait encounter: no visit lines
+    const res = await buildClaimAssemblyService(makeFakeDb() as never, noVisit).assemble(
+      ACTOR,
+      REQUEST,
+    );
+    expect(res.lineCount).toBe(1);
+  });
+
+  it("keeps an LPN visit (G0300), an aide visit (0571/G0156) and a social-work call (0569) distinct", async () => {
+    const seams = buildSeams({
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "e1", discipline: "lpn", encounterType: "lpn_visit" }),
+          visit({ encounterId: "e2", discipline: "chha", encounterType: "chha_visit" }),
+          visit({
+            encounterId: "e3",
+            discipline: "msw",
+            encounterType: "telephonic",
+            durationMinutes: 20,
+          }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+
+    const visits = store.lines
+      .slice(1)
+      .map((l: { revenueCode: string; hcpcsCode: string }) => [l.revenueCode, l.hcpcsCode]);
+    expect(visits).toEqual([
+      ["0551", "G0300"],
+      ["0571", "G0156"],
+      ["0569", "G0155"],
+    ]);
+  });
+
+  it("builds no visit line for an awaiting-cosignature visit, a chaplain visit or a reader without disciplines", async () => {
+    const seams = buildSeams({
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "a", billability: "awaiting_cosignature" }),
+          visit({ encounterId: "b", discipline: "chaplain", encounterType: "chaplain_visit" }),
+          { encounterId: "c", serviceDate: "2025-11-03", billability: "billable" as const },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(1);
+  });
+
+  it("assembles WITHOUT the line (never guessing units) when a billable visit has no documented duration, and warns", async () => {
+    const registry = new BillingRuleRegistry();
+    registry.registerRule(billing.visitLinesReportable);
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      billableEncounters: {
+        forRange: async () => [
+          visit({ durationMinutes: 0 }),
+          visit({ encounterId: "enc-ok", durationMinutes: 30 }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    // The claim assembled: the per-diem line plus ONLY the documented visit.
+    expect(res.initialValidationOutcome).toBe("all_pass"); // a warning never fails the run
+    type StoredLine = { backingEncounterIds: string[]; revenueCode: string };
+    const stored = store.lines as StoredLine[];
+    expect(stored.map((l) => l.backingEncounterIds)).toContainEqual(["enc-ok"]);
+    expect(
+      stored.some((l) => l.backingEncounterIds.includes("enc-rn") && l.revenueCode === "0551"),
+    ).toBe(false);
+    // …and the skipped visit is surfaced as a warning naming the encounter id only.
+    const warning = [...store.results.values()].find(
+      (r: { ruleKey: string }) => r.ruleKey === "visit_lines_reportable",
+    );
+    expect(warning).toMatchObject({ outcome: "warn", severity: "warn" });
+    expect(warning.remediation.defects).toEqual([
+      expect.objectContaining({
+        code: "VISIT_DURATION_MISSING",
+        refs: { encounterId: "enc-rn" },
+      }),
+    ]);
+  });
+
+  it("does not guess visit lines at an inpatient hospice facility (Q5006 weekly reporting is deferred)", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] },
+      mdm: {
+        ...buildSeams().mdm,
+        resolveClinicalParticipants: async () => ({
+          attending: null,
+          hospicePhysician: null,
+          placeOfService: "ipu",
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(1);
+    expect(store.lines[0].revenueCode).toBe("0651");
+  });
+});
+
+describe("CMS ch. 11 §30.3 — continuous home care (0652) is one dated line per day in 15-minute units", () => {
+  const chcSeams = () =>
+    buildSeams({
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-chc",
+            levelOfCare: "continuous_home_care",
+            from: "2025-11-01",
+            to: "2025-11-02",
+            chcDocumentedHours: 10,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+    });
+
+  it("bills 10 documented hours as 40 units at a quarter of the hourly rate", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, chcSeams());
+    await svc.assemble(ACTOR, { ...REQUEST, serviceTo: "2025-11-02" });
+
+    expect(store.lines).toHaveLength(2);
+    for (const line of store.lines) {
+      expect(line.revenueCode).toBe("0652");
+      expect(line.unitCount).toBe(40);
+      // $62.50/h x labor-share-adjusted at wage index 1.0000 = 6250c/h -> 1562.5 -> 1563c per quarter hour.
+      expect(line.unitRateCents).toBe(1_563);
+      expect(line.lineChargeCents).toBe(40 * 1_563);
+    }
+  });
+
+  it("keeps the claim total equal to the line charges while expected payment stays on the exact hourly basis", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, chcSeams());
+    const res = await svc.assemble(ACTOR, { ...REQUEST, serviceTo: "2025-11-02" });
+
+    expect(res.totalChargeCents).toBe(2 * 40 * 1_563);
+    const claim = [...store.claims.values()][0];
+    // 2 days x 10h x $62.50 = $1,250.00 gross; 2% sequestration -> $1,225.00.
+    expect(claim.totalExpectedPaymentCents).toBe(122_500);
+  });
+});
+
+describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 certifying)", () => {
+  const physician = (npi: string) => ({
+    npi,
+    status: "active" as const,
+    licenseUnexpiredOnServiceDates: true,
+  });
+
+  it("persists the attending NPI and a different certifying NPI on the claim", async () => {
+    const seams = buildSeams({
+      mdm: {
+        ...buildSeams().mdm,
+        resolveClinicalParticipants: async () => ({
+          attending: physician("1234567893"),
+          hospicePhysician: physician("1982736455"),
+          placeOfService: "home",
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianNpi).toBe("1234567893");
+    expect(claim.certifyingPhysicianNpi).toBe("1982736455");
+  });
+
+  it("keeps the end-of-period CBSA for the whole claim and takes each fiscal year's own index for it", async () => {
+    const base = buildSeams();
+    const areasCalls: unknown[] = [];
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            hospiceAdmissionDate: "2025-09-01",
+          }) as never,
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-29",
+            to: "2025-10-02",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      referenceData: {
+        ...base.referenceData,
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+      },
+      cbsa: {
+        // The same published code, a different index per fiscal year.
+        wageIndexForArea: async (_code, fiscalYearStarting) =>
+          fiscalYearStarting === 2024 ? "0.9000" : "1.2000",
+        areasFor: async (...args) => {
+          areasCalls.push(args);
+          return {
+            residence: {
+              status: "resolved",
+              cbsaCode: "99938",
+              areaKind: "rural",
+              countyFips: "41059",
+              via: "zip",
+              wageIndex: "0.9000", // the claim-end fiscal year's (the period ends 2025-10-02 -> 2025)
+            },
+            facility: null,
+          };
+        },
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, {
+      ...REQUEST,
+      serviceFrom: "2025-09-29",
+      serviceTo: "2025-10-02",
+    });
+    const rhc = store.lines.filter((l: { revenueCode: string }) => l.revenueCode === "0651");
+    expect(
+      rhc.map((l: { unitCount: number; unitRateCents: number }) => [l.unitCount, l.unitRateCents]),
+    ).toEqual([
+      [2, 18_680], // 29-30 Sep: 20000 x (0.66 x 0.9 + 0.34) - FY2025's index for the reported code
+      [2, 23_772], // 1-2 Oct: 21000 x (0.66 x 1.2 + 0.34) - FY2026's index for the SAME code
+    ]);
+    expect(areasCalls).toHaveLength(1); // one end-of-period resolution (value codes), none per fiscal-year part
+    expect([...store.claims.values()][0].valueCodes).toEqual([{ code: "61", cbsaCode: "99938" }]);
+  });
+
+  it("prices a home level of care with the beneficiary's area index, not the provider's", async () => {
+    const seams = buildSeams({
+      cbsa: {
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async () => ({
+          residence: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "0.8000", // differs from the provider's "1.0000"
+          },
+          facility: null,
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST);
+    expect(store.lines[0].unitRateCents as number).toBeLessThan(20_000); // the provider-index price
+    expect([...store.claims.values()][0].valueCodes).toEqual([{ code: "61", cbsaCode: "99938" }]);
+  });
+
+  it("refuses to price when the beneficiary's area has no resolved index (never the provider's)", async () => {
+    const seams = buildSeams({
+      cbsa: {
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async () => ({
+          residence: { status: "unresolved", reason: "zip_unknown" },
+          facility: null,
+        }),
+      },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("prices a claim crossing Oct 1 with each day's own fiscal year (rate table and wage index)", async () => {
+    const base = buildSeams();
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            hospiceAdmissionDate: "2025-09-01",
+          }) as never,
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-29",
+            to: "2025-10-02",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      referenceData: {
+        ...base.referenceData,
+        // FY2025 (starting 2024) before Oct 1; FY2026 (starting 2025) from Oct 1 - a higher rate AND a higher index.
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+        wageIndexForCcn: async (_ccn, fiscalYearStarting) => ({
+          factorDecimal: fiscalYearStarting === 2024 ? "1.0000" : "1.1000",
+          cbsaCode: null,
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, {
+      ...REQUEST,
+      serviceFrom: "2025-09-29",
+      serviceTo: "2025-10-02",
+    });
+    const rhc = store.lines.filter((l: { revenueCode: string }) => l.revenueCode === "0651");
+    expect(
+      rhc.map((l: { unitCount: number; unitRateCents: number }) => [l.unitCount, l.unitRateCents]),
+    ).toEqual([
+      [2, 20_000], // 29-30 Sep: FY2025 table, index 1.0000
+      [2, 22_386], // 1-2 Oct: FY2026 table 21000 x (0.66 x 1.1 + 0.34), index 1.1000
+    ]);
+  });
+
+  it("hands the cbsa reader the claim's inpatient dates, and refuses to price a GIP day with an unresolved facility", async () => {
+    const seen: unknown[] = [];
+    const seams = buildSeams({
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-11-01",
+            to: "2025-11-04",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+          {
+            levelOfCarePeriodId: "loc-2",
+            levelOfCare: "general_inpatient_care",
+            from: "2025-11-05",
+            to: "2025-11-07",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: true,
+          },
+        ],
+      },
+      cbsa: {
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async (_org, _patient, _range, stays) => {
+          seen.push(stays);
+          return {
+            residence: {
+              status: "resolved",
+              cbsaCode: "99938",
+              areaKind: "rural",
+              countyFips: "41059",
+              via: "zip",
+              wageIndex: "1.0000",
+            },
+            facility: { status: "unresolved", reason: "ambiguous_facility" },
+          };
+        },
+      },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED" });
+    expect(seen[0]).toEqual([
+      { levelOfCarePeriodId: "loc-2", from: "2025-11-05", to: "2025-11-07" },
+    ]);
+  });
+
+  it("records the admission type and point of origin from the M6 admission on the claim", async () => {
+    const base = buildSeams();
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            admissionTypeCode: "3",
+            admissionSourceCode: "1",
+          }) as never,
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.admissionTypeCode).toBe("3");
+    expect(claim.admissionSourceCode).toBe("1");
+  });
+
+  it("leaves the admission codes null when the admission has none (never a default)", async () => {
+    await buildClaimAssemblyService(makeFakeDb() as never, buildSeams()).assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.admissionTypeCode).toBeNull();
+    expect(claim.admissionSourceCode).toBeNull();
+  });
+
+  it("leaves the NPIs null when the physicians are unresolved (never a guess)", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, buildSeams());
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianNpi).toBeNull();
+    expect(claim.certifyingPhysicianNpi).toBeNull();
+  });
+});
+
+describe("the line-reading default rules accept an assembled claim that carries visit lines", () => {
+  it("level-of-care, place-of-service, modifier and total-balance rules all pass over a 0551/G0299 visit line", async () => {
+    const registry = new BillingRuleRegistry();
+    for (const rule of [
+      billing.levelOfCareCoherence,
+      billing.placeOfServiceConsistency,
+      billing.modifierCodesValid,
+      billing.claimTotalMatchesLines,
+    ]) {
+      registry.registerRule(rule);
+    }
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      billableEncounters: {
+        forRange: async () => [
+          {
+            encounterId: "enc-rn",
+            serviceDate: "2025-11-03",
+            billability: "billable" as const,
+            discipline: "rn",
+            encounterType: "routine_visit",
+            durationMinutes: 45,
+          },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(2);
+    expect(res.initialValidationOutcome).toBe("all_pass");
+  });
+});
+
+describe("claim_total_matches_lines — the assembled claim always balances (SIA included)", () => {
+  it("passes the real rule for a deceased patient with an SIA add-on", async () => {
+    const registry = new BillingRuleRegistry();
+    registry.registerRule(billing.claimTotalMatchesLines);
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      admission: {
+        resolveForRange: async () => ({
+          admissionId: "adm-1",
+          hospiceAdmissionDate: "2025-11-01",
+          dischargeDate: null,
+          dischargeReason: null,
+          deceasedDate: "2025-11-07",
+          placeOfDeath: null,
+          transferOut: null,
+        }),
+      },
+      signedEncounters: {
+        inWindow: async () => [
+          {
+            encounterId: "rn-1",
+            serviceDate: "2025-11-06",
+            discipline: "RN",
+            signed: true,
+            cosignRequired: false,
+            cosigned: false,
+            durationMinutes: 120,
+          },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+    expect(res.initialValidationOutcome).toBe("all_pass");
   });
 });

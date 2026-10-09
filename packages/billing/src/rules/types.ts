@@ -1,3 +1,4 @@
+import type { ClaimValueCodes } from "../cbsa";
 import type { DischargeClaimCodes } from "../claim-codes";
 // @wardenx/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
@@ -65,7 +66,11 @@ export type RuleCategory =
   | "discharge"
   | "modifiers"
   | "evv"
-  | "election";
+  | "election"
+  | "charges"
+  | "visits"
+  | "admission"
+  | "wage";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -86,6 +91,10 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "modifiers",
   "evv",
   "election",
+  "charges",
+  "visits",
+  "admission",
+  "wage",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -202,6 +211,18 @@ export interface ClaimSnapshot {
    * transfer-out; `null`/absent for a revocation or a still-open stay). Only used to address the fix.
    */
   readonly dischargeSourceEventId?: string | null;
+  /**
+   * UB-04 FL 14 Type of Admission / FL 15 Point of Origin recorded on the M6 admission (NUBC code strings).
+   * `null` = not recorded; `undefined` = the context producer carries no admission-code facts (the
+   * `admission_codes_present` rule then skips).
+   */
+  readonly admissionTypeCode?: string | null;
+  readonly admissionSourceCode?: string | null;
+  /**
+   * The wage-index value codes (61 / G8) the claim's lines require and what the ZIP-to-CBSA resolution produced;
+   * `undefined` = no resolution was materialized (the `cbsa_value_codes_present` rule then skips).
+   */
+  readonly valueCodes?: ClaimValueCodes;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */
@@ -286,6 +307,15 @@ export interface BillableEncounterSnapshot {
   readonly encounterId: string;
   readonly serviceDate: IsoDate;
   readonly billability: BillabilityState;
+  /**
+   * The authoring discipline (M8 `encounter_discipline`: `rn`, `lpn`, `chha`, `msw`, ...) — what the hospice visit
+   * line (ch. 11 §30.3) is coded from. Absent on a reader that predates visit-line reporting: no visit line is built.
+   */
+  readonly discipline?: string;
+  /** The M8 encounter type (`routine_visit`, `telephonic`, `idg_followup`, ...), for visit vs. non-visit contacts. */
+  readonly encounterType?: string | null;
+  /** Documented visit minutes (the start-to-end bracket); `0`/`null` = not documented, never fabricated. */
+  readonly durationMinutes?: number | null;
 }
 
 /** A signed encounter in the last 7 days of life window (M8 `SignedEncountersReader`), for the SIA rule. */
@@ -351,7 +381,8 @@ export interface HippsSegmentSnapshot {
 }
 
 export interface HippsSnapshot {
-  readonly hippsCode: string;
+  /** The INTERNAL per-diem class code (not a Medicare HIPPS code). */
+  readonly perDiemClassCode: string;
   readonly perDiemRateCents: Cents;
   readonly wageIndexFactorApplied: string;
   readonly segments: readonly HippsSegmentSnapshot[];
@@ -470,6 +501,19 @@ export interface SeamAvailabilityFlags {
 }
 
 /**
+ * Which billable visits the assembly could NOT turn into a claim line (CMS Pub. 100-04 ch. 11 §30.3), so the
+ * `visit_lines_reportable` rule can warn without a guess having been made. Encounter ids and reason codes only.
+ */
+export interface VisitReportingSnapshot {
+  readonly unresolved: readonly {
+    readonly encounterId: string;
+    readonly reason: "duration_missing" | "no_level_of_care_period";
+  }[];
+  /** Visits whose reporting rule is not implemented (inpatient hospice facility weekly summaries). */
+  readonly deferredCount: number;
+}
+
+/**
  * The injected, aggregate, plain-data, PHI-free snapshot every rule evaluates against. The Phase-3
  * validation SERVICE materializes it by walking each reader seam once; rules are pure functions of this
  * value (deterministic, clock-free, no I/O). Carries ids + structural/aggregate facts only — never the
@@ -515,6 +559,8 @@ export interface ValidationContext {
    * still type-checks.
    */
   readonly electionAddendum?: ElectionAddendumSnapshot;
+  /** Visits the assembly could not report as lines; absent when not materialized (the rule then SKIPs). */
+  readonly visitReporting?: VisitReportingSnapshot;
 
   readonly seams: SeamAvailabilityFlags;
 }

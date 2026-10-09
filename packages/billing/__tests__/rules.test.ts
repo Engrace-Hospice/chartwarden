@@ -469,6 +469,30 @@ describe("level_of_care_coherence", () => {
     });
     expect(r.passed).toBe(false);
   });
+  it("does not demand the level-of-care revenue code on a visit line (0551/G0299 rides the covering period)", () => {
+    const ctx = passingContext();
+    const visit = {
+      ...ctx.lines[0]!,
+      claimLineId: "line-visit",
+      revenueCode: "0551",
+      hcpcs: "G0299",
+      unitCount: 3,
+      unitRateCents: 0,
+      lineChargeCents: 0,
+    };
+    expect(run(levelOfCareCoherence, { ...ctx, lines: [...ctx.lines, visit] }).passed).toBe(true);
+  });
+  it("still holds a visit line to the level of care of the period covering its date", () => {
+    const ctx = passingContext();
+    const visit = {
+      ...ctx.lines[0]!,
+      claimLineId: "line-visit",
+      revenueCode: "0551",
+      hcpcs: "G0299",
+      levelOfCare: "general_inpatient_care" as const,
+    };
+    expect(run(levelOfCareCoherence, { ...ctx, lines: [visit] }).passed).toBe(false);
+  });
 });
 
 describe("hipps_coding_correct", () => {
@@ -482,7 +506,7 @@ describe("hipps_coding_correct", () => {
   });
   it("fails when the HIPPS code is the wrong length", () => {
     const ctx = passingContext();
-    const r = run(hippsCodingCorrect, { ...ctx, hipps: { ...ctx.hipps!, hippsCode: "AB" } });
+    const r = run(hippsCodingCorrect, { ...ctx, hipps: { ...ctx.hipps!, perDiemClassCode: "AB" } });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });

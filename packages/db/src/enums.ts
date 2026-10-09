@@ -1185,7 +1185,7 @@ export const carePlanSignerRole = pgEnum("care_plan_signer_role", [
 // the HearthNote three-layer pipeline, the cosignature/late-entry workflows, and the EVV bracket. New
 // values require a manifest edit + a vocabulary update (§2.2). Tables + RLS land in M8-T02/T03. ─────
 
-/** `encounter_type` — the 14 §2.2 visit types that drive the template engine + compliance gate. */
+/** `encounter_type` — the §2.2 visit types (14 + the three therapy types of migration 1055) that drive the template engine + compliance gate. */
 export const encounterType = pgEnum("encounter_type", [
   "routine_visit",
   "admission_visit",
@@ -1201,6 +1201,10 @@ export const encounterType = pgEnum("encounter_type", [
   "volunteer_visit",
   "bereavement_contact",
   "idg_followup",
+  // Therapy visits (migration 1055) — reported as 042x/043x/044x visit lines (CMS Pub. 100-04 ch. 11 §30.3).
+  "pt_visit",
+  "ot_visit",
+  "slp_visit",
 ]);
 
 /** `encounter_discipline` — the §2.2 authoring/signing discipline (mirrors the M2/M3 catalog). */
@@ -1213,6 +1217,10 @@ export const encounterDiscipline = pgEnum("encounter_discipline", [
   "volunteer",
   "md",
   "np",
+  // Therapists (migration 1055): physical, occupational, speech-language pathology.
+  "pt",
+  "ot",
+  "slp",
 ]);
 
 /** `encounter_status` — the §2.3 encounter lifecycle state machine. */

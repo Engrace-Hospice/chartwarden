@@ -787,7 +787,7 @@ function createM23TestBackend(): {
         claimId: "80808080-8080-4808-8808-808080808080",
         state: "DRAFT",
         totalChargeCents: 100000,
-        hippsCode: "1AA21",
+        perDiemClassCode: "1AA21",
         hippsRateCents: 10000,
         lineCount: 1,
         initialValidationRunId: "90909090-9090-4909-8909-909090909090",

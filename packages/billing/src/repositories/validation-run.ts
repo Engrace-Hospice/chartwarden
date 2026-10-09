@@ -28,7 +28,11 @@ export class ValidationRunRepository {
     const [inserted] = await this.db
       .insert(R)
       .values(values)
-      .onConflictDoNothing({ target: [R.claimId, R.trigger, R.runInputHash] })
+      // The unique index is partition-key-first — `(organization_id, claim_id, trigger, run_input_hash)` (migration
+      // 0076): Postgres only infers an arbiter index when the target lists EXACTLY its columns.
+      .onConflictDoNothing({
+        target: [R.organizationId, R.claimId, R.trigger, R.runInputHash],
+      })
       .returning();
     if (inserted) return inserted;
     const existing = await this.findByIdempotency(

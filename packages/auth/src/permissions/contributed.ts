@@ -3147,6 +3147,19 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- tenant-entered hospice visit-charge schedule (charge per 15-minute unit per discipline) ---
+  "billing.visit_charge.read": {
+    resource: "billing_visit_charge",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.visit_charge.admin": {
+    resource: "billing_visit_charge",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
   // --- tenant-entered wage index (F-211) ---
   "billing.wage_index.read": {
     resource: "billing_wage_index",

@@ -11,10 +11,10 @@ import type { GateItem, GateStatus } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM ASSEMBLY WIZARD (R2, §5.1 #4).
 // The §10 PR-J stepper: pick PE + patient + service-date range → choose / derive the Type-of-Bill → review
 // what will be assembled → confirm. The single server action is the existing route #1 POST
-// /api/v1/billing/claims/assemble: it is server-AUTHORITATIVE — it derives the lines, the HIPPS code + rate,
+// /api/v1/billing/claims/assemble: it is server-AUTHORITATIVE — it derives the lines, the per-diem class + rate,
 // and the SIA snapshot, then runs the initial validation_run, all inside one tx. There is no client-side
 // dry-run seam, so the wizard's "preview" step reviews the REQUEST (the inputs the server will assemble from)
-// and the confirm step surfaces the assembled RESULT (claim id, HIPPS, line count, total, initial validation
+// and the confirm step surfaces the assembled RESULT (claim id, per-diem class, line count, total, initial validation
 // outcome) returned by the route. The server is the only authz point (ADR-0030): a 409
 // NON_MEDICARE_PRIMARY_PAYER (D15) / PATIENT_NOT_ELECTED, a 422 ASSEMBLY_VALIDATION_FAILED, and a 503
 // (seams unbound, fail-closed) each surface inline (role="alert"), never a toast. Lantern:
@@ -36,7 +36,7 @@ interface AssembleResult {
   claimId: string;
   state: string;
   totalChargeCents: number;
-  hippsCode: string;
+  perDiemClassCode: string;
   hippsRateCents: number;
   lineCount: number;
   initialValidationRunId: string;
@@ -397,7 +397,7 @@ function TobStep({
   );
 }
 
-// ── Step 3: preview the assembly request (no client dry-run; the server computes lines/HIPPS/SIA) ──────
+// ── Step 3: preview the assembly request (no client dry-run; the server computes lines/per-diem/SIA) ──────
 function PreviewStep({ form }: { form: WizardForm }): JSX.Element {
   return (
     <section style={sectionStyle} aria-labelledby="preview-h">
@@ -405,9 +405,9 @@ function PreviewStep({ form }: { form: WizardForm }): JSX.Element {
         Review before assembly
       </h2>
       <p style={hintStyle}>
-        On confirm, the server derives the claim lines, the HIPPS code + rate, and the SIA snapshot
-        from the elected periods, then runs the initial validation. Nothing is written until you
-        confirm.
+        On confirm, the server derives the claim lines, the per-diem class + rate, and the SIA
+        snapshot from the elected periods, then runs the initial validation. Nothing is written
+        until you confirm.
       </p>
       <dl
         style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.4rem 1rem", margin: 0 }}
@@ -465,8 +465,8 @@ function AssembledResult({ result }: { result: AssembleResult }): JSX.Element {
             />
           }
         />
-        <DtDd label="HIPPS" value={result.hippsCode} mono />
-        <DtDd label="HIPPS rate" value={dollars(result.hippsRateCents)} />
+        <DtDd label="Per-diem class (internal)" value={result.perDiemClassCode} mono />
+        <DtDd label="Per-diem rate" value={dollars(result.hippsRateCents)} />
         <DtDd label="Lines" value={String(result.lineCount)} />
         <DtDd label="Total charge" value={dollars(result.totalChargeCents)} />
       </dl>

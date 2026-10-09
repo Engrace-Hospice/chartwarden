@@ -64,6 +64,7 @@ export {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
+  buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildDrizzlePlatformAdminService,
   buildDrizzleSequestrationPolicyService,

@@ -12,8 +12,15 @@ import type { PlatformAdminRouteService } from "./platform-admin-service";
 // is a THIRD dep (route #1 `POST /claims/assemble` resolves its M5/M6/M8/M18/M38/M40 reader seams + the
 // HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { RateTableRouteService } from "./rate-table-service";
+
+export {
+  type VisitChargeRouteService,
+  buildDrizzleVisitChargeService,
+  visitChargeVersionsForOrg,
+} from "./visit-charge-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
+import type { VisitChargeRouteService } from "./visit-charge-service";
 import type { WageIndexRouteService } from "./wage-index-service";
 import type { M23WriteRouteService } from "./write-service";
 
@@ -78,6 +85,8 @@ export interface M23RouteServices {
   readonly assemblyService: ClaimAssemblyService;
   /** F-210 — the tenant-entered hospice rate-table service (absent ⇒ the /billing/rate-tables routes are not mounted). */
   readonly rateTableService?: RateTableRouteService;
+  /** Migration 1056 — the tenant-entered visit-charge schedule service (absent ⇒ /billing/visit-charge-schedules is not mounted). */
+  readonly visitChargeService?: VisitChargeRouteService;
   /** F-211 — the tenant-entered wage-index service (absent ⇒ the /billing/wage-indexes routes are not mounted). */
   readonly wageIndexService?: WageIndexRouteService;
   /** GAP-144 — the platform-admin commands (#41 platform-rules, #42 wage-index load); absent => not mounted. */

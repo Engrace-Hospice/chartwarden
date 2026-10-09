@@ -20,6 +20,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
+import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
@@ -206,6 +207,8 @@ export interface M6ClaimRangeReader {
     readonly admission: {
       readonly admissionId: string;
       readonly hospiceAdmissionDate: string;
+      readonly admissionTypeCode?: string | null;
+      readonly admissionSourceCode?: string | null;
       readonly rhcPriorHospiceDays?: number;
       readonly rhcPriorStays?: readonly {
         readonly admissionId: string;
@@ -412,6 +415,9 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
         ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode }
         : null;
     },
+    async visitChargeVersions(orgId, providerEntityId, range) {
+      return visitChargeVersionsForOrg(db, orgId, providerEntityId, range);
+    },
     async activeSequestrationPolicy(orgId, providerEntityId, serviceFrom) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const sequestrationPolicies = new repositories.SequestrationPolicyRepository(tx);
@@ -447,6 +453,11 @@ export interface M8BillableEncountersReader {
       readonly billable: boolean;
       readonly reason?: string;
       readonly serviceDate: string;
+      /** What the hospice visit line is coded from (CMS Pub. 100-04 ch. 11 §30.3). */
+      readonly discipline: string;
+      readonly encounterType: string;
+      /** The start-to-end bracket in minutes; `null` = not documented. */
+      readonly durationMinutes: number | null;
     }>
   >;
 }
@@ -489,6 +500,9 @@ export function buildM23BillableEncountersAdapter(
       return rows.map((r) => ({
         encounterId: r.encounterId,
         serviceDate: r.serviceDate,
+        discipline: r.discipline,
+        encounterType: r.encounterType,
+        durationMinutes: r.durationMinutes,
         billability: r.billable
           ? ("billable" as const)
           : r.reason === "awaiting_cosignature"

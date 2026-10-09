@@ -80,7 +80,9 @@ export async function filterIdgPatientsInScope<T extends { readonly patientId: s
 }
 
 /** Nullable-patient list form: meeting-level rows remain visible; patient rows are caseload scoped. */
-export async function filterNullableIdgPatientsInScope<T extends { readonly patientId: string | null }>(
+export async function filterNullableIdgPatientsInScope<
+  T extends { readonly patientId: string | null },
+>(
   facts: IdgPatientScopeFacts,
   organizationId: string,
   rows: readonly T[],

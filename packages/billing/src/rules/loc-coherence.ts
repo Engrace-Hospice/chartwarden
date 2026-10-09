@@ -2,6 +2,7 @@
 // revenue code + Q-code + level-of-care must align with the LOC period active on that service date; CHC
 // requires 8+ documented hours/day, GIP requires admission criteria documented (D7 / 42 CFR §418.302).
 // Reads the resolved `lines` + `levelOfCarePeriods` snapshots. PURE: reads ctx only.
+import { isVisitRevenueCode } from "../claim-lines/visit-codes";
 import type { LevelOfCare } from "../contracts";
 import { locPeriodCoveringDate, paramStringMap } from "./_util";
 import { G0679_HCPCS } from "./f2f-telehealth-g0679";
@@ -56,7 +57,11 @@ export const levelOfCareCoherence: Rule = {
         defects.push(`${line.serviceDate}: line LOC ≠ period LOC`);
         continue;
       }
-      const expectedRevenue = revenueCodeByLoc[line.levelOfCare];
+      // A visit line (042x-057x, ch. 11 §30.3) rides the covering period like a per-diem line but is coded by
+      // discipline, not by level of care — it must sit in the period (above), not carry its revenue code.
+      const expectedRevenue = isVisitRevenueCode(line.revenueCode)
+        ? undefined
+        : revenueCodeByLoc[line.levelOfCare];
       if (expectedRevenue !== undefined && line.revenueCode !== expectedRevenue) {
         defects.push(
           `${line.serviceDate}: revenue ${line.revenueCode} ≠ expected ${expectedRevenue}`,

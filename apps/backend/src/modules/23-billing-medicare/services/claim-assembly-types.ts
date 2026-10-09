@@ -22,8 +22,9 @@ import type {
   MdmResolution,
   SignedEncounterSnapshot,
   TerminologyResolution,
+  VisitChargeVersion,
 } from "@wardenx/billing";
-import type { repositories } from "@wardenx/billing";
+import type { ValueCodeAreas, repositories } from "@wardenx/billing";
 
 type BillingDb = repositories.BillingDb;
 
@@ -63,6 +64,9 @@ export interface AdmissionContext {
   readonly admissionId: string;
   /** The hospice election/admission date — day 1 of THIS stay in the ADR-0001 RHC day-60 tier count (D7). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** M6 `admission.admission_type_code` / `admission_source_code` (UB-04 FL 14 / FL 15, NUBC strings); null/absent = not recorded. */
+  readonly admissionTypeCode?: string | null;
+  readonly admissionSourceCode?: string | null;
   /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
   readonly rhcPriorHospiceDays?: number;
   /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice
@@ -282,6 +286,16 @@ export interface BillingReferenceDataReader {
     providerEntityId: string,
     serviceFrom: IsoDate,
   ): Promise<SequestrationPolicyResolution | null>;
+  /**
+   * The LIVE tenant-entered visit-charge schedule versions (a charge per 15-minute unit per discipline) whose windows
+   * intersect the claim's service range — a claim can span a schedule change. Empty when none is entered; claim
+   * assembly then FAILS CLOSED (`VISIT_CHARGE_MISSING`) if the claim bills a visit, never defaulting a charge.
+   */
+  visitChargeVersions(
+    orgId: string,
+    providerEntityId: string,
+    range: DateRange,
+  ): Promise<readonly VisitChargeVersion[]>;
 }
 
 /** §4.10 transactional outbox — the emit commits in the SAME transaction as the assembly mutation (D2). */
@@ -306,6 +320,36 @@ export interface ElectionAddendumComplianceReader {
   forAdmission(orgId: string, admissionId: string): Promise<ElectionAddendumSnapshot>;
 }
 
+/**
+ * The CBSA each wage-index value code is read from (61 residence, G8 inpatient facility), already resolved from the
+ * patient's / facility's ZIP against the platform geography. Optional: absent ⇒ the claim carries no value codes and
+ * the `cbsa_value_codes_present` rule SKIPs.
+ */
+/** A general-inpatient / inpatient-respite level-of-care period on the claim, clipped to the claim range. */
+export interface InpatientStay extends DateRange {
+  /** The M6 level-of-care period id; M37's `ipu_admission` is keyed by it (where the stay was delivered). */
+  readonly levelOfCarePeriodId: string;
+}
+
+export interface HospiceCbsaReader {
+  /**
+   * The areas behind value code 61 (residence CBSA at the END of the billing period) and G8 (the latest facility that
+   * served the beneficiary, among the claim's inpatient `stays`) — CMS Pub. 100-04 ch. 11 s30.3.
+   */
+  areasFor(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+    stays: readonly InpatientStay[],
+  ): Promise<ValueCodeAreas>;
+  /**
+   * The published wage index for an area code in a fiscal year. The Pricer wage-adjusts the whole claim with the CBSA
+   * the claim reports (value codes 61 / G8), so a claim crossing Oct 1 keeps its end-of-period codes and takes each
+   * fiscal year's index for them. `null` = none published (unresolved).
+   */
+  wageIndexForArea(cbsaCode: string, fiscalYearStarting: number): Promise<string | null>;
+}
+
 /** The full injected seam bundle the assembly service depends on. */
 export interface ClaimAssemblySeams {
   readonly patientPayer: PatientPayerReader; // M5
@@ -322,6 +366,8 @@ export interface ClaimAssemblySeams {
   readonly terminology: TerminologyProvider; // M38
   readonly capProjection: CapProjectionProvider; // M26 — §11.A pre-submission cap rules (degrades, D8)
   readonly referenceData: BillingReferenceDataReader; // platform reference data (M23/M1-owned)
+  /** M5/M40 ZIPs + M23 geography — the wage-index value codes 61 / G8. Optional: absent ⇒ rule SKIPs. */
+  readonly cbsa?: HospiceCbsaReader;
   /** M6 — FY2027 election addendum facts. Optional: absent ⇒ the rule SKIPs `seam_not_bound`. */
   readonly electionAddendum?: ElectionAddendumComplianceReader;
   /** The §11.A rule registry — built + FROZEN at composition (platform-default + MAC + tenant overlays). */

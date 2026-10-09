@@ -73,6 +73,12 @@ export const admissions = pgTable(
     hospicePhysicianId: uuid("hospice_physician_id"), // M40 physician selected to certify CTI (app-validated)
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
     primaryCaregiverId: uuid("primary_caregiver_id"), // M5 caregiver (app-validated)
+    // Migration 1057 — the UB-04 Type of Admission (FL 14 → 837I CL101) and Point of Origin (FL 15 → CL102) a hospice
+    // claim carries (NUBC codes; the sets live in `@wardenx/types` `ADMISSION_TYPE_CODES` / `ADMISSION_SOURCE_CODES`).
+    // NULL until recorded — M23's `admission_codes_present` rule blocks a claim without them; a historical admission
+    // is never backfilled with an invented code.
+    admissionTypeCode: text("admission_type_code"),
+    admissionSourceCode: text("admission_source_code"),
     transferredIn: boolean("transferred_in").notNull().default(false),
     transferredInFromCcn: text("transferred_in_from_ccn"),
     inheritedPeriodSequence: smallint("inherited_period_sequence"),

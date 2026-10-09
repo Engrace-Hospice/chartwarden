@@ -10,14 +10,20 @@
 import {
   type Cents,
   ChcHoursError,
+  type FiscalYearPricing,
   type HippsRateTable,
   type SignedEncounterSnapshot,
+  type ValueCodeAreas,
+  WageIndexAreaError,
+  type WageIndexAreaFactors,
   addDaysIso,
-  calculateHipps,
+  calculateHippsByFiscalYear,
   calculateSia,
+  splitAtFiscalYears,
+  wageIndexFactorForLevelOfCare,
 } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
-import type { ClaimAssemblySeams, DateRange } from "./claim-assembly-types";
+import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */
 export function hospiceFiscalYearStarting(serviceFrom: string): number {
@@ -75,6 +81,11 @@ export async function readAssemblyFacts(
     : undefined;
   const faceToFace = await seams.faceToFace.forPatient(orgId, patientId, range);
   const resolvedLoc = await seams.levelOfCare.periodsInRange(orgId, patientId, range);
+  // Wage-index value codes (61 / G8): the CBSA areas of the residence (period end) and of the facility that
+  // delivered the inpatient care; undefined when the CBSA geography is unbound.
+  const valueAreas = seams.cbsa
+    ? await seams.cbsa.areasFor(orgId, patientId, range, inpatientStaysOf(resolvedLoc, range))
+    : undefined;
 
   const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
   if (!pe) {
@@ -111,6 +122,20 @@ export async function readAssemblyFacts(
       422,
     );
   }
+
+  // Each fiscal year the claim touches is priced with its OWN rate table, provider wage index and area indexes (the
+  // rates change on Oct 1); the first year reuses what was just read.
+  const fiscalYearPricing = await readFiscalYearPricing(seams, {
+    orgId,
+    providerEntityId,
+    patientId,
+    macJurisdiction: pe.macJurisdiction,
+    ccn: pe.ccn,
+    range,
+    resolvedLoc,
+    first: { rateTable, wageIndex },
+    claimAreas: valueAreas,
+  });
 
   const billableEncounters = await seams.billableEncounters.forRange(
     orgId,
@@ -177,6 +202,7 @@ export async function readAssemblyFacts(
     resolvedPeriods,
     certifications,
     electionAddendum,
+    valueAreas,
     faceToFace,
     resolvedLoc,
     pe,
@@ -184,6 +210,7 @@ export async function readAssemblyFacts(
     wageIndex,
     rateScope,
     rateTable,
+    fiscalYearPricing,
     seqPolicy,
     billableEncounters,
     evvBrackets,
@@ -200,6 +227,120 @@ export async function readAssemblyFacts(
 
 export type AssemblyFacts = Awaited<ReturnType<typeof readAssemblyFacts>>;
 
+const INPATIENT_LEVELS_OF_CARE: ReadonlySet<string> = new Set([
+  "general_inpatient_care",
+  "inpatient_respite_care",
+]);
+
+/** The claim's inpatient (GIP / inpatient respite) level-of-care periods, clipped to `within`. */
+function inpatientStaysOf(
+  resolvedLoc: readonly {
+    levelOfCarePeriodId: string;
+    levelOfCare: string;
+    from: string;
+    to: string;
+  }[],
+  within: DateRange,
+): InpatientStay[] {
+  return resolvedLoc
+    .filter((p) => INPATIENT_LEVELS_OF_CARE.has(p.levelOfCare))
+    .map((p) => ({
+      levelOfCarePeriodId: p.levelOfCarePeriodId,
+      from: p.from > within.from ? p.from : within.from,
+      to: p.to < within.to ? p.to : within.to,
+    }))
+    .filter((r) => r.from <= r.to);
+}
+
+interface PricingReadInput {
+  readonly orgId: string;
+  readonly providerEntityId: string;
+  readonly patientId: string;
+  readonly macJurisdiction: Parameters<ClaimAssemblySeams["referenceData"]["hippsRateTable"]>[0];
+  readonly ccn: string;
+  readonly range: DateRange;
+  readonly resolvedLoc: readonly {
+    levelOfCarePeriodId: string;
+    levelOfCare: string;
+    from: string;
+    to: string;
+  }[];
+  /** The rate table and provider wage index already read for the claim's first fiscal year. */
+  readonly first: {
+    readonly rateTable: HippsRateTable;
+    readonly wageIndex: { readonly factorDecimal: string };
+  };
+  /** The period-end areas (value codes 61 / G8); reused as the pricing areas when the claim is one fiscal year. */
+  readonly claimAreas: ValueCodeAreas | undefined;
+}
+
+/** The claim's resolved areas re-indexed for one fiscal year (same codes; that year's published index, or none). */
+async function indexedForFiscalYear(
+  cbsa: NonNullable<ClaimAssemblySeams["cbsa"]>,
+  areas: ValueCodeAreas,
+  fiscalYearStarting: number,
+): Promise<ValueCodeAreas> {
+  const reindex = async (a: ValueCodeAreas["residence"]): Promise<ValueCodeAreas["residence"]> =>
+    a?.status === "resolved"
+      ? { ...a, wageIndex: await cbsa.wageIndexForArea(a.cbsaCode, fiscalYearStarting) }
+      : a;
+  return { residence: await reindex(areas.residence), facility: await reindex(areas.facility) };
+}
+
+/** Rate table + wage indexes for every fiscal year in the claim range (one entry unless it crosses Oct 1). */
+async function readFiscalYearPricing(
+  seams: ClaimAssemblySeams,
+  input: PricingReadInput,
+): Promise<ReadonlyMap<number, FiscalYearPricing>> {
+  const parts = splitAtFiscalYears(input.range.from, input.range.to);
+  const out = new Map<number, FiscalYearPricing>();
+  for (const [index, part] of parts.entries()) {
+    const rateTable =
+      index === 0
+        ? input.first.rateTable
+        : await seams.referenceData.hippsRateTable(input.macJurisdiction, part.fiscalYearStarting, {
+            orgId: input.orgId,
+            providerEntityId: input.providerEntityId,
+            serviceFrom: part.from,
+          });
+    const wageIndex =
+      index === 0
+        ? input.first.wageIndex
+        : await seams.referenceData.wageIndexForCcn(
+            input.ccn,
+            part.fiscalYearStarting,
+            input.orgId,
+          );
+    if (!wageIndex) {
+      throw new WardenXError(
+        "WAGE_INDEX_UNAVAILABLE",
+        `no authoritative wage-index factor is available for CCN ${input.ccn} fiscal year starting ${part.fiscalYearStarting} (D12); the claim crosses Oct 1 and each fiscal year is priced with its own index. Enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
+        422,
+      );
+    }
+    // The Pricer wage-adjusts with the CBSA the claim REPORTS (value codes 61 / G8: end of the billing period, the
+    // latest inpatient facility), so every fiscal-year part keeps those codes and takes ITS year's index for them.
+    const areas =
+      parts.length === 1 || !input.claimAreas || !seams.cbsa
+        ? input.claimAreas
+        : await indexedForFiscalYear(seams.cbsa, input.claimAreas, part.fiscalYearStarting);
+    out.set(part.fiscalYearStarting, {
+      fiscalYearStarting: part.fiscalYearStarting,
+      rateTable,
+      wageIndexFactorDecimal: wageIndex.factorDecimal,
+      ...(areas ? { wageIndexAreaFactors: wageIndexAreaFactorsOf(areas) } : {}),
+    });
+  }
+  return out;
+}
+
+/** The area wage indexes the resolved value-code areas publish; `null` where an area did not resolve. */
+function wageIndexAreaFactorsOf(areas: ValueCodeAreas): WageIndexAreaFactors {
+  const indexOf = (a: ValueCodeAreas["residence"]) =>
+    a?.status === "resolved" ? a.wageIndex : null;
+  return { residence: indexOf(areas.residence), facility: indexOf(areas.facility) };
+}
+
 /**
  * D7 — the HIPPS per-diem derivation over the resolved level-of-care periods + rate table. Shared by the
  * assembly (which builds the claim lines from it) and the re-validation path (which compares the persisted
@@ -211,27 +352,47 @@ export function computeClaimHipps(
   /** Two-tier RHC — the prior hospice days the stay continues (ours + other hospices', `rhc-carry-over.ts`);
    *  absent ⇒ M6's own-stays count. */
   rhcPriorDays?: number,
-): ReturnType<typeof calculateHipps> {
-  const { admission, resolvedLoc, rateTable, pe, fiscalYearStarting, wageIndex } = facts;
+): ReturnType<typeof calculateHippsByFiscalYear> {
+  const { admission, resolvedLoc, pe, fiscalYearPricing } = facts;
   try {
-    return calculateHipps({
-      claimServiceFrom: window.serviceFrom,
-      claimServiceTo: window.serviceTo,
-      hospiceAdmissionDate: admission.hospiceAdmissionDate,
-      // Two-tier RHC — a readmission within 60 days continues the prior stays' day count.
-      priorHospiceDays: rhcPriorDays ?? admission.rhcPriorHospiceDays ?? 0,
-      levelOfCarePeriods: resolvedLoc.map((p) => ({
-        levelOfCare: p.levelOfCare,
-        from: p.from,
-        to: p.to,
-        chcDocumentedHours: p.chcDocumentedHours,
-      })),
-      rateTable,
-      wageIndexCcn: pe.ccn,
-      wageIndexFiscalYear: fiscalYearStarting,
-      wageIndexFactorDecimal: wageIndex.factorDecimal,
-    });
+    return calculateHippsByFiscalYear(
+      {
+        claimServiceFrom: window.serviceFrom,
+        claimServiceTo: window.serviceTo,
+        hospiceAdmissionDate: admission.hospiceAdmissionDate,
+        // Two-tier RHC - a readmission within 60 days continues the prior stays' day count.
+        priorHospiceDays: rhcPriorDays ?? admission.rhcPriorHospiceDays ?? 0,
+        levelOfCarePeriods: resolvedLoc.map((p) => ({
+          levelOfCare: p.levelOfCare,
+          from: p.from,
+          to: p.to,
+          chcDocumentedHours: p.chcDocumentedHours,
+        })),
+        wageIndexCcn: pe.ccn,
+      },
+      // Each day is priced with its own fiscal year's rates and wage indexes, using the CBSAs the claim reports (home
+      // care by the residence CBSA, inpatient care by the facility CBSA - Pub. 100-04 ch. 11 s30.3; see `wage-index-area.ts`).
+      (fiscalYearStarting) => {
+        const pricing = fiscalYearPricing.get(fiscalYearStarting);
+        if (!pricing) {
+          throw new WardenXError(
+            "FISCAL_YEAR_PRICING_UNAVAILABLE",
+            `no rates were read for the fiscal year starting ${fiscalYearStarting}`,
+            422,
+          );
+        }
+        return pricing;
+      },
+    );
   } catch (err) {
+    if (err instanceof WageIndexAreaError) {
+      const where = err.source === "residence" ? "patient residence" : "inpatient facility";
+      throw new WardenXError(
+        "WAGE_INDEX_AREA_UNRESOLVED",
+        `${err.message}; correct the ${where} address (ZIP code) and retry`,
+        422,
+      );
+    }
     // F-211 — CHC is paid hourly; an undocumented / sub-8h / >24h / non-quarter-hour CHC day cannot be priced.
     if (err instanceof ChcHoursError) {
       throw new WardenXError("CHC_HOURS_UNPRICEABLE", err.message, 422);
@@ -245,23 +406,107 @@ export async function computeClaimSia(
   seams: ClaimAssemblySeams,
   facts: AssemblyFacts,
 ): Promise<ReturnType<typeof calculateSia> | null> {
-  const { admission, fiscalYearStarting, wageIndex, rateScope, signedEncounters } = facts;
+  const { admission, signedEncounters } = facts;
   if (admission.deceasedDate === null) return null;
-  const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
-    fiscalYearStarting,
-    wageIndex.factorDecimal,
-    rateScope,
+  const encounters = signedEncounters.map((e) => ({
+    encounterId: e.encounterId,
+    serviceDate: e.serviceDate,
+    discipline: e.discipline,
+    durationMinutes: e.durationMinutes,
+    signed: e.signed,
+  }));
+  // Is an SIA payable at all? Presence depends only on the qualifying visits, not on any rate - so nothing about the
+  // CHC rate or the wage index is resolved (and none of their failures can surface) for a claim with no SIA.
+  const payable = calculateSia({
+    deceasedDate: admission.deceasedDate,
+    chcHourlyRateCents: 0,
+    signedEncounters: encounters,
+  });
+  if (!payable.present) return null;
+
+  const { siaFiscalYear, siaWageIndex, siaScope } = await siaPricing(
+    seams,
+    facts,
+    admission.deceasedDate,
   );
-  const sia = calculateSia({
+  const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
+    siaFiscalYear,
+    siaWageIndex,
+    siaScope,
+  );
+  return calculateSia({
     deceasedDate: admission.deceasedDate,
     chcHourlyRateCents,
-    signedEncounters: signedEncounters.map((e) => ({
-      encounterId: e.encounterId,
-      serviceDate: e.serviceDate,
-      discipline: e.discipline,
-      durationMinutes: e.durationMinutes,
-      signed: e.signed,
-    })),
+    signedEncounters: encounters,
   });
-  return sia.present ? sia : null;
+}
+
+/**
+ * What the SIA is priced with. The SIA is paid at the CHC hourly rate of the fiscal year the PATIENT DIED in (the SIA
+ * window ends on the death date), wage-adjusted on the same basis as the claim's continuous-home-care days: that
+ * year's index for the claim's reported residence CBSA where the claim is priced by area, else the provider's index.
+ * The death can fall in a fiscal year the claim does not touch (a claim ending Sep 30, a death on Oct 1), so that
+ * year's inputs are read on demand; if they are unavailable this FAILS CLOSED (typed 422) - there is no fallback to
+ * the claim's first year or the provider's index.
+ */
+async function siaPricing(
+  seams: ClaimAssemblySeams,
+  facts: AssemblyFacts,
+  deceasedDate: string,
+): Promise<{
+  siaFiscalYear: number;
+  siaWageIndex: string;
+  siaScope: AssemblyFacts["rateScope"];
+}> {
+  const { fiscalYearStarting, rateScope, pe, valueAreas } = facts;
+  const deathFiscalYear = hospiceFiscalYearStarting(deceasedDate);
+  let pricing:
+    | Pick<FiscalYearPricing, "wageIndexFactorDecimal" | "wageIndexAreaFactors">
+    | undefined = facts.fiscalYearPricing.get(deathFiscalYear);
+  if (!pricing) {
+    const providerIndex = await seams.referenceData.wageIndexForCcn(
+      pe.ccn,
+      deathFiscalYear,
+      rateScope.orgId,
+    );
+    if (!providerIndex) {
+      throw new WardenXError(
+        "WAGE_INDEX_UNAVAILABLE",
+        `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${deathFiscalYear} (D12), the year of the death; the SIA add-on is priced with it. Enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
+        422,
+      );
+    }
+    const areas =
+      valueAreas && seams.cbsa
+        ? await indexedForFiscalYear(seams.cbsa, valueAreas, deathFiscalYear)
+        : valueAreas;
+    pricing = {
+      wageIndexFactorDecimal: providerIndex.factorDecimal,
+      ...(areas ? { wageIndexAreaFactors: wageIndexAreaFactorsOf(areas) } : {}),
+    };
+  }
+  let siaWageIndex: string;
+  try {
+    siaWageIndex = wageIndexFactorForLevelOfCare(
+      "continuous_home_care",
+      pricing.wageIndexFactorDecimal,
+      pricing.wageIndexAreaFactors,
+    );
+  } catch (err) {
+    if (err instanceof WageIndexAreaError) {
+      throw new WardenXError(
+        "WAGE_INDEX_AREA_UNRESOLVED",
+        `${err.message}; the SIA add-on is priced as continuous home care. Correct the patient residence address (ZIP code) and retry`,
+        422,
+      );
+    }
+    throw err;
+  }
+  // The rate table is the version effective on the date priced: the claim's first day, or the death date when it
+  // falls in a different fiscal year than the claim's first.
+  const siaScope =
+    deathFiscalYear === fiscalYearStarting
+      ? rateScope
+      : { ...rateScope, serviceFrom: deceasedDate };
+  return { siaFiscalYear: deathFiscalYear, siaWageIndex, siaScope };
 }

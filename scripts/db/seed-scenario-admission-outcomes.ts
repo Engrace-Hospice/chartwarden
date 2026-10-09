@@ -229,6 +229,9 @@ async function admitAndActivate(
     body: {
       patientId,
       intakeMethod: "in_person",
+      // UB-04 FL 14 / FL 15 — claims are blocked without them (rule admission_codes_present).
+      admissionTypeCode: "3",
+      admissionSourceCode: "1",
       attendingPhysicianId: ATTENDING,
       hospiceMedicalDirectorId: HOSPICE_MD,
     },
@@ -397,7 +400,13 @@ async function main(): Promise<void> {
   try {
     const patientId = await findPatientIdByLastName(session, "Delgado");
     const adm = await session.client.POST("/api/v1/admissions", {
-      body: { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: HOSPICE_MD },
+      body: {
+        patientId,
+        intakeMethod: "transfer_in",
+        admissionTypeCode: "3",
+        admissionSourceCode: "6", // transfer from another health care facility (another hospice)
+        hospiceMedicalDirectorId: HOSPICE_MD,
+      },
     });
     if (adm.error || !adm.data)
       throw new Error(`admission create failed: ${JSON.stringify(adm.error)}`);

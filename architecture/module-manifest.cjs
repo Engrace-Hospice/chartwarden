@@ -766,6 +766,7 @@ exports.MODULES = [
       "eligibility_check",
       "hipps_calculation",
       "hospice_rate_table",
+      "hospice_visit_charge_schedule",
       "mac_submitter_credential",
       "noe_record",
       "notr_record",
@@ -779,6 +780,10 @@ exports.MODULES = [
       "validation_rule_config",
       "validation_run",
       "wage_index_factor",
+      "hospice_zip_county",
+      "hospice_zip3_area",
+      "hospice_cbsa_county",
+      "hospice_cbsa_wage_index",
     ],
   },
   {

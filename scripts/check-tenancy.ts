@@ -199,6 +199,13 @@ const NON_ORG_SCOPED = new Set<string>([
   // M38 code_system / M34 onboarding_task_template precedent). The other sixteen M23 tables carry
   // organization_id and get standard app.org_id RLS (claim + claim_line additionally carry the three-column rule).
   "wage_index_factor",
+  // M23 (migration 1058): the CMS hospice wage-index geography (ZIP -> county -> CBSA / rural / transition code and
+  // the published index) is platform-shared reference data like wage_index_factor: no organization_id, no PHI,
+  // tenants SELECT only, the billing_platform_loader role writes.
+  "hospice_zip_county",
+  "hospice_zip3_area",
+  "hospice_cbsa_county",
+  "hospice_cbsa_wage_index",
   // M24 Billing — Medicaid (WX-PR-011): medicaid_state_plan_code is PLATFORM-shared per-state Medicaid
   // program catalog data with NO organization_id BY DESIGN — one row per (state, plan code), loaded by the
   // platform loader and snapshotted onto medicaid_claim.state_plan_code_id / _snapshot at claim assembly so

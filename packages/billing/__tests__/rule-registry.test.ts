@@ -8,7 +8,7 @@ import {
 } from "@wardenx/billing";
 // @wardenx/billing — M23 §4.5 the validation RULE REGISTRY pure-domain unit tests (D1). Covers the
 // freeze-at-boot invariant (registration is rejected after `freeze()`, duplicate keys throw), the
-// platform-default registry factory (22 rules, 19 regulatory), `runRules` producing exactly one result per
+// platform-default registry factory (26 rules, 23 regulatory), `runRules` producing exactly one result per
 // registered rule in registration order, the determinism that underpins the §2.6 `run_input_hash`
 // idempotency, and `summarizeRuleRun`'s §2.3 blocking-failure roll-up (regulatory error ⇒ blocking; an
 // overridden failure leaves the blocking set but stays counted; a warn failure never blocks).
@@ -69,24 +69,26 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(DEFAULT_RULE_SET_VERSION).toBe(1);
   });
 
-  it("DEFAULT_BILLING_RULES holds 22 rules with unique keys", () => {
-    expect(DEFAULT_BILLING_RULES).toHaveLength(22);
+  it("DEFAULT_BILLING_RULES holds 26 rules with unique keys", () => {
+    expect(DEFAULT_BILLING_RULES).toHaveLength(26);
     const keys = DEFAULT_BILLING_RULES.map((r) => r.key);
-    expect(new Set(keys).size).toBe(22);
+    expect(new Set(keys).size).toBe(26);
   });
 
-  it("builds a fresh, UN-frozen registry pre-loaded with the 22 defaults", () => {
+  it("builds a fresh, UN-frozen registry pre-loaded with the 26 defaults", () => {
     const reg = createDefaultBillingRegistry();
     expect(reg.isFrozen).toBe(false);
-    expect(reg.getRules()).toHaveLength(22);
+    expect(reg.getRules()).toHaveLength(26);
     // a fresh instance each call (no shared singleton)
     expect(createDefaultBillingRegistry()).not.toBe(reg);
   });
 
-  it("exposes exactly 19 regulatory-required keys (the D5 floor a tenant cannot disable)", () => {
+  it("exposes exactly 23 regulatory-required keys (the D5 floor a tenant cannot disable)", () => {
     const reg = createDefaultBillingRegistry();
     const regKeys = reg.regulatoryRequiredKeys();
-    expect(regKeys).toHaveLength(19);
+    expect(regKeys).toHaveLength(23);
+    expect(regKeys).toContain("visit_lines_reportable"); // CMS ch. 11 §30.3 visit reporting (warn)
+    expect(regKeys).toContain("claim_total_matches_lines"); // 837I CLM02 balances to its lines
     expect(regKeys).toContain("election_addendum_signed"); // FY2027, 42 CFR 418.24(c)
     expect(regKeys).toContain("f2f_telehealth_g0679"); // FY2027, CR 14495
     expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // non-regulatory (warn)
@@ -99,7 +101,7 @@ describe("runRules — one result per rule, in registration order", () => {
   it("returns exactly one RuleResult per registered rule, key-aligned to the registry order", () => {
     const reg = createDefaultBillingRegistry();
     const results = reg.runRules(passingContext());
-    expect(results).toHaveLength(22);
+    expect(results).toHaveLength(26);
     expect(results.map((r) => r.ruleKey)).toEqual(DEFAULT_BILLING_RULES.map((r) => r.key));
   });
 

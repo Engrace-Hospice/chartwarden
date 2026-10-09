@@ -108,6 +108,12 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
       return ["chief_concern", "psychosocial", "interventions", "plan"];
     case "chaplain":
       return ["chief_concern", "spiritual", "plan"];
+    case "pt":
+    case "ot":
+    case "slp":
+      // Therapists document a functional assessment and their interventions; like CHHA/MSW they carry no
+      // `vitals_review`, so the §2.6 gate requires no vitals for a therapy visit.
+      return ["chief_concern", "assessment", "interventions", "plan"];
     case "volunteer":
       return ["chief_concern", "plan"];
   }

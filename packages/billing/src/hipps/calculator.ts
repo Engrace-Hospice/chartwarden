@@ -32,7 +32,8 @@
 // The exact CMS base per-diem rate table (per FY, per LOC, the RHC two-tier amounts) and the precise
 // 5-position HIPPS character encoding are PUBLISHED CMS fixtures — they are NOT fabricated here. The base
 // rates are INJECTED via `rateTable` (the caller resolves them from the loaded CMS rate file), and the
-// HIPPS code is derived via a deterministic placeholder pending the CMS fixture (see `deriveHippsCode`).
+// per-diem class code is an INTERNAL deterministic placeholder (see `derivePerDiemClassCode`); it is NOT a Medicare
+// HIPPS code (hospice claims carry none) and is never emitted on a claim.
 //
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate, LevelOfCare } from "../contracts";
@@ -44,6 +45,7 @@ import {
   perDiemAmountCents,
   sumCents,
 } from "../domain/money";
+import { type WageIndexAreaFactors, wageIndexFactorForLevelOfCare } from "./wage-index-area";
 
 /** CMS: a CHC day needs at least this many hours of care (predominantly skilled nursing) in the 24-hour day. */
 export const CHC_MIN_HOURS_PER_DAY = 8;
@@ -135,6 +137,12 @@ export interface HippsCalculationInput {
   readonly wageIndexFiscalYear: number;
   /** The wage index factor as a decimal STRING (e.g. `"0.9234"`) — never a float. */
   readonly wageIndexFactorDecimal: string;
+  /**
+   * The wage index of the beneficiary's residence area (prices home levels of care) and of the inpatient facility's
+   * area (prices GIP / inpatient respite) — see `wage-index-area.ts`. Absent ⇒ every level of care is priced at
+   * `wageIndexFactorDecimal` (the provider's index); present but missing the area a level needs ⇒ throws.
+   */
+  readonly wageIndexAreaFactors?: WageIndexAreaFactors;
 }
 
 /** One contiguous (level-of-care, RHC-bucket) segment of the claim, with its wage-adjusted per-diem. */
@@ -149,6 +157,10 @@ export interface HippsSegmentResult {
   /** The wage-index-ADJUSTED per-diem actually billed for this segment. */
   readonly ratePerDiemCents: Cents;
   readonly rhcDayBucket: RhcDayBucket;
+  /** The wage-index factor this segment's labor share was adjusted with (its area's index — `wage-index-area.ts`). */
+  readonly wageIndexFactorApplied: string;
+  /** The fiscal year (starting calendar year) whose rates and wage index priced this segment. */
+  readonly wageIndexFiscalYear: number;
   /** F-211 — CHC only: the documented hours this (single-day) segment was priced on; `null` for other levels of care. */
   readonly chcHours: number | null;
   /** F-211 — CHC only: the wage-index-adjusted HOURLY rate the day was priced at; `null` for other levels of care. */
@@ -161,7 +173,8 @@ export interface HippsSegmentResult {
 
 /** The pure HIPPS calculation result — the caller persists this onto `hipps_calculation`. */
 export interface HippsCalculationResult {
-  readonly hippsCode: string;
+  /** INTERNAL per-diem class code (not a Medicare HIPPS code; never emitted on a claim). */
+  readonly perDiemClassCode: string;
   /** A representative per-diem (the first segment's wage-adjusted rate; 0 when no billable day). */
   readonly perDiemRateCents: Cents;
   readonly wageIndexCcn: string;
@@ -242,13 +255,13 @@ function assertChcHours(hours: number | null | undefined, iso: IsoDate): number 
 }
 
 /**
- * Derive the 5-character HIPPS code for the claim. TODO(CMS-fixture): the exact 5-position HIPPS
- * character encoding (CMS Hospice Payment Manual) is a published table — this derives a DETERMINISTIC
- * placeholder from the FIRST segment's level of care + RHC day bucket so the calculator is structurally
- * complete and reproducible. Replace the character map with the CMS fixture before treating the code as
- * billable. A claim with no billable day yields the all-filler placeholder `"00000"`.
+ * Derive the INTERNAL 5-character per-diem class code for the claim: a DETERMINISTIC placeholder from the
+ * FIRST segment's level of care + RHC day bucket, so the calculator's snapshot is structurally complete and
+ * reproducible. It is NOT a Medicare HIPPS code — hospice claims carry no HIPPS rate code (ADR-0001) — so it
+ * must never be mapped into an 837I HIPPS field or shown as a claim field. A claim with no billable day
+ * yields the all-filler `"00000"`.
  */
-export function deriveHippsCode(segments: readonly HippsSegmentResult[]): string {
+export function derivePerDiemClassCode(segments: readonly HippsSegmentResult[]): string {
   const first = segments[0];
   if (first === undefined) return "00000";
   const locChar: Record<LevelOfCare, string> = {
@@ -268,6 +281,8 @@ interface DayResolution {
   readonly iso: IsoDate;
   readonly levelOfCare: LevelOfCare;
   readonly bucket: RhcDayBucket;
+  readonly wageIndexFactorApplied: string;
+  readonly wageIndexFiscalYear: number;
   readonly baseRatePerDiemCents: Cents;
   readonly ratePerDiemCents: Cents;
   readonly chcHours: number | null;
@@ -310,9 +325,14 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         : "n/a";
     const baseRate = baseRateFor(input.rateTable, loc, bucket);
     // The wage index adjusts the LABOR SHARE only (F-211): base × (labor × WI + (1 − labor)).
+    const dayWageIndex = wageIndexFactorForLevelOfCare(
+      loc,
+      input.wageIndexFactorDecimal,
+      input.wageIndexAreaFactors,
+    );
     const adjustedRate = applyWageIndexToLaborShare(
       baseRate,
-      input.wageIndexFactorDecimal,
+      dayWageIndex,
       laborShareFor(input.rateTable, loc),
     );
     if (loc === "continuous_home_care") {
@@ -322,6 +342,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         iso,
         levelOfCare: loc,
         bucket,
+        wageIndexFactorApplied: dayWageIndex,
+        wageIndexFiscalYear: input.wageIndexFiscalYear,
         baseRatePerDiemCents: lineChargeCents(hours, baseRate),
         ratePerDiemCents: lineChargeCents(hours, adjustedRate),
         chcHours: hours,
@@ -332,6 +354,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         iso,
         levelOfCare: loc,
         bucket,
+        wageIndexFactorApplied: dayWageIndex,
+        wageIndexFiscalYear: input.wageIndexFiscalYear,
         baseRatePerDiemCents: baseRate,
         ratePerDiemCents: adjustedRate,
         chcHours: null,
@@ -370,6 +394,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         baseRatePerDiemCents: dayRes.baseRatePerDiemCents,
         ratePerDiemCents: dayRes.ratePerDiemCents,
         rhcDayBucket: dayRes.bucket,
+        wageIndexFactorApplied: dayRes.wageIndexFactorApplied,
+        wageIndexFiscalYear: dayRes.wageIndexFiscalYear,
         chcHours: dayRes.chcHours,
         chcAdjustedHourlyRateCents: dayRes.chcAdjustedHourlyRateCents,
         hippsCharPosition: position,
@@ -384,7 +410,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
   const perDiemRateCents = segments[0]?.ratePerDiemCents ?? 0;
 
   return {
-    hippsCode: deriveHippsCode(segments),
+    perDiemClassCode: derivePerDiemClassCode(segments),
     perDiemRateCents,
     wageIndexCcn: input.wageIndexCcn,
     wageIndexFiscalYear: input.wageIndexFiscalYear,
