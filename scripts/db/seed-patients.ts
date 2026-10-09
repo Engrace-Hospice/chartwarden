@@ -11,10 +11,15 @@
 import { readFileSync } from "node:fs";
 import { group } from "../lib/strict";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { stepUpSession } from "./lib/step-up";
 
 const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const ORG_SLUG = "wardenx-demo";
 const ADMIN_EMAIL = "admin@wardenx.local";
+
+/** GAP-009: skipping the duplicate-match review must say why (20-1000 chars); recorded on the audit. */
+const BYPASS_JUSTIFICATION =
+  "Local demo seed: synthetic patients on an empty database, no real duplicates to review.";
 
 const PATIENTS = [
   {
@@ -22,7 +27,12 @@ const PATIENTS = [
     firstName: "Eleanor",
     dob: "1939-03-12",
     administrativeSex: "female",
-    primaryAddress: { line1: "42 Camellia Ln", city: "Asheville", postalCode: "28801" },
+    primaryAddress: {
+      line1: "42 Camellia Ln",
+      city: "Asheville",
+      state: "NC",
+      postalCode: "28801",
+    },
     phone: "+18285551042",
   },
   {
@@ -30,7 +40,7 @@ const PATIENTS = [
     firstName: "Samuel",
     dob: "1945-11-02",
     administrativeSex: "male",
-    primaryAddress: { line1: "1187 Birch St", city: "Asheville", postalCode: "28805" },
+    primaryAddress: { line1: "1187 Birch St", city: "Asheville", state: "NC", postalCode: "28805" },
     phone: "+18285552187",
   },
   {
@@ -38,14 +48,24 @@ const PATIENTS = [
     firstName: "Rosa",
     dob: "1951-06-28",
     administrativeSex: "female",
-    primaryAddress: { line1: "9 Mountain View Ct", city: "Hendersonville", postalCode: "28792" },
+    primaryAddress: {
+      line1: "9 Mountain View Ct",
+      city: "Hendersonville",
+      state: "NC",
+      postalCode: "28792",
+    },
   },
   {
     lastName: "Nakamura",
     firstName: "Henry",
     dob: "1936-01-19",
     administrativeSex: "male",
-    primaryAddress: { line1: "330 Sweeten Creek Rd", city: "Asheville", postalCode: "28803" },
+    primaryAddress: {
+      line1: "330 Sweeten Creek Rd",
+      city: "Asheville",
+      state: "NC",
+      postalCode: "28803",
+    },
     phone: "+18285553301",
   },
   {
@@ -53,14 +73,24 @@ const PATIENTS = [
     firstName: "Margaret",
     dob: "1948-09-05",
     administrativeSex: "female",
-    primaryAddress: { line1: "76 Riverside Dr", city: "Asheville", postalCode: "28804" },
+    primaryAddress: {
+      line1: "76 Riverside Dr",
+      city: "Asheville",
+      state: "NC",
+      postalCode: "28804",
+    },
   },
   {
     lastName: "Fairbanks",
     firstName: "Walter",
     dob: "1942-12-30",
     administrativeSex: "male",
-    primaryAddress: { line1: "215 Oak Knoll Dr", city: "Black Mountain", postalCode: "28711" },
+    primaryAddress: {
+      line1: "215 Oak Knoll Dr",
+      city: "Black Mountain",
+      state: "NC",
+      postalCode: "28711",
+    },
     phone: "+18285554215",
   },
 ];
@@ -111,6 +141,8 @@ async function main(): Promise<void> {
   });
   if (!signIn.ok) throw new Error(`sign-in failed: ${signIn.status} ${await signIn.text()}`);
   absorb(jar, signIn);
+  const adminUserId = ((await signIn.json()) as { user?: { id?: string } }).user?.id;
+  if (!adminUserId) throw new Error("sign-in response carried no user id");
 
   // 2) resolve org id from memberships, then select it
   const mem = await fetch(`${API}/api/v1/auth/memberships`, {
@@ -140,7 +172,12 @@ async function main(): Promise<void> {
   // 3) admit patients
   let created = 0;
   let dup = 0;
+  let failed = 0;
   for (const p of PATIENTS) {
+    // Admitting a patient is step-up gated (STEP_UP_REQUIRED without a fresh step-up). A seed cannot
+    // answer a TOTP/WebAuthn challenge, so use the shared stand-in (lib/step-up.ts) immediately
+    // before each gated request — a step-up lasts 300 s, but one call per admit keeps it airtight.
+    await stepUpSession(adminUserId);
     const res = await fetch(`${API}/api/v1/patients`, {
       method: "POST",
       headers: {
@@ -148,7 +185,11 @@ async function main(): Promise<void> {
         cookie: cookieHeader(jar),
         ...csrfHeader(jar),
       },
-      body: JSON.stringify({ ...p, bypassMatchReview: true }),
+      body: JSON.stringify({
+        ...p,
+        bypassMatchReview: true,
+        bypassJustification: BYPASS_JUSTIFICATION,
+      }),
     });
     if (res.status === 201) {
       created++;
@@ -157,12 +198,15 @@ async function main(): Promise<void> {
       dup++;
       console.log(`  • ${p.firstName} ${p.lastName} already present (dup)`);
     } else {
+      failed++;
       console.log(`  ✗ ${p.firstName} ${p.lastName}: HTTP ${res.status} ${await res.text()}`);
     }
   }
   console.log(
-    `\n✓ patient seed: ${created} admitted, ${dup} already present (of ${PATIENTS.length}).`,
+    `\n${failed === 0 ? "✓" : "✗"} patient seed: ${created} admitted, ${dup} already present, ${failed} failed (of ${PATIENTS.length}).`,
   );
+  // A seed that logs a failure and still exits 0 lets `db:seed:all` carry on into steps that need these patients.
+  if (failed > 0) process.exit(1);
 }
 
 main().catch((err) => {

@@ -241,7 +241,11 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
   await db.end();
 }
 
-/** Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. */
+/**
+ * Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. The API needs
+ * `M24_CREDENTIAL_ENCRYPTION_KEY` to seal the secret (documented in `.env.example`); without it the route answers
+ * 503 and this seed fails loudly rather than leaving Medicare assemble at MAC_SUBMITTER_CREDENTIAL_MISSING.
+ */
 async function seedMacSubmitterCredential(
   admin: Awaited<ReturnType<typeof signIn>>,
 ): Promise<void> {
@@ -273,10 +277,13 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@wardenx.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
 
-  // The census is caseload-scoped (F-096) and `org_admin` is a tenant administrator, not an org-wide patient
-  // reader, so the demo patient is looked up as the admin persona the admissions scenario uses.
-  const patientId = await findPatientIdByLastName(await signIn("admin@wardenx.local"), "Whitfield");
-  const cert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
+  // The census AND the chart's election/certification read are patient-scoped (F-096; `election.read` is
+  // `caseload_or_scope`), and `org_admin` is a tenant administrator, not an org-wide patient reader, so both
+  // are done as the admin persona the admissions scenario uses (attending on the demo caseload). The billing
+  // writes below stay with `orgadmin`, who holds the billing permissions and the PE/location scope.
+  const chartReader = await signIn("admin@wardenx.local");
+  const patientId = await findPatientIdByLastName(chartReader, "Whitfield");
+  const cert = await chartReader.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
   const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)

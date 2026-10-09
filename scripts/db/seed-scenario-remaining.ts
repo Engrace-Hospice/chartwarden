@@ -485,7 +485,8 @@ async function main(): Promise<void> {
   const whitfieldId = await findPatientIdByLastName(drharris, "Whitfield");
   const fairbanksId = await findPatientIdByLastName(drharris, "Fairbanks");
 
-  const whitfieldCert = await admin.client.GET(
+  // The election/certification read is patient-scoped (`election.read`) too, so it is read as drharris as well.
+  const whitfieldCert = await drharris.client.GET(
     "/api/v1/patients/{patientId}/election-certification",
     {
       params: { path: { patientId: whitfieldId } },
@@ -497,7 +498,7 @@ async function main(): Promise<void> {
   if (!whitfieldAdmissionId)
     throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
-  const fairbanksCert = await admin.client.GET(
+  const fairbanksCert = await drharris.client.GET(
     "/api/v1/patients/{patientId}/election-certification",
     {
       params: { path: { patientId: fairbanksId } },
@@ -599,8 +600,10 @@ async function main(): Promise<void> {
     // elsewhere in the pipeline is unreliable).
     const supervisorId = await membershipIdFor("supervisor@wardenx.local");
 
-    // Incident: full lifecycle.
-    const incident = await admin.client.POST("/api/v1/quality/incidents", {
+    // Incident: full lifecycle. A patient-linked report must be about a patient in the REPORTER's caseload
+    // (GAP-091, 404 otherwise) and `org_admin` is not on it, so the nurse who caseloads Whitfield (rita)
+    // reports and submits it; triage onward is the quality/compliance side.
+    const incident = await rita.client.POST("/api/v1/quality/incidents", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: {
         kind: "fall",
@@ -620,20 +623,24 @@ async function main(): Promise<void> {
       throw new Error(`incident create failed: ${JSON.stringify(incident.error)}`);
     const incidentId = incidentData.incidentId;
 
-    const submit = await admin.client.POST("/api/v1/quality/incidents/{incidentId}/submit", {
+    const submit = await rita.client.POST("/api/v1/quality/incidents/{incidentId}/submit", {
       params: { path: { incidentId } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
     });
     if (submit.error) throw new Error(`incident submit failed: ${JSON.stringify(submit.error)}`);
 
-    const triage = await admin.client.POST("/api/v1/quality/incidents/{incidentId}/triage", {
+    // Triage and investigation read the incident through the visibility scope, which `org_admin` (not on the
+    // patient's caseload) does not have, so the medical director (org-wide) does them. The resolver below must
+    // differ from the TRIAGER (`capVerifyAuthority` reads `triaged_by_membership_id` as the person to separate
+    // from), so the compliance officer (supervisor@) resolves and closes.
+    const triage = await drharris.client.POST("/api/v1/quality/incidents/{incidentId}/triage", {
       params: { path: { incidentId } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: { assignedToMembershipId: ritaId, severity: "minor" },
     });
     if (triage.error) throw new Error(`incident triage failed: ${JSON.stringify(triage.error)}`);
 
-    const investigate = await admin.client.POST(
+    const investigate = await drharris.client.POST(
       "/api/v1/quality/incidents/{incidentId}/investigate",
       {
         params: { path: { incidentId } },
@@ -797,8 +804,9 @@ async function main(): Promise<void> {
     // `startAssessment`/`submitForReview` have zero call sites in write-service-drizzle.ts and no route.
     // Confirmed live: ILLEGAL_SRA_CYCLE_TRANSITION "cannot close from 'chartered'". Left at `chartered`.
 
-    // Infection surveillance: one event (auto-clusters into an outbreak per the route's own comment).
-    const infection = await admin.client.POST("/api/v1/quality/infection/events", {
+    // Infection surveillance: one event (auto-clusters into an outbreak per the route's own comment). Like the
+    // incident, a patient-linked report must be in the reporter's caseload, so rita reports it.
+    const infection = await rita.client.POST("/api/v1/quality/infection/events", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: {
         patientId: whitfieldId,

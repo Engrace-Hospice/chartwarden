@@ -61,6 +61,13 @@ type HopeReview = {
 };
 
 /**
+ * Free-text HOPE items the validator format-checks, so the generic "Test" filler is refused. A0600A (SSN)
+ * must be 9 real digits or `^` (not collected); the demo patients carry no SSN, so the seed answers `^`
+ * rather than inventing one (a made-up SSN would be rejected by CMS edits -3002/-3003 anyway).
+ */
+const HOPE_TEXT_ANSWERS: Readonly<Record<string, string>> = { A0600A: "^" };
+
+/**
  * Answer every applicable HOPE item until the assessment is sign-ready (signing requires it), the same
  * way `m10-hope-write.live.test.ts`'s `answerForSign` does: the first real option for a coded item,
  * `answerDate` for a date, "Test" for text. Returns the assessment version to sign against.
@@ -112,11 +119,12 @@ async function answerForSign(session: WxSession, id: string, answerDate: string)
         (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
       );
       changes[b.itemCode] =
-        codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
+        HOPE_TEXT_ANSWERS[b.itemCode] ??
+        (codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
           ? answerDate
           : codes.includes("Text")
             ? "Test"
-            : (real[0] ?? "0");
+            : (real[0] ?? "0"));
     }
     const entries = Object.entries(changes);
     if (entries.length === 0)
