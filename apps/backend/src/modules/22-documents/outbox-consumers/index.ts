@@ -25,6 +25,12 @@ export {
   type BaaStatusProviderPort,
 } from "./baa-gate";
 export {
+  appealEnclosureIds,
+  buildAppealPacketRenderGuard,
+  type RenderGuardRefusal,
+  type RenderGuardRequest,
+} from "./appeal-render-guard";
+export {
   M22_DOCUMENT_RENDER_CONSUMER,
   M22_DOCUMENT_REQUEST_BINDINGS,
   M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED,

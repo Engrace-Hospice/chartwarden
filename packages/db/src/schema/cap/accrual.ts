@@ -146,6 +146,11 @@ export const capInpatientDayLine = pgTable(
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
     recordedBy: uuid("recorded_by"),
+    // GAP-038 (migration 1000) - the M23 claim the line belongs to (null on rows written before the column
+    // existed until a replay stamps them) and the instant its payment was taken back (replaced / voided /
+    // recouped). The row is annotated, never deleted; the roll-up counts only `reversed_at IS NULL`.
+    claimId: uuid("claim_id"),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
   },
   (t) => ({
     uniqSource: unique("cap_inp_day_line_source_uq").on(
@@ -155,5 +160,8 @@ export const capInpatientDayLine = pgTable(
       t.revCode,
     ),
     byPeriod: index("cap_inp_day_line_period_ix").on(t.capPeriodId, t.serviceFrom),
+    byClaim: index("cap_inp_day_line_claim_ix")
+      .on(t.organizationId, t.capPeriodId, t.claimId)
+      .where(sql`${t.reversedAt} IS NULL AND ${t.claimId} IS NOT NULL`),
   }),
 );

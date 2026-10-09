@@ -27,7 +27,7 @@
 // have, and no platform-default alert_rule uses the `discipline` resolver today). A silent `[]` would
 // make a tenant-configured `discipline` rule notify NOBODY forever with no error — the exact
 // WIRED-but-fake-predicate trap GAP-020 already taught this codebase to avoid.
-import { roleConfersKey } from "@wardenx/auth";
+import { createDbPermissionHolderReader, roleConfersKey } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   AlertEmitter,
@@ -111,7 +111,14 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
       return [...new Set(rows.filter(roleConfersKey).map((r) => r.userId))];
     });
 
+  // GAP-040 - M3 owns role_permission, so the holder lookup is M3's exported reader (the same live-grant predicates
+  // as the RBAC engine), not a Drizzle join over M3's tables from here.
+  const permissionHolderUserIds = createDbPermissionHolderReader(db);
+
   return {
+    async permissionHolders(orgId, permissionKeys) {
+      return permissionHolderUserIds(orgId, permissionKeys);
+    },
     async careTeamMembers(orgId, patientId) {
       return getSeam("CareTeamProvider").careTeamMembers({ organizationId: orgId, patientId });
     },

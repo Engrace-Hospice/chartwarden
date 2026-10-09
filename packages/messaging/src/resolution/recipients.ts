@@ -38,6 +38,13 @@ export interface ResolverArgs {
    *  PE on the payload, an unbound port, or no member assigned to that PE): the narrowing never leaves an
    *  alert with no recipient. */
   readonly providerEntityFallbackRoleKeys?: readonly string[];
+  /** `permission_holders` only - the permission keys whose holders are the audience (exact keys, no wildcards). */
+  readonly permissionKeys?: readonly string[];
+  /** `permission_holders` only - role keys whose members are ALSO in the audience (an escalation tier). */
+  readonly alsoRoleKeys?: readonly string[];
+  /** `permission_holders` only - when nobody resolves, fall back to the org administrators so the alert is
+   *  never addressed to an empty audience (permissions are granted per tenant, never by template). */
+  readonly fallbackToTenantAdmins?: boolean;
   /** Payload key holding the patient id for `care_team` (default `patientId`). */
   readonly patientIdPath?: string;
   /** Payload key holding the provider entity id for `on_call` (default `providerEntityId`). */
@@ -72,6 +79,10 @@ export interface RecipientSourcePorts {
     roleKeys: readonly string[],
     providerEntityId: string,
   ): Promise<readonly string[]>;
+  /** Active members whose live, enabled, non-expired role grants ANY of these permission keys (the
+   *  `permission_holders` resolver). Optional: an unbound port reads as "nobody", so the rule's tenant-admin
+   *  floor applies. */
+  permissionHolders?(orgId: string, permissionKeys: readonly string[]): Promise<readonly string[]>;
   /** Org administrators (the `tenant_admins` resolver). */
   tenantAdmins(orgId: string): Promise<readonly string[]>;
   /** Every active member of the org (the `broadcast` resolver). */
@@ -98,6 +109,13 @@ function readStrings(payload: Record<string, unknown>, key: string): string[] {
   if (typeof v === "string") return v.length > 0 ? [v] : [];
   return Array.isArray(v)
     ? v.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+}
+
+/** A resolver arg that must be a list of non-empty strings; anything else reads as an empty list. */
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((x): x is string => typeof x === "string" && x.length > 0))]
     : [];
 }
 
@@ -171,6 +189,20 @@ export function createRecipientResolverRegistry(
       return [...fromRoles, ...fromPe, ...fromPayload];
     },
     tenant_admins: async (orgId) => ports.tenantAdmins(orgId),
+    permission_holders: async (orgId, args) => {
+      const permissionKeys = stringList(args.permissionKeys);
+      const holders =
+        permissionKeys.length === 0 || ports.permissionHolders === undefined
+          ? []
+          : await ports.permissionHolders(orgId, permissionKeys);
+      const alsoRoleKeys = stringList(args.alsoRoleKeys);
+      const escalation =
+        alsoRoleKeys.length === 0 ? [] : await ports.roleSetMembers(orgId, alsoRoleKeys);
+      const audience = [...holders, ...escalation];
+      return audience.length === 0 && args.fallbackToTenantAdmins === true
+        ? ports.tenantAdmins(orgId)
+        : audience;
+    },
     // user_list is fully static — the one resolver with no source-of-truth port (§3.6 userIds).
     user_list: async (_orgId, args) => args.userIds ?? [],
     broadcast: async (orgId) => ports.orgMembers(orgId),

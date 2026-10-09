@@ -4,7 +4,7 @@
 // fields carry the §4.1 min-length floors (audit-denylisted at the DB layer — never in the audit value).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@wardenx/types";
 
 /** Validate + coerce a request body against a TypeBox schema; throw 400 VALIDATION_FAILED on mismatch. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
@@ -108,7 +108,11 @@ export const AppealAttachRequestSchema = Type.Object({
 /** POST /appeals/:id/submit — draft → submitted; step-up + within-deadline. Narrative audit-denylisted. */
 export const AppealSubmitRequestSchema = Type.Object({
   appealNarrative: Type.String({ minLength: 100, maxLength: 10000 }),
-  attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), { minItems: 1 }),
+  attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), {
+    minItems: 1,
+    maxItems: MAX_APPEAL_ENCLOSURES,
+  }),
+  medicalRecordsBundleDocumentId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 /**
@@ -119,7 +123,11 @@ export const AppealSubmitRequestSchema = Type.Object({
  */
 export const AppealSubmitLateGoodCauseRequestSchema = Type.Object({
   appealNarrative: Type.String({ minLength: 100, maxLength: 10000 }),
-  attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), { minItems: 1 }),
+  attachedDocumentIds: Type.Array(Type.String({ format: "uuid" }), {
+    minItems: 1,
+    maxItems: MAX_APPEAL_ENCLOSURES,
+  }),
+  medicalRecordsBundleDocumentId: Type.Optional(Type.String({ format: "uuid" })),
   goodCauseJustification: Type.String({ minLength: 40, maxLength: 4000 }),
 });
 

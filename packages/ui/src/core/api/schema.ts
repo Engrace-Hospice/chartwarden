@@ -31569,6 +31569,8 @@ export interface operations {
                 "application/json": {
                     appealNarrative: string;
                     attachedDocumentIds: string[];
+                    /** Format: uuid */
+                    medicalRecordsBundleDocumentId?: string;
                 };
             };
         };
@@ -31604,6 +31606,8 @@ export interface operations {
                 "application/json": {
                     appealNarrative: string;
                     attachedDocumentIds: string[];
+                    /** Format: uuid */
+                    medicalRecordsBundleDocumentId?: string;
                     goodCauseJustification: string;
                 };
             };

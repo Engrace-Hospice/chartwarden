@@ -17,6 +17,7 @@ import type {
 } from "@wardenx/billing";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { AppealClaimCopy } from "@wardenx/types";
 import { registerSeam } from "../../bootstrap/index";
 
 /** The M23 → M27 billed-census seam contract. Opaque in the M1 registry (`unknown`); M27 casts to its own
@@ -83,6 +84,15 @@ export interface ClaimSubmissionReader {
     keys: { payerIcn?: string; claimControlNumber?: string },
   ): Promise<ClaimMatchCandidateRow[]>;
   patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
+  /**
+   * GAP-036 - the claim M25's appeal packet encloses: header + lines (what was billed) and the patient the packet's
+   * enclosure documents must belong to. Org-scoped (a claim of another tenant reads as absent). No MBI (D13); the
+   * lines carry codes, dates, units and charges only.
+   */
+  claimCopyForAppeal(
+    orgId: string,
+    claimId: string,
+  ): Promise<{ patientId: string; copy: AppealClaimCopy } | null>;
 }
 
 /** Build the live `ClaimSubmissionReader` over the `claim` repo, RLS-scoped per call. */
@@ -101,6 +111,41 @@ export function buildM23ClaimSubmissionReader(db: DbClient): ClaimSubmissionRead
         new repositories.ClaimRepository(tx).patientIdForId(claimId),
       );
     },
+    async claimCopyForAppeal(orgId, claimId) {
+      return withOrgContext(db, { organizationId: orgId, userId: "system" }, async (tx) => {
+        const claim = await new repositories.ClaimRepository(tx).findById(claimId);
+        if (!claim || claim.organizationId !== orgId) return null;
+        const lines = await new repositories.ClaimLineRepository(tx).listForClaim(claimId);
+        return { patientId: claim.patientId, copy: toAppealClaimCopy(claim, lines) };
+      });
+    },
+  };
+}
+
+/** Pure: a claim + its lines -> the appeal packet's claim copy. */
+export function toAppealClaimCopy(
+  claim: Pick<
+    repositories.ClaimRecord,
+    "claimControlNumber" | "tob" | "state" | "serviceFrom" | "serviceTo" | "totalChargeCents"
+  >,
+  lines: readonly repositories.ClaimLineRecord[],
+): AppealClaimCopy {
+  return {
+    controlNumber: claim.claimControlNumber,
+    tob: claim.tob,
+    state: claim.state,
+    serviceFrom: claim.serviceFrom,
+    serviceTo: claim.serviceTo,
+    totalChargeCents: claim.totalChargeCents,
+    lines: lines.map((line) => ({
+      lineNumber: line.lineNumber,
+      revenueCode: line.revenueCode,
+      hcpcsCode: line.qCode ?? null,
+      serviceFrom: line.serviceDateFrom,
+      serviceTo: line.serviceDateTo,
+      units: line.unitCount,
+      chargeCents: line.lineChargeCents,
+    })),
   };
 }
 

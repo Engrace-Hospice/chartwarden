@@ -8,6 +8,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, lte, or, sql } from "drizzle-orm";
+import { reconcileInpatientAccrual } from "../consumers/inpatient-reconcile";
 import {
   type PsrFileStorePort,
   type PsrReconcileEnqueuePort,
@@ -106,6 +107,11 @@ export function buildStores(
         );
       },
       async recompute(orgId, periodId) {
+        // GAP-038 - the roll-up is a cache of the day ledger: rebuild it first so any drift (a pre-fix row, a
+        // lost delta) self-heals before the utilisation is computed from it. Publishes nothing.
+        await withOrgContext(db, systemOrgContext(orgId), (tx) =>
+          reconcileInpatientAccrual(tx, orgId, periodId),
+        );
         await write.recompute(sysWriteActor(orgId), periodId, "nightly_batch");
       },
     },

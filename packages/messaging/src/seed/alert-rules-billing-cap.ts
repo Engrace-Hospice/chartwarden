@@ -17,6 +17,24 @@ const BILLING_AND_COMPLIANCE: Audience = {
   recipientResolver: "role_set",
   resolverArgs: { roleKeys: ["billing_manager", "compliance_officer", "org_admin"] },
 };
+// GAP-040 - the M26 cap audiences are "whoever holds `cap.event.read`" (exact key, resolved live from the tenant's
+// own role grants), NOT a hand-made `cfo` / `billing_manager` role: neither is a role template, and no template
+// grants `cap.event.read`, so those role keys resolved nobody in a fresh tenant. The org administrators are the
+// floor (`fallbackToTenantAdmins`), so a cap alert is never addressed to an empty audience; a breach additionally
+// keeps the compliance-officer and org-admin escalation the previous seed intended.
+const CAP_PERMISSION_KEYS = ["cap.event.read"];
+const CAP_EVENT_HOLDERS: Audience = {
+  recipientResolver: "permission_holders",
+  resolverArgs: { permissionKeys: CAP_PERMISSION_KEYS, fallbackToTenantAdmins: true },
+};
+const CAP_HOLDERS_AND_COMPLIANCE: Audience = {
+  recipientResolver: "permission_holders",
+  resolverArgs: {
+    permissionKeys: CAP_PERMISSION_KEYS,
+    alsoRoleKeys: ["compliance_officer", "org_admin"],
+    fallbackToTenantAdmins: true,
+  },
+};
 const FINANCE_LEADS: Audience = {
   recipientResolver: "role_set",
   resolverArgs: { roleKeys: ["cfo", "billing_manager"] },
@@ -63,15 +81,15 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [
-    rule(`m26.cap.${family}_watch_90`, "warn", FINANCE_LEADS),
-    rule(`m26.cap.${family}_warn_95`, "warn", FINANCE_LEADS),
-    rule(`m26.cap.${family}_breach_100`, "critical", FINANCE_AND_COMPLIANCE),
+    rule(`m26.cap.${family}_watch_90`, "warn", CAP_EVENT_HOLDERS),
+    rule(`m26.cap.${family}_warn_95`, "warn", CAP_EVENT_HOLDERS),
+    rule(`m26.cap.${family}_breach_100`, "critical", CAP_HOLDERS_AND_COMPLIANCE),
   ]),
-  rule("m26.cap.inpatient_watch_18", "warn", FINANCE_LEADS),
-  rule("m26.cap.inpatient_breach", "critical", FINANCE_AND_COMPLIANCE),
+  rule("m26.cap.inpatient_watch_18", "warn", CAP_EVENT_HOLDERS),
+  rule("m26.cap.inpatient_breach", "critical", CAP_HOLDERS_AND_COMPLIANCE),
   // ── M26 cap crons ──────────────────────────────────────────────────────────────────────────────
-  rule("m26.cap.year_close_reminder", "warn", FINANCE_LEADS),
-  rule("m26.cap.psr_variance_detected", "warn", FINANCE_LEADS),
+  rule("m26.cap.year_close_reminder", "warn", CAP_EVENT_HOLDERS),
+  rule("m26.cap.psr_variance_detected", "warn", CAP_EVENT_HOLDERS),
   // ── M27 §4.9 filing-deadline tiers ────────────────────────────────────────────────────────────
   rule("m27.filing_deadline.t4_months_due", "info", FINANCE_LEADS),
   rule("m27.filing_deadline.t4_5_months_due", "warn", FINANCE_LEADS),

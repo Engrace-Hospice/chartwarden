@@ -27,6 +27,8 @@ const UPPER_WORDS = new Set([
   "md",
   "np",
   "cfr",
+  "cti",
+  "nor",
 ]);
 
 /** `snake_case` / `kebab-case` -> "Title Case" ("md_np" -> "MD NP", "missed_dose" -> "Missed Dose"). */
