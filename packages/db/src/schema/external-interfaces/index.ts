@@ -16,6 +16,7 @@
 export * from "./enums";
 export * from "./feed";
 export * from "./feed-health";
+export * from "./feed-listener-state";
 export * from "./hl7-messages";
 export * from "./inbound-proposal";
 export * from "./lab-observation";

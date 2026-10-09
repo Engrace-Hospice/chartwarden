@@ -31,6 +31,11 @@ import { join } from "node:path";
 const BOOT_TIMEOUT_MS = Number(process.env.BOOT_CHECK_TIMEOUT_MS ?? 180_000);
 const PORT = process.env.BOOT_CHECK_PORT ?? "3999";
 const RELAY_LOG = "TASK-006 outbox dispatcher polling";
+// GAP-043 - when the listener-health watcher is switched on in this configuration it must actually be constructed
+// (bound is not computing): the same flag stops the listener paging listener_down, so a silent skip would leave a dead
+// listener unpaged.
+const WATCHER_LOG = "M29 listener health watcher constructed";
+const WATCHER_REQUESTED = process.env.M29_LISTENER_WATCH_ENABLED === "true";
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
   if (!process.env[key]) {
@@ -109,10 +114,16 @@ if (!output.includes(RELAY_LOG)) {
   );
 }
 
+if (WATCHER_REQUESTED && !output.includes(WATCHER_LOG)) {
+  fail(
+    `M29_LISTENER_WATCH_ENABLED=true but the backend never constructed the listener-health watcher (no "${WATCHER_LOG}" line) - the flag also stops the listener paging listener_down, so a dead listener would page nobody`,
+  );
+}
+
 child.kill("SIGTERM");
 await new Promise((resolve) => setTimeout(resolve, 2_000));
 if (exited === null) child.kill("SIGKILL");
 
 console.log(
-  `✓ backend booted with DATABASE_PLATFORM_URL set (/health 200 on :${PORT}) and the outbox relay is polling.`,
+  `✓ backend booted with DATABASE_PLATFORM_URL set (/health 200 on :${PORT}) and the outbox relay is polling${WATCHER_REQUESTED ? " and the listener-health watcher is constructed" : ""}.`,
 );

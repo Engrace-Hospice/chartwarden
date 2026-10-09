@@ -911,6 +911,7 @@ exports.MODULES = [
       "external_feed",
       "external_feed_credential",
       "external_feed_health",
+      "external_feed_listener_state",
       "hl7_inbound_proposal",
       "hl7_message_inbound",
       "hl7_message_outbound",

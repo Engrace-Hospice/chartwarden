@@ -8,7 +8,12 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
-import { assertHostAcceptable, assertProtocolAcceptable, resolveCertPin } from "./feed-input";
+import {
+  assertHostAcceptable,
+  assertProtocolAcceptable,
+  assertQuietWindowsAcceptable,
+  resolveCertPin,
+} from "./feed-input";
 import {
   ABAC_FEED_BAA,
   ABAC_FEED_CO_APPROVER,
@@ -129,6 +134,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
         channelCertPem,
       });
       assertHostAcceptable(parsed.host, envOf());
+      assertQuietWindowsAcceptable(parsed.expectedQuietWindows);
       const body = channelCertPin === undefined ? parsed : { ...parsed, channelCertPin };
       const feed = await store.updateFeed(actor.organizationId, actor.membershipId, feedId, body);
       return { feed };

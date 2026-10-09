@@ -10,6 +10,13 @@
 // an UNBOUND listener that is silent for the threshold trips OPEN and dispatches the critical
 // `external_feed.listener_down` M36 alert. Recovery (a frame within the window) closes the breaker.
 //
+// WHO DECIDES (GAP-043, second half). This tick runs INSIDE the listener process, so it cannot notice that process dying and a
+// bound-but-wedged listener reads HALF_OPEN forever. The authoritative `listener_down` decision therefore moves to the
+// worker-role watcher (health-watch.ts) when `M29_LISTENER_WATCH_ENABLED=true`; this tick then only leaves FACTS (the
+// per-feed heartbeat + bound flag) and keeps the uptime rollup, and does NOT page `listener_down` or write the breaker
+// state (`watcherOwnsListenerDown`). With the flag off it behaves exactly as before - it still pages - so turning the
+// watcher on is the single switch that hands the page over, and an environment without a watcher is never left unpaged.
+//
 // SCOPE NOTE. `external_feed` carries no `expectedQuietWindow` / per-feed threshold column yet, so the platform
 // floor (5 min) applies to every feed and `inQuietWindow` is false; both are inputs here so a config column can
 // feed them without touching the transition.
@@ -30,7 +37,8 @@ export interface FeedHealthSnapshot {
 
 export interface FeedHealthRecord {
   readonly hourBucket: Date;
-  readonly state: ListenerCircuitState;
+  /** Omitted when the watcher owns the breaker state: the rollup row's state is then left to the watcher. */
+  readonly state?: ListenerCircuitState;
   /** Seconds to ADD to the hour's `listener_up_seconds` / `listener_down_seconds`. */
   readonly upSecondsDelta: number;
   readonly downSecondsDelta: number;
@@ -40,6 +48,11 @@ export interface FeedHealthStorePort {
   snapshot(feed: SupervisorFeedDescriptor): Promise<FeedHealthSnapshot>;
   /** Upsert the (feed, hour) rollup row: add the deltas, set the state, refresh message counts. */
   record(feed: SupervisorFeedDescriptor, row: FeedHealthRecord): Promise<void>;
+  /** GAP-043 - leave the per-feed fact the worker-role watcher decides from: this tick ran, and was the feed bound. */
+  heartbeat(
+    feed: SupervisorFeedDescriptor,
+    fact: { readonly bound: boolean; readonly at: Date },
+  ): Promise<void>;
 }
 
 export interface FeedHealthTickDeps {
@@ -50,6 +63,8 @@ export interface FeedHealthTickDeps {
   readonly now: () => Date;
   readonly log: (level: "info" | "warn", event: string, fields: Record<string, unknown>) => void;
   readonly thresholdMs?: number;
+  /** True when the worker-role watcher is the decider: this tick records facts and uptime, and never pages or writes state. */
+  readonly watcherOwnsListenerDown?: boolean;
 }
 
 export interface FeedHealthTickSummary {
@@ -94,14 +109,17 @@ export async function runFeedHealthTick(
         nowMs,
       });
       const isOpen = decision.state === "open";
+      const watcherDecides = deps.watcherOwnsListenerDown === true;
+      await deps.store.heartbeat(feed, { bound: serving, at: now });
       await deps.store.record(feed, {
         hourBucket: hourBucketOf(now),
-        state: decision.state,
+        ...(watcherDecides ? {} : { state: decision.state }),
         upSecondsDelta: isOpen ? 0 : elapsedSeconds,
         downSecondsDelta: isOpen ? elapsedSeconds : 0,
       });
       if (decision.emit === "m29.external_feed.listener_down") {
         wentDown.push(feed.id);
+        if (watcherDecides) continue;
         await deps.dispatchAlert({
           kind: "external_feed.listener_down",
           severity: "critical",

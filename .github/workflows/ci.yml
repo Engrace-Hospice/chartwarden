@@ -407,6 +407,9 @@ jobs:
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
+          # GAP-043 - the worker-role watcher decides listener_down/recovered from heartbeat + TCP probe + frames; real
+          # publisher, relay, M36 consumer and RLS as wardenx_app; LIVE by necessity.
+          - { name: "M29 listener-health watcher - dead listener, probe, outbox, M36 page", scripts: "test:gap043:listener-watch:live" }
           # GAP-086: the `sud_test_loinc` M38 value set is seeded (mig 0500) and the real M29 adapter flags it.
           - { name: "M29 SUD test-LOINC seed (GAP-086)", scripts: "test:m29:sud-loinc-seed:live" }
           - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }

@@ -117,6 +117,21 @@ const FeedRoutingAndIdentity = {
 /** F-183 — per-feed `in_flight` lease in seconds (mirrors the migration-0263 CHECK: 60..3600). */
 const InFlightLeaseSeconds = Type.Integer({ minimum: 60, maximum: 3600 });
 
+/** GAP-043 (§4.11.5) - tighten the listener-down threshold to 1..5 minutes; never above the 5 minute platform default
+ *  (mirrors the migration-1052 CHECK: 60..300). */
+const ListenerDownThresholdSeconds = Type.Integer({ minimum: 60, maximum: 300 });
+
+/** GAP-043 - a window in which silence is expected. Shape only; `parseQuietWindows` validates the zone / times on write. */
+const QuietWindowBody = Type.Object(
+  {
+    days: Type.Array(Type.Integer({ minimum: 0, maximum: 6 }), { minItems: 1, maxItems: 7 }),
+    start: Type.String({ pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }),
+    end: Type.String({ pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }),
+    tz: Type.String({ minLength: 1, maxLength: 64 }),
+  },
+  { additionalProperties: false },
+);
+
 export const CreateFeedBody = Type.Object({
   kind: FeedKindSchema,
   displayName: Type.String({ minLength: 3, maxLength: 120 }),
@@ -155,6 +170,14 @@ export const UpdateFeedBody = Type.Object({
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
   /** `null` clears the per-feed lease back to the platform default. */
   inFlightLeaseSeconds: Type.Optional(Type.Union([InFlightLeaseSeconds, Type.Null()])),
+  /** GAP-043 - `null` clears back to the 5 minute platform default. */
+  listenerDownThresholdSeconds: Type.Optional(
+    Type.Union([ListenerDownThresholdSeconds, Type.Null()]),
+  ),
+  /** GAP-043 - windows in which silence is expected (at most 14); `null` clears. */
+  expectedQuietWindows: Type.Optional(
+    Type.Union([Type.Array(QuietWindowBody, { maxItems: 14 }), Type.Null()]),
+  ),
   ...FeedRoutingAndIdentity,
 });
 export type UpdateFeedInput = Static<typeof UpdateFeedBody>;

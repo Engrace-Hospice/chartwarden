@@ -410,4 +410,48 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // ── §4.11.5 listener health (GAP-043) ───────────────────────────────────────────────────────────────
+  // Published by the worker-role feed-health watcher (`listener/health-watch.ts`) in the SAME transaction that
+  // moves `external_feed_listener_state`, so the state and the event cannot diverge. Consumed by M36's
+  // `feed-health-alerts` consumer (`external_feed.listener_down` page / `external_feed.listener_recovered` notice).
+  // Ids, enums, counts and instants only: no host, port, certificate or PHI.
+  {
+    eventName: "m29.external_feed.listener_down",
+    moduleOwner: "m29",
+    description:
+      "An ACTIVE inbound HL7 feed has been silent past its down-threshold and its listener is not serving (heartbeat stale or unbound, or the TCP probe failed) - the breaker tripped OPEN (§4.11.5).",
+    payloadSchema: Type.Object({
+      feedId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      state: Type.Union([Type.Literal("closed"), Type.Literal("open"), Type.Literal("half_open")]),
+      silentSeconds: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+      lastFrameAt: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      heartbeatStale: Type.Boolean(),
+      tcpOk: Type.Boolean(),
+      outageOpenedAt: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      at: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.external_feed.listener_recovered",
+    moduleOwner: "m29",
+    description:
+      "A feed whose listener-down alert was raised is serving again (a frame arrived within the window, or silence is now expected) - the breaker closed (§4.11.5).",
+    payloadSchema: Type.Object({
+      feedId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      state: Type.Union([Type.Literal("closed"), Type.Literal("open"), Type.Literal("half_open")]),
+      silentSeconds: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+      lastFrameAt: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      heartbeatStale: Type.Boolean(),
+      tcpOk: Type.Boolean(),
+      outageOpenedAt: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      at: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
 ];
