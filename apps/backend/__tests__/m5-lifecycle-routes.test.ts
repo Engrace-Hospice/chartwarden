@@ -15,6 +15,8 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { IdentifierCipherUnboundError } from "../src/modules/05-patient/identifiers/identifier-cipher";
+import { IdentifierNotRevealableError } from "../src/modules/05-patient/identifiers/sensitive-identifiers-db";
 import {
   AmendmentNotDeniedError,
   type AmendmentRecord,
@@ -53,22 +55,27 @@ const ALL = [
   "patient.amend_review",
   "patient.amend_request_submit",
 ];
+// GAP-010: the SSN keys are NOT part of ALL — a plain identifier editor holds neither.
+const ALL_SSN = [...ALL, "phi.write_ssn", "phi.read_ssn"];
 const SEED = [
-  { userId: "admin_1", permissions: ALL },
-  { userId: "nostep_1", permissions: ALL },
+  { userId: "admin_1", permissions: ALL_SSN },
+  { userId: "nostep_1", permissions: ALL_SSN },
+  { userId: "plain_1", permissions: ALL },
   { userId: "reader_1", permissions: ["patient.read"] },
-  { userId: "off_1", permissions: ALL },
+  { userId: "off_1", permissions: ALL_SSN },
 ];
 const CASELOAD = new Set([
   `${ORG}:admin_1:${PATIENT}`,
   `${ORG}:nostep_1:${PATIENT}`,
+  `${ORG}:plain_1:${PATIENT}`,
   `${ORG}:reader_1:${PATIENT}`,
 ]);
-const FRESH = new Set(["admin_1", "off_1"]);
+const FRESH = new Set(["admin_1", "off_1", "plain_1"]);
 const hdr = (u: string) => ({ "x-test-user": u, "x-test-org": ORG, "x-test-roles": "rn" });
 const ADMIN = hdr("admin_1");
 const NOSTEP = hdr("nostep_1");
 const READER = hdr("reader_1");
+const PLAIN = hdr("plain_1");
 const OFF = hdr("off_1");
 
 const amendment = (over: Partial<AmendmentRecord> = {}): AmendmentRecord => ({
@@ -107,6 +114,14 @@ function makeServer(over: Partial<PatientLifecyclePort> = {}) {
       alreadyDeceased: false,
     }),
     addIdentifier: rec("addIdentifier", { id: "i1", patientId: PATIENT, kind: "mbi" }),
+    addSensitiveIdentifier: rec("addSensitiveIdentifier", {
+      id: "i2",
+      patientId: PATIENT,
+      kind: "ssn",
+      valueLast4: "6789",
+      effectiveFrom: "2026-10-08",
+    }),
+    revealIdentifier: rec("revealIdentifier", { kind: "ssn", value: "123456789" }),
     listCaregivers: rec("listCaregivers", [{ id: "c1" }]),
     addCaregiver: rec("addCaregiver", { id: "c1" }),
     listMatchReviews: rec("listMatchReviews", [{ id: "r1" }]),
@@ -293,6 +308,51 @@ describe("POST /patients/:id/deceased", () => {
   });
 });
 
+describe("POST /patients/:id/identifiers/:identifierId/reveal (GAP-010)", () => {
+  const url = `/api/v1/patients/${PATIENT}/identifiers/6f0f2d0e-9f5a-4f0e-8d0e-0a0a0a0a0a0a/reveal`;
+  it("reveals for a phi.read_ssn holder on the chart with a fresh step-up, uncacheable", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(req("POST", url, ADMIN));
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(JSON.parse(res.body)).toEqual({ kind: "ssn", value: "123456789" });
+    expect(calls.map((c) => c.name)).toEqual(["revealIdentifier"]);
+    await app.close();
+  });
+  it("refuses without phi.read_ssn (403), on a stale step-up, and off the chart (404)", async () => {
+    const { app, calls } = makeServer();
+    expect((await app.inject(req("POST", url, PLAIN))).statusCode).toBe(403);
+    const stale = await app.inject(req("POST", url, NOSTEP));
+    expect(stale.statusCode).toBeGreaterThanOrEqual(401);
+    expect(stale.statusCode).toBeLessThan(500);
+    expect(calls).toHaveLength(0);
+    await app.close();
+  });
+  it("is a 404 for a holder who is not on the chart's caseload (no existence leak)", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(req("POST", url, OFF));
+    expect(res.statusCode).toBe(404);
+    expect(calls).toHaveLength(0);
+    await app.close();
+  });
+  it("maps a missing/destroyed key to 503 and an unrevealable row to 404", async () => {
+    const unbound = makeServer({
+      async revealIdentifier() {
+        throw new IdentifierCipherUnboundError("open");
+      },
+    });
+    expect((await unbound.app.inject(req("POST", url, ADMIN))).statusCode).toBe(503);
+    await unbound.app.close();
+    const gone = makeServer({
+      async revealIdentifier() {
+        throw new IdentifierNotRevealableError();
+      },
+    });
+    expect((await gone.app.inject(req("POST", url, ADMIN))).statusCode).toBe(404);
+    await gone.app.close();
+  });
+});
+
 describe("POST /patients/:id/identifiers", () => {
   it("adds an MBI (201)", async () => {
     const { app } = makeServer();
@@ -305,7 +365,7 @@ describe("POST /patients/:id/identifiers", () => {
     expect(res.statusCode).toBe(201);
     await app.close();
   });
-  it("refuses the MRN (immutable, 409) and ssn/state_id (422 deferral) without calling the port", async () => {
+  it("refuses the MRN (immutable, 409) without calling the port", async () => {
     const { app, calls } = makeServer();
     const mrn = await app.inject(
       req("POST", `/api/v1/patients/${PATIENT}/identifiers`, ADMIN, {
@@ -314,14 +374,83 @@ describe("POST /patients/:id/identifiers", () => {
       }),
     );
     expect(mrn.statusCode).toBe(409);
-    const ssn = await app.inject(
+    expect(calls).toHaveLength(0);
+    await app.close();
+  });
+  // GAP-010 — SSN / state id are envelope-encrypted behind phi.write_ssn + a fresh step-up.
+  it("stores an SSN for a phi.write_ssn holder with a fresh step-up and never echoes the value", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(
       req("POST", `/api/v1/patients/${PATIENT}/identifiers`, ADMIN, {
         kind: "ssn",
         value: "123-45-6789",
       }),
     );
-    expect(ssn.statusCode).toBe(422);
+    expect(res.statusCode).toBe(201);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).not.toContain("123-45-6789");
+    expect(res.body).not.toContain("123456789");
+    expect(JSON.parse(res.body)).toMatchObject({ kind: "ssn", valueLast4: "6789" });
+    expect(calls.map((c) => c.name)).toEqual(["addSensitiveIdentifier"]);
+    await app.close();
+  });
+  it("refuses an SSN without phi.write_ssn (403) even for a patient.edit_identifiers holder", async () => {
+    const { app, calls } = makeServer();
+    for (const kind of ["ssn", "state_id"]) {
+      const res = await app.inject(
+        req("POST", `/api/v1/patients/${PATIENT}/identifiers`, PLAIN, {
+          kind,
+          value: "123456789",
+          issuer: "TX",
+        }),
+      );
+      expect(res.statusCode).toBe(403);
+    }
     expect(calls).toHaveLength(0);
+    await app.close();
+  });
+  it("refuses an SSN on a stale step-up before touching the port", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(
+      req("POST", `/api/v1/patients/${PATIENT}/identifiers`, NOSTEP, {
+        kind: "ssn",
+        value: "123456789",
+      }),
+    );
+    expect(res.statusCode).toBeGreaterThanOrEqual(401);
+    expect(res.statusCode).toBeLessThan(500);
+    expect(calls).toHaveLength(0);
+    await app.close();
+  });
+  it("maps an unbound tenant key to 503 IDENTIFIER_CIPHER_UNBOUND (not 422, not a plaintext write)", async () => {
+    const { app } = makeServer({
+      async addSensitiveIdentifier() {
+        throw new IdentifierCipherUnboundError("seal");
+      },
+    });
+    const res = await app.inject(
+      req("POST", `/api/v1/patients/${PATIENT}/identifiers`, ADMIN, {
+        kind: "ssn",
+        value: "123456789",
+      }),
+    );
+    expect(res.statusCode).toBe(503);
+    expect(JSON.parse(res.body).error?.code ?? JSON.parse(res.body).code).toBe(
+      "IDENTIFIER_CIPHER_UNBOUND",
+    );
+    expect(res.body).not.toContain("123456789");
+    await app.close();
+  });
+  it("a plain identifier kind does not need phi.write_ssn", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(
+      req("POST", `/api/v1/patients/${PATIENT}/identifiers`, PLAIN, {
+        kind: "mbi",
+        value: "1EG4TE5MK73",
+      }),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(calls.map((c) => c.name)).toEqual(["addIdentifier"]);
     await app.close();
   });
   it("maps a duplicate to 409", async () => {

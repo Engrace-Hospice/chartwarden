@@ -4,8 +4,22 @@
 // TRANSACTION, so a rejected publish rolls the write back.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type M5OutboxPort, recordDeathFromDischarge } from "./deceased-db";
+import {
+  type PatientIdentifierCipher,
+  UNBOUND_IDENTIFIER_CIPHER,
+} from "./identifiers/identifier-cipher";
+import {
+  findSsnHitPatientIds,
+  insertPreparedIdentifier,
+  prepareSensitiveIdentifier,
+  revealSensitiveIdentifier,
+  supersedeOpenIdentifier,
+} from "./identifiers/sensitive-identifiers-db";
+import { normalizeSsn } from "./identifiers/ssn";
+import { insertSoftMatchReviews } from "./match-review-db";
+import { normalizeSubject } from "./matching/normalize";
 import { PatientNotFoundError, mergePatientsInTx } from "./merges-db";
 import {
   AmendmentNotDeniedError,
@@ -26,6 +40,7 @@ import {
   type PatientLifecyclePort,
   PrimaryCaregiverExistsError,
   SOURCE_PRIOR_STATUS_KEY,
+  type SensitiveIdentifierRecord,
   UNMERGE_FALLBACK_STATUS,
   UnmergeWindowExpiredError,
   isAllowedManualTransition,
@@ -88,6 +103,8 @@ export function createDbPatientLifecyclePort(
   db: DbClient,
   outbox: M5OutboxPort,
   now: () => Date = () => new Date(),
+  /** GAP-010: the per-tenant DEK envelope for ssn / state_id. Unbound by default (the route then answers 503). */
+  identifierCipher: PatientIdentifierCipher = UNBOUND_IDENTIFIER_CIPHER,
 ): PatientLifecyclePort {
   const emit = (
     tx: Tx,
@@ -226,6 +243,109 @@ export function createDbPatientLifecyclePort(
           throw e;
         }
       },
+    );
+
+  // GAP-010 — an SSN / state id, envelope-encrypted. The value is sealed (and an SSN blind-indexed) BEFORE the first
+  // write, so an unbound / destroyed key ring refuses the request with nothing written. The new row supersedes the
+  // patient's open row of that kind (the MBI pattern). The response and the outbox event carry the kind and last 4
+  // at most, never the value.
+  const addSensitiveIdentifier: PatientLifecyclePort["addSensitiveIdentifier"] = (
+    organizationId,
+    patientId,
+    input,
+    actorUserId,
+  ) =>
+    withOrgContext(
+      db,
+      { organizationId, userId: actorUserId },
+      async (tx): Promise<SensitiveIdentifierRecord> => {
+        const patient = await loadPatient(tx, patientId);
+        const prepared = await prepareSensitiveIdentifier(identifierCipher, organizationId, input);
+        const today = isoDate(now());
+        await supersedeOpenIdentifier(tx, patientId, input.kind, today);
+        const stored = await insertPreparedIdentifier(
+          tx,
+          organizationId,
+          patientId,
+          prepared,
+          today,
+        );
+        if (input.kind === "ssn") {
+          await openSsnCollisionReviews(tx, organizationId, patient, input.value);
+        }
+        await emit(tx, organizationId, patientId, "m5.patient.updated", {
+          changed: [`identifier:${input.kind}`],
+        });
+        return {
+          id: stored.id,
+          patientId,
+          kind: stored.kind,
+          valueLast4: stored.valueLast4,
+          effectiveFrom: today,
+        };
+      },
+    );
+
+  // A newly written SSN that equals another patient's SSN AND date of birth is a probable duplicate. The admit
+  // path blocks it; after the fact a block is impossible, so it lands in the review queue (the soft path).
+  // One open review per (new, existing) pair.
+  const openSsnCollisionReviews = async (
+    tx: Tx,
+    organizationId: string,
+    patient: typeof P.$inferSelect,
+    rawSsn: string,
+  ): Promise<void> => {
+    const ssn = normalizeSsn(rawSsn);
+    if (!ssn) return;
+    const hitIds = await findSsnHitPatientIds(
+      tx,
+      identifierCipher,
+      organizationId,
+      ssn,
+      patient.id,
+    );
+    if (hitIds.size === 0) return;
+    const sameDob = await tx
+      .select({ id: P.id })
+      .from(P)
+      .where(and(inArray(P.id, [...hitIds]), eq(P.dob, patient.dob)));
+    if (sameDob.length === 0) return;
+    const alreadyOpen = await tx
+      .select({ existingId: REVIEW.candidateExistingPatientId })
+      .from(REVIEW)
+      .where(and(eq(REVIEW.newPatientId, patient.id), eq(REVIEW.status, "open")));
+    const skip = new Set(alreadyOpen.map((r) => r.existingId));
+    const candidates = sameDob.filter((r) => !skip.has(r.id)).map((r) => ({ id: r.id, score: 1 }));
+    if (candidates.length === 0) return;
+    await insertSoftMatchReviews(
+      tx,
+      organizationId,
+      patient.id,
+      normalizeSubject({
+        lastName: patient.legalLastName,
+        firstName: patient.legalFirstName,
+        dob: patient.dob,
+      }),
+      candidates,
+      { rule: "ssn_dob" },
+    );
+  };
+
+  const revealIdentifier: PatientLifecyclePort["revealIdentifier"] = (
+    organizationId,
+    patientId,
+    identifierId,
+    actorUserId,
+    correlationId,
+  ) =>
+    withOrgContext(db, { organizationId, userId: actorUserId }, (tx) =>
+      revealSensitiveIdentifier(
+        tx,
+        identifierCipher,
+        { organizationId, userId: actorUserId, correlationId },
+        patientId,
+        identifierId,
+      ),
     );
 
   const caregiverRows = async (tx: Tx, patientId: string): Promise<CaregiverRecord[]> => {
@@ -527,6 +647,8 @@ export function createDbPatientLifecyclePort(
     transitionStatus,
     recordDeath,
     addIdentifier,
+    addSensitiveIdentifier,
+    revealIdentifier,
     listCaregivers,
     addCaregiver,
     listMatchReviews,

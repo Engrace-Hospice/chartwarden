@@ -11,9 +11,16 @@
 // primary rows (and are what the NEXT admit is matched against). SSN is the one field that cannot be
 // stored yet — the envelope-encrypted `patient_identifier` write path (KEK/DEK) does not exist — so it
 // is refused with a 422 rather than accepted and silently discarded.
+//
+// GAP-010 (SSN): that writer now exists (identifiers/). A supplied SSN is validated here, sealed + blind-indexed by
+// the caller before any insert, and the 2.3 SSN+DOB rule is fed from the blind index: `loadMatchCandidates` takes
+// the set of patients whose current SSN equals the incoming one (found WITHOUT decrypting anything) and
+// `buildMatchCandidates` stamps the incoming number on exactly those candidates, so the matcher's own equality
+// check, and its DOB check, decides.
 import { type DbClient, schema } from "@wardenx/db";
 import { ValidationError } from "@wardenx/types";
 import { and, eq, isNull } from "drizzle-orm";
+import { requireValidSsn } from "./identifiers/ssn";
 import type { MatchCandidate } from "./matching/matcher";
 import { normEmail, normIdentifier, normName, phoneLast7 } from "./matching/normalize";
 import type { AdmitInput } from "./routes/service";
@@ -53,12 +60,23 @@ export interface CandidateEmailRow {
   readonly email: string;
 }
 
+/**
+ * The SSN blind-index result for one admit: the incoming nine-number form and the patients whose CURRENT SSN equals it.
+ * The number is the in-memory comparison form the matcher already holds on the incoming subject; it is stamped
+ * onto the hit candidates only so `runMatch` can apply its own `ssn === ssn && dob === dob` rule.
+ */
+export interface SsnProbeResult {
+  readonly ssn: string;
+  readonly hitPatientIds: ReadonlySet<string>;
+}
+
 /** Fold the patient rows and their primary contact rows into the matcher's comparable candidates. */
 export function buildMatchCandidates(
   patients: readonly CandidatePatientRow[],
   addresses: readonly CandidateAddressRow[],
   phones: readonly CandidatePhoneRow[],
   emails: readonly CandidateEmailRow[],
+  ssnProbe?: SsnProbeResult,
 ): MatchCandidate[] {
   const addressByPatient = new Map(addresses.map((a) => [a.patientId, a]));
   const phoneByPatient = new Map(phones.map((p) => [p.patientId, p]));
@@ -71,7 +89,7 @@ export function buildMatchCandidates(
       firstName: normName(r.firstName),
       dob: r.dob.trim(),
       mbi: normIdentifier(r.mbi),
-      ssn: null,
+      ssn: ssnProbe?.hitPatientIds.has(r.id) ? ssnProbe.ssn : null,
       primaryAddress: address
         ? {
             line1: normName(address.line1),
@@ -86,7 +104,10 @@ export function buildMatchCandidates(
 }
 
 /** Load every candidate the matcher compares against, in four org-scoped (RLS) reads. */
-export async function loadMatchCandidates(tx: Tx): Promise<MatchCandidate[]> {
+export async function loadMatchCandidates(
+  tx: Tx,
+  ssnProbe?: SsnProbeResult,
+): Promise<MatchCandidate[]> {
   const patients = (await tx
     .select({
       id: P.id,
@@ -114,7 +135,7 @@ export async function loadMatchCandidates(tx: Tx): Promise<MatchCandidate[]> {
     .select({ patientId: EMAIL.patientId, email: EMAIL.email })
     .from(EMAIL)
     .where(eq(EMAIL.isPrimary, true))) as CandidateEmailRow[];
-  return buildMatchCandidates(patients, addresses, phones, emails);
+  return buildMatchCandidates(patients, addresses, phones, emails, ssnProbe);
 }
 
 /** Normalize a phone to E.164 (NANP assumed for 10/11-digit national numbers); null when unusable. */
@@ -136,17 +157,12 @@ function invalid(field: string, code: string, message: string): ValidationError 
 }
 
 /**
- * Refuse, BEFORE any write, what admit cannot honestly keep: an SSN (no envelope-encryption writer yet),
- * a US address with no state (`patient_address_us_state_required`), a phone that is not a phone.
+ * Refuse, BEFORE any write, what admit cannot honestly keep: an SSN that is not a structurally possible nine-number
+ * SSN (the message never echoes it), a US address with no state (`patient_address_us_state_required`), a phone that
+ * is not a phone.
  */
 export function assertAdmitDemographicsStorable(input: AdmitInput): void {
-  if (normIdentifier(input.ssn)) {
-    throw invalid(
-      "ssn",
-      "SSN_NOT_STORABLE",
-      "SSN capture at admit is not available yet (no envelope-encrypted identifier writer); omit it",
-    );
-  }
+  if (input.ssn?.trim()) requireValidSsn(input.ssn);
   if (input.primaryAddress && !input.primaryAddress.state?.trim()) {
     throw invalid("primaryAddress.state", "REQUIRED", "a primary address needs a 2-letter state");
   }

@@ -313,6 +313,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       ...SYSTEM_LOCKED_FLOORS.compliance_officer,
       "privacy.admin",
       "step_up_override.manage",
+      // GAP-010: the compliance officer may reveal a stored SSN (M5 spec 4.7); the single source is ssn-grants.ts.
+      "phi.read_ssn",
     ],
   },
   {

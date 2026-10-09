@@ -645,6 +645,8 @@ jobs:
           - { name: "M5 write outbox", scripts: "test:m5:write-outbox:live" }
           # GAP-009/010 — admit matcher inputs (address/phone/email), persistence, bypass critical audit.
           - { name: "M5 admit matching", scripts: "test:m5:admit-matching:live" }
+          # GAP-010 — envelope-encrypted SSN / state-id writer, HMAC blind index, SSN+DOB matcher feed, reveal audit, DEK rotation, shred.
+          - { name: "M5 SSN identifier", scripts: "test:m5:ssn-identifier:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {

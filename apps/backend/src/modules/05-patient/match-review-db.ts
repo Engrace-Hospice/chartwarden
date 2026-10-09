@@ -35,6 +35,7 @@ export async function insertSoftMatchReviews(
   newPatientId: string,
   incoming: MatchSubject,
   candidates: readonly ScoredCandidate[],
+  options: { readonly rule?: string } = {},
 ): Promise<string[]> {
   const ordered = [...candidates].sort((a, b) => b.score - a.score);
   const ids: string[] = [];
@@ -48,7 +49,7 @@ export async function insertSoftMatchReviews(
         candidateIncoming: incomingSnapshot(incoming),
         score: candidate.score.toFixed(SCORE_DECIMALS),
         featureBreakdown: {
-          rule: "probabilistic",
+          rule: options.rule ?? "probabilistic",
           score: candidate.score,
           softThreshold: DEFAULT_THRESHOLDS.soft,
           hardThreshold: DEFAULT_THRESHOLDS.hard,

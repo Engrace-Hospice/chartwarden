@@ -49,6 +49,7 @@ import {
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { IdentifierCipherUnboundError } from "../identifiers/identifier-cipher";
 import {
   SelfMergeError,
   SourceAlreadyMergedError,
@@ -130,6 +131,17 @@ const CREATE_BYPASS_GATE: PreHandler = async (request, reply) => {
   if (parse(AdmitBodySchema, request.body).bypassMatchReview !== true) return;
   await BYPASS_PERMISSION(request, reply);
   await BYPASS_STEP_UP(request, reply);
+};
+// GAP-010 (§4.7): an admit that carries an SSN is also a `phi.write_ssn` act and needs a fresh step-up. Like the
+// bypass gate it reads the PARSED body, so a client value can only ever ADD a gate; the two gates STACK (a bypass
+// admit with an SSN must pass both).
+const SSN_WRITE_PERMISSION = requirePermission("phi.write_ssn") as PreHandler;
+const SSN_WRITE_STEP_UP = requireStepUp("phi.write_ssn") as PreHandler;
+const CREATE_SSN_GATE: PreHandler = async (request, reply) => {
+  const ssn = parse(AdmitBodySchema, request.body).ssn;
+  if (typeof ssn !== "string" || ssn.trim().length === 0) return;
+  await SSN_WRITE_PERMISSION(request, reply);
+  await SSN_WRITE_STEP_UP(request, reply);
 };
 const EDIT = requirePermission("patient.edit") as PreHandler;
 const EDIT_PAYERS = requirePermission("patient.edit_payers") as PreHandler;
@@ -367,7 +379,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post(
     "/api/v1/patients",
-    { preHandler: [CREATE, CREATE_BYPASS_GATE] },
+    { preHandler: [CREATE, CREATE_BYPASS_GATE, CREATE_SSN_GATE] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(AdmitBodySchema, request.body);
@@ -380,7 +392,13 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
           },
         ]);
       }
-      const result = await service.admit(organizationId, body, userId);
+      const result = await service.admit(organizationId, body, userId).catch((e: unknown) => {
+        // GAP-010: no tenant key bound / ring destroyed -> 503, not a 500 and not a silent unencrypted write.
+        if (e instanceof IdentifierCipherUnboundError) {
+          throw new WardenXError("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
+        }
+        throw e;
+      });
       if (result.outcome === "hard_block") {
         // §7.1: no patient row created; surface the existing chart for "Open existing patient".
         throw new WardenXError(
