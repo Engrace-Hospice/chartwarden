@@ -3,7 +3,7 @@
  *   010: the matcher is fed each candidate's primary address / phone / email, so a same name+DOB+address
  *        admit hard-blocks (no second patient), a name+DOB+phone+email near-match opens a soft review row
  *        (`matchReviewIds` non-empty), the admitted contact details are persisted, and an SSN is refused
- *        before anything is written.
+ *        before anything is written when no tenant key is bound (GAP-010: the bound path is m5-ssn-identifier).
  *   009: a bypassed admit writes a CRITICAL `patient.create_bypass_match` audit_event (justification
  *        recorded) on the same transaction as the patient row.
  *
@@ -16,6 +16,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { IdentifierCipherUnboundError } from "../src/modules/05-patient/identifiers/identifier-cipher";
 import { type AdmitResult, M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -136,10 +137,15 @@ describe.skipIf(!DB_URL)("GAP-009/010 M5 admit matching + bypass audit — LIVE 
     expect(reviews.rows).toEqual([{ status: "open" }]);
   });
 
-  it("refuses an SSN with a 422 before writing anything", async () => {
+  // GAP-010: this service is built WITHOUT an identifier cipher (the unbound default), so an SSN is refused
+  // before anything is written - never stored in the clear. The bound path is m5-ssn-identifier.live.test.ts.
+  it("refuses an SSN when no tenant key is bound, before writing anything", async () => {
     const before = await patientCount();
     await expect(
       service.admit(ORG_A, { ...JANE, lastName: "Ssn", ssn: "123-45-6789" }, STAFF),
+    ).rejects.toBeInstanceOf(IdentifierCipherUnboundError);
+    await expect(
+      service.admit(ORG_A, { ...JANE, lastName: "Ssn", ssn: "000-12-3456" }, STAFF),
     ).rejects.toMatchObject({ statusCode: 422 });
     expect(await patientCount()).toBe(before);
   });
