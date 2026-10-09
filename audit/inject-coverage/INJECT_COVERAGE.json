@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1489,
-    "coveredRoutes": 1489,
-    "directRoutesReferenced": 1417
+    "routes": 1491,
+    "coveredRoutes": 1491,
+    "directRoutesReferenced": 1419
   },
   "modules": [
     {
@@ -73,7 +73,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 43,
+      "routes": 44,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -91,7 +91,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 43
+      "directRoutesReferenced": 44
     },
     {
       "module": "06-admission",
@@ -476,7 +476,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 25,
+      "routes": 26,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -488,7 +488,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 24
+      "directRoutesReferenced": 25
     },
     {
       "module": "37-ipu",
