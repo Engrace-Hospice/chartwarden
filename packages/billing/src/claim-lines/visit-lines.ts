@@ -5,6 +5,7 @@
 // whose reporting rule is not implemented are reported as `deferred`. PURE: no I/O, no clock.
 import type { IsoDate, LevelOfCare } from "../contracts";
 import type { BillabilityState } from "../rules/types";
+import type { VisitChargeDiscipline } from "../visit-charges";
 import { type VisitRevenueCode, visitCodeFor, visitUnitsForMinutes } from "./visit-codes";
 
 export interface VisitEncounterInput {
@@ -27,6 +28,8 @@ export interface VisitLevelOfCarePeriod {
 export interface VisitLineSpec {
   readonly revenueCode: VisitRevenueCode;
   readonly hcpcsCode: string;
+  /** The discipline the visit charge is keyed by. */
+  readonly discipline: VisitChargeDiscipline;
   readonly serviceDate: IsoDate;
   readonly unitCount: number;
   /** The covering period's level of care (the repository maps it to the DB code at its boundary). */
@@ -101,6 +104,7 @@ export function buildVisitLines(input: BuildVisitLinesInput): VisitLinesResult {
     lines.push({
       revenueCode: code.revenueCode,
       hcpcsCode: code.hcpcsCode,
+      discipline: code.discipline,
       serviceDate: encounter.serviceDate,
       unitCount: units,
       levelOfCare: period.levelOfCare,

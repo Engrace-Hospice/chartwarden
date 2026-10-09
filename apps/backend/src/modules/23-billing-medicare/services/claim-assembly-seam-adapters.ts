@@ -20,6 +20,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
+import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
@@ -411,6 +412,9 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
       return resolved
         ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode }
         : null;
+    },
+    async visitChargeVersions(orgId, providerEntityId, range) {
+      return visitChargeVersionsForOrg(db, orgId, providerEntityId, range);
     },
     async activeSequestrationPolicy(orgId, providerEntityId, serviceFrom) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {

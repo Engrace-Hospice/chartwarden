@@ -898,6 +898,7 @@ import {
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
+  buildDrizzleVisitChargeService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
@@ -4662,6 +4663,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
+            // The tenant-entered hospice visit-charge schedule (`/billing/visit-charge-schedules`); the SAME table the
+            // assembly service reads the charge each visit line is billed at (M23-owned, over `dbHandle.db`).
+            visitChargeService: buildDrizzleVisitChargeService(dbHandle.db),
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
             platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),

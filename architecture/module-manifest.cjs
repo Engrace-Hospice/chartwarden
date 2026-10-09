@@ -766,6 +766,7 @@ exports.MODULES = [
       "eligibility_check",
       "hipps_calculation",
       "hospice_rate_table",
+      "hospice_visit_charge_schedule",
       "mac_submitter_credential",
       "noe_record",
       "notr_record",

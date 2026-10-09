@@ -9,7 +9,7 @@
 // `*.submit` / `*.void` / `*.replace` / `*.override` / `*.admin` additionally require M2 step-up auth at
 // the route layer (D2) — the key grants the capability; step-up gates the privileged human action.
 
-/** The §4.6 twenty-eight permission keys M23 owns, grouped by surface, as an ordered literal tuple. */
+/** The §4.6 permission keys M23 owns, grouped by surface, as an ordered literal tuple. */
 export const M23_PERMISSIONS = [
   // claim surface
   "billing.claim.assemble",
@@ -50,6 +50,9 @@ export const M23_PERMISSIONS = [
   // hospice rate table (F-210: tenant-entered CMS per-diem rates)
   "billing.rate_table.read",
   "billing.rate_table.admin",
+  // tenant-entered hospice visit-charge schedule (charge per 15-minute unit per discipline)
+  "billing.visit_charge.read",
+  "billing.visit_charge.admin",
   // tenant-entered wage index (F-211)
   "billing.wage_index.read",
   "billing.wage_index.admin",

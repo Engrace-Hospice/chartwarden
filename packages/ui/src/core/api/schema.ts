@@ -4919,6 +4919,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/visit-charge-schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a ProviderEntity's hospice visit-charge schedule versions, newest window first (includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingVisitchargeschedules"];
+        put?: never;
+        /** Enter a hospice visit-charge schedule version - whole-cent charges per 15-minute unit per discipline; non-overlapping */
+        post: operations["postApiV1BillingVisitchargeschedules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one hospice visit-charge schedule version */
+        get: operations["getApiV1BillingVisitchargeschedulesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live visit-charge schedule version with a corrected one; the old version is kept as history */
+        post: operations["postApiV1BillingVisitchargeschedulesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/visit-charge-schedules/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live visit-charge schedule claim assembly would bill a visit date from, or null */
+        get: operations["getApiV1BillingVisitchargeschedulesEffective"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/wage-indexes": {
         parameters: {
             query?: never;
@@ -37193,6 +37262,278 @@ export interface operations {
                         nextCursor: string | null;
                         hasMore: boolean;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedules: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeSchedules: {
+                            visitChargeScheduleId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            rnUnitChargeCents: number | null;
+                            lpnUnitChargeCents: number | null;
+                            aideUnitChargeCents: number | null;
+                            mswUnitChargeCents: number | null;
+                            ptUnitChargeCents: number | null;
+                            otUnitChargeCents: number | null;
+                            slpUnitChargeCents: number | null;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingVisitchargeschedules: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    rnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    lpnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    aideUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    mswUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    ptUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    otUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    slpUnitChargeCents?: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedulesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingVisitchargeschedulesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    rnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    lpnUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    aideUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    mswUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    ptUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    otUnitChargeCents?: number;
+                    /** @description Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge. */
+                    slpUnitChargeCents?: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingVisitchargeschedulesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitChargeScheduleId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rnUnitChargeCents: number | null;
+                        lpnUnitChargeCents: number | null;
+                        aideUnitChargeCents: number | null;
+                        mswUnitChargeCents: number | null;
+                        ptUnitChargeCents: number | null;
+                        otUnitChargeCents: number | null;
+                        slpUnitChargeCents: number | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];

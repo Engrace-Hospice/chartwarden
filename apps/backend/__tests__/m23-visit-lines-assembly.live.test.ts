@@ -23,16 +23,19 @@ import {
   levelOfCareCoherence,
   placeOfServiceConsistency,
   repositories,
+  visitLinesReportable,
 } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildDrizzleVisitChargeService } from "../src/modules/23-billing-medicare/routes/visit-charge-service";
 import {
   type ClaimAssemblyActor,
   type ClaimAssemblySeams,
   buildClaimAssemblyService,
 } from "../src/modules/23-billing-medicare/services/claim-assembly";
+import { buildM23ReferenceDataAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -101,6 +104,22 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     actor = { organizationId: ORG, userId: USER, membershipId, actorKind: "user" };
+    // The tenant-entered visit-charge schedule (migration 1056) every visit is billed from, entered through the real
+    // service as the app role.
+    await buildDrizzleVisitChargeService(handle.db as never).createVisitCharge(
+      { ...actor, roles: ["org_admin"], stepUpRecent: false },
+      {
+        providerEntityId,
+        effectiveFrom: "2025-01-01",
+        rnUnitChargeCents: 2_500,
+        lpnUnitChargeCents: 2_400,
+        aideUnitChargeCents: 1_500,
+        mswUnitChargeCents: 3_000,
+        ptUnitChargeCents: 3_500,
+        otUnitChargeCents: 3_400,
+        slpUnitChargeCents: 3_300,
+      },
+    );
   }, 180_000);
 
   afterAll(async () => {
@@ -112,7 +131,12 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
   function seams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblySeams {
     const registry = new BillingRuleRegistry();
     // The default rules that read claim lines: they must accept a claim that carries visit lines.
-    for (const rule of [claimTotalMatchesLines, levelOfCareCoherence, placeOfServiceConsistency])
+    for (const rule of [
+      claimTotalMatchesLines,
+      levelOfCareCoherence,
+      placeOfServiceConsistency,
+      visitLinesReportable,
+    ])
       registry.registerRule(rule);
     registry.freeze();
     return {
@@ -207,6 +231,8 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
           effectiveFrom: "2025-01-01",
           effectiveTo: null,
         }),
+        // REAL: the windowed read of the schedule entered in beforeAll, under RLS as wardenx_app.
+        visitChargeVersions: buildM23ReferenceDataAdapter(handle.db as never).visitChargeVersions,
       },
       ruleRegistry: registry,
       outbox: { publish: async () => {} },
@@ -264,10 +290,12 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
       hcpcs_code: "G0299",
       service_date_from: "2025-11-03",
       unit_count: 3, // 50 minutes -> nearest 15-minute increment
-      line_charge_cents: 0,
+      unit_rate_cents: 2_500, // the tenant's RN charge per 15-minute unit
+      line_charge_cents: 7_500,
       backing_encounter_ids: [encounterId],
     });
-    expect(res.totalChargeCents).toBe(7 * 20_000);
+    // The billed total is the per-diem line plus the informational visit charge (3 units x $25.00).
+    expect(res.totalChargeCents).toBe(7 * 20_000 + 7_500);
   });
 
   it("bills CHC as one dated line per day in 15-minute units and balances the total to the lines", async () => {
@@ -412,7 +440,7 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
     ).rejects.toThrow(/claim_attending_physician_npi_chk/);
   });
 
-  it("fails closed (422) and persists nothing when a billable visit has no documented duration", async () => {
+  it("assembles WITHOUT the line and warns when a billable visit has no documented duration (never guessing units)", async () => {
     const svc = buildClaimAssemblyService(
       handle.db as never,
       seams({
@@ -431,9 +459,53 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
       }),
     );
 
+    const res = await svc.assemble(actor, request());
+
+    expect(res.initialValidationOutcome).toBe("all_pass"); // a warning never fails the run
+    expect((await linesOf(res.claimId)).map((l) => l.revenue_code)).toEqual(["0651"]);
+    const { rows } = await admin.query(
+      `SELECT r.outcome, r.severity, r.remediation FROM validation_result r
+         JOIN validation_run v ON v.id = r.validation_run_id
+        WHERE v.claim_id = $1 AND r.rule_key = 'visit_lines_reportable'`,
+      [res.claimId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outcome: "warn", severity: "warn" });
+    expect(rows[0].remediation.defects).toEqual([
+      expect.objectContaining({
+        code: "VISIT_DURATION_MISSING",
+        refs: { encounterId: "enc-no-duration" },
+      }),
+    ]);
+  });
+
+  it("fails closed (422 VISIT_CHARGE_MISSING) and persists nothing when a billed discipline has no tenant charge", async () => {
+    const svc = buildClaimAssemblyService(
+      handle.db as never,
+      seams({
+        billableEncounters: {
+          forRange: async () => [
+            {
+              encounterId: randomUUID(),
+              serviceDate: "2025-11-03",
+              billability: "billable",
+              discipline: "chha",
+              encounterType: "chha_visit",
+              durationMinutes: 30,
+            },
+          ],
+        },
+        referenceData: {
+          ...seams().referenceData,
+          // no schedule version covers the claim window => no charge for the billed date
+          visitChargeVersions: async () => [],
+        },
+      }),
+    );
+
     const req = request();
     await expect(svc.assemble(actor, req)).rejects.toMatchObject({
-      code: "VISIT_LINES_UNRESOLVED",
+      code: "VISIT_CHARGE_MISSING",
       statusCode: 422,
     });
     const { rows } = await admin.query(

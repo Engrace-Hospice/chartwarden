@@ -65049,6 +65049,1138 @@
         }
       }
     },
+    "/api/v1/billing/visit-charge-schedules": {
+      "get": {
+        "operationId": "getApiV1BillingVisitchargeschedules",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List a ProviderEntity's hospice visit-charge schedule versions, newest window first (includeSuperseded=true adds history)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "visitChargeSchedules"
+                  ],
+                  "properties": {
+                    "visitChargeSchedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "visitChargeScheduleId",
+                          "organizationId",
+                          "providerEntityId",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "rnUnitChargeCents",
+                          "lpnUnitChargeCents",
+                          "aideUnitChargeCents",
+                          "mswUnitChargeCents",
+                          "ptUnitChargeCents",
+                          "otUnitChargeCents",
+                          "slpUnitChargeCents",
+                          "enteredByMembershipId",
+                          "entryReason",
+                          "supersededAt",
+                          "supersededById",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "visitChargeScheduleId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rnUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lpnUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "aideUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mswUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ptUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "otUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "slpUnitChargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "enteredByMembershipId": {
+                            "type": "string"
+                          },
+                          "entryReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingVisitchargeschedules",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Enter a hospice visit-charge schedule version - whole-cent charges per 15-minute unit per discipline; non-overlapping",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "visitChargeScheduleId",
+                    "organizationId",
+                    "providerEntityId",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rnUnitChargeCents",
+                    "lpnUnitChargeCents",
+                    "aideUnitChargeCents",
+                    "mswUnitChargeCents",
+                    "ptUnitChargeCents",
+                    "otUnitChargeCents",
+                    "slpUnitChargeCents",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "visitChargeScheduleId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lpnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aideUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mswUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ptUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "otUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "slpUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "rnUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "lpnUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "aideUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "mswUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "ptUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "otUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "slpUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/visit-charge-schedules/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingVisitchargeschedulesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one hospice visit-charge schedule version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "visitChargeScheduleId",
+                    "organizationId",
+                    "providerEntityId",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rnUnitChargeCents",
+                    "lpnUnitChargeCents",
+                    "aideUnitChargeCents",
+                    "mswUnitChargeCents",
+                    "ptUnitChargeCents",
+                    "otUnitChargeCents",
+                    "slpUnitChargeCents",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "visitChargeScheduleId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lpnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aideUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mswUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ptUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "otUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "slpUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/visit-charge-schedules/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingVisitchargeschedulesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live visit-charge schedule version with a corrected one; the old version is kept as history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "visitChargeScheduleId",
+                    "organizationId",
+                    "providerEntityId",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rnUnitChargeCents",
+                    "lpnUnitChargeCents",
+                    "aideUnitChargeCents",
+                    "mswUnitChargeCents",
+                    "ptUnitChargeCents",
+                    "otUnitChargeCents",
+                    "slpUnitChargeCents",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "visitChargeScheduleId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lpnUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aideUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mswUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ptUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "otUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "slpUnitChargeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "rnUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "lpnUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "aideUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "mswUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "ptUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "otUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "slpUnitChargeCents": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "description": "Charge per 15-minute unit in whole cents ($25.00 is 2500). Omit when no charge is entered for this discipline (claim assembly then fails closed); 0 is a deliberate free charge.",
+                    "type": "integer"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/visit-charge-schedules/effective": {
+      "get": {
+        "operationId": "getApiV1BillingVisitchargeschedulesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live visit-charge schedule claim assembly would bill a visit date from, or null",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "onDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "visitChargeScheduleId",
+                        "organizationId",
+                        "providerEntityId",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "rnUnitChargeCents",
+                        "lpnUnitChargeCents",
+                        "aideUnitChargeCents",
+                        "mswUnitChargeCents",
+                        "ptUnitChargeCents",
+                        "otUnitChargeCents",
+                        "slpUnitChargeCents",
+                        "enteredByMembershipId",
+                        "entryReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "visitChargeScheduleId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rnUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lpnUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "aideUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mswUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "ptUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "otUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "slpUnitChargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "enteredByMembershipId": {
+                          "type": "string"
+                        },
+                        "entryReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/wage-indexes": {
       "get": {
         "operationId": "getApiV1BillingWageindexes",

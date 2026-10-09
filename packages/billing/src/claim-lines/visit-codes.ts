@@ -4,6 +4,7 @@
 // these lines are bundled into the level-of-care payment (no additional payment); the MAC reads the RN
 // (G0299) and social-work (G0155) lines to price the end-of-life Service Intensity Add-on.
 // PURE: no I/O, no clock.
+import type { VisitChargeDiscipline } from "../visit-charges";
 
 /** Hospice visits are reported in multiples of this many minutes (ch. 11 §30.3 "Service Units"). */
 export const HOSPICE_VISIT_UNIT_MINUTES = 15;
@@ -14,6 +15,8 @@ export type VisitRevenueCode = "0421" | "0431" | "0441" | "0551" | "0561" | "056
 export interface VisitCode {
   readonly revenueCode: VisitRevenueCode;
   readonly hcpcsCode: string;
+  /** What the visit charge is keyed by (an aide is `chha`; a social-work call is `msw`). */
+  readonly discipline: VisitChargeDiscipline;
 }
 
 /** Every visit revenue code, as a runtime list (DB enum / contract lockstep checks read it). */
@@ -32,17 +35,33 @@ export function isVisitRevenueCode(revenueCode: string): boolean {
   return (VISIT_REVENUE_CODES as readonly string[]).includes(revenueCode);
 }
 
-const PHYSICAL_THERAPY: VisitCode = { revenueCode: "0421", hcpcsCode: "G0151" };
-const OCCUPATIONAL_THERAPY: VisitCode = { revenueCode: "0431", hcpcsCode: "G0152" };
-const SPEECH_LANGUAGE_PATHOLOGY: VisitCode = { revenueCode: "0441", hcpcsCode: "G0153" };
+const PHYSICAL_THERAPY: VisitCode = { revenueCode: "0421", hcpcsCode: "G0151", discipline: "pt" };
+const OCCUPATIONAL_THERAPY: VisitCode = {
+  revenueCode: "0431",
+  hcpcsCode: "G0152",
+  discipline: "ot",
+};
+const SPEECH_LANGUAGE_PATHOLOGY: VisitCode = {
+  revenueCode: "0441",
+  hcpcsCode: "G0153",
+  discipline: "slp",
+};
 /** G0299 — direct skilled nursing by a registered nurse (valid from 2016-01-01; G0154 is retired). */
-const SKILLED_NURSING_RN: VisitCode = { revenueCode: "0551", hcpcsCode: "G0299" };
+const SKILLED_NURSING_RN: VisitCode = { revenueCode: "0551", hcpcsCode: "G0299", discipline: "rn" };
 /** G0300 — direct skilled nursing by a licensed practical nurse. */
-const SKILLED_NURSING_LPN: VisitCode = { revenueCode: "0551", hcpcsCode: "G0300" };
-const SOCIAL_WORK_VISIT: VisitCode = { revenueCode: "0561", hcpcsCode: "G0155" };
+const SKILLED_NURSING_LPN: VisitCode = {
+  revenueCode: "0551",
+  hcpcsCode: "G0300",
+  discipline: "lpn",
+};
+const SOCIAL_WORK_VISIT: VisitCode = { revenueCode: "0561", hcpcsCode: "G0155", discipline: "msw" };
 /** A medical social worker phone call (a separate line item per call). */
-const SOCIAL_WORK_PHONE_CALL: VisitCode = { revenueCode: "0569", hcpcsCode: "G0155" };
-const HOSPICE_AIDE: VisitCode = { revenueCode: "0571", hcpcsCode: "G0156" };
+const SOCIAL_WORK_PHONE_CALL: VisitCode = {
+  revenueCode: "0569",
+  hcpcsCode: "G0155",
+  discipline: "msw",
+};
+const HOSPICE_AIDE: VisitCode = { revenueCode: "0571", hcpcsCode: "G0156", discipline: "chha" };
 
 /**
  * Encounter types that never produce a visit line: IDG time, bereavement and volunteer/chaplain contacts are not

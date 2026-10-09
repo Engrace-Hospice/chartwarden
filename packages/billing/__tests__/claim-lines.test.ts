@@ -27,7 +27,12 @@ describe("visitCodeFor — CMS ch. 11 §30.3 revenue-code / HCPCS table", () => 
     ["ot", "ot_visit", "0431", "G0152"],
     ["slp", "slp_visit", "0441", "G0153"],
   ])("%s / %s -> rev %s HCPCS %s", (discipline, encounterType, revenueCode, hcpcsCode) => {
-    expect(visitCodeFor({ discipline, encounterType })).toEqual({ revenueCode, hcpcsCode });
+    // The charge discipline is the authoring discipline, except an aide is `chha` (the charge schedule's key).
+    expect(visitCodeFor({ discipline, encounterType })).toEqual({
+      revenueCode,
+      hcpcsCode,
+      discipline,
+    });
   });
 
   it("matches the discipline case-insensitively", () => {
@@ -109,6 +114,7 @@ describe("buildVisitLines", () => {
       {
         revenueCode: "0551",
         hcpcsCode: "G0299",
+        discipline: "rn",
         serviceDate: "2026-10-05",
         unitCount: 3,
         levelOfCare: "routine_home_care",

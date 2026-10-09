@@ -106,6 +106,7 @@ export { HippsCalculationRepository } from "./hipps-calculation";
 export { SiaCalculationRepository } from "./sia-calculation";
 export { SequestrationPolicyRepository } from "./sequestration-policy";
 export { HospiceRateTableRepository } from "./hospice-rate-table";
+export { HospiceVisitChargeScheduleRepository } from "./hospice-visit-charge-schedule";
 export { WageIndexFactorRepository } from "./wage-index-factor";
 export { TenantWageIndexRepository } from "./tenant-wage-index";
 export {

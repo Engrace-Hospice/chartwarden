@@ -62,6 +62,8 @@ export * from "./claim-codes";
 // CMS Pub. 100-04 Ch. 11 §30.3 the pure hospice visit lines (rev 042x-057x + G-codes, 15-minute units), CHC
 // quarter-hour units and the CBSA value code by level of care.
 export * from "./claim-lines";
+// The tenant-entered visit-charge schedule domain (a charge per 15-minute unit per discipline; fail-closed lookup).
+export * from "./visit-charges";
 export * from "./notice";
 // §4.1 / §4.2 the TypeBox route request/response SHAPE contracts (one module per route group).
 // Routed via the `./route-contracts` hop (see that file) so the barrel carries no schema-path import

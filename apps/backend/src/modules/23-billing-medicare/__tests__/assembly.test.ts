@@ -60,6 +60,21 @@ const RATE_TABLE = {
   gipLaborShare: "0.6400",
 } as const;
 
+/** The tenant-entered visit-charge schedule (per 15-minute unit) every scenario bills visits from unless it overrides. */
+const VISIT_CHARGES = {
+  effectiveFrom: "2025-01-01",
+  effectiveTo: null,
+  charges: {
+    rn: 2_500,
+    lpn: 2_400,
+    chha: 1_500,
+    msw: 3_000,
+    pt: 3_500,
+    ot: 3_400,
+    slp: 3_300,
+  },
+} as const;
+
 /** One trivial always-pass rule so the initial validation run executes deterministically (all_pass). */
 const trivialPassRule: Rule = {
   key: "test.always_pass",
@@ -177,6 +192,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         effectiveFrom: "2025-01-01",
         effectiveTo: null,
       }),
+      visitChargeVersions: async () => [VISIT_CHARGES],
     },
     ruleRegistry: buildRegistry(),
     outbox: {
@@ -480,6 +496,7 @@ describe("F-212 - no sequestration policy fails CLOSED with an actionable error 
         chcHourlyRateCents: async () => 6_000,
         wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
         activeSequestrationPolicy: async () => null,
+        visitChargeVersions: async () => [],
       },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -636,20 +653,108 @@ describe("CMS ch. 11 §30.3 — every visit by hospice staff is its own dated, 1
     expect(res.lineCount).toBe(2);
   });
 
-  it("reports visit lines without adding a charge: the claim total is the sum of the line charges", async () => {
+  it("bills a visit line at the tenant's charge per 15-minute unit; the total is the sum of the line charges and expected payment is untouched", async () => {
     const seams = buildSeams({
-      billableEncounters: { forRange: async () => [visit({})] },
+      billableEncounters: { forRange: async () => [visit({})] }, // 45 minutes = 3 units, RN
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     const res = await svc.assemble(ACTOR, REQUEST);
 
+    expect(store.lines[1]).toMatchObject({
+      unitCount: 3,
+      unitRateCents: 2_500,
+      lineChargeCents: 7_500,
+    });
     const sum = store.lines.reduce(
       (s: number, l: { lineChargeCents: number }) => s + l.lineChargeCents,
       0,
     );
+    expect(res.totalChargeCents).toBe(140_000 + 7_500);
     expect(res.totalChargeCents).toBe(sum);
-    expect(store.lines[1].unitRateCents).toBe(0);
-    expect(store.lines[1].lineChargeCents).toBe(0);
+    // The informational visit charge never reaches the payment: gross $1,400.00 less 2% sequestration.
+    expect([...store.claims.values()][0].totalExpectedPaymentCents).toBe(137_200);
+  });
+
+  it("looks the charge up per visit date and discipline from the schedule version covering that date", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        ...buildSeams().referenceData,
+        visitChargeVersions: async () => [
+          {
+            ...VISIT_CHARGES,
+            effectiveTo: "2025-11-03",
+            charges: { ...VISIT_CHARGES.charges, rn: 2_000 },
+          },
+          {
+            ...VISIT_CHARGES,
+            effectiveFrom: "2025-11-04",
+            charges: { ...VISIT_CHARGES.charges, rn: 2_200 },
+          },
+        ],
+      },
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "a", serviceDate: "2025-11-03", durationMinutes: 15 }),
+          visit({ encounterId: "b", serviceDate: "2025-11-05", durationMinutes: 15 }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines.slice(1).map((l: { unitRateCents: number }) => l.unitRateCents)).toEqual([
+      2_000, 2_200,
+    ]);
+  });
+
+  it("fails closed (422 VISIT_CHARGE_MISSING) naming the disciplines, not the encounters, when a billed discipline has no charge", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        ...buildSeams().referenceData,
+        visitChargeVersions: async () => [
+          { ...VISIT_CHARGES, charges: { ...VISIT_CHARGES.charges, pt: null, msw: null } },
+        ],
+      },
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "e1" }), // rn: has a charge
+          visit({ encounterId: "e2", discipline: "pt", encounterType: "pt_visit" }),
+          visit({ encounterId: "e3", discipline: "msw", encounterType: "msw_followup" }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "VISIT_CHARGE_MISSING", statusCode: 422 });
+    expect(err?.message).toContain("msw, pt");
+    expect(err?.message).toContain("POST /api/v1/billing/visit-charge-schedules");
+    expect(err?.message).toContain("billing.visit_charge.admin");
+    expect(err?.message).not.toContain("e2");
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("fails closed when no schedule exists at all, but needs none for a claim with no visit lines", async () => {
+    const noSchedule = {
+      ...buildSeams().referenceData,
+      visitChargeVersions: async () => [],
+    };
+    const withVisit = buildSeams({
+      referenceData: noSchedule,
+      billableEncounters: { forRange: async () => [visit({})] },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, withVisit).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "VISIT_CHARGE_MISSING" });
+
+    store.reset();
+    const noVisit = buildSeams({ referenceData: noSchedule }); // only the cosign-wait encounter: no visit lines
+    const res = await buildClaimAssemblyService(makeFakeDb() as never, noVisit).assemble(
+      ACTOR,
+      REQUEST,
+    );
+    expect(res.lineCount).toBe(1);
   });
 
   it("keeps an LPN visit (G0300), an aide visit (0571/G0156) and a social-work call (0569) distinct", async () => {
@@ -717,7 +822,9 @@ describe("CMS ch. 11 §30.3 — every visit by hospice staff is its own dated, 1
     type StoredLine = { backingEncounterIds: string[]; revenueCode: string };
     const stored = store.lines as StoredLine[];
     expect(stored.map((l) => l.backingEncounterIds)).toContainEqual(["enc-ok"]);
-    expect(stored.some((l) => l.backingEncounterIds.includes("enc-rn") && l.revenueCode === "0551")).toBe(false);
+    expect(
+      stored.some((l) => l.backingEncounterIds.includes("enc-rn") && l.revenueCode === "0551"),
+    ).toBe(false);
     // …and the skipped visit is surfaced as a warning naming the encounter id only.
     const warning = [...store.results.values()].find(
       (r: { ruleKey: string }) => r.ruleKey === "visit_lines_reportable",

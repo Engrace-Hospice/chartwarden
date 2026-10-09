@@ -380,9 +380,19 @@ export function buildClaimAssemblyService(
           resolvedLoc,
           qCode: placeOfService,
         });
+        // The visit charge is the TENANT-ENTERED schedule (per 15-minute unit per discipline); a claim with no visit
+        // line needs none, and a billed discipline without a charge fails the assembly closed (VISIT_CHARGE_MISSING).
+        const chargeVersions =
+          visitResult.lines.length > 0
+            ? await seams.referenceData.visitChargeVersions(orgId, providerEntityId, {
+                from: serviceFrom,
+                to: serviceTo,
+              })
+            : [];
         const visitLines = visitLineInputs({
           orgId,
           result: visitResult,
+          chargeVersions,
           qCode: placeOfService,
           icdPointerPositions,
           firstLineNumber: lineInputs.length + g0679Lines.length + 1,

@@ -29,6 +29,7 @@ import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
 import { registerTransferNoticeRoutes } from "./transfer-notice.routes";
 import { registerValidationRoutes } from "./validation.routes";
+import { registerVisitChargeRoutes } from "./visit-charge.routes";
 import { registerWageIndexRoutes } from "./wage-index.routes";
 
 export { registerClaimsRoutes, type ClaimsRouteDeps } from "./claims.routes";
@@ -47,6 +48,7 @@ export {
 } from "./sequestration-policy.routes";
 export { registerMacCredentialRoutes, type MacCredentialRouteDeps } from "./mac-credentials.routes";
 export { registerRateTableRoutes, type RateTableRouteDeps } from "./rate-table.routes";
+export { registerVisitChargeRoutes, type VisitChargeRouteDeps } from "./visit-charge.routes";
 export { registerPlatformAdminRoutes, type PlatformAdminRouteDeps } from "./platform-admin.routes";
 export { registerWageIndexRoutes, type WageIndexRouteDeps } from "./wage-index.routes";
 export { registerMetricsRoutes, type MetricsRouteDeps } from "./metrics.routes";
@@ -94,6 +96,10 @@ export function mountM23Routes(
   // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
   if (services.rateTableService) {
     registerRateTableRoutes(app, { rateTableService: services.rateTableService });
+  }
+  // Migration 1056 — the tenant-entered hospice visit-charge schedule (the charge each visit line is billed at).
+  if (services.visitChargeService) {
+    registerVisitChargeRoutes(app, { visitChargeService: services.visitChargeService });
   }
   // F-211 — the tenant-entered CMS wage index (the other pricing input claim assembly needs).
   if (services.wageIndexService) {

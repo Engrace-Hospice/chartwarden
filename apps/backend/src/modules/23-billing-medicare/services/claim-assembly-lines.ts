@@ -9,12 +9,16 @@ import {
   type HippsSegmentResult,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
+  type VisitChargeVersion,
   type VisitLinesResult,
   type VisitReportingSnapshot,
   buildVisitLines,
   chcLineFromSegment,
+  missingVisitCharges,
   type repositories,
+  visitUnitChargeOn,
 } from "@wardenx/billing";
+import { WardenXError } from "@wardenx/types";
 
 type NewClaimLineInput = repositories.NewClaimLineInput;
 
@@ -39,12 +43,6 @@ export function qCodeForPlaceOfService(pos: string | null): NewClaimLineInput["q
   const canonical = POS_LABEL_ALIASES[label] ?? label;
   return (QCODE_BY_POS[canonical] ?? "Q5009") as NewClaimLineInput["qCode"];
 }
-
-/**
- * The unit charge of a visit line. Charges on visit lines are informational — the visit is bundled into the level
- * -of-care payment and "no additional payment is made on the visit revenue lines" (ch. 11 §30.3).
- */
-export const VISIT_UNIT_CHARGE_CENTS = 0;
 
 /** The units / unit rate / charge of one per-diem segment's line (CHC in 15-minute units, the rest in days). */
 export function perDiemLineAmounts(segment: HippsSegmentResult): {
@@ -109,30 +107,50 @@ export function visitReportingOf(result: VisitLinesResult): VisitReportingSnapsh
   return { unresolved: result.unresolved, deferredCount: result.deferred.length };
 }
 
-/** The `claim_line` rows for a visit derivation, numbered from `firstLineNumber`. */
+/**
+ * The `claim_line` rows for a visit derivation, numbered from `firstLineNumber`, each billed at the TENANT-ENTERED
+ * charge per 15-minute unit for its discipline on its date (the visit charge is informational — "no additional
+ * payment is made on the visit revenue lines", ch. 11 §30.3 — so it never reaches the expected payment). FAILS
+ * CLOSED (`VISIT_CHARGE_MISSING`, 422) when a billed discipline has no charge on its date: never a default.
+ */
 export function visitLineInputs(args: {
   readonly orgId: string;
   readonly result: VisitLinesResult;
+  readonly chargeVersions: readonly VisitChargeVersion[];
   readonly qCode: NewClaimLineInput["qCode"];
   readonly icdPointerPositions: readonly number[];
   readonly firstLineNumber: number;
 }): NewClaimLineInput[] {
-  return args.result.lines.map((visit, idx) => ({
-    organizationId: args.orgId,
-    claimId: "", // filled once the claim id is minted
-    lineNumber: args.firstLineNumber + idx,
-    revenueCode: visit.revenueCode,
-    qCode: args.qCode,
-    levelOfCare: visit.levelOfCare,
-    hcpcsCode: visit.hcpcsCode,
-    serviceDateFrom: visit.serviceDate,
-    serviceDateTo: visit.serviceDate,
-    unitCount: visit.unitCount,
-    unitRateCents: VISIT_UNIT_CHARGE_CENTS,
-    lineChargeCents: VISIT_UNIT_CHARGE_CENTS * visit.unitCount,
-    levelOfCarePeriodId: visit.levelOfCarePeriodId,
-    backingEncounterIds: [...visit.backingEncounterIds],
-    icdPointerPositions: [...args.icdPointerPositions],
-    modifiers: [],
-  }));
+  const missing = missingVisitCharges(args.chargeVersions, args.result.lines);
+  if (missing.length > 0) {
+    throw new WardenXError(
+      "VISIT_CHARGE_MISSING",
+      `the claim bills visits for ${[...missing].sort().join(", ")} but no visit charge is entered for that discipline on the visit date; enter the visit-charge schedule (POST /api/v1/billing/visit-charge-schedules, permission billing.visit_charge.admin) and retry`,
+      422,
+    );
+  }
+  return args.result.lines.map((visit, idx) => {
+    // Non-null: `missingVisitCharges` above found a charge for every line.
+    const unitRateCents =
+      visitUnitChargeOn(args.chargeVersions, visit.serviceDate, visit.discipline) ?? 0;
+    return {
+      organizationId: args.orgId,
+      claimId: "", // filled once the claim id is minted
+      lineNumber: args.firstLineNumber + idx,
+      revenueCode: visit.revenueCode,
+      qCode: args.qCode,
+      levelOfCare: visit.levelOfCare,
+      hcpcsCode: visit.hcpcsCode,
+      serviceDateFrom: visit.serviceDate,
+      serviceDateTo: visit.serviceDate,
+      unitCount: visit.unitCount,
+      unitRateCents,
+      // CHECK (line_charge_cents = unit_count * unit_rate_cents)
+      lineChargeCents: unitRateCents * visit.unitCount,
+      levelOfCarePeriodId: visit.levelOfCarePeriodId,
+      backingEncounterIds: [...visit.backingEncounterIds],
+      icdPointerPositions: [...args.icdPointerPositions],
+      modifiers: [],
+    };
+  });
 }

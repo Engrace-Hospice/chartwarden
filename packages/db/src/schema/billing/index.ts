@@ -37,6 +37,7 @@ export * from "./validation-result";
 export * from "./validation-override";
 export * from "./sequestration-policy";
 export * from "./hospice-rate-table";
+export * from "./hospice-visit-charge-schedule";
 export * from "./wage-index-factor";
 export * from "./tenant-wage-index";
 export * from "./mac-submitter-credential";

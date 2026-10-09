@@ -22,6 +22,7 @@ import type {
   MdmResolution,
   SignedEncounterSnapshot,
   TerminologyResolution,
+  VisitChargeVersion,
 } from "@wardenx/billing";
 import type { repositories } from "@wardenx/billing";
 
@@ -282,6 +283,16 @@ export interface BillingReferenceDataReader {
     providerEntityId: string,
     serviceFrom: IsoDate,
   ): Promise<SequestrationPolicyResolution | null>;
+  /**
+   * The LIVE tenant-entered visit-charge schedule versions (a charge per 15-minute unit per discipline) whose windows
+   * intersect the claim's service range — a claim can span a schedule change. Empty when none is entered; claim
+   * assembly then FAILS CLOSED (`VISIT_CHARGE_MISSING`) if the claim bills a visit, never defaulting a charge.
+   */
+  visitChargeVersions(
+    orgId: string,
+    providerEntityId: string,
+    range: DateRange,
+  ): Promise<readonly VisitChargeVersion[]>;
 }
 
 /** §4.10 transactional outbox — the emit commits in the SAME transaction as the assembly mutation (D2). */
