@@ -49,8 +49,8 @@ export const DeceasedBodySchema = Type.Object(
 
 export const IdentifierBodySchema = Type.Object(
   {
-    // `mrn` is refused by the schema (immutable); `ssn`/`state_id` are refused with a typed 422 in the
-    // handler so the caller learns why, rather than a generic validation failure.
+    // `mrn` is refused in the handler (immutable). `ssn` / `state_id` are envelope-encrypted by the handler
+    // (GAP-010), behind `phi.write_ssn` + a fresh step-up; their value is never echoed back.
     kind: Type.Union([
       Type.Literal("mbi"),
       Type.Literal("prior_mrn"),
@@ -66,6 +66,12 @@ export const IdentifierBodySchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+// POST /api/v1/patients/:id/identifiers/:identifierId/reveal (GAP-010)
+export const RevealParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+  identifierId: Type.String({ format: "uuid" }),
+});
 
 export const CaregiverBodySchema = Type.Object(
   {

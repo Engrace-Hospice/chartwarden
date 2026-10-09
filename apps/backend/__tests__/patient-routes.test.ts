@@ -55,6 +55,8 @@ const PERMISSION_SEED = [
     userId: "bypass_1",
     permissions: ["patient.create", "patient.create_bypass_match", "patient.read"],
   },
+  // GAP-010 — an SSN in the admit body is also a `phi.write_ssn` act; the bypass holder has no such key.
+  { userId: "ssn_1", permissions: ["patient.create", "phi.write_ssn", "patient.read"] },
   { userId: "edit_1", permissions: ["patient.edit", "patient.read"] },
   // GAP-017 — coverage writes are `patient.edit_payers` (caseload-scoped), not `patient.edit`.
   { userId: "payer_1", permissions: ["patient.edit_payers", "patient.read"] },
@@ -148,6 +150,7 @@ function makeServer() {
 
 const ADMIT = { "x-test-user": "admit_1", "x-test-org": ORG, "x-test-roles": "admissions" };
 const BYPASS = { "x-test-user": "bypass_1", "x-test-org": ORG, "x-test-roles": "admissions" };
+const SSN_WRITER = { "x-test-user": "ssn_1", "x-test-org": ORG, "x-test-roles": "admissions" };
 const EDIT = { "x-test-user": "edit_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const AMEND = { "x-test-user": "amend_1", "x-test-org": ORG, "x-test-roles": "compliance" };
 const PAYER = { "x-test-user": "payer_1", "x-test-org": ORG, "x-test-roles": "billing" };
@@ -264,6 +267,68 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
       const { bypassMatchReview: _b, bypassJustification: _j, ...plain } = DUP_BODY;
       const res = await post(app, ADMIT, plain);
       expect(res.statusCode).toBe(409);
+      await app.close();
+    });
+  });
+
+  // GAP-010 (§4.7) — an admit that carries an SSN is a phi.write_ssn act with a fresh step-up; a plain
+  // patient.create holder cannot smuggle one in. The gate reads the parsed body, so it can only ADD a requirement.
+  describe("GAP-010 — an SSN in the admit body is gated by phi.write_ssn + step-up", () => {
+    const BODY = {
+      lastName: "Newperson",
+      firstName: "Fresh",
+      dob: "2000-01-01",
+      administrativeSex: "F",
+      ssn: "123-45-6789",
+    };
+    const post = (
+      app: ReturnType<typeof makeServer>["app"],
+      headers: Record<string, string>,
+      payload: object,
+    ) => app.inject({ method: "POST", url: "/api/v1/patients", headers, payload });
+
+    it("a patient.create holder without phi.write_ssn is a 403 and no row is created", async () => {
+      const { app, events } = makeServer();
+      const res = await post(app, { ...ADMIT, "x-test-step-up": "true" }, BODY);
+      expect(res.statusCode).toBe(403);
+      expect(events).not.toContain("m5.patient.created");
+      await app.close();
+    });
+    it("a phi.write_ssn holder without a fresh step-up is refused (STEP_UP_REQUIRED)", async () => {
+      const { app, events } = makeServer();
+      const res = await post(app, SSN_WRITER, BODY);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+      expect(events).not.toContain("m5.patient.created");
+      await app.close();
+    });
+    it("a phi.write_ssn holder with a fresh step-up admits (201) and the response carries no SSN", async () => {
+      const { app } = makeServer();
+      const res = await post(app, { ...SSN_WRITER, "x-test-step-up": "true" }, BODY);
+      expect(res.statusCode).toBe(201);
+      expect(res.body).not.toContain("123-45-6789");
+      expect(res.body).not.toContain("123456789");
+      await app.close();
+    });
+    it("the gate STACKS with the bypass gate: a bypass admit carrying an SSN also needs phi.write_ssn", async () => {
+      const { app } = makeServer();
+      const res = await post(
+        app,
+        { ...BYPASS, "x-test-step-up": "true" },
+        {
+          ...BODY,
+          bypassMatchReview: true,
+          bypassJustification: "Legitimate twin admission, confirmed with registrar",
+        },
+      );
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    });
+    it("an admit WITHOUT an SSN is unaffected (no phi.write_ssn needed)", async () => {
+      const { ssn: _drop, ...noSsn } = BODY;
+      const { app } = makeServer();
+      const res = await post(app, ADMIT, noSsn);
+      expect(res.statusCode).toBe(201);
       await app.close();
     });
   });

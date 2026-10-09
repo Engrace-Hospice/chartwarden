@@ -330,12 +330,14 @@ import {
   createDrizzlePatientEraseStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
+  createPatientIdentifierCipher,
   dosespotSyncDemographicsForOrg,
   funeralCaseForOrg,
   getCaseloadProvider,
   getPatientCoverageReader,
   getPatientReader,
   hl7OrmDemographicsInTx,
+  lazyIdentifierKeys,
   membershipUserIdForOrg,
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
@@ -4160,6 +4162,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               // receives it as a port (no cross-module table read).
               admissionSummary: (organizationId) =>
                 admissionCensusSummaryForOrg(dbHandle.db, organizationId),
+              // GAP-010 — the SSN / state-id envelope over M34's per-tenant key ring. The provider is resolved per
+              // call, so this is safe to build before M34 registers; until a platform KEK is bound the key ring
+              // refuses `dekForOrg` and SSN capture answers 503 IDENTIFIER_CIPHER_UNBOUND (never an unencrypted write).
+              identifierCipher: createPatientIdentifierCipher(
+                lazyIdentifierKeys(getTenantKeyProvider),
+              ),
             },
           );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces

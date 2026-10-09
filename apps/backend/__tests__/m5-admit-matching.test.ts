@@ -2,12 +2,14 @@
 // (>= 0.75) outcome is reachable and a same-name/DOB/address admit hard-blocks; and what admit cannot
 // persist is refused loudly instead of discarded. GAP-009 — the bypass writes a CRITICAL audit event.
 import type { DbClient } from "@wardenx/db";
+import { ValidationError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   assertAdmitDemographicsStorable,
   buildMatchCandidates,
   toE164,
 } from "../src/modules/05-patient/admit-matching-db";
+import { IdentifierCipherUnboundError } from "../src/modules/05-patient/identifiers/identifier-cipher";
 import { runMatch } from "../src/modules/05-patient/matching/matcher";
 import { normalizeSubject } from "../src/modules/05-patient/matching/normalize";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
@@ -63,13 +65,70 @@ describe("GAP-010 — match candidates carry contact signals", () => {
   });
 });
 
+describe("GAP-010 — the SSN feeds the 2.3 SSN+DOB rule through the blind-index hit set", () => {
+  const incomingBase = { lastName: "Smith", firstName: "Pat", dob: "1950-01-01" };
+  const two = [
+    { id: "pat-0", lastName: "Doe", firstName: "Jane", dob: "1950-01-01", mbi: null },
+    { id: "pat-1", lastName: "Roe", firstName: "Rae", dob: "1960-06-06", mbi: null },
+  ];
+
+  it("stamps the incoming SSN ONLY on the hit candidates", () => {
+    const candidates = buildMatchCandidates(two, [], [], [], {
+      ssn: "123456789",
+      hitPatientIds: new Set(["pat-0"]),
+    });
+    expect(candidates.map((c) => c.ssn)).toEqual(["123456789", null]);
+  });
+  it("without a probe no candidate carries an SSN (unchanged behaviour)", () => {
+    expect(buildMatchCandidates(two, [], [], []).map((c) => c.ssn)).toEqual([null, null]);
+  });
+  it("same SSN + same DOB hard-blocks as ssn_dob even when the names differ (rule 2)", () => {
+    const candidates = buildMatchCandidates(two, [], [], [], {
+      ssn: "123456789",
+      hitPatientIds: new Set(["pat-0"]),
+    });
+    const result = runMatch(normalizeSubject({ ...incomingBase, ssn: "123-45-6789" }), candidates);
+    expect(result).toMatchObject({
+      outcome: "hard_block",
+      existingPatientId: "pat-0",
+      matchedOn: "ssn_dob",
+    });
+  });
+  it("same SSN but a DIFFERENT DOB does not fire rule 2 (the rule needs both)", () => {
+    const candidates = buildMatchCandidates(two, [], [], [], {
+      ssn: "123456789",
+      hitPatientIds: new Set(["pat-1"]),
+    });
+    const result = runMatch(normalizeSubject({ ...incomingBase, ssn: "123456789" }), candidates);
+    expect(result.outcome).toBe("quiet_create");
+  });
+  it("normalizes dashed and plain SSNs to the same comparison form", () => {
+    expect(normalizeSubject({ ...incomingBase, ssn: "123-45-6789" }).ssn).toBe("123456789");
+    expect(normalizeSubject({ ...incomingBase, ssn: "123456789" }).ssn).toBe("123456789");
+    expect(normalizeSubject({ ...incomingBase, ssn: "12345" }).ssn).toBeNull();
+  });
+});
+
 describe("GAP-010 — admit refuses demographics it cannot keep", () => {
   const base = { lastName: "Doe", firstName: "Jane", dob: "1950-01-01", administrativeSex: "F" };
 
-  it("refuses an SSN (no envelope-encrypted writer) with a 422", () => {
-    expect(() => assertAdmitDemographicsStorable({ ...base, ssn: "123-45-6789" })).toThrow(
-      /SSN capture/,
-    );
+  it("accepts a structurally valid SSN now that the envelope writer exists (GAP-010)", () => {
+    expect(() => assertAdmitDemographicsStorable({ ...base, ssn: "123-45-6789" })).not.toThrow();
+    expect(() => assertAdmitDemographicsStorable({ ...base, ssn: "912-70-1234" })).not.toThrow();
+  });
+  it("refuses an impossible or malformed SSN with a 422 that never echoes it", () => {
+    for (const bad of ["000-12-3456", "666-12-3456", "123-00-4567", "123-45-0000", "12345"]) {
+      let caught: unknown;
+      try {
+        assertAdmitDemographicsStorable({ ...base, ssn: bad });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, bad).toBeInstanceOf(ValidationError);
+      expect(JSON.stringify(caught, Object.getOwnPropertyNames(caught as object))).not.toContain(
+        bad,
+      );
+    }
   });
   it("refuses a primary address without a state", () => {
     expect(() =>
@@ -140,5 +199,38 @@ describe("GAP-009 — the bypass is audited CRITICAL on the write transaction", 
       byUserId: "user-1",
       justification: "Confirmed distinct twin with the registrar",
     });
+  });
+});
+
+describe("GAP-010 — an SSN admit with no bound tenant key is refused before any row is written", () => {
+  it("throws IdentifierCipherUnboundError and inserts nothing (no patient without the SSN it asked to keep)", async () => {
+    const writes: string[] = [];
+    const tx = {
+      execute: async () => undefined,
+      select: () => ({ from: () => ({ where: async () => [], leftJoin: async () => [] }) }),
+      insert: () => {
+        writes.push("insert");
+        return { values: () => ({ returning: async () => [{ id: "p-1" }] }) };
+      },
+      update: () => ({ set: () => ({ where: async () => undefined }) }),
+    };
+    const db = { transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(tx) };
+    const service = createDbPatientRouteService(db as unknown as DbClient, {
+      async publish() {},
+    });
+    await expect(
+      service.admit(
+        "org-1",
+        {
+          lastName: "Doe",
+          firstName: "Jane",
+          dob: "1950-01-01",
+          administrativeSex: "F",
+          ssn: "123-45-6789",
+        },
+        "user-1",
+      ),
+    ).rejects.toThrow(IdentifierCipherUnboundError);
+    expect(writes).toEqual([]);
   });
 });

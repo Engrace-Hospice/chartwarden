@@ -19,6 +19,12 @@ export const AUDIT_FIELD_DENYLIST: ReadonlySet<string> = new Set(
     "secret",
     // direct identifiers
     "ssn",
+    // GAP-010 — patient_identifier's envelope ciphertext and its SSN blind-index token (the SQL trigger's
+    // scrub array is the primary control for that table; this is defence in depth for app-built snapshots).
+    "valueEncrypted",
+    "value_encrypted",
+    "valueBlindIndex",
+    "value_blind_index",
     "taxId",
     "mbi",
     "medicareNumber",

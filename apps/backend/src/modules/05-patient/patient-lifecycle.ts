@@ -92,14 +92,6 @@ export class UnmergeWindowExpiredError extends Error {
     this.name = "UnmergeWindowExpiredError";
   }
 }
-export class SensitiveIdentifierUnsupportedError extends Error {
-  constructor(readonly kind: string) {
-    super(
-      `'${kind}' identifiers are written only through the envelope-encrypted SSN path (deferred)`,
-    );
-    this.name = "SensitiveIdentifierUnsupportedError";
-  }
-}
 export class IdentifierConflictError extends Error {
   constructor(readonly kind: string) {
     super(`a '${kind}' identifier with that value already exists in this organization`);
@@ -158,6 +150,22 @@ export interface NewIdentifierInput {
   readonly value: string;
   readonly issuer?: string | null;
   readonly effectiveFrom?: string;
+}
+/** GAP-010: ssn / state_id use the envelope writer, never `NewIdentifierInput` (which carries a plaintext value). */
+export interface NewSensitiveIdentifierInput {
+  readonly kind: "ssn" | "state_id";
+  /** The raw value. Used once to seal + index; never stored, logged, echoed or returned. */
+  readonly value: string;
+  /** state_id only: the issuing state's 2-letter code. */
+  readonly issuer?: string | null;
+}
+/** The caller-safe record of a stored sensitive identifier: never the value, only the display tail. */
+export interface SensitiveIdentifierRecord {
+  readonly id: string;
+  readonly patientId: string;
+  readonly kind: "ssn" | "state_id";
+  readonly valueLast4: string;
+  readonly effectiveFrom: string;
 }
 export interface IdentifierRecord {
   readonly id: string;
@@ -254,6 +262,28 @@ export interface PatientLifecyclePort {
     input: NewIdentifierInput,
     actorUserId: string,
   ): Promise<IdentifierRecord>;
+  /**
+   * GAP-010: store an SSN / state id as an envelope-encrypted row, superseding the patient's open row of that
+   * kind. An SSN that equals another patient's (same DOB) opens a soft `patient_match_review`: a block is
+   * impossible after the fact. Throws `IdentifierCipherUnboundError` (route: 503) when no tenant key is bound.
+   */
+  addSensitiveIdentifier(
+    organizationId: string,
+    patientId: string,
+    input: NewSensitiveIdentifierInput,
+    actorUserId: string,
+  ): Promise<SensitiveIdentifierRecord>;
+  /**
+   * GAP-010: decrypt one sensitive identifier. The access audit is written in the SAME transaction as the read,
+   * so a reveal that cannot be audited returns no value.
+   */
+  revealIdentifier(
+    organizationId: string,
+    patientId: string,
+    identifierId: string,
+    actorUserId: string,
+    correlationId: string,
+  ): Promise<{ readonly kind: "ssn" | "state_id"; readonly value: string }>;
   listCaregivers(organizationId: string, patientId: string): Promise<CaregiverRecord[] | null>;
   addCaregiver(
     organizationId: string,

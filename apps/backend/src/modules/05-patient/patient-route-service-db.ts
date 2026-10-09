@@ -23,6 +23,16 @@ import {
 } from "./admit-matching-db";
 import { changeToApply, isAmendableField, normalizeRequestedChange } from "./amendments";
 import type { M5OutboxPort } from "./deceased-db";
+import {
+  type PatientIdentifierCipher,
+  UNBOUND_IDENTIFIER_CIPHER,
+} from "./identifiers/identifier-cipher";
+import {
+  type PreparedSensitiveIdentifier,
+  findSsnHitPatientIds,
+  insertPreparedIdentifier,
+  prepareSensitiveIdentifier,
+} from "./identifiers/sensitive-identifiers-db";
 import { insertSoftMatchReviews } from "./match-review-db";
 import { runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
@@ -118,8 +128,13 @@ const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
 export function createDbPatientRouteService(
   db: DbClient,
   outbox: M5OutboxPort = NOOP_OUTBOX,
-  ports: { readonly admissionSummary?: AdmissionCensusSummaryPort } = {},
+  ports: {
+    readonly admissionSummary?: AdmissionCensusSummaryPort;
+    /** GAP-010: the per-tenant DEK envelope for ssn / state_id. Unbound by default: SSN capture then answers 503. */
+    readonly identifierCipher?: PatientIdentifierCipher;
+  } = {},
 ): PatientRouteService {
+  const identifierCipher = ports.identifierCipher ?? UNBOUND_IDENTIFIER_CIPHER;
   const list = async (
     organizationId: string,
     query: ListQuery,
@@ -339,6 +354,7 @@ export function createDbPatientRouteService(
     organizationId: string,
     input: AdmitInput,
     bypass?: { readonly actorUserId: string; readonly justification: string | null },
+    ssn?: PreparedSensitiveIdentifier | null,
   ): Promise<string> {
     const mrn = `MRN-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
     const today = new Date().toISOString().slice(0, 10);
@@ -363,6 +379,9 @@ export function createDbPatientRouteService(
         .insert(ID)
         .values({ patientId, organizationId, kind: "mbi", value: input.mbi, effectiveFrom: today });
     }
+    // GAP-010: the SSN was validated, sealed and blind-indexed BEFORE this transaction wrote anything; this is
+    // only the INSERT of that envelope (value NULL, ciphertext + last4 + index + DEK version).
+    if (ssn) await insertPreparedIdentifier(tx, organizationId, patientId, ssn, today);
     await insertAdmitContactDetails(tx, organizationId, patientId, input, today);
     if (bypass) {
       await audit(
@@ -387,8 +406,8 @@ export function createDbPatientRouteService(
   }
 
   // §7.1 admission: run the matcher against the org's existing patients (name + dob + plaintext MBI;
-  // SSN feeds only the deterministic SSN+DOB rule, which can't fire since candidate SSNs aren't loaded —
-  // no decryption). hard_block → 409 at the route; otherwise insert and return created/soft_review.
+  // SSN feeds only the deterministic SSN+DOB rule, fed from the blind index — no row is decrypted).
+  // hard_block → 409 at the route; otherwise insert and return created/soft_review.
   const admit = async (
     organizationId: string,
     input: AdmitInput,
@@ -397,24 +416,66 @@ export function createDbPatientRouteService(
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
       assertAdmitDemographicsStorable(input);
       const incoming = normalizeSubject(input);
+      // GAP-010: seal + index the SSN FIRST. An unbound / destroyed key ring throws here, before any row is
+      // written, so the request is refused (503 at the route) and no patient exists without the SSN it asked to keep.
+      const ssn = incoming.ssn
+        ? await prepareSensitiveIdentifier(identifierCipher, organizationId, {
+            kind: "ssn",
+            value: incoming.ssn,
+          })
+        : null;
       // GAP-009: a bypass is only reachable through the route's patient.create_bypass_match + step-up
       // gate; the critical audit rides the same transaction as the row it let through.
       if (input.bypassMatchReview) {
-        const patientId = await insertPatient(tx, organizationId, input, {
-          actorUserId,
-          justification: input.bypassJustification ?? null,
-        });
+        const patientId = await insertPatient(
+          tx,
+          organizationId,
+          input,
+          { actorUserId, justification: input.bypassJustification ?? null },
+          ssn,
+        );
         return { outcome: "created", patientId };
       }
-      const result = runMatch(incoming, await loadMatchCandidates(tx));
+      const ssnProbe = incoming.ssn
+        ? {
+            ssn: incoming.ssn,
+            hitPatientIds: await findSsnHitPatientIds(
+              tx,
+              identifierCipher,
+              organizationId,
+              incoming.ssn,
+            ),
+          }
+        : undefined;
+      const result = runMatch(incoming, await loadMatchCandidates(tx, ssnProbe));
       if (result.outcome === "hard_block") {
+        // GAP-010: an SSN+DOB block is a probe of "does this SSN exist in my tenant", so it leaves a trail. The
+        // block RETURNS (never throws) so this row commits. Rule name + the existing id only — never the SSN or token.
+        if (result.matchedOn === "ssn_dob") {
+          await audit(
+            tx,
+            {
+              organizationId,
+              userId: actorUserId,
+              correlationId: `patient-admit-ssn-dob-block:${result.existingPatientId}`,
+            },
+            {
+              eventType: "patient.create_blocked_ssn_dob",
+              resourceKind: "patient",
+              resourceId: result.existingPatientId,
+              outcome: "denied",
+              severity: "warn",
+              context: { existingPatientId: result.existingPatientId, rule: "ssn_dob" },
+            },
+          );
+        }
         return {
           outcome: "hard_block",
           existingPatientId: result.existingPatientId,
           matchedOn: String(result.matchedOn),
         };
       }
-      const patientId = await insertPatient(tx, organizationId, input);
+      const patientId = await insertPatient(tx, organizationId, input, undefined, ssn);
       // §7.3 (GAP-019): one open patient_match_review per soft candidate, in this same transaction.
       if (result.outcome === "soft_review") {
         const matchReviewIds = await insertSoftMatchReviews(
