@@ -316,4 +316,28 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     expect(codes.filter((c) => c !== 201).every((c) => c === 409 || c === 428)).toBe(true);
     for (const r of results) expect(r.body).not.toContain(SECRET);
   });
+
+  it("stores a credential created with an UPPERCASE providerEntityId in a form the worker can decrypt", async () => {
+    const env = { M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 };
+    const app = serverWith(env);
+    const peLower = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/billing/mac-credentials",
+      headers: headers(),
+      payload: { ...BODY, providerEntityId: peLower.toUpperCase() },
+    });
+    expect(res.statusCode).toBe(201);
+    const { rows } = await admin.query(
+      "SELECT client_secret_cipher FROM mac_submitter_credential WHERE provider_entity_id=$1",
+      [peLower],
+    );
+    expect(rows).toHaveLength(1);
+    const opened = await buildMacSecretCipherFromEnv(env)?.decrypt(
+      ORG,
+      { providerEntityId: peLower, macJurisdiction: "cgs_j15" },
+      rows[0].client_secret_cipher,
+    );
+    expect(opened).toBe(SECRET);
+  });
 });

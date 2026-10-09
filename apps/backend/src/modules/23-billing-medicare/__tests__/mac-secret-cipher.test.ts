@@ -130,4 +130,32 @@ describe("M23 MAC secret cipher", () => {
       /failed authentication/,
     );
   });
+
+  it("replay between two provider entities of one org, and between two jurisdictions, fails explicitly", async () => {
+    const c = buildMacSecretCipher(newKek());
+    const rowA = { providerEntityId: PE, macJurisdiction: "cgs_j15" };
+    const rowB = { providerEntityId: PE2, macJurisdiction: "cgs_j15" };
+    const rowC = { providerEntityId: PE, macJurisdiction: "ngs_j6" };
+    const sealedA = (await c.encrypt(ORG_A, "secret-A", rowA)).cipher;
+    const sealedB = (await c.encrypt(ORG_A, "secret-B", rowB)).cipher;
+    // each opens only on its own row
+    expect(await c.decrypt(ORG_A, rowA, sealedA)).toBe("secret-A");
+    expect(await c.decrypt(ORG_A, rowB, sealedB)).toBe("secret-B");
+    // copying A's ciphertext into B's row (or C's) must not open
+    await expect(c.decrypt(ORG_A, rowB, sealedA)).rejects.toThrow(/failed authentication/);
+    await expect(c.decrypt(ORG_A, rowC, sealedA)).rejects.toThrow(/failed authentication/);
+    await expect(c.decrypt(ORG_A, rowA, sealedB)).rejects.toThrow(/failed authentication/);
+  });
+
+  it("round-trips when ids are given in a different case than the database stores them (uuids are lowercase)", async () => {
+    const c = buildMacSecretCipher(newKek());
+    const org = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+    const pe = "fedcbafe-dcba-4fed-8cba-fedcbafedcba";
+    const upper = { providerEntityId: pe.toUpperCase(), macJurisdiction: "cgs_j15" };
+    const lower = { providerEntityId: pe, macJurisdiction: "cgs_j15" };
+    expect(pe.toUpperCase()).not.toBe(pe);
+    const sealed = (await c.encrypt(org.toUpperCase(), SECRET, upper)).cipher;
+    expect(await c.decrypt(org, lower, sealed)).toBe(SECRET);
+    expect(await c.decrypt(org.toUpperCase(), upper, sealed)).toBe(SECRET);
+  });
 });

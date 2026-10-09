@@ -31,6 +31,7 @@ const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MEMBERSHIP_A = "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1";
 const MEMBERSHIP_B = "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1";
 const PE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const PE2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const ANY = "99999999-9999-4999-8999-999999999999";
 
 const actor = (organizationId: string, userId: string, membershipId: string): M23WriteActor => ({
@@ -335,26 +336,197 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       "refuses to flip a %s claim back to DRAFT, so flip-then-delete fails and nothing is lost",
       async (state) => {
         const { claimId } = await seedClaim(ORG_A, state);
-        await asApp(ORG_A, async (c) => {
-          await expect(
-            c.query("UPDATE claim SET state='DRAFT' WHERE id=$1", [claimId]),
-          ).rejects.toThrow(/M23_CLAIM_STATE_REVERT/);
-        });
-        // the same attack as one script: flip, then delete the subtree
-        await asApp(ORG_A, async (c) => {
-          await c.query("SAVEPOINT s");
-          await c
-            .query("UPDATE claim SET state='DRAFT' WHERE id=$1", [claimId])
-            .catch(() => undefined);
-          await c.query("ROLLBACK TO SAVEPOINT s");
-          await expect(
-            c.query("DELETE FROM claim_line WHERE claim_id=$1", [claimId]),
-          ).rejects.toThrow(/M23_CLAIM_NOT_DRAFT/);
-        });
+        // Attempt 1 (its own transaction): the flip itself must be refused...
+        await asApp(ORG_A, (c) =>
+          expect(c.query("UPDATE claim SET state='DRAFT' WHERE id=$1", [claimId])).rejects.toThrow(
+            /M23_CLAIM_STATE_REVERT/,
+          ),
+        );
+        // ...and the claim is verifiably still in its original state afterwards.
+        expect(await count("claim", "id=$1 AND state=$2", [claimId, state])).toBe(1);
+        // Attempt 2 (separate): the delete of the subtree is refused too.
+        await asApp(ORG_A, (c) =>
+          expect(c.query("DELETE FROM claim_line WHERE claim_id=$1", [claimId])).rejects.toThrow(
+            /M23_CLAIM_NOT_DRAFT/,
+          ),
+        );
         expect(await count("claim", "id=$1 AND state=$2", [claimId, state])).toBe(1);
         expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
       },
     );
+
+    const decoyInsert = (c: Client, id: string, pe: string, state = "DRAFT") =>
+      c.query(
+        `INSERT INTO claim (id, organization_id, provider_entity_id, patient_id, admission_id, election_period_id_from,
+           election_period_id_to, patient_payer_id, tob, service_from, service_to, state, claim_control_number,
+           mac_jurisdiction, sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
+         VALUES ($1,$2,$3,$4,$4,$4,$4,$4,'811','2026-09-01','2026-09-30',$5,$6,'cgs_j15','2.00',$4,$7)`,
+        [id, ORG_A, pe, uuid(), state, `CCN-DECOY-${uuid()}`, MEMBERSHIP_A],
+      );
+    const CHILD_DELETES = [
+      "DELETE FROM claim_line WHERE claim_id=$1",
+      "DELETE FROM hipps_calculation WHERE claim_id=$1",
+      "DELETE FROM sia_calculation WHERE claim_id=$1",
+      "DELETE FROM claim_state_history WHERE claim_id=$1",
+      "DELETE FROM validation_result WHERE validation_run_id IN (SELECT id FROM validation_run WHERE claim_id=$1)",
+      "DELETE FROM validation_run WHERE claim_id=$1",
+      "DELETE FROM claim WHERE id=$1 AND provider_entity_id=$2",
+    ];
+
+    it("refuses a second claim row with the same id under another provider entity (decoy insert)", async () => {
+      const real = await seedClaim(ORG_A, "READY");
+      await asApp(ORG_A, (c) =>
+        expect(decoyInsert(c, real.claimId, PE2)).rejects.toThrow(/M23_CLAIM_DUPLICATE_ID/),
+      );
+      expect(await count("claim", "id=$1", [real.claimId])).toBe(1);
+    });
+
+    it("is not fooled by a decoy DRAFT row even if one got in (the deletable check demands no non-DRAFT row)", async () => {
+      const real = await seedClaim(ORG_A, "READY");
+      // Superuser plants the decoy with the insert guard off, standing in for any future path around it.
+      await admin.query("ALTER TABLE claim DISABLE TRIGGER USER");
+      try {
+        await decoyInsert(admin, real.claimId, PE2);
+      } finally {
+        await admin.query("ALTER TABLE claim ENABLE TRIGGER USER");
+      }
+      for (const sql of CHILD_DELETES) {
+        await asApp(ORG_A, (c) =>
+          expect(
+            c.query(sql, sql.includes("$2") ? [real.claimId, PE] : [real.claimId]),
+          ).rejects.toThrow(/M23_CLAIM_NOT_DRAFT|M23_TABLE_APPEND_ONLY/),
+        );
+      }
+      expect(await count("claim_line", "claim_id=$1", [real.claimId])).toBe(2);
+      expect(await count("hipps_calculation", "claim_id=$1", [real.claimId])).toBe(1);
+      expect(await count("validation_run", "claim_id=$1", [real.claimId])).toBe(1);
+      expect(await count("claim", "id=$1", [real.claimId])).toBe(2);
+    });
+
+    it("refuses to move a claim to another provider entity (cross-partition move)", async () => {
+      const real = await seedClaim(ORG_A, "DRAFT");
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query("UPDATE claim SET provider_entity_id=$2 WHERE id=$1", [real.claimId, PE2]),
+        ).rejects.toThrow(/M23_CLAIM_IDENTITY/),
+      );
+      expect(await count("claim", "id=$1 AND provider_entity_id=$2", [real.claimId, PE])).toBe(1);
+    });
+
+    it("refuses a multi-row UPDATE to DRAFT that would sweep in non-draft claims, changing nothing", async () => {
+      const a = await seedClaim(ORG_A, "SUBMITTED");
+      const b = await seedClaim(ORG_A, "PAID");
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query("UPDATE claim SET state='DRAFT' WHERE id = ANY($1)", [[a.claimId, b.claimId]]),
+        ).rejects.toThrow(/M23_CLAIM_STATE_REVERT/),
+      );
+      expect(await count("claim", "id = ANY($1) AND state='DRAFT'", [[a.claimId, b.claimId]])).toBe(
+        0,
+      );
+    });
+
+    it("refuses INSERT ... ON CONFLICT DO UPDATE that flips a claim's state to DRAFT", async () => {
+      const real = await seedClaim(ORG_A, "SUBMITTED");
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query(
+            `INSERT INTO claim (id, organization_id, provider_entity_id, patient_id, admission_id, election_period_id_from,
+               election_period_id_to, patient_payer_id, tob, service_from, service_to, state, claim_control_number,
+               mac_jurisdiction, sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
+             VALUES ($1,$2,$3,$4,$4,$4,$4,$4,'811','2026-09-01','2026-09-30','DRAFT','x','cgs_j15','2.00',$4,$5)
+             ON CONFLICT (id, provider_entity_id) DO UPDATE SET state='DRAFT'`,
+            [real.claimId, ORG_A, PE, uuid(), MEMBERSHIP_A],
+          ),
+        ).rejects.toThrow(/M23_CLAIM_STATE_REVERT/),
+      );
+      expect(await count("claim", "id=$1 AND state='SUBMITTED'", [real.claimId])).toBe(1);
+    });
+
+    describe("a concurrent state change cannot slip past the guard (READ COMMITTED)", () => {
+      const open = async (): Promise<Client> => {
+        const c = new Client({ connectionString: appUrl });
+        await c.connect();
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        return c;
+      };
+      const stillPending = async (p: Promise<unknown>): Promise<boolean> => {
+        let settled = false;
+        p.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        await new Promise((r) => setTimeout(r, 400));
+        return !settled;
+      };
+
+      it("a line delete that raced a move to VALIDATING blocks, then fails; nothing is deleted", async () => {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        const mover = await open();
+        const deleter = await open();
+        try {
+          await mover.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+          const outcome = deleter.query("DELETE FROM claim_line WHERE claim_id=$1", [claimId]).then(
+            () => "deleted",
+            (e: Error) => e.message,
+          );
+          expect(await stillPending(outcome)).toBe(true);
+          await mover.query("COMMIT");
+          expect(await outcome).toMatch(/M23_CLAIM_NOT_DRAFT/);
+        } finally {
+          await deleter.query("ROLLBACK").catch(() => undefined);
+          await mover.end();
+          await deleter.end();
+        }
+        expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+      });
+
+      it("deleteDraftClaim waits for the in-flight state change and then refuses", async () => {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        const mover = await open();
+        try {
+          await mover.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+          const outcome = svc()
+            .deleteDraftClaim(actorA, claimId)
+            .then(
+              () => "deleted",
+              (e: Error) => e.message,
+            );
+          expect(await stillPending(outcome)).toBe(true);
+          await mover.query("COMMIT");
+          expect(await outcome).toMatch(/draft/i);
+        } finally {
+          await mover.end();
+        }
+        expect(await count("claim", "id=$1", [claimId])).toBe(1);
+        expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+      });
+
+      it("updateDraftClaim's line rewrite waits for the in-flight state change and then refuses", async () => {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        const mover = await open();
+        try {
+          await mover.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+          const outcome = svc()
+            .updateDraftClaim(actorA, claimId, { expectedVersion: 0, lines: [] })
+            .then(
+              () => "rewritten",
+              (e: Error) => e.message,
+            );
+          expect(await stillPending(outcome)).toBe(true);
+          await mover.query("COMMIT");
+          expect(await outcome).not.toBe("rewritten");
+        } finally {
+          await mover.end();
+        }
+        expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+      });
+    });
 
     it("still lets a DRAFT claim move forward and a same-state aggregate patch through", async () => {
       const { claimId } = await seedClaim(ORG_A, "DRAFT");

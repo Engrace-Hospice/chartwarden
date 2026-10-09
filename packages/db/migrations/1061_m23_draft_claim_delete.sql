@@ -32,6 +32,18 @@
 --   * Every guard function is SECURITY INVOKER with `SET search_path = pg_catalog, public, pg_temp` and schema-qualified
 --     table references, so a TEMP table or a changed search_path cannot shadow `claim`. (No REVOKE TEMP ON DATABASE:
 --     the repo has no such convention and provisioning does not manage database-level privileges.)
+-- Further hardening (security re-review):
+--   * `claim` is partitioned by provider_entity_id with PK (id, provider_entity_id) and no unique index on id alone, so a
+--     "decoy" DRAFT row with the same id under another provider entity could satisfy an "a DRAFT row exists" check.
+--     m23_claim_is_deletable() therefore also requires that NO row with that id is non-DRAFT, and
+--     trg_claim_no_duplicate_id rejects a second row with an existing id under a different provider entity (no flow
+--     does this: claim ids are fresh uuids generated at assembly). claim.provider_entity_id is frozen (no partition move).
+--   * m23_claim_is_deletable() is VOLATILE and takes FOR SHARE on the claim row(s), so it waits for any concurrent
+--     state change and then re-reads the committed state (READ COMMITTED); the application handlers additionally take
+--     SELECT ... FOR UPDATE on the claim before deleting or rewriting lines.
+-- DEPLOYMENT ASSUMPTION (the same one every guard in this repo makes): the migrator is a superuser or a separate table
+-- OWNER, never wardenx_app (an owner could DISABLE these triggers), and wardenx_app must NEVER be granted
+-- wardenx_destruction (members of it are admitted by the guards).
 -- Delete order (children first, so each guard can still resolve its owning claim): validation_override ->
 -- validation_result -> validation_run -> claim_state_history -> sia_calculation -> hipps_calculation -> claim_line ->
 -- claim. Idempotent.
@@ -52,13 +64,17 @@ LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $$
      AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
 $$;--> statement-breakpoint
 
--- A claim's subtree may be deleted only while the claim is DRAFT and nothing was ever transmitted or acknowledged for it.
+-- A claim's subtree may be deleted only while the claim is DRAFT, no row with that id is anything else, and nothing was
+-- ever transmitted or acknowledged for it. VOLATILE + FOR SHARE: see the header.
 CREATE OR REPLACE FUNCTION m23_claim_is_deletable(p_claim_id uuid, p_org_id uuid) RETURNS boolean
-LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $$
-  SELECT EXISTS (SELECT 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id AND c.state = 'DRAFT')
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  PERFORM 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id FOR SHARE;
+  RETURN EXISTS (SELECT 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id AND c.state = 'DRAFT')
+     AND NOT EXISTS (SELECT 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id AND c.state <> 'DRAFT')
      AND NOT EXISTS (SELECT 1 FROM public.claim_submission s WHERE s.claim_id = p_claim_id)
-     AND NOT EXISTS (SELECT 1 FROM public.claim_acknowledgment a WHERE a.claim_id = p_claim_id)
-$$;--> statement-breakpoint
+     AND NOT EXISTS (SELECT 1 FROM public.claim_acknowledgment a WHERE a.claim_id = p_claim_id);
+END $$;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_delete_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
@@ -66,9 +82,7 @@ BEGIN
   IF public.m23_is_destruction_role() THEN
     RETURN OLD;
   END IF;
-  IF OLD.state = 'DRAFT'
-     AND NOT EXISTS (SELECT 1 FROM public.claim_submission s WHERE s.claim_id = OLD.id)
-     AND NOT EXISTS (SELECT 1 FROM public.claim_acknowledgment a WHERE a.claim_id = OLD.id) THEN
+  IF OLD.state = 'DRAFT' AND public.m23_claim_is_deletable(OLD.id, OLD.organization_id) THEN
     RETURN OLD;
   END IF;
   RAISE EXCEPTION 'M23_CLAIM_NOT_DRAFT: claim % is % (or has a submission on record) and cannot be deleted', OLD.id, OLD.state
@@ -81,8 +95,9 @@ CREATE TRIGGER "trg_claim_delete_guard" BEFORE DELETE ON "claim"
 CREATE OR REPLACE FUNCTION m23_claim_no_revert_to_draft() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
-    RAISE EXCEPTION 'M23_CLAIM_STATE_REVERT: claim identity is immutable' USING ERRCODE = 'restrict_violation';
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+     OR NEW.provider_entity_id IS DISTINCT FROM OLD.provider_entity_id THEN
+    RAISE EXCEPTION 'M23_CLAIM_IDENTITY: claim id, organization and provider entity are immutable' USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.state = 'DRAFT' AND OLD.state <> 'DRAFT' THEN
     RAISE EXCEPTION 'M23_CLAIM_STATE_REVERT: claim % cannot return to DRAFT from %', OLD.id, OLD.state
@@ -93,6 +108,19 @@ END $$;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_claim_no_revert_to_draft" ON "claim";--> statement-breakpoint
 CREATE TRIGGER "trg_claim_no_revert_to_draft" BEFORE UPDATE ON "claim"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_no_revert_to_draft();--> statement-breakpoint
+
+CREATE OR REPLACE FUNCTION m23_claim_no_duplicate_id() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.claim c WHERE c.id = NEW.id AND c.provider_entity_id <> NEW.provider_entity_id) THEN
+    RAISE EXCEPTION 'M23_CLAIM_DUPLICATE_ID: a claim with id % already exists under another provider entity', NEW.id
+      USING ERRCODE = 'unique_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_claim_no_duplicate_id" ON "claim";--> statement-breakpoint
+CREATE TRIGGER "trg_claim_no_duplicate_id" BEFORE INSERT ON "claim"
+  FOR EACH ROW EXECUTE FUNCTION m23_claim_no_duplicate_id();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_line_delete_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$

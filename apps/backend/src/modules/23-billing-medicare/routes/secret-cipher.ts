@@ -58,15 +58,21 @@ export function loadMacSecretKek(raw: string | undefined): Buffer {
 
 const deriveDek = (kek: Buffer, organizationId: string): Buffer =>
   Buffer.from(
-    hkdfSync("sha256", kek, Buffer.alloc(0), `${DEK_INFO_PREFIX}${organizationId}`, KEY_LEN),
+    hkdfSync(
+      "sha256",
+      kek,
+      Buffer.alloc(0),
+      `${DEK_INFO_PREFIX}${organizationId.toLowerCase()}`,
+      KEY_LEN,
+    ),
   );
 
 const aadFor = (version: number, organizationId: string, context: MacSecretContext): Buffer =>
   Buffer.from(
     [
       `${AAD_PREFIX}${version}`,
-      organizationId,
-      context.providerEntityId,
+      organizationId.toLowerCase(),
+      context.providerEntityId.toLowerCase(),
       context.macJurisdiction,
     ].join("|"),
     "utf8",

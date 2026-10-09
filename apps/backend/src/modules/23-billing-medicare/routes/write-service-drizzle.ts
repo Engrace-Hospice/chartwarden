@@ -39,7 +39,7 @@ import {
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
@@ -439,6 +439,16 @@ export function buildDrizzleM23WriteService(
       ? new WardenXError("GUARD_FAILED", `the '${event}' transition guard failed`, 422)
       : new ConflictError(`cannot '${event}' a record in its current state`);
 
+  /**
+   * Take the claim row's write lock before reading its state, so a concurrent transition (e.g. DRAFT -> VALIDATING)
+   * either finishes first (we then see the new state and refuse) or waits for us. The database guards re-check too.
+   */
+  const lockClaim = async (tx: BillingDb, actor: M23WriteActor, claimId: string): Promise<void> => {
+    await tx.execute(
+      sql`SELECT 1 FROM claim WHERE id = ${claimId} AND organization_id = ${actor.organizationId} FOR UPDATE`,
+    );
+  };
+
   const loadClaim = async (
     tx: BillingDb,
     actor: M23WriteActor,
@@ -626,6 +636,7 @@ export function buildDrizzleM23WriteService(
 
     async updateDraftClaim(actor, claimId, args: UpdateDraftClaimArgs): Promise<ClaimDetailView> {
       return inOrgCtx(actor, async (tx) => {
+        await lockClaim(tx, actor, claimId);
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be edited");
@@ -663,6 +674,7 @@ export function buildDrizzleM23WriteService(
 
     async deleteDraftClaim(actor, claimId): Promise<void> {
       return inOrgCtx(actor, async (tx) => {
+        await lockClaim(tx, actor, claimId);
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be deleted");
@@ -1183,7 +1195,11 @@ export function buildDrizzleM23WriteService(
           const { cipher, dekVersion } = await secretCipher.encrypt(
             actor.organizationId,
             args.clientSecret,
-            { providerEntityId: args.providerEntityId, macJurisdiction: args.macJurisdiction },
+            // The database stores uuids lowercase; bind the same spelling the worker will read back.
+            {
+              providerEntityId: args.providerEntityId.toLowerCase(),
+              macJurisdiction: args.macJurisdiction,
+            },
           );
           let row: repositories.MacSubmitterCredentialSafeRecord;
           if (existing) {
