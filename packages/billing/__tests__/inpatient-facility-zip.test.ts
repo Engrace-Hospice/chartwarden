@@ -45,6 +45,23 @@ describe("facilityPostalCodeForInpatientDates", () => {
     });
   });
 
+  it("takes the LATEST facility when the inpatient care spans two (Pub. 100-04 ch. 11 s30.3)", () => {
+    const spans = [
+      span("2026-11-10", "2026-11-11", NURSING_HOME),
+      span("2026-11-12", "2026-11-14", HOSPITAL),
+    ];
+    expect(facilityPostalCodeForInpatientDates(GIP, spans)).toEqual({
+      status: "found",
+      postalCode: HOSPITAL,
+    });
+    expect(
+      facilityPostalCodeForInpatientDates(GIP, [
+        span("2026-11-10", "2026-11-12", HOSPITAL),
+        span("2026-11-13", "2026-11-14", NURSING_HOME),
+      ]),
+    ).toEqual({ status: "found", postalCode: NURSING_HOME });
+  });
+
   it("accepts two overlapping spans that share a ZIP (a re-recorded address)", () => {
     const spans = [span("2026-11-01", "2026-11-12", HOSPITAL), span("2026-11-12", null, HOSPITAL)];
     expect(facilityPostalCodeForInpatientDates(GIP, spans)).toEqual({

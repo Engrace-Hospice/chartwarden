@@ -22,7 +22,7 @@ import {
   splitAtFiscalYears,
 } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
-import type { ClaimAssemblySeams, DateRange } from "./claim-assembly-types";
+import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */
 export function hospiceFiscalYearStarting(serviceFrom: string): number {
@@ -84,7 +84,7 @@ export async function readAssemblyFacts(
   // Wage-index value codes (61 / G8): the CBSA areas of the residence (period end) and of the facility that
   // delivered the inpatient care; undefined when the CBSA geography is unbound.
   const valueAreas = seams.cbsa
-    ? await seams.cbsa.areasFor(orgId, patientId, range, inpatientRangesOf(resolvedLoc, range))
+    ? await seams.cbsa.areasFor(orgId, patientId, range, inpatientStaysOf(resolvedLoc, range))
     : undefined;
 
   const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
@@ -232,14 +232,20 @@ const INPATIENT_LEVELS_OF_CARE: ReadonlySet<string> = new Set([
   "inpatient_respite_care",
 ]);
 
-/** The dates of the claim's inpatient (GIP / inpatient respite) levels of care, clipped to `within`. */
-function inpatientRangesOf(
-  resolvedLoc: readonly { levelOfCare: string; from: string; to: string }[],
+/** The claim's inpatient (GIP / inpatient respite) level-of-care periods, clipped to `within`. */
+function inpatientStaysOf(
+  resolvedLoc: readonly {
+    levelOfCarePeriodId: string;
+    levelOfCare: string;
+    from: string;
+    to: string;
+  }[],
   within: DateRange,
-): DateRange[] {
+): InpatientStay[] {
   return resolvedLoc
     .filter((p) => INPATIENT_LEVELS_OF_CARE.has(p.levelOfCare))
     .map((p) => ({
+      levelOfCarePeriodId: p.levelOfCarePeriodId,
       from: p.from > within.from ? p.from : within.from,
       to: p.to < within.to ? p.to : within.to,
     }))
@@ -253,7 +259,12 @@ interface PricingReadInput {
   readonly macJurisdiction: Parameters<ClaimAssemblySeams["referenceData"]["hippsRateTable"]>[0];
   readonly ccn: string;
   readonly range: DateRange;
-  readonly resolvedLoc: readonly { levelOfCare: string; from: string; to: string }[];
+  readonly resolvedLoc: readonly {
+    levelOfCarePeriodId: string;
+    levelOfCare: string;
+    from: string;
+    to: string;
+  }[];
   /** The rate table and provider wage index already read for the claim's first fiscal year. */
   readonly first: {
     readonly rateTable: HippsRateTable;
@@ -261,6 +272,19 @@ interface PricingReadInput {
   };
   /** The period-end areas (value codes 61 / G8); reused as the pricing areas when the claim is one fiscal year. */
   readonly claimAreas: ValueCodeAreas | undefined;
+}
+
+/** The claim's resolved areas re-indexed for one fiscal year (same codes; that year's published index, or none). */
+async function indexedForFiscalYear(
+  cbsa: NonNullable<ClaimAssemblySeams["cbsa"]>,
+  areas: ValueCodeAreas,
+  fiscalYearStarting: number,
+): Promise<ValueCodeAreas> {
+  const reindex = async (a: ValueCodeAreas["residence"]): Promise<ValueCodeAreas["residence"]> =>
+    a?.status === "resolved"
+      ? { ...a, wageIndex: await cbsa.wageIndexForArea(a.cbsaCode, fiscalYearStarting) }
+      : a;
+  return { residence: await reindex(areas.residence), facility: await reindex(areas.facility) };
 }
 
 /** Rate table + wage indexes for every fiscal year in the claim range (one entry unless it crosses Oct 1). */
@@ -294,17 +318,12 @@ async function readFiscalYearPricing(
         422,
       );
     }
+    // The Pricer wage-adjusts with the CBSA the claim REPORTS (value codes 61 / G8: end of the billing period, the
+    // latest inpatient facility), so every fiscal-year part keeps those codes and takes ITS year's index for them.
     const areas =
-      parts.length === 1
+      parts.length === 1 || !input.claimAreas || !seams.cbsa
         ? input.claimAreas
-        : seams.cbsa
-          ? await seams.cbsa.areasFor(
-              input.orgId,
-              input.patientId,
-              { from: part.from, to: part.to },
-              inpatientRangesOf(input.resolvedLoc, part),
-            )
-          : undefined;
+        : await indexedForFiscalYear(seams.cbsa, input.claimAreas, part.fiscalYearStarting);
     out.set(part.fiscalYearStarting, {
       fiscalYearStarting: part.fiscalYearStarting,
       rateTable,

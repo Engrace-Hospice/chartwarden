@@ -15,7 +15,7 @@ import {
 } from "@wardenx/billing";
 import { schema } from "@wardenx/db";
 import { and, eq } from "drizzle-orm";
-import type { DateRange, HospiceCbsaReader } from "./claim-assembly-types";
+import type { DateRange, HospiceCbsaReader, InpatientStay } from "./claim-assembly-types";
 
 type Db = repositories.BillingDb;
 
@@ -28,7 +28,39 @@ export interface ClaimZipPorts {
     orgId: string,
     patientId: string,
     range: DateRange,
+    stays: readonly InpatientStay[],
   ): Promise<readonly FacilitySpan[]>;
+}
+
+/**
+ * The facility spans G8 is read from. M37's `ipu_admission` is the system of record for an inpatient stay: where it
+ * knows the facility for a stay's level-of-care period, that facility (a span covering exactly that stay) is used
+ * and M5's residence spans are NOT consulted for it (a nursing-home resident's open M5 span would otherwise contradict
+ * the hospital GIP stay). M5 spans only stand in for stays M37 has no record of.
+ */
+export function composeFacilitySpans(
+  stays: readonly InpatientStay[],
+  m37PostalByPeriod: ReadonlyMap<string, string | null>,
+  m5Spans: readonly FacilitySpan[],
+): FacilitySpan[] {
+  const fromM37 = stays.flatMap((stay) =>
+    m37PostalByPeriod.has(stay.levelOfCarePeriodId)
+      ? [
+          {
+            effectiveFrom: stay.from,
+            effectiveTo: stay.to,
+            postalCode: m37PostalByPeriod.get(stay.levelOfCarePeriodId) ?? null,
+          },
+        ]
+      : [],
+  );
+  const unknownToM37 = stays.filter((s) => !m37PostalByPeriod.has(s.levelOfCarePeriodId));
+  const overlapsAny = (span: FacilitySpan) =>
+    unknownToM37.some(
+      (s) =>
+        span.effectiveFrom <= s.to && (span.effectiveTo === null || span.effectiveTo >= s.from),
+    );
+  return [...fromM37, ...m5Spans.filter(overlapsAny)];
 }
 
 /** M5 residence spans (structural: kind + facility + window) joined with M40 facility postal codes. */
@@ -132,7 +164,7 @@ async function resolveZip(
  */
 export function buildHospiceCbsaReader(db: Db, zips: ClaimZipPorts): HospiceCbsaReader {
   return {
-    async areasFor(orgId, patientId, range, inpatientRanges): Promise<ValueCodeAreas> {
+    async areasFor(orgId, patientId, range, stays): Promise<ValueCodeAreas> {
       const fiscalYearStarting = hospiceFiscalYearStartingOf(range.to);
       const residence = await zips.residencePostalCode(orgId, patientId, range.to);
       return {
@@ -143,10 +175,23 @@ export function buildHospiceCbsaReader(db: Db, zips: ClaimZipPorts): HospiceCbsa
           orgId,
           patientId,
           range,
-          inpatientRanges,
+          stays,
           fiscalYearStarting,
         ),
       };
+    },
+    async wageIndexForArea(cbsaCode, fiscalYearStarting) {
+      const [row] = await db
+        .select({ wageIndex: schema.hospiceCbsaWageIndex.wageIndex })
+        .from(schema.hospiceCbsaWageIndex)
+        .where(
+          and(
+            eq(schema.hospiceCbsaWageIndex.fiscalYearStarting, fiscalYearStarting),
+            eq(schema.hospiceCbsaWageIndex.cbsaCode, cbsaCode),
+          ),
+        )
+        .limit(1);
+      return row?.wageIndex ?? null;
     },
   };
 }
@@ -157,12 +202,12 @@ async function resolveFacility(
   orgId: string,
   patientId: string,
   range: DateRange,
-  inpatientRanges: readonly DateRange[],
+  stays: readonly InpatientStay[],
   fiscalYearStarting: number,
 ): Promise<HospiceAreaResolution | null> {
-  if (inpatientRanges.length === 0) return null; // no inpatient care on the claim: G8 is not needed
-  const spans = await zips.facilitySpans(orgId, patientId, range);
-  const found = facilityPostalCodeForInpatientDates(inpatientRanges, spans);
+  if (stays.length === 0) return null; // no inpatient care on the claim: G8 is not needed
+  const spans = await zips.facilitySpans(orgId, patientId, range, stays);
+  const found = facilityPostalCodeForInpatientDates(stays, spans);
   if (found.status === "unresolved") return { status: "unresolved", reason: found.reason };
   return resolveZip(db, found.postalCode, fiscalYearStarting);
 }

@@ -325,17 +325,29 @@ export interface ElectionAddendumComplianceReader {
  * patient's / facility's ZIP against the platform geography. Optional: absent ⇒ the claim carries no value codes and
  * the `cbsa_value_codes_present` rule SKIPs.
  */
+/** A general-inpatient / inpatient-respite level-of-care period on the claim, clipped to the claim range. */
+export interface InpatientStay extends DateRange {
+  /** The M6 level-of-care period id; M37's `ipu_admission` is keyed by it (where the stay was delivered). */
+  readonly levelOfCarePeriodId: string;
+}
+
 export interface HospiceCbsaReader {
   /**
-   * `inpatientRanges` = the dates of the claim's general-inpatient / inpatient-respite levels of care; G8 is the
-   * facility whose residence span overlaps THEM.
+   * The areas behind value code 61 (residence CBSA at the END of the billing period) and G8 (the latest facility that
+   * served the beneficiary, among the claim's inpatient `stays`) — CMS Pub. 100-04 ch. 11 s30.3.
    */
   areasFor(
     orgId: string,
     patientId: string,
     range: DateRange,
-    inpatientRanges: readonly DateRange[],
+    stays: readonly InpatientStay[],
   ): Promise<ValueCodeAreas>;
+  /**
+   * The published wage index for an area code in a fiscal year. The Pricer wage-adjusts the whole claim with the CBSA
+   * the claim reports (value codes 61 / G8), so a claim crossing Oct 1 keeps its end-of-period codes and takes each
+   * fiscal year's index for them. `null` = none published (unresolved).
+   */
+  wageIndexForArea(cbsaCode: string, fiscalYearStarting: number): Promise<string | null>;
 }
 
 /** The full injected seam bundle the assembly service depends on. */

@@ -942,7 +942,10 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
-import { toFacilitySpans } from "./modules/23-billing-medicare/services/claim-cbsa";
+import {
+  composeFacilitySpans,
+  toFacilitySpans,
+} from "./modules/23-billing-medicare/services/claim-cbsa";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -1419,6 +1422,7 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
+import { inpatientFacilityIdsForPeriodsForOrg } from "./modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   M38_PLATFORM_JOB_ID,
@@ -3001,16 +3005,31 @@ function buildM23AssemblyPorts(db: DbClient): {
             asOf,
           )
         )?.postalCode ?? null,
-      facilitySpans: async (orgId, patientId, range) => {
+      facilitySpans: async (orgId, patientId, range, stays) => {
+        // M37 (`ipu_admission`) is the system of record for where an inpatient stay was delivered; M5's facility
+        // residence spans stand in only for stays M37 does not know.
+        const m37Facilities = await inpatientFacilityIdsForPeriodsForOrg(
+          db,
+          orgId,
+          stays.map((s) => s.levelOfCarePeriodId),
+        );
         const spans = await (
           getSeam("PatientAddressReader") as PatientAddressReader
         ).residencesBetween(orgId, patientId, range.from, range.to);
         const facilityIds = [
-          ...new Set(
-            spans.flatMap((s) => (s.kind === "facility" && s.facilityId ? [s.facilityId] : [])),
-          ),
+          ...new Set([
+            ...m37Facilities.values(),
+            ...spans.flatMap((s) => (s.kind === "facility" && s.facilityId ? [s.facilityId] : [])),
+          ]),
         ];
-        return toFacilitySpans(spans, await facilityPostalCodesForIds(db, facilityIds));
+        const postal = await facilityPostalCodesForIds(db, facilityIds);
+        const m37Postal = new Map(
+          [...m37Facilities].map(([periodId, facilityId]) => [
+            periodId,
+            postal.get(facilityId) ?? null,
+          ]),
+        );
+        return composeFacilitySpans(stays, m37Postal, toFacilitySpans(spans, postal));
       },
     },
   };

@@ -21,8 +21,10 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildHospiceCbsaReader,
+  composeFacilitySpans,
   toFacilitySpans,
 } from "../src/modules/23-billing-medicare/services/claim-cbsa";
+import { inpatientFacilityIdsForPeriodsForOrg } from "../src/modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
 import { facilityPostalCodesForIds } from "../src/modules/40-mdm/facility-kind-reader";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -48,7 +50,9 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
       ORG,
       "patient-1",
       { from: "2026-03-01", to: end },
-      facilityZip === null ? [] : [{ from: "2026-03-05", to: "2026-03-08" }],
+      facilityZip === null
+        ? []
+        : [{ levelOfCarePeriodId: "loc-1", from: "2026-03-05", to: "2026-03-08" }],
     );
 
   beforeAll(async () => {
@@ -216,9 +220,13 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
     expect(postal.get(MERGED)).toBe("97838"); // chases merged_into_id to the survivor
     expect(postal.has(NO_ADDRESS)).toBe(false); // no address -> absent, never a guess
 
-    // A nursing-home resident (ZIP 97801) admitted to the hospital (ZIP 97838) for a GIP stay: G8 is the HOSPITAL,
-    // because only its span overlaps the inpatient dates - not "the latest facility".
+    // A nursing-home resident (ZIP 97801) has a GIP stay at the hospital (ZIP 97838). M5 has NO span for the hospital
+    // (the nursing home's span stays open), so G8 must come from M37's ipu_admission, keyed by the M6 period id.
     const NURSING_HOME = "c0c0c0c0-c0c0-40c0-80c0-c0c0c0c0c0c0";
+    const UNIT = "b0b0b0b0-b0b0-40b0-80b0-b0b0b0b0b0b0";
+    const GIP_PERIOD = "a0a0a0a0-a0a0-40a0-80a0-a0a0a0a0a0a0";
+    const ARRANGED_PERIOD = "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1";
+    const UNKNOWN_PERIOD = "a2a2a2a2-a2a2-42a2-82a2-a2a2a2a2a2a2";
     await admin.query(
       `INSERT INTO facility (id, ccn, npi, kind, name, primary_address, sending_facility_codes, status, merged_from, created_at, updated_at)
        VALUES ($1,NULL,NULL,'nf','Pendleton Care Center',$2,'[]','active','{}',now(),now())`,
@@ -232,45 +240,102 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
         }),
       ],
     );
+    // The M4 write-audit trigger on ipu_admission dereferences the organization.
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'cbsa-live','cbsa-live','cbsa-live')",
+      [ORG],
+    );
+    await admin.query(
+      `INSERT INTO inpatient_unit (id, organization_id, facility_id, display_name, bed_count)
+       VALUES ($1,$2,$3,'GIP unit',4)`,
+      [UNIT, ORG, FACILITY],
+    );
+    const ipuAdmission = (
+      periodId: string,
+      kind: "gip" | "arranged",
+      unit: string | null,
+      remote: string | null,
+    ) =>
+      admin.query(
+        `INSERT INTO ipu_admission (organization_id, provider_entity_id, patient_id, admission_id, level_of_care_period_id,
+                                    unit_id, remote_facility_id, kind, created_by)
+         VALUES ($1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), $2, $3, $4, $5, gen_random_uuid())`,
+        [ORG, periodId, unit, remote, kind],
+      );
+    await ipuAdmission(GIP_PERIOD, "gip", UNIT, null); // owned unit at the hospital
+    await ipuAdmission(ARRANGED_PERIOD, "arranged", null, NURSING_HOME); // arranged stay at the care center
+
+    const found = await inpatientFacilityIdsForPeriodsForOrg(handle.db, ORG, [
+      GIP_PERIOD,
+      ARRANGED_PERIOD,
+      UNKNOWN_PERIOD,
+    ]);
+    expect(found.get(GIP_PERIOD)).toBe(FACILITY); // unit -> inpatient_unit.facility_id
+    expect(found.get(ARRANGED_PERIOD)).toBe(NURSING_HOME); // arranged -> remote_facility_id
+    expect(found.has(UNKNOWN_PERIOD)).toBe(false); // M37 does not know it -> absent, never a guess
+    expect(
+      await inpatientFacilityIdsForPeriodsForOrg(
+        handle.db,
+        "99999999-9999-4999-8999-999999999999",
+        [GIP_PERIOD],
+      ),
+    ).toEqual(new Map()); // another tenant sees nothing
+
     const postalById = await facilityPostalCodesForIds(handle.db, [NURSING_HOME, FACILITY]);
-    const gipDates = [{ from: "2026-11-10", to: "2026-11-14" }];
-    const readerFor = (spans: Parameters<typeof toFacilitySpans>[0]) =>
+    const stay = { levelOfCarePeriodId: GIP_PERIOD, from: "2026-11-10", to: "2026-11-14" };
+    const nursingHomeOpen = [
+      {
+        kind: "facility",
+        facilityId: NURSING_HOME,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      },
+    ];
+    const readerFor = (stays: (typeof stay)[], m5: Parameters<typeof toFacilitySpans>[0]) =>
       buildHospiceCbsaReader(handle.db, {
         residencePostalCode: async () => "97801",
-        facilitySpans: async () => toFacilitySpans(spans, postalById),
+        facilitySpans: async () => {
+          const m37 = await inpatientFacilityIdsForPeriodsForOrg(
+            handle.db,
+            ORG,
+            stays.map((x) => x.levelOfCarePeriodId),
+          );
+          return composeFacilitySpans(
+            stays,
+            new Map(
+              [...m37].map(([period, facility]) => [period, postalById.get(facility) ?? null]),
+            ),
+            toFacilitySpans(m5, postalById),
+          );
+        },
       });
     const range = { from: "2026-11-01", to: FY2027_END };
-    const facilityResidence = (id: string, from: string, to: string | null) => ({
-      kind: "facility",
-      facilityId: id,
-      effectiveFrom: from,
-      effectiveTo: to,
-    });
 
-    // overlap: the nursing home ended before the GIP stay, the hospital span covers it
-    const overlap = await readerFor([
-      facilityResidence(NURSING_HOME, "2026-01-01", "2026-11-09"),
-      facilityResidence(FACILITY, "2026-11-10", "2026-11-14"),
-      facilityResidence(NURSING_HOME, "2026-11-15", null),
-    ]).areasFor(ORG, "patient-1", range, gipDates);
-    expect(overlap.facility).toMatchObject({ status: "resolved", countyFips: "41059" });
+    // M37 knows the stay: the HOSPITAL (97838), although M5 still has the patient in the nursing home.
+    const viaM37 = await readerFor([stay], nursingHomeOpen).areasFor(ORG, "patient-1", range, [
+      stay,
+    ]);
+    expect(viaM37.facility).toMatchObject({ status: "resolved", countyFips: "41059" });
+    expect(viaM37.residence).toMatchObject({ status: "resolved", countyFips: "41059" });
 
-    // ambiguous: the nursing-home span is still open across the GIP dates and a hospital span overlaps too
-    const ambiguous = await readerFor([
-      facilityResidence(NURSING_HOME, "2026-01-01", null),
-      facilityResidence(FACILITY, "2026-11-10", "2026-11-14"),
-    ]).areasFor(ORG, "patient-1", range, gipDates);
-    expect(ambiguous.facility).toEqual({ status: "unresolved", reason: "ambiguous_facility" });
+    // M37 does not know the stay and M5 has only the open nursing-home span: that facility, not a guess about a hospital.
+    const unknownStay = { ...stay, levelOfCarePeriodId: UNKNOWN_PERIOD };
+    const viaM5 = await readerFor([unknownStay], nursingHomeOpen).areasFor(
+      ORG,
+      "patient-1",
+      range,
+      [unknownStay],
+    );
+    expect(viaM5.facility).toMatchObject({ status: "resolved" });
 
-    // none overlap: the facility spans do not touch the GIP dates
-    const none = await readerFor([
-      facilityResidence(NURSING_HOME, "2026-01-01", "2026-11-09"),
-    ]).areasFor(ORG, "patient-1", range, gipDates);
+    // Neither M37 nor any M5 span overlaps: G8 stays unresolved so the claim blocks.
+    const none = await readerFor([unknownStay], []).areasFor(ORG, "patient-1", range, [
+      unknownStay,
+    ]);
     expect(none.facility).toEqual({ status: "unresolved", reason: "no_facility_stay" });
 
-    // no inpatient care on the claim: G8 is not needed at all
-    const noGip = await readerFor([]).areasFor(ORG, "patient-1", range, []);
-    expect(noGip.facility).toBeNull();
+    // No inpatient care on the claim: G8 is not needed.
+    expect((await readerFor([], []).areasFor(ORG, "patient-1", range, [])).facility).toBeNull();
   });
 
   it("uses the fiscal year the billing period ends in", async () => {
@@ -292,6 +357,21 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
     );
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].idx)).toBeGreaterThan(0.5);
+  });
+
+  it("gives the same reported code each fiscal year's own published index (a claim crossing Oct 1)", async () => {
+    const reader = buildHospiceCbsaReader(handle.db, {
+      residencePostalCode: async () => null,
+      facilitySpans: async () => [],
+    });
+    const [fy26, fy27, none] = await Promise.all([
+      reader.wageIndexForArea("99938", 2025),
+      reader.wageIndexForArea("99938", 2026),
+      reader.wageIndexForArea("00000", 2026),
+    ]);
+    expect(fy26).toBe("1.0209");
+    expect(fy27).toBe("1.0285");
+    expect(none).toBeNull(); // no published index -> unresolved, never a default
   });
 
   it("lets the app role read the reference data but never write it", async () => {

@@ -924,9 +924,89 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     expect(claim.certifyingPhysicianNpi).toBe("1982736455");
   });
 
+  it("keeps the end-of-period CBSA for the whole claim and takes each fiscal year's own index for it", async () => {
+    const base = buildSeams();
+    const areasCalls: unknown[] = [];
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            hospiceAdmissionDate: "2025-09-01",
+          }) as never,
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-29",
+            to: "2025-10-02",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      referenceData: {
+        ...base.referenceData,
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+      },
+      cbsa: {
+        // The same published code, a different index per fiscal year.
+        wageIndexForArea: async (_code, fiscalYearStarting) =>
+          fiscalYearStarting === 2024 ? "0.9000" : "1.2000",
+        areasFor: async (...args) => {
+          areasCalls.push(args);
+          return {
+            residence: {
+              status: "resolved",
+              cbsaCode: "99938",
+              areaKind: "rural",
+              countyFips: "41059",
+              via: "zip",
+              wageIndex: "0.9000", // the claim-end fiscal year's (the period ends 2025-10-02 -> 2025)
+            },
+            facility: null,
+          };
+        },
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, {
+      ...REQUEST,
+      serviceFrom: "2025-09-29",
+      serviceTo: "2025-10-02",
+    });
+    const rhc = store.lines.filter((l: { revenueCode: string }) => l.revenueCode === "0651");
+    expect(
+      rhc.map((l: { unitCount: number; unitRateCents: number }) => [l.unitCount, l.unitRateCents]),
+    ).toEqual([
+      [2, 18_680], // 29-30 Sep: 20000 x (0.66 x 0.9 + 0.34) - FY2025's index for the reported code
+      [2, 23_772], // 1-2 Oct: 21000 x (0.66 x 1.2 + 0.34) - FY2026's index for the SAME code
+    ]);
+    expect(areasCalls).toHaveLength(1); // one end-of-period resolution (value codes), none per fiscal-year part
+    expect([...store.claims.values()][0].valueCodes).toEqual([{ code: "61", cbsaCode: "99938" }]);
+  });
+
   it("prices a home level of care with the beneficiary's area index, not the provider's", async () => {
     const seams = buildSeams({
       cbsa: {
+        wageIndexForArea: async () => "1.0000",
         areasFor: async () => ({
           residence: {
             status: "resolved",
@@ -948,6 +1028,7 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
   it("refuses to price when the beneficiary's area has no resolved index (never the provider's)", async () => {
     const seams = buildSeams({
       cbsa: {
+        wageIndexForArea: async () => "1.0000",
         areasFor: async () => ({
           residence: { status: "unresolved", reason: "zip_unknown" },
           facility: null,
@@ -1046,8 +1127,9 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
         ],
       },
       cbsa: {
-        areasFor: async (_org, _patient, _range, inpatientRanges) => {
-          seen.push(inpatientRanges);
+        wageIndexForArea: async () => "1.0000",
+        areasFor: async (_org, _patient, _range, stays) => {
+          seen.push(stays);
           return {
             residence: {
               status: "resolved",
@@ -1065,7 +1147,9 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     await expect(
       buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST),
     ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED" });
-    expect(seen[0]).toEqual([{ from: "2025-11-05", to: "2025-11-07" }]);
+    expect(seen[0]).toEqual([
+      { levelOfCarePeriodId: "loc-2", from: "2025-11-05", to: "2025-11-07" },
+    ]);
   });
 
   it("records the admission type and point of origin from the M6 admission on the claim", async () => {
