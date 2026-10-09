@@ -35,10 +35,12 @@ import {
   type ClaimDocument837i,
   type ClaimState,
   type ClaimTransitionEvent,
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
   type EligibilityOutcome,
   type NoticeState,
   canTransition as canClaimTransition,
   deriveControlNumber,
+  medicareReceiptDay,
   noeMachine,
   notrMachine,
   parseControlNumber,
@@ -48,6 +50,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
@@ -489,6 +492,10 @@ export interface M23WorkerDeps {
   readonly enqueue?: JobEnqueuePort;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly jurisdictions?: MacJurisdictionListPort;
+  /** ADR-0052 — files a DDE work item for each at-risk NOE/NOTR the window-watch crons walk (absent ⇒ no item). */
+  readonly ddeWatchdog?: DdeWatchdogPort;
+  /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
+  readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
 }
 
 /** The empty-string system sentinel `withOrgContext` carries — the M4 trigger NULLIFs it (no acting user). */
@@ -1640,6 +1647,100 @@ export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
 }
 
 /**
+ * ADR-0052 — file a DDE work item for each in-flight notice whose filing window is near, via the bound watchdog.
+ * Each notice runs in its OWN savepoint: one that makes the watchdog throw (a "poison" notice) is rolled back alone and
+ * reported, and the notices after it still get their items. Returns the failures instead of throwing, so the
+ * transaction commits what succeeded.
+ */
+async function queueDdeWork(
+  deps: M23WorkerDeps,
+  tx: BillingDb,
+  organizationId: string,
+  kind: "noe" | "notr",
+  now: Date,
+): Promise<unknown[]> {
+  const watchdog = deps.ddeWatchdog;
+  if (!watchdog) return [];
+  // The lookahead is counted from the Eastern (CMS) calendar day, not the UTC date.
+  const today = new Date(`${medicareReceiptDay(now)}T00:00:00Z`);
+  today.setUTCDate(today.getUTCDate() + DDE_WATCHDOG_LOOKAHEAD_DAYS);
+  const through = today.toISOString().slice(0, 10);
+  const notices =
+    kind === "noe"
+      ? await new NoeRepository(tx).listDdeWatchCandidates(organizationId, through)
+      : await new NotrRepository(tx).listDdeWatchCandidates(organizationId, through);
+  const failures: unknown[] = [];
+  for (const notice of notices) {
+    try {
+      await tx.transaction(async (savepoint) => {
+        await watchdog.ensureNoticeItem(savepoint as unknown as BillingDb, {
+          organizationId,
+          itemType: kind,
+          noticeId: notice.id,
+          providerEntityId: notice.providerEntityId,
+          patientId: notice.patientId,
+          deadlineAt: notice.windowTargetAt,
+        });
+      });
+    } catch (err) {
+      failures.push(err);
+    }
+  }
+  return failures;
+}
+
+/**
+ * Run {@link queueDdeWork} for one org in its OWN transaction, AFTER the window warnings / breach stamps committed, so
+ * a failure here can never roll back a window alert. Returns every failure (a whole-transaction error, or one per poison
+ * notice) instead of throwing, so the other orgs still get their warnings and items; the cron throws one
+ * `AggregateError` once every org has been served.
+ */
+async function queueDdeWorkIsolated(
+  deps: M23WorkerDeps,
+  organizationId: string,
+  kind: "noe" | "notr",
+  now: Date,
+): Promise<unknown[]> {
+  if (!deps.ddeWatchdog) return [];
+  try {
+    return await withOrgContext(
+      deps.db,
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      async (txAny) => queueDdeWork(deps, txAny as unknown as BillingDb, organizationId, kind, now),
+    );
+  } catch (err) {
+    return [err];
+  }
+}
+
+/** Collect the DDE failures across orgs, log each with its org id (ids only, no PHI), then throw them together. */
+function reportDdeFailures(
+  deps: M23WorkerDeps,
+  kind: "noe" | "notr",
+  byOrg: readonly { organizationId: string; failures: readonly unknown[] }[],
+): void {
+  const all: unknown[] = [];
+  for (const { organizationId, failures } of byOrg) {
+    for (const err of failures) {
+      all.push(err);
+      // The message only: a database error can embed bound parameters, and the full set is already in the AggregateError.
+      deps.logger?.error(
+        { organizationId, kind, error: err instanceof Error ? err.message : String(err) },
+        "dde watchdog failed",
+      );
+    }
+  }
+  if (all.length === 0) return;
+  const orgs = [
+    ...new Set(byOrg.filter((o) => o.failures.length > 0).map((o) => o.organizationId)),
+  ];
+  throw new AggregateError(
+    all,
+    `dde watchdog (${kind}) failed for ${all.length} notice(s)/org(s): ${orgs.join(", ")}`,
+  );
+}
+
+/**
  * `noe.window-watch` (§4.8 cron, every 30 min): for each active org, walk the NOE rows whose 5-day window is
  * approaching and still un-acknowledged — emit `m23.noe.window_warning` at day 3 and, at day 5+1 (past target),
  * stamp `window_breached_at` (the fail-closed {@link NoticeWindowPort}) + emit `m23.noe.window_breached` and the
@@ -1650,6 +1751,7 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
+  const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
@@ -1712,7 +1814,13 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
         }
       },
     );
+    // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
+    ddeFailures.push({
+      organizationId,
+      failures: await queueDdeWorkIsolated(deps, organizationId, "noe", now),
+    });
   }
+  reportDdeFailures(deps, "noe", ddeFailures);
 }
 
 /** `notr.window-watch` (§4.8 cron): the NOTR twin of {@link runNoeWindowWatch}. */
@@ -1721,6 +1829,7 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
+  const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
@@ -1783,7 +1892,13 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
         }
       },
     );
+    // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
+    ddeFailures.push({
+      organizationId,
+      failures: await queueDdeWorkIsolated(deps, organizationId, "notr", now),
+    });
   }
+  reportDdeFailures(deps, "notr", ddeFailures);
 }
 
 /**
@@ -2327,6 +2442,8 @@ export function buildM23WorkerDeps(deps: {
   enqueue?: JobEnqueuePort;
   activeOrgs?: ActiveOrgListPort;
   jurisdictions?: MacJurisdictionListPort;
+  ddeWatchdog?: DdeWatchdogPort;
+  logger?: { error(fields: Record<string, unknown>, message: string): void };
 }): M23WorkerDeps {
   return {
     connection: deps.connection,
@@ -2343,6 +2460,8 @@ export function buildM23WorkerDeps(deps: {
     enqueue: deps.enqueue,
     activeOrgs: deps.activeOrgs,
     jurisdictions: deps.jurisdictions,
+    ddeWatchdog: deps.ddeWatchdog,
+    logger: deps.logger,
   };
 }
 

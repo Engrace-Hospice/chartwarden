@@ -365,6 +365,17 @@
     flex: 1;
     min-width: 0;
   }
+  .wx-drawer-head-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-checklist-text {
+    flex: 1;
+  }
+  .wx-form-stack {
+    display: grid;
+    gap: 0.75rem;
+  }
   .wx-drawer-title-row {
     display: flex;
     align-items: center;

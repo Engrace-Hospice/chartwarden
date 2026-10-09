@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 43 module screen-sets registered · 332 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 43 module screen-sets registered · 333 screens wired across web/portal/admin.
 - **admin**: 35 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 279 screen(s)
+- **web**: 280 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -228,6 +228,7 @@
 | web | 23-billing-medicare | `billing.notr` | `/billing/notr` | `billing.notr.read` | ✅ |
 | web | 23-billing-medicare | `billing.notr.detail` | `/billing/notr/:notrId` | `billing.notr.read` | ✅ |
 | web | 23-billing-medicare | `billing.transfer-notices` | `/billing/transfer-notices` | `billing.noe.read` | ✅ |
+| web | 23-billing-medicare | `billing.dde-queue` | `/billing/dde` | `billing.dde.read` | ✅ |
 | web | 23-billing-medicare | `billing.rule-config` | `/billing/rule-config` | `billing.rule_config.read` | ✅ |
 | web | 23-billing-medicare | `billing.eligibility` | `/billing/eligibility` | `billing.eligibility.read` | ✅ |
 | web | 23-billing-medicare | `billing.rate-tables` | `/billing/rate-tables` | `billing.rate_table.read` | ✅ |

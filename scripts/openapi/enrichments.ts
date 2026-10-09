@@ -423,6 +423,18 @@ import {
   ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 import {
+  AssignDdeItemBodySchema,
+  CreateDdeItemBodySchema,
+  DdeItemDetailViewSchema,
+  DdeItemListQuerySchema,
+  DdeItemListViewSchema,
+  DdeItemViewSchema,
+  DdeVersionBodySchema,
+  RecordDdeAcceptanceBodySchema,
+  RecordDdeOutcomeBodySchema,
+  RecordDdeSubmissionBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/dde-queue-typebox";
+import {
   LoadWageIndexesBodySchema,
   LoadWageIndexesResultSchema,
   RegisterPlatformRuleBodySchema,
@@ -3021,6 +3033,82 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: TransferNoticeViewSchema,
     status: 201,
+  },
+  // ── DDE work queue, human work tracking for Medicare Direct Data Entry (dde-queue.routes.ts; ADR-0052) ──
+  "GET /api/v1/billing/dde-items": {
+    summary:
+      "DDE work queue — filter by state, type, assignee, overdue and at-risk (an NOE/NOTR is on time only once the MAC acceptance date is recorded)",
+    query: DdeItemListQuerySchema,
+    response: DdeItemListViewSchema,
+  },
+  "GET /api/v1/billing/dde-items/:id": {
+    summary: "DDE work item detail with its append-only history",
+    response: DdeItemDetailViewSchema,
+  },
+  "POST /api/v1/billing/dde-items": {
+    summary:
+      "Queue DDE work for a claim, NOE or NOTR (an NOE/NOTR item takes the notice's filing window as its deadline)",
+    body: CreateDdeItemBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/billing/dde-items/:id/claim": {
+    summary: "Take an unassigned DDE item for yourself",
+    body: DdeVersionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/assign": {
+    summary: "Assign or reassign a DDE item to a named membership (billing.dde.admin)",
+    body: AssignDdeItemBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/start": {
+    summary: "Start work on an assigned DDE item",
+    body: DdeVersionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/record-submission": {
+    summary:
+      "Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: WardenX never calls DDE",
+    body: RecordDdeSubmissionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/record-outcome": {
+    summary:
+      "Record a RETURNED / rejected outcome with its RTP reason code (an accepted outcome is record-acceptance)",
+    body: RecordDdeOutcomeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/record-acceptance": {
+    summary:
+      "Record that the MAC ACCEPTED the item (step-up, billing.dde.mark_submitted). On an NOE/NOTR the notice takes its existing acceptance transition with the entered date as payer_status_date (source dde_manual); the date is not before the election/termination date and not in the future",
+    body: RecordDdeAcceptanceBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/retry": {
+    summary: "Reopen a returned DDE item as a new attempt",
+    body: DdeVersionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/cancel": {
+    summary: "Cancel a DDE item that has not yet been keyed",
+    body: DdeVersionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/close": {
+    summary: "Close an accepted or returned DDE item",
+    body: DdeVersionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
   },
   // ── NOTR fast path (notr.routes.ts) ──
   "POST /api/v1/notr-records/:id/submit": {
@@ -10255,6 +10343,7 @@ const M23NoticeAckAndCorrection = {
     Type.Literal("999_gs04"),
     Type.Literal("999_isa09"),
     Type.Literal("receipt"),
+    Type.Literal("dde_manual"),
     Type.Null(),
   ]),
   correctsNoticeId: Type.Union([Type.String(), Type.Null()]),

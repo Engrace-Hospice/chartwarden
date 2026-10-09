@@ -4387,6 +4387,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/dde-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DDE work queue — filter by state, type, assignee, overdue and at-risk (an NOE/NOTR is on time only once the MAC acceptance date is recorded) */
+        get: operations["getApiV1BillingDdeitems"];
+        put?: never;
+        /** Queue DDE work for a claim, NOE or NOTR (an NOE/NOTR item takes the notice's filing window as its deadline) */
+        post: operations["postApiV1BillingDdeitems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DDE work item detail with its append-only history */
+        get: operations["getApiV1BillingDdeitemsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or reassign a DDE item to a named membership (billing.dde.admin) */
+        post: operations["postApiV1BillingDdeitemsByIdAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DDE item that has not yet been keyed */
+        post: operations["postApiV1BillingDdeitemsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take an unassigned DDE item for yourself */
+        post: operations["postApiV1BillingDdeitemsByIdClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an accepted or returned DDE item */
+        post: operations["postApiV1BillingDdeitemsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/record-acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that the MAC ACCEPTED the item (step-up, billing.dde.mark_submitted). On an NOE/NOTR the notice takes its existing acceptance transition with the entered date as payer_status_date (source dde_manual); the date is not before the election/termination date and not in the future */
+        post: operations["postApiV1BillingDdeitemsByIdRecordacceptance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/record-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a RETURNED / rejected outcome with its RTP reason code (an accepted outcome is record-acceptance) */
+        post: operations["postApiV1BillingDdeitemsByIdRecordoutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/record-submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: WardenX never calls DDE */
+        post: operations["postApiV1BillingDdeitemsByIdRecordsubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen a returned DDE item as a new attempt */
+        post: operations["postApiV1BillingDdeitemsByIdRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start work on an assigned DDE item */
+        post: operations["postApiV1BillingDdeitemsByIdStart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/eligibility": {
         parameters: {
             query?: never;
@@ -35352,6 +35540,851 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingDdeitems: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                itemType?: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                assigneeMembershipId?: string;
+                providerEntityId?: string;
+                patientId?: string;
+                overdue?: boolean;
+                atRisk?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            ddeWorkItemId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                            subjectKind: "claim" | "noe_record" | "notr_record";
+                            /** Format: uuid */
+                            subjectId: string;
+                            state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                            attemptNumber: number;
+                            assigneeMembershipId: string | null;
+                            priority: number;
+                            source: "manual" | "watchdog";
+                            deadlineAt: string | null;
+                            deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                            submittedAt: string | null;
+                            macAcceptedOn: string | null;
+                            dcn: string | null;
+                            rtpReasonCode: string | null;
+                            outcomeCode: string | null;
+                            notes: string | null;
+                            respawnedFromId: string | null;
+                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitems: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                    /** Format: uuid */
+                    subjectId: string;
+                    priority?: number;
+                    /**
+                     * Format: date
+                     * @description Operator-set deadline for non-notice items; an NOE/NOTR item takes the notice's window.
+                     */
+                    deadlineAt?: string;
+                    /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingDdeitemsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        events: {
+                            /** Format: uuid */
+                            eventId: string;
+                            event: string;
+                            fromState: string | null;
+                            toState: string;
+                            attemptNumber: number;
+                            actorMembershipId: string | null;
+                            actorKind: string;
+                            detail: {
+                                [key: string]: string | number | null;
+                            };
+                            /** Format: date-time */
+                            occurredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdAssign: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /** Format: uuid */
+                    assigneeMembershipId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdCancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdRecordacceptance: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /**
+                     * Format: date
+                     * @description The date FISS/the MAC accepted it (operator-entered). Required for an NOE/NOTR, where it is stored as the notice's payer_status_date with source dde_manual; not before the election/termination date, not in the future.
+                     */
+                    macAcceptedOn?: string;
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
+                    dcn?: string;
+                    /** @description How it was accepted, from a closed set. */
+                    outcomeCode?: "accepted" | "accepted_with_edits" | "other";
+                    /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdRecordoutcome: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /** @constant */
+                    outcome: "returned";
+                    /** @description The RTP / reject reason code. */
+                    rtpReasonCode: string;
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
+                    dcn?: string;
+                    /** @description Why it came back, from a closed set. */
+                    outcomeCode?: "rtp" | "rejected" | "adr_requested" | "other";
+                    /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdRecordsubmission: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
+                    dcn?: string;
+                    /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdRetry: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdStart: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingEligibility: {
         parameters: {
             query: {
@@ -60559,7 +61592,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -60617,7 +61650,7 @@ export interface operations {
                         rejectionStage: "999" | "277ca" | null;
                         rejectionCodes: string[];
                         payerStatusDate: string | null;
-                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                         correctsNoticeId: string | null;
                         correctionReason: string | null;
                         correctedBy: {
@@ -60712,7 +61745,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -60974,7 +62007,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -61035,7 +62068,7 @@ export interface operations {
                         rejectionStage: "999" | "277ca" | null;
                         rejectionCodes: string[];
                         payerStatusDate: string | null;
-                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                         correctsNoticeId: string | null;
                         correctionReason: string | null;
                         correctedBy: {
@@ -61133,7 +62166,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {

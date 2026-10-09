@@ -4,6 +4,8 @@
 // (401 → /expired, 503 → /maintenance). Kept outside React so it can be fed from `main.tsx` before
 // the router exists, and read with `useSyncExternalStore` from anywhere inside it.
 
+import { clearAllDrafts } from "./ceremony-drafts";
+
 export type GlobalResponseSignal = { kind: "session-expired" | "service-unavailable" } | null;
 
 type Listener = () => void;
@@ -47,6 +49,9 @@ function pathOf(url: string | undefined): string | undefined {
 }
 
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
+  // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
+  // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.
+  if (signal?.kind === "session-expired") clearAllDrafts();
   current = signal;
   for (const listener of listeners) listener();
 }

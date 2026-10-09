@@ -61,7 +61,7 @@ export const notrRecord = pgTable(
     // receipt date) and which of those it is. Timeliness is judged on it, not on `accepted_at` (our receipt time).
     payerStatusDate: date("payer_status_date"),
     payerStatusDateSource: text("payer_status_date_source").$type<
-      "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt"
+      "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual"
     >(),
 
     // Migration 0378 — a corrected notice filed after a rejection is its own row pointing back at the rejected

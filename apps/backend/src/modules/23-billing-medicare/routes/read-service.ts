@@ -334,7 +334,13 @@ export interface NoticeAckOutcomeView {
   readonly rejectionCodes: readonly string[];
   /** Medicare's own date for the answer (migration 0378): 277CA STC02, a 999's GS04 / ISA09, else our receipt. */
   readonly payerStatusDate: string | null;
-  readonly payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+  readonly payerStatusDateSource:
+    | "277ca_stc02"
+    | "999_gs04"
+    | "999_isa09"
+    | "receipt"
+    | "dde_manual"
+    | null;
 }
 
 /** The correction chain (migration 0378): a corrected notice points back at the rejected one, and vice versa. */

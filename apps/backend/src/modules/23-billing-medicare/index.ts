@@ -44,6 +44,7 @@ export {
   type ReadingM23AbacResolver,
   type M23RegisteredAbacPredicate,
   M23_REGISTERED_ABAC_PREDICATES,
+  ORG_WIDE_BILLING_SCOPE_ROLES,
   buildDrizzleM23AbacResolver,
   denyStubM23AbacResolver,
   registerM23AbacPredicates,
@@ -201,6 +202,18 @@ export {
   TRANSFER_NOTICE_SUBMIT_QUEUE,
   buildTransferNoticeService,
 } from "./services/transfer-notice-service";
+
+// ADR-0052 — the DDE work queue (human work tracking for Medicare Direct Data Entry) + its watchdog hook.
+export {
+  type DdeQueueService,
+  type DdeItemView,
+  buildDdeQueueService,
+} from "./services/dde-queue-service";
+export {
+  type DdeNoticeAtRisk,
+  type DdeWatchdogPort,
+  buildDdeWatchdog,
+} from "./services/dde-watchdog";
 
 // GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
 export {

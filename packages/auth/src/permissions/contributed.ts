@@ -3173,6 +3173,30 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "inOrg",
   },
+  "billing.dde.read": {
+    resource: "billing_dde",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.work": {
+    resource: "billing_dde",
+    action: "work",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.mark_submitted": {
+    resource: "billing_dde",
+    action: "mark_submitted",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.admin": {
+    resource: "billing_dde",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M23 contributed permission keys (twenty-eight + the two F-210 rate-table keys). */

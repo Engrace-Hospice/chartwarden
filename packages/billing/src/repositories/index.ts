@@ -68,6 +68,17 @@ export {
 export { ClaimSubmissionRepository } from "./claim-submission";
 export { ClaimAcknowledgmentRepository } from "./claim-acknowledgment";
 export {
+  DdeWorkEventRepository,
+  DdeWorkItemRepository,
+  type DdeListScope,
+  type DdeWorkEventRecord,
+  type DdeWorkItemListFilter,
+  type DdeWorkItemPatch,
+  type DdeWorkItemRecord,
+  type NewDdeWorkEventInput,
+  type NewDdeWorkItemInput,
+} from "./dde-work-item";
+export {
   NoeRepository,
   type NoeListFilter,
   type NoeRecord,

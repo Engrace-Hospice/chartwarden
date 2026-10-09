@@ -1654,6 +1654,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.dde-queue",
+      "path": "/billing/dde",
+      "permission": "billing.dde.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.rule-config",
       "path": "/billing/rule-config",
       "permission": "billing.rule_config.read"

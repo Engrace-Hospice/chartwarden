@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1502,
-    "enriched": 1502,
+    "routes": 1514,
+    "enriched": 1514,
     "deficit": 0,
-    "mutating": 854,
+    "mutating": 864,
     "mutatingNoBody": 1,
-    "gets": 613,
+    "gets": 615,
     "getsNoResponse": 8
   },
   "modules": [
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 77,
-      "enriched": 77,
+      "routes": 89,
+      "enriched": 89,
       "deficit": 0,
-      "mutating": 35,
+      "mutating": 45,
       "mutatingNoBody": 0,
-      "gets": 40,
+      "gets": 42,
       "getsNoResponse": 0
     },
     {

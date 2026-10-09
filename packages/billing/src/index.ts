@@ -44,6 +44,18 @@ export * from "./machines/claim";
 export * as noeMachine from "./machines/noe";
 export * as notrMachine from "./machines/notr";
 export * as transferNoticeMachine from "./machines/transfer-notice";
+// ADR-0052 the DDE work-queue item lifecycle reducer + item/state alphabets (namespaced like the notice machines).
+export * as ddeWorkItemMachine from "./machines/dde-work-item";
+export {
+  DDE_ITEM_TYPES,
+  DDE_WORK_ITEM_OPEN_STATES,
+  DDE_WORK_ITEM_STATES,
+  type DdeItemType,
+  type DdeWorkItemEvent,
+  type DdeWorkItemState,
+} from "./machines/dde-work-item";
+export * from "./dde/notes";
+export * from "./dde/deadline";
 export * from "./transfer-notice";
 // D7 the pure HIPPS calculator (LOC-segment → per-diem, days-1-7 vs days-8+, wage-index snapshot).
 export * from "./hipps";

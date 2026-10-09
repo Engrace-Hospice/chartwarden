@@ -188,7 +188,16 @@ export function encodeCursor(keyset: CursorKeyset): string {
   return Buffer.from(JSON.stringify(keyset), "utf8").toString("base64url");
 }
 
-/** Decode an opaque cursor → keyset, or throw 400 VALIDATION_FAILED on a malformed/tampered value. */
+const CURSOR_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
+const CURSOR_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Decode an opaque cursor → keyset, or throw 400 VALIDATION_FAILED on a malformed/tampered value. The fields are
+ * validated by SHAPE (an ISO-8601 UTC instant that is a real date, and a uuid), because they are bound straight into
+ * the keyset predicate: a forged but well-formed-JSON cursor would otherwise reach Postgres as an invalid timestamp or
+ * uuid and come back as a 500. Every cursor this module mints is `toISOString()` + a row uuid, so valid cursors are
+ * unaffected.
+ */
 export function decodeCursor(cursor: string): CursorKeyset {
   try {
     const parsed = JSON.parse(
@@ -196,6 +205,13 @@ export function decodeCursor(cursor: string): CursorKeyset {
     ) as Partial<CursorKeyset>;
     if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
       throw new Error("missing keyset fields");
+    }
+    if (
+      !CURSOR_TIMESTAMP_RE.test(parsed.createdAt) ||
+      Number.isNaN(Date.parse(parsed.createdAt)) ||
+      !CURSOR_UUID_RE.test(parsed.id)
+    ) {
+      throw new Error("bad keyset field shape");
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {

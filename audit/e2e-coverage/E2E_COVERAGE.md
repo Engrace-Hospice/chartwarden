@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 172 statically-routable `web` screen(s) — 19/172 E2E-reached, 165/172 axe-reached.
+**Coverage:** 173 statically-routable `web` screen(s) — 19/173 E2E-reached, 166/173 axe-reached.
 
 ## Zero E2E coverage
 
@@ -33,6 +33,7 @@
 | `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |
 | `bereavement.supervisor` | 16-bereavement | `/bereavement/supervisor` | bereavement.dashboard.supervisor |
 | `billing.claim.new` | 23-billing-medicare | `/billing/claims/new` | billing.claim.assemble |
+| `billing.dde-queue` | 23-billing-medicare | `/billing/dde` | billing.dde.read |
 | `billing.eligibility` | 23-billing-medicare | `/billing/eligibility` | billing.eligibility.read |
 | `billing.mac-credentials` | 23-billing-medicare | `/billing/mac-credentials` | billing.mac_credential.read |
 | `billing.metrics` | 23-billing-medicare | `/billing/metrics` | billing.claim.read_metrics |

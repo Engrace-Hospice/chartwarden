@@ -28,6 +28,8 @@ const OWN_ESCAPE =
 
 export function useDrawerA11y<T extends HTMLElement = HTMLElement>(
   onClose: () => void,
+  /** When this changes the drawer's content was reset (a form closed, the record reloaded): Escape closes it again. */
+  resetKey?: unknown,
 ): DrawerA11yProps<T> {
   const ref = useRef<T>(null);
   const closeRef = useRef(onClose);
@@ -52,6 +54,11 @@ export function useDrawerA11y<T extends HTMLElement = HTMLElement>(
       }
     };
   }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `resetKey` is the trigger, not a value read inside.
+  useEffect(() => {
+    edited.current = false;
+  }, [resetKey]);
 
   const markEdited = useCallback(() => {
     edited.current = true;

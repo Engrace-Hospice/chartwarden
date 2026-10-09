@@ -55,6 +55,9 @@ const PATIENT = "11111111-1111-1111-1111-1111111111bb";
  */
 const LONG_STAY_SEED: BillingEraseTableCounts = {
   eligibility_check: 30,
+  // ADR-0052 migration 1060 — the DDE work queue (two items, three history rows each).
+  dde_work_event: 6,
+  dde_work_item: 2,
   claim_acknowledgment: 55,
   claim_submission: 42,
   claim_state_history: 180,
@@ -210,8 +213,8 @@ describe("M23-T79 — the destruction certificate records affected-row counts pe
     const { store } = makeRecordingStore();
     const { erased } = await createBillingEraser(store).erase({ orgId: ORG }, PATIENT);
     const expected = Object.values(LONG_STAY_SEED).reduce((a, b) => a + b, 0);
-    expect(expected).toBe(654); // 30+55+42+180+7+96+48+12+30+120+30+1+1+2
-    expect(erased).toBe(654);
+    expect(expected).toBe(662); // 30+6+2+55+42+180+7+96+48+12+30+120+30+1+1+2
+    expect(erased).toBe(662);
   });
 
   it("an unseeded patient erases nothing (the cascade still runs, all counts 0)", async () => {
@@ -248,7 +251,7 @@ describe("M23-T79 — the 7-year compliance-class record is destruction-GATED (n
       destructionCertAuthorized: true,
     });
     const { erased } = await createBillingEraser(store).erase({ orgId: ORG }, PATIENT);
-    expect(erased).toBe(654);
+    expect(erased).toBe(662);
     expect(cascadeTrail).toEqual([...M23_PATIENT_CASCADE_ORDER]);
   });
 
@@ -316,7 +319,7 @@ describe("M23-T79 — M4 destruction-registry registration over the deny-stub", 
     });
     expect(boundClass).toBe("billing_record");
     const { erased } = await getEraser(BILLING_DATA_CLASS).erase({ orgId: ORG }, PATIENT);
-    expect(erased).toBe(654);
+    expect(erased).toBe(662);
   });
 
   it("the default (no store injected) registers a non-throwing no-op eraser (slice store)", async () => {

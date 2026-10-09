@@ -186,6 +186,8 @@ export function createDrizzleBillingEraseStore(
   const NOE = schema.noeRecord;
   const NOTR = schema.notrRecord;
   const TN = schema.transferNoticeRecord;
+  const DDE = schema.ddeWorkItem;
+  const DDE_EVENT = schema.ddeWorkEvent;
   const MAC = schema.macSubmitterCredential;
   const SP = schema.sequestrationPolicy;
   const VRC = schema.validationRuleConfig;
@@ -366,6 +368,37 @@ export function createDrizzleBillingEraseStore(
         const notrIds = await notrIdsFor(tx, organizationId, patientId);
         const transferNoticeIds = await transferNoticeIdsFor(tx, organizationId, patientId);
         const { runIds, resultIds } = await validationIdsFor(tx, organizationId, claimIds);
+
+        // 0. ADR-0052 DDE work queue — history rows, then the patient's items (notes may mention the patient).
+        const ddeItemIds = ids(
+          await tx
+            .select({ id: DDE.id })
+            .from(DDE)
+            .where(and(eq(DDE.organizationId, organizationId), eq(DDE.patientId, patientId))),
+        );
+        const ddeEvents =
+          ddeItemIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(DDE_EVENT)
+                  .where(
+                    and(
+                      eq(DDE_EVENT.organizationId, organizationId),
+                      inArray(DDE_EVENT.workItemId, ddeItemIds),
+                    ),
+                  )
+                  .returning({ id: DDE_EVENT.id })
+              ).length;
+        const ddeItems =
+          ddeItemIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(DDE)
+                  .where(and(eq(DDE.organizationId, organizationId), inArray(DDE.id, ddeItemIds)))
+                  .returning({ id: DDE.id })
+              ).length;
 
         // 1. eligibility_check (patient-keyed directly).
         const eligibilityChecks = (
@@ -560,6 +593,8 @@ export function createDrizzleBillingEraseStore(
 
         return {
           eligibility_check: eligibilityChecks,
+          dde_work_event: ddeEvents,
+          dde_work_item: ddeItems,
           claim_acknowledgment: acknowledgments,
           claim_submission: submissions,
           claim_state_history: stateHistory,

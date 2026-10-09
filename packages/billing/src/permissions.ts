@@ -56,6 +56,11 @@ export const M23_PERMISSIONS = [
   // tenant-entered wage index (F-211)
   "billing.wage_index.read",
   "billing.wage_index.admin",
+  // DDE work queue (ADR-0052): human work tracking for Medicare Direct Data Entry items.
+  "billing.dde.read",
+  "billing.dde.work",
+  "billing.dde.mark_submitted",
+  "billing.dde.admin",
 ] as const;
 
 export type M23PermissionKey = (typeof M23_PERMISSIONS)[number];

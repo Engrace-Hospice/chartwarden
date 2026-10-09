@@ -763,6 +763,8 @@ exports.MODULES = [
       "claim_line",
       "claim_state_history",
       "claim_submission",
+      "dde_work_event",
+      "dde_work_item",
       "eligibility_check",
       "hipps_calculation",
       "hospice_rate_table",

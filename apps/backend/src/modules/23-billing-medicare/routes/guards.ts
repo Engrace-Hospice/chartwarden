@@ -42,6 +42,26 @@ export const targetNoeId = (request: TargetRequest): TargetMap => paramId(reques
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
 export const targetTransferNoticeId = (request: TargetRequest): TargetMap =>
   paramId(request, "transferNoticeId");
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A non-uuid id fails closed (an empty target resolves to no entity => deny), never a 500 on a uuid cast. */
+const uuidOrEmpty = (value: unknown): string =>
+  typeof value === "string" && UUID_RE.test(value) ? value : "";
+
+export const targetDdeWorkItemId = (request: TargetRequest): TargetMap => ({
+  ddeWorkItemId: uuidOrEmpty((request.params as { id?: string } | undefined)?.id),
+});
+
+/**
+ * DDE create: the body names the SUBJECT (item type + subject id), never the provider entity; the ABAC resolver
+ * loads the subject's owning provider entity server-side (noe -> noeId, notr -> notrId, everything else -> claimId).
+ */
+export const targetDdeSubjectFromBody = (request: TargetRequest): TargetMap => {
+  const body = request.body as { itemType?: string; subjectId?: string } | undefined;
+  const subjectId = uuidOrEmpty(body?.subjectId);
+  if (body?.itemType === "noe") return { noeId: subjectId };
+  if (body?.itemType === "notr") return { notrId: subjectId };
+  return { claimId: subjectId };
+};
 export const targetRuleConfigId = (request: TargetRequest): TargetMap =>
   paramId(request, "ruleConfigId");
 

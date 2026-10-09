@@ -57,6 +57,7 @@ const SOURCE_LABEL: Record<string, string> = {
   "999_gs04": "999 group date",
   "999_isa09": "999 interchange date",
   receipt: "date we received it",
+  dde_manual: "DDE date entered by staff",
 };
 
 /** "2026-10-05 (277CA status date)" — the payer's date with where it came from. */

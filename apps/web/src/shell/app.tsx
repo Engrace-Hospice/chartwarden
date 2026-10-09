@@ -25,6 +25,7 @@ import {
 import type { RouteObject } from "react-router-dom";
 import { guardChromedRoute } from "./actor-session";
 import { AlertInboxProvider } from "./alert-inbox";
+import { clearAllDrafts } from "./ceremony-drafts";
 import {
   getGlobalResponseSignal,
   setGlobalResponseSignal,
@@ -104,6 +105,8 @@ function GlobalResponseWatcher(): null {
   const alreadyExpiredRef = useRef(false);
   useEffect(() => {
     if (status === "authenticated") alreadyExpiredRef.current = false;
+    // Signed out: no ceremony draft (it can carry PHI) may survive for the next sign-in on this tab.
+    if (status === "anonymous") clearAllDrafts();
   }, [status]);
   useEffect(() => {
     if (!signal) return;

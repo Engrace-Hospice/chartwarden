@@ -244,6 +244,30 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "inOrg",
   },
+  "billing.dde.read": {
+    resource: "billing_dde",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.work": {
+    resource: "billing_dde",
+    action: "work",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.mark_submitted": {
+    resource: "billing_dde",
+    action: "mark_submitted",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.dde.admin": {
+    resource: "billing_dde",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of every §4.6 permission key M23 owns. Kept in lock-step with `@wardenx/billing` (P3 reconcile). */
@@ -285,6 +309,10 @@ export const M23_PERMISSION_KEY_LIST: readonly M23PermissionKey[] = [
   "billing.visit_charge.admin",
   "billing.wage_index.read",
   "billing.wage_index.admin",
+  "billing.dde.read",
+  "billing.dde.work",
+  "billing.dde.mark_submitted",
+  "billing.dde.admin",
 ];
 
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;

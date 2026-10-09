@@ -13,7 +13,7 @@
 // `listWindowWatchCandidates` (§3.4 `notr_window_watch_idx`) and stamps `window_breached_at` through
 // `transitionToState`. No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -195,6 +195,50 @@ export class NotrRepository {
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
+  }
+
+  /**
+   * The notices the DDE work queue should hold work for (ADR-0052): in flight (state not terminal) with a filing
+   * window target on or before `throughDate` (`YYYY-MM-DD`, today plus the watchdog look-ahead), breached or not.
+   * Unlike `listWindowWatchCandidates` it does not wait for the target day, and it returns only notices that still need
+   * an item (none yet, or a closed unaccepted one not yet respawned). Soonest target first.
+   */
+  async listDdeWatchCandidates(
+    organizationId: string,
+    throughDate: string,
+    limit = 200,
+  ): Promise<readonly NotrRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(
+        and(
+          eq(N.organizationId, organizationId),
+          notInArray(N.state, NOTR_TERMINAL_DB),
+          lte(N.windowTargetAt, throughDate),
+          // Notices the DDE watch should (still) queue work for, decided in the query so a LIMIT can never be filled by
+          // already-served ones: no item of this type yet, OR (no OPEN item AND the latest item is `closed` with no MAC
+          // acceptance AND that closure has not been respawned yet). A cancelled latest item never qualifies, a closed
+          // item that was accepted never qualifies (its notice is accepted), and each closure yields one respawn.
+          sql`(
+            NOT EXISTS (SELECT 1 FROM dde_work_item d WHERE d.subject_kind = 'notr_record' AND d.subject_id = ${N.id} AND d.item_type = 'notr')
+            OR (
+              NOT EXISTS (SELECT 1 FROM dde_work_item o WHERE o.subject_kind = 'notr_record' AND o.subject_id = ${N.id} AND o.item_type = 'notr'
+                            AND o.state IN ('queued','assigned','in_progress','submitted','returned'))
+              AND EXISTS (
+                SELECT 1 FROM (
+                  SELECT d.id, d.state, d.mac_accepted_on FROM dde_work_item d
+                   WHERE d.subject_kind = 'notr_record' AND d.subject_id = ${N.id} AND d.item_type = 'notr'
+                   ORDER BY d.created_at DESC, d.id DESC LIMIT 1) l
+                 WHERE l.state = 'closed' AND l.mac_accepted_on IS NULL
+                   AND NOT EXISTS (SELECT 1 FROM dde_work_item r WHERE r.respawned_from_id = l.id))
+            )
+          )`,
+        ),
+      )
+      .orderBy(asc(N.windowTargetAt))
+      .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNotrRecord);
   }
 
   /**

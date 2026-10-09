@@ -27,19 +27,5 @@ export function authFailureRedirect(
   return null;
 }
 
-const drafts = new Map<string, unknown>();
-
-/** Stash a ceremony/wizard draft in process memory only (see file header — never browser storage). */
-export function saveDraft<T>(key: string, value: T): void {
-  drafts.set(key, value);
-}
-
-/** Recall a draft saved by {@link saveDraft}, or `undefined` if none (or the tab reloaded). */
-export function loadDraft<T>(key: string): T | undefined {
-  return drafts.get(key) as T | undefined;
-}
-
-/** Drop a draft once its ceremony completes, is cancelled, or its wizard finishes. */
-export function clearDraft(key: string): void {
-  drafts.delete(key);
-}
+// The store itself lives in the shell (`shell/ceremony-drafts.ts`) so sign-out and the screen lock can wipe it.
+export { clearAllDrafts, clearDraft, loadDraft, saveDraft } from "../../shell/ceremony-drafts";
