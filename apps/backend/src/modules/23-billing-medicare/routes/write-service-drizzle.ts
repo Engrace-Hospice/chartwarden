@@ -39,7 +39,7 @@ import {
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
@@ -197,6 +197,95 @@ function mapLines(
 
 const sumCharges = (lines: readonly AssembledClaimLineInput[]): number =>
   lines.reduce((acc, l) => acc + l.lineChargeCents, 0);
+
+/**
+ * Delete a DRAFT claim and everything it owns, children first so each database delete guard (migration 1061) can still
+ * resolve the owning claim: override -> result -> run -> state history -> SIA -> HIPPS -> lines -> claim. The database,
+ * not this function, is what refuses a non-draft claim (`M23_CLAIM_NOT_DRAFT`); every statement is org-scoped here and by RLS.
+ */
+async function deleteDraftClaimSubtree(
+  tx: BillingDb,
+  organizationId: string,
+  claimId: string,
+): Promise<void> {
+  const runIds = tx
+    .select({ id: schema.validationRun.id })
+    .from(schema.validationRun)
+    .where(
+      and(
+        eq(schema.validationRun.claimId, claimId),
+        eq(schema.validationRun.organizationId, organizationId),
+      ),
+    );
+  const resultIds = tx
+    .select({ id: schema.validationResult.id })
+    .from(schema.validationResult)
+    .where(
+      and(
+        inArray(schema.validationResult.validationRunId, runIds),
+        eq(schema.validationResult.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationOverride)
+    .where(
+      and(
+        inArray(schema.validationOverride.resultId, resultIds),
+        eq(schema.validationOverride.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationResult)
+    .where(
+      and(
+        inArray(schema.validationResult.validationRunId, runIds),
+        eq(schema.validationResult.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationRun)
+    .where(
+      and(
+        eq(schema.validationRun.claimId, claimId),
+        eq(schema.validationRun.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claimStateHistory)
+    .where(
+      and(
+        eq(schema.claimStateHistory.claimId, claimId),
+        eq(schema.claimStateHistory.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.siaCalculation)
+    .where(
+      and(
+        eq(schema.siaCalculation.claimId, claimId),
+        eq(schema.siaCalculation.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.hippsCalculation)
+    .where(
+      and(
+        eq(schema.hippsCalculation.claimId, claimId),
+        eq(schema.hippsCalculation.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claimLine)
+    .where(
+      and(
+        eq(schema.claimLine.claimId, claimId),
+        eq(schema.claimLine.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claim)
+    .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId)));
+}
 
 // ── the factory ────────────────────────────────────────────────────────────────────────────────────
 
@@ -550,22 +639,7 @@ export function buildDrizzleM23WriteService(
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be deleted");
         }
-        await tx
-          .delete(schema.claimLine)
-          .where(
-            and(
-              eq(schema.claimLine.claimId, claimId),
-              eq(schema.claimLine.organizationId, actor.organizationId),
-            ),
-          );
-        await tx
-          .delete(schema.claim)
-          .where(
-            and(
-              eq(schema.claim.id, claimId),
-              eq(schema.claim.organizationId, actor.organizationId),
-            ),
-          );
+        await deleteDraftClaimSubtree(tx, actor.organizationId, claimId);
       });
     },
 

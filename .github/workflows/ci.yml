@@ -1020,6 +1020,9 @@ jobs:
           # Migration 1056 — the tenant-entered visit-charge schedule: append-only versions, EXCLUDE no-overlap, RLS,
           # audit trail, and the windowed read claim assembly fails closed on.
           - { name: "M23 visit charge schedule", scripts: "test:m23:visit-charge-schedule:live" }
+          # Migration 1061 - DELETE /billing/claims/:id (and the re-assembly line rewrite) on a DRAFT claim: DELETE grants, the
+          # draft-only guards, org-scoped RLS, the destruction role unchanged.
+          - { name: "M23 draft claim delete", scripts: "test:m23:draft-claim-delete:live" }
           # Migrations 1058/1059 — the CMS hospice wage-index geography (ZIP -> county -> CBSA) behind value codes 61 / G8:
           # real ZIPs resolve to the CMS code for the fiscal year, unplaceable ones fail closed, tenants read but never write.
           - { name: "M23 hospice CBSA geography", scripts: "test:m23:hospice-cbsa:live" }
