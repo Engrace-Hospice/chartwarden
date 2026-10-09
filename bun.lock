@@ -390,6 +390,7 @@
       "version": "0.0.0",
       "dependencies": {
         "decimal.js": "^10.6.0",
+        "libphonenumber-js": "^1.13.15",
       },
     },
     "packages/subscription-billing": {
@@ -1069,6 +1070,7 @@
     "@wardenx/tenancy": ["@wardenx/tenancy@workspace:packages/tenancy"],
 
     "@wardenx/terminology": ["@wardenx/terminology@workspace:packages/terminology"],
+
     "@wardenx/terminology-loader": ["@wardenx/terminology-loader@workspace:packages/terminology-loader"],
 
     "@wardenx/triage-vendors": ["@wardenx/triage-vendors@workspace:packages/triage-vendors"],
@@ -1364,6 +1366,8 @@
     "kleur": ["kleur@3.0.3", "", {}, "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w=="],
 
     "kysely": ["kysely@0.29.2", "", {}, "sha512-s6WVJyEZrbm6jhBpiKHsGHyePMrVQKJ85wZCFCr9W4QHv6WTjWIrdvTmO9hDEA3bNK0xkrE2DqrHsXMLWuZpQg=="],
+
+    "libphonenumber-js": ["libphonenumber-js@1.13.15", "", {}, "sha512-AHdhEQeDFEJ4GKDAQ9AwxChy+v2kUILUB3TGQRpkXMkWePjXTU/WQEzWVQoIx/Gz8fE73Wr5SEuZCy2vk8jrMQ=="],
 
     "light-my-request": ["light-my-request@6.6.0", "", { "dependencies": { "cookie": "^1.0.1", "process-warning": "^4.0.0", "set-cookie-parser": "^2.6.0" } }, "sha512-CHYbu8RtboSIoVsHZ6Ye4cj4Aw/yg2oAFimlF7mNvfDV192LR7nDiKtSIfCuLT7KokPSTn/9kfVLm5OGN0A28A=="],
 

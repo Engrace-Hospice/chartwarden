@@ -1,7 +1,10 @@
 // GAP-032 — the platform page to WardenX ops that lets the SOS ladder enter the emergency terminus.
 import { describe, expect, it } from "vitest";
 
-import { createWebhookOpsPager } from "../src/modules/20-field-safety/jobs/terminus-port";
+import {
+  OpsPageError,
+  createWebhookOpsPager,
+} from "../src/modules/20-field-safety/jobs/terminus-port";
 
 const input = {
   organizationId: "org-1",
@@ -42,5 +45,46 @@ describe("GAP-032 webhook ops pager", () => {
       fetchImpl: async () => ({ status: 503 }),
     });
     await expect(pager.pageOps(input)).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("carries a per-alert dedupKey and the ledger idempotency key so the receiver can coalesce re-pages", async () => {
+    const bodies: string[] = [];
+    const pager = createWebhookOpsPager({
+      url: "https://ops.example/hook",
+      fetchImpl: async (_url, init) => {
+        bodies.push(init.body);
+        return { status: 200 };
+      },
+    });
+    await pager.pageOps({
+      ...input,
+      loopIteration: 3,
+      idempotencyKey: "m20:sos:sos-1:page_ops:3:0",
+    });
+    expect(JSON.parse(bodies[0] ?? "{}")).toMatchObject({
+      dedupKey: "sos:sos-1",
+      idempotencyKey: "m20:sos:sos-1:page_ops:3:0",
+      loopIteration: 3,
+    });
+  });
+
+  it("classifies a non-2xx as receiver_non_2xx and an unreachable receiver as timeout, without leaking the URL", async () => {
+    const down = createWebhookOpsPager({
+      url: "https://secret-ops.example/hook?k=1",
+      fetchImpl: async () => {
+        throw new Error("connect ECONNREFUSED https://secret-ops.example/hook?k=1");
+      },
+    });
+    const err = await down.pageOps(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OpsPageError);
+    expect((err as OpsPageError).outcome).toBe("timeout");
+    expect((err as OpsPageError).message).not.toContain("secret-ops");
+
+    const bad = createWebhookOpsPager({
+      url: "https://ops.example/hook",
+      fetchImpl: async () => ({ status: 500 }),
+    });
+    const badErr = (await bad.pageOps(input).catch((e: unknown) => e)) as OpsPageError;
+    expect(badErr.outcome).toBe("receiver_non_2xx");
   });
 });

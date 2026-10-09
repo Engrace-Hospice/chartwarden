@@ -43,6 +43,7 @@
 //      earlier. The gaps ride the response (the only moment they are cheap to fix) AND the §7.8 watchdog's
 //      own system-locked critical alert, because a DON who ignored the response still gets woken.
 import { type DbClient, schema } from "@wardenx/db";
+import { normalizeE164 } from "@wardenx/shared/phone";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type IsoInstant,
@@ -84,6 +85,7 @@ import {
   raiseSosEffects,
   resolveSos as resolveSosDecision,
 } from "../lifecycle/sos-alert";
+import { EMERGENCY_CONTACT_DEFAULT_REGION } from "../terminus/contact";
 import type { M20WriteActor } from "./actor";
 import { providerEntityOf } from "./actor";
 import { SAFETY_NO_COORDINATE_SENTINEL, encodeCoordinates } from "./coordinates";
@@ -2061,9 +2063,20 @@ export function buildDrizzleM20WriteService(
       // was promised the number would be protected.
       let scopeDetail: Record<string, unknown> = {};
       if (input.contact !== undefined) {
+        // GAP-032: a number that cannot be dialled is refused HERE, at grant time, not discovered at 3 a.m.
+        // The sealed copy holds the normalised E.164 so the terminus dial never re-parses free text. The
+        // refusal never echoes the number.
+        const normalised = normalizeE164(input.contact.phone, EMERGENCY_CONTACT_DEFAULT_REGION);
+        if (!normalised.ok) {
+          throw new WardenXError(
+            "EMERGENCY_CONTACT_NUMBER_INVALID",
+            "the emergency contact's phone number cannot be dialled; enter a full number with area code (no extension, no emergency or short codes)",
+            422,
+          );
+        }
         const sealed = await seal(
           actor,
-          JSON.stringify(input.contact),
+          JSON.stringify({ ...input.contact, phone: normalised.e164 }),
           "the emergency contact on this consent",
         );
         scopeDetail = { contact: sealed.toString("base64"), enc: "dek" };

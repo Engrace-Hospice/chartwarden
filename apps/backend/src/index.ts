@@ -767,13 +767,13 @@ import {
   buildDrizzleSafetyAbacResolver,
   buildDrizzleSafetySeamStore,
   buildFieldSafetyConsumers,
+  buildM20TerminusDeps,
   buildM20WorkerDeps,
   createCoordinateDecipher,
   createDrizzleSafetyEraseStore,
   createSafetyCiphers,
   createSafetyPolicyProvider,
   createSosRecipientCounter,
-  createWebhookOpsPager,
   denyStubSafetyAbacResolver,
   lazyTenantKeys,
   mountM20Routes,
@@ -1351,6 +1351,7 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
+  createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
   registerM36DeliveryWorkers,
@@ -7516,10 +7517,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // ── M20 §4.8 `m20.sos-sla-watchdog.cron` (F-111, #249 — the M9 worker-runner shape) ─────────────────
     // `decideSosWatchdog` (lifecycle/sos-escalator.ts) shipped with M20-T03 and had no production caller
     // anywhere: no file under 20-field-safety matched *cron*/*worker*/*job*, so an unacknowledged SOS
-    // alert sat in `acknowledging` (or any later tier) forever. See jobs/cron-workers.ts's own header for
-    // why the tier-3 -> emergency_terminus rung is deliberately refused rather than completed (the same
-    // choice consumers/m36-delivery-failed.ts already made for the identical edge — no caller anywhere in
-    // this codebase implements the terminus's dial/PSAP/page effects).
+    // alert sat in `acknowledging` (or any later tier) forever. GAP-032: the tier-3 -> emergency_terminus
+    // rung is now entered at the SLA breach and its page/dial/PSAP effects run from the durable intent
+    // ledger (jobs/cron-workers.ts's header, terminus/). consumers/m36-delivery-failed.ts deliberately
+    // still does NOT enter the terminus: one failed SMS must not be able to auto-dial a spouse.
     const m20ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -7531,16 +7532,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       db: dbHandle.db,
       outbox: m20OutboxPublisher,
       policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
-      // GAP-032 — the platform page that lets the SOS ladder enter the emergency terminus. Unset => the
-      // watchdog keeps refusing that rung (and logs it) rather than record a terminus nobody was paged for.
-      ...(process.env.WARDENX_OPS_PAGE_WEBHOOK_URL
-        ? {
-            terminus: createWebhookOpsPager({
-              url: process.env.WARDENX_OPS_PAGE_WEBHOOK_URL,
-              token: process.env.WARDENX_OPS_PAGE_WEBHOOK_TOKEN,
-            }),
-          }
-        : {}),
+      // GAP-032 — the SOS emergency-terminus effects: the platform page to WardenX ops, the M36 voice call
+      // to the consented emergency contact (gated OFF by WARDENX_SOS_CONTACT_DIAL), and the M40 PSAP
+      // lookup. An unbound port degrades to a RECORDED ledger skip and a loud boot line - it never stops
+      // the terminus being entered (see 20-field-safety/terminus/build.ts).
+      terminus: buildM20TerminusDeps({
+        env: process.env,
+        db: dbHandle.db,
+        caller: createSosContactCaller(outOfBandBinding.transports.voice),
+        decipher: createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider)).decipher,
+        log: (line) => process.stderr.write(`${line}\n`),
+      }),
       activeOrgs: m20ActiveOrgs,
       // GAP-061 — the overdue detector's D14 after-hours zone, through M1's owner reader (M20 reads no
       // `location` row itself).

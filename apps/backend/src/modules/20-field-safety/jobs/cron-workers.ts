@@ -27,25 +27,16 @@
 // alert's lost race (or genuine failure) abort the other four — `processOneAlert` catches its own
 // `STALE_LIFECYCLE_STATE` and logs+continues rather than letting it propagate out of the org's loop.
 //
-// THE TERMINUS RUNG IS DELIBERATELY NOT COMPLETED HERE, MIRRORING `consumers/m36-delivery-failed.ts`'S
-// OWN CHOICE FOR THE IDENTICAL EDGE CASE. `escalateSos` from `escalation_tier_3` reaches
-// `emergency_terminus`, whose entry effects are `dial_emergency_contact` / `surface_psap_number` /
-// `page_wardenx_ops` — all three `CALLER_OWNED_EFFECT_KINDS` (`../routes/effects-runner.ts`) that
-// `runEffects` deliberately does not execute, and NO caller anywhere in this codebase implements a real
-// telephony dial, an M40 jurisdiction lookup, or a platform page (confirmed: no production caller reaches
-// `emergency_terminus` today — the "manual escalate" path the decider's own header cites as the ladder's
-// other trigger has no live route either). Completing the transition here would write
-// `lifecycleState = 'emergency_terminus'` and fire `sos_terminus_reached` while none of the three
-// mandated life-safety actions actually happened — `m36-delivery-failed.ts`'s header calls exactly this
-// "worse than not escalating: the record would say the life-safety chain reached its mandated end when
-// nothing dialed anyone." This worker reuses that reasoning rather than re-deciding it: a tier-3 alert
-// past its SLA is logged loudly (structured log, `sosTerminusUnsupported: true`) and left at
-// `escalation_tier_3`, not silently dropped — the alert is still visible on the §4.2/§4.3 board at its
-// current (breached) tier, which is real information, and the gap is filed as its own follow-up rather
-// than papered over here. The re-page LOOP is still wired for an alert that reaches `emergency_terminus`
-// by some future path (a manual-escalate route, once built) — `repageTerminus`'s effects are all
-// outbox/alert, no caller-owned kinds, so applying them is safe today even though nothing can currently
-// put an alert into that state.
+// THE TERMINUS RUNG IS ENTERED AT THE TIER-3 BREACH (GAP-032). `escalateSos` from `escalation_tier_3`
+// reaches `emergency_terminus`, whose three life-safety effects (`dial_emergency_contact`,
+// `surface_psap_number`, `page_wardenx_ops`) are `CALLER_OWNED_EFFECT_KINDS` the effects runner does not
+// execute: a telephony / webhook round-trip must never hold a pooled tenant connection. They are therefore
+// recorded as INTENT rows in `safety_sos_terminus_action` (`../terminus/`) in the SAME tx as the state
+// change, and an executor performs them out of the tx and settles each row. The state is a fact about an
+// unanswered alert; the ledger carries the truth about each effect - so a down receiver can no longer hide
+// a terminus (the original GAP-032 symptom), and the `sos_terminus_reached` payload reports the ledger,
+// never a guess. The re-page LOOP is idempotent per (alert, loop period): the ledger's UNIQUE key means the
+// ~20 watchdog ticks inside one period produce one event and one set of intents.
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
@@ -71,6 +62,10 @@ import {
 import { decideSosWatchdog } from "../lifecycle/sos-escalator";
 import { type SosStateHistoryPort, runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import type { TerminusDeps } from "../terminus/deps";
+import { emergencyContactConsentGrantedInTx, recordTerminusIteration } from "../terminus/enter";
+import { runTerminusExecutorForOrg } from "../terminus/executor";
+import { type TerminusLedgerFlags, readLedgerFlags } from "../terminus/ledger";
 import { runCoverageGapWatchdogCron } from "./coverage-gap-watchdog";
 import {
   M20_COVERAGE_GAP_WATCHDOG_JOB_NAME,
@@ -81,7 +76,6 @@ import {
   M20_SOS_WATCHDOG_JOB_NAME,
 } from "./index";
 import { runOverdueDetectorCron } from "./overdue-detector";
-import type { SosTerminusPort } from "./terminus-port";
 import {
   type ActiveOrgListPort,
   type M20WorkerDeps,
@@ -96,7 +90,6 @@ export { runOverdueDetectorCron } from "./overdue-detector";
 
 const SOS = schema.safetySosAlert;
 const SOS_HISTORY = schema.safetySosAlertStateHistory;
-const CONSENT = schema.safetyEmergencyContactConsent;
 
 /** Build the {@link M20WorkerDeps} from the composition-root primitives (the M9/M25 `buildMxWorkerDeps` shape). */
 export function buildM20WorkerDeps(deps: {
@@ -105,7 +98,7 @@ export function buildM20WorkerDeps(deps: {
   outbox: WriteOutboxPort;
   policy: SafetyPolicyProvider;
   alerts?: AlertPort;
-  terminus?: SosTerminusPort;
+  terminus?: TerminusDeps;
   activeOrgs?: ActiveOrgListPort;
   locationTimezone?: M20WorkerDeps["locationTimezone"];
 }): M20WorkerDeps {
@@ -142,32 +135,6 @@ function sosFactsOf(row: {
     lastKnownVisitId: row.lastKnownVisitId as SafetySosAlertFacts["lastKnownVisitId"],
     linkedIncidentId: row.linkedIncidentId as SafetySosAlertFacts["linkedIncidentId"],
   };
-}
-
-/** §2.2.8 — is `emergency_contact_call` an ACTIVE consent for the clinician who raised the alert? Mirrors
- *  `write-service-drizzle.ts`'s `consentActive` / `consumers/m36-delivery-failed.ts`'s
- *  `emergencyContactConsentActive` — duplicated per that file's own convention (private to each caller's
- *  closure) rather than exported. */
-async function emergencyContactConsentActive(
-  tx: DbClient,
-  organizationId: string,
-  clinicianMembershipId: MembershipId,
-  at: Date,
-): Promise<boolean> {
-  const [row] = await tx
-    .select({ status: CONSENT.status, expiresAt: CONSENT.expiresAt })
-    .from(CONSENT)
-    .where(
-      and(
-        eq(CONSENT.organizationId, organizationId),
-        eq(CONSENT.clinicianMembershipId, clinicianMembershipId),
-        eq(CONSENT.consentPurpose, "emergency_contact_call"),
-        eq(CONSENT.status, "granted"),
-      ),
-    )
-    .limit(1);
-  if (!row) return false;
-  return row.expiresAt === null || row.expiresAt.getTime() > at.getTime();
 }
 
 /** The `safety_sos_alert_state_history` row a `sos_state_history` effect writes (mirrors
@@ -252,37 +219,20 @@ async function loadAlertWithStateEnteredAt(
   return { alert, stateEnteredAt: stateEnteredAt as IsoInstant, postedAt: alert.postedAt };
 }
 
-/** Apply an `escalate` decision. Refuses the tier-3 → `emergency_terminus` rung specifically (see this
- *  file's header) — every other rung (`acknowledging → tier_1`, `tier_1 → tier_2`, `tier_2 → tier_3`)
- *  carries only `outbox`/`alert` effects and is applied in full. */
+/** Apply an `escalate` decision. The tier-3 -> `emergency_terminus` rung is applied like any other rung and
+ *  additionally records iteration 0 of the terminus intents in the SAME tx (see this file's header). The entry
+ *  event is honest at emit time: nothing has been paged or dialled yet, so the flags are false/null. */
 async function applyEscalate(
   tx: DbClient,
   deps: M20WorkerDeps,
-  row: { organizationId: string; providerEntityId: string; locationId: string | null },
+  row: AlertAnchorRow,
   sosAlertId: string,
   alert: SafetySosAlertFacts,
   transition: SafetySosTransition,
   at: Date,
   atIso: IsoInstant,
-  log: (msg: string, meta: Record<string, unknown>) => void,
+  emergencyContactConsent: boolean,
 ): Promise<void> {
-  // GAP-032 — the terminus rung is entered only when the platform page was actually delivered. Without a
-  // bound pager the rung is still refused (and logged loudly); with one, a page failure throws out of this
-  // tx so nothing is recorded as "terminus reached" while nobody was paged.
-  let opsPaged = false;
-  if (transition.to === "emergency_terminus") {
-    if (!deps.terminus) {
-      log("m20.sos-sla-watchdog: tier-3 SLA breach, terminus rung refused (no ops pager bound)", {
-        organizationId: row.organizationId,
-        sosAlertId,
-        sosTerminusUnsupported: true,
-      });
-      return;
-    }
-    opsPaged = await attemptOpsPage(deps.terminus, row, sosAlertId, 0, atIso, log);
-    if (!opsPaged) return; // not recorded as reached: the next tick retries the page from tier 3
-  }
-
   const patch = await runEffects(tx, transition.effects, {
     organizationId: row.organizationId,
     providerEntityId: row.providerEntityId,
@@ -307,14 +257,10 @@ async function applyEscalate(
         escalatedAt: atIso,
         reasonCode: "sla_breach",
       },
-      "m20.safety.sos_terminus_reached": terminusPayload(row, sosAlertId, atIso, 0, opsPaged),
+      "m20.safety.sos_terminus_reached": terminusPayload(row, sosAlertId, atIso, 0, NO_EFFECTS_YET),
     },
     alertPayloads: {
-      ...(opsPaged
-        ? {
-            "m20.safety.sos_terminus_reached": terminusAlert(row, sosAlertId, atIso, 0),
-          }
-        : {}),
+      "m20.safety.sos_terminus_reached": terminusAlert(row, sosAlertId, atIso, 0, NO_EFFECTS_YET),
       "m20.safety.sos_alert_escalated": buildSosEscalatedAlert({
         orgId: row.organizationId as never,
         providerEntityId: row.providerEntityId as never,
@@ -336,6 +282,16 @@ async function applyEscalate(
   );
   if (!won) {
     throw new Error("M20_SOS_WATCHDOG_STALE_VERSION");
+  }
+  if (transition.to === "emergency_terminus") {
+    await recordTerminusIteration(tx, {
+      anchor: row,
+      sosAlertId,
+      loopIteration: 0,
+      at,
+      consentGranted: emergencyContactConsent,
+      pagerBound: deps.terminus?.pager !== undefined,
+    });
   }
 }
 
@@ -378,31 +334,33 @@ async function applyExpireCancelWindow(
   }
 }
 
-/** Apply a `terminus_repage` decision — one more turn of the loop for an alert already IN
- *  `emergency_terminus` (reachable only by a future manual-escalate route today; see this file's
- *  header). Not a transition (the state does not move), so no version-guarded patch either — only the
- *  outbox/alert effects.
+/** Apply a `terminus_repage` decision - one more turn of the loop for an alert already IN
+ *  `emergency_terminus`. Not a transition (the state does not move), so no version-guarded patch.
  *
- *  `emergencyContactCallInitiated`/`psapJurisdictionId`/`wardenxOpsPaged` are ALWAYS `false`/`null`/
- *  `false` here, never derived from consent or anything else: `dial_emergency_contact` /
- *  `surface_psap_number` / `page_wardenx_ops` are `CALLER_OWNED_EFFECT_KINDS` `runEffects` does not
- *  execute (see this file's header — no caller anywhere implements them), so none of the three ever
- *  actually happens, and the payload says so rather than reporting an active consent as an initiated
- *  call nobody placed. */
+ *  Idempotent per loop period: only the tick whose `page_ops` intent insert WINS publishes the iteration's
+ *  event/alert and plans its other intents; the rest of the period's ticks are no-ops. The payload flags are
+ *  the ledger's truth as of this iteration, not a guess. */
 async function applyTerminusRepage(
   tx: DbClient,
   deps: M20WorkerDeps,
-  row: { organizationId: string; providerEntityId: string; locationId: string | null },
+  row: AlertAnchorRow,
   sosAlertId: string,
   effects: ReturnType<typeof repageTerminus>,
   loopIteration: number,
   at: Date,
   atIso: IsoInstant,
+  emergencyContactConsent: boolean,
 ): Promise<void> {
-  // A failed re-page is still a tenant-facing re-alert (best effort); the payload reports the page honestly.
-  const opsPaged = deps.terminus
-    ? await attemptOpsPage(deps.terminus, row, sosAlertId, loopIteration, atIso, logM20Cron)
-    : false;
+  const { won } = await recordTerminusIteration(tx, {
+    anchor: row,
+    sosAlertId,
+    loopIteration,
+    at,
+    consentGranted: emergencyContactConsent,
+    pagerBound: deps.terminus?.pager !== undefined,
+  });
+  if (!won) return;
+  const flags = await readLedgerFlags(tx, sosAlertId);
   await runEffects(tx, effects, {
     organizationId: row.organizationId,
     providerEntityId: row.providerEntityId,
@@ -422,56 +380,42 @@ async function applyTerminusRepage(
         sosAlertId,
         atIso,
         loopIteration,
-        opsPaged,
+        flags,
       ),
     },
     alertPayloads: {
-      "m20.safety.sos_terminus_reached": terminusAlert(row, sosAlertId, atIso, loopIteration),
+      "m20.safety.sos_terminus_reached": terminusAlert(
+        row,
+        sosAlertId,
+        atIso,
+        loopIteration,
+        flags,
+      ),
     },
   });
 }
 
-/** Page WardenX ops; `true` only when the receiver acknowledged. A failure is logged loudly, never thrown, so
- *  one unreachable receiver cannot abort the rest of the org's alerts in the same tick. */
-async function attemptOpsPage(
-  port: SosTerminusPort,
-  row: { organizationId: string; providerEntityId: string },
-  sosAlertId: string,
-  loopIteration: number,
-  atIso: IsoInstant,
-  log: (msg: string, meta: Record<string, unknown>) => void,
-): Promise<boolean> {
-  try {
-    await port.pageOps({
-      organizationId: row.organizationId,
-      providerEntityId: row.providerEntityId,
-      sosAlertId,
-      loopIteration,
-      at: atIso,
-    });
-    return true;
-  } catch (error) {
-    log("m20.sos-sla-watchdog: ops page FAILED for an alert at the emergency terminus", {
-      organizationId: row.organizationId,
-      sosAlertId,
-      loopIteration,
-      sosTerminusPageFailed: true,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
+type AlertAnchorRow = {
+  organizationId: string;
+  providerEntityId: string;
+  locationId: string | null;
+};
 
-/** The §4.10 `sos_terminus_reached` payload. `emergencyContactCallInitiated` and `psapJurisdictionId` are
- *  never derived from consent or config: the dial (M36 voice) and the PSAP lookup (M40) have no
- *  implementer, so they did not happen and the payload says so. `wardenxOpsPaged` is true only when the
- *  platform page was delivered. */
+/** At terminus entry nothing has been paged, dialled or resolved yet - the ledger rows are only intents. */
+const NO_EFFECTS_YET: TerminusLedgerFlags = {
+  wardenxOpsPaged: false,
+  emergencyContactCallInitiated: false,
+  psapJurisdictionId: null,
+};
+
+/** The §4.10 `sos_terminus_reached` payload. Every flag comes from the ledger (`readLedgerFlags`): a call
+ *  that was only planned is not "initiated", a page that was never acknowledged is not "paged". */
 function terminusPayload(
   row: { organizationId: string; providerEntityId: string },
   sosAlertId: string,
   atIso: IsoInstant,
   loopIteration: number,
-  wardenxOpsPaged: boolean,
+  flags: TerminusLedgerFlags,
 ): Record<string, unknown> {
   return {
     orgId: row.organizationId,
@@ -480,9 +424,9 @@ function terminusPayload(
     sosAlertId,
     terminusReachedAt: atIso,
     loopIteration,
-    emergencyContactCallInitiated: false,
-    psapJurisdictionId: null,
-    wardenxOpsPaged,
+    emergencyContactCallInitiated: flags.emergencyContactCallInitiated,
+    psapJurisdictionId: flags.psapJurisdictionId,
+    wardenxOpsPaged: flags.wardenxOpsPaged,
   };
 }
 
@@ -491,6 +435,7 @@ function terminusAlert(
   sosAlertId: string,
   atIso: IsoInstant,
   loopIteration: number,
+  flags: TerminusLedgerFlags,
 ): Record<string, unknown> {
   return buildSosTerminusAlert({
     orgId: row.organizationId as never,
@@ -498,8 +443,8 @@ function terminusAlert(
     sosAlertId: sosAlertId as never,
     terminusReachedAt: atIso,
     loopIteration,
-    emergencyContactCallInitiated: false,
-    psapNumberAvailable: false,
+    emergencyContactCallInitiated: flags.emergencyContactCallInitiated,
+    psapNumberAvailable: flags.psapJurisdictionId !== null,
   }) as unknown as Record<string, unknown>;
 }
 
@@ -527,7 +472,7 @@ async function processOneAlert(
           organizationId as OrgId,
           alert.postedAt,
         );
-        const emergencyContactConsent = await emergencyContactConsentActive(
+        const emergencyContactConsent = await emergencyContactConsentGrantedInTx(
           tx,
           organizationId,
           alert.postedByMembershipId,
@@ -577,7 +522,7 @@ async function processOneAlert(
               decision.transition,
               now,
               atIso,
-              log,
+              emergencyContactConsent,
             );
           case "terminus_repage":
             return applyTerminusRepage(
@@ -589,6 +534,7 @@ async function processOneAlert(
               decision.loopIteration,
               now,
               atIso,
+              emergencyContactConsent,
             );
         }
       },
@@ -647,6 +593,20 @@ export async function runSosSlaWatchdogCron(deps: M20WorkerDeps): Promise<void> 
       await runWithRequestContext({ organizationId, userId: M20_WORKER_SYSTEM_USER_ID }, () =>
         processOneAlert(deps, organizationId, sosAlertId, now, log),
       );
+    }
+    // GAP-032: perform the terminus intents (page / dial / PSAP) the pass above just recorded - and any
+    // earlier row still due or past its lease - outside every tenant tx. One org's executor failure must
+    // not stop the next org's tick.
+    try {
+      await runTerminusExecutorForOrg(
+        { db: deps.db, terminus: deps.terminus, now: deps.now ?? (() => new Date()) },
+        organizationId,
+      );
+    } catch (err) {
+      log("m20.sos-sla-watchdog: terminus executor failed for an org", {
+        organizationId,
+        error: err instanceof Error ? err.name : "unknown",
+      });
     }
   }
 }

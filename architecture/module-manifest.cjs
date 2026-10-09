@@ -677,6 +677,7 @@ exports.MODULES = [
       "safety_sos_alert",
       "safety_sos_alert_state_history",
       "safety_sos_location_stream",
+      "safety_sos_terminus_action",
       "safety_supervisor_subscription",
     ],
   },

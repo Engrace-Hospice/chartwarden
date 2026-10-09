@@ -154,8 +154,12 @@ export {
 export {
   type SosTerminusPageInput,
   type SosTerminusPort,
+  OpsPageError,
   createWebhookOpsPager,
 } from "./jobs/terminus-port";
+export type { SpokenNames, TerminusDeps } from "./terminus/deps";
+export { buildM20TerminusDeps } from "./terminus/build";
+export { runTerminusExecutorForOrg } from "./terminus/executor";
 export { M20_PLATFORM_JOB_ID, wireM20Tenancy } from "./wiring";
 export {
   type M20RegisteredAbacPredicate,

@@ -20,20 +20,26 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m20:sos-sla-watchdog:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
+import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   type M20WorkerDeps,
   M20_OUTBOX_EVENTS,
+  OpsPageError,
   buildDrizzleSafetySeamStore,
   buildM20WorkerDeps,
+  createSafetyCiphers,
   createSafetyPolicyProvider,
   runSosSlaWatchdogCron,
+  runTerminusExecutorForOrg,
 } from "../src/modules/20-field-safety/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -43,6 +49,7 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 
 const ORG_A = "11111111-1111-4111-8111-1111f111a001";
 const ORG_B = "22222222-2222-4222-8222-2222f222b002";
+const PSAP_ID = "33333333-3333-4333-8333-333333333333";
 
 type Seed = { pe: string; location: string; member: string };
 
@@ -252,6 +259,11 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
 
   beforeEach(async () => {
     await admin.query("DELETE FROM outbox_event");
+    await admin.query("DELETE FROM safety_sos_terminus_action");
+    await admin.query("DELETE FROM safety_emergency_contact_consent");
+    await admin.query(
+      "DELETE FROM audit_event WHERE event_type LIKE 'safety_emergency_contact_consent.%'",
+    );
     await admin.query("DELETE FROM safety_sos_alert_state_history");
     await admin.query("DELETE FROM safety_sos_alert");
     clock = new Date("2026-09-01T17:00:00.000Z");
@@ -342,94 +354,454 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     });
   });
 
-  it("escalation_tier_3 overdue on its SLA does NOT enter emergency_terminus — refused, not completed", async () => {
+  // ── GAP-032 — the SOS emergency terminus: durable intent ledger + out-of-tx executor ─────────────────
+
+  const TIER3_ENTERED = new Date("2026-09-01T16:50:00.000Z"); // 600s before the clock; tier-3 SLA 300s
+
+  async function seedTier3(): Promise<string> {
     const postedAt = new Date("2026-09-01T16:00:00.000Z");
     const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
-    const enteredTier3At = new Date("2026-09-01T16:50:00.000Z"); // 600s before the clock; tier-3 SLA 300s
-    const sosAlertId = await seedSos({
+    return seedSos({
       org: ORG_A,
       lifecycleState: "escalation_tier_3",
       postedAt,
       policyVersionId,
-      history: { fromState: "escalation_tier_2", enteredAt: enteredTier3At },
+      history: { fromState: "escalation_tier_2", enteredAt: TIER3_ENTERED },
     });
-    await runSosSlaWatchdogCron(deps);
+  }
 
-    // Unchanged: no caller in this codebase implements the terminus's dial/PSAP/page effects, so the
-    // watchdog refuses the rung rather than writing a record that says the life-safety chain reached its
-    // mandated end when nothing dialed anyone (see jobs/cron-workers.ts's header).
-    expect(await alertRow(sosAlertId)).toMatchObject({
-      lifecycle_state: "escalation_tier_3",
-      version: 1,
-    });
-    // Exactly the ONE seeded history row (entering tier_3) — no new row from this tick.
-    expect(await historyFor(sosAlertId)).toHaveLength(1);
-    expect(await outboxFor(sosAlertId)).toEqual([]);
+  const singleOrg = () => ({
+    ...deps,
+    activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
   });
 
-  it("GAP-032: with an ops pager bound, a breached tier 3 enters emergency_terminus and ops is paged", async () => {
-    const postedAt = new Date("2026-09-01T16:00:00.000Z");
-    const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
-    const sosAlertId = await seedSos({
-      org: ORG_A,
-      lifecycleState: "escalation_tier_3",
-      postedAt,
-      policyVersionId,
-      history: { fromState: "escalation_tier_2", enteredAt: new Date("2026-09-01T16:50:00.000Z") },
-    });
-    const pages: Array<{ sosAlertId: string; loopIteration: number }> = [];
-    await runSosSlaWatchdogCron({
-      ...deps,
-      terminus: {
-        async pageOps(input) {
-          pages.push({ sosAlertId: input.sosAlertId, loopIteration: input.loopIteration });
-        },
-      },
-    });
+  async function actionsFor(sosAlertId: string) {
+    const { rows } = await admin.query(
+      `SELECT action_kind, loop_iteration, attempt_no, status, outcome_code, external_ref,
+              jurisdiction_id, attempts
+         FROM safety_sos_terminus_action WHERE sos_alert_id=$1
+        ORDER BY loop_iteration, action_kind, attempt_no`,
+      [sosAlertId],
+    );
+    return rows as Array<{
+      action_kind: string;
+      loop_iteration: number;
+      attempt_no: number;
+      status: string;
+      outcome_code: string | null;
+      external_ref: string | null;
+      jurisdiction_id: string | null;
+      attempts: number;
+    }>;
+  }
+  const kindRows = async (id: string, kind: string) =>
+    (await actionsFor(id)).filter((r) => r.action_kind === kind);
 
-    expect(pages).toEqual([{ sosAlertId, loopIteration: 0 }]);
+  const TEST_KEY = randomBytes(32);
+  const ciphers = createSafetyCiphers({
+    dekForOrg: async () => ({ version: "1", key: TEST_KEY }),
+    dekForOrgVersion: async () => ({ version: "1", key: TEST_KEY }),
+  });
+
+  /** Grants the clinician's `emergency_contact_call` consent with a REALLY sealed contact. */
+  async function seedContactConsent(phone: string, status: "granted" | "revoked" = "granted") {
+    const s = seeded[ORG_A] as Seed;
+    const sealed = await ciphers.cipher.encrypt({
+      organizationId: ORG_A,
+      plaintext: JSON.stringify({ name: "Pat Example", phone, relationship: "spouse" }),
+    });
+    await admin.query(
+      `INSERT INTO safety_emergency_contact_consent
+         (organization_id, clinician_membership_id, consent_purpose, consent_scope_detail, status,
+          revoked_at, acknowledgment_text_snapshot, granted_at)
+       VALUES ($1,$2,'emergency_contact_call',$3,$4,$5,'I consent','2026-08-01T00:00:00Z')`,
+      [
+        ORG_A,
+        s.member,
+        JSON.stringify({ contact: Buffer.from(sealed).toString("base64"), enc: "dek" }),
+        status,
+        status === "revoked" ? new Date("2026-09-01T10:00:00.000Z") : null,
+      ],
+    );
+  }
+
+  interface Fakes {
+    pages: Array<{ sosAlertId: string; loopIteration: number; idempotencyKey?: string }>;
+    calls: Array<{ toE164: string; idempotencyKey: string; agencyName: string }>;
+  }
+
+  function terminusBag(
+    over: Partial<{
+      pagerFails: boolean;
+      pager: boolean;
+      caller: "accept" | "deny" | "refuse_terminal" | "none";
+      dialEnabled: boolean;
+      jurisdiction: "resolved" | "none" | "unbound";
+    }> = {},
+  ): { bag: NonNullable<M20WorkerDeps["terminus"]>; fakes: Fakes } {
+    const fakes: Fakes = { pages: [], calls: [] };
+    const o = {
+      pager: true,
+      caller: "accept",
+      dialEnabled: true,
+      jurisdiction: "resolved",
+      ...over,
+    };
+    const bag: NonNullable<M20WorkerDeps["terminus"]> = {
+      ...(o.pager
+        ? {
+            pager: {
+              async pageOps(input) {
+                if (over.pagerFails) throw new OpsPageError("receiver_non_2xx", "down");
+                fakes.pages.push({
+                  sosAlertId: input.sosAlertId,
+                  loopIteration: input.loopIteration,
+                  ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+                });
+              },
+            },
+          }
+        : {}),
+      ...(o.caller === "none"
+        ? {}
+        : {
+            caller: {
+              async place(input) {
+                if (o.caller === "deny")
+                  return { kind: "refused", reason: "transport_not_configured", retryable: false };
+                if (o.caller === "refuse_terminal")
+                  return { kind: "refused", reason: "vendor_refused", retryable: false };
+                fakes.calls.push({
+                  toE164: input.toE164,
+                  idempotencyKey: input.idempotencyKey,
+                  agencyName: input.agencyName,
+                });
+                return { kind: "accepted", vendorCallId: `CA${fakes.calls.length}` };
+              },
+            },
+          }),
+      dialEnabled: o.dialEnabled,
+      decipher: ciphers.decipher,
+      store: buildDrizzleSafetySeamStore(handle.db),
+      ...(o.jurisdiction === "unbound"
+        ? {}
+        : {
+            jurisdictions: () => ({
+              async forSosAlert() {
+                return o.jurisdiction === "none"
+                  ? { kind: "none" as const }
+                  : {
+                      kind: "resolved" as const,
+                      jurisdictionId: PSAP_ID,
+                      confidence: "org_default" as const,
+                      stale: false,
+                    };
+              },
+              async byId() {
+                return null;
+              },
+            }),
+          }),
+      speakNames: async () => ({ agencyName: "Cedar Hospice", subjectDisplayName: "Dana Reyes" }),
+    };
+    return { bag, fakes };
+  }
+
+  it("GAP-032: a breached tier 3 ENTERS emergency_terminus immediately; the entry event is honest and the effects run from the ledger", async () => {
+    await seedContactConsent("(415) 555-2671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag();
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+
     expect(await alertRow(sosAlertId)).toMatchObject({
       lifecycle_state: "emergency_terminus",
       version: 2,
     });
-    const outbox = await outboxFor(sosAlertId);
-    expect(outbox.map((r) => r.event_type)).toContain("m20.safety.sos_terminus_reached");
-    const terminus = outbox.find((r) => r.event_type === "m20.safety.sos_terminus_reached");
-    // Honest payload: the page happened; the dial and the PSAP lookup have no implementer.
-    expect(terminus?.payload).toMatchObject({
-      wardenxOpsPaged: true,
+    const history = await historyFor(sosAlertId);
+    expect(history.map((h) => h.to_state)).toEqual(["escalation_tier_3", "emergency_terminus"]);
+
+    // The entry event reports what had happened AT emit time: only intents existed.
+    const entry = (await outboxFor(sosAlertId)).find(
+      (r) => r.event_type === "m20.safety.sos_terminus_reached",
+    );
+    expect(entry?.payload).toMatchObject({
+      loopIteration: 0,
+      wardenxOpsPaged: false,
       emergencyContactCallInitiated: false,
       psapJurisdictionId: null,
     });
+
+    // The ledger then carries the truth of every effect.
+    expect(await actionsFor(sosAlertId)).toEqual([
+      expect.objectContaining({
+        action_kind: "dial_contact",
+        status: "succeeded",
+        outcome_code: "ok",
+        external_ref: "CA1",
+      }),
+      expect.objectContaining({ action_kind: "page_ops", status: "succeeded", outcome_code: "ok" }),
+      expect.objectContaining({
+        action_kind: "resolve_psap",
+        status: "succeeded",
+        jurisdiction_id: PSAP_ID,
+      }),
+    ]);
+    // Exactly one call, to the DECRYPTED + normalised number, naming the agency; exactly one page.
+    expect(fakes.calls).toEqual([
+      expect.objectContaining({ toE164: "+14155552671", agencyName: "Cedar Hospice" }),
+    ]);
+    expect(fakes.pages).toEqual([
+      { sosAlertId, loopIteration: 0, idempotencyKey: `m20:sos:${sosAlertId}:page_ops:0:0` },
+    ]);
+    // The contact open left a read-audit trail (resource id = the consent uuid, so the uuid cast holds).
+    const audit = await admin.query(
+      "SELECT resource_id FROM audit_event WHERE event_type='safety_emergency_contact_consent.viewed'",
+    );
+    expect(audit.rows).toHaveLength(1);
   });
 
-  it("GAP-032: a failing ops page leaves the alert at tier 3 and records no terminus", async () => {
-    const postedAt = new Date("2026-09-01T16:00:00.000Z");
-    const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
-    const sosAlertId = await seedSos({
-      org: ORG_A,
-      lifecycleState: "escalation_tier_3",
-      postedAt,
-      policyVersionId,
-      history: { fromState: "escalation_tier_2", enteredAt: new Date("2026-09-01T16:50:00.000Z") },
+  it("GAP-032: the re-page loop is idempotent per period - 20 ticks in one period, one event; the next period, one more and NO redial", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag();
+    const d = { ...singleOrg(), terminus: bag };
+    await runSosSlaWatchdogCron(d); // entry (iteration 0)
+    for (let i = 1; i <= 20; i++) {
+      clock = new Date(clock.getTime() + 10_000); // 200s of 15s-class ticks: still inside the first loop period
+      await runSosSlaWatchdogCron(d);
+    }
+    let events = (await outboxFor(sosAlertId)).filter(
+      (r) => r.event_type === "m20.safety.sos_terminus_reached",
+    );
+    expect(events).toHaveLength(1);
+    expect(await kindRows(sosAlertId, "page_ops")).toHaveLength(1);
+
+    clock = new Date("2026-09-01T17:06:00.000Z"); // > entry (17:00) + 300s loop
+    await runSosSlaWatchdogCron(d);
+    await runSosSlaWatchdogCron(d); // a second tick in the SAME new period creates nothing
+    events = (await outboxFor(sosAlertId)).filter(
+      (r) => r.event_type === "m20.safety.sos_terminus_reached",
+    );
+    expect(events).toHaveLength(2);
+    expect(events[1]?.payload).toMatchObject({
+      loopIteration: 1,
+      wardenxOpsPaged: true,
+      emergencyContactCallInitiated: true,
+      psapJurisdictionId: PSAP_ID,
     });
-    await runSosSlaWatchdogCron({
-      ...deps,
-      terminus: {
-        async pageOps() {
-          throw new Error("receiver down");
-        },
+    expect((await kindRows(sosAlertId, "page_ops")).map((r) => r.loop_iteration)).toEqual([0, 1]);
+    expect(fakes.pages).toHaveLength(2);
+    // The accepted call is never repeated.
+    expect(fakes.calls).toHaveLength(1);
+    expect(await kindRows(sosAlertId, "dial_contact")).toHaveLength(1);
+  });
+
+  it("GAP-032: with NO pager bound the terminus is still entered and the page is recorded as skipped, not refused", async () => {
+    const sosAlertId = await seedTier3();
+    await runSosSlaWatchdogCron(singleOrg()); // no terminus bag at all
+    expect(await alertRow(sosAlertId)).toMatchObject({ lifecycle_state: "emergency_terminus" });
+    expect(await kindRows(sosAlertId, "page_ops")).toEqual([
+      expect.objectContaining({ status: "skipped", outcome_code: "pager_unbound" }),
+    ]);
+    // No consent on file -> the dial is a recorded decision, not silence.
+    expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+      expect.objectContaining({ status: "skipped", outcome_code: "consent_absent" }),
+    ]);
+  });
+
+  it("GAP-032: a DOWN ops receiver no longer hides the terminus - the alert is entered and the page retries with backoff", async () => {
+    const sosAlertId = await seedTier3();
+    const { bag } = terminusBag({ pagerFails: true });
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+    expect(await alertRow(sosAlertId)).toMatchObject({ lifecycle_state: "emergency_terminus" });
+    const [page] = await kindRows(sosAlertId, "page_ops");
+    expect(page).toMatchObject({
+      status: "pending",
+      outcome_code: "receiver_non_2xx",
+      attempts: 1,
+    });
+    const due = await admin.query(
+      "SELECT next_attempt_at > $2 AS later FROM safety_sos_terminus_action WHERE sos_alert_id=$1 AND action_kind='page_ops'",
+      [sosAlertId, clock],
+    );
+    expect(due.rows[0].later).toBe(true);
+    // The event still says nobody was paged.
+    const entry = (await outboxFor(sosAlertId)).find(
+      (r) => r.event_type === "m20.safety.sos_terminus_reached",
+    );
+    expect(entry?.payload).toMatchObject({ wardenxOpsPaged: false });
+  });
+
+  it("GAP-032: the contact auto-dial is gated OFF by the platform flag (dial_disabled, zero calls)", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag({ dialEnabled: false });
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+    expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+      expect.objectContaining({ status: "skipped", outcome_code: "dial_disabled" }),
+    ]);
+    expect(fakes.calls).toHaveLength(0);
+  });
+
+  it("GAP-032: voice unbound, an invalid number and a terminal vendor refusal each leave a precise outcome", async () => {
+    const cases: Array<{
+      phone: string;
+      caller: "deny" | "accept" | "refuse_terminal";
+      status: string;
+      outcome: string;
+    }> = [
+      { phone: "+14155552671", caller: "deny", status: "skipped", outcome: "voice_unbound" },
+      { phone: "(555) 123", caller: "accept", status: "failed", outcome: "number_invalid" },
+      { phone: "911", caller: "accept", status: "failed", outcome: "number_invalid" },
+      {
+        phone: "+14155552671",
+        caller: "refuse_terminal",
+        status: "failed",
+        outcome: "vendor_refused",
       },
-    });
-
-    expect(await alertRow(sosAlertId)).toMatchObject({
-      lifecycle_state: "escalation_tier_3",
-      version: 1,
-    });
-    expect(await outboxFor(sosAlertId)).toEqual([]);
+    ];
+    for (const c of cases) {
+      await admin.query("DELETE FROM safety_sos_terminus_action");
+      await admin.query("DELETE FROM safety_emergency_contact_consent");
+      await admin.query("DELETE FROM outbox_event");
+      await admin.query("DELETE FROM safety_sos_alert_state_history");
+      await admin.query("DELETE FROM safety_sos_alert");
+      await seedContactConsent(c.phone);
+      const sosAlertId = await seedTier3();
+      const { bag, fakes } = terminusBag({ caller: c.caller });
+      await runSosSlaWatchdogCron({ ...singleOrg(), terminus: bag });
+      expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+        expect.objectContaining({ status: c.status, outcome_code: c.outcome }),
+      ]);
+      expect(fakes.calls).toHaveLength(0);
+    }
   });
 
-  it("an alert already in emergency_terminus (a future manual-escalate path) gets re-paged on its loop", async () => {
+  it("GAP-032: an acknowledgment between decision and effect wins - every pending intent settles superseded, zero calls or pages", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag();
+    // Enter the terminus WITHOUT executing (no executor bag effects: run the pass with nothing bound, then
+    // re-pend the rows as if the executor had not got to them yet).
+    await runSosSlaWatchdogCron({
+      ...singleOrg(),
+      terminus: { ...bag, pager: undefined, caller: undefined, dialEnabled: false },
+    });
+    await admin.query(
+      "UPDATE safety_sos_terminus_action SET status='pending', outcome_code=NULL, settled_at=NULL, attempts=0",
+    );
+    await admin.query(
+      `UPDATE safety_sos_alert SET lifecycle_state='acknowledged', acknowledged_at=now(),
+              acknowledged_by_membership_id=posted_by_membership_id WHERE id=$1`,
+      [sosAlertId],
+    );
+    await runTerminusExecutorForOrg({ db: handle.db, terminus: bag, now: () => clock }, ORG_A);
+    const rows = await actionsFor(sosAlertId);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r).toMatchObject({ status: "superseded", outcome_code: "superseded_ack" });
+    }
+    expect(fakes.calls).toHaveLength(0);
+    expect(fakes.pages).toHaveLength(0);
+  });
+
+  it("GAP-032: a consent revoked between entry and the dial is honoured (and 'unavailable' is never recorded as declined)", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag({ dialEnabled: false });
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: { ...bag, pager: undefined } });
+    // enter with consent granted, dial_disabled settled it; re-pend and revoke
+    await admin.query(
+      "UPDATE safety_sos_terminus_action SET status='pending', outcome_code=NULL, settled_at=NULL, attempts=0 WHERE action_kind='dial_contact'",
+    );
+    await admin.query(
+      "UPDATE safety_emergency_contact_consent SET status='revoked', revoked_at=now()",
+    );
+    const live = terminusBag().bag;
+    await runTerminusExecutorForOrg({ db: handle.db, terminus: live, now: () => clock }, ORG_A);
+    expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+      expect.objectContaining({ status: "skipped", outcome_code: "consent_expired_or_revoked" }),
+    ]);
+    expect(fakes.calls).toHaveLength(0);
+
+    // A store that cannot answer retries (consent_unavailable) instead of recording a refusal.
+    await admin.query(
+      "UPDATE safety_sos_terminus_action SET status='pending', outcome_code=NULL, settled_at=NULL, attempts=0 WHERE action_kind='dial_contact'",
+    );
+    const flaky = terminusBag().bag;
+    await runTerminusExecutorForOrg(
+      {
+        db: handle.db,
+        terminus: {
+          ...flaky,
+          store: {
+            ...flaky.store,
+            emergencyContactConsent: async () => {
+              throw new Error("db blip");
+            },
+          },
+        },
+        now: () => clock,
+      },
+      ORG_A,
+    );
+    expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+      expect.objectContaining({ status: "pending", outcome_code: "consent_unavailable" }),
+    ]);
+  });
+
+  it("GAP-032: a crashed executor's dial row is NOT re-placed on lease recovery - it settles possible_duplicate", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const { bag, fakes } = terminusBag();
+    await runSosSlaWatchdogCron({
+      ...singleOrg(),
+      terminus: { ...bag, caller: undefined, pager: undefined },
+    });
+    await admin.query(
+      "UPDATE safety_sos_terminus_action SET status='attempting', lease_until=$1, outcome_code=NULL, settled_at=NULL WHERE action_kind='dial_contact'",
+      [new Date(clock.getTime() - 120_000)],
+    );
+    await runTerminusExecutorForOrg({ db: handle.db, terminus: bag, now: () => clock }, ORG_A);
+    expect(await kindRows(sosAlertId, "dial_contact")).toEqual([
+      expect.objectContaining({ status: "failed", outcome_code: "possible_duplicate" }),
+    ]);
+    expect(fakes.calls).toHaveLength(0);
+  });
+
+  it("GAP-032: redial only after 10 minutes, as a new attempt, and a skipped/accepted dial is never repeated", async () => {
+    await seedContactConsent("+14155552671");
+    const sosAlertId = await seedTier3();
+    const refusing = terminusBag({ caller: "refuse_terminal" });
+    const d = { ...singleOrg(), terminus: refusing.bag };
+    await runSosSlaWatchdogCron(d); // iteration 0: attempt 0 -> failed vendor_refused
+    clock = new Date("2026-09-01T17:06:00.000Z"); // iteration 1, only ~6 min after attempt 0
+    await runSosSlaWatchdogCron(d);
+    expect(await kindRows(sosAlertId, "dial_contact")).toHaveLength(1);
+    clock = new Date("2026-09-01T17:11:00.000Z"); // iteration 2, > 10 min after attempt 0 settled
+    await runSosSlaWatchdogCron(d);
+    expect((await kindRows(sosAlertId, "dial_contact")).map((r) => r.attempt_no)).toEqual([0, 1]);
+  });
+
+  it("GAP-032: a tenant cannot read another tenant's terminus ledger (RLS, as the real NOBYPASSRLS app role)", async () => {
+    const sosAlertId = await seedTier3();
+    await runSosSlaWatchdogCron({ ...singleOrg(), terminus: terminusBag().bag });
+    const asA = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) =>
+      (tx as typeof handle.db).execute(
+        sql`SELECT count(*)::int AS n FROM safety_sos_terminus_action`,
+      ),
+    );
+    const asB = await withOrgContext(handle.db, { organizationId: ORG_B, userId: "" }, async (tx) =>
+      (tx as typeof handle.db).execute(
+        sql`SELECT count(*)::int AS n FROM safety_sos_terminus_action`,
+      ),
+    );
+    expect((asA.rows[0] as { n: number }).n).toBeGreaterThan(0);
+    expect((asB.rows[0] as { n: number }).n).toBe(0);
+    expect(sosAlertId).toBeTruthy();
+  });
+
+  it("an alert already in emergency_terminus gets re-paged on its loop, one event per period", async () => {
     const postedAt = new Date("2026-09-01T16:00:00.000Z");
     const policyVersionId = await seedPolicyVersion(ORG_A, postedAt);
     const terminusEnteredAt = new Date("2026-09-01T16:50:00.000Z"); // 600s before the clock; loop = tier-3 SLA (300s)
@@ -441,10 +813,8 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
       history: { fromState: "escalation_tier_3", enteredAt: terminusEnteredAt },
     });
     await runSosSlaWatchdogCron(deps);
+    await runSosSlaWatchdogCron(deps); // same period: nothing more
 
-    // No transition (repage is not a state change) and no NEW history row beyond the one seeded entering
-    // the terminus (`m20_ssash_no_self` would refuse a from===to row) — only the outbox/alert re-page
-    // effects fire.
     expect(await alertRow(sosAlertId)).toMatchObject({
       lifecycle_state: "emergency_terminus",
       version: 1,
@@ -452,8 +822,7 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     expect(await historyFor(sosAlertId)).toHaveLength(1);
     const outbox = await outboxFor(sosAlertId);
     expect(outbox.map((r) => r.event_type)).toEqual(["m20.safety.sos_terminus_reached"]);
-    // 600s elapsed / 300s loop period = the SECOND re-page (iteration 0 was the terminus entry itself,
-    // per `terminusLoopIteration`'s own doc comment).
+    // 600s elapsed / 300s loop period = iteration 2.
     expect(outbox[0]?.payload).toMatchObject({
       loopIteration: 2,
       emergencyContactCallInitiated: false,

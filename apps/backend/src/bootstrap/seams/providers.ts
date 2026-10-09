@@ -47,6 +47,7 @@ import type {
   DocumentStorageProvider,
   ElectionPeriodReader,
   ElevatedApprovalReader,
+  EmergencyServiceJurisdictionReader,
   EncounterCreator,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
@@ -319,6 +320,19 @@ export const patientAdmissionClearanceReaderDenyStub: PatientAdmissionClearanceR
 export const externalGriefResourceReaderDenyStub: ExternalGriefResourceReader = {
   resourcesForOrg() {
     throw new NotImplementedError("ExternalGriefResourceReader");
+  },
+};
+
+/**
+ * M20's SOS terminus asks M40 which tenant-curated PSAP covers an alert. Unbound, the throw is read by the
+ * caller as `unavailable` (never `none`): "M40 is not wired" must not be recorded as "no jurisdiction".
+ */
+export const emergencyServiceJurisdictionReaderDenyStub: EmergencyServiceJurisdictionReader = {
+  forSosAlert() {
+    throw new NotImplementedError("EmergencyServiceJurisdictionReader");
+  },
+  byId() {
+    throw new NotImplementedError("EmergencyServiceJurisdictionReader");
   },
 };
 

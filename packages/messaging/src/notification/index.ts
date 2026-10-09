@@ -6,6 +6,7 @@
 
 export {
   sanitizeForOutOfBand,
+  sanitizeForEmergencyContactCall,
   type Alert,
   type Message,
   type SanitizedNotification,
