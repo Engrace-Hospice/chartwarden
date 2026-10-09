@@ -154,7 +154,7 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     ).rows;
   const admitted = (out: { outcome: string }): string => {
     expect(["created", "soft_review"]).toContain(out.outcome);
-    return (out as { patientId: string }).patientId;
+    return (out as unknown as { patientId: string }).patientId;
   };
 
   beforeAll(async () => {

@@ -6501,8 +6501,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/patients/:id/identifiers": {
     summary:
-      "Add a non-sensitive identifier (mbi/prior_mrn/hospice_external/partner_mrn); MRN immutable (409), ssn/state_id deferred (422) (patient.edit_identifiers)",
+      "Add an identifier; MRN immutable (409). ssn/state_id are envelope-encrypted (phi.write_ssn + step-up; 503 IDENTIFIER_CIPHER_UNBOUND when no tenant key is bound) and the response carries only the last 4 (patient.edit_identifiers)",
     body: M5EWIdentifierBodySchema,
+  },
+  "POST /api/v1/patients/:id/identifiers/:identifierId/reveal": {
+    summary:
+      "Reveal one stored ssn/state_id (phi.read_ssn + step-up + chart scope); the access audit patient_identifier.reveal is written in the same transaction; Cache-Control: no-store",
   },
   "GET /api/v1/patients/:id/caregivers": {
     summary: "Patient caregivers incl. legal-representative flags (§4.3; patient.read)",

@@ -148,7 +148,7 @@ describe("identifier envelope", () => {
     const err = await UNBOUND_IDENTIFIER_CIPHER.seal(ORG_A, ROW, "ssn", SSN).catch(
       (e: unknown) => e as Error,
     );
-    expect(String(err.message)).not.toContain(SSN);
+    expect(String((err as Error).message)).not.toContain(SSN);
   });
 });
 
