@@ -142,7 +142,14 @@ export function createDrizzlePatientEraseStore(db: DbClient): PatientEraseStore 
         // demands `value_encrypted` NOT NULL for these kinds, hence the empty-buffer sentinel.
         await tx
           .update(IDENT)
-          .set({ valueEncrypted: Buffer.alloc(0), valueLast4: null })
+          .set({
+            valueEncrypted: Buffer.alloc(0),
+            valueLast4: null,
+            // GAP-010 — the SSN blind index and its DEK version go with the ciphertext (the CHECK
+            // `patient_identifier_ssn_blind_index` allows a NULL index only on the empty sentinel).
+            valueBlindIndex: null,
+            valueDekVersion: null,
+          })
           .where(and(eq(IDENT.patientId, patientId), inArray(IDENT.kind, ["ssn", "state_id"])));
 
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>

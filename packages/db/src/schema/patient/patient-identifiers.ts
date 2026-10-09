@@ -48,6 +48,11 @@ export const patientIdentifiers = pgTable(
     value: text("value"), // plaintext for mrn/mbi/prior_mrn/hospice_external/partner_mrn
     valueEncrypted: bytea("value_encrypted"), // envelope-encrypted for ssn/state_id
     valueLast4: text("value_last4"), // display tail for ssn/state_id
+    // GAP-010 — ssn rows only: HMAC-SHA256(HKDF(tenant DEK), nine digits), the equality-search token. Never
+    // unique (a duplicate SSN is what the matcher exists to find). Null for state_id and for a shredded row.
+    valueBlindIndex: bytea("value_blind_index"),
+    // The DEK version the ciphertext and the blind index were produced under (multi-version matcher probe).
+    valueDekVersion: text("value_dek_version"),
     issuer: text("issuer"), // state code, predecessor slug, partner assigning-authority, etc.
     effectiveFrom: date("effective_from").notNull(),
     effectiveTo: date("effective_to"),
@@ -71,6 +76,13 @@ export const patientIdentifiers = pgTable(
       "patient_identifier_sensitive_encrypted",
       sql`(${t.kind} NOT IN ('ssn','state_id')) OR (${t.valueEncrypted} IS NOT NULL AND ${t.value} IS NULL)`,
     ),
+    ssnBlindIndex: check(
+      "patient_identifier_ssn_blind_index",
+      sql`(${t.kind} <> 'ssn') OR (${t.valueBlindIndex} IS NOT NULL) OR (octet_length(${t.valueEncrypted}) = 0)`,
+    ),
+    ssnBlindIdx: index("patient_identifier_ssn_blind_idx")
+      .on(t.organizationId, t.valueBlindIndex)
+      .where(sql`${t.kind} = 'ssn' AND ${t.effectiveTo} IS NULL AND ${t.valueBlindIndex} IS NOT NULL`),
     publicKindsPlaintext: check(
       "patient_identifier_public_plaintext",
       sql`(${t.kind} IN ('ssn','state_id')) OR (${t.value} IS NOT NULL)`,
