@@ -642,6 +642,9 @@ jobs:
           # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
+          # GAP-020 — the patient wristband (on-file side of the BCMA wrong_patient arm): digest-only storage,
+          # rotation + concurrent-print arbitration, verifier verdicts, merge/death voiding, RLS, step-up void.
+          - { name: "M5 patient wristband", scripts: "test:m5:patient-wristband:live" }
           - { name: "M5 write outbox", scripts: "test:m5:write-outbox:live" }
           # GAP-009/010 — admit matcher inputs (address/phone/email), persistence, bypass critical audit.
           - { name: "M5 admit matching", scripts: "test:m5:admit-matching:live" }

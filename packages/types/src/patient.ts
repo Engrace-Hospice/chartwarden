@@ -8,6 +8,8 @@
 // M5-T07/T08 (CaseloadProvider / PatientReader / PatientMutator), the routes in T09, the outbox
 // publication in T10.
 
+import type { WristbandVerdictStatus } from "./wristband";
+
 // ── §2.2 patient identifier strategy (as data) ────────────────────────────────────────────────
 
 /** The seven identifier kinds the §2.2 strategy tracks (mirrors the `patient_identifier_kind` enum). */
@@ -744,4 +746,37 @@ export interface PatientAllergyReader {
     organizationId: string;
     patientId: string;
   }): Promise<readonly PatientAllergyEntry[] | null>;
+}
+
+// ── PatientWristbandVerifier seam (GAP-020 -- the M13 BCMA `wrong_patient` arm) ───────────────────────
+
+/** What one wristband scan resolved to. M13 never sees a digest or a token: only this verdict crosses. */
+export interface WristbandVerdict {
+  readonly status: WristbandVerdictStatus;
+  /** The generation the scanned token matched (any status that matched a row), else null. */
+  readonly generation: number | null;
+  /** Digest of the scanned token, for `barcode_scan_event.patient_wristband_payload_digest`; null when none. */
+  readonly scannedDigest: string | null;
+  /** Set only when `status === "mismatch"` AND the token is ANOTHER patient's (the near-miss for QAPI). */
+  readonly matchedPatientId: string | null;
+}
+
+/**
+ * M5's answer to "is the scanned wristband this patient's?". The scan arrives as the RAW payload (over TLS);
+ * M5 hashes it. FAIL CLOSED: an unanswerable question (deny-stub / unbound) THROWS or returns `not_on_file`,
+ * it never reads as `verified`.
+ *
+ * `mode: "offline_sync"` lets a band that was ACTIVE when an offline device scanned it (`asOf`) still verify
+ * after it was superseded, within a bounded grace window; a VOIDED generation never verifies.
+ */
+export interface PatientWristbandVerifier {
+  verify(input: {
+    organizationId: string;
+    patientId: string;
+    /** The RAW scanned payload; null = no wristband scan was presented. */
+    payload: string | null;
+    /** ISO instant the band was scanned (server `now` online; the device's clamped scan time offline). */
+    asOf: string;
+    mode: "online" | "offline_sync";
+  }): Promise<WristbandVerdict>;
 }

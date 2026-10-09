@@ -27,6 +27,7 @@ export interface PatientEraseCounts {
   readonly nameAliases: number;
   readonly phones: number;
   readonly emails: number;
+  readonly wristbands: number;
 }
 
 /** The narrow data port the patient eraseFn composes over (Drizzle deletes in prod). */
@@ -71,6 +72,7 @@ export function createInMemoryPatientEraseStore(seed: Partial<PatientEraseCounts
     nameAliases: 0,
     phones: 0,
     emails: 0,
+    wristbands: 0,
   };
   const counts: PatientEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
@@ -129,6 +131,7 @@ export function createDrizzlePatientEraseStore(db: DbClient): PatientEraseStore 
   const ALIAS = schema.patientNameAliases;
   const PHONE = schema.patientPhones;
   const EMAIL = schema.patientEmails;
+  const WRISTBAND = schema.patientWristbands;
 
   return {
     async erasePatientSubtree(organizationId, patientId) {
@@ -189,6 +192,13 @@ export function createDrizzlePatientEraseStore(db: DbClient): PatientEraseStore 
         const emails = await del(() =>
           tx.delete(EMAIL).where(eq(EMAIL.patientId, patientId)).returning({ id: EMAIL.id }),
         );
+        // GAP-020 -- the patient's wristband generations (digest-only rows; the raw tokens were never stored).
+        const wristbands = await del(() =>
+          tx
+            .delete(WRISTBAND)
+            .where(eq(WRISTBAND.patientId, patientId))
+            .returning({ id: WRISTBAND.id }),
+        );
 
         return {
           addresses,
@@ -203,6 +213,7 @@ export function createDrizzlePatientEraseStore(db: DbClient): PatientEraseStore 
           nameAliases,
           phones,
           emails,
+          wristbands,
         };
       });
     },

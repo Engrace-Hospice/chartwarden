@@ -262,6 +262,10 @@ export {
   registerPatientAllergyRoutes,
 } from "./routes/allergy-routes";
 export {
+  type PatientWristbandRouteDeps,
+  registerPatientWristbandRoutes,
+} from "./routes/wristband-routes";
+export {
   M5_INTAKE_SUD_PRIVACY_CONSUMER,
   type SudFlagDecision,
   type SudFlagOrigin,
@@ -371,6 +375,7 @@ import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } fro
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
 import type { AdmissionCensusSummaryPort } from "./routes/service";
+import { registerPatientWristbandRoutes as _registerPatientWristbandRoutes } from "./routes/wristband-routes";
 
 /**
  * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the
@@ -400,6 +405,8 @@ export function mountPatientRoutes(
   _registerPatientLifecycleRoutes(app, { lifecycle: _dbLifecyclePort(db, outbox) });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
+  // GAP-020 -- print / read / void the patient wristband (the on-file side of the BCMA wrong_patient arm).
+  _registerPatientWristbandRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
   // manual trigger of the quarterly snapshot rebuild (same derivation as the resync, run as the officer).
   _registerPatientPrivacyRoutes(app, {

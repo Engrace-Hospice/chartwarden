@@ -104,6 +104,7 @@ import type {
   PatientPrivacyFlagReader,
   PatientReader,
   PatientSitingReader,
+  PatientWristbandVerifier,
   PlanCatalogReader,
   PortalDocumentReader,
   PortalSessionBinder,
@@ -302,6 +303,13 @@ export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
 export const patientAllergyReaderDenyStub: PatientAllergyReader = {
   activeAllergies() {
     throw new NotImplementedError("PatientAllergyReader");
+  },
+};
+
+/** M5 -- the wristband verifier (GAP-020). Throws: an unanswerable identity question must REFUSE the scan, never read as "verified". */
+export const patientWristbandVerifierDenyStub: PatientWristbandVerifier = {
+  verify() {
+    throw new NotImplementedError("PatientWristbandVerifier");
   },
 };
 

@@ -8,6 +8,7 @@ export * from "./seams";
 export * from "./outbox";
 export * from "./alert-payloads";
 export * from "./patient";
+export * from "./wristband";
 export * from "./admission";
 export * from "./care-plan";
 export * from "./election-addendum";

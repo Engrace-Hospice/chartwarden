@@ -360,6 +360,20 @@ export const M5_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
+  // GAP-020 -- print / reprint a patient wristband (the on-file side of the BCMA wrong_patient arm), and the
+  // rarer hard kill of a generation (identity error / compromise; the route also demands step-up).
+  "patient.wristband.issue": {
+    resource: "patient_wristband",
+    action: "issue",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "patient.wristband.void": {
+    resource: "patient_wristband",
+    action: "void",
+    category: "compliance",
+    abac: "caseload_or_scope",
+  },
   "patient.match_review": {
     resource: "patient",
     action: "match_review",

@@ -27,6 +27,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { type DeceasedCascadePorts, recordDeath } from "./deceased";
 import { deathTransitionFrom } from "./patient-status-transitions";
+import { voidPatientWristbandsInTx } from "./wristband-db";
 
 const P = schema.patients;
 
@@ -108,6 +109,13 @@ export async function recordDeathFromDischarge(
             .update(P)
             .set({ status: "deceased", deceasedDate, updatedAt: new Date() })
             .where(eq(P.id, patientId));
+          // GAP-020 -- a deceased patient's band must stop verifying in the same commit.
+          await voidPatientWristbandsInTx(tx, {
+            organizationId,
+            patientId,
+            reason: "patient_deceased",
+            actorUserId: input.actorUserId ?? null,
+          });
         },
         async emitDeceased(organizationId, patientId, deceasedDate) {
           await outbox.publish(tx, {

@@ -172,6 +172,7 @@ export * from "./patient/patient-name-aliases";
 export * from "./patient/patient-addresses";
 export * from "./patient/patient-phones";
 export * from "./patient/patient-allergies";
+export * from "./patient/patient-wristbands";
 export * from "./patient/patient-emails";
 // T03 — coverage / caregiver / contact (§3.4).
 export * from "./patient/patient-payers";
