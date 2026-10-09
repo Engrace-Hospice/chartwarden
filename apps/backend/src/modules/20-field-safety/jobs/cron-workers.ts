@@ -590,9 +590,20 @@ export async function runSosSlaWatchdogCron(deps: M20WorkerDeps): Promise<void> 
       },
     );
     for (const sosAlertId of alertIds) {
-      await runWithRequestContext({ organizationId, userId: M20_WORKER_SYSTEM_USER_ID }, () =>
-        processOneAlert(deps, organizationId, sosAlertId, now, log),
-      );
+      // One bad alert (a bad row, a failed ledger insert, a DB error) must not stop its siblings or, worse,
+      // the terminus executor below: life-safety effects already recorded as pending are not gated on every
+      // other alert processing cleanly. Log it loudly and move on; the next tick retries it.
+      try {
+        await runWithRequestContext({ organizationId, userId: M20_WORKER_SYSTEM_USER_ID }, () =>
+          processOneAlert(deps, organizationId, sosAlertId, now, log),
+        );
+      } catch (err) {
+        log("m20.sos-sla-watchdog: alert failed - continuing with the rest of the org", {
+          organizationId,
+          sosAlertId,
+          error: err instanceof Error ? `${err.name}: ${err.message}` : "unknown",
+        });
+      }
     }
     // GAP-032: perform the terminus intents (page / dial / PSAP) the pass above just recorded - and any
     // earlier row still due or past its lease - outside every tenant tx. One org's executor failure must
