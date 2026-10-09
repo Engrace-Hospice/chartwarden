@@ -79,10 +79,11 @@ export interface FormSpec<P> {
   readonly authority: string;
   /** Validate the payload; throws `RenderPayloadError` listing what is wrong. */
   readonly parse: (payload: unknown) => P;
-  readonly patient: (p: P) => RenderPatientIdentity;
+  /** The patient the document is about; null for patient-independent correspondence (a billing receipt). */
+  readonly patient: (p: P) => RenderPatientIdentity | null;
   readonly hospiceName: (p: P) => string | null;
-  /** ISO instant the document is dated from (never the wall clock). */
-  readonly documentDate: (p: P) => string;
+  /** ISO instant the document is dated from (never the wall clock); null when the source records none. */
+  readonly documentDate: (p: P) => string | null;
   readonly sections: ReadonlyArray<FormSection<P>>;
   readonly signatures: ReadonlyArray<SignatureSpec<P>>;
   /** Optional page watermark (`VOID`, `SUPERSEDED`) derived from the payload. */

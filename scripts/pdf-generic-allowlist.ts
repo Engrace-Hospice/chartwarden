@@ -11,51 +11,59 @@
  * these lists can only shrink toward "every template has a real layout".
  */
 
-/** Wave 2-4 of GAP-033 are scheduled follow-ups; each key below is readable (the generic builder draws every
- *  payload field as a structured, openable PDF) but is NOT a regulation-faithful bespoke layout yet. */
-const CLINICAL_WAVE2 =
-  "GAP-033 wave 2 (clinical record / CoP document): readable via the generic structured builder; bespoke FormSpec layout scheduled.";
-const BILLING_WAVE3 =
-  "GAP-033 wave 3 (billing / cost-report correspondence): readable via the generic structured builder; bespoke layout scheduled.";
+/**
+ * GAP-033 - why a key is still on the readable generic builder instead of a bespoke form. Each reason names the
+ * SPECIFIC blocker verified against the producer's code (waves 2-3 were investigated key by key); "scheduled" is
+ * never a reason on its own. Wave 1 (CoP documents), the signed order documents (`order_record`,
+ * `medication_order`) and the billing correspondence (NOE / NOTR receipts, claim acknowledgments, denial letters)
+ * have bespoke forms and are not listed here.
+ */
+const ID_ONLY =
+  "producer event carries identifiers only: a bespoke layout has nothing to draw until the owning module builds a typed renderPayload in its signing transaction (the M6 / M11 / M12 pattern) and M22 validates it";
+const NO_PRODUCER =
+  "no module emits a render request for this template yet, so there is no producer payload to lay out";
 const OPERATIONAL_WAVE4 =
   "GAP-033 wave 4 (patient-facing / operational): readable via the generic structured builder; bespoke layout scheduled.";
 const TABULAR_BY_DESIGN =
   "Arbitrary column sets owned by M33: a dedicated tabular-report builder (not a form) is the target; the generic builder is the correct path until then.";
+const DATA_ARTIFACT =
+  "M27 renders a data-file artifact (the ECR / PI text is carried as `payloadRef`, not a form): the generic builder draws a reference sheet only; the artifact bytes are not a PDF layout problem. A cover sheet needs the cost-report summary the event does not carry.";
 
 /**
  * Renderer keys WITHOUT a bespoke builder in DEFAULT_PDF_RENDERERS -> why. A key may not be in both this list and
  * the registry (the ratchet), and a renderer key in neither fails the gate.
  */
 export const GENERIC_ALLOWLIST: Readonly<Record<string, string>> = {
-  encounter: CLINICAL_WAVE2,
-  order_record: CLINICAL_WAVE2,
-  medication_order: CLINICAL_WAVE2,
-  medication_administration_record: CLINICAL_WAVE2,
-  medication_reconciliation_worksheet: CLINICAL_WAVE2,
-  patient_medication_list: CLINICAL_WAVE2,
-  care_plan: CLINICAL_WAVE2,
-  aide_poc: CLINICAL_WAVE2,
-  msw_plan: CLINICAL_WAVE2,
-  spiritual_plan: CLINICAL_WAVE2,
-  volunteer_plan: CLINICAL_WAVE2,
-  lab_results_pdf: CLINICAL_WAVE2,
-  consent_record: CLINICAL_WAVE2,
-  patient_amendment_statement_of_disagreement: CLINICAL_WAVE2,
-  hope_summary: CLINICAL_WAVE2,
-  assessment_summary: CLINICAL_WAVE2,
-  safety_incident_report: CLINICAL_WAVE2,
-  noe_confirmation_receipt: BILLING_WAVE3,
-  notr_confirmation_receipt: BILLING_WAVE3,
-  claim_acknowledgment_letter: BILLING_WAVE3,
-  medicaid_claim_acknowledgment_letter: BILLING_WAVE3,
-  denial_appeal_cover_letter: BILLING_WAVE3,
-  denial_resolution_letter: BILLING_WAVE3,
-  cost_report_ecr: BILLING_WAVE3,
-  cost_report_pi: BILLING_WAVE3,
-  cost_report_supporting_doc: BILLING_WAVE3,
-  body_release_authorization: BILLING_WAVE3,
-  comfort_kit_return_receipt: BILLING_WAVE3,
-  supply_bill_of_lading: BILLING_WAVE3,
+  encounter:
+    "M8 ships `documentRenderPayload.final = ''` by design: the pinned narrative is sealed under the tenant DEK (#122) and must not ride the outbox in the clear. A bespoke layout needs an M22-side hydrator that opens the pin under the render's tenant context (design alternative D2), not a producer snapshot.",
+  medication_administration_record: `M13's renderPayload is a per-dose snapshot (drug, dose, time, mode) with no patient identity, administering clinician or outcome; ${ID_ONLY}`,
+  medication_reconciliation_worksheet: `M13's renderPayload is {triggerKind, finalizedAt}: ${ID_ONLY}`,
+  patient_medication_list:
+    "M22 assembles typed content itself (render-variants: M12 getActiveMedications) but it carries `patientId` only; the per-page patient identity a medication list needs requires M22-side PatientReader hydration at render time, which the pure payload -> DocModel pipeline does not have yet.",
+  care_plan: `m7.care_plan.version_signed carries {planId, versionId, patientId, admissionId, kind, snapshotRef} - a pointer to the snapshot, not its content: ${ID_ONLY}`,
+  aide_poc:
+    "M15's `snapshot` content blob is `Type.Unknown()` in the catalog with no typed schema; it needs a TypeBox schema in packages/types and a live producer-blob check before a layout can be trusted.",
+  msw_plan:
+    "M15's `snapshot` content blob is `Type.Unknown()` in the catalog with no typed schema; it needs a TypeBox schema in packages/types and a live producer-blob check before a layout can be trusted.",
+  spiritual_plan:
+    "M15's `snapshot` content blob is `Type.Unknown()` in the catalog with no typed schema; it needs a TypeBox schema in packages/types and a live producer-blob check before a layout can be trusted.",
+  volunteer_plan:
+    "M15's `snapshot` content blob is `Type.Unknown()` in the catalog with no typed schema; it needs a TypeBox schema in packages/types and a live producer-blob check before a layout can be trusted.",
+  lab_results_pdf:
+    "M22's lab-results variant carries values without reference ranges or abnormal flags, so the CRITICAL RESULT watermark (D22) cannot be derived, and only `patientId` (no per-page identity); it needs M29 reference-range data and M22-side identity hydration.",
+  consent_record:
+    "M39 renders it through its own bridge (39-consent/render-consumer.ts) from {consentRecordId, typeKey, grantorKind, effectiveAt, expiresAt, recipients, jurisdictionCode}: no signer name, purpose or scope text, and there are twelve consent types whose 45 CFR 164.508(c) / 42 CFR 2.31 authorization wording compliance must supply (as for the ABN) before a faithful layout can be written.",
+  patient_amendment_statement_of_disagreement: `${NO_PRODUCER} (render-variants/statement-of-disagreement.ts plans the version append; the live consumer is deferred).`,
+  hope_summary: `m10.hope.summary_requested carries {assessmentId, requestedBy, patientId}: ${ID_ONLY}`,
+  assessment_summary:
+    "m9.assessment.summary_requested carries {patientId, asOfDate, scales[], lang}: the scale NAMES only, not the scores or dates a summary exists to show; the owning module must ship the typed summary (and the per-page identity).",
+  safety_incident_report: `m20.safety.incident_report_requested carries {incidentId, patientId, renderTargetKind}: ${ID_ONLY}`,
+  cost_report_ecr: DATA_ARTIFACT,
+  cost_report_pi: DATA_ARTIFACT,
+  cost_report_supporting_doc: DATA_ARTIFACT,
+  body_release_authorization: `m37.body_release.document_requested carries {bodyReleaseId, patientId}: ${ID_ONLY}`,
+  comfort_kit_return_receipt: `m21.supply_request.document_requested carries {supplyRequestId, dispatchId, documentKind}; the DEA-1304 receipt needs the reconciled lot / quantity manifest from M21's rows: ${ID_ONLY}`,
+  supply_bill_of_lading: `m21.supply_request.document_requested carries {supplyRequestId, dispatchId, documentKind}; the bill of lading needs the dispatch manifest from M21's rows: ${ID_ONLY}`,
   bereavement_letter: OPERATIONAL_WAVE4,
   bereavement_welcome_packet: OPERATIONAL_WAVE4,
   visit_confirmation: OPERATIONAL_WAVE4,

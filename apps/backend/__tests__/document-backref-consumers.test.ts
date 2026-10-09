@@ -28,6 +28,7 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { buildM33DocumentBackrefConsumer } from "../src/modules/33-reporting/index";
+import { ORDER_RECORD } from "./_m22-form-fixtures";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -116,7 +117,12 @@ describe("m22.document.rendered — the event that did not exist", () => {
       payload: {
         orderId: ORDER,
         formTemplate: "order_record",
-        renderPayload: { patientId: PAT },
+        // GAP-033: the typed order payload the producer builds (an id-only one is refused).
+        renderPayload: {
+          ...ORDER_RECORD,
+          patientId: PAT,
+          patient: { ...ORDER_RECORD.patient, patientId: PAT },
+        },
       },
       attemptCount: 0,
       createdAt: new Date("2026-08-13T00:00:00.000Z"),

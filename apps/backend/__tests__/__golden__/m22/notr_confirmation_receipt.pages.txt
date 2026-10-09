@@ -1,0 +1,13 @@
+--- page 1 ---
+Notice of Termination or Revocation - Confirmation
+Receipt
+Document date
+2026-10-09 09:12 UTC
+This receipt confirms that the Notice of Termination or Revocation identified below was submitted for processing on the
+date shown. Keep it with the patient's billing record.
+Submission
+NOTR control number
+NOTR-2026-000052
+Submitted
+2026-10-09 09:12 UTC
+This document records an administrative event. It is not a determination of coverage, eligibility or payment.

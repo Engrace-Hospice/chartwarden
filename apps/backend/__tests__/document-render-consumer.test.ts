@@ -38,10 +38,16 @@ import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
-import { NOR } from "./_m22-form-fixtures";
+import { NOR, ORDER_RECORD } from "./_m22-form-fixtures";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
+/** A typed order payload the way M11 builds it (GAP-033): the order form validates it at the render boundary. */
+const ORDER_PAYLOAD = {
+  ...ORDER_RECORD,
+  patientId: PAT, // the flat chart-target key the producer keeps beside the typed payload
+  patient: { ...ORDER_RECORD.patient, patientId: PAT },
+};
 const ORDER = "00000000-0000-4000-8000-0000000000bb";
 const ADMISSION = "00000000-0000-4000-8000-0000000000cc";
 const SUPPLY_REQUEST = "00000000-0000-4000-8000-0000000000d1";
@@ -60,7 +66,7 @@ function delivered(over: Partial<DispatchableOutboxEvent> = {}): DispatchableOut
     payload: {
       orderId: ORDER,
       formTemplate: "order_record",
-      renderPayload: { patientId: PAT, kind: "lab" },
+      renderPayload: ORDER_PAYLOAD,
     },
     attemptCount: 0,
     createdAt: new Date("2026-08-13T00:00:00.000Z"),
@@ -105,7 +111,7 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
       payload: {
         orderId: ORDER,
         formTemplate: "order_record",
-        renderPayload: { patientId: PAT, kind: "lab" },
+        renderPayload: { schemaVersion: 2, patientId: PAT, kind: "lab" },
       },
     });
     expect(event).toBe("m11.order.document_requested");
@@ -114,7 +120,7 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
       templateKey: "order_record",
       aggregateId: ORDER,
       patientId: PAT,
-      content: { patientId: PAT, kind: "lab" },
+      content: { schemaVersion: 2, patientId: PAT, kind: "lab" },
     });
   });
 
@@ -125,7 +131,7 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
       payload: {
         orderId: ORDER,
         formTemplate: "medication_order",
-        renderPayload: { patientId: PAT },
+        renderPayload: { schemaVersion: 2, patientId: PAT },
       },
     });
     expect(payload.templateKey).toBe("medication_order");
@@ -140,7 +146,7 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
       payload: {
         worksheetId: ORDER,
         formTemplate: "reconciliation_worksheet_v1",
-        renderPayload: { patientId: PAT },
+        renderPayload: { schemaVersion: 2, patientId: PAT },
       },
     });
     expect(payload.templateKey).toBe("medication_reconciliation_worksheet");
@@ -484,6 +490,43 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.content).toMatchObject({ ctiId: ORDER, legacyUntyped: true });
   });
 
+  // GAP-033 Wave 2 - M11 / M12 used to ship `renderPayload: {patientId, kind, signedAt}`: an OBJECT, so the old
+  // "is it an object" test would have passed it to a form with nothing to draw. The producer's schemaVersion stamp is
+  // what makes it typed.
+  describe.each([
+    ["m11.order.document_requested", "order_record"],
+    ["m12.medication_order.document_requested", "medication_order"],
+  ])("%s (typed order payload)", (eventType, formTemplate) => {
+    const idOnly = { orderId: ORDER, formTemplate, renderPayload: { patientId: PAT, kind: "lab" } };
+
+    it("an id-only object renderPayload (no schemaVersion) is refused, never drawn", () => {
+      expect(() =>
+        normalizeDocumentRequest({ eventType, organizationId: ORG, payload: idOnly }),
+      ).toThrow(/carries no typed 'renderPayload'/);
+    });
+
+    it("the producer's typed payload is accepted and its chart target resolved", () => {
+      const { payload } = normalizeDocumentRequest({
+        eventType,
+        organizationId: ORG,
+        payload: { ...idOnly, renderPayload: { schemaVersion: 2, patientId: PAT } },
+      });
+      expect(payload.templateKey).toBe(formTemplate);
+      expect(payload.patientId).toBe(PAT);
+    });
+
+    it("the drain-window flag keeps the legacy object's fields, marked legacyUntyped", () => {
+      const { payload } = normalizeDocumentRequest({
+        eventType,
+        organizationId: ORG,
+        payload: idOnly,
+        legacyUntypedFallback: true,
+      });
+      expect(payload.content).toMatchObject({ patientId: PAT, kind: "lab", legacyUntyped: true });
+      expect(payload.patientId).toBe(PAT);
+    });
+  });
+
   // F-224 (#248) — ONE event, TWO artifacts, discriminated by `recipientKind`; the aggregate is the CALL.
   it.each([
     ["caregiver", "triage_summary_caregiver"],
@@ -745,7 +788,11 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     await expect(
       h.consumer.handle(
         delivered({
-          payload: { orderId: ORDER, formTemplate: "no_such_template", renderPayload: {} },
+          payload: {
+            orderId: ORDER,
+            formTemplate: "no_such_template",
+            renderPayload: { schemaVersion: 2 },
+          },
         }),
       ),
     ).rejects.toThrow(MalformedRenderRequestError);
@@ -763,7 +810,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         payload: {
           orderId: ORDER,
           formTemplate: "order_record",
-          renderPayload: { patientId: PAT, isSudClass: true },
+          renderPayload: { ...ORDER_PAYLOAD, isSudClass: true },
         },
       }),
     );
@@ -939,7 +986,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         payload: {
           orderId: ORDER,
           formTemplate: "order_record",
-          renderPayload: { patientId: PAT, isSudClass: true },
+          renderPayload: { ...ORDER_PAYLOAD, isSudClass: true },
         },
       }),
     );

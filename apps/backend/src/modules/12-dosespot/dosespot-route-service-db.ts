@@ -59,6 +59,11 @@ import {
   sql,
 } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import {
+  buildRenderPayloadOrOmit,
+  createRenderBuildCtx,
+  logRenderPayload,
+} from "../../bootstrap/render-payload-sources";
 import { getOrderSignatureProvider } from "../11-orders";
 import {
   type ConsentGatePort,
@@ -82,6 +87,7 @@ import {
   prescriberEligible,
   signerStanding,
 } from "./prescriber-eligibility";
+import { buildMedicationOrderRenderPayload } from "./render-payloads";
 import type {
   ControlledSubstancePolicyView,
   CreateMedicationOrderArgs,
@@ -463,12 +469,29 @@ export function createDbDoseSpotBackend(
     });
   }
 
+  /**
+   * GAP-033 - the typed `renderPayload` of a signed medication order, built on the signing transaction's own `tx`.
+   * When a SOURCE did not resolve (patient, signer name, malformed `data`) the event is published id-only and M22
+   * refuses it loudly (retry -> DLQ) instead of drawing a blank prescription; ids are logged, never PHI.
+   * A SUD-treatment drug is stamped `isSudClass` so M22's 42 CFR Part 2 consent gate applies to the render.
+   */
   async function emitDocumentRequest(
     tx: DbClient,
     organizationId: string,
     order: MoRow,
     signedAt: Date,
+    signing: { readonly signerMembershipId: string; readonly viaVerbal: boolean },
   ): Promise<void> {
+    const typed = await buildRenderPayloadOrOmit(
+      "m12",
+      logRenderPayload,
+      { organizationId, orderId: order.id },
+      () =>
+        buildMedicationOrderRenderPayload(createRenderBuildCtx(tx, organizationId), order, {
+          ...signing,
+          signedAt,
+        }),
+    );
     await emit(
       tx,
       organizationId,
@@ -483,6 +506,8 @@ export function createDbDoseSpotBackend(
           admissionId: order.admissionId,
           signedAt: signedAt.toISOString(),
           isControlledSubstance: order.isControlledSubstance,
+          ...(order.isSudTreatment ? { isSudClass: true } : {}),
+          ...(typed ?? {}),
         },
       },
     );
@@ -936,7 +961,10 @@ export function createDbDoseSpotBackend(
           signedAt: at.toISOString(),
           viaVerbal: fromVerbal,
         });
-        await emitDocumentRequest(tx, organizationId, r, at);
+        await emitDocumentRequest(tx, organizationId, r, at, {
+          signerMembershipId: userId,
+          viaVerbal: fromVerbal,
+        });
         await activateIfNotTransmitting(tx, organizationId, r, at);
         await recordSignature(
           organizationId,
@@ -988,7 +1016,10 @@ export function createDbDoseSpotBackend(
           viaEpcs: true,
           secondFactorType: "totp",
         });
-        await emitDocumentRequest(tx, organizationId, r, at);
+        await emitDocumentRequest(tx, organizationId, r, at, {
+          signerMembershipId: userId,
+          viaVerbal: false,
+        });
         await activateIfNotTransmitting(tx, organizationId, r, at);
         await recordSignature(organizationId, userId, id, args?.signerDisciplines ?? []);
         return readOrder(tx, id);

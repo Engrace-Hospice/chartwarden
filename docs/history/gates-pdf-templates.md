@@ -52,7 +52,7 @@ no layout had anything to draw. Two template registries (`@wardenx/forms` descri
 - **Regulatory cites.** F2F `418.22(b)(4)` and the CTI `(b)(3)` narrative placement are verified against
   `docs/research/FY2027_HOSPICE_COP_RESEARCH.md`; the other paragraph cites and fixed texts (CTI prognosis/supporting
   statements, NOR rights summary, revocation statement) are template wording awaiting compliance's line-by-line review.
-- **Not in this stage:** waves 2-4 (the 37 generic allow-listed templates, each with a reason), the optional
+- **Not in stage 1:** waves 2-4 (see the stage-2 section below), the optional
   `document_version.template_version` / layout-digest columns (not needed until a re-render is planned), non-Latin
   fonts, images (logos, EVV maps, scanned signatures).
 
@@ -63,3 +63,56 @@ Unit: `m22-forms-engine`, `m22-forms-wave1`, `m22-forms-golden` (`UPDATE_GOLDEN=
 NOBYPASSRLS, real catalog-validating publisher, real consumer and renderer): `test:m6:cop-documents:live` reads the
 stored PDF bytes back and asserts the narrative, identity and signature text, the cosign v1/v2 difference, that an
 id-only legacy event is refused with the retry error, and that an unresolvable source does not fail the signature.
+
+## Stage 2: waves 2 and 3 (what was investigated, what was built, what is blocked and why)
+
+Every wave 2/3 key was traced to its producer before anything was written. The finding repeats stage 1's: most
+producers ship identifiers (or a pointer), so "build a layout" is really "build a typed producer payload".
+
+**Built (8 templates, all registered in `COMPILED_FORMS`):**
+
+- `order_record` (M11) and `medication_order` (M12): typed payloads built by the owning module in the signing
+  transaction (`11-orders/render-payloads`, `12-dosespot/render-payloads`), through the Foundation sources port
+  (`bootstrap/render-payload-sources.ts`, shared with M6). M11 draws kind-specific lines **only** for kinds and
+  versions with a published field contract (`ORDER_KIND_CONTRACT_STATUS`, `dme.v2`, `supply.v2`); `dme.v1`, `supply.v1`
+  and `ancillary_service.v1` are explicitly extensible, so the page says no contract is published instead of dumping the
+  open object. The M12 payload never carries the prescriber's DEA number (schedule only). The order's signer is the
+  signing member's printed name; credentials / NPI are shown for the signer only when the signer IS the prescriber of
+  record, and the ordering physician is printed separately. A SUD-treatment drug is stamped `isSudClass`, which makes
+  M22's consent gate (D20) apply to the render - a **behaviour change**: a SUD order with no active consent is now
+  refused (settled, no retry) instead of rendering.
+- NOE and NOTR receipts, Medicare and Medicaid claim acknowledgment letters, the denial-appeal cover letter and the
+  denial-resolution letter: their producers already shipped the content (PHI-free by design), so only the M22 side
+  changed. The wording is deliberately limited to what the event proves; none of them states coverage, payment or an
+  appeal deadline. They carry no patient identity (the producers' D13 contract), so the compiler's patient and document
+  date are now optional.
+- Consumer: `requiresRenderPayload` now means "the producer's object stamped `schemaVersion: 2`", because M11/M12
+  previously shipped `renderPayload: {patientId, kind, signedAt}` - an object that passed the old "is it an object"
+  test. The drain-window flag `M22_M6_LEGACY_UNTYPED_RENDER=1` therefore also covers M11/M12 rows queued before the
+  release (generic render, pre-GAP-033 behaviour). `m12.medication_order.transmitted` (catalogued, no producer yet) now
+  requires a typed payload with a `transmission` block.
+
+**Not built, with the verified blocker** (the reasons are in `scripts/pdf-generic-allowlist.ts`, which `arch:pdf-templates`
+ratchets):
+
+| Key | Blocker |
+|---|---|
+| `encounter` | M8 ships `final = ""` by design: the narrative is sealed under the tenant DEK (#122). Needs an M22-side hydrator that opens the pin (design alternative D2), not a producer snapshot. |
+| `care_plan`, `hope_summary`, `safety_incident_report`, `body_release_authorization`, `medication_reconciliation_worksheet`, `medication_administration_record`, `comfort_kit_return_receipt`, `supply_bill_of_lading` | The event carries identifiers or a pointer. Each needs the owning module's typed payload built in its transaction (the M6/M11/M12 pattern). The two M21 documents need the dispatch / reconciled-lot manifest (DEA-1304 content). |
+| `aide_poc`, `msw_plan`, `spiritual_plan`, `volunteer_plan` | M15's `snapshot` is `Type.Unknown()` in the catalog with no typed schema. |
+| `assessment_summary` | M9 ships scale names only, not scores or dates. |
+| `patient_medication_list`, `lab_results_pdf` | M22 assembles typed content itself but with `patientId` only; per-page identity needs PatientReader hydration inside the render. The lab form also needs reference ranges (M29) for the abnormal flag / CRITICAL RESULT watermark. |
+| `consent_record` | M39 has a producer, but twelve consent types need compliance-supplied 45 CFR 164.508(c) / 42 CFR 2.31 wording and the payload has no signer, purpose or scope text. |
+| `patient_amendment_statement_of_disagreement` | No live consumer binding exists. |
+| `cost_report_ecr` / `_pi` / `_supporting_doc` | M27 renders a data-file artifact (`payloadRef`), not a form. |
+
+Free text residual (unchanged from stage 1): order indications, clinical justifications and lab collection notes are
+clinician-authored and cannot be classified for Part 2 mechanically; they render as written.
+
+**Proof.** Unit: `m22-forms-wave2`, `m22-order-render-payload-builders`, extended `document-render-consumer`,
+`m22-every-template-renders-pdf`, goldens for all eight (`order_record` x2, `medication_order` x2, six billing letters).
+Live (private pgvector container, `wardenx_app`, real publisher / dispatcher / consumer / renderer):
+`test:m22:render-handshake:live` now signs a DME order, an IDG-request order and a medication order through the real
+services and reads the stored PDF back (patient, ordering physician, signer manifestation, the no-contract note, the
+published-contract lines), publishes the six billing letters through the catalog-validating publisher under their
+modules' own schemas and reads each back; `f168` appends a transmission version onto a typed medication order.

@@ -30,6 +30,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerSeam } from "../src/bootstrap/seams/registry";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
@@ -74,6 +75,13 @@ import {
   createDrizzleDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
+import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
+import {
+  buildClaimAcknowledgmentLetterRequest,
+  buildDenialAppealCoverLetterRequest,
+  buildNoeConfirmationReceiptRequest,
+  buildNotrConfirmationReceiptRequest,
+} from "../src/modules/23-billing-medicare/consumers/document-render";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
@@ -101,6 +109,12 @@ const ABN_ID = "77777777-7777-7777-7777-777777777777";
 const RENDERED_TYPES = [
   "order_record",
   "medication_order",
+  "noe_confirmation_receipt",
+  "notr_confirmation_receipt",
+  "claim_acknowledgment_letter",
+  "denial_appeal_cover_letter",
+  "medicaid_claim_acknowledgment_letter",
+  "denial_resolution_letter",
   "abn",
   "supply_bill_of_lading",
   "comfort_kit_return_receipt",
@@ -172,6 +186,20 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     );
     return rows;
   }
+  /** The text drawn on the stored PDF of a source row's LATEST version, read back from the object store. */
+  async function renderedText(aggregateType: string, aggregateId: string): Promise<string> {
+    const { rows } = await admin.query(
+      `SELECT v.minio_object_key FROM document d JOIN document_version v ON v.document_id = d.id
+        WHERE d.aggregate_type=$1 AND d.aggregate_id=$2 ORDER BY v.version_number DESC LIMIT 1`,
+      [aggregateType, aggregateId],
+    );
+    const bytes = objects.objects.get(`${deriveTenantBucket(ORG_A)}/${rows[0]?.minio_object_key}`);
+    expect(bytes, `${aggregateType} bytes not stored`).toBeDefined();
+    const raw = Buffer.from(bytes as Uint8Array).toString("latin1");
+    return [...raw.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
+      .map((m) => (m[1] as string).replace(/\\([()\\])/g, "$1"))
+      .join("\n");
+  }
   /** One column value, by table + id — the back-ref half's proof (superuser read). */
   async function columnOf(table: string, column: string, id: string): Promise<string | null> {
     const { rows } = await admin.query(`SELECT ${column} AS v FROM ${table} WHERE id=$1`, [id]);
@@ -212,7 +240,50 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'render@x.test')`, [USER]);
+    // The signer's printed name is read from this row by the M11 / M12 render-payload producers (GAP-033).
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'render@x.test','Imani Okafor')`,
+      [USER],
+    );
+    // GAP-033 - the producers also read the patient's identity (M5 PatientReader) and the ordering physician
+    // (M40). The patient is a REAL `patient` row read back through the seam; the physician entity has no MDM
+    // table in this suite, so the MDM seam answers for the one id the orders name.
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob,
+         sex_assigned_at_birth, status)
+       VALUES ($1,$2,'MRN-RENDER-1','Zelda','Quillfeather','1941-03-07','F','active')`,
+      [PATIENT, ORG_A],
+    );
+    registerSeam("PatientReader", {
+      findById: async ({ id }: { organizationId: string; id: string }) => {
+        const { rows } = await admin.query(
+          "SELECT legal_first_name, legal_last_name, mrn, dob FROM patient WHERE id=$1",
+          [id],
+        );
+        const r = rows[0];
+        return r
+          ? {
+              firstName: r.legal_first_name as string,
+              lastName: r.legal_last_name as string,
+              mrn: r.mrn as string,
+              dateOfBirth: r.dob ? new Date(r.dob).toISOString().slice(0, 10) : null,
+            }
+          : null;
+      },
+    } as never);
+    registerSeam("MdmEntityProvider", {
+      resolvePhysician: async (_org: string, id: string) =>
+        id === PHYSICIAN_MDM
+          ? {
+              canonical: {
+                displayName: "Dr. Imani Okafor",
+                credentials: "MD",
+                identifierType: "npi",
+                identifierValue: "1234567893",
+              },
+            }
+          : null,
+    } as never);
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
         await admin.query(
@@ -375,6 +446,16 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     expect(docs[0].organization_id).toBe(ORG_A);
     // The order's patient must reach the document row — a chart artifact filed under NULL is not filed.
     expect(docs[0].patient_id).toBe(PATIENT);
+    // GAP-033 - the PDF is the signed order as a clinician reads it, not a list of ids: the patient, the order,
+    // the ordering physician and the signer's 21 CFR 11.50 manifestation all sit on the stored page. The order
+    // is a DME order (`dme.v1`, no published field contract), so the page says so rather than inventing details.
+    const orderText = await renderedText("order_record", draft.id);
+    expect(orderText).toContain("Zelda Quillfeather");
+    expect(orderText).toContain("MRN-RENDER-1");
+    expect(orderText).toContain("Dr. Imani Okafor, MD (NPI 1234567893)");
+    expect(orderText).toContain("Electronically signed by Imani Okafor");
+    expect(orderText).toContain("No reviewed field contract is published for this order kind");
+    expect(orderText).not.toContain("E0260"); // the open `data` object is never dumped
     expect(docs[0].retention_class).toBe("clinical_record");
     expect(Number(docs[0].version_number)).toBe(1);
     expect(docs[0].mime_type).toBe("application/pdf");
@@ -429,20 +510,57 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     await dispatcher.tick();
     expect(await documentsFor(draft.id)).toHaveLength(1);
 
-    // Replay the very same request payload as a fresh delivery.
+    // Replay the very same request payload (the REAL typed one the producer emitted) as a fresh delivery.
+    const original = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type='m11.order.document_requested' AND aggregate_id=$1",
+      [draft.id],
+    );
     await seedOutboxRow({
       organizationId: ORG_A,
       eventType: "m11.order.document_requested",
       aggregateKind: "order",
       aggregateId: draft.id,
-      payload: {
-        orderId: draft.id,
-        formTemplate: "order_record",
-        renderPayload: { patientId: PATIENT, kind: "dme" },
-      },
+      payload: original.rows[0]?.payload,
     });
     await dispatcher.tick();
     expect(await documentsFor(draft.id)).toHaveLength(1); // still ONE version, not two
+  });
+
+  // GAP-033 Wave 2 - a kind WITH a published field contract draws its details from the validated `data`.
+  it("a signed IDG-request order draws its published-contract details", async () => {
+    const draft = await orders.createDraft(
+      ORG_A,
+      memberOf[ORG_A],
+      draftArgs({
+        kind: "idg_requested",
+        data: {
+          requestedKind: "plan_of_care_review",
+          narrative: "Family reports uncontrolled dyspnea overnight; request an early team review.",
+          recommendedTimeframe: "within 48 hours",
+        },
+      }),
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orders.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orders.signOrder(
+      ORG_A,
+      memberOf[ORG_A],
+      draft.id,
+      { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await dispatcher.tick();
+    const text = await renderedText("order_record", draft.id);
+    expect(text).toContain("IDG Requested");
+    expect(text).toContain("plan_of_care_review");
+    expect(text).toContain("Family reports uncontrolled dyspnea overnight");
+    expect(text).toContain("within 48 hours");
+    expect(text).not.toContain("No reviewed field contract");
   });
 
   // ── GAP-024 ──────────────────────────────────────────────────────────────────────────────────────────
@@ -496,9 +614,126 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     expect(docs).toHaveLength(1);
     expect(docs[0].aggregate_type).toBe("medication_order");
     expect(docs[0].patient_id).toBe(PATIENT);
+    const medText = await renderedText("medication_order", draft.id);
+    expect(medText).toContain("Zelda Quillfeather");
+    expect(medText).toContain("Morphine");
+    expect(medText).toContain("5 mg");
+    expect(medText).toContain("1 tab PO q6h PRN pain");
+    expect(medText).toContain("Dr. Imani Okafor, MD (NPI 1234567893)");
+    expect(medText).toContain("Electronically signed by Imani Okafor");
 
     await dispatcher.tick();
     expect(await columnOf("medication_order", "document_id", draft.id)).toBe(docs[0].id);
+  });
+
+  // ── GAP-033 Wave 3 — billing correspondence ──────────────────────────────────────────────────────────
+  // The producers (M23 consumers/document-render.ts builders, M24 submission-jobs, M25 write-service) already
+  // ship the content, so no producer changed: this publishes each through the REAL catalog-validating publisher
+  // under the module's own declared schema (a differently shaped payload is refused before it reaches the relay),
+  // drains it through the real consumer + renderer, and reads the stored PDF back.
+  it("renders the six billing letters from the producers' real payload shapes", async () => {
+    const ids = {
+      noe: "99999999-9999-4999-8999-aaaaaaaaaaa1",
+      notr: "99999999-9999-4999-8999-aaaaaaaaaaa2",
+      claim: "99999999-9999-4999-8999-aaaaaaaaaaa3",
+      cover: "99999999-9999-4999-8999-aaaaaaaaaaa4",
+      medicaid: "99999999-9999-4999-8999-aaaaaaaaaaa5",
+      denial: "99999999-9999-4999-8999-aaaaaaaaaaa6",
+    };
+    const m23 = [
+      buildNoeConfirmationReceiptRequest({
+        noeId: ids.noe,
+        noeControlNumber: "NOE-LIVE-0001",
+        submittedAt: "2026-10-02T15:30:00.000Z",
+      }),
+      buildNotrConfirmationReceiptRequest({
+        notrId: ids.notr,
+        notrControlNumber: "NOTR-LIVE-0002",
+        submittedAt: "2026-10-09T09:12:00.000Z",
+      }),
+      buildClaimAcknowledgmentLetterRequest({
+        claimId: ids.claim,
+        claimControlNumber: "CLM-LIVE-0003",
+        payerClaimControlNumber: "PAYER-LIVE-77",
+        acknowledgedAt: "2026-10-12T18:45:00.000Z",
+      }),
+      buildDenialAppealCoverLetterRequest({
+        claimId: ids.cover,
+        claimControlNumber: "CLM-LIVE-0004",
+        rejectionStage: "277ca",
+        rejectionCodes: ["A7:51:85"],
+      }),
+    ];
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {
+      for (const request of m23) {
+        await publisher.publish(tx as never, {
+          eventName: "m23.billing.document_render_requested",
+          payload: { ...request },
+          organizationId: ORG_A,
+          aggregateKind: "billing_document",
+          aggregateId: request.aggregateId,
+          callerModule: "m23",
+        });
+      }
+      await publisher.publish(tx as never, {
+        eventName: "m24.medicaid_billing.document_render_requested",
+        payload: {
+          organizationId: ORG_A,
+          kind: "claim_acknowledgment_letter",
+          aggregateId: ids.medicaid,
+          payload: {
+            patientId: PATIENT,
+            medicaidClaimControlNumber: "MCLM-LIVE-0005",
+            payerClaimControlNumber: null,
+            acknowledgedAt: "2026-10-13T08:00:00.000Z",
+          },
+        },
+        organizationId: ORG_A,
+        aggregateKind: "medicaid_claim",
+        aggregateId: ids.medicaid,
+        callerModule: "m24",
+      });
+      await publisher.publish(tx as never, {
+        eventName: "m25.denial_resolution_letter.render_requested",
+        payload: {
+          denialCaseId: ids.denial,
+          payload: {
+            patientId: PATIENT,
+            claimId: null,
+            resolvedAt: "2026-10-20T13:00:00.000Z",
+            closureOutcome: "written_off",
+          },
+        },
+        organizationId: ORG_A,
+        aggregateKind: "denial_case",
+        aggregateId: ids.denial,
+        callerModule: "m25",
+      });
+    });
+    await dispatcher.tick();
+    await dispatcher.tick();
+
+    const expectations: Array<[string, string, string[]]> = [
+      [ids.noe, "noe_confirmation_receipt", ["NOE-LIVE-0001", "2026-10-02 15:30 UTC"]],
+      [ids.notr, "notr_confirmation_receipt", ["NOTR-LIVE-0002", "2026-10-09 09:12 UTC"]],
+      [ids.claim, "claim_acknowledgment_letter", ["CLM-LIVE-0003", "PAYER-LIVE-77"]],
+      [ids.cover, "denial_appeal_cover_letter", ["CLM-LIVE-0004", "A7:51:85", "277CA claim"]],
+      [
+        ids.medicaid,
+        "medicaid_claim_acknowledgment_letter",
+        ["MCLM-LIVE-0005", "Not yet assigned"],
+      ],
+      [ids.denial, "denial_resolution_letter", ["Written off", "No claim attached"]],
+    ];
+    for (const [aggregateId, aggregateType, needles] of expectations) {
+      const docs = await documentsFor(aggregateId);
+      expect(docs, `${aggregateType} was not rendered`).toHaveLength(1);
+      expect(docs[0].aggregate_type).toBe(aggregateType);
+      const text = await renderedText(aggregateType, aggregateId);
+      for (const needle of needles) expect(text, `${aggregateType}: ${needle}`).toContain(needle);
+      // The letters are patient-independent: no identity is drawn even where the event names a patient.
+      expect(text).not.toContain("Zelda Quillfeather");
+    }
   });
 
   // ── M21 supply documents ─────────────────────────────────────────────────────────────────────────────

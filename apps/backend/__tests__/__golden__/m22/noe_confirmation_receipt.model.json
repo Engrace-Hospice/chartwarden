@@ -1,0 +1,49 @@
+{
+  "title": "Notice of Election - Confirmation Receipt",
+  "createdAtIso": "2026-10-02T15:30:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Notice of Election - Confirmation Receipt"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-02 15:30 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "receipt_statement",
+      "text": "This receipt confirms that the Notice of Election identified below was submitted for processing on the date shown. Keep it with the patient's billing record."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Submission"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "NOE control number",
+          "NOE-2026-000417"
+        ],
+        [
+          "Submitted",
+          "2026-10-02 15:30 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Notice of Election - Confirmation Receipt",
+  "discloseDegradedGlyphs": true
+}

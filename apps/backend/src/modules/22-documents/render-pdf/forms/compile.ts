@@ -121,10 +121,16 @@ export function defineForm<P>(spec: FormSpec<P>): CompiledForm<P> {
       {
         kind: "fieldGrid",
         cells: [
-          ["Patient", patient.name],
-          ["Medical record number", patient.mrn],
-          ["Date of birth", patient.dateOfBirth ?? BLANK],
-          ["Document date", fmtInstant(documentDate)],
+          ...(patient
+            ? ([
+                ["Patient", patient.name],
+                ["Medical record number", patient.mrn],
+                ["Date of birth", patient.dateOfBirth ?? BLANK],
+              ] as const)
+            : []),
+          ...(documentDate === null
+            ? []
+            : ([["Document date", fmtInstant(documentDate)]] as const)),
         ],
       },
     ];
@@ -147,9 +153,9 @@ export function defineForm<P>(spec: FormSpec<P>): CompiledForm<P> {
     const watermark = spec.watermark?.(p);
     return {
       title: spec.title,
-      createdAtIso: latestInstant([documentDate]),
+      createdAtIso: latestInstant([documentDate ?? undefined]),
       blocks,
-      runningHeader: `${patient.name} - MRN ${patient.mrn} - ${spec.title}`,
+      runningHeader: patient ? `${patient.name} - MRN ${patient.mrn} - ${spec.title}` : spec.title,
       discloseDegradedGlyphs: true,
       ...(watermark ? { watermark } : {}),
     };

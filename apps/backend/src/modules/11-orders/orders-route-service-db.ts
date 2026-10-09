@@ -78,6 +78,12 @@ import {
 import { ValidationError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, gt, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
+  RenderPayloadBuildError,
+  buildRenderPayloadOrOmit,
+  createRenderBuildCtx,
+  logRenderPayload,
+} from "../../bootstrap/render-payload-sources";
+import {
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
   RECOVERY_ESCALATION_THRESHOLD,
@@ -98,6 +104,7 @@ import {
   classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "./orm-request/orm-resend";
+import { buildOrderRecordRenderPayload } from "./render-payloads";
 import { deriveCosignFacts, isVerbalRecorderDiscipline } from "./routes/server-derived-facts";
 import {
   EMPTY_ORDER_DETAIL_ACTOR,
@@ -836,6 +843,18 @@ export function createDbOrderBackend(
     // descriptor by that key and refuses an unknown one. `patientId` rides inside `renderPayload` (whose
     // catalog schema is `Type.Unknown()`, so this needs no payload-schema change) because the rendered
     // `document` row is chart-filed against the patient; without it the PDF would file with a NULL patient.
+    const typedOrder = await buildRenderPayloadOrOmit(
+      "m11",
+      logRenderPayload,
+      { organizationId, orderId: id },
+      () =>
+        buildOrderRecordRenderPayload(createRenderBuildCtx(tx, organizationId), r, {
+          signerMembershipId: userId,
+          signedAt: at,
+          viaVerbal: fromVerbal,
+          onBehalfOfMembershipId: onBehalf ? (onBehalfArgs?.onBehalfOf ?? null) : null,
+        }),
+    );
     await emit(tx, organizationId, "m11.order.document_requested", id, {
       orderId: id,
       formTemplate: "order_record",
@@ -846,6 +865,7 @@ export function createDbOrderBackend(
         signedAt: at.toISOString(),
         signerMembershipId: userId,
         viaVerbal: fromVerbal,
+        ...(typedOrder ?? {}),
       },
     });
     if (onBehalf && onBehalfArgs) {
@@ -2430,6 +2450,27 @@ export function createDbOrderBackend(
           signedAt: (tmpl.signedAt ?? at).toISOString(),
           viaVerbal: false,
         });
+        const spawnedRow = await loadOrderRow(t, spawned.id);
+        const typedSpawned = await buildRenderPayloadOrOmit(
+          "m11",
+          logRenderPayload,
+          { organizationId, orderId: spawned.id },
+          async () => {
+            const templateSigner = tmpl.signedByMembershipId;
+            if (templateSigner === null)
+              throw new RenderPayloadBuildError("order_record", "the standing order has no signer");
+            return buildOrderRecordRenderPayload(
+              createRenderBuildCtx(t, organizationId),
+              spawnedRow,
+              {
+                signerMembershipId: templateSigner,
+                signedAt: tmpl.signedAt ?? at,
+                viaVerbal: false,
+                inheritedFromStandingOrder: true,
+              },
+            );
+          },
+        );
         await emit(t, organizationId, "m11.order.document_requested", spawned.id, {
           orderId: spawned.id,
           formTemplate: "order_record",
@@ -2441,6 +2482,7 @@ export function createDbOrderBackend(
             signerMembershipId: tmpl.signedByMembershipId,
             viaVerbal: false,
             standingOrderId: id,
+            ...(typedSpawned ?? {}),
           },
         });
         return { orderId: spawned.id };

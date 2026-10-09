@@ -1,0 +1,49 @@
+{
+  "title": "Notice of Termination or Revocation - Confirmation Receipt",
+  "createdAtIso": "2026-10-09T09:12:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Notice of Termination or Revocation - Confirmation Receipt"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-09 09:12 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "receipt_statement",
+      "text": "This receipt confirms that the Notice of Termination or Revocation identified below was submitted for processing on the date shown. Keep it with the patient's billing record."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Submission"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "NOTR control number",
+          "NOTR-2026-000052"
+        ],
+        [
+          "Submitted",
+          "2026-10-09 09:12 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Notice of Termination or Revocation - Confirmation Receipt",
+  "discloseDegradedGlyphs": true
+}

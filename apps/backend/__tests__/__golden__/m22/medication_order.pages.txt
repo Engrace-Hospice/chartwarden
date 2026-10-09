@@ -1,0 +1,64 @@
+--- page 1 ---
+Medication Order
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-09-30 14:05 UTC
+Medication
+Drug
+Morphine sulfate oral solution
+Strength
+20 mg/mL
+Dose form
+solution
+Route
+oral
+Class
+Controlled Substance
+DEA schedule
+II
+Received as
+Written order
+Directions
+Dose
+5 mg
+Route
+oral
+Frequency
+q4h
+Duration
+30 days
+As needed (PRN)
+Yes - dyspnea
+Directions as written
+Give 5 mg by mouth every 4 hours as needed for shortness of breath.
+Dispense
+Quantity
+30 mL
+Days supply
+30
+Refills authorized
+0
+Dispense as written
+No
+Indication
+Dyspnea at rest
+--- page 2 ---
+Clinical justification
+Opioid-naive patient with refractory dyspnea; low starting dose.
+Hospice coverage
+[42 CFR 418.24(c)(6)]
+Determination
+Covered - related to the terminal illness
+Prescriber
+Prescribing physician
+Dr. Imani Okafor, MD (NPI 1234567893)
+Prescriber
+Electronically signed by Dr. Imani Okafor, MD (NPI 1234567893) on 2026-09-30 14:05 UTC.
+Meaning of signature: Order Authorization.
+Signature record ref 1a2b3c4d.

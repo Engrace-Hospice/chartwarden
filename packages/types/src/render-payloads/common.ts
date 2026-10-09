@@ -22,6 +22,7 @@ export const RENDER_SIGNATURE_MEANINGS = [
   "revocation",
   "discharge_order",
   "cosignature",
+  "order_authorization",
 ] as const;
 export type RenderSignatureMeaning = (typeof RENDER_SIGNATURE_MEANINGS)[number];
 

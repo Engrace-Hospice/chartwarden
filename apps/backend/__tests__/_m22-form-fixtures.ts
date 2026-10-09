@@ -1,10 +1,18 @@
 // Shared fixtures for the GAP-033 form tests: a rich and a minimal valid typed payload per compiled form, with
 // sentinel PHI strings so the canary test can prove where they do (and do not) appear.
 import type {
+  ClaimAcknowledgmentRenderPayload,
   CtiRenderPayload,
+  DenialAppealCoverRenderPayload,
+  DenialResolutionRenderPayload,
   DischargeRenderPayload,
   F2fRenderPayload,
+  MedicaidClaimAcknowledgmentRenderPayload,
+  MedicationOrderRenderPayload,
+  NoeReceiptRenderPayload,
   NorRenderPayload,
+  NotrReceiptRenderPayload,
+  OrderRecordRenderPayload,
   RevocationRenderPayload,
   SignatureRecord,
   TransferRenderPayload,
@@ -176,6 +184,103 @@ export const TRANSFER: TransferRenderPayload = {
   narrative: "Patient moved to another county.",
 };
 
+export const ORDER_RECORD: OrderRecordRenderPayload = {
+  schemaVersion: 2,
+  orderId: "ord-00000000-0000-4000-8000-0000000000f1",
+  patient: PATIENT,
+  hospiceName: "Evergreen Hospice LLC",
+  kind: "lab",
+  kindVersion: "lab.v1",
+  priority: "urgent",
+  indication: "Rising creatinine on the last visit.",
+  orderingPhysician: { name: "Dr. Imani Okafor", credentials: "MD", npi: "1234567893" },
+  details: [
+    { label: "Tests", value: "Creatinine (LOINC 2160-0); Potassium (LOINC 2823-3)" },
+    { label: "Fasting required", value: "No" },
+    { label: "Collection instructions", value: "Draw at the next scheduled visit." },
+  ],
+  detailsNote: null,
+  viaVerbal: false,
+  replacesOrderId: null,
+  fromStandingOrder: false,
+  cosign: null,
+  signature: sig({
+    role: "Ordering clinician",
+    credentials: null,
+    npi: null,
+    meaning: "order_authorization",
+  }),
+};
+
+export const MEDICATION_ORDER: MedicationOrderRenderPayload = {
+  schemaVersion: 2,
+  orderId: "mo-00000000-0000-4000-8000-0000000000f2",
+  patient: PATIENT,
+  hospiceName: "Evergreen Hospice LLC",
+  medClass: "controlled_substance",
+  drugName: "Morphine sulfate oral solution",
+  strength: "20 mg/mL",
+  doseForm: "solution",
+  route: "oral",
+  sig: {
+    doseQuantity: 5,
+    doseUnit: "mg",
+    route: "oral",
+    frequencyCode: "q4h",
+    duration: "30 days",
+    asNeeded: true,
+    asNeededReason: "dyspnea",
+  },
+  sigFreeText: "Give 5 mg by mouth every 4 hours as needed for shortness of breath.",
+  indication: "Dyspnea at rest",
+  clinicalJustification: "Opioid-naive patient with refractory dyspnea; low starting dose.",
+  dispenseQuantity: { value: 30, unit: "mL" },
+  daysSupply: 30,
+  refillsAuthorized: 0,
+  daw: false,
+  deaSchedule: "II",
+  compounded: null,
+  coverage: { status: "covered_related", reason: null },
+  allergyOverride: null,
+  prescribingPhysician: { name: "Dr. Imani Okafor", credentials: "MD", npi: "1234567893" },
+  viaVerbal: false,
+  cosign: null,
+  isSudTreatment: false,
+  signature: sig({
+    role: "Prescriber",
+    meaning: "order_authorization",
+  }),
+};
+
+export const NOE_RECEIPT: NoeReceiptRenderPayload = {
+  noeControlNumber: "NOE-2026-000417",
+  submittedAt: "2026-10-02T15:30:00.000Z",
+};
+export const NOTR_RECEIPT: NotrReceiptRenderPayload = {
+  notrControlNumber: "NOTR-2026-000052",
+  submittedAt: "2026-10-09T09:12:00.000Z",
+};
+export const CLAIM_ACK: ClaimAcknowledgmentRenderPayload = {
+  claimControlNumber: "CLM-2026-0091",
+  payerClaimControlNumber: "PAYER-7781234",
+  acknowledgedAt: "2026-10-12T18:45:00.000Z",
+};
+export const MEDICAID_CLAIM_ACK: MedicaidClaimAcknowledgmentRenderPayload = {
+  medicaidClaimControlNumber: "MCLM-2026-0044",
+  payerClaimControlNumber: null,
+  acknowledgedAt: "2026-10-13T08:00:00.000Z",
+};
+export const DENIAL_COVER: DenialAppealCoverRenderPayload = {
+  claimControlNumber: "CLM-2026-0092",
+  rejectionStage: "277ca",
+  rejectionCodes: ["A7:51:85", "A3:21:IL"],
+};
+export const DENIAL_RESOLUTION: DenialResolutionRenderPayload = {
+  closureOutcome: "resolved_no_appeal",
+  resolvedAt: "2026-10-20T13:00:00.000Z",
+  claimId: "cccccccc-0000-4000-8000-000000000003",
+};
+
 /** Every compiled form with its rich payload, for the data-driven tests. */
 export const FORM_FIXTURES = {
   cti: CTI,
@@ -184,4 +289,16 @@ export const FORM_FIXTURES = {
   revocation: REVOCATION,
   discharge_summary: DISCHARGE,
   discharge_summary_transfer: TRANSFER,
+  order_record: ORDER_RECORD,
+  medication_order: MEDICATION_ORDER,
+} as const;
+
+/** The patient-independent billing correspondence (no patient identity, no MBI): rich payload per form. */
+export const BILLING_FIXTURES = {
+  noe_confirmation_receipt: NOE_RECEIPT,
+  notr_confirmation_receipt: NOTR_RECEIPT,
+  claim_acknowledgment_letter: CLAIM_ACK,
+  medicaid_claim_acknowledgment_letter: MEDICAID_CLAIM_ACK,
+  denial_appeal_cover_letter: DENIAL_COVER,
+  denial_resolution_letter: DENIAL_RESOLUTION,
 } as const;

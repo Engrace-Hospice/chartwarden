@@ -1,0 +1,34 @@
+--- page 1 ---
+Order Record
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-09-30 14:05 UTC
+Order
+Order type
+Lab
+Priority
+Urgent
+Ordering physician
+Dr. Imani Okafor, MD (NPI 1234567893)
+Received as
+Written order
+Indication
+Rising creatinine on the last visit.
+Order details
+Tests
+Creatinine (LOINC 2160-0); Potassium (LOINC
+2823-3)
+Fasting required
+No
+Collection instructions
+Draw at the next scheduled visit.
+Ordering clinician
+Electronically signed by Dr. Imani Okafor on 2026-09-30 14:05 UTC.
+Meaning of signature: Order Authorization.
+Signature record ref 1a2b3c4d.

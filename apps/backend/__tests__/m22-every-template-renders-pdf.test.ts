@@ -64,6 +64,15 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     "revocation",
     "discharge_summary",
     "discharge_summary_transfer",
+    // Wave 2 / 3 (m22-forms-wave2.test.ts): typed order payloads and the billing correspondence.
+    "order_record",
+    "medication_order",
+    "noe_confirmation_receipt",
+    "notr_confirmation_receipt",
+    "claim_acknowledgment_letter",
+    "medicaid_claim_acknowledgment_letter",
+    "denial_appeal_cover_letter",
+    "denial_resolution_letter",
   ]);
 
   it("covers the full template table (guards against the loop matching nothing)", () => {
@@ -122,6 +131,18 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
       ]) {
         expect(() => renderPdfForTemplate(key, payload, key)).toThrow(RenderPayloadError);
       }
+    },
+  );
+
+  it.each(["order_record", "medication_order"])(
+    "a legacy id-only %s event drained under the fallback flag renders generically, not as a form",
+    (key) => {
+      const bytes = renderPdfForTemplate(
+        key,
+        { aggregateId: "agg-1", patientId: "p-1", kind: "lab", legacyUntyped: true },
+        key,
+      );
+      expectValidPdf(bytes);
     },
   );
 

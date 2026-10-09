@@ -16,6 +16,7 @@
 // per-event adapter into it. An event whose payload does not normalize THROWS — the dispatcher retries then
 // dead-letters it (§7.2), which is the honest outcome for a malformed render request; it is never a silent
 // no-op that would leave a signed clinical artifact permanently un-rendered with a green outbox.
+import { RENDER_PAYLOAD_VERSION } from "@wardenx/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -94,12 +95,15 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
     contentField: "renderPayload",
+    // GAP-033 Wave 2: `order_record` is a compiled form drawn from the producer's typed payload.
+    requiresRenderPayload: true,
   },
   // M12 §4.4 — same shape as M11; `formTemplate` is `medication_order`.
   "m12.medication_order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
     contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   // M13 — the one source module that already emitted before this consumer existed. Its `formTemplate`
   // (`reconciliation_worksheet_v1`) is M13's OWN form name, not an M22 published key, so the key is fixed
@@ -463,6 +467,10 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["orderId"],
     templateKey: "medication_order",
     appends: true,
+    // GAP-033: the appended version is the whole typed medication order plus its `transmission` block - a bare
+    // confirmation has nothing to draw a prescription from, so a producer must ship the typed `renderPayload`.
+    contentField: "renderPayload",
+    requiresRenderPayload: true,
   },
   // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload
   // (`{patientId, asOfDate, scales, lang}`), so `patientId` is the aggregate — the first patientId-keyed
@@ -590,7 +598,13 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
   }
 
   const rawContent = shape.contentField ? p[shape.contentField] : p;
-  const typedContent = rawContent !== null && typeof rawContent === "object";
+  // "Typed" = an object the producer stamped with the render-payload schema version. An object without the stamp is
+  // an id-only legacy payload (M11/M12 shipped `{patientId, kind, signedAt}` as `renderPayload` before GAP-033).
+  const typedContent =
+    rawContent !== null &&
+    typeof rawContent === "object" &&
+    (!shape.requiresRenderPayload ||
+      (rawContent as Record<string, unknown>).schemaVersion === RENDER_PAYLOAD_VERSION);
   if (shape.requiresRenderPayload && !typedContent && delivered.legacyUntypedFallback !== true) {
     throw new MalformedRenderRequestError(
       eventType,
@@ -600,7 +614,12 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
   const content: Record<string, unknown> = typedContent
     ? (rawContent as Record<string, unknown>)
     : shape.requiresRenderPayload
-      ? { ...p, legacyUntyped: true }
+      ? {
+          ...(rawContent !== null && typeof rawContent === "object"
+            ? (rawContent as Record<string, unknown>)
+            : p),
+          legacyUntyped: true,
+        }
       : {};
 
   // The chart-target patient may live on the envelope (M21/M23 style) or inside the content blob (M11/M12
