@@ -207,6 +207,11 @@ export interface HippsCalculationSegment {
   dateTo: string; // ISO date
   ratePerDiemCents: number;
   hippsCharPosition: number;
+  /** The fiscal year (starting calendar year) and the wage-index factor this segment was priced with - one claim can
+   *  span two fiscal years, so the per-claim `wage_index_*` columns alone cannot reproduce the second year's math.
+   *  Optional: rows written before this field carry neither. */
+  wageIndexFiscalYear?: number;
+  wageIndexFactor?: string;
 }
 export type HippsCalculationSegments = HippsCalculationSegment[];
 

@@ -509,6 +509,7 @@ describe("derivePerDiemClassCode — internal placeholder encoding (not a Medica
       ratePerDiemCents: 20_000,
       rhcDayBucket: "days_1_60",
       wageIndexFactorApplied: "1.0000",
+      wageIndexFiscalYear: 2025,
       chcHours: null,
       chcAdjustedHourlyRateCents: null,
       hippsCharPosition: 1,

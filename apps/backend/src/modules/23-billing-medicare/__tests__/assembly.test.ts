@@ -339,6 +339,129 @@ describe("D10 — cosignature-wait visits are excluded from the assembled line b
   });
 });
 
+describe("SIA add-on across Oct 1 — priced with the fiscal year of the death date", () => {
+  /** A claim Sep 25 - Oct 5 (2025) with a death on `deceasedDate`, an RN visit in the SIA window, and per-year inputs. */
+  const crossingSeams = (deceasedDate: string, chcCalls: unknown[]) => {
+    const base = buildSeams();
+    return buildSeams({
+      admission: {
+        resolveForRange: async () => ({
+          admissionId: "adm-1",
+          hospiceAdmissionDate: "2025-09-01",
+          dischargeDate: null,
+          dischargeReason: null,
+          deceasedDate,
+          placeOfDeath: null,
+          transferOut: null,
+        }),
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2025-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-09-25",
+            to: "2025-10-05",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      signedEncounters: {
+        inWindow: async () => [
+          {
+            encounterId: "rn-1",
+            serviceDate: deceasedDate,
+            discipline: "RN",
+            signed: true,
+            cosignRequired: false,
+            cosigned: false,
+            durationMinutes: 120,
+          },
+        ],
+      },
+      referenceData: {
+        ...base.referenceData,
+        hippsRateTable: async (_mac, fiscalYearStarting) =>
+          fiscalYearStarting === 2024
+            ? RATE_TABLE
+            : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
+        chcHourlyRateCents: async (fiscalYearStarting, wageIndexFactor, scope) => {
+          chcCalls.push([fiscalYearStarting, wageIndexFactor, scope.serviceFrom]);
+          return fiscalYearStarting === 2024 ? 6_000 : 7_000;
+        },
+      },
+      cbsa: {
+        // The same reported code, a different published index per fiscal year.
+        wageIndexForArea: async (_code, fiscalYearStarting) =>
+          fiscalYearStarting === 2024 ? "0.9000" : "1.2000",
+        areasFor: async () => ({
+          residence: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "1.2000",
+          },
+          facility: null,
+        }),
+      },
+    });
+  };
+  const CROSSING = { ...REQUEST, serviceFrom: "2025-09-25", serviceTo: "2025-10-05" };
+
+  it("a death on Oct 3 prices SIA with the second fiscal year's CHC rate, area index and rate-table date", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-03", chcCalls),
+    ).assemble(ACTOR, CROSSING);
+    expect(chcCalls).toEqual([[2025, "1.2000", "2025-10-03"]]);
+    // 120 min of RN at the FY2026 hourly rate 7000: 2h x 7000
+    expect(store.sia[0].siaAddOnCents).toBe(14_000);
+  });
+
+  it("a death in September prices SIA with the first fiscal year", async () => {
+    const chcCalls: unknown[] = [];
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-09-28", chcCalls),
+    ).assemble(ACTOR, CROSSING);
+    expect(chcCalls).toEqual([[2024, "0.9000", "2025-09-25"]]);
+    expect(store.sia[0].siaAddOnCents).toBe(12_000); // 2h x 6000
+  });
+
+  it("persists each segment's fiscal year and wage-index factor so the second-year math is reproducible", async () => {
+    await buildClaimAssemblyService(
+      makeFakeDb() as never,
+      crossingSeams("2025-10-03", []),
+    ).assemble(ACTOR, CROSSING);
+    const segments = store.hipps[0].segments as {
+      dateFrom: string;
+      wageIndexFiscalYear: number;
+      wageIndexFactor: string;
+    }[];
+    expect(segments.map((s) => [s.dateFrom, s.wageIndexFiscalYear, s.wageIndexFactor])).toEqual([
+      ["2025-09-25", 2024, "0.9000"],
+      ["2025-10-01", 2025, "1.2000"],
+    ]);
+  });
+});
+
 describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produces a sia_calculation row", () => {
   it("writes one sia_calculation; the add-on is expected PAYMENT, never a billed charge", async () => {
     const seams = buildSeams({

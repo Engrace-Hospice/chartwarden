@@ -504,6 +504,8 @@ export function buildClaimAssemblyService(
             dateTo: s.dateTo,
             ratePerDiemCents: s.ratePerDiemCents,
             hippsCharPosition: s.hippsCharPosition,
+            wageIndexFiscalYear: s.wageIndexFiscalYear,
+            wageIndexFactor: s.wageIndexFactorApplied,
           })),
           rhcDays1to60: hipps.rhcDays1to60,
           rhcDays61Plus: hipps.rhcDays61Plus,

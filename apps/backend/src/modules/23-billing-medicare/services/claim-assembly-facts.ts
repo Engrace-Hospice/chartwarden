@@ -20,6 +20,7 @@ import {
   calculateHippsByFiscalYear,
   calculateSia,
   splitAtFiscalYears,
+  wageIndexFactorForLevelOfCare,
 } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
 import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
@@ -408,10 +409,43 @@ export async function computeClaimSia(
 ): Promise<ReturnType<typeof calculateSia> | null> {
   const { admission, fiscalYearStarting, wageIndex, rateScope, signedEncounters } = facts;
   if (admission.deceasedDate === null) return null;
+  // The SIA is paid at the CHC hourly rate of the fiscal year the PATIENT DIED in (the SIA window ends on the death
+  // date), wage-adjusted on the same basis as the claim's continuous-home-care days: the residence area index of
+  // that year where the claim is priced by area, else the provider's index. A claim that crosses Oct 1 therefore
+  // prices a death after Oct 1 with the second year's rate and index.
+  const deathFiscalYear = hospiceFiscalYearStarting(admission.deceasedDate);
+  const pricing = facts.fiscalYearPricing.get(deathFiscalYear);
+  let siaFiscalYear = fiscalYearStarting;
+  let siaWageIndex = wageIndex.factorDecimal;
+  let siaScope = rateScope;
+  if (pricing) {
+    siaFiscalYear = deathFiscalYear;
+    try {
+      siaWageIndex = wageIndexFactorForLevelOfCare(
+        "continuous_home_care",
+        pricing.wageIndexFactorDecimal,
+        pricing.wageIndexAreaFactors,
+      );
+    } catch (err) {
+      if (err instanceof WageIndexAreaError) {
+        throw new WardenXError(
+          "WAGE_INDEX_AREA_UNRESOLVED",
+          `${err.message}; correct the patient residence address (ZIP code) and retry`,
+          422,
+        );
+      }
+      throw err;
+    }
+    // The rate table is the version effective on the date priced: the claim's first day, or the death date when it
+    // falls in a later fiscal year.
+    if (deathFiscalYear !== fiscalYearStarting) {
+      siaScope = { ...rateScope, serviceFrom: admission.deceasedDate };
+    }
+  }
   const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
-    fiscalYearStarting,
-    wageIndex.factorDecimal,
-    rateScope,
+    siaFiscalYear,
+    siaWageIndex,
+    siaScope,
   );
   const sia = calculateSia({
     deceasedDate: admission.deceasedDate,

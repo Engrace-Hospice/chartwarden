@@ -159,6 +159,8 @@ export interface HippsSegmentResult {
   readonly rhcDayBucket: RhcDayBucket;
   /** The wage-index factor this segment's labor share was adjusted with (its area's index — `wage-index-area.ts`). */
   readonly wageIndexFactorApplied: string;
+  /** The fiscal year (starting calendar year) whose rates and wage index priced this segment. */
+  readonly wageIndexFiscalYear: number;
   /** F-211 — CHC only: the documented hours this (single-day) segment was priced on; `null` for other levels of care. */
   readonly chcHours: number | null;
   /** F-211 — CHC only: the wage-index-adjusted HOURLY rate the day was priced at; `null` for other levels of care. */
@@ -280,6 +282,7 @@ interface DayResolution {
   readonly levelOfCare: LevelOfCare;
   readonly bucket: RhcDayBucket;
   readonly wageIndexFactorApplied: string;
+  readonly wageIndexFiscalYear: number;
   readonly baseRatePerDiemCents: Cents;
   readonly ratePerDiemCents: Cents;
   readonly chcHours: number | null;
@@ -340,6 +343,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         levelOfCare: loc,
         bucket,
         wageIndexFactorApplied: dayWageIndex,
+        wageIndexFiscalYear: input.wageIndexFiscalYear,
         baseRatePerDiemCents: lineChargeCents(hours, baseRate),
         ratePerDiemCents: lineChargeCents(hours, adjustedRate),
         chcHours: hours,
@@ -351,6 +355,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         levelOfCare: loc,
         bucket,
         wageIndexFactorApplied: dayWageIndex,
+        wageIndexFiscalYear: input.wageIndexFiscalYear,
         baseRatePerDiemCents: baseRate,
         ratePerDiemCents: adjustedRate,
         chcHours: null,
@@ -390,6 +395,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         ratePerDiemCents: dayRes.ratePerDiemCents,
         rhcDayBucket: dayRes.bucket,
         wageIndexFactorApplied: dayRes.wageIndexFactorApplied,
+        wageIndexFiscalYear: dayRes.wageIndexFiscalYear,
         chcHours: dayRes.chcHours,
         chcAdjustedHourlyRateCents: dayRes.chcAdjustedHourlyRateCents,
         hippsCharPosition: position,
