@@ -2,6 +2,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  ErrorState,
   FlagChip,
   Glyph,
   InfoRows,
@@ -34,16 +35,18 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import {
   type AgendaItemView,
   type AttendanceView,
+  IdgReadError,
   buildPackets,
   loadAgenda,
   loadAttendance,
   startMeeting,
 } from "./idg-api";
 import { type LifecycleAction, LifecycleModal } from "./idg-meeting-modals";
-import { IdgStat } from "./idg-page-kit";
+import { IdgStat, MeetingProgress } from "./idg-page-kit";
 import { PatientLabel, type PatientRef, patientText, shortId, useMemberNames } from "./idg-people";
 import { MEETING_TONE, stateLabel } from "./idg-status";
 
@@ -106,6 +109,9 @@ function timeLabel(iso: string): string {
 
 export function MeetingDetail(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
+  const canCoordinate = session?.permissions?.includes("idg.coordinate") ?? false;
+  const canSchedule = session?.permissions?.includes("idg.schedule") ?? false;
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [meeting, setMeeting] = useState<MeetingView | null>(null);
@@ -115,7 +121,7 @@ export function MeetingDetail(): JSX.Element {
   const [roster, setRoster] = useState<AttendanceView[]>([]);
   const [locationName, setLocationName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ forbidden: boolean; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [lifecycle, setLifecycle] = useState<LifecycleAction | null>(null);
@@ -124,22 +130,42 @@ export function MeetingDetail(): JSX.Element {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const [m, p] = await Promise.all([
-      client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
-      client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
-    ]);
-    if (m.error || p.error) {
-      setError("Could not load this IDG meeting.");
+    try {
+      const [m, p, nextRoster, nextAgenda] = await Promise.all([
+        client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
+        client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
+        loadAttendance(client, id),
+        loadAgenda(client, id),
+      ]);
+      if (m.error || p.error) {
+        const status = m.error ? m.response.status : p.response.status;
+        setError({
+          forbidden: status === 403 || status === 404,
+          message:
+            status === 403 || status === 404
+              ? "This meeting is not available in your current access scope."
+              : "Could not load this IDG meeting.",
+        });
+        setLoading(false);
+        return;
+      }
+      setMeeting((m.data ?? null) as MeetingView | null);
+      const rows = (p.data ?? []) as PacketRow[];
+      setPackets(rows);
+      setSelectedId((prev) => prev ?? rows[0]?.packetId ?? null);
+      setRoster(nextRoster);
+      setAgenda(nextAgenda);
       setLoading(false);
-      return;
+    } catch (err) {
+      const forbidden = err instanceof IdgReadError && (err.status === 403 || err.status === 404);
+      setError({
+        forbidden,
+        message: forbidden
+          ? "This meeting is not available in your current access scope."
+          : "Could not load all required meeting data.",
+      });
+      setLoading(false);
     }
-    setMeeting((m.data ?? null) as MeetingView | null);
-    const rows = (p.data ?? []) as PacketRow[];
-    setPackets(rows);
-    setSelectedId((prev) => prev ?? rows[0]?.packetId ?? null);
-    setRoster(await loadAttendance(client, id));
-    setAgenda(await loadAgenda(client, id).catch(() => [] as AgendaItemView[]));
-    setLoading(false);
   }, [client, id]);
 
   /** One helper for the two transitions that take no body; the modal carries the two that do. */
@@ -147,16 +173,21 @@ export function MeetingDetail(): JSX.Element {
     if (!id) return;
     setBusy(true);
     setNotice(null);
-    const res = kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
-    setBusy(false);
-    setNotice(
-      res.ok
-        ? kind === "build"
-          ? "Packet build started."
-          : "Meeting started — decisions can now be recorded."
-        : res.message,
-    );
-    if (res.ok) await load();
+    try {
+      const res = kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
+      setNotice(
+        res.ok
+          ? kind === "build"
+            ? "Packet build started."
+            : "Meeting started — decisions can now be recorded."
+          : res.message,
+      );
+      if (res.ok) await load();
+    } catch {
+      setNotice("The network request did not complete. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -198,7 +229,12 @@ export function MeetingDetail(): JSX.Element {
       <div className="wx-with-rail" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="wx-list-state">
           {error ? (
-            <EmptyState title="Unavailable" description={error} />
+            <ErrorState
+              title={error.forbidden ? "Meeting unavailable" : "Unable to load meeting"}
+              description={error.message}
+              onRetry={() => void load()}
+              action={<Link to="/idg/schedule">Back to schedule</Link>}
+            />
           ) : loading ? (
             <LoadingSpinner />
           ) : (
@@ -212,6 +248,7 @@ export function MeetingDetail(): JSX.Element {
   const ready = packets.filter((p) => p.frozenAt !== null).length;
   const selected = packets.find((p) => p.packetId === selectedId) ?? null;
   const building = meeting.status === "packets_building";
+  const terminal = ["adjourned", "cancelled", "rescheduled"].includes(meeting.status);
   const quorumLabel =
     roster.length === 0
       ? { tone: "neutral" as const, text: "Quorum — no check-ins yet" }
@@ -300,7 +337,7 @@ export function MeetingDetail(): JSX.Element {
             >
               <h1 style={{ fontSize: "1.875rem" }}>IDG Meeting</h1>
               <StatusPill
-                label={stateLabel(meeting.status)}
+                label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
                 tone={MEETING_TONE[meeting.status] ?? "neutral"}
               />
             </div>
@@ -325,7 +362,7 @@ export function MeetingDetail(): JSX.Element {
             </ul>
           </div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {meeting.status === "scheduled" ? (
+            {canCoordinate && meeting.status === "scheduled" ? (
               <button
                 type="button"
                 className="wx-btn-secondary"
@@ -335,7 +372,7 @@ export function MeetingDetail(): JSX.Element {
                 Build packets
               </button>
             ) : null}
-            {meeting.status === "packets_ready" ? (
+            {canCoordinate && meeting.status === "packets_ready" ? (
               <button
                 type="button"
                 className="wx-btn-secondary"
@@ -345,7 +382,7 @@ export function MeetingDetail(): JSX.Element {
                 Start meeting
               </button>
             ) : null}
-            {meeting.status === "scheduled" || meeting.status === "packets_ready" ? (
+            {canSchedule && (meeting.status === "scheduled" || meeting.status === "packets_ready") ? (
               <>
                 <button
                   type="button"
@@ -370,13 +407,24 @@ export function MeetingDetail(): JSX.Element {
               className="wx-btn-primary"
               onClick={() => navigate(`/idg/meetings/${meeting.id}/live`)}
             >
-              <Glyph name="play" size={14} /> Live surface
+              <Glyph name={terminal ? "file-text" : "play"} size={14} />{" "}
+              {meeting.status === "adjourned"
+                ? "View finalized record"
+                : terminal
+                  ? "View meeting record"
+                  : "Meeting workspace"}
             </button>
           </div>
         </div>
 
+        <MeetingProgress
+          status={meeting.status}
+          scheduledStart={meeting.scheduledStart}
+          adjournedAt={meeting.adjournedAt}
+        />
+
         {notice ? (
-          <output style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
         ) : null}
 
         <div className="wx-stat-grid" aria-label="Meeting summary">
@@ -647,7 +695,7 @@ export function MeetingDetail(): JSX.Element {
                 label: "Status",
                 value: (
                   <StatusPill
-                    label={stateLabel(meeting.status)}
+                    label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
                     tone={MEETING_TONE[meeting.status] ?? "neutral"}
                   />
                 ),

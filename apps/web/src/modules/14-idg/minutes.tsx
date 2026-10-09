@@ -39,6 +39,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import type { MinutesView } from "./idg-api";
 import { AmendmentModal } from "./idg-meeting-modals";
 import { IdgPageHead } from "./idg-page-kit";
@@ -64,6 +65,8 @@ const RENDER_STATUS_LABEL = {
 
 export function Minutes(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
+  const canAmend = session?.permissions?.includes("idg.amend_minutes") ?? false;
   const { id } = useParams<{ id: string }>();
   const [minutes, setMinutes] = useState<MinutesScreenView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +124,7 @@ export function Minutes(): JSX.Element {
                 Back to meeting
               </Link>
             ) : null}
-            {isFinal ? (
+            {isFinal && canAmend ? (
               <button type="button" className="wx-btn-primary" onClick={() => setAmending(true)}>
                 Request an amendment
               </button>

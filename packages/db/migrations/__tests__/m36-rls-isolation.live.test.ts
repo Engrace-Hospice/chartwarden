@@ -147,9 +147,9 @@ describe.skipIf(!DB_URL)(
       // channel_kind='dm' keeps the channel_kind_subject_shape CHECK simple: subject_id NULL, care_related.
       const channel = (
         await db.query(
-          `INSERT INTO channel (organization_id, channel_kind, title, retention_class)
-         VALUES ($1,'dm','DM Thread','care_related') RETURNING id`,
-          [org],
+          `INSERT INTO channel (organization_id, channel_kind, dm_participant_key, title, retention_class)
+         VALUES ($1,'dm',$2,'DM Thread','care_related') RETURNING id`,
+          [org, `${USER}:fixture-peer`],
         )
       ).rows[0].id as string;
 

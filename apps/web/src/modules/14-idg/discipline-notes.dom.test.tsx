@@ -146,7 +146,7 @@ const mount = () =>
           organizationId: "org-1",
           membershipId: ME,
           roles: [],
-          permissions: [],
+          permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide"],
           isAdmin: false,
         }}
       >

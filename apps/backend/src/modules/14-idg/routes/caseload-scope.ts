@@ -78,3 +78,39 @@ export async function filterIdgPatientsInScope<T extends { readonly patientId: s
       (facts.sessionPatientId !== null && facts.sessionPatientId === r.patientId),
   );
 }
+
+/** Nullable-patient list form: meeting-level rows remain visible; patient rows are caseload scoped. */
+export async function filterNullableIdgPatientsInScope<T extends { readonly patientId: string | null }>(
+  facts: IdgPatientScopeFacts,
+  organizationId: string,
+  rows: readonly T[],
+  resolveCaseload: IdgCaseloadResolver,
+): Promise<T[]> {
+  const patientIds = await resolveIdgPatientIdsInScope(facts, organizationId, resolveCaseload);
+  if (patientIds === null) return [...rows];
+  return rows.filter((row) => row.patientId === null || patientIds.includes(row.patientId));
+}
+
+/**
+ * Resolve the SQL-list form of the patient's scope. `null` is the explicit org-wide arm; an empty array is
+ * fail-closed (no user id or an unavailable CaseloadProvider). The pinned patient is unioned with the caseload.
+ */
+export async function resolveIdgPatientIdsInScope(
+  facts: IdgPatientScopeFacts,
+  organizationId: string,
+  resolveCaseload: IdgCaseloadResolver,
+): Promise<readonly string[] | null> {
+  if (hasOrgWideScope(facts.roles)) return null;
+  const patientIds = new Set<string>();
+  if (facts.sessionPatientId !== null) patientIds.add(facts.sessionPatientId);
+  if (facts.userId !== null) {
+    try {
+      for (const patientId of await resolveCaseload({ organizationId, userId: facts.userId })) {
+        patientIds.add(patientId);
+      }
+    } catch {
+      // fail closed: retain only an independently server-pinned patient, if any
+    }
+  }
+  return [...patientIds];
+}

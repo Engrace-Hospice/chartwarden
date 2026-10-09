@@ -1,5 +1,6 @@
 import {
   EmptyState,
+  ErrorState,
   Glyph,
   LoadingSpinner,
   Panel,
@@ -35,6 +36,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import { type ActionItemPatchStatus, updateActionItem } from "./idg-api";
 import {
   IdgFilter,
@@ -69,6 +71,11 @@ interface ActionItemRow {
 
 export function MyActionItems(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
+  const canAct =
+    session?.permissions?.includes("idg.act") ||
+    session?.permissions?.includes("idg.coordinate") ||
+    false;
   const [items, setItems] = useState<ActionItemRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -78,16 +85,22 @@ export function MyActionItems(): JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ kind: "forbidden" | "error"; message: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/idg/action-items", {
+    const { data, error: err, response } = await client.GET("/api/v1/idg/action-items", {
       params: { query: { assignee: "me" } },
     });
     if (err) {
-      setError("Could not load your action items.");
+      setError({
+        kind: response.status === 403 || response.status === 404 ? "forbidden" : "error",
+        message:
+          response.status === 403 || response.status === 404
+            ? "Your current role cannot open this IDG work queue."
+            : "Could not load your action items.",
+      });
       setLoading(false);
       return;
     }
@@ -200,7 +213,7 @@ export function MyActionItems(): JSX.Element {
         <IdgSubtabs current="actions" />
 
         {notice ? (
-          <output style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
         ) : null}
 
         <div className="wx-stat-grid" aria-label="Action item summary">
@@ -296,11 +309,13 @@ export function MyActionItems(): JSX.Element {
         </IdgFilterPanel>
 
         {error ? (
-          <div role="alert" className="wx-list-state">
-            <EmptyState title="Action items unavailable" description={error} />
-            <button type="button" className="wx-btn-secondary" onClick={() => void load()}>
-              Try again
-            </button>
+          <div className="wx-list-state">
+            <ErrorState
+              title={error.kind === "forbidden" ? "Work queue unavailable" : "Action items unavailable"}
+              description={error.message}
+              onRetry={() => void load()}
+              action={<Link to="/idg/schedule">Back to IDG schedule</Link>}
+            />
           </div>
         ) : loading && items.length === 0 ? (
           <div className="wx-list-state">
@@ -384,7 +399,7 @@ export function MyActionItems(): JSX.Element {
                         ) : null}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        {isActionable(a.status) ? (
+                        {isActionable(a.status) && canAct ? (
                           <span style={{ display: "inline-flex", gap: "0.375rem" }}>
                             {PATCH_STATUSES.filter(
                               (p) => !(a.status === "in_progress" && p.value === "in_progress"),
