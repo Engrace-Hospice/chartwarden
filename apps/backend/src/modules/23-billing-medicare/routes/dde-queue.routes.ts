@@ -8,7 +8,8 @@
 // `provider_entity_billing_scope` over the item's provider entity (a denied object is a 404), every mutation the
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
 // server-side. Notes never reach a log or an event.
-import type { FastifyInstance } from "fastify";
+import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { billingScopeReach } from "../abac-predicates";
 import type { DdeQueueService } from "../services/dde-queue-service";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
@@ -49,6 +50,24 @@ const ADMIN_ABAC = PROVIDER_SCOPE("billing.dde.admin", targetDdeWorkItemId);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 const WORK_GUARDS = [WORK, WORK_ABAC, NO_AI, IDEMPOTENT];
+
+/**
+ * The write actor plus whether the caller holds `billing.dde.admin` over this item. An assigned item is worked by
+ * its assignee; the service refuses anyone else unless this flag is set (an admin steps in for an absent
+ * assignee). It runs the same RBAC and ABAC guards the assign route uses and reads a denial as "not an admin" —
+ * any other failure propagates.
+ */
+async function ddeWriteActorOf(request: FastifyRequest, reply: FastifyReply) {
+  let ddeAdmin = true;
+  try {
+    await ADMIN(request, reply);
+    await ADMIN_ABAC(request, reply);
+  } catch (err) {
+    if (!(err instanceof ForbiddenError || err instanceof NotFoundError)) throw err;
+    ddeAdmin = false;
+  }
+  return { ...writeActorOf(request), ddeAdmin };
+}
 
 export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRouteDeps): void {
   const service = deps.ddeQueueService;
@@ -110,19 +129,23 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
     },
   );
 
-  app.post("/api/v1/billing/dde-items/:id/start", { preHandler: WORK_GUARDS }, async (request) => {
-    const { id } = parse(DdeItemIdParamsSchema, request.params);
-    const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
-    return service.start(writeActorOf(request), id, expectedVersion);
-  });
+  app.post(
+    "/api/v1/billing/dde-items/:id/start",
+    { preHandler: WORK_GUARDS },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
+      return service.start(await ddeWriteActorOf(request, reply), id, expectedVersion);
+    },
+  );
 
   app.post(
     "/api/v1/billing/dde-items/:id/record-submission",
     { preHandler: [MARK, MARK_ABAC, MARK_STEPUP, NO_AI, IDEMPOTENT] },
-    async (request) => {
+    async (request, reply) => {
       const { id } = parse(DdeItemIdParamsSchema, request.params);
       const body = parse(RecordDdeSubmissionBodySchema, request.body);
-      return service.recordSubmission(writeActorOf(request), id, body);
+      return service.recordSubmission(await ddeWriteActorOf(request, reply), id, body);
     },
   );
 
@@ -131,38 +154,50 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
   app.post(
     "/api/v1/billing/dde-items/:id/record-acceptance",
     { preHandler: [MARK, MARK_ABAC, MARK_STEPUP, NO_AI, IDEMPOTENT] },
-    async (request) => {
+    async (request, reply) => {
       const { id } = parse(DdeItemIdParamsSchema, request.params);
       const body = parse(RecordDdeAcceptanceBodySchema, request.body);
-      return service.recordAcceptance(writeActorOf(request), id, body);
+      return service.recordAcceptance(await ddeWriteActorOf(request, reply), id, body);
     },
   );
 
   app.post(
     "/api/v1/billing/dde-items/:id/record-outcome",
     { preHandler: WORK_GUARDS },
-    async (request) => {
+    async (request, reply) => {
       const { id } = parse(DdeItemIdParamsSchema, request.params);
       const body = parse(RecordDdeOutcomeBodySchema, request.body);
-      return service.recordOutcome(writeActorOf(request), id, body);
+      return service.recordOutcome(await ddeWriteActorOf(request, reply), id, body);
     },
   );
 
-  app.post("/api/v1/billing/dde-items/:id/retry", { preHandler: WORK_GUARDS }, async (request) => {
-    const { id } = parse(DdeItemIdParamsSchema, request.params);
-    const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
-    return service.retry(writeActorOf(request), id, expectedVersion);
-  });
+  app.post(
+    "/api/v1/billing/dde-items/:id/retry",
+    { preHandler: WORK_GUARDS },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
+      return service.retry(await ddeWriteActorOf(request, reply), id, expectedVersion);
+    },
+  );
 
-  app.post("/api/v1/billing/dde-items/:id/cancel", { preHandler: WORK_GUARDS }, async (request) => {
-    const { id } = parse(DdeItemIdParamsSchema, request.params);
-    const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
-    return service.cancel(writeActorOf(request), id, expectedVersion);
-  });
+  app.post(
+    "/api/v1/billing/dde-items/:id/cancel",
+    { preHandler: WORK_GUARDS },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
+      return service.cancel(await ddeWriteActorOf(request, reply), id, expectedVersion);
+    },
+  );
 
-  app.post("/api/v1/billing/dde-items/:id/close", { preHandler: WORK_GUARDS }, async (request) => {
-    const { id } = parse(DdeItemIdParamsSchema, request.params);
-    const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
-    return service.close(writeActorOf(request), id, expectedVersion);
-  });
+  app.post(
+    "/api/v1/billing/dde-items/:id/close",
+    { preHandler: WORK_GUARDS },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const { expectedVersion } = parse(DdeVersionBodySchema, request.body);
+      return service.close(await ddeWriteActorOf(request, reply), id, expectedVersion);
+    },
+  );
 }

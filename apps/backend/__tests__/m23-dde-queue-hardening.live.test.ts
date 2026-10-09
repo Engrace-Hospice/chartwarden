@@ -39,6 +39,7 @@ import {
   ORG_B,
   PE_A,
   USER_A,
+  USER_C,
   buildDdeApp,
   connectDdeLiveDb,
   seedNoe,
@@ -226,6 +227,48 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       const codes = res.map((r) => r.statusCode).sort();
       expect(codes[0]).toBe(200);
       expect([409, 412]).toContain(codes[1]);
+    });
+  });
+
+  describe("an assigned item belongs to its assignee", () => {
+    const asC = () => ({
+      "x-test-user": USER_C,
+      "idempotency-key": `dde-hard-${++counter}`,
+    });
+
+    it("refuses another worker on every work action (403, nothing changes), while the assignee and an admin proceed", async () => {
+      const noe = await seedNoe(admin);
+      const id = (await post("", asA(), { itemType: "noe", subjectId: noe })).json().ddeWorkItemId;
+      await post(`/${id}/claim`, asA(), { expectedVersion: 0 });
+      const version = async () => (await get(`/${id}`)).json().version as number;
+
+      // C holds work + mark_submitted but is not the assignee and not an admin.
+      const v1 = await version();
+      expect((await post(`/${id}/start`, asC(), { expectedVersion: v1 })).statusCode).toBe(403);
+      expect((await post(`/${id}/cancel`, asC(), { expectedVersion: v1 })).statusCode).toBe(403);
+      expect(await version()).toBe(v1);
+
+      // The assignee starts; C still cannot key, return, accept or close it.
+      expect((await post(`/${id}/start`, asA(), { expectedVersion: v1 })).statusCode).toBe(200);
+      const v2 = await version();
+      expect(
+        (await post(`/${id}/record-submission`, { ...asC(), ...stepUp }, { expectedVersion: v2 }))
+          .statusCode,
+      ).toBe(403);
+      expect(await version()).toBe(v2);
+    });
+
+    it("lets a DDE admin step in on another member's item, and an unassigned item has no owner", async () => {
+      const noe = await seedNoe(admin);
+      const id = (await post("", asA(), { itemType: "noe", subjectId: noe })).json().ddeWorkItemId;
+      // C claims it: C owns it now. USER_A (admin) can still start it.
+      expect((await post(`/${id}/claim`, asC(), { expectedVersion: 0 })).statusCode).toBe(200);
+      expect((await post(`/${id}/start`, asA(), { expectedVersion: 1 })).statusCode).toBe(200);
+      // An unassigned (queued) item can be cancelled by any worker.
+      const noe2 = await seedNoe(admin);
+      const id2 = (await post("", asA(), { itemType: "noe", subjectId: noe2 })).json()
+        .ddeWorkItemId;
+      expect((await post(`/${id2}/cancel`, asC(), { expectedVersion: 0 })).statusCode).toBe(200);
     });
   });
 

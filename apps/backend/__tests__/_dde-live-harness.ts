@@ -36,6 +36,9 @@ export const ORG_A = "11111111-1111-1111-1111-111111111111";
 export const ORG_B = "22222222-2222-2222-2222-222222222222";
 export const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+/** A second member of ORG_A holding read / work / mark_submitted but NOT `billing.dde.admin`. */
+export const USER_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+export const MEMBERSHIP_C = "c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1";
 export const MEMBERSHIP_A = "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1";
 export const MEMBERSHIP_B = "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1";
 export const PE_A = "77777777-7777-4777-8777-777777777777";
@@ -56,7 +59,11 @@ export function headerAuth(request: FastifyRequest): void {
   if (typeof pe === "string") {
     request.context.providerEntityIds = pe.split(",").filter((r) => r.length > 0);
   }
-  request.context.attributes.membershipId = orgB ? MEMBERSHIP_B : MEMBERSHIP_A;
+  request.context.attributes.membershipId = orgB
+    ? MEMBERSHIP_B
+    : user === USER_C
+      ? MEMBERSHIP_C
+      : MEMBERSHIP_A;
   if (request.headers["x-test-step-up"] === "1") request.context.attributes.stepUpRecent = true;
 }
 
@@ -96,8 +103,8 @@ export async function connectDdeLiveDb(dbUrl: string): Promise<DdeLiveDb> {
     );
   }
   await admin.query(
-    `INSERT INTO "user" (id,email) VALUES ($1,'dde-a@x.test'),($2,'dde-b@x.test')`,
-    [USER_A, USER_B],
+    `INSERT INTO "user" (id,email) VALUES ($1,'dde-a@x.test'),($2,'dde-b@x.test'),($3,'dde-c@x.test')`,
+    [USER_A, USER_B, USER_C],
   );
   const appUrl = await appRoleConnectionString(admin, dbUrl);
   const handle = createDbClient({ connectionString: appUrl });
@@ -131,7 +138,22 @@ export async function buildDdeApp(
     ],
   });
   registerEffectivePermissionResolver(
-    createInMemoryEffectivePermissionStore([grants(USER_A, ORG_A), grants(USER_B, ORG_B)]).store,
+    createInMemoryEffectivePermissionStore([
+      grants(USER_A, ORG_A),
+      grants(USER_B, ORG_B),
+      {
+        orgId: ORG_A,
+        userId: USER_C,
+        grants: [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: ["billing.dde.read", "billing.dde.work", "billing.dde.mark_submitted"],
+          },
+        ],
+      },
+    ]).store,
   );
   const reg = createPredicateRegistry();
   for (const [name, predicate] of Object.entries(

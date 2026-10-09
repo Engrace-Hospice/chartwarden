@@ -27,7 +27,13 @@ import {
   validateDdeNotes,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,
@@ -74,6 +80,12 @@ export interface DdeQueueReadActor {
   readonly userId: string;
 }
 
+/**
+ * The write actor for the DDE queue. `ddeAdmin` is set by the route layer when the caller holds `billing.dde.admin`
+ * over the item; only then may someone other than the assignee act on an assigned item.
+ */
+export type DdeWriteActor = BillingWriteActor & { readonly ddeAdmin?: boolean };
+
 export interface DdeQueueServicePorts {
   readonly outbox?: WriteOutboxPort;
   readonly now?: () => Date;
@@ -104,27 +116,19 @@ export interface DdeQueueService {
   claim(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   /** Assign (or reassign) an item to a named membership. */
   assign(actor: BillingWriteActor, id: string, body: AssignBody): Promise<DdeItemView>;
-  start(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
+  start(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   /** Attest the item was keyed in DDE (step-up required). */
-  recordSubmission(
-    actor: BillingWriteActor,
-    id: string,
-    body: SubmissionBody,
-  ): Promise<DdeItemView>;
+  recordSubmission(actor: DdeWriteActor, id: string, body: SubmissionBody): Promise<DdeItemView>;
   /** Record a RETURNED / rejected outcome (with its RTP reason code). */
-  recordOutcome(actor: BillingWriteActor, id: string, body: OutcomeBody): Promise<DdeItemView>;
+  recordOutcome(actor: DdeWriteActor, id: string, body: OutcomeBody): Promise<DdeItemView>;
   /**
    * Record that the MAC ACCEPTED the item (step-up). On an NOE/NOTR it applies the notice's existing acceptance
    * transition with the operator-entered date, so it is as privileged as keying: `billing.dde.mark_submitted`.
    */
-  recordAcceptance(
-    actor: BillingWriteActor,
-    id: string,
-    body: AcceptanceBody,
-  ): Promise<DdeItemView>;
-  retry(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
-  cancel(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
-  close(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
+  recordAcceptance(actor: DdeWriteActor, id: string, body: AcceptanceBody): Promise<DdeItemView>;
+  retry(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
+  cancel(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
+  close(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
 }
 
 /** The UI actions legal from each state (the routes enforce the machine; this only drives buttons). */
@@ -370,12 +374,23 @@ export function buildDdeQueueService(
   };
 
   const mutate = async (
-    actor: BillingWriteActor,
+    actor: DdeWriteActor,
     id: string,
     fn: (tx: BillingTx, item: Item) => Promise<Item>,
   ): Promise<DdeItemView> => {
     assertNotAiActor(actor);
-    const row = await inOrg(actor, async (tx) => fn(tx, await loadItem(tx, actor, id)));
+    const row = await inOrg(actor, async (tx) => {
+      const item = await loadItem(tx, actor, id);
+      // An assigned item belongs to its assignee; an admin may step in. Reassigning (admin-gated) hands it over.
+      if (
+        item.assigneeMembershipId &&
+        item.assigneeMembershipId !== actor.membershipId &&
+        actor.ddeAdmin !== true
+      ) {
+        throw new ForbiddenError("this item is assigned to another member");
+      }
+      return fn(tx, item);
+    });
     return viewOf(row, toIsoDate(now()));
   };
 

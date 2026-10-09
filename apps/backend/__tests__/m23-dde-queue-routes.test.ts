@@ -114,6 +114,7 @@ const resolver: ReadingM23AbacResolver = {
 
 function makeServer() {
   const calls: string[] = [];
+  const startActors: Array<{ ddeAdmin?: boolean }> = [];
   const view = async (tag: string): Promise<DdeItemView> => {
     calls.push(tag);
     return VIEW;
@@ -130,7 +131,10 @@ function makeServer() {
     create: (_a, body) => view(`create:${body.itemType}`),
     claim: () => view("claim"),
     assign: (_a, _id, body) => view(`assign:${body.assigneeMembershipId}`),
-    start: () => view("start"),
+    start: (actor) => {
+      startActors.push({ ddeAdmin: actor.ddeAdmin });
+      return view("start");
+    },
     recordSubmission: () => view("record-submission"),
     recordOutcome: (_a, _id, body) => view(`record-outcome:${body.outcome}`),
     recordAcceptance: () => view("record-acceptance"),
@@ -167,7 +171,7 @@ function makeServer() {
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerDdeQueueRoutes(app, { ddeQueueService: service });
-  return { app, calls };
+  return { app, calls, startActors };
 }
 
 const ADMIN = { "x-test-user": "admin_1", "x-test-roles": "org_admin" };
@@ -224,6 +228,21 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
       headers: { ...READER, "x-test-pe": PE_OUT },
     });
     expect(outside.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("tells the service whether the caller is a DDE admin over the item (only an admin may act on another's item)", async () => {
+    const { app, startActors } = makeServer();
+    const start = (headers: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: `${BASE}/${ITEM}/start`,
+        headers: { ...headers, ...idem() },
+        payload: { expectedVersion: 1 },
+      });
+    expect((await start(WORKER)).statusCode).toBe(200);
+    expect((await start(ADMIN)).statusCode).toBe(200);
+    expect(startActors).toEqual([{ ddeAdmin: false }, { ddeAdmin: true }]);
     await app.close();
   });
 

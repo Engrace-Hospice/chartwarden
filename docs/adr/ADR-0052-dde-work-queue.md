@@ -103,6 +103,10 @@ path accepted the notice first, the notice is left untouched and the item takes 
   conferring the notice's acceptance authority**: the holder can walk a ready NOE/NOTR to `ack_accepted` with no
   `billing.noe.*` permission, as an operator attestation (audited, step-up gated, date-bounded). Assigning an item
   requires an assignee who is an active member holding `billing.dde.work` whose provider-entity reach covers it.
+- **Ownership:** an assigned item is worked by its assignee. Start, record-submission / -outcome / -acceptance, retry,
+  cancel and close on an item assigned to someone else are refused (403) unless the caller holds `billing.dde.admin`
+  over the item; an unassigned item has no owner. An admin who needs to hand work over reassigns it. (Found on the
+  Docker stack: before this rule a second eligible worker could start another member's item.)
 - **ABAC:** the `provider_entity_billing_scope` predicate, as other M23 filing actions. **The list is scoped too**
   (decided 2026-10): `GET /dde-items` returns only items of provider entities the actor may reach, by the same rule
   (`billingScopeReach`: org-wide billing roles and the system principal see the organization; anyone else only their
