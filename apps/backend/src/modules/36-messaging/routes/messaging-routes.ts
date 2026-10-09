@@ -270,13 +270,24 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // Minimum-necessary directory for the DM picker. Organization and actor are server-derived;
   // suspended/revoked/foreign memberships are excluded by the service.
-  app.get("/api/v1/messaging/dm/staff", { preHandler: [DM] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { q } = parse(DmStaffSearchQuerySchema, request.query);
-    return {
-      staff: await service.searchDmEligibleStaff(organizationId, userId, q?.trim() ?? ""),
-    };
-  });
+  app.get(
+    "/api/v1/messaging/dm/staff",
+    {
+      preHandler: [DM],
+      config: {
+        auditRead: {
+          none: "minimum-necessary staff directory (name/role) for the DM picker; no patient data",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { q } = parse(DmStaffSearchQuerySchema, request.query);
+      return {
+        staff: await service.searchDmEligibleStaff(organizationId, userId, q?.trim() ?? ""),
+      };
+    },
+  );
 
   // --- add a manual member (admin override on auto channels — audited) -----------------------
   app.post(
