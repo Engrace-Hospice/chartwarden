@@ -52,11 +52,20 @@ the demo seed produces records that pass the new rules.**
 - The ch. 11 §30.3 rules (value codes 61 / G8: end-of-period residence, latest facility; Pricer BENE-CBSA / PROV-CBSA) were verified
   against the manual text (clm104c11.pdf). 42 CFR 418.306(c) was verified too, but it only defines the labor market by OMB CBSAs, the
   wage adjustment and the 5% cap; the SSA §1814(i)(2)(D) citation was dropped because it could not be verified here.
-- **SIA across Oct 1.** The SIA add-on is priced with the fiscal year of the death date (that year's CHC hourly rate, rate-table
-  version effective on the death date, and the residence-area index for that year where the claim is priced by area). Each
-  `hipps_calculation` segment records the fiscal year and wage-index factor it was priced with (jsonb, no migration). Known gap:
-  `sia_calculation` itself stores no rate / fiscal year / factor (that would need a column), so the SIA basis is re-derived from the
-  death date's fiscal year and the factor recorded on the home segments of that year.
+- **SIA across Oct 1.** The SIA add-on is priced with the fiscal year of the death date: that year's CHC hourly rate (rate-table
+  version effective on the death date, or the claim's first day when the death is in the claim's first year) and the
+  continuous-home-care wage index (that year's residence-area index where the claim is priced by area, else the provider index).
+  A death in a fiscal year the claim does not touch (a claim ending Sep 30, a death on Oct 1) is priced from inputs read on demand;
+  if that year's rate table or index is unavailable the claim fails closed with a typed 422 - there is no fallback. The factor is
+  resolved only when an SIA is payable (qualifying visits exist), so an all-inpatient deceased claim with no SIA never needs a
+  residence index (assembly and revalidation share the same function).
+  **What is and is not recorded:** each `hipps_calculation` segment records the fiscal year and wage-index factor it was priced
+  with (jsonb, no migration) - that covers the per-diem math. The SIA's own basis is **not** persisted: `sia_calculation` stores no
+  CHC rate, fiscal year or factor, and the rate-table version chosen by date is not recorded anywhere. The SIA factor can be
+  recovered from the segments only when the claim has a home (RHC/CHC) segment in the death's fiscal year (its recorded factor is
+  the CHC factor); it cannot when the claim has none in that year (an all-inpatient claim, or a death in a year the claim does not
+  touch). The original CHC rate cannot be re-derived at all if the rate table was superseded since. Closing this needs columns on
+  `sia_calculation` (rate, fiscal year, factor, rate-table id) - deliberately not done here.
 - Deferred by decision: PM modifier, Q5006 inpatient-facility summary reporting, diagnoses (Phase 4). No web screen yet for the
   visit-charge schedule (API only).
 
