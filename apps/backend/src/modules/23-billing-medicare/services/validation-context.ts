@@ -130,7 +130,7 @@ export function assembleValidationContext(
     terminology,
     mdm: mdmResolution,
     hipps: {
-      hippsCode: hipps.hippsCode,
+      perDiemClassCode: hipps.perDiemClassCode,
       perDiemRateCents: hipps.perDiemRateCents,
       wageIndexFactorApplied: wageIndex.factorDecimal,
       segments: hipps.segments.map((s) => ({

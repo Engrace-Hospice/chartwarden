@@ -359,6 +359,36 @@ export class ClaimRepository {
   }
 
   /**
+   * Keep the claim's physician NPIs (migration 1054; UB-04 FL 76 attending / FL 78 certifying) in step with the M40
+   * resolution the latest validation run saw. A derived projection like {@link refreshDischargeCodes}: no version
+   * bump, a no-op when unchanged; the write-audit trigger records the change. Returns whether the row changed.
+   */
+  async refreshPhysicianNpis(
+    id: string,
+    npis: {
+      readonly attendingPhysicianNpi: string | null;
+      readonly certifyingPhysicianNpi: string | null;
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        attendingPhysicianNpi: npis.attendingPhysicianNpi,
+        certifyingPhysicianNpi: npis.certifyingPhysicianNpi,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`(${C.attendingPhysicianNpi} IS DISTINCT FROM ${npis.attendingPhysicianNpi}
+            OR ${C.certifyingPhysicianNpi} IS DISTINCT FROM ${npis.certifyingPhysicianNpi})`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
    * Re-type an UNSUBMITTED normal-cadence claim whose stored Type of Bill no longer matches the one the resolver
    * derives from current M6 facts (e.g. assembled as interim 812/813 before a revocation or transfer-out was
    * counted as the end of the stay; now final 811/814). Guarded on the stored value (`fromTob`) so a concurrent

@@ -92,6 +92,12 @@ export const claim = pgTable(
       .notNull()
       .default([]),
 
+    // Physician NPIs for UB-04 FL 76 / FL 78 (migration 1054): provider identifiers resolved from M40 at assembly
+    // and refreshed on every re-validation. The certifying NPI is only set when it differs from the attending.
+    // Names are resolved at generation time, never stored.
+    attendingPhysicianNpi: text("attending_physician_npi"),
+    certifyingPhysicianNpi: text("certifying_physician_npi"),
+
     // Document back-ref (populated by m22.document.rendered consumer):
     acknowledgmentDocumentId: uuid("acknowledgment_document_id"), // M22 — set after ACK_ACCEPTED + render
 

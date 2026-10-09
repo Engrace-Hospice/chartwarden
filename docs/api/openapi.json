@@ -55233,7 +55233,7 @@
                             {
                               "type": "object",
                               "required": [
-                                "hippsCode",
+                                "perDiemClassCode",
                                 "hippsRateCents",
                                 "wageIndexCcn",
                                 "wageIndexFiscalYear",
@@ -55245,7 +55245,7 @@
                                 "rhcCarryOver"
                               ],
                               "properties": {
-                                "hippsCode": {
+                                "perDiemClassCode": {
                                   "type": "string"
                                 },
                                 "hippsRateCents": {
@@ -56687,7 +56687,7 @@
                     "claimId",
                     "state",
                     "totalChargeCents",
-                    "hippsCode",
+                    "perDiemClassCode",
                     "hippsRateCents",
                     "lineCount",
                     "initialValidationRunId",
@@ -56705,7 +56705,7 @@
                     "totalChargeCents": {
                       "type": "integer"
                     },
-                    "hippsCode": {
+                    "perDiemClassCode": {
                       "type": "string"
                     },
                     "hippsRateCents": {

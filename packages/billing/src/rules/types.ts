@@ -65,7 +65,8 @@ export type RuleCategory =
   | "discharge"
   | "modifiers"
   | "evv"
-  | "election";
+  | "election"
+  | "charges";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -86,6 +87,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "modifiers",
   "evv",
   "election",
+  "charges",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -286,6 +288,15 @@ export interface BillableEncounterSnapshot {
   readonly encounterId: string;
   readonly serviceDate: IsoDate;
   readonly billability: BillabilityState;
+  /**
+   * The authoring discipline (M8 `encounter_discipline`: `rn`, `lpn`, `chha`, `msw`, ...) — what the hospice visit
+   * line (ch. 11 §30.3) is coded from. Absent on a reader that predates visit-line reporting: no visit line is built.
+   */
+  readonly discipline?: string;
+  /** The M8 encounter type (`routine_visit`, `telephonic`, `idg_followup`, ...), for visit vs. non-visit contacts. */
+  readonly encounterType?: string | null;
+  /** Documented visit minutes (the start-to-end bracket); `0`/`null` = not documented, never fabricated. */
+  readonly durationMinutes?: number | null;
 }
 
 /** A signed encounter in the last 7 days of life window (M8 `SignedEncountersReader`), for the SIA rule. */
@@ -351,7 +362,8 @@ export interface HippsSegmentSnapshot {
 }
 
 export interface HippsSnapshot {
-  readonly hippsCode: string;
+  /** The INTERNAL per-diem class code (not a Medicare HIPPS code). */
+  readonly perDiemClassCode: string;
   readonly perDiemRateCents: Cents;
   readonly wageIndexFactorApplied: string;
   readonly segments: readonly HippsSegmentSnapshot[];

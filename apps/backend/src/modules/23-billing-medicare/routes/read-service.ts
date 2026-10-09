@@ -88,7 +88,8 @@ export interface ClaimSummaryView {
 
 export interface ClaimPricingView {
   readonly hipps: {
-    readonly hippsCode: string;
+    /** INTERNAL per-diem class code (the stored `hipps_code` column); not a Medicare HIPPS code. */
+    readonly perDiemClassCode: string;
     readonly hippsRateCents: number;
     readonly wageIndexCcn: string;
     readonly wageIndexFiscalYear: number;
@@ -140,7 +141,7 @@ export function hippsPricingView(
   claim: StoredRhcCarryOverContext,
 ): NonNullable<ClaimPricingView["hipps"]> {
   return {
-    hippsCode: row.hippsCode,
+    perDiemClassCode: row.hippsCode,
     hippsRateCents: row.hippsRateCents,
     wageIndexCcn: row.wageIndexCcn,
     wageIndexFiscalYear: row.wageIndexFiscalYear,

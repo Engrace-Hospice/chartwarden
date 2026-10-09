@@ -3,7 +3,7 @@
 // ADR-0001 RHC day-60 tier buckets (days_1_60 / days_61_plus) assigned, wage factor a decimal string.
 // ADR-0001 NOTE (outstanding): the ADR strikes the HIPPS construct entirely (hospice claims carry no
 // HIPPS rate code) and replaces this rule with an `rhc_rate_tier_coherence` rule; the snapshot's
-// `hipps_code` is an internal placeholder never emitted on the 837 wire, and the full rename
+// `hipps_code` is an internal placeholder (surfaced as `perDiemClassCode`) never emitted on the 837 wire, and the full rename
 // (`hipps_calculation` → per-diem naming, rule-key migration) is tracked in the ADR-compliance
 // backlog. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
 import type { Rule } from "./types";
@@ -11,8 +11,8 @@ import { fail, pass, skip } from "./types";
 
 const KEY = "hipps_coding_correct";
 
-// HIPPS codes are 5 characters (CMS HIPPS rate-code structure).
-const HIPPS_CODE_LENGTH = 5;
+// The internal per-diem class code is a fixed 5-character placeholder (`derivePerDiemClassCode`).
+const PER_DIEM_CLASS_CODE_LENGTH = 5;
 
 export const hippsCodingCorrect: Rule = {
   key: KEY,
@@ -30,11 +30,13 @@ export const hippsCodingCorrect: Rule = {
       // The calculator has not run / no per-diem applies (e.g. a notice-only claim) — not applicable.
       return skip(KEY, "error", "not_applicable", "No HIPPS derivation present for this claim.");
     }
-    const { hippsCode, segments, wageIndexFactorApplied } = ctx.hipps;
+    const { perDiemClassCode, segments, wageIndexFactorApplied } = ctx.hipps;
     const defects: string[] = [];
 
-    if (hippsCode.length !== HIPPS_CODE_LENGTH) {
-      defects.push(`HIPPS code '${hippsCode}' is not ${HIPPS_CODE_LENGTH} characters`);
+    if (perDiemClassCode.length !== PER_DIEM_CLASS_CODE_LENGTH) {
+      defects.push(
+        `per-diem class code '${perDiemClassCode}' is not ${PER_DIEM_CLASS_CODE_LENGTH} characters`,
+      );
     }
     if (segments.length === 0) {
       defects.push("no LOC-period segments backing the HIPPS derivation");
@@ -59,7 +61,11 @@ export const hippsCodingCorrect: Rule = {
     // worked example we do not yet hold; this rule verifies the structural derivation invariants only.
 
     if (defects.length === 0) {
-      return pass(KEY, "error", "HIPPS code structure and RHC day-split are internally coherent.");
+      return pass(
+        KEY,
+        "error",
+        "Per-diem class code structure and RHC day-split are internally coherent.",
+      );
     }
     return fail(
       KEY,
@@ -72,7 +78,7 @@ export const hippsCodingCorrect: Rule = {
         blameTargetId: ctx.claim.claimId,
         fixAction: "recompute_hipps",
       },
-      { defectCount: defects.length, firstDefect: defects[0] ?? "", hippsCode },
+      { defectCount: defects.length, firstDefect: defects[0] ?? "", perDiemClassCode },
     );
   },
 };

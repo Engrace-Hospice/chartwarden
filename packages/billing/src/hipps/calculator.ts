@@ -32,7 +32,8 @@
 // The exact CMS base per-diem rate table (per FY, per LOC, the RHC two-tier amounts) and the precise
 // 5-position HIPPS character encoding are PUBLISHED CMS fixtures — they are NOT fabricated here. The base
 // rates are INJECTED via `rateTable` (the caller resolves them from the loaded CMS rate file), and the
-// HIPPS code is derived via a deterministic placeholder pending the CMS fixture (see `deriveHippsCode`).
+// per-diem class code is an INTERNAL deterministic placeholder (see `derivePerDiemClassCode`); it is NOT a Medicare
+// HIPPS code (hospice claims carry none) and is never emitted on a claim.
 //
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate, LevelOfCare } from "../contracts";
@@ -161,7 +162,8 @@ export interface HippsSegmentResult {
 
 /** The pure HIPPS calculation result — the caller persists this onto `hipps_calculation`. */
 export interface HippsCalculationResult {
-  readonly hippsCode: string;
+  /** INTERNAL per-diem class code (not a Medicare HIPPS code; never emitted on a claim). */
+  readonly perDiemClassCode: string;
   /** A representative per-diem (the first segment's wage-adjusted rate; 0 when no billable day). */
   readonly perDiemRateCents: Cents;
   readonly wageIndexCcn: string;
@@ -242,13 +244,13 @@ function assertChcHours(hours: number | null | undefined, iso: IsoDate): number 
 }
 
 /**
- * Derive the 5-character HIPPS code for the claim. TODO(CMS-fixture): the exact 5-position HIPPS
- * character encoding (CMS Hospice Payment Manual) is a published table — this derives a DETERMINISTIC
- * placeholder from the FIRST segment's level of care + RHC day bucket so the calculator is structurally
- * complete and reproducible. Replace the character map with the CMS fixture before treating the code as
- * billable. A claim with no billable day yields the all-filler placeholder `"00000"`.
+ * Derive the INTERNAL 5-character per-diem class code for the claim: a DETERMINISTIC placeholder from the
+ * FIRST segment's level of care + RHC day bucket, so the calculator's snapshot is structurally complete and
+ * reproducible. It is NOT a Medicare HIPPS code — hospice claims carry no HIPPS rate code (ADR-0001) — so it
+ * must never be mapped into an 837I HIPPS field or shown as a claim field. A claim with no billable day
+ * yields the all-filler `"00000"`.
  */
-export function deriveHippsCode(segments: readonly HippsSegmentResult[]): string {
+export function derivePerDiemClassCode(segments: readonly HippsSegmentResult[]): string {
   const first = segments[0];
   if (first === undefined) return "00000";
   const locChar: Record<LevelOfCare, string> = {
@@ -384,7 +386,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
   const perDiemRateCents = segments[0]?.ratePerDiemCents ?? 0;
 
   return {
-    hippsCode: deriveHippsCode(segments),
+    perDiemClassCode: derivePerDiemClassCode(segments),
     perDiemRateCents,
     wageIndexCcn: input.wageIndexCcn,
     wageIndexFiscalYear: input.wageIndexFiscalYear,

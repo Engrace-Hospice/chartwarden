@@ -39,6 +39,7 @@ import {
   POS_LABEL_ALIASES,
   type RuleResult,
   applySequestrationPolicy,
+  claimPhysicianNpis,
   deriveControlNumber,
   deriveTypeOfBill,
   isSkipped,
@@ -55,6 +56,7 @@ import {
   hospiceFiscalYearStarting,
   readAssemblyFacts,
 } from "./claim-assembly-facts";
+import { buildVisitLineInputs, perDiemLineAmounts } from "./claim-assembly-lines";
 import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
 import { persistedRemediation } from "./persisted-remediation";
 import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
@@ -365,10 +367,8 @@ export function buildClaimAssemblyService(
             hcpcsCode: null,
             serviceDateFrom: seg.dateFrom,
             serviceDateTo: seg.dateTo,
-            unitCount: seg.days,
-            unitRateCents: seg.ratePerDiemCents,
-            // CHECK (line_charge_cents = unit_count * unit_rate_cents): compute the product directly.
-            lineChargeCents: seg.ratePerDiemCents * seg.days,
+            // Days for 0651/0655/0656; 15-minute units for a CHC day (ch. 11 §30.3).
+            ...perDiemLineAmounts(seg),
             levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
             backingEncounterIds,
             icdPointerPositions: [...icdPointerPositions],
@@ -387,8 +387,41 @@ export function buildClaimAssemblyService(
           icdPointerPositions,
           firstLineNumber: lineInputs.length + 1,
         });
-        const allLineInputs = [...lineInputs, ...g0679Lines];
-        const g0679ChargeCents: Cents = g0679Lines.reduce((sum, l) => sum + l.lineChargeCents, 0);
+
+        // ── 3c. CMS ch. 11 §30.3 — one dated line per visit by hospice staff, in 15-minute units ──────
+        // The MAC prices the end-of-life SIA from the RN (G0299) / social-work (G0155) lines, so a claim
+        // without them leaves the add-on unpayable. A visit at a hospice's own inpatient facility (Q5006)
+        // is reported weekly instead — not implemented, so it is deferred rather than mis-reported.
+        const visitLines = buildVisitLineInputs({
+          orgId,
+          visits: {
+            encounters: billableEncounters.flatMap((e) =>
+              e.discipline === undefined
+                ? []
+                : [
+                    {
+                      encounterId: e.encounterId,
+                      serviceDate: e.serviceDate,
+                      billability: e.billability,
+                      discipline: e.discipline,
+                      encounterType: e.encounterType ?? null,
+                      durationMinutes: e.durationMinutes ?? null,
+                    },
+                  ],
+            ),
+            levelOfCarePeriods: resolvedLoc.map((p) => ({
+              levelOfCarePeriodId: p.levelOfCarePeriodId,
+              levelOfCare: p.levelOfCare,
+              from: p.from,
+              to: p.to,
+            })),
+            inpatientHospiceFacility: placeOfService === "Q5006",
+          },
+          qCode: placeOfService,
+          icdPointerPositions,
+          firstLineNumber: lineInputs.length + g0679Lines.length + 1,
+        });
+        const allLineInputs = [...lineInputs, ...g0679Lines, ...visitLines];
 
         // ── 4. SIA add-on math (D6) — purely encounter-derived ───────────────────────────────────────
         const siaResult = await computeClaimSia(seams, facts);
@@ -411,14 +444,19 @@ export function buildClaimAssemblyService(
             }
           : null;
 
-        // ── 5. Sequestration (D11) over the gross HIPPS + SIA payable ────────────────────────────────
+        // ── 5. Sequestration (D11) over the gross per-diem + SIA payable ─────────────────────────────
+        // EXPECTED PAYMENT keeps the exact per-diem math and the SIA add-on (which the MAC pays from the visit
+        // lines); the G0679 line is an administrative expense — never paid — so it stays out of it.
         const grossCents: Cents = hipps.totalCents + siaCents;
         const sequestration = applySequestrationPolicy(grossCents, {
           percentage: seqPolicy.percentage,
         });
-        // The billed total includes the G0679 line charge (an administrative expense: never paid, so it
-        // stays out of the sequestered expected payment).
-        const totalChargeCents: Cents = grossCents + g0679ChargeCents;
+        // The BILLED total is exactly the sum of the line charges (837I CLM02 balances to the SV2 lines; the
+        // clearinghouse rejects a claim that does not). The SIA add-on is payment, not a charge, and is on no line.
+        const totalChargeCents: Cents = allLineInputs.reduce(
+          (sum, l) => sum + l.lineChargeCents,
+          0,
+        );
 
         // ── 6. Mint ids + the deterministic control number, then persist the claim DRAFT ─────────────
         const claimId = randomUUID();
@@ -453,6 +491,8 @@ export function buildClaimAssemblyService(
           createdByMembershipId: actor.membershipId,
           // CMS Pub. 100-04 Ch. 11 §30.3 discharge codes (refreshed on every re-validation).
           ...claimDischargeCodeColumns(dischargeCodes),
+          // UB-04 FL 76 / FL 78 physician NPIs (migration 1054), also refreshed on every re-validation.
+          ...claimPhysicianNpis(mdmResolution),
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(
@@ -462,7 +502,8 @@ export function buildClaimAssemblyService(
         await new repositories.HippsCalculationRepository(tx).append({
           organizationId: orgId,
           claimId,
-          hippsCode: hipps.hippsCode,
+          // The stored `hipps_code` column holds the INTERNAL per-diem class code (not a Medicare HIPPS code).
+          hippsCode: hipps.perDiemClassCode,
           hippsRateCents: hipps.perDiemRateCents,
           wageIndexCcn: pe.ccn,
           wageIndexFiscalYear: fiscalYearStarting,
@@ -529,7 +570,7 @@ export function buildClaimAssemblyService(
               serviceFrom,
               serviceTo,
               tob,
-              hippsCode: hipps.hippsCode,
+              perDiemClassCode: hipps.perDiemClassCode,
               totalChargeCents,
               lineCount: insertedLines.length,
             }),
@@ -599,7 +640,7 @@ export function buildClaimAssemblyService(
           claimId,
           state: "DRAFT",
           totalChargeCents,
-          hippsCode: hipps.hippsCode,
+          perDiemClassCode: hipps.perDiemClassCode,
           hippsRateCents: hipps.perDiemRateCents,
           lineCount: insertedLines.length,
           initialValidationRunId: validationRunId,

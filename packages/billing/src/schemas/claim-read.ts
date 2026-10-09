@@ -81,7 +81,7 @@ export type ClaimLineView = Static<typeof ClaimLineView>;
 
 /** The HIPPS derivation projection embedded in claim detail. */
 export const HippsView = Type.Object({
-  hippsCode: Type.String(),
+  perDiemClassCode: Type.String(),
   perDiemRateCents: CentsSchema,
   wageIndexFactorApplied: Type.String(),
   segments: Type.Array(

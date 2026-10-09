@@ -34764,7 +34764,7 @@ export interface operations {
                         } | null;
                         pricing: {
                             hipps: {
-                                hippsCode: string;
+                                perDiemClassCode: string;
                                 hippsRateCents: number;
                                 wageIndexCcn: string;
                                 wageIndexFiscalYear: number;
@@ -35228,7 +35228,7 @@ export interface operations {
                         /** @constant */
                         state: "DRAFT";
                         totalChargeCents: number;
-                        hippsCode: string;
+                        perDiemClassCode: string;
                         hippsRateCents: number;
                         lineCount: number;
                         /** Format: uuid */

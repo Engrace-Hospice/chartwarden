@@ -424,6 +424,7 @@
     "test:m17:oncall-roster:live": "vitest run apps/backend/__tests__/gap-029-m17-oncall-roster.live.test.ts",
     "test:m22:document-seam-store:live": "vitest run apps/backend/__tests__/gap-095-document-seam-store-live.test.ts",
     "test:m23:billed-days-seam:live": "vitest run apps/backend/__tests__/m23-billed-days-seam.live.test.ts",
+    "test:m23:visit-lines-assembly:live": "vitest run apps/backend/__tests__/m23-visit-lines-assembly.live.test.ts",
     "test:m23:claim-submit-worker:live": "vitest run apps/backend/__tests__/m23-claim-submit-worker.live.test.ts",
     "test:m23:claim-match-seam:live": "vitest run apps/backend/__tests__/m23-m25-claim-match-seam.live.test.ts",
     "test:m23:eligibility-read-audit:live": "vitest run apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",

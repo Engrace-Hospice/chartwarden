@@ -128,6 +128,16 @@ export function buildFakeRepositories(): {
       store.claims.set(id, { ...c, occurrenceSpans: [...spans], updatedAt: new Date() });
       return true;
     }
+    /** Mirrors the real repo: refresh the derived physician NPIs (migration 1054) without bumping `version`. */
+    async refreshPhysicianNpis(
+      id: string,
+      npis: { attendingPhysicianNpi: string | null; certifyingPhysicianNpi: string | null },
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, ...npis, updatedAt: new Date() });
+      return true;
+    }
     /** Mirrors the real repo: re-type a claim guarded on its stored TOB, without bumping `version`. */
     async refreshTypeOfBill(id: string, fromTob: string, toTob: string): Promise<boolean> {
       const c = store.claims.get(id);

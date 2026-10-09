@@ -10071,7 +10071,7 @@ const M23ValidationRunView = Type.Object({
 const M23ClaimPricingView = Type.Object({
   hipps: Type.Union([
     Type.Object({
-      hippsCode: Type.String(),
+      perDiemClassCode: Type.String(),
       hippsRateCents: Type.Integer(),
       wageIndexCcn: Type.String(),
       wageIndexFiscalYear: Type.Integer(),

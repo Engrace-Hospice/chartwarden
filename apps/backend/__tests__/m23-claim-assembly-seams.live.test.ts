@@ -818,6 +818,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         discipline: "rn",
         status: "signed",
         serviceDate: "2026-05-05",
+        startedAt: "2026-05-05T14:00:00.000Z",
+        endedAt: "2026-05-05T14:50:00.000Z", // 50 minutes
       });
       const lpnAwaitingCosign = await seedEncounter({
         orgId: ORG_A,
@@ -851,7 +853,14 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
 
       const rows = await billableEncountersInRangeForOrg(handle.db, ORG_A, pe, patientId, range);
       const byId = new Map(rows.map((r) => [r.encounterId, r]));
-      expect(byId.get(rnSigned)).toMatchObject({ billable: true });
+      // The visit-line facts (CMS ch. 11 §30.3): discipline + type, and the real bracket in minutes (null = a gap).
+      expect(byId.get(rnSigned)).toMatchObject({
+        billable: true,
+        discipline: "rn",
+        encounterType: "routine_visit",
+        durationMinutes: 50,
+      });
+      expect(byId.get(lpnAwaitingCosign)).toMatchObject({ durationMinutes: null });
       expect(byId.get(lpnAwaitingCosign)).toMatchObject({
         billable: false,
         reason: "awaiting_cosignature",
@@ -866,6 +875,11 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       });
       const snapshots = await seam.forRange(ORG_A, pe, patientId, range);
       const snapById = new Map(snapshots.map((s) => [s.encounterId, s]));
+      expect(snapById.get(rnSigned)).toMatchObject({
+        discipline: "rn",
+        encounterType: "routine_visit",
+        durationMinutes: 50,
+      });
       expect(snapById.get(rnSigned)?.billability).toBe("billable");
       expect(snapById.get(lpnAwaitingCosign)?.billability).toBe("awaiting_cosignature");
       expect(snapById.get(voided)?.billability).toBe("not_billable"); // M8's 4 reasons collapse to 3

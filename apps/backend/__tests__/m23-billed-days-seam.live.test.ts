@@ -90,12 +90,21 @@ describe.skipIf(!DB_URL)("M23 → M27 PatientDaysProvider seam — LIVE Postgres
     const P1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     const P2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
     const P3 = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    const P4 = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+    const P5 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
     // Accepted: 200 RHC + 165 GIP days in the FY (= 365 per-diem days) + a physician line (excluded, not per-diem).
     await seedClaim("ACK_ACCEPTED", P1, [
       ["0651", "RHC", 200, "2025-11-01"],
       ["0656", "GIP", 165, "2026-02-01"],
       ["0657", "RHC", 50, "2026-02-01"], // physician services — NOT a per-diem revenue code → excluded
     ]);
+    // Accepted CHC: one dated line per day in 15-minute units (10h = 40 units) — each line is ONE billed day.
+    await seedClaim("ACK_ACCEPTED", P4, [
+      ["0652", "CHC", 40, "2025-12-01"],
+      ["0652", "CHC", 36, "2025-12-02"],
+    ]);
+    // Accepted visit line (0551, 15-minute units) — NOT a per-diem revenue code → excluded.
+    await seedClaim("ACK_ACCEPTED", P5, [["0551", "RHC", 3, "2026-01-05"]]);
     // Accepted but the line's service is OUTSIDE the FY → excluded.
     await seedClaim("ACK_ACCEPTED", P2, [["0651", "RHC", 99, "2025-01-01"]]);
     // DRAFT (not yet MAC-accepted) → excluded entirely.
@@ -108,10 +117,11 @@ describe.skipIf(!DB_URL)("M23 → M27 PatientDaysProvider seam — LIVE Postgres
     if (admin) await admin.end();
   });
 
-  it("sums only the in-FY per-diem days on accepted claims (200 RHC + 165 GIP = 365)", async () => {
+  it("sums only the in-FY per-diem days on accepted claims (200 RHC + 2 CHC days + 165 GIP = 367)", async () => {
     const provider = buildM23PatientDaysProvider(handle.db);
     const agg = await provider.billedDaysForFiscalYear(ORG, FY_START, FY_END);
-    expect(agg.totalPatientDays).toBe(365);
-    expect(agg.byLevelOfCare).toEqual({ rhc: 200, chc: 0, irc: 0, gip: 165 });
+    // CHC lines carry 15-minute units (40 + 36), but each is one billed DAY.
+    expect(agg.totalPatientDays).toBe(367);
+    expect(agg.byLevelOfCare).toEqual({ rhc: 200, chc: 2, irc: 0, gip: 165 });
   });
 });

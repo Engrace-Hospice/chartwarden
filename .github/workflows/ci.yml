@@ -1014,6 +1014,9 @@ jobs:
           # (D13): a new `unmapped_taxonomy_occurrence` occurrence tracker + a 30-day/50-occurrence
           # threshold alert through the existing WorkerAlertPort — not the revalidate.consumer queue.
           - { name: "M23 taxonomy occurrence", scripts: "test:m23:taxonomy-occurrence:live" }
+          # Phase 3 (DDE/Stedi plan) — hospice claim-line assembly: 15-minute visit lines, CHC quarter-hour units,
+          # a claim total that balances to its lines (SIA out of the billed total), physician NPIs (migration 1054).
+          - { name: "M23 visit lines assembly", scripts: "test:m23:visit-lines-assembly:live" }
           # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
           # organization activate/suspend/close triggers.
           - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }

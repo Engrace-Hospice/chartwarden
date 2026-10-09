@@ -42,6 +42,9 @@ const ACTOR: BillingWriteActor = {
   actorKind: "user",
 };
 
+/** The M40 resolution a hand-built context carries when the test is not about physicians. */
+const NO_PHYSICIANS = { attending: null, hospicePhysician: null, placeOfService: null } as const;
+
 function seedValidatingClaim(): void {
   store.claims.set("claim-1", {
     id: "claim-1",
@@ -96,6 +99,7 @@ function constantContextPort(): ValidationContextPort {
             unresolved: null,
           },
         },
+        mdm: NO_PHYSICIANS,
       } as unknown as ValidationContext,
       overlays: {},
     }),
@@ -282,6 +286,7 @@ describe("Type of Bill refresh on re-validation (812/813 â†’ 811/814 once the st
               unresolved: null,
             },
           },
+          mdm: NO_PHYSICIANS,
         } as unknown as ValidationContext,
         overlays: {},
       }),
@@ -383,6 +388,7 @@ describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 Â
             acceptedDate,
             acceptedDateSource: "277ca_stc02",
           },
+          mdm: NO_PHYSICIANS,
         } as unknown as ValidationContext,
         overlays: {},
       }),
@@ -410,5 +416,60 @@ describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 Â
       { claimId: "claim-1", trigger: "pre_submission" },
     );
     expect(store.claims.get("claim-1").occurrenceSpans).toEqual([]);
+  });
+});
+
+describe("physician NPIs on re-validation (UB-04 FL 76 / FL 78)", () => {
+  const physician = (npi: string) => ({
+    npi,
+    status: "active",
+    licenseUnexpiredOnServiceDates: true,
+  });
+  function contextWithPhysicians(
+    attending: ReturnType<typeof physician> | null,
+    hospicePhysician: ReturnType<typeof physician> | null,
+  ): ValidationContextPort {
+    return {
+      build: async (_tx, _actor, claim) => ({
+        context: {
+          claimId: claim.id,
+          claim: {
+            dischargeClaimCodes: {
+              patientStatus: "30",
+              conditionCodes: [],
+              occurrenceCodes: [],
+              unresolved: null,
+            },
+          },
+          mdm: { attending, hospicePhysician, placeOfService: "home" },
+        } as unknown as ValidationContext,
+        overlays: {},
+      }),
+    };
+  }
+
+  it("keeps the persisted NPIs in step with the physicians the run resolved", async () => {
+    seedValidatingClaim();
+    const svc = makeService([passRule], {
+      contextPort: contextWithPhysicians(physician("1234567893"), physician("1982736455")),
+    });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    const claim = store.claims.get("claim-1");
+    expect(claim.attendingPhysicianNpi).toBe("1234567893");
+    expect(claim.certifyingPhysicianNpi).toBe("1982736455");
+    expect(claim.version).toBe(0); // a derived projection, not a user edit
+  });
+
+  it("clears an NPI the run could no longer resolve", async () => {
+    seedValidatingClaim();
+    await makeService([passRule], {
+      contextPort: contextWithPhysicians(physician("1234567893"), null),
+    }).validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    await makeService([passRule], {
+      contextPort: contextWithPhysicians(null, null),
+    }).validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
+    const claim = store.claims.get("claim-1");
+    expect(claim.attendingPhysicianNpi).toBeNull();
+    expect(claim.certifyingPhysicianNpi).toBeNull();
   });
 });

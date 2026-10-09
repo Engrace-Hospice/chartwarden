@@ -249,7 +249,7 @@ describe("server-authoritative assembly — produces claim + lines + hipps in on
     // Response shape: a DRAFT claim with one all-RHC days-1-7 segment over the 7-day window.
     expect(res.state).toBe("DRAFT");
     expect(res.lineCount).toBe(1);
-    expect(res.hippsCode).toBe("R1000");
+    expect(res.perDiemClassCode).toBe("R1000");
     // 7 days × $200.00 wage-adjusted (factor 1.0000) = $1,400.00.
     expect(res.totalChargeCents).toBe(140_000);
     expect(res.initialValidationOutcome).toBe("all_pass");
@@ -324,7 +324,7 @@ describe("D10 — cosignature-wait visits are excluded from the assembled line b
 });
 
 describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produces a sia_calculation row", () => {
-  it("writes one sia_calculation and folds the add-on into the claim's gross charge", async () => {
+  it("writes one sia_calculation; the add-on is expected PAYMENT, never a billed charge", async () => {
     const seams = buildSeams({
       admission: {
         resolveForRange: async () => ({
@@ -358,8 +358,13 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
     expect(store.sia).toHaveLength(1);
     // 120 min capped (≤240) priced at the CHC hourly rate $60.00 → 2h × $60.00 = $120.00.
     expect(store.sia[0].siaAddOnCents).toBe(12_000);
-    // Gross = HIPPS $1,400.00 + SIA $120.00 = $1,520.00.
-    expect(res.totalChargeCents).toBe(152_000);
+    // The billed total is the sum of the line charges only ($1,400.00): the MAC derives the SIA from the visit
+    // lines, so it is never a charge (the 837I claim total must balance to its lines).
+    expect(res.totalChargeCents).toBe(140_000);
+    const claim = [...store.claims.values()][0];
+    expect(claim.totalChargeCents).toBe(140_000);
+    // Expected payment keeps the add-on: gross $1,520.00 less 2% sequestration ($30.40) = $1,489.60.
+    expect(claim.totalExpectedPaymentCents).toBe(148_960);
   });
 
   it("writes NO sia_calculation for a living patient", async () => {
@@ -592,5 +597,282 @@ describe("two-tier RHC carry-over — our earlier stay + another hospice's days 
     await svc.assemble(ACTOR, REQUEST);
     expect(store.hipps[0].rhcCarryOver).toMatchObject({ priorDays: 11, basis: "internal_only" });
     expect(store.hipps[0].rhcDays1to60).toBe(7);
+  });
+});
+
+describe("CMS ch. 11 §30.3 — every visit by hospice staff is its own dated, 15-minute-unit claim line", () => {
+  const visit = (over: Record<string, unknown>) => ({
+    encounterId: "enc-rn",
+    serviceDate: "2025-11-03",
+    billability: "billable" as const,
+    discipline: "rn",
+    encounterType: "routine_visit",
+    durationMinutes: 45,
+    ...over,
+  });
+
+  it("emits a 0551/G0299 line (3 units) after the per-diem line, backed by the visit's encounter", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    expect(store.lines).toHaveLength(2);
+    expect(store.lines[0].revenueCode).toBe("0651");
+    expect(store.lines[1]).toMatchObject({
+      lineNumber: 2,
+      revenueCode: "0551",
+      hcpcsCode: "G0299",
+      serviceDateFrom: "2025-11-03",
+      serviceDateTo: "2025-11-03",
+      unitCount: 3,
+      levelOfCare: "routine_home_care",
+      levelOfCarePeriodId: "loc-1",
+      backingEncounterIds: ["enc-rn"],
+      modifiers: [],
+    });
+    expect(res.lineCount).toBe(2);
+  });
+
+  it("reports visit lines without adding a charge: the claim total is the sum of the line charges", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+
+    const sum = store.lines.reduce(
+      (s: number, l: { lineChargeCents: number }) => s + l.lineChargeCents,
+      0,
+    );
+    expect(res.totalChargeCents).toBe(sum);
+    expect(store.lines[1].unitRateCents).toBe(0);
+    expect(store.lines[1].lineChargeCents).toBe(0);
+  });
+
+  it("keeps an LPN visit (G0300), an aide visit (0571/G0156) and a social-work call (0569) distinct", async () => {
+    const seams = buildSeams({
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "e1", discipline: "lpn", encounterType: "lpn_visit" }),
+          visit({ encounterId: "e2", discipline: "chha", encounterType: "chha_visit" }),
+          visit({
+            encounterId: "e3",
+            discipline: "msw",
+            encounterType: "telephonic",
+            durationMinutes: 20,
+          }),
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+
+    const visits = store.lines
+      .slice(1)
+      .map((l: { revenueCode: string; hcpcsCode: string }) => [l.revenueCode, l.hcpcsCode]);
+    expect(visits).toEqual([
+      ["0551", "G0300"],
+      ["0571", "G0156"],
+      ["0569", "G0155"],
+    ]);
+  });
+
+  it("builds no visit line for an awaiting-cosignature visit, a chaplain visit or a reader without disciplines", async () => {
+    const seams = buildSeams({
+      billableEncounters: {
+        forRange: async () => [
+          visit({ encounterId: "a", billability: "awaiting_cosignature" }),
+          visit({ encounterId: "b", discipline: "chaplain", encounterType: "chaplain_visit" }),
+          { encounterId: "c", serviceDate: "2025-11-03", billability: "billable" as const },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(1);
+  });
+
+  it("fails closed (422) naming the encounter when a billable visit has no documented duration", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({ durationMinutes: 0 })] },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "VISIT_LINES_UNRESOLVED", statusCode: 422 });
+    expect(err?.message).toContain("enc-rn");
+    expect(err?.message).toContain("duration_missing");
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("does not guess visit lines at an inpatient hospice facility (Q5006 weekly reporting is deferred)", async () => {
+    const seams = buildSeams({
+      billableEncounters: { forRange: async () => [visit({})] },
+      mdm: {
+        ...buildSeams().mdm,
+        resolveClinicalParticipants: async () => ({
+          attending: null,
+          hospicePhysician: null,
+          placeOfService: "ipu",
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(1);
+    expect(store.lines[0].revenueCode).toBe("0651");
+  });
+});
+
+describe("CMS ch. 11 §30.3 — continuous home care (0652) is one dated line per day in 15-minute units", () => {
+  const chcSeams = () =>
+    buildSeams({
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-chc",
+            levelOfCare: "continuous_home_care",
+            from: "2025-11-01",
+            to: "2025-11-02",
+            chcDocumentedHours: 10,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+    });
+
+  it("bills 10 documented hours as 40 units at a quarter of the hourly rate", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, chcSeams());
+    await svc.assemble(ACTOR, { ...REQUEST, serviceTo: "2025-11-02" });
+
+    expect(store.lines).toHaveLength(2);
+    for (const line of store.lines) {
+      expect(line.revenueCode).toBe("0652");
+      expect(line.unitCount).toBe(40);
+      // $62.50/h x labor-share-adjusted at wage index 1.0000 = 6250c/h -> 1562.5 -> 1563c per quarter hour.
+      expect(line.unitRateCents).toBe(1_563);
+      expect(line.lineChargeCents).toBe(40 * 1_563);
+    }
+  });
+
+  it("keeps the claim total equal to the line charges while expected payment stays on the exact hourly basis", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, chcSeams());
+    const res = await svc.assemble(ACTOR, { ...REQUEST, serviceTo: "2025-11-02" });
+
+    expect(res.totalChargeCents).toBe(2 * 40 * 1_563);
+    const claim = [...store.claims.values()][0];
+    // 2 days x 10h x $62.50 = $1,250.00 gross; 2% sequestration -> $1,225.00.
+    expect(claim.totalExpectedPaymentCents).toBe(122_500);
+  });
+});
+
+describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 certifying)", () => {
+  const physician = (npi: string) => ({
+    npi,
+    status: "active" as const,
+    licenseUnexpiredOnServiceDates: true,
+  });
+
+  it("persists the attending NPI and a different certifying NPI on the claim", async () => {
+    const seams = buildSeams({
+      mdm: {
+        ...buildSeams().mdm,
+        resolveClinicalParticipants: async () => ({
+          attending: physician("1234567893"),
+          hospicePhysician: physician("1982736455"),
+          placeOfService: "home",
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianNpi).toBe("1234567893");
+    expect(claim.certifyingPhysicianNpi).toBe("1982736455");
+  });
+
+  it("leaves the NPIs null when the physicians are unresolved (never a guess)", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, buildSeams());
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianNpi).toBeNull();
+    expect(claim.certifyingPhysicianNpi).toBeNull();
+  });
+});
+
+describe("the line-reading default rules accept an assembled claim that carries visit lines", () => {
+  it("level-of-care, place-of-service, modifier and total-balance rules all pass over a 0551/G0299 visit line", async () => {
+    const registry = new BillingRuleRegistry();
+    for (const rule of [
+      billing.levelOfCareCoherence,
+      billing.placeOfServiceConsistency,
+      billing.modifierCodesValid,
+      billing.claimTotalMatchesLines,
+    ]) {
+      registry.registerRule(rule);
+    }
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      billableEncounters: {
+        forRange: async () => [
+          {
+            encounterId: "enc-rn",
+            serviceDate: "2025-11-03",
+            billability: "billable" as const,
+            discipline: "rn",
+            encounterType: "routine_visit",
+            durationMinutes: 45,
+          },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+    expect(store.lines).toHaveLength(2);
+    expect(res.initialValidationOutcome).toBe("all_pass");
+  });
+});
+
+describe("claim_total_matches_lines — the assembled claim always balances (SIA included)", () => {
+  it("passes the real rule for a deceased patient with an SIA add-on", async () => {
+    const registry = new BillingRuleRegistry();
+    registry.registerRule(billing.claimTotalMatchesLines);
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      admission: {
+        resolveForRange: async () => ({
+          admissionId: "adm-1",
+          hospiceAdmissionDate: "2025-11-01",
+          dischargeDate: null,
+          dischargeReason: null,
+          deceasedDate: "2025-11-07",
+          placeOfDeath: null,
+          transferOut: null,
+        }),
+      },
+      signedEncounters: {
+        inWindow: async () => [
+          {
+            encounterId: "rn-1",
+            serviceDate: "2025-11-06",
+            discipline: "RN",
+            signed: true,
+            cosignRequired: false,
+            cosigned: false,
+            durationMinutes: 120,
+          },
+        ],
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const res = await svc.assemble(ACTOR, REQUEST);
+    expect(res.initialValidationOutcome).toBe("all_pass");
   });
 });

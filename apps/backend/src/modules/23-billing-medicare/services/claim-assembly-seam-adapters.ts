@@ -447,6 +447,11 @@ export interface M8BillableEncountersReader {
       readonly billable: boolean;
       readonly reason?: string;
       readonly serviceDate: string;
+      /** What the hospice visit line is coded from (CMS Pub. 100-04 ch. 11 §30.3). */
+      readonly discipline: string;
+      readonly encounterType: string;
+      /** The start-to-end bracket in minutes; `null` = not documented. */
+      readonly durationMinutes: number | null;
     }>
   >;
 }
@@ -489,6 +494,9 @@ export function buildM23BillableEncountersAdapter(
       return rows.map((r) => ({
         encounterId: r.encounterId,
         serviceDate: r.serviceDate,
+        discipline: r.discipline,
+        encounterType: r.encounterType,
+        durationMinutes: r.durationMinutes,
         billability: r.billable
           ? ("billable" as const)
           : r.reason === "awaiting_cosignature"

@@ -7,9 +7,10 @@
 //
 // "Billed-and-accepted" = per-diem days on claims the MAC has acknowledged-accepted or paid
 // (`ACK_ACCEPTED` / `ACK_PARTIAL` / `PAID`); DRAFT/SUBMITTED/ACK_PENDING are not yet accepted, and
-// ACK_REJECTED/DENIED/REPLACED/VOIDED don't count. Only the four per-diem revenue codes carry DAYS in
-// `unit_count` (0651 RHC / 0652 CHC / 0655 IRC / 0656 GIP); SIA/physician/ancillary lines carry visits or
-// units and are excluded so the sum is a true patient-day census.
+// ACK_REJECTED/DENIED/REPLACED/VOIDED don't count. Only the four per-diem revenue codes carry billed DAYS:
+// `unit_count` for 0651 RHC / 0655 IRC / 0656 GIP and, for CHC (0652, billed in 15-minute units), the line's
+// service-date span. Visit / physician / ancillary lines carry visits or units and are excluded so the sum is a
+// true patient-day census.
 import * as schema from "@wardenx/db/schema";
 import { and, between, eq, inArray, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
@@ -17,10 +18,17 @@ import type { BillingDb } from "./db";
 const C = schema.claim;
 const L = schema.claimLine;
 
+/**
+ * Billed days on one per-diem line. `unit_count` is a DAY count for 0651/0655/0656, but CHC (0652) is billed one
+ * dated line per day in 15-minute units (CMS Pub. 100-04 ch. 11 §30.3), so a CHC line's days are its inclusive
+ * service-date span (one day) — never its quarter-hour units.
+ */
+const BILLED_DAYS_PER_LINE = sql`CASE WHEN ${L.revenueCode} = '0652' THEN (${L.serviceDateTo} - ${L.serviceDateFrom} + 1) ELSE ${L.unitCount} END`;
+
 /** MAC-accepted claim states — the only claims whose days count toward the billed census. */
 const ACCEPTED_STATES = ["ACK_ACCEPTED", "ACK_PARTIAL", "PAID"] as const;
 
-/** The four per-diem revenue codes whose `unit_count` is a DAY count (others are visits/units → excluded). */
+/** The four per-diem revenue codes that carry billed DAYS (see {@link BILLED_DAYS_PER_LINE}); others are excluded. */
 const PER_DIEM_REVENUE_CODES = ["0651", "0652", "0655", "0656"] as const;
 
 /** Per-diem revenue code → level-of-care label for the breakdown. */
@@ -76,7 +84,7 @@ export class CostReportAggregateRepository {
     const rows = await this.db
       .select({
         revenueCode: L.revenueCode,
-        days: sql<number>`coalesce(sum(${L.unitCount}), 0)::int`,
+        days: sql<number>`coalesce(sum(${BILLED_DAYS_PER_LINE}), 0)::int`,
       })
       .from(L)
       .innerJoin(C, eq(L.claimId, C.id))
@@ -120,7 +128,7 @@ export class CostReportAggregateRepository {
       .select({
         revenueCode: L.revenueCode,
         qCode: L.qCode,
-        days: sql<number>`coalesce(sum(${L.unitCount}), 0)::int`,
+        days: sql<number>`coalesce(sum(${BILLED_DAYS_PER_LINE}), 0)::int`,
         lineCount: sql<number>`count(*)::int`,
       })
       .from(L)

@@ -27,7 +27,8 @@ export const ClaimAssembleResponse = Type.Object({
   claimId: Uuid,
   state: Type.Literal("DRAFT"),
   totalChargeCents: CentsSchema,
-  hippsCode: Type.String(),
+  /** INTERNAL per-diem class code (not a Medicare HIPPS code). */
+  perDiemClassCode: Type.String(),
   hippsRateCents: CentsSchema,
   lineCount: Count,
   initialValidationRunId: Uuid,
