@@ -4807,7 +4807,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
             // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
             // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
-            ddeQueueService: buildDdeQueueService(dbHandle.db, { outbox: m23OutboxPublisher }),
+            ddeQueueService: buildDdeQueueService(dbHandle.db, {
+              outbox: m23OutboxPublisher,
+              // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
+              assigneeCanWork: async (organizationId, membershipId) =>
+                (
+                  await createMembershipsHoldingPermissionReader(dbHandle.db)(organizationId, [
+                    "billing.dde.work",
+                  ])
+                ).has(membershipId),
+            }),
             transferNoticeService: buildTransferNoticeService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               jobs: buildM23OutboxBackedSubmissionGate({

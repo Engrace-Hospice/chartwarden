@@ -3,7 +3,7 @@
 // ADR response). WardenX never calls DDE; these routes record what an operator did and what came back.
 //
 // Reads gate `billing.dde.read`; create / claim / start / outcome / retry / cancel / close gate `billing.dde.work`;
-// RECORD SUBMISSION (the attestation that an item was keyed in DDE) gates `billing.dde.mark_submitted` + the §D14
+// RECORD SUBMISSION and RECORD ACCEPTANCE (the attestations that an item was keyed / accepted) gate `billing.dde.mark_submitted` + the §D14
 // step-up; assigning an item to someone else gates `billing.dde.admin`. Every object route composes
 // `provider_entity_billing_scope` over the item's provider entity (a denied object is a 404), every mutation the
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
@@ -19,6 +19,7 @@ import {
   DdeItemIdParamsSchema,
   DdeItemListQuerySchema,
   DdeVersionBodySchema,
+  RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
 } from "./dde-queue-typebox";
@@ -114,6 +115,18 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
       const { id } = parse(DdeItemIdParamsSchema, request.params);
       const body = parse(RecordDdeSubmissionBodySchema, request.body);
       return service.recordSubmission(writeActorOf(request), id, body);
+    },
+  );
+
+  // ACCEPTED: acts on the notice (existing acceptance transition, payer_status_date source dde_manual), so it is as
+  // privileged as keying it: mark_submitted + step-up, not plain work.
+  app.post(
+    "/api/v1/billing/dde-items/:id/record-acceptance",
+    { preHandler: [MARK, MARK_ABAC, MARK_STEPUP, NO_AI, IDEMPOTENT] },
+    async (request) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const body = parse(RecordDdeAcceptanceBodySchema, request.body);
+      return service.recordAcceptance(writeActorOf(request), id, body);
     },
   );
 

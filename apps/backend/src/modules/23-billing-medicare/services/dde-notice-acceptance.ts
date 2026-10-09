@@ -13,7 +13,7 @@
 // A notice that is ALREADY `ack_accepted` (the electronic path got there first) is left untouched: the electronic
 // answer stays the notice's truth and the queue item just records its own outcome.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 export type DdeNoticeKind = "noe" | "notr";
@@ -31,6 +31,8 @@ export interface DdeNoticeAcceptanceInput {
 
 export interface DdeNoticeAcceptanceResult {
   readonly applied: boolean;
+  /** The notice's own `payer_status_date` when it was ALREADY accepted (the electronic answer stays the truth). */
+  readonly existingPayerStatusDate: string | null;
   readonly fromState: NoticeState;
   readonly toState: NoticeState;
 }
@@ -46,6 +48,9 @@ interface NoticeRow {
   readonly id: string;
   readonly state: NoticeState;
   readonly version: number;
+  /** The earliest date a MAC acceptance can be: the election effective date (NOE) / termination date (NOTR). */
+  readonly earliestAcceptance: string;
+  readonly payerStatusDate: string | null;
 }
 
 interface KindOps {
@@ -60,7 +65,7 @@ interface KindOps {
     row: NoticeRow,
     next: NoticeState,
     patch: repositories.NoeTransitionPatch,
-  ): Promise<{ ok: boolean; row?: NoticeRow }>;
+  ): Promise<{ ok: boolean; row?: { id: string; state: NoticeState; version: number } }>;
 }
 
 const OPS: Record<DdeNoticeKind, KindOps> = {
@@ -69,7 +74,16 @@ const OPS: Record<DdeNoticeKind, KindOps> = {
     idKey: "noeId",
     payerKey: "payerNoeControlNumber",
     eventName: "m23.noe.accepted",
-    find: (tx, id) => new repositories.NoeRepository(tx).findById(id),
+    find: async (tx, id) => {
+      const r = await new repositories.NoeRepository(tx).findById(id);
+      return (
+        r && {
+          ...r,
+          earliestAcceptance: r.electionEffectiveDate,
+          payerStatusDate: r.payerStatusDate,
+        }
+      );
+    },
     reduce: (s, e) => noeMachine.reduce(s, e),
     transition: (tx, row, next, patch) =>
       new repositories.NoeRepository(tx).transitionToState(row.id, row.version, next, patch),
@@ -79,7 +93,12 @@ const OPS: Record<DdeNoticeKind, KindOps> = {
     idKey: "notrId",
     payerKey: "payerNotrControlNumber",
     eventName: "m23.notr.accepted",
-    find: (tx, id) => new repositories.NotrRepository(tx).findById(id),
+    find: async (tx, id) => {
+      const r = await new repositories.NotrRepository(tx).findById(id);
+      return (
+        r && { ...r, earliestAcceptance: r.effectiveEndDate, payerStatusDate: r.payerStatusDate }
+      );
+    },
     reduce: (s, e) => notrMachine.reduce(s, e),
     transition: (tx, row, next, patch) =>
       new repositories.NotrRepository(tx).transitionToState(row.id, row.version, next, patch),
@@ -95,7 +114,21 @@ export async function applyDdeNoticeAcceptance(
   const notice = await ops.find(tx, input.noticeId);
   if (!notice) throw new NotFoundError(`${input.kind} record`);
   if (notice.state === "ack_accepted") {
-    return { applied: false, fromState: notice.state, toState: notice.state };
+    return {
+      applied: false,
+      existingPayerStatusDate: notice.payerStatusDate,
+      fromState: notice.state,
+      toState: notice.state,
+    };
+  }
+  if (input.macAcceptedOn < notice.earliestAcceptance) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "macAcceptedOn",
+        code: "BEFORE_EFFECTIVE_DATE",
+        message: `the MAC cannot accept this ${input.kind.toUpperCase()} before ${notice.earliestAcceptance}`,
+      },
+    ]);
   }
   const edges = EDGES_FROM[notice.state];
   if (!edges) {
@@ -129,7 +162,7 @@ export async function applyDdeNoticeAcceptance(
         412,
       );
     }
-    current = res.row;
+    current = { ...current, ...res.row };
   }
 
   if (input.outbox) {
@@ -148,5 +181,10 @@ export async function applyDdeNoticeAcceptance(
       },
     });
   }
-  return { applied: true, fromState: notice.state, toState: current.state };
+  return {
+    applied: true,
+    existingPayerStatusDate: null,
+    fromState: notice.state,
+    toState: current.state,
+  };
 }

@@ -44,6 +44,7 @@ const ACTION = Type.Union([
   Type.Literal("start"),
   Type.Literal("record_submission"),
   Type.Literal("record_outcome"),
+  Type.Literal("record_acceptance"),
   Type.Literal("retry"),
   Type.Literal("cancel"),
   Type.Literal("close"),
@@ -57,9 +58,20 @@ const ExpectedVersion = Type.Integer({
   minimum: 0,
   description: "The item `version` the change is applied against (a stale value → 412).",
 });
+const OutcomeCode = Type.Union(
+  [
+    Type.Literal("accepted"),
+    Type.Literal("accepted_with_edits"),
+    Type.Literal("rtp"),
+    Type.Literal("rejected"),
+    Type.Literal("adr_requested"),
+    Type.Literal("other"),
+  ],
+  { description: "What came back, from a closed set." },
+);
 const Dcn = Type.String({
-  pattern: "^[A-Za-z0-9]{1,23}$",
-  description: "The DCN / ICN / receipt number FISS showed.",
+  pattern: "^[A-Za-z0-9]{13,23}$",
+  description: "The DCN / ICN / receipt number FISS showed (13 to 23 characters).",
 });
 
 export const DdeItemIdParamsSchema = Type.Object({ id: uuid() });
@@ -101,22 +113,28 @@ export const RecordDdeSubmissionBodySchema = Type.Object({
   notes: Type.Optional(Notes),
 });
 
+/** Returned / rejected outcome (an accepted outcome is `record-acceptance`: it acts on the notice and needs step-up). */
 export const RecordDdeOutcomeBodySchema = Type.Object({
   expectedVersion: ExpectedVersion,
-  outcome: Type.Union([Type.Literal("accepted"), Type.Literal("returned")]),
+  outcome: Type.Literal("returned"),
+  rtpReasonCode: Type.String({
+    pattern: "^[A-Z0-9]{1,8}$",
+    description: "The RTP / reject reason code.",
+  }),
+  dcn: Type.Optional(Dcn),
+  outcomeCode: Type.Optional(OutcomeCode),
+  notes: Type.Optional(Notes),
+});
+
+export const RecordDdeAcceptanceBodySchema = Type.Object({
+  expectedVersion: ExpectedVersion,
   macAcceptedOn: Type.Optional(
     isoDate(
-      "The date FISS/the MAC accepted it (operator-entered). Required for an accepted NOE/NOTR; stored as the notice's payer_status_date with source dde_manual.",
+      "The date FISS/the MAC accepted it (operator-entered). Required for an NOE/NOTR, where it is stored as the notice's payer_status_date with source dde_manual; not before the election/termination date, not in the future.",
     ),
   ),
   dcn: Type.Optional(Dcn),
-  rtpReasonCode: Type.Optional(
-    Type.String({
-      pattern: "^[A-Z0-9]{1,8}$",
-      description: "The RTP / reject reason code. Required when returned.",
-    }),
-  ),
-  outcomeCode: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_]{1,32}$" })),
+  outcomeCode: Type.Optional(OutcomeCode),
   notes: Type.Optional(Notes),
 });
 

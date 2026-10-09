@@ -3,20 +3,26 @@
 // Notes are capped, never copied into events or logs, and rejected when they look like a Medicare Beneficiary
 // Identifier: the queue never holds an MBI. The MBI format (CMS) is 11 characters: position 1 is 1-9, positions
 // 2, 5, 8 and 9 are letters, 3 and 6 are a letter or digit, 4, 7, 10 and 11 are digits; the letters S, L, O, I,
-// B and Z are never used. It is displayed as 4-3-4 with dashes, so separators after characters 4 and 7 are
-// tolerated.
+// B and Z are never used. It is displayed as 4-3-4 with dashes; see the screen below for how that is tolerated.
 
 /** The most characters a DDE note may hold. */
 export const DDE_NOTES_MAX_LENGTH = 500;
 
 const ALPHA = "[AC-HJKMNP-RT-Y]";
 const ALNUM = "[AC-HJKMNP-RT-Y0-9]";
-const SEP = "[- ]?";
 
-const MBI_PATTERN = new RegExp(
-  `(?<![A-Z0-9])[1-9]${ALPHA}${ALNUM}[0-9]${SEP}${ALPHA}${ALNUM}[0-9]${SEP}${ALPHA}${ALPHA}[0-9][0-9](?![A-Z0-9])`,
+// Best-effort screen. The text is NFKC-normalised (full-width digits become ASCII), everything that is not a
+// letter or digit is dropped (spaces, tabs, NBSP, dots, dashes, zero-width characters), and the squashed string
+// is scanned for ANY 11-character MBI-shaped window, with no boundary assumptions: a glued prefix or suffix, a
+// doubled space or a dotted layout does not hide an MBI. It can false-positive on odd text; that is the safe side.
+const MBI_WINDOW = new RegExp(
+  `[1-9]${ALPHA}${ALNUM}[0-9]${ALPHA}${ALNUM}[0-9]${ALPHA}${ALPHA}[0-9][0-9]`,
   "i",
 );
+
+function squash(text: string): string {
+  return text.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "");
+}
 
 export type DdeNotesRejection = "NOTES_TOO_LONG" | "NOTES_CONTAIN_MBI";
 
@@ -26,7 +32,7 @@ export type DdeNotesValidation =
 
 /** True when the text contains something shaped like an MBI. */
 export function looksLikeMbi(text: string): boolean {
-  return MBI_PATTERN.test(text);
+  return MBI_WINDOW.test(squash(text));
 }
 
 /** Validate an optional DDE note: length cap first, then the MBI-format screen. */
@@ -34,5 +40,41 @@ export function validateDdeNotes(notes: string | null | undefined): DdeNotesVali
   if (notes === null || notes === undefined) return { ok: true };
   if (notes.length > DDE_NOTES_MAX_LENGTH) return { ok: false, reason: "NOTES_TOO_LONG" };
   if (looksLikeMbi(notes)) return { ok: false, reason: "NOTES_CONTAIN_MBI" };
+  return { ok: true };
+}
+
+/** The outcome codes an operator may record (a closed set: a free-form code is a place to hide an identifier). */
+export const DDE_OUTCOME_CODES = [
+  "accepted",
+  "accepted_with_edits",
+  "rtp",
+  "rejected",
+  "adr_requested",
+  "other",
+] as const;
+export type DdeOutcomeCode = (typeof DDE_OUTCOME_CODES)[number];
+
+/** A DCN / ICN is a 13 to 23 character control number; an 11-character value (an MBI's length) is refused. */
+export const DDE_DCN_PATTERN = /^[A-Za-z0-9]{13,23}$/;
+
+export type DdeCodeRejection = "DCN_INVALID" | "RTP_CODE_INVALID" | "CODE_LOOKS_LIKE_MBI";
+
+/** Validate the code-shaped fields of an outcome: shape first, then the MBI screen on each. */
+export function validateDdeCodes(codes: {
+  readonly dcn?: string | null;
+  readonly rtpReasonCode?: string | null;
+  readonly outcomeCode?: string | null;
+}):
+  | { readonly ok: true }
+  | { readonly ok: false; readonly field: string; readonly reason: DdeCodeRejection } {
+  if (codes.dcn != null && !DDE_DCN_PATTERN.test(codes.dcn))
+    return { ok: false, field: "dcn", reason: "DCN_INVALID" };
+  if (codes.rtpReasonCode != null && !/^[A-Z0-9]{1,8}$/.test(codes.rtpReasonCode))
+    return { ok: false, field: "rtpReasonCode", reason: "RTP_CODE_INVALID" };
+  for (const field of ["dcn", "rtpReasonCode", "outcomeCode"] as const) {
+    const value = codes[field];
+    if (typeof value === "string" && looksLikeMbi(value))
+      return { ok: false, field, reason: "CODE_LOOKS_LIKE_MBI" };
+  }
   return { ok: true };
 }

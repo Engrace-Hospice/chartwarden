@@ -20,8 +20,9 @@ import {
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
+  medicareReceiptDay,
   repositories,
-  resolvePayerStatusDate,
+  validateDdeCodes,
   validateDdeNotes,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -32,6 +33,7 @@ import type {
   DdeItemDetailViewSchema,
   DdeItemListViewSchema,
   DdeItemViewSchema,
+  RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
 } from "../routes/dde-queue-typebox";
@@ -53,6 +55,7 @@ type CreateBody = Static<typeof CreateDdeItemBodySchema>;
 type AssignBody = Static<typeof AssignDdeItemBodySchema>;
 type SubmissionBody = Static<typeof RecordDdeSubmissionBodySchema>;
 type OutcomeBody = Static<typeof RecordDdeOutcomeBodySchema>;
+type AcceptanceBody = Static<typeof RecordDdeAcceptanceBodySchema>;
 type Action = DdeItemView["allowedActions"][number];
 
 export interface DdeListFilter {
@@ -73,6 +76,11 @@ export interface DdeQueueReadActor {
 export interface DdeQueueServicePorts {
   readonly outbox?: WriteOutboxPort;
   readonly now?: () => Date;
+  /**
+   * Does this membership hold `billing.dde.work` through an active membership of the org? Injected at the composition
+   * root (membership and role grants are M2/M3 data). Absent => assigning is refused (fail closed).
+   */
+  readonly assigneeCanWork?: (organizationId: string, membershipId: string) => Promise<boolean>;
 }
 
 export interface DdeQueueService {
@@ -95,8 +103,17 @@ export interface DdeQueueService {
     id: string,
     body: SubmissionBody,
   ): Promise<DdeItemView>;
-  /** Record what came back: accepted (with the MAC date) or returned (with an RTP reason code). */
+  /** Record a RETURNED / rejected outcome (with its RTP reason code). */
   recordOutcome(actor: BillingWriteActor, id: string, body: OutcomeBody): Promise<DdeItemView>;
+  /**
+   * Record that the MAC ACCEPTED the item (step-up). On an NOE/NOTR it applies the notice's existing acceptance
+   * transition with the operator-entered date, so it is as privileged as keying: `billing.dde.mark_submitted`.
+   */
+  recordAcceptance(
+    actor: BillingWriteActor,
+    id: string,
+    body: AcceptanceBody,
+  ): Promise<DdeItemView>;
   retry(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   cancel(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   close(actor: BillingWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
@@ -107,15 +124,28 @@ const ACTIONS_BY_STATE: Record<DdeWorkItemState, readonly Action[]> = {
   queued: ["claim", "assign", "cancel"],
   assigned: ["assign", "start", "cancel"],
   in_progress: ["record_submission", "cancel"],
-  submitted: ["record_outcome"],
+  submitted: ["record_outcome", "record_acceptance"],
   accepted: ["close"],
   returned: ["retry", "close"],
   closed: [],
   cancelled: [],
 };
 
+/** The calendar day on the CMS / CWF (Eastern) clock; deadlines are judged on it, not on the UTC date. */
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return medicareReceiptDay(d);
+}
+
+function screenCodes(codes: {
+  dcn?: string;
+  rtpReasonCode?: string;
+  outcomeCode?: string;
+}): void {
+  const verdict = validateDdeCodes(codes);
+  if (verdict.ok) return;
+  throw new ValidationError("request validation failed", [
+    { field: verdict.field, code: verdict.reason, message: "that value is not accepted here" },
+  ]);
 }
 
 function screenNotes(notes: string | undefined): void {
@@ -303,7 +333,7 @@ export function buildDdeQueueService(
       attemptNumber: updated.attemptNumber,
       actorMembershipId: actor.membershipId,
       actorKind: "user",
-      detail: historyDetail,
+      detail: { ...historyDetail, actorMembershipId: actor.membershipId },
     });
     await emit(tx, updated.organizationId, "m23.dde_item.state_changed", updated.id, {
       ddeItemId: updated.id,
@@ -416,7 +446,7 @@ export function buildDdeQueueService(
           attemptNumber: 1,
           actorMembershipId: actor.membershipId,
           actorKind: "user",
-          detail: { source: "manual" },
+          detail: { source: "manual", actorMembershipId: actor.membershipId },
         });
         await emit(tx, created.organizationId, "m23.dde_item.created", created.id, {
           ddeItemId: created.id,
@@ -445,7 +475,21 @@ export function buildDdeQueueService(
       });
     },
 
-    assign(actor, id, body) {
+    async assign(actor, id, body) {
+      assertNotAiActor(actor);
+      const eligible = ports.assigneeCanWork
+        ? await ports.assigneeCanWork(actor.organizationId, body.assigneeMembershipId)
+        : false;
+      if (!eligible) {
+        throw new ValidationError("request validation failed", [
+          {
+            field: "assigneeMembershipId",
+            code: "ASSIGNEE_NOT_ELIGIBLE",
+            message:
+              "the assignee must be an active member of this organization who can work DDE items",
+          },
+        ]);
+      }
       return mutate(actor, id, async (tx, item) => {
         if (item.state === "assigned") {
           // Reassignment: same state, new assignee; the history row records it.
@@ -479,6 +523,7 @@ export function buildDdeQueueService(
       assertNotAiActor(actor);
       requireStepUp(actor);
       screenNotes(body.notes);
+      screenCodes(body);
       return mutate(actor, id, (tx, item) =>
         applyEvent(
           tx,
@@ -499,32 +544,31 @@ export function buildDdeQueueService(
     recordOutcome(actor, id, body) {
       assertNotAiActor(actor);
       screenNotes(body.notes);
+      screenCodes(body);
+      return mutate(actor, id, (tx, item) =>
+        applyEvent(
+          tx,
+          actor,
+          item,
+          body.expectedVersion,
+          "return",
+          {
+            rtpReasonCode: body.rtpReasonCode,
+            ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
+            ...(body.outcomeCode !== undefined ? { outcomeCode: body.outcomeCode } : {}),
+            ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          },
+          { rtpReasonCode: body.rtpReasonCode, dcn: body.dcn ?? null },
+        ),
+      );
+    },
+
+    recordAcceptance(actor, id, body) {
+      assertNotAiActor(actor);
+      requireStepUp(actor);
+      screenNotes(body.notes);
+      screenCodes(body);
       return mutate(actor, id, async (tx, item) => {
-        const common = {
-          ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
-          ...(body.outcomeCode !== undefined ? { outcomeCode: body.outcomeCode } : {}),
-          ...(body.notes !== undefined ? { notes: body.notes } : {}),
-        };
-        if (body.outcome === "returned") {
-          if (!body.rtpReasonCode) {
-            throw new ValidationError("request validation failed", [
-              {
-                field: "rtpReasonCode",
-                code: "REQUIRED",
-                message: "a returned item needs its reason code",
-              },
-            ]);
-          }
-          return applyEvent(
-            tx,
-            actor,
-            item,
-            body.expectedVersion,
-            "return",
-            { ...common, rtpReasonCode: body.rtpReasonCode },
-            { rtpReasonCode: body.rtpReasonCode, dcn: body.dcn ?? null },
-          );
-        }
         const isNotice = item.itemType === "noe" || item.itemType === "notr";
         if (isNotice && !body.macAcceptedOn) {
           throw new ValidationError("request validation failed", [
@@ -536,21 +580,19 @@ export function buildDdeQueueService(
           ]);
         }
         const recordedAt = now();
-        if (body.macAcceptedOn) {
-          // The MAC is not ahead of us: reject a future date (read on the Eastern CMS clock).
-          const today = resolvePayerStatusDate({ kind: "ack_277ca", receivedAt: recordedAt }).date;
-          if (body.macAcceptedOn > today) {
-            throw new ValidationError("request validation failed", [
-              {
-                field: "macAcceptedOn",
-                code: "FUTURE_DATE",
-                message: "the MAC acceptance date cannot be in the future",
-              },
-            ]);
-          }
+        // The MAC is not ahead of us: reject a future date (read on the Eastern CMS clock).
+        if (body.macAcceptedOn && body.macAcceptedOn > toIsoDate(recordedAt)) {
+          throw new ValidationError("request validation failed", [
+            {
+              field: "macAcceptedOn",
+              code: "FUTURE_DATE",
+              message: "the MAC acceptance date cannot be in the future",
+            },
+          ]);
         }
+        let macAcceptedOn = body.macAcceptedOn;
         if (isNotice && body.macAcceptedOn) {
-          await applyDdeNoticeAcceptance(tx, {
+          const result = await applyDdeNoticeAcceptance(tx, {
             organizationId: actor.organizationId,
             kind: item.itemType as "noe" | "notr",
             noticeId: item.subjectId,
@@ -558,6 +600,10 @@ export function buildDdeQueueService(
             recordedAt,
             outbox: ports.outbox,
           });
+          // The electronic path got there first: the notice's own date is the truth, so the item takes it.
+          if (!result.applied && result.existingPayerStatusDate) {
+            macAcceptedOn = result.existingPayerStatusDate;
+          }
         }
         return applyEvent(
           tx,
@@ -565,8 +611,13 @@ export function buildDdeQueueService(
           item,
           body.expectedVersion,
           "accept",
-          { ...common, ...(body.macAcceptedOn ? { macAcceptedOn: body.macAcceptedOn } : {}) },
-          { macAcceptedOn: body.macAcceptedOn ?? null, dcn: body.dcn ?? null },
+          {
+            ...(macAcceptedOn ? { macAcceptedOn } : {}),
+            ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
+            ...(body.outcomeCode !== undefined ? { outcomeCode: body.outcomeCode } : {}),
+            ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          },
+          { macAcceptedOn: macAcceptedOn ?? null, dcn: body.dcn ?? null },
         );
       });
     },

@@ -430,6 +430,7 @@ import {
   DdeItemListViewSchema,
   DdeItemViewSchema,
   DdeVersionBodySchema,
+  RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/dde-queue-typebox";
@@ -3079,8 +3080,15 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/billing/dde-items/:id/record-outcome": {
     summary:
-      "Record what came back: accepted (with the MAC date; an NOE/NOTR then takes its existing acceptance transition with payer_status_date source dde_manual) or returned (with an RTP reason code)",
+      "Record a RETURNED / rejected outcome with its RTP reason code (an accepted outcome is record-acceptance)",
     body: RecordDdeOutcomeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/record-acceptance": {
+    summary:
+      "Record that the MAC ACCEPTED the item (step-up, billing.dde.mark_submitted). On an NOE/NOTR the notice takes its existing acceptance transition with the entered date as payer_status_date (source dde_manual); the date is not before the election/termination date and not in the future",
+    body: RecordDdeAcceptanceBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: DdeItemViewSchema,
   },

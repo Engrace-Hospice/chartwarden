@@ -6,6 +6,7 @@ import {
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
+  validateDdeCodes,
   validateDdeNotes,
 } from "@wardenx/billing";
 import { describe, expect, it } from "vitest";
@@ -154,5 +155,51 @@ describe("ddeDeadlineStatus", () => {
 
   it("has no status for a cancelled item", () => {
     expect(ddeDeadlineStatus({ ...base, state: "cancelled" }, "2026-10-20")).toBe("none");
+  });
+});
+
+describe("validateDdeNotes hardening", () => {
+  it.each([
+    ["a glued prefix", "ID1EG4-TE5-MK73"],
+    ["a glued suffix", "1EG4TE5MK73XYZ"],
+    ["doubled spaces", "1EG4  TE5   MK73"],
+    ["tabs", "1EG4\tTE5\tMK73"],
+    ["NBSP", "1EG4\u00a0TE5\u00a0MK73"],
+    ["dots", "1.E.G.4.T.E.5.M.K.7.3"],
+    ["full-width digits", "\uff11EG\uff14TE\uff15MK\uff17\uff13"],
+    ["zero-width characters", "1EG4\u200bTE5\u200bMK73"],
+  ])("rejects an MBI hidden by %s", (_n, note) => {
+    expect(validateDdeNotes(note)).toEqual({ ok: false, reason: "NOTES_CONTAIN_MBI" });
+  });
+
+  it("still accepts ordinary notes with numbers", () => {
+    expect(validateDdeNotes("called MAC 05/12, ref 4471, waiting on receipt")).toEqual({
+      ok: true,
+    });
+  });
+});
+
+describe("validateDdeCodes", () => {
+  it("accepts a real DCN and an RTP code", () => {
+    expect(
+      validateDdeCodes({ dcn: "2212345678901", rtpReasonCode: "37001", outcomeCode: "rtp" }),
+    ).toEqual({ ok: true });
+  });
+  it("refuses an 11-character DCN (an MBI's length)", () => {
+    expect(validateDdeCodes({ dcn: "1EG4TE5MK73" })).toMatchObject({ ok: false, field: "dcn" });
+  });
+  it("refuses an MBI-bearing DCN, RTP code or outcome code", () => {
+    expect(validateDdeCodes({ dcn: "X1EG4TE5MK73ZZ" })).toMatchObject({
+      ok: false,
+      reason: "CODE_LOOKS_LIKE_MBI",
+    });
+    expect(validateDdeCodes({ outcomeCode: "1EG4TE5MK73" })).toMatchObject({
+      ok: false,
+      field: "outcomeCode",
+    });
+    expect(validateDdeCodes({ rtpReasonCode: "1EG4TE5MK73" })).toMatchObject({
+      ok: false,
+      field: "rtpReasonCode",
+    });
   });
 });

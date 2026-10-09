@@ -4490,6 +4490,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/dde-items/{id}/record-acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that the MAC ACCEPTED the item (step-up, billing.dde.mark_submitted). On an NOE/NOTR the notice takes its existing acceptance transition with the entered date as payer_status_date (source dde_manual); the date is not before the election/termination date and not in the future */
+        post: operations["postApiV1BillingDdeitemsByIdRecordacceptance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/dde-items/{id}/record-outcome": {
         parameters: {
             query?: never;
@@ -4499,7 +4516,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record what came back: accepted (with the MAC date; an NOE/NOTR then takes its existing acceptance transition with payer_status_date source dde_manual) or returned (with an RTP reason code) */
+        /** Record a RETURNED / rejected outcome with its RTP reason code (an accepted outcome is record-acceptance) */
         post: operations["postApiV1BillingDdeitemsByIdRecordoutcome"];
         delete?: never;
         options?: never;
@@ -35575,7 +35592,7 @@ export interface operations {
                             rtpReasonCode: string | null;
                             outcomeCode: string | null;
                             notes: string | null;
-                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                             version: number;
                             /** Format: date-time */
                             createdAt: string;
@@ -35651,7 +35668,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -35707,7 +35724,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -35790,7 +35807,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -35856,7 +35873,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -35922,7 +35939,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -35988,7 +36005,84 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdRecordacceptance: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /**
+                     * Format: date
+                     * @description The date FISS/the MAC accepted it (operator-entered). Required for an NOE/NOTR, where it is stored as the notice's payer_status_date with source dde_manual; not before the election/termination date, not in the future.
+                     */
+                    macAcceptedOn?: string;
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
+                    dcn?: string;
+                    /** @description What came back, from a closed set. */
+                    outcomeCode?: "accepted" | "accepted_with_edits" | "rtp" | "rejected" | "adr_requested" | "other";
+                    /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -36018,17 +36112,14 @@ export interface operations {
                 "application/json": {
                     /** @description The item `version` the change is applied against (a stale value → 412). */
                     expectedVersion: number;
-                    outcome: "accepted" | "returned";
-                    /**
-                     * Format: date
-                     * @description The date FISS/the MAC accepted it (operator-entered). Required for an accepted NOE/NOTR; stored as the notice's payer_status_date with source dde_manual.
-                     */
-                    macAcceptedOn?: string;
-                    /** @description The DCN / ICN / receipt number FISS showed. */
+                    /** @constant */
+                    outcome: "returned";
+                    /** @description The RTP / reject reason code. */
+                    rtpReasonCode: string;
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
-                    /** @description The RTP / reject reason code. Required when returned. */
-                    rtpReasonCode?: string;
-                    outcomeCode?: string;
+                    /** @description What came back, from a closed set. */
+                    outcomeCode?: "accepted" | "accepted_with_edits" | "rtp" | "rejected" | "adr_requested" | "other";
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
                 };
@@ -36067,7 +36158,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -36097,7 +36188,7 @@ export interface operations {
                 "application/json": {
                     /** @description The item `version` the change is applied against (a stale value → 412). */
                     expectedVersion: number;
-                    /** @description The DCN / ICN / receipt number FISS showed. */
+                    /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
@@ -36137,7 +36228,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -36203,7 +36294,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -36269,7 +36360,7 @@ export interface operations {
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;

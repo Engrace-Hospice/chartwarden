@@ -14,7 +14,7 @@
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
 // `window_breached_at` through `transitionToState` (or a same-state patch). No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, asc, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -178,7 +178,8 @@ export class NoeRepository {
   /**
    * The notices the DDE work queue should hold work for (ADR-0052): in flight (state not terminal) with a filing
    * window target on or before `throughDate` (`YYYY-MM-DD`, today plus the watchdog look-ahead), breached or not.
-   * Unlike `listWindowWatchCandidates` it does not wait for the target day. Soonest target first.
+   * Unlike `listWindowWatchCandidates` it does not wait for the target day, and it returns only notices that have no
+   * DDE item of this type yet (anti-join). Soonest target first.
    */
   async listDdeWatchCandidates(
     organizationId: string,
@@ -193,6 +194,9 @@ export class NoeRepository {
           eq(N.organizationId, organizationId),
           notInArray(N.state, NOE_TERMINAL_DB),
           lte(N.windowTargetAt, throughDate),
+          // Anti-join: only notices with NO DDE item of this type yet, so already-served (older) notices can
+          // never fill the LIMIT and starve a newer at-risk one, and the caller needs no per-row existence check.
+          sql`NOT EXISTS (SELECT 1 FROM dde_work_item d WHERE d.subject_kind = 'noe_record' AND d.subject_id = ${N.id} AND d.item_type = 'noe')`,
         ),
       )
       .orderBy(asc(N.windowTargetAt))

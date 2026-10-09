@@ -40,6 +40,7 @@ import {
   type NoticeState,
   canTransition as canClaimTransition,
   deriveControlNumber,
+  medicareReceiptDay,
   noeMachine,
   notrMachine,
   parseControlNumber,
@@ -1653,9 +1654,10 @@ async function queueDdeWork(
 ): Promise<void> {
   const watchdog = deps.ddeWatchdog;
   if (!watchdog) return;
-  const through = new Date(now.getTime() + DDE_WATCHDOG_LOOKAHEAD_DAYS * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  // The lookahead is counted from the Eastern (CMS) calendar day, not the UTC date.
+  const today = new Date(`${medicareReceiptDay(now)}T00:00:00Z`);
+  today.setUTCDate(today.getUTCDate() + DDE_WATCHDOG_LOOKAHEAD_DAYS);
+  const through = today.toISOString().slice(0, 10);
   const notices =
     kind === "noe"
       ? await new NoeRepository(tx).listDdeWatchCandidates(organizationId, through)
@@ -1673,6 +1675,30 @@ async function queueDdeWork(
 }
 
 /**
+ * Run {@link queueDdeWork} for one org in its OWN transaction, AFTER the window warnings / breach stamps committed, so
+ * a failure here can never roll back a window alert. Returns the failure (if any) instead of throwing, so the other
+ * orgs still get their warnings and items; the cron rethrows the first one once every org has been served.
+ */
+async function queueDdeWorkIsolated(
+  deps: M23WorkerDeps,
+  organizationId: string,
+  kind: "noe" | "notr",
+  now: Date,
+): Promise<unknown> {
+  if (!deps.ddeWatchdog) return undefined;
+  try {
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      async (txAny) => queueDdeWork(deps, txAny as unknown as BillingDb, organizationId, kind, now),
+    );
+    return undefined;
+  } catch (err) {
+    return err;
+  }
+}
+
+/**
  * `noe.window-watch` (§4.8 cron, every 30 min): for each active org, walk the NOE rows whose 5-day window is
  * approaching and still un-acknowledged — emit `m23.noe.window_warning` at day 3 and, at day 5+1 (past target),
  * stamp `window_breached_at` (the fail-closed {@link NoticeWindowPort}) + emit `m23.noe.window_breached` and the
@@ -1683,6 +1709,7 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
+  let firstDdeError: unknown;
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
@@ -1691,9 +1718,6 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const noes = new NoeRepository(tx);
         const outbox = outboxOf(deps);
-        // ADR-0052 — queue the DDE work for every in-flight notice nearing (or past) its filing window, ahead of the
-        // target day. Idempotent: the watchdog files at most one item per notice.
-        await queueDdeWork(deps, tx, organizationId, "noe", now);
         const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
         for (const noe of candidates) {
           const days = daysToTarget(noe.windowTargetAt, now);
@@ -1748,7 +1772,11 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
         }
       },
     );
+    // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
+    const ddeError = await queueDdeWorkIsolated(deps, organizationId, "noe", now);
+    if (ddeError !== undefined && firstDdeError === undefined) firstDdeError = ddeError;
   }
+  if (firstDdeError !== undefined) throw firstDdeError;
 }
 
 /** `notr.window-watch` (§4.8 cron): the NOTR twin of {@link runNoeWindowWatch}. */
@@ -1757,6 +1785,7 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const asOf = now.toISOString().slice(0, 10);
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
+  let firstDdeError: unknown;
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
@@ -1765,9 +1794,6 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const notrs = new NotrRepository(tx);
         const outbox = outboxOf(deps);
-        // ADR-0052 — queue the DDE work for every in-flight notice nearing (or past) its filing window, ahead of the
-        // target day. Idempotent: the watchdog files at most one item per notice.
-        await queueDdeWork(deps, tx, organizationId, "notr", now);
         const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
         for (const notr of candidates) {
           const days = daysToTarget(notr.windowTargetAt, now);
@@ -1822,7 +1848,11 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
         }
       },
     );
+    // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
+    const ddeError = await queueDdeWorkIsolated(deps, organizationId, "notr", now);
+    if (ddeError !== undefined && firstDdeError === undefined) firstDdeError = ddeError;
   }
+  if (firstDdeError !== undefined) throw firstDdeError;
 }
 
 /**

@@ -56,9 +56,12 @@ CREATE TABLE IF NOT EXISTS "dde_work_item" (
 	CONSTRAINT "dde_work_item_attempt_chk" CHECK ("attempt_number" >= 1),
 	CONSTRAINT "dde_work_item_priority_chk" CHECK ("priority" BETWEEN 1 AND 3),
 	-- DCN / ICN / receipt numbers and RTP reason codes are short codes, never free text.
-	CONSTRAINT "dde_work_item_dcn_chk" CHECK ("dcn" IS NULL OR "dcn" ~ '^[A-Za-z0-9]{1,23}$'),
+	-- A DCN / ICN is 13 to 23 characters; an 11-character value (an MBI's length) can never be stored here.
+	CONSTRAINT "dde_work_item_dcn_chk" CHECK ("dcn" IS NULL OR "dcn" ~ '^[A-Za-z0-9]{13,23}$'),
 	CONSTRAINT "dde_work_item_rtp_code_chk" CHECK ("rtp_reason_code" IS NULL OR "rtp_reason_code" ~ '^[A-Z0-9]{1,8}$'),
-	CONSTRAINT "dde_work_item_outcome_code_chk" CHECK ("outcome_code" IS NULL OR "outcome_code" ~ '^[A-Za-z0-9_]{1,32}$'),
+	-- A closed set: a free-form code is a place to hide an identifier.
+	CONSTRAINT "dde_work_item_outcome_code_chk" CHECK ("outcome_code" IS NULL OR "outcome_code" IN
+		('accepted', 'accepted_with_edits', 'rtp', 'rejected', 'adr_requested', 'other')),
 	-- ADR-0052 D7: free-text notes are capped (the service also refuses MBI-shaped text).
 	CONSTRAINT "dde_work_item_notes_chk" CHECK ("notes" IS NULL OR length("notes") <= 500),
 	-- An item that was keyed carries when; an accepted/closed-after-accept item may carry the MAC date.

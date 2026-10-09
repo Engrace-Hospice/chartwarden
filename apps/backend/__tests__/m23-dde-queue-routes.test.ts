@@ -132,6 +132,7 @@ function makeServer() {
     start: () => view("start"),
     recordSubmission: () => view("record-submission"),
     recordOutcome: (_a, _id, body) => view(`record-outcome:${body.outcome}`),
+    recordAcceptance: () => view("record-acceptance"),
     retry: () => view("retry"),
     cancel: () => view("cancel"),
     close: () => view("close"),
@@ -243,11 +244,11 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
     expect((await post(WORKER, "start", { expectedVersion: 1 })).statusCode).toBe(200);
     const outcome = await post(WORKER, "record-outcome", {
       expectedVersion: 3,
-      outcome: "accepted",
-      macAcceptedOn: "2026-10-08",
+      outcome: "returned",
+      rtpReasonCode: "37001",
     });
     expect(outcome.statusCode).toBe(200);
-    expect(calls).toEqual(["claim", "start", "record-outcome:accepted"]);
+    expect(calls).toEqual(["claim", "start", "record-outcome:returned"]);
     await app.close();
   });
 
@@ -278,6 +279,79 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
     });
     expect(ok.statusCode).toBe(200);
     expect(calls).toEqual(["record-submission"]);
+    await app.close();
+  });
+
+  it("an ACCEPTED outcome needs mark_submitted AND a recent step-up, never plain work", async () => {
+    const { app, calls } = makeServer();
+    const url = `${BASE}/${ITEM}/record-acceptance`;
+    const payload = { expectedVersion: 3, macAcceptedOn: "2026-10-08" };
+    // a work-only user is refused, step-up or not
+    const workOnly = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...WORKER, ...idem(), "x-test-step-up": "1" },
+      payload,
+    });
+    expect(workOnly.statusCode).toBe(403);
+    // mark_submitted without step-up is refused
+    const noStepUp = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...BILLER, ...idem() },
+      payload,
+    });
+    expect(noStepUp.statusCode).toBe(403);
+    expect(calls).toEqual([]);
+    const ok = await app.inject({
+      method: "POST",
+      url,
+      headers: { ...BILLER, ...idem(), "x-test-step-up": "1" },
+      payload,
+    });
+    expect(ok.statusCode).toBe(200);
+    // the returned-outcome route no longer accepts an accepted outcome
+    const viaOutcome = await app.inject({
+      method: "POST",
+      url: `${BASE}/${ITEM}/record-outcome`,
+      headers: { ...WORKER, ...idem() },
+      payload: { expectedVersion: 3, outcome: "accepted", macAcceptedOn: "2026-10-08" },
+    });
+    expect(viaOutcome.statusCode).toBeGreaterThanOrEqual(400);
+    expect(calls).toEqual(["record-acceptance"]);
+    await app.close();
+  });
+
+  it.each([
+    ["an 11-character DCN", { dcn: "1EG4TE5MK73" }],
+    ["a free-form outcome code", { outcomeCode: "1EG4TE5MK73" }],
+  ])("rejects %s on an acceptance before the service runs", async (_n, over) => {
+    const { app, calls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `${BASE}/${ITEM}/record-acceptance`,
+      headers: { ...BILLER, ...idem(), "x-test-step-up": "1" },
+      payload: { expectedVersion: 3, macAcceptedOn: "2026-10-08", ...over },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBeLessThan(500);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("fails closed (4xx, never 500) on a non-uuid subject or item id", async () => {
+    const { app } = makeServer();
+    const create = await app.inject({
+      method: "POST",
+      url: BASE,
+      headers: { ...WORKER, ...idem() },
+      payload: { itemType: "noe", subjectId: "not-a-uuid" },
+    });
+    expect(create.statusCode).toBeGreaterThanOrEqual(400);
+    expect(create.statusCode).toBeLessThan(500);
+    const get = await app.inject({ method: "GET", url: `${BASE}/not-a-uuid`, headers: READER });
+    expect(get.statusCode).toBeGreaterThanOrEqual(400);
+    expect(get.statusCode).toBeLessThan(500);
     await app.close();
   });
 
