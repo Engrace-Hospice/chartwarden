@@ -27,7 +27,9 @@
 //   - FAIL CLOSED ON READ. A stored scope that does not parse (a legacy blob, an out-of-band writer) contributes
 //     NOTHING to the reach, not "no narrowing"; if every live grant is unreadable the actor reaches nothing, which is
 //     expressed as {@link NO_REACH_ID} in both dimensions (never `[]`: several evaluators read an empty list as
-//     "org-wide"). Migration 1050 also CHECKs the stored shape and quarantines legacy blobs, so this is the second wall.
+//     "org-wide"). The same holds per dimension for a WELL-FORMED grant whose ids all fall outside non-empty
+//     membership defaults (or defaults that changed after the grant was written): that dimension is
+//     {@link NO_REACH_ID}, not `[]`. Migration 1050 also CHECKs the stored shape and quarantines legacy blobs, so this is the second wall.
 //   - Writers that bypass the route (org-spine-facts, f2f-clinician-roles, proposed-role-attacher, auditor-access-grant,
 //     SQL seeds) are bound by the DB CHECK on shape only; the semantic rules (subset of the membership defaults,
 //     role.scope_level, expiry) stay route-only. That is safe because the read caps every reach to the membership
@@ -230,8 +232,13 @@ export function effectiveReachWithDiagnostics(
       malformedGrantCount,
     };
   }
-  const cap = (ids: Set<string>, within: readonly string[]): readonly string[] =>
-    [...ids].filter((id) => within.length === 0 || within.includes(id));
+  // Cap to the membership defaults. A dimension that HAD defaults but whose grants all fall outside them reaches
+  // nothing: the sentinel, never `[]` (several evaluators read an empty list as org-wide, which is wider than the
+  // defaults). `[]` survives only when the defaults themselves are empty and no grant named an id there.
+  const cap = (ids: Set<string>, within: readonly string[]): readonly string[] => {
+    const kept = [...ids].filter((id) => within.length === 0 || within.includes(id));
+    return kept.length === 0 && within.length > 0 ? [NO_REACH_ID] : kept;
+  };
   return {
     reach: {
       providerEntityIds: cap(pe, defaults.providerEntityIds),

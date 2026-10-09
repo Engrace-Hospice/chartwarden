@@ -110,6 +110,26 @@ describe("effectiveReach", () => {
     ]);
     expect([...reach.locationIds].sort()).toEqual([LOC_X, LOC_Y]);
   });
+  it("a well-formed grant disjoint from the membership defaults reaches NOTHING in that dimension (sentinel, never [])", () => {
+    const { reach } = effectiveReachWithDiagnostics(defaults, [
+      { scope: { locationIds: [LOC_Z] } },
+    ]);
+    expect(reach.locationIds).toEqual([NO_REACH_ID]);
+    // the other dimension is untouched
+    expect(reach.providerEntityIds).toEqual([PE_1]);
+    const ctx = { providerEntityIds: reach.providerEntityIds, locationIds: reach.locationIds };
+    expect(locationScope(ctx as never, { locationId: LOC_X })).toBe(false);
+  });
+  it("a disjoint provider-entity grant is fail-closed, and defaults that later changed do not widen it", () => {
+    const stored = [{ scope: { providerEntityIds: [PE_1] } }];
+    const moved = { providerEntityIds: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2"], locationIds: [] };
+    expect(effectiveReach(moved, stored).providerEntityIds).toEqual([NO_REACH_ID]);
+  });
+  it("empty defaults keep the grant's own ids (nothing to cap against)", () => {
+    expect(effectiveReach(NONE, [{ scope: { locationIds: [LOC_Z] } }]).locationIds).toEqual([
+      LOC_Z,
+    ]);
+  });
   it("a malformed grant contributes nothing: it neither narrows nor widens the other grants", () => {
     const { reach, malformedGrantCount } = effectiveReachWithDiagnostics(defaults, [
       { scope: { locationIds: [LOC_X] } },
