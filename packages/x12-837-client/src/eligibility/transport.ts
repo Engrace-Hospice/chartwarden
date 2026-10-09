@@ -194,7 +194,9 @@ async function readPayload(response: Response): Promise<string> {
   try {
     // Built from the capped bytes, never from the unbounded response. The copy narrows the
     // buffer to a plain ArrayBuffer, which every compilation that reaches this file accepts as a body.
-    form = await new Response(new Uint8Array(bytes), { headers: { "content-type": contentType } }).formData();
+    form = await new Response(new Uint8Array(bytes), {
+      headers: { "content-type": contentType },
+    }).formData();
   } catch {
     throw new HetsTransportError("HETS_INVALID_RESPONSE", "HETS CORE envelope is malformed");
   }
