@@ -64,6 +64,9 @@ export interface AdmissionContext {
   readonly admissionId: string;
   /** The hospice election/admission date — day 1 of THIS stay in the ADR-0001 RHC day-60 tier count (D7). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** M6 `admission.admission_type_code` / `admission_source_code` (UB-04 FL 14 / FL 15, NUBC strings); null/absent = not recorded. */
+  readonly admissionTypeCode?: string | null;
+  readonly admissionSourceCode?: string | null;
   /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
   readonly rhcPriorHospiceDays?: number;
   /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice

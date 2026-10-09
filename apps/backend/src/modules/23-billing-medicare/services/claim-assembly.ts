@@ -37,6 +37,7 @@ import {
   type LevelOfCare,
   type RuleResult,
   applySequestrationPolicy,
+  claimAdmissionCodes,
   claimPhysicianNpis,
   deriveControlNumber,
   deriveTypeOfBill,
@@ -469,6 +470,8 @@ export function buildClaimAssemblyService(
           ...claimDischargeCodeColumns(dischargeCodes),
           // UB-04 FL 76 / FL 78 physician NPIs (migration 1054), also refreshed on every re-validation.
           ...claimPhysicianNpis(mdmResolution),
+          // UB-04 FL 14 / FL 15 (migration 1057) from the M6 admission; also refreshed on re-validation.
+          ...claimAdmissionCodes(admission),
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(

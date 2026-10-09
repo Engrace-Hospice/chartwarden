@@ -851,6 +851,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           attendingPhysicianId: body.attendingPhysicianId,
           providerEntityId: body.providerEntityId,
           locationId: body.locationId,
+          admissionTypeCode: body.admissionTypeCode,
+          admissionSourceCode: body.admissionSourceCode,
         },
         body.ifVersion,
       );

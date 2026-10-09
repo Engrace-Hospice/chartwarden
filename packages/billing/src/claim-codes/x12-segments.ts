@@ -34,6 +34,11 @@ export interface ClaimDocument837i {
   readonly tob: string;
   readonly serviceFrom: IsoDate;
   readonly serviceTo: IsoDate;
+  /** UB-04 FL 14 Type of Admission / CL101 — from the M6 admission; null = not recorded (the claim is blocked by
+   *  `admission_codes_present` before it can be submitted). */
+  readonly admissionTypeCode?: string | null;
+  /** UB-04 FL 15 Point of Origin / CL102 (Stedi `admissionSourceCode`). */
+  readonly admissionSourceCode?: string | null;
   readonly dischargeCodes: {
     /** UB-04 FL 17 / CL103. */
     readonly patientStatus: string;

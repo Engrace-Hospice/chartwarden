@@ -5,7 +5,7 @@
 // owner facts (patient / signer ids) without a cross-module schema import. Pure-ish: no clock except
 // the injected `now()` so version/date math is deterministic in tests.
 import { localDateInTimeZone } from "@wardenx/shared/dates";
-import type { LocalDate } from "@wardenx/types";
+import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
 import {
   DEFAULT_ORG_TIME_ZONE,
@@ -345,6 +345,9 @@ export interface AdmissionCreateInput extends FirstBenefitPeriodInput {
   readonly intakeMethod: string;
   readonly attendingPhysicianId?: string;
   readonly hospiceMedicalDirectorId: string;
+  /** UB-04 FL 14 / FL 15 (837I CL101 / CL102); optional at creation, completed on update before a claim. */
+  readonly admissionTypeCode?: AdmissionTypeCode;
+  readonly admissionSourceCode?: AdmissionSourceCode;
   /** A readmission: the patient's earlier, live-discharged admission this one follows. */
   readonly readmittedFromAdmissionId?: string;
 }
@@ -354,6 +357,9 @@ export interface AdmissionUpdateInput {
   readonly attendingPhysicianId?: string;
   readonly providerEntityId?: string | null;
   readonly locationId?: string | null;
+  /** `null` clears a mis-recorded value. */
+  readonly admissionTypeCode?: AdmissionTypeCode | null;
+  readonly admissionSourceCode?: AdmissionSourceCode | null;
 }
 export interface UploadedNoticeOfRightsInput {
   readonly documentId: string;
@@ -671,6 +677,10 @@ export interface AdmissionDetail extends SummaryRow {
   readonly admissionRecommendation?: AdmissionRecommendationView | null;
   /** M40 attending physician id (418.25(a): "in consultation with … the attending physician (if any)"). */
   readonly attendingPhysicianId?: string | null;
+  /** UB-04 FL 14 Type of Admission (837I CL101); null until recorded. */
+  readonly admissionTypeCode?: string | null;
+  /** UB-04 FL 15 Point of Origin (837I CL102); null until recorded. */
+  readonly admissionSourceCode?: string | null;
   readonly activationGate: ActivationGate;
   readonly readiness?: AdmissionReadinessResult;
 }
@@ -1265,6 +1275,9 @@ interface Rec {
   admissionAt?: string | null;
   hospiceMedicalDirectorId?: string;
   attendingPhysicianId?: string | null;
+  /** UB-04 FL 14 / FL 15 (837I CL101 / CL102) recorded on the admission. */
+  admissionTypeCode?: string | null;
+  admissionSourceCode?: string | null;
   terminalDiagnosisIcd10?: string;
   secondaryDiagnoses?: readonly string[];
   scheduledClinicianId?: string;
@@ -2090,6 +2103,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         createdByUserId: actorUserId || null,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
+        admissionTypeCode: input.admissionTypeCode ?? null,
+        admissionSourceCode: input.admissionSourceCode ?? null,
         primaryDiagnosisIcd10: "C00",
       });
       const sequence = firstSequence(input);
@@ -2138,6 +2153,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             referringDxText: rec.referringDxText ?? null,
             admissionRecommendation: rec.recommendation ?? null,
             attendingPhysicianId: rec.attendingPhysicianId ?? null,
+            admissionTypeCode: rec.admissionTypeCode ?? null,
+            admissionSourceCode: rec.admissionSourceCode ?? null,
             activationGate: gateFor(rec),
             readiness: readinessFor(rec),
           }
@@ -2289,6 +2306,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       Object.assign(rec, {
         admissionAt: input.admissionAt ?? rec.admissionAt,
         attendingPhysicianId: input.attendingPhysicianId ?? rec.attendingPhysicianId,
+        // `null` clears a mis-recorded value; `undefined` leaves it.
+        admissionTypeCode:
+          input.admissionTypeCode !== undefined ? input.admissionTypeCode : rec.admissionTypeCode,
+        admissionSourceCode:
+          input.admissionSourceCode !== undefined
+            ? input.admissionSourceCode
+            : rec.admissionSourceCode,
         providerEntityId: finalProviderEntityId ?? null,
         locationId: finalLocationId ?? null,
         patientResidenceAddressId:

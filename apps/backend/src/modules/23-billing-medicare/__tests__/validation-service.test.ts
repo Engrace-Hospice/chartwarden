@@ -460,6 +460,32 @@ describe("physician NPIs on re-validation (UB-04 FL 76 / FL 78)", () => {
     expect(claim.version).toBe(0); // a derived projection, not a user edit
   });
 
+  it("keeps the persisted admission codes in step with the admission the run read", async () => {
+    seedValidatingClaim();
+    const port = contextWithPhysicians(null, null);
+    const withCodes = {
+      build: async (...args: Parameters<typeof port.build>) => {
+        const built = await port.build(...args);
+        const context = built.context as unknown as { claim: Record<string, unknown> };
+        return {
+          ...built,
+          context: {
+            ...built.context,
+            claim: { ...context.claim, admissionTypeCode: "3", admissionSourceCode: "1" },
+          },
+        };
+      },
+    };
+    await makeService([passRule], { contextPort: withCodes as never }).validateClaim(ACTOR, {
+      claimId: "claim-1",
+      trigger: "manual_re_run",
+    });
+    const claim = store.claims.get("claim-1");
+    expect(claim.admissionTypeCode).toBe("3");
+    expect(claim.admissionSourceCode).toBe("1");
+    expect(claim.version).toBe(0); // a derived projection, not a user edit
+  });
+
   it("clears an NPI the run could no longer resolve", async () => {
     seedValidatingClaim();
     await makeService([passRule], {

@@ -51,6 +51,46 @@ export type LevelOfCare =
   | "inpatient_respite_care"
   | "general_inpatient_care";
 
+// ── NUBC admission codes carried on the hospice claim (837I CL1) ─────────────────────────────────────────
+// A hospice claim (TOB 81x/82x) must report the UB-04 "Type of Admission" (FL 14 → 837I CL101) and "Point of Origin
+// for Admission" (FL 15 → CL102) — required on the claim, not on the NOE (CGS "Hospice Medicare Billing Codes Sheet";
+// CMS Pub. 100-04 ch. 25 §75.1). The values are facts about the admission, so M6 owns them; M23 snapshots them onto
+// the claim. The sets below are the NUBC codes the MAC hospice billing sheets list (not the full UB-04 set).
+
+/** UB-04 FL 14 Type of Admission codes valid on a hospice claim. */
+export const ADMISSION_TYPE_CODES = ["1", "2", "3", "5", "9"] as const;
+export type AdmissionTypeCode = (typeof ADMISSION_TYPE_CODES)[number];
+
+export const ADMISSION_TYPE_LABELS: Readonly<Record<AdmissionTypeCode, string>> = {
+  "1": "Emergency",
+  "2": "Urgent",
+  "3": "Elective",
+  "5": "Trauma",
+  "9": "Information not available",
+};
+
+/** UB-04 FL 15 Point of Origin for Admission codes valid on a hospice claim. */
+export const ADMISSION_SOURCE_CODES = ["1", "2", "4", "5", "6", "8", "9"] as const;
+export type AdmissionSourceCode = (typeof ADMISSION_SOURCE_CODES)[number];
+
+export const ADMISSION_SOURCE_LABELS: Readonly<Record<AdmissionSourceCode, string>> = {
+  "1": "Non-health care facility point of origin",
+  "2": "Clinic or physician's office",
+  "4": "Transfer from a hospital",
+  "5": "Transfer from a skilled nursing facility (SNF) or intermediate care facility (ICF)",
+  "6": "Transfer from another health care facility",
+  "8": "Court / law enforcement",
+  "9": "Information not available",
+};
+
+export function isAdmissionTypeCode(value: unknown): value is AdmissionTypeCode {
+  return (ADMISSION_TYPE_CODES as readonly unknown[]).includes(value);
+}
+
+export function isAdmissionSourceCode(value: unknown): value is AdmissionSourceCode {
+  return (ADMISSION_SOURCE_CODES as readonly unknown[]).includes(value);
+}
+
 /** CMS benefit-period length (mirrors `election_period_kind`, §2.2: 90,90,60,60,…). */
 export type ElectionPeriodKind = "ninety_day" | "sixty_day";
 

@@ -924,6 +924,31 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     expect(claim.certifyingPhysicianNpi).toBe("1982736455");
   });
 
+  it("records the admission type and point of origin from the M6 admission on the claim", async () => {
+    const base = buildSeams();
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            admissionTypeCode: "3",
+            admissionSourceCode: "1",
+          }) as never,
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.admissionTypeCode).toBe("3");
+    expect(claim.admissionSourceCode).toBe("1");
+  });
+
+  it("leaves the admission codes null when the admission has none (never a default)", async () => {
+    await buildClaimAssemblyService(makeFakeDb() as never, buildSeams()).assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.admissionTypeCode).toBeNull();
+    expect(claim.admissionSourceCode).toBeNull();
+  });
+
   it("leaves the NPIs null when the physicians are unresolved (never a guess)", async () => {
     const svc = buildClaimAssemblyService(makeFakeDb() as never, buildSeams());
     await svc.assemble(ACTOR, REQUEST);

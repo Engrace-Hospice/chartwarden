@@ -246,6 +246,10 @@ export function electionPeriodContextForOrg(
  */
 export interface ClaimRangeAdmission {
   readonly admissionId: string;
+  /** UB-04 FL 14 Type of Admission (837I CL101) recorded on the admission (migration 1057); `null` = not recorded. */
+  readonly admissionTypeCode: string | null;
+  /** UB-04 FL 15 Point of Origin (837I CL102) recorded on the admission (migration 1057); `null` = not recorded. */
+  readonly admissionSourceCode: string | null;
   /** `admission_at` coalesced to `activated_at` — day 1 of THIS stay in the HIPPS day counter; earlier stays a
    *  readmission continues are carried separately in `rhcPriorHospiceDays` (this date also anchors the NOE
    *  admission day, so it is never shifted). */
@@ -377,6 +381,8 @@ export async function claimAssemblyRangeContextForOrg(
         activatedAt: ADM.activatedAt,
         dischargedAt: ADM.dischargedAt,
         hospicePhysicianId: ADM.hospicePhysicianId,
+        admissionTypeCode: ADM.admissionTypeCode,
+        admissionSourceCode: ADM.admissionSourceCode,
       })
       .from(ADM)
       .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
@@ -388,6 +394,8 @@ export async function claimAssemblyRangeContextForOrg(
         start: r.admissionAt ?? r.activatedAt,
         end: r.dischargedAt,
         hospicePhysicianId: r.hospicePhysicianId,
+        admissionTypeCode: r.admissionTypeCode,
+        admissionSourceCode: r.admissionSourceCode,
       }))
       .filter(
         (
@@ -397,6 +405,8 @@ export async function claimAssemblyRangeContextForOrg(
           start: Date;
           end: Date | null;
           hospicePhysicianId: string | null;
+          admissionTypeCode: string | null;
+          admissionSourceCode: string | null;
         } => r.start !== null,
       )
       .find((r) => {
@@ -452,6 +462,8 @@ export async function claimAssemblyRangeContextForOrg(
     const rhc = rhcCarryOver(rhcPriorStays, localDate(candidate.start));
     const admission: ClaimRangeAdmission = {
       admissionId,
+      admissionTypeCode: candidate.admissionTypeCode,
+      admissionSourceCode: candidate.admissionSourceCode,
       hospiceAdmissionDate: localDate(candidate.start),
       rhcPriorHospiceDays: rhc.priorHospiceDays,
       rhcPriorStays,

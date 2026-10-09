@@ -726,6 +726,9 @@ export function claimDocumentFor(
     readonly occurrenceCodes: unknown;
     /** Migration 0378 — the derived occurrence spans (late-NOE OSC 77). Absent on a pre-0378 caller shape. */
     readonly occurrenceSpans?: unknown;
+    /** Migration 1057 — UB-04 FL 14 / FL 15, from the M6 admission. Absent on a pre-1057 caller shape. */
+    readonly admissionTypeCode?: string | null;
+    readonly admissionSourceCode?: string | null;
   },
   claimControlNumber: string,
 ): ClaimDocument837i {
@@ -760,6 +763,8 @@ export function claimDocumentFor(
     tob: claim.tob,
     serviceFrom: claim.serviceFrom,
     serviceTo: claim.serviceTo,
+    admissionTypeCode: claim.admissionTypeCode ?? null,
+    admissionSourceCode: claim.admissionSourceCode ?? null,
     dischargeCodes: { patientStatus: claim.patientStatusCode, conditionCodes, occurrenceCodes },
     occurrenceSpans,
   };

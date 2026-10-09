@@ -6,7 +6,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@wardenx/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,
@@ -254,12 +254,33 @@ export const ReferralUpdateSchema = Type.Object({
 // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────────
 const INTAKE_METHODS = ["in_person", "phone", "referral_auto", "transfer_in"] as const;
 
+/** UB-04 FL 14 Type of Admission (837I CL101): the NUBC codes a hospice claim carries (`ADMISSION_TYPE_CODES`). */
+const AdmissionTypeCodeSchema = Type.Union(
+  ADMISSION_TYPE_CODES.map((c) => Type.Literal(c)),
+  {
+    description:
+      "UB-04 FL 14 Type of Admission: 1 emergency, 2 urgent, 3 elective, 5 trauma, 9 information not available.",
+  },
+);
+/** UB-04 FL 15 Point of Origin (837I CL102): the NUBC codes a hospice claim carries (`ADMISSION_SOURCE_CODES`). */
+const AdmissionSourceCodeSchema = Type.Union(
+  ADMISSION_SOURCE_CODES.map((c) => Type.Literal(c)),
+  {
+    description:
+      "UB-04 FL 15 Point of Origin: 1 non-health care facility, 2 clinic/physician office, 4 hospital transfer, 5 SNF/ICF transfer, 6 other health care facility, 8 court/law enforcement, 9 information not available.",
+  },
+);
+
 export const AdmissionCreateSchema = Type.Object({
   patientId: Uuid(),
   referralId: Type.Optional(Uuid()),
   intakeMethod: Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m))),
   attendingPhysicianId: Type.Optional(Uuid()),
   hospiceMedicalDirectorId: Uuid(),
+  // Optional at creation: an admission opened before the type / origin is known is completed on PATCH, and M23's
+  // `admission_codes_present` rule blocks the claim until both are recorded.
+  admissionTypeCode: Type.Optional(AdmissionTypeCodeSchema),
+  admissionSourceCode: Type.Optional(AdmissionSourceCodeSchema),
   readmittedFromAdmissionId: Type.Optional(
     Type.String({
       minLength: 1,
@@ -298,6 +319,10 @@ export const AdmissionUpdateSchema = Type.Object({
 
   providerEntityId: Type.Optional(Uuid()),
   locationId: Type.Optional(Uuid()),
+
+  // `null` clears a mis-recorded value (the claim then fails `admission_codes_present` until it is corrected).
+  admissionTypeCode: Type.Optional(Type.Union([AdmissionTypeCodeSchema, Type.Null()])),
+  admissionSourceCode: Type.Optional(Type.Union([AdmissionSourceCodeSchema, Type.Null()])),
 
   ifVersion: Version(),
 });
@@ -769,6 +794,9 @@ export const AdmissionDetailResponseSchema = Type.Object({
     ]),
   ),
   attendingPhysicianId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  // UB-04 FL 14 / FL 15 (837I CL101 / CL102) a hospice claim carries; null until recorded on the admission.
+  admissionTypeCode: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  admissionSourceCode: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   // 42 CFR 418.25(a) — the recorded physician admission recommendation (null until recorded).
   admissionRecommendation: Type.Optional(
     Type.Union([

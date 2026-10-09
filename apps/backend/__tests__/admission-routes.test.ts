@@ -739,6 +739,55 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await app.close();
   });
 
+  it("PATCH /admissions/:id records the UB-04 Type of Admission and Point of Origin the hospice claim carries, and null clears one", async () => {
+    const { app } = makeServer();
+    const patch = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/admissions/${ADMISSION}`,
+        headers: INTAKE,
+        payload,
+      });
+    const detail = async () =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/admissions/${ADMISSION}`,
+          headers: INTAKE,
+        })
+      ).json();
+
+    // Unrecorded on a fresh (and any historical) admission: null, never an invented code.
+    expect(await detail()).toMatchObject({ admissionTypeCode: null, admissionSourceCode: null });
+
+    expect(
+      (await patch({ ifVersion: 1, admissionTypeCode: "3", admissionSourceCode: "1" })).statusCode,
+    ).toBe(200);
+    expect(await detail()).toMatchObject({ admissionTypeCode: "3", admissionSourceCode: "1" });
+
+    // null clears a mis-recorded value; an omitted field leaves it.
+    const cleared = await patch({ ifVersion: 2, admissionSourceCode: null });
+    expect(cleared.statusCode).toBe(200);
+    expect(await detail()).toMatchObject({ admissionTypeCode: "3", admissionSourceCode: null });
+    await app.close();
+  });
+
+  it.each([
+    ["an unknown type of admission", { admissionTypeCode: "4" }],
+    ["an unknown point of origin", { admissionSourceCode: "7" }],
+    ["a non-code value", { admissionTypeCode: "elective" }],
+  ])("PATCH /admissions/:id rejects %s (422) before any write", async (_name, over) => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+      payload: { ifVersion: 1, ...over },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
   it("PATCH /admissions/:id derives the provider location when the UI saves admission details", async () => {
     const { app } = makeServer();
     const updated = await app.inject({

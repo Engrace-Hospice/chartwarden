@@ -2154,6 +2154,8 @@ export function createDbAdmissionRouteService(
             attendingConsulted: ADM.attendingConsulted,
             attendingConsultNote: ADM.attendingConsultNote,
             attendingPhysicianId: ADM.attendingPhysicianId,
+            admissionTypeCode: ADM.admissionTypeCode,
+            admissionSourceCode: ADM.admissionSourceCode,
           })
           .from(ADM)
           .leftJoin(REF, eq(REF.id, ADM.referralId))
@@ -2209,6 +2211,8 @@ export function createDbAdmissionRouteService(
                 }
               : null,
           attendingPhysicianId: adm.attendingPhysicianId ?? null,
+          admissionTypeCode: adm.admissionTypeCode ?? null,
+          admissionSourceCode: adm.admissionSourceCode ?? null,
           activationGate,
           readiness: readiness ?? undefined,
         };
@@ -3557,6 +3561,9 @@ export function createDbAdmissionRouteService(
               referralId: input.referralId ?? null,
               hospicePhysicianId: input.hospiceMedicalDirectorId,
               attendingPhysicianId: input.attendingPhysicianId ?? null,
+              // UB-04 FL 14 / FL 15 (837I CL101 / CL102): null until recorded (the claim rule blocks without them).
+              admissionTypeCode: input.admissionTypeCode ?? null,
+              admissionSourceCode: input.admissionSourceCode ?? null,
               // §6.8 — who opened it: `admission.scope`'s creator arm while it is still unsited.
               createdByUserId: actorUserId || null,
               status: t.to,
@@ -3684,6 +3691,10 @@ export function createDbAdmissionRouteService(
           updates.hospicePhysicianId = input.hospicePhysicianId;
         if (input.attendingPhysicianId !== undefined)
           updates.attendingPhysicianId = input.attendingPhysicianId;
+        if (input.admissionTypeCode !== undefined)
+          updates.admissionTypeCode = input.admissionTypeCode;
+        if (input.admissionSourceCode !== undefined)
+          updates.admissionSourceCode = input.admissionSourceCode;
         const [current] = await tx
           .select({
             patientId: ADM.patientId,

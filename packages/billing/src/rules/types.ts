@@ -67,7 +67,8 @@ export type RuleCategory =
   | "evv"
   | "election"
   | "charges"
-  | "visits";
+  | "visits"
+  | "admission";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -90,6 +91,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "election",
   "charges",
   "visits",
+  "admission",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -206,6 +208,13 @@ export interface ClaimSnapshot {
    * transfer-out; `null`/absent for a revocation or a still-open stay). Only used to address the fix.
    */
   readonly dischargeSourceEventId?: string | null;
+  /**
+   * UB-04 FL 14 Type of Admission / FL 15 Point of Origin recorded on the M6 admission (NUBC code strings).
+   * `null` = not recorded; `undefined` = the context producer carries no admission-code facts (the
+   * `admission_codes_present` rule then skips).
+   */
+  readonly admissionTypeCode?: string | null;
+  readonly admissionSourceCode?: string | null;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */

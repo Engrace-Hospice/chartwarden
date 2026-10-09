@@ -21,6 +21,12 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import { fmtDate } from "../../shell/patient-context";
 import {
+  AdmissionCodesFields,
+  EMPTY_ADMISSION_CODES,
+  admissionCodesBody,
+  admissionCodesComplete,
+} from "./admission-codes-fields";
+import {
   BenefitPeriodField,
   useBenefitPeriodPlan,
   useHetsHospicePeriods,
@@ -56,6 +62,7 @@ export function AdmissionCreate(): JSX.Element {
   const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>("in_person");
   const [attendingPhysicianId, setAttendingPhysicianId] = useState("");
   const [hospiceMedicalDirectorId, setHospiceMedicalDirectorId] = useState("");
+  const [admissionCodes, setAdmissionCodes] = useState(EMPTY_ADMISSION_CODES);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The first benefit period: our history's suggestion (1 for a patient never served), confirmed against HETS.
@@ -78,7 +85,8 @@ export function AdmissionCreate(): JSX.Element {
   const periodErrors = askPeriod ? validateBenefitPeriod(period, today) : {};
   const periodReady = !askPeriod || Object.keys(periodErrors).length === 0;
 
-  const intakeReady = patientId.trim().length > 0 && periodReady;
+  const intakeReady =
+    patientId.trim().length > 0 && periodReady && admissionCodesComplete(admissionCodes);
   const clinicalReady = hospiceMedicalDirectorId.trim().length > 0;
   const ready = intakeReady && clinicalReady;
   const currentIndex = STEP_IDS.indexOf(step);
@@ -124,6 +132,7 @@ export function AdmissionCreate(): JSX.Element {
           ? { attendingPhysicianId: attendingPhysicianId.trim() }
           : {}),
         hospiceMedicalDirectorId: hospiceMedicalDirectorId.trim(),
+        ...admissionCodesBody(admissionCodes),
         ...(askPeriod && benefitPeriodBody(period, suggested, today)
           ? { benefitPeriod: benefitPeriodBody(period, suggested, today) ?? undefined }
           : {}),
@@ -149,6 +158,7 @@ export function AdmissionCreate(): JSX.Element {
     }
     navigate(`/admissions/${data.id}`);
   }, [
+    admissionCodes,
     askPeriod,
     attendingPhysicianId,
     client,
@@ -257,6 +267,12 @@ export function AdmissionCreate(): JSX.Element {
                 value={intakeMethod}
                 onChange={(event) => setIntakeMethod(event.target.value as IntakeMethod)}
                 options={INTAKE_METHODS}
+              />
+              <AdmissionCodesFields
+                draft={admissionCodes}
+                onChange={setAdmissionCodes}
+                showErrors={showErrors}
+                required
               />
             </div>
           </FormSection>

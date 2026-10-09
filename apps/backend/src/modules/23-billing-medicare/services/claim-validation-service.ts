@@ -26,6 +26,7 @@ import {
   type RuleResult,
   type TypeOfBill,
   type ValidationContext,
+  claimAdmissionCodes,
   claimLateNoeSpans,
   claimPhysicianNpis,
   repositories,
@@ -220,6 +221,8 @@ export function buildClaimValidationService(
     );
     // …and the attending / certifying physician NPIs (UB-04 FL 76 / FL 78) the run resolved from M40.
     await claimRepo.refreshPhysicianNpis(claim.id, claimPhysicianNpis(context.mdm));
+    // …and the admission type / point of origin (UB-04 FL 14 / 15) the admission now records.
+    await claimRepo.refreshAdmissionCodes(claim.id, claimAdmissionCodes(context.claim));
     // …and its occurrence spans: a NOE Medicare accepted late makes the days from admission through the day before
     // acceptance provider liability, reported as OSC 77 (CMS Pub. 100-04 ch. 11 §20.1.1).
     await claimRepo.refreshOccurrenceSpans(

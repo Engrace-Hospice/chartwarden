@@ -1,7 +1,7 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 24 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 25 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
@@ -18,9 +18,10 @@ export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 24 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 25 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
+import { admissionCodesPresent } from "./admission-codes-present";
 import { aggregateCapProjection } from "./aggregate-cap-projection";
 import { bereavementDischargeLegitimacy } from "./bereavement-discharge";
 import { claimTotalMatchesLines } from "./claim-total-matches-lines";
@@ -60,6 +61,7 @@ import { tobAndDatesConsistency } from "./tob-dates-consistency";
 import { visitLinesReportable } from "./visit-lines-reportable";
 
 export {
+  admissionCodesPresent,
   claimTotalMatchesLines,
   visitLinesReportable,
   patientEligibilityPartAActive,
@@ -99,7 +101,7 @@ export {
 };
 
 /**
- * The 24 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule and the claim-total balance rule). This is the canonical platform-floor set
+ * The 25 platform-default validation rules (§4.5 table order, then the RHC carry-over warning, the FY2027 election addendum rule and the claim-total balance rule). This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */
@@ -131,10 +133,12 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   claimTotalMatchesLines,
   // CMS ch. 11 §30.3 — billable visits that could not be reported as lines (warn; ids only).
   visitLinesReportable,
+  // UB-04 FL 14/15 — the recorded admission type + point of origin (blocks; never invented).
+  admissionCodesPresent,
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 24 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 25 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */

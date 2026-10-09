@@ -15,6 +15,7 @@ import type {
   calculateHipps,
   repositories,
 } from "@wardenx/billing";
+import { claimAdmissionCodes } from "@wardenx/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
 import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 import { claimDischargeCodes } from "./claim-discharge";
@@ -106,6 +107,7 @@ export function assembleValidationContext(
       deathDate: discharge?.deathDate ?? null,
       dischargeClaimCodes,
       dischargeSourceEventId: discharge?.sourceEventId ?? null,
+      ...claimAdmissionCodes(admission),
     },
     lines: lines.map((row) => ({
       claimLineId: row.id,
