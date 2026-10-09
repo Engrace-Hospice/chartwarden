@@ -71,6 +71,7 @@ import {
   registerM29PublishedSeams,
 } from "../src/modules/29-external-interfaces/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { ORDER_RECORD } from "./_m22-form-fixtures";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -408,10 +409,13 @@ describe.skipIf(!DB_URL)(
       const renderer = (
         globalThis as { __f174Renderer?: ReturnType<typeof createDocumentRenderer> }
       ).__f174Renderer!;
+      // GAP-033: the genesis order render is the typed payload M11 builds (an id-only one is refused).
       await renderer.render({ orgId: ORG_A }, "order_record", {
+        ...ORDER_RECORD,
+        orderId,
         aggregateId: orderId,
         patientId,
-        title: "Order",
+        patient: { ...ORDER_RECORD.patient, patientId },
       });
       const before = await documentsFor(orderId);
       expect(before).toHaveLength(1);

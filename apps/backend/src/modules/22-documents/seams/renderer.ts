@@ -19,6 +19,7 @@ import type {
 import { deriveObjectKey, deriveTenantBucket } from "../lifecycle/storage";
 import {
   DEFAULT_PDF_RENDERERS,
+  FORM_TEMPLATE_KEYS,
   type PdfRendererRegistry,
   renderPdfForTemplate,
 } from "../render-pdf";
@@ -110,6 +111,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     aggregateType: "medication_administration_record",
     retentionClass: "clinical_record",
     defaultTitle: "Medication Administration Record",
+  },
+  // GAP-033 (registry reconciliation) — M13's finalized reconciliation worksheet. `m13.reconciliation
+  // .document_requested` has named this key since the consumer was built, but the table never held it, so every
+  // request threw `unknown_template` and dead-lettered. `arch:pdf-templates` now fails on that class of drift.
+  medication_reconciliation_worksheet: {
+    aggregateType: "medication_reconciliation_worksheet",
+    retentionClass: "clinical_record",
+    defaultTitle: "Medication Reconciliation Worksheet",
   },
   // F-171 (#248) — the patient-facing active-medication list. `patient_medication_list` has been a real
   // `document_aggregate_type` enum value (mig 0048) and a `@wardenx/forms` `TemplateDescriptor` since
@@ -507,7 +516,11 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         // F-171 (#248) — a per-render override (D23's SUD auto-tag) wins over the template's static
         // default; every caller but the lab-backref consumer leaves this unset.
         retentionClass: core.retentionClassOverride ?? descriptor.retentionClass,
-        title: core.title ?? descriptor.defaultTitle,
+        // A compiled form's title is a CONSTANT (the stored row, the PDF /Title and the footer all agree and none
+        // can carry a patient name); other templates may still title the row from the payload.
+        title: FORM_TEMPLATE_KEYS.has(templateKey)
+          ? descriptor.defaultTitle
+          : (core.title ?? descriptor.defaultTitle),
         objectKey,
         bucket,
         sha256Hex,

@@ -6,10 +6,12 @@ import { buildAppealPacketDoc } from "./appeal-packet-doc";
 import type { DocModel } from "./doc-model";
 import { buildElectionAddendumDoc } from "./election-addendum-doc";
 import { buildElectionStatementDoc } from "./election-statement-doc";
+import { COMPILED_FORMS } from "./forms";
 import { buildGenericPayloadDoc } from "./generic-payload-doc";
 import { buildIdgMinutesDoc } from "./idg-minutes-doc";
 import { buildIdgPacketDoc } from "./idg-packet-doc";
 import { renderDocModelToPdf } from "./pdf-writer";
+import { isRec } from "./shared";
 import {
   buildTriageSummaryAttendingDoc,
   buildTriageSummaryCaregiverDoc,
@@ -21,6 +23,9 @@ export type DocModelBuilder = (payload: unknown) => DocModel;
 export type PdfRendererRegistry = Readonly<Record<string, DocModelBuilder>>;
 
 export const DEFAULT_PDF_RENDERERS: PdfRendererRegistry = {
+  // GAP-033 Wave 1 - declarative FormSpec forms (render-pdf/forms): typed payload, allow-listed fields, fail
+  // closed on a missing signature / patient identity. `abn` ships structure only (CMS wording pending).
+  ...COMPILED_FORMS,
   idg_minutes: buildIdgMinutesDoc,
   idg_patient_packet: buildIdgPacketDoc,
   // F-224 (#248) — M19's caregiver / attending triage-call summaries (two templates, one builder each).
@@ -43,9 +48,12 @@ export function renderPdfForTemplate(
   defaultTitle: string,
   registry: PdfRendererRegistry = DEFAULT_PDF_RENDERERS,
 ): Uint8Array {
-  const build = Object.hasOwn(registry, templateKey)
-    ? registry[templateKey]
-    : buildGenericPayloadDoc(defaultTitle);
+  // A legacy id-only M6 event drained under the explicit fallback flag has no typed content to draw a form from.
+  const legacy = isRec(payload) && payload.legacyUntyped === true;
+  const build =
+    Object.hasOwn(registry, templateKey) && !legacy
+      ? registry[templateKey]
+      : buildGenericPayloadDoc(defaultTitle);
   return renderDocModelToPdf((build ?? buildGenericPayloadDoc(defaultTitle))(payload));
 }
 

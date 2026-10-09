@@ -1,0 +1,126 @@
+{
+  "title": "Advance Beneficiary Notice of Noncoverage (ABN)",
+  "createdAtIso": "2026-10-09T00:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Advance Beneficiary Notice of Noncoverage (ABN)"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "______________________________"
+        ],
+        [
+          "Medical record number",
+          "______________________________"
+        ],
+        [
+          "Date of birth",
+          "______________________________"
+        ],
+        [
+          "Document date",
+          "2026-10-09 00:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "banner",
+      "tone": "danger",
+      "text": "DRAFT - the CMS-prescribed wording of this notice has not been installed. Do not deliver this document to a beneficiary."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Notice"
+    },
+    {
+      "kind": "legalText",
+      "id": "abn_required_text",
+      "text": "[Notice text - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "What Medicare may not pay for"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Service or item",
+          "Wound care supplies beyond the plan of care"
+        ],
+        [
+          "Reason Medicare may not pay",
+          "Not reasonable and necessary for the terminal illness"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Estimated cost"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Estimated cost",
+          "$125.50"
+        ],
+        [
+          "Notice required by",
+          "2026-10-09 00:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "options",
+      "title": "Options - check only one box. Selected by the beneficiary.",
+      "items": [
+        {
+          "label": "[Option 1 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]",
+          "selected": false
+        },
+        {
+          "label": "[Option 2 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]",
+          "selected": false
+        },
+        {
+          "label": "[Option 3 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "[Signature note - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]",
+          "muted": true
+        },
+        {
+          "kind": "signature",
+          "role": "Beneficiary signature",
+          "ruledLine": true
+        },
+        {
+          "kind": "paragraph",
+          "muted": true,
+          "text": "[OMB control number and expiry - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "______________________________ - MRN ______________________________ - Advance Beneficiary Notice of Noncoverage (ABN)",
+  "discloseDegradedGlyphs": true,
+  "watermark": {
+    "text": "DRAFT",
+    "tone": "warn"
+  }
+}

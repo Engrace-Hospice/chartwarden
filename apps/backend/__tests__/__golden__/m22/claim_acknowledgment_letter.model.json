@@ -1,0 +1,53 @@
+{
+  "title": "Claim Acknowledgment Letter",
+  "createdAtIso": "2026-10-12T18:45:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Claim Acknowledgment Letter"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-12 18:45 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "acknowledgment_statement",
+      "text": "The payer acknowledged the claim identified below and accepted it for adjudication on the date shown."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Claim"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Claim control number",
+          "CLM-2026-0091"
+        ],
+        [
+          "Payer claim control number",
+          "PAYER-7781234"
+        ],
+        [
+          "Acknowledged",
+          "2026-10-12 18:45 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Claim Acknowledgment Letter",
+  "discloseDegradedGlyphs": true
+}

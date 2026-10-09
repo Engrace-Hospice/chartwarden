@@ -1,0 +1,15 @@
+--- page 1 ---
+Claim Rejection - Appeal Cover Letter
+This cover letter accompanies the record of a claim that was rejected before adjudication. It lists the claim, the stage
+that rejected it and the rejection codes returned, for the appeal or correction file.
+Rejection
+Claim control number
+CLM-2026-0092
+Rejected at
+277CA claim acknowledgment (claim level)
+Rejection codes returned
+•
+A7:51:85
+•
+A3:21:IL
+This document records an administrative event. It is not a determination of coverage, eligibility or payment.

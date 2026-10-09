@@ -124,6 +124,18 @@ import {
   resolvePeriodF2fWindowStart,
   startRecertPeriodInTx,
 } from "./recert-period-activation";
+import {
+  type RenderBuildCtx,
+  type RenderSourcesPort,
+  buildCtiRenderPayload,
+  buildDischargeRenderPayload,
+  buildF2fRenderPayload,
+  buildNorRenderPayload,
+  buildOrOmit,
+  buildRevocationRenderPayload,
+  buildTransferRenderPayload,
+  createSeamRenderSources,
+} from "./render-payloads";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
@@ -310,6 +322,11 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   if (!r) throw new WardenXError("NOT_FOUND", msg, 404);
   return r;
 }
+
+/** Structured, PHI-free report that a typed render payload could not be built (ids and paths only). */
+const logRenderPayload = (event: string, detail: Record<string, unknown>): void => {
+  process.stderr.write(`${JSON.stringify({ event, ...detail })}\n`);
+};
 
 const REF = schema.referrals;
 const ADM = schema.admissions;
@@ -611,6 +628,8 @@ export function createDbAdmissionRouteService(
   f2fSignedNotes?: F2fSignedNotePort,
   // 42 CFR 418.25(a) / 418.26(b) — the physician signer facts (role grants + IDG care-team membership).
   physicianAuthority: PhysicianAuthorityPort = createDbPhysicianAuthority(db),
+  // GAP-033 - the patient / physician facts a signed CoP document carries (M5 / M40 seams, resolved lazily).
+  renderSources: RenderSourcesPort = createSeamRenderSources(),
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -618,6 +637,32 @@ export function createDbAdmissionRouteService(
   // (scripts/check-table-ownership.ts): M5's current-residence read and M1's location reads both run on
   // the caller's org-context `tx` (same RLS scope + snapshot as the admission update they feed).
   const foundationSites = buildFoundationSiteReader();
+
+  /**
+   * GAP-033 - the typed `renderPayload` for an M6 CoP document, built on the signing transaction's own `tx` so it
+   * snapshots exactly what was signed. Returns `{}` (the event is then published id-only and M22 refuses it, loudly)
+   * when a SOURCE did not resolve - ids are logged, never PHI. A SQL error is not swallowed.
+   */
+  async function renderPayloadFor<T>(
+    tx: DbClient,
+    organizationId: string,
+    detail: Record<string, unknown>,
+    build: (ctx: RenderBuildCtx) => Promise<T>,
+  ): Promise<{ renderPayload: T } | Record<string, never>> {
+    const ctx: RenderBuildCtx = {
+      tx,
+      organizationId,
+      sources: renderSources,
+      hospiceName: async (providerEntityId) =>
+        providerEntityId
+          ? foundationSites.providerEntityLegalName(tx, organizationId, providerEntityId)
+          : null,
+    };
+    const payload = await buildOrOmit(logRenderPayload, { organizationId, ...detail }, () =>
+      build(ctx),
+    );
+    return payload === undefined ? {} : { renderPayload: payload };
+  }
 
   /**
    * Uploaded admission-evidence validation over M22's published `DocumentReader` seam (M6 does not list
@@ -1870,6 +1915,15 @@ export function createDbAdmissionRouteService(
                 requiresMedicalDirectorCosign: false,
                 // F-100 — the chart. Already read at the top of this function for the transition guard.
                 patientId: row.patientId,
+                // GAP-033 - a death renders no discharge summary (it fires `.death`, not `.created`).
+                ...(ev.dischargeType === "death" || !ev.dischargeEventId
+                  ? {}
+                  : await renderPayloadFor(
+                      tx,
+                      organizationId,
+                      { dischargeId: ev.dischargeEventId },
+                      (ctx) => buildDischargeRenderPayload(ctx, ev.dischargeEventId as string),
+                    )),
               },
               "m6.discharge.death": {
                 dischargeEventId: ev.dischargeEventId,
@@ -4659,6 +4713,9 @@ export function createDbAdmissionRouteService(
             electionPeriodId: cti.epId,
             signedAt: hospiceMdSignedAt.toISOString(),
             patientId: adm.patientId, // F-100 — the chart
+            ...(await renderPayloadFor(tx as DbClient, organizationId, { ctiId: id }, (ctx) =>
+              buildCtiRenderPayload(ctx, id),
+            )),
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -4675,6 +4732,7 @@ export function createDbAdmissionRouteService(
             status: CTI.status,
             version: CTI.version,
             epId: CTI.electionPeriodId,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
           })
           .from(CTI)
           .where(eq(CTI.id, id))
@@ -4685,6 +4743,10 @@ export function createDbAdmissionRouteService(
           throw conflict(
             `cti ${id} is not awaiting an attending signature (state '${cti.status}')`,
           );
+        // The attending co-signs a certification the hospice physician already signed (R-CTI-03). Without that
+        // signature the filed CTI cannot be built, and the m6.cti.signed render would dead-letter.
+        if (!cti.hospiceMdSignedAt)
+          throw conflict(`cti ${id} cannot be attending-signed before the hospice physician signs`);
         const attendingSignedAt = now();
         const [r] = await tx
           .update(CTI)
@@ -4705,6 +4767,9 @@ export function createDbAdmissionRouteService(
             electionPeriodId: cti.epId,
             signedAt: attendingSignedAt.toISOString(),
             patientId: await patientForElectionPeriod(tx, cti.epId), // F-100 — the chart
+            ...(await renderPayloadFor(tx as DbClient, organizationId, { ctiId: id }, (ctx) =>
+              buildCtiRenderPayload(ctx, id),
+            )),
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -5060,6 +5125,9 @@ export function createDbAdmissionRouteService(
                 attestedAt: attestedAt.toISOString(),
                 // F-100 — the chart M22 files the rendered `f2f` document against.
                 patientId: await patientForAdmission(tx, ep.admissionId),
+                ...(await renderPayloadFor(tx as DbClient, organizationId, { f2fId: id }, (ctx) =>
+                  buildF2fRenderPayload(ctx, id),
+                )),
               },
             },
           );
@@ -5371,6 +5439,12 @@ export function createDbAdmissionRouteService(
             admissionId,
             revocationDate: input.revocationDate,
             patientId: await patientForAdmission(tx, admissionId), // F-100 — the chart
+            ...(await renderPayloadFor(
+              tx as DbClient,
+              organizationId,
+              { revocationId: rev.id },
+              (ctx) => buildRevocationRenderPayload(ctx, rev.id),
+            )),
           },
           organizationId,
           aggregateKind: "revocation_event",
@@ -5449,6 +5523,12 @@ export function createDbAdmissionRouteService(
             effectiveAt: input.effectiveDate,
             // F-192 (#248) — M22's transfer-summary render handshake.
             patientId: xferAdm.patientId,
+            ...(await renderPayloadFor(
+              tx as DbClient,
+              organizationId,
+              { transferId: xfer.id },
+              (ctx) => buildTransferRenderPayload(ctx, xfer.id),
+            )),
           },
           organizationId,
           aggregateKind: "transfer_event",
@@ -5669,6 +5749,12 @@ export function createDbAdmissionRouteService(
             // F-192 (#248) — M22's transfer-summary render handshake; `adm.patientId` was already
             // resolved above for the CTI hospice-physician attribution.
             patientId: adm.patientId,
+            ...(await renderPayloadFor(
+              tx as DbClient,
+              organizationId,
+              { transferId: xfer.id },
+              (ctx) => buildTransferRenderPayload(ctx, xfer.id),
+            )),
           },
           organizationId,
           aggregateKind: "transfer_event",
@@ -5808,6 +5894,12 @@ export function createDbAdmissionRouteService(
               dischargeDate: input.dischargeDate,
               requiresMedicalDirectorCosign,
               patientId: await patientForAdmission(tx as DbClient, admissionId), // F-100 — the chart
+              ...(await renderPayloadFor(
+                tx as DbClient,
+                organizationId,
+                { dischargeId: de.id },
+                (ctx) => buildDischargeRenderPayload(ctx, de.id),
+              )),
             },
             organizationId,
             aggregateKind: "discharge_event",
@@ -5987,6 +6079,12 @@ export function createDbAdmissionRouteService(
               patientId: await patientForAdmission(tx, cur.admissionId),
               dischargeDate: cur.effectiveAt,
               reason: "death",
+              ...(await renderPayloadFor(
+                tx as DbClient,
+                organizationId,
+                { dischargeId: id },
+                (ctx) => buildDischargeRenderPayload(ctx, id),
+              )),
               // F-227 — everything M16's D18 gate-release (`decideCosignReceipt`) correlates on.
               sourceProposalId: cur.sourceProposalId ?? undefined,
               medicalDirectorMembershipId: actorUserId,
@@ -6048,6 +6146,9 @@ export function createDbAdmissionRouteService(
             patientId: await patientForAdmission(tx, cur.admissionId),
             dischargeDate: cur.effectiveAt,
             reason: "for_cause",
+            ...(await renderPayloadFor(tx as DbClient, organizationId, { dischargeId: id }, (ctx) =>
+              buildDischargeRenderPayload(ctx, id),
+            )),
           },
           organizationId,
           aggregateKind: "discharge_event",
@@ -6315,6 +6416,9 @@ export function createDbAdmissionRouteService(
               acknowledgedAt: acknowledgedAt.toISOString(),
               // F-100 — the chart. Already in hand: the NOR row was inserted with it two statements up.
               patientId: adm.patientId,
+              ...(await renderPayloadFor(tx as DbClient, organizationId, { norId: nor.id }, (ctx) =>
+                buildNorRenderPayload(ctx, nor.id),
+              )),
             },
           },
         );

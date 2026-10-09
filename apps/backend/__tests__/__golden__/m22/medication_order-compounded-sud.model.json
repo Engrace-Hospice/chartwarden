@@ -1,0 +1,271 @@
+{
+  "title": "Medication Order",
+  "createdAtIso": "2026-09-30T14:05:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Medication Order",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-30 14:05 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "banner",
+      "tone": "danger",
+      "text": "42 CFR Part 2: this record is protected by federal confidentiality rules. Federal rules prohibit further disclosure of this record without the specific written consent of the person it pertains to, or as otherwise permitted by 42 CFR Part 2. A general authorization for the release of medical or other information is not sufficient for this purpose."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Medication"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Drug",
+          "Morphine sulfate oral solution"
+        ],
+        [
+          "Strength",
+          "20 mg/mL"
+        ],
+        [
+          "Dose form",
+          "solution"
+        ],
+        [
+          "Route",
+          "oral"
+        ],
+        [
+          "Class",
+          "Compounded"
+        ],
+        [
+          "Received as",
+          "Written order"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Directions"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Dose",
+          "5 mg"
+        ],
+        [
+          "Route",
+          "oral"
+        ],
+        [
+          "Frequency",
+          "q4h"
+        ],
+        [
+          "Duration",
+          "30 days"
+        ],
+        [
+          "As needed (PRN)",
+          "Yes - dyspnea"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Directions as written"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Give 5 mg by mouth every 4 hours as needed for shortness of breath."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Dispense"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Quantity",
+          "30 mL"
+        ],
+        [
+          "Days supply",
+          "30"
+        ],
+        [
+          "Refills authorized",
+          "0"
+        ],
+        [
+          "Dispense as written",
+          "No"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Compounded formulation"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Haloperidol, lorazepam and diphenhydramine gel for topical use."
+    },
+    {
+      "kind": "table",
+      "columns": [
+        {
+          "header": "Component",
+          "weight": 3
+        },
+        {
+          "header": "Strength",
+          "weight": 2
+        },
+        {
+          "header": "Quantity ratio",
+          "weight": 2
+        }
+      ],
+      "rows": [
+        [
+          "Haloperidol",
+          "2 mg/mL",
+          "1:1"
+        ],
+        [
+          "Lorazepam",
+          "2 mg/mL",
+          "1:1"
+        ]
+      ],
+      "emptyText": "No components recorded."
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "This formulation contains a controlled substance."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Indication"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Dyspnea at rest"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Clinical justification"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Opioid-naive patient with refractory dyspnea; low starting dose."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Hospice coverage"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.24(c)(6)]"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Determination",
+          "Covered - related to the terminal illness"
+        ]
+      ]
+    },
+    {
+      "kind": "banner",
+      "tone": "warn",
+      "text": "A potential allergy match was reviewed and the prescriber documented a reason for proceeding."
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Reason documented",
+          "Tolerated this drug class previously without reaction."
+        ],
+        [
+          "Acknowledged",
+          "2026-09-30 13:50 UTC"
+        ],
+        [
+          "Matched allergy classes",
+          "benzodiazepine"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Prescriber"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Prescribing physician",
+          "Dr. Imani Okafor, MD (NPI 1234567893)"
+        ]
+      ]
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Prescriber",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "order_authorization",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "credentials": "MD",
+          "npi": "1234567893"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Medication Order",
+  "discloseDegradedGlyphs": true
+}

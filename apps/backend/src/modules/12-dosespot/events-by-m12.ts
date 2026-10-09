@@ -176,6 +176,9 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       dosespotPrescriptionId: id,
       transmittedAt: isoInstant,
       dispensingPharmacyMdmId: Type.Optional(Type.Union([id, Type.Null()])),
+      // GAP-033 - the typed medication-order payload (with its `transmission` block) the producer builds, so the
+      // appended M22 version is the whole order plus the transmission fact, not a bare confirmation.
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     declaredConsumers: ["m22"],
     seamConsumers: ["m33"],
