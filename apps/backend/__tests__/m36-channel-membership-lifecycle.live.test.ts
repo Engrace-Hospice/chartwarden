@@ -20,7 +20,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
-import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
+import {
+  createDrizzleCareTeamStore,
+  createDrizzlePatientReaderStore,
+} from "../src/modules/05-patient/seams/drizzle-stores";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
   createDbMessagingProvider,
@@ -42,6 +45,8 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
   let orgA: string;
   let orgB: string;
   let patientA: string;
+  let patientConcurrent: string;
+  let patientB: string;
   let rn: string;
   let msw: string;
   let manual: string;
@@ -149,6 +154,20 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
         [orgA],
       )
     ).rows[0].id as string;
+    patientConcurrent = (
+      await admin.query(
+        `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+         VALUES ($1,'MRN-G104-C','Concurrent','Patient','1990-01-01','F','active') RETURNING id`,
+        [orgA],
+      )
+    ).rows[0].id as string;
+    patientB = (
+      await admin.query(
+        `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+         VALUES ($1,'MRN-G104-B','Foreign','Patient','1990-01-01','F','active') RETURNING id`,
+        [orgB],
+      )
+    ).rows[0].id as string;
     rn = await seedUser("rn");
     msw = await seedUser("msw");
     manual = await seedUser("manual");
@@ -163,12 +182,18 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     concurrentB = await seedUser("concurrent-b");
     await assign(rn, "primary_rn");
     await assign(msw, "case_manager_msw");
+    await admin.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,'aide',CURRENT_DATE)`,
+      [patientConcurrent, orgA, rn],
+    );
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
     registerPatientSeams({
       db: handle.db,
       careTeam: { store: createDrizzleCareTeamStore(handle.db) },
+      readerStore: createDrizzlePatientReaderStore(handle.db),
     });
     const seeded = await createDbMessagingProvider(handle.db).syncCareTeamChannel(orgA, patientA);
     channelId = seeded.channelId;
@@ -190,9 +215,18 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     const sameTenant = await service.openDm(orgA, rn, dualMember);
     expect(sameTenant.created).toBe(true);
     expect((await service.openDm(orgA, dualMember, rn)).channelId).toBe(sameTenant.channelId);
+    const otherTenant = await service.openDm(orgB, dualMember, foreignOnly);
+
+    const orgAChannels = await service.listChannels(orgA, dualMember);
+    const orgBChannels = await service.listChannels(orgB, dualMember);
+    expect(orgAChannels.map((channel) => channel.channelId)).toContain(sameTenant.channelId);
+    expect(orgAChannels.map((channel) => channel.channelId)).not.toContain(otherTenant.channelId);
+    expect(orgBChannels.map((channel) => channel.channelId)).toContain(otherTenant.channelId);
+    expect(orgBChannels.map((channel) => channel.channelId)).not.toContain(sameTenant.channelId);
 
     await expect(service.openDm(orgA, rn, suspended)).rejects.toMatchObject({ statusCode: 404 });
     await expect(service.openDm(orgA, rn, foreignOnly)).rejects.toMatchObject({ statusCode: 404 });
+    expect(await service.listChannels(orgA, suspended)).toEqual([]);
     expect(await service.canViewChannel(orgB, foreignOnly, sameTenant.channelId)).toBe(false);
 
     for (const ineligibleUserId of [suspended, foreignOnly]) {
@@ -238,9 +272,40 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect(count.rows[0].count).toBe(1);
   });
 
+  it("opens patient care-team channels idempotently and collapses concurrent creation", async () => {
+    const provider = createDbMessagingProvider(handle.db);
+    const service = createDbMessagingRouteService(handle.db, {
+      syncCareTeamChannel: (organizationId, patientId) =>
+        provider.syncCareTeamChannel(organizationId, patientId),
+    });
+    const existing = await service.openCareTeamChannel(orgA, rn, patientA);
+    expect(existing).toMatchObject({ channelId, patientId: patientA, archived: false });
+
+    const concurrent = await Promise.all(
+      Array.from({ length: 8 }, () => service.openCareTeamChannel(orgA, rn, patientConcurrent)),
+    );
+    expect(new Set(concurrent.map((result) => result.channelId)).size).toBe(1);
+    const count = await admin.query(
+      `SELECT count(*)::int AS count FROM channel
+       WHERE organization_id=$1 AND channel_kind='care_team' AND subject_id=$2`,
+      [orgA, patientConcurrent],
+    );
+    expect(count.rows[0].count).toBe(1);
+
+    await expect(service.openCareTeamChannel(orgA, rn, patientB)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(service.openCareTeamChannel(orgA, suspended, patientA)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
   it("an unassigned clinician is denied immediately (no portal activity), the consumer then soft-removes them", async () => {
     const service = createDbMessagingRouteService(handle.db);
     expect(await service.canViewChannel(orgA, msw, channelId)).toBe(true);
+    expect((await service.listChannels(orgA, msw)).map((channel) => channel.channelId)).toContain(
+      channelId,
+    );
 
     await admin.query(
       `UPDATE patient_assignment SET unassigned_at = CURRENT_DATE
@@ -249,6 +314,17 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     );
     // pull: the visibility predicate consults the live roster even before the outbox consumer has run
     expect(await service.canViewChannel(orgA, msw, channelId)).toBe(false);
+    const provider = createDbMessagingProvider(handle.db);
+    const openingService = createDbMessagingRouteService(handle.db, {
+      syncCareTeamChannel: (organizationId, patientId) =>
+        provider.syncCareTeamChannel(organizationId, patientId),
+    });
+    await expect(openingService.openCareTeamChannel(orgA, msw, patientA)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(
+      (await service.listChannels(orgA, msw)).map((channel) => channel.channelId),
+    ).not.toContain(channelId);
     expect(await service.canViewChannel(orgA, rn, channelId)).toBe(true);
 
     await run("m5.patient.assignment_ended", orgA, { patientId: patientA });
@@ -260,6 +336,9 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     );
     expect(removed.rows[0].removed_at).not.toBeNull();
     expect(await service.canViewChannel(orgA, manual, channelId)).toBe(true);
+    expect(
+      (await service.listChannels(orgA, manual)).map((channel) => channel.channelId),
+    ).toContain(channelId);
   });
 
   it("a cross-tenant event and a cross-tenant reader never touch or see org A's channel", async () => {
@@ -273,6 +352,11 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
 
   it("discharge archives the channel: sends 410, history + members retained, no new members", async () => {
     const provider = createDbMessagingProvider(handle.db, { kek: KEK });
+    const service = createDbMessagingRouteService(handle.db, {
+      kek: KEK,
+      syncCareTeamChannel: (organizationId, patientId) =>
+        provider.syncCareTeamChannel(organizationId, patientId),
+    });
     await provider.sendMessage(orgA, {
       channelId,
       authorUserId: rn,
@@ -281,6 +365,14 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     });
     await run("m6.admission.discharged", orgA, { admissionId: ADMISSION });
     expect((await channelRow()).is_archived).toBe(true);
+    const openArchived = await service.openCareTeamChannel(orgA, rn, patientA);
+    expect(openArchived).toMatchObject({ channelId, archived: true });
+    expect(
+      (await service.listChannels(orgA, rn)).find((channel) => channel.channelId === channelId),
+    ).toMatchObject({ archivedAt: expect.any(String) });
+    expect(
+      (await service.listChannels(orgA, manual)).map((channel) => channel.channelId),
+    ).toContain(channelId);
     await expect(
       provider.sendMessage(orgA, { channelId, authorUserId: rn, body: "late", bodyKind: "plain" }),
     ).rejects.toMatchObject({ code: "CHANNEL_ARCHIVED" });

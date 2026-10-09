@@ -136,6 +136,7 @@ export type {
   DeliveryEndpointView,
   DeliveryEndpointInput,
   DmEligibleStaffMember,
+  CareTeamConversation,
   AlertInboxItem,
 } from "./interfaces/route-service";
 export {

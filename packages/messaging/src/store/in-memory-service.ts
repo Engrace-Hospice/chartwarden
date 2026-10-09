@@ -137,6 +137,12 @@ export interface InMemoryMessagingSeed {
     orgId: string;
     status?: "active" | "suspended" | "revoked";
   })[];
+  /** Patient ids known to the tenant and the current M5-derived clinical roster. */
+  readonly careTeamPatients?: readonly {
+    orgId: string;
+    patientId: string;
+    memberUserIds: readonly string[];
+  }[];
   readonly channels?: readonly {
     channelId: string;
     orgId: string;
@@ -181,6 +187,12 @@ export function createInMemoryMessagingService(
   const inbox = new Map<string, AlertInboxItem[]>(); // `${orgId}:${userId}` -> items
   const eligibleStaff = new Map(
     (options.seed?.eligibleStaff ?? []).map((staff) => [`${staff.orgId}:${staff.userId}`, staff]),
+  );
+  const careTeamPatients = new Map(
+    (options.seed?.careTeamPatients ?? []).map((patient) => [
+      `${patient.orgId}:${patient.patientId}`,
+      new Set(patient.memberUserIds),
+    ]),
   );
 
   const assertEligibleStaff = (orgId: string, userId: string): void => {
@@ -257,7 +269,16 @@ export function createInMemoryMessagingService(
     async listChannels(orgId, userId) {
       const out: ChannelSummary[] = [];
       for (const ch of channels.values()) {
-        if (ch.orgId === orgId && ch.members.has(userId)) out.push(toSummary(orgId, userId, ch));
+        const member = ch.members.get(userId);
+        if (ch.orgId !== orgId || !member) continue;
+        if (
+          ch.kind === "care_team" &&
+          member.source === "auto" &&
+          (!ch.subjectId || !careTeamPatients.get(`${orgId}:${ch.subjectId}`)?.has(userId))
+        ) {
+          continue;
+        }
+        out.push(toSummary(orgId, userId, ch));
       }
       return out;
     },
@@ -400,6 +421,58 @@ export function createInMemoryMessagingService(
       return { channelId, created: true };
     },
 
+    async openCareTeamChannel(orgId, userId, patientId) {
+      assertEligibleStaff(orgId, userId);
+      const roster = careTeamPatients.get(`${orgId}:${patientId}`);
+      const existing = [...channels.values()].find(
+        (channel) =>
+          channel.orgId === orgId &&
+          channel.kind === "care_team" &&
+          channel.subjectId === patientId,
+      );
+      const hasManualAccess = existing?.members.get(userId)?.source === "manual";
+      if (!roster || (!roster.has(userId) && !hasManualAccess)) {
+        throw new NotFoundError("care team conversation", patientId);
+      }
+
+      let channel = existing;
+      if (!channel) {
+        const channelId = id("ch");
+        channel = {
+          channelId,
+          orgId,
+          kind: "care_team",
+          title: "Care team",
+          subjectId: patientId,
+          archivedAt: null,
+          members: new Map(),
+        };
+        channels.set(channelId, channel);
+      }
+      if (!channel.archivedAt) {
+        for (const memberUserId of roster) {
+          if (!channel.members.has(memberUserId)) {
+            channel.members.set(memberUserId, { role: "member", source: "auto" });
+          }
+        }
+      }
+      for (const [memberUserId, member] of channel.members) {
+        if (member.source === "auto" && !roster.has(memberUserId)) {
+          channel.members.delete(memberUserId);
+        }
+      }
+      const effectiveMember = channel.members.get(userId);
+      if (!effectiveMember || (effectiveMember.source === "auto" && !roster.has(userId))) {
+        throw new NotFoundError("care team conversation", patientId);
+      }
+      return {
+        channelId: channel.channelId,
+        kind: "care_team" as const,
+        patientId,
+        archived: channel.archivedAt !== null,
+      };
+    },
+
     async canManageMembers(orgId, actor, channelId) {
       const ch = channels.get(channelId);
       if (!ch || ch.orgId !== orgId) return false;
@@ -465,11 +538,14 @@ export function createInMemoryMessagingService(
       if (!staff || (staff.status ?? "active") !== "active") return false;
       const ch = channels.get(channelId);
       if (!ch || ch.orgId !== orgId) return false;
-      // §4.5: the slice resolves visibility by the channel-member check (the "otherwise" branch);
-      // production injects the caseload/bereavement provider seams for care_team / bereavement.
       // announcement is org-wide broadcast — every authenticated org member may read it.
       if (ch.kind === "announcement") return true;
-      return ch.members.has(userId);
+      const member = ch.members.get(userId);
+      if (!member) return false;
+      if (ch.kind === "care_team" && member.source === "auto") {
+        return !!ch.subjectId && !!careTeamPatients.get(`${orgId}:${ch.subjectId}`)?.has(userId);
+      }
+      return true;
     },
 
     async getPreferences(orgId, userId) {

@@ -146,6 +146,17 @@ export const PatientListResponseSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
+/** Minimum-necessary patient identity projection for M36's care-team conversation picker. */
+export const MessagingPatientSearchResponseSchema = Type.Object({
+  patients: Type.Array(
+    Type.Object({
+      patientId: Type.String(),
+      displayName: Type.String(),
+      medicalRecordNumber: Type.String(),
+    }),
+  ),
+});
+
 // GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.
 // `total` is the count of all patients in the org; `byStatus` is the count per lifecycle status
 // (prospective / active / on_hold / discharged / deceased). Cross-module KPIs the census frame also

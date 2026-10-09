@@ -1543,6 +1543,8 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | DELETE | `/api/v1/messaging/messages/:id` | session | `messaging.send` (+ author) | soft-delete; tombstone |
 | POST | `/api/v1/messaging/messages/:id/read` | session | `messaging.read` | mark read (single or up-through-id) |
 | POST | `/api/v1/messaging/dm` | session | `messaging.dm` | open/find a DM channel with another user |
+| GET | `/api/v1/messaging/dm/staff` | session | `messaging.dm` | minimum-necessary active staff directory for a DM picker |
+| POST | `/api/v1/messaging/patients/:patientId/care-team-channel` | session | `messaging.read` (+ effective clinical access) | open/provision the patient's existing care-team channel through M5/M36 seams |
 | POST | `/api/v1/messaging/channels/:id/members` | session | `messaging.manage_members` | add manual member (admin override on auto channels — audited) |
 | DELETE | `/api/v1/messaging/channels/:id/members/:userId` | session | `messaging.manage_members` | same |
 | POST | `/api/v1/messaging/announce` | session | `messaging.announce` | post to tenant `announcement` channel (org_admin) |

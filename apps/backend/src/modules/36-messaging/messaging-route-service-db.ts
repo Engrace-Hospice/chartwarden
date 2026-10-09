@@ -42,6 +42,7 @@ import type {
   DeliveryEndpointChannel,
   DeliveryEndpointVerification,
   MessageBodyKind,
+  MessagingProvider,
   MessagingRouteService,
   NotificationChannel,
   NotificationPreferencesView,
@@ -94,6 +95,58 @@ const MEMBERSHIP = schema.memberships;
 const USER = schema.users;
 const MEMBERSHIP_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
+
+interface EffectiveChannelAccessCandidate {
+  readonly kind: ChannelKind;
+  readonly subjectId: string | null;
+  readonly memberSource: ChannelMemberSource | null;
+}
+
+/**
+ * Evaluate the part of channel visibility that cannot safely be inferred from persisted M36
+ * membership alone. Automatic care-team membership mirrors M5 and can lag its source of truth, so
+ * it is revalidated through the opaque CareTeamProvider seam on every effective-access decision.
+ * Manual membership is an explicit audited override and remains authoritative by domain rule.
+ */
+async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
+  orgId: string,
+  userId: string,
+  candidates: readonly T[],
+): Promise<T[]> {
+  const patientIds = [
+    ...new Set(
+      candidates.flatMap((candidate) =>
+        candidate.kind === "care_team" && candidate.memberSource === "auto" && candidate.subjectId
+          ? [candidate.subjectId]
+          : [],
+      ),
+    ),
+  ];
+  const currentCareTeamPatients = new Set<string>();
+
+  // A sidebar is bounded by the user's memberships, but do not turn a large caseload into an
+  // unbounded burst of seam/database reads. The seam deliberately runs outside M36 transactions.
+  let nextPatient = 0;
+  const workers = Array.from({ length: Math.min(8, patientIds.length) }, async () => {
+    while (nextPatient < patientIds.length) {
+      const patientId = patientIds[nextPatient++];
+      if (!patientId) continue;
+      const roster = await getSeam("CareTeamProvider").careTeamMembers({
+        organizationId: orgId,
+        patientId,
+      });
+      if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
+    }
+  });
+  await Promise.all(workers);
+
+  return candidates.filter((candidate) => {
+    if (candidate.kind === "announcement") return true;
+    if (!candidate.memberSource) return false;
+    if (candidate.kind !== "care_team" || candidate.memberSource !== "auto") return true;
+    return !!candidate.subjectId && currentCareTeamPatients.has(candidate.subjectId);
+  });
+}
 
 function dmParticipantKey(userId: string, peerUserId: string): string {
   return [userId, peerUserId].sort().join(":");
@@ -335,6 +388,13 @@ export function createDbMessagingRouteService(
     kek?: Buffer;
     cipher?: MessageBodyCipher;
     resolvePatientLocationIds?: PatientLocationResolver;
+    /** Injectable seam adapters keep the authorization path deterministic in slice tests. */
+    resolvePatientId?: (organizationId: string, patientId: string) => Promise<string | null>;
+    careTeamMembers?: (organizationId: string, patientId: string) => Promise<readonly string[]>;
+    syncCareTeamChannel?: (
+      organizationId: string,
+      patientId: string,
+    ) => Promise<{ channelId: string; membershipChanged: boolean }>;
     /**
      * GAP-166 — delivers the freshly issued sms/email verification code to the endpoint itself. There is no
      * out-of-band dispatcher yet, so by default NOTHING is sent and the endpoint simply stays `pending`
@@ -352,16 +412,33 @@ export function createDbMessagingRouteService(
   const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
   const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
+  const resolvePatientId =
+    opts.resolvePatientId ??
+    (async (organizationId: string, patientId: string) =>
+      (await getSeam("PatientReader").findById({ organizationId, id: patientId }))?.id ?? null);
+  const careTeamMembers =
+    opts.careTeamMembers ??
+    ((organizationId: string, patientId: string) =>
+      getSeam("CareTeamProvider").careTeamMembers({ organizationId, patientId }));
+  const syncCareTeamChannel =
+    opts.syncCareTeamChannel ??
+    ((organizationId: string, patientId: string) =>
+      (getSeam("MessagingProvider") as MessagingProvider).syncCareTeamChannel(
+        organizationId,
+        patientId,
+      ));
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
-      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      const candidates = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        if (!(await isActiveMessagingUser(tx, orgId, userId))) return [];
         const rows = await tx
           .select({
             channelId: CH.id,
             kind: CH.channelKind,
             title: CH.title,
             subjectId: CH.subjectId,
+            memberSource: CM.source,
             isArchived: CH.isArchived,
             archivesAt: CH.archivesAt,
             updatedAt: CH.updatedAt,
@@ -369,8 +446,19 @@ export function createDbMessagingRouteService(
           .from(CM)
           .innerJoin(CH, eq(CH.id, CM.channelId))
           .where(and(eq(CM.organizationId, orgId), eq(CM.userId, userId), isNull(CM.removedAt)));
+        return rows.map((row) => ({
+          ...row,
+          kind: row.kind as ChannelKind,
+          memberSource: row.memberSource as ChannelMemberSource,
+        }));
+      });
+      const rows = await effectivelyVisibleChannels(orgId, userId, candidates);
+      if (rows.length === 0) return [];
+
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         // Unread = delivered-but-unread receipts for this user, grouped by channel (the SD-028
-        // partial index `(user_id, status) WHERE status='delivered'` is exactly this path).
+        // partial index `(user_id, status) WHERE status='delivered'` is exactly this path). Scope the
+        // aggregation to the already-authorized set so stale channels contribute no metadata at all.
         const unreadRows = await tx
           .select({
             channelId: MSG.channelId,
@@ -379,14 +467,22 @@ export function createDbMessagingRouteService(
           .from(MR)
           .innerJoin(MSG, eq(MSG.id, MR.messageId))
           .where(
-            and(eq(MR.organizationId, orgId), eq(MR.userId, userId), eq(MR.status, "delivered")),
+            and(
+              eq(MR.organizationId, orgId),
+              eq(MR.userId, userId),
+              eq(MR.status, "delivered"),
+              inArray(
+                MSG.channelId,
+                rows.map((row) => row.channelId),
+              ),
+            ),
           )
           .groupBy(MSG.channelId);
         const unread = new Map(unreadRows.map((r) => [r.channelId, Number(r.count)]));
         return rows.map(
           (r): ChannelSummary => ({
             channelId: r.channelId,
-            kind: r.kind as ChannelKind,
+            kind: r.kind,
             title: r.title,
             subjectId: r.subjectId,
             archivedAt: r.isArchived ? (iso(r.archivesAt) ?? iso(r.updatedAt)) : null,
@@ -503,7 +599,7 @@ export function createDbMessagingRouteService(
     },
 
     async canViewChannel(orgId, userId, channelId): Promise<boolean> {
-      const access = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      const candidate = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
         const c = await tx
           .select({ kind: CH.channelKind, subjectId: CH.subjectId })
@@ -513,7 +609,13 @@ export function createDbMessagingRouteService(
         if (!c[0]) return null; // unknown / cross-org → no existence oracle
         // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
         // cross-module integration — until then the channel-member check is the visibility rule.
-        if (c[0].kind === "announcement") return { visible: true as const };
+        if (c[0].kind === "announcement") {
+          return {
+            kind: c[0].kind as ChannelKind,
+            subjectId: c[0].subjectId,
+            memberSource: null,
+          };
+        }
         const m = await tx
           .select({ source: CM.source })
           .from(CM)
@@ -526,40 +628,14 @@ export function createDbMessagingRouteService(
             ),
           )
           .limit(1);
-        if (!m[0]) return { visible: false as const };
-        const patientId = c[0].subjectId;
-        if (c[0].kind !== "care_team" || !patientId) return { visible: true as const };
-        return m[0].source === "auto"
-          ? { visible: true as const, rosterPatientId: patientId, consentPatientId: patientId }
-          : { visible: true as const, consentPatientId: patientId };
+        return {
+          kind: c[0].kind as ChannelKind,
+          subjectId: c[0].subjectId,
+          memberSource: (m[0]?.source as ChannelMemberSource | undefined) ?? null,
+        };
       });
-      if (!access?.visible) return false;
-      // GAP-065 / spec §7.13 — the PULL half of the M39 cascade: a care_team channel about a SUD-flagged
-      // patient is visible only to members M39's Part 2 release covers, re-asked on every read (so a
-      // revocation closes access at once). Manual admin-override members are gated too. Fail-closed: an
-      // unreadable flag or an unanswerable evaluator denies.
-      if ("consentPatientId" in access && access.consentPatientId) {
-        try {
-          const permitted = await part2Gate.allowedUserIds({
-            organizationId: orgId,
-            patientId: access.consentPatientId,
-            userIds: [userId],
-          });
-          if (!permitted.has(userId)) return false;
-        } catch {
-          return false;
-        }
-      }
-      if (!("rosterPatientId" in access) || !access.rosterPatientId) return true;
-      // GAP-104 — caseload_membership (§4.5, care_team): an AUTO member must also be on the patient's
-      // CURRENT care team. The roster read stays outside the tx above (the seam opens its own connection),
-      // and it revokes access the instant a clinician is unassigned, independent of the sync consumer's lag.
-      // A `manual` (admin-override) member is authorized by the override itself.
-      const roster = await getSeam("CareTeamProvider").careTeamMembers({
-        organizationId: orgId,
-        patientId: access.rosterPatientId,
-      });
-      return roster.includes(userId);
+      if (!candidate) return false;
+      return (await effectivelyVisibleChannels(orgId, userId, [candidate])).length === 1;
     },
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
@@ -744,6 +820,92 @@ export function createDbMessagingRouteService(
         await ensureDmMember(tx, orgId, channelId, peerUserId, "member");
         return { channelId, created };
       });
+    },
+
+    async openCareTeamChannel(orgId, userId, patientId) {
+      const conceal = (): NotFoundError => new NotFoundError("care team conversation", patientId);
+
+      const actorActive = await withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
+        isActiveMessagingUser(tx, orgId, userId),
+      );
+      if (!actorActive) throw conceal();
+
+      // PatientReader is M5's opaque tenant-scoped identity seam. Checking it before synchronization
+      // prevents an arbitrary/foreign UUID from materializing an empty M36 channel.
+      const resolvedPatientId = await resolvePatientId(orgId, patientId);
+      if (!resolvedPatientId) throw conceal();
+      const roster = new Set(await careTeamMembers(orgId, resolvedPatientId));
+      const preflight = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const rows = await tx
+          .select({ source: CM.source })
+          .from(CH)
+          .innerJoin(
+            CM,
+            and(
+              eq(CM.organizationId, CH.organizationId),
+              eq(CM.channelId, CH.id),
+              eq(CM.userId, userId),
+              isNull(CM.removedAt),
+            ),
+          )
+          .where(
+            and(
+              eq(CH.organizationId, orgId),
+              eq(CH.channelKind, "care_team"),
+              eq(CH.subjectId, resolvedPatientId),
+            ),
+          )
+          .limit(1);
+        return roster.has(userId) || rows[0]?.source === "manual";
+      });
+      if (!preflight) throw conceal();
+
+      // The provider owns reconciliation and deliberately resolves M5 before its write transaction.
+      // Do not wrap this seam call in another pooled transaction.
+      const synchronized = await syncCareTeamChannel(orgId, resolvedPatientId);
+
+      // Authorization can change while reconciliation is running. Re-read M5 and the resulting M36
+      // membership so a removed clinician cannot use a stale preflight decision to enter the thread.
+      const currentRoster = new Set(await careTeamMembers(orgId, resolvedPatientId));
+      const result = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
+        const rows = await tx
+          .select({
+            channelId: CH.id,
+            isArchived: CH.isArchived,
+            source: CM.source,
+          })
+          .from(CH)
+          .innerJoin(
+            CM,
+            and(
+              eq(CM.organizationId, CH.organizationId),
+              eq(CM.channelId, CH.id),
+              eq(CM.userId, userId),
+              isNull(CM.removedAt),
+            ),
+          )
+          .where(
+            and(
+              eq(CH.organizationId, orgId),
+              eq(CH.id, synchronized.channelId),
+              eq(CH.channelKind, "care_team"),
+              eq(CH.subjectId, resolvedPatientId),
+            ),
+          )
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        if (row.source === "auto" && !currentRoster.has(userId)) return null;
+        return row;
+      });
+      if (!result) throw conceal();
+      return {
+        channelId: result.channelId,
+        kind: "care_team" as const,
+        patientId: resolvedPatientId,
+        archived: result.isArchived,
+      };
     },
 
     async canManageMembers(orgId, actor, channelId): Promise<boolean> {

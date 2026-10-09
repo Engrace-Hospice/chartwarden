@@ -15,6 +15,7 @@ import { CHANNEL_KINDS } from "@wardenx/messaging";
 import type {
   AlertInboxItem as ServiceAlertInboxItem,
   AlertRuleView as ServiceAlertRuleView,
+  CareTeamConversation as ServiceCareTeamConversation,
   ChannelDetail as ServiceChannelDetail,
   ChannelMemberView as ServiceChannelMemberView,
   ChannelSummary as ServiceChannelSummary,
@@ -56,6 +57,7 @@ const ResolverSchema = Type.Union([
 export const ChannelParamsSchema = Type.Object({ id: Id });
 export const MessageParamsSchema = Type.Object({ id: Id });
 export const MemberParamsSchema = Type.Object({ id: Id, userId: Id });
+export const PatientConversationParamsSchema = Type.Object({ patientId: Id });
 
 export const ListMessagesQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String()),
@@ -245,6 +247,12 @@ export const OpenDmResponseSchema = Type.Object({
   channelId: Type.String(),
   created: Type.Boolean(),
 });
+export const OpenCareTeamConversationResponseSchema = Type.Object({
+  channelId: Type.String(),
+  kind: Type.Literal("care_team"),
+  patientId: Type.String(),
+  archived: Type.Boolean(),
+});
 export const DmStaffSearchResponseSchema = Type.Object({
   staff: Type.Array(
     Type.Object({
@@ -317,6 +325,10 @@ type Conforms<T extends V, V> = T;
 type _ChannelSummary = Conforms<Static<typeof ChannelSummaryResponseSchema>, ServiceChannelSummary>;
 type _ChannelMember = Conforms<Static<typeof ChannelMemberViewSchema>, ServiceChannelMemberView>;
 type _ChannelDetail = Conforms<Static<typeof ChannelDetailResponseSchema>, ServiceChannelDetail>;
+type _CareTeamConversation = Conforms<
+  Static<typeof OpenCareTeamConversationResponseSchema>,
+  ServiceCareTeamConversation
+>;
 type _ResolvedMessage = Conforms<Static<typeof ResolvedMessageSchema>, ServiceResolvedMessage>;
 type _Prefs = Conforms<
   Static<typeof NotificationPreferencesResponseSchema>,

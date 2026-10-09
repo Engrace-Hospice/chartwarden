@@ -248,6 +248,31 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     },
   );
 
+  // M36 patient picker: same SQL-level tenant/caseload narrowing as the census, but project only
+  // the minimum identity fields needed to disambiguate a conversation target. Search visibility is
+  // not an authorization grant; M36 revalidates clinical access when the channel is opened.
+  app.get(
+    "/api/v1/patients/messaging-search",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "patient", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const query = parse(PatientListQuerySchema, request.query);
+      const result = await service.list(
+        organizationId,
+        { ...query, limit: Math.min(query.limit ?? 25, 25) },
+        await censusScope(request),
+      );
+      const response = {
+        patients: result.items.map((patient) => ({
+          patientId: patient.id,
+          displayName: `${patient.firstName} ${patient.lastName}`.trim(),
+          medicalRecordNumber: patient.mrn,
+        })),
+      };
+      return response;
+    },
+  );
+
   // --- §4.2 census KPI metrics (active count + per-status breakdown; static path beats /:id) ------
   app.get(
     "/api/v1/patients/census-metrics",
