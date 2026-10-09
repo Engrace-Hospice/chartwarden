@@ -518,6 +518,36 @@ describe.skipIf(!DB_URL)("M23 DDE work queue, LIVE Postgres (ADR-0052)", () => {
     });
   });
 
+  describe("the NOE window-watch cron, overdue notices", () => {
+    it("still files an item for a notice already past its window target, even one the breach scan skips", async () => {
+      // The existing candidate scan (`listWindowWatchCandidates`) only returns notices whose target is on or after
+      // today and not yet stamped breached; the DDE scan has no lower bound, so an overdue, already-breached notice
+      // with no item is queued too.
+      const overdueId = await seedNoe({ state: "SUBMITTED", windowTarget: "2026-01-25" });
+      await admin.query("UPDATE noe_record SET window_breached_at='2026-01-26' WHERE id=$1", [
+        overdueId,
+      ]);
+      const deps = {
+        connection: {},
+        db: handle.db as never,
+        now: () => new Date("2026-02-01T12:00:00Z"),
+        outbox: bound("m23") as never,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        noticeWindow: { recordBreach: async () => undefined },
+        alerts: { dispatch: async () => undefined },
+        ddeWatchdog: buildDdeWatchdog({ outbox: bound("m23") as never }),
+      } as unknown as M23WorkerDeps;
+
+      await runNoeWindowWatch(deps);
+
+      const items = await admin.query(
+        "SELECT state, source, deadline_at::text AS d FROM dde_work_item WHERE subject_id=$1",
+        [overdueId],
+      );
+      expect(items.rows).toEqual([{ state: "queued", source: "watchdog", d: "2026-01-25" }]);
+    });
+  });
+
   describe("the NOE window-watch cron", () => {
     it("files one item per at-risk notice, idempotently, and never respawns a cancelled one", async () => {
       const atRisk = await seedNoe({ windowTarget: "2026-02-02" });
