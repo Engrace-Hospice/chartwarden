@@ -25,6 +25,7 @@ export function fakeDb(rowsByTable: Record<string, FakeRows>): { db: DbClient; r
   const thenable = (rows: unknown[]) => {
     const chain: Record<string, unknown> = {
       where: () => chain,
+      innerJoin: () => chain,
       limit: () => chain,
       orderBy: () => chain,
       returning: () => chain,

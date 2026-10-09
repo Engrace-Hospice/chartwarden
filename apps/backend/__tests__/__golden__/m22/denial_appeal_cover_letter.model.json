@@ -1,0 +1,56 @@
+{
+  "title": "Claim Rejection - Appeal Cover Letter",
+  "createdAtIso": "2000-01-01T00:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Claim Rejection - Appeal Cover Letter"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": []
+    },
+    {
+      "kind": "legalText",
+      "id": "cover_statement",
+      "text": "This cover letter accompanies the record of a claim that was rejected before adjudication. It lists the claim, the stage that rejected it and the rejection codes returned, for the appeal or correction file."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Rejection"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Claim control number",
+          "CLM-2026-0092"
+        ],
+        [
+          "Rejected at",
+          "277CA claim acknowledgment (claim level)"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Rejection codes returned"
+    },
+    {
+      "kind": "bullets",
+      "items": [
+        "A7:51:85",
+        "A3:21:IL"
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Claim Rejection - Appeal Cover Letter",
+  "discloseDegradedGlyphs": true
+}

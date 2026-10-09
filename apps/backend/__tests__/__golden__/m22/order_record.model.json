@@ -1,0 +1,105 @@
+{
+  "title": "Order Record",
+  "createdAtIso": "2026-09-30T14:05:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Order Record",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-30 14:05 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Order"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Order type",
+          "Lab"
+        ],
+        [
+          "Priority",
+          "Urgent"
+        ],
+        [
+          "Ordering physician",
+          "Dr. Imani Okafor, MD (NPI 1234567893)"
+        ],
+        [
+          "Received as",
+          "Written order"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Indication"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Rising creatinine on the last visit."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Order details"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Tests",
+          "Creatinine (LOINC 2160-0); Potassium (LOINC 2823-3)"
+        ],
+        [
+          "Fasting required",
+          "No"
+        ],
+        [
+          "Collection instructions",
+          "Draw at the next scheduled visit."
+        ]
+      ]
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Ordering clinician",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "order_authorization",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Order Record",
+  "discloseDegradedGlyphs": true
+}

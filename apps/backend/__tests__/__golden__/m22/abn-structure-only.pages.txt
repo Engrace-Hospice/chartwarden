@@ -1,0 +1,33 @@
+--- page 1 ---
+Advance Beneficiary Notice of Noncoverage (ABN)
+Patient
+______________________________
+Medical record number
+______________________________
+Date of birth
+______________________________
+Document date
+2026-10-09 00:00 UTC
+DRAFT - the CMS-prescribed wording of this notice has not been installed. Do not deliver this
+document to a beneficiary.
+Notice
+[Notice text - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]
+What Medicare may not pay for
+Service or item
+Wound care supplies beyond the plan of care
+Reason Medicare may not pay
+Not reasonable and necessary for the terminal illness
+Estimated cost
+Estimated cost
+$125.50
+Notice required by
+2026-10-09 00:00 UTC
+Options - check only one box. Selected by the beneficiary.
+[Option 1 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]
+[Option 2 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]
+[Option 3 - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]
+[Signature note - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]
+Beneficiary signature
+Signature
+Date
+[OMB control number and expiry - CMS-prescribed CMS-R-131 wording not yet supplied by compliance]

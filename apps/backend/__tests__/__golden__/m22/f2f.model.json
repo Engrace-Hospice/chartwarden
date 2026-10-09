@@ -1,0 +1,106 @@
+{
+  "title": "Face-to-Face Encounter Attestation",
+  "createdAtIso": "2026-09-30T14:05:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Face-to-Face Encounter Attestation",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-30 14:05 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Encounter"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.22(a)(4)]"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Date of encounter",
+          "2026-09-12"
+        ],
+        [
+          "Location / modality",
+          "Patient Home"
+        ],
+        [
+          "Performed by",
+          "Hospice nurse practitioner"
+        ],
+        [
+          "Timing",
+          "Within the 30 calendar days before the benefit period"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Attestation"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.22(b)(4)]"
+    },
+    {
+      "kind": "attestation",
+      "text": "I attest that I had a face-to-face encounter with the patient named above on the date of encounter shown above. The clinical findings of that visit were provided to the certifying physician for use in determining continued eligibility for hospice care.",
+      "checked": true
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Clinical findings and basis of the attestation"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Visited the patient at home; findings: cachexia, dyspnea at rest, PPS 30 percent. Findings were shared with the certifying physician.",
+      "keepWithNext": true
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Clinician who performed the face-to-face encounter",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "attestation",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "credentials": "NP",
+          "npi": "1234567893"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Face-to-Face Encounter Attestation",
+  "discloseDegradedGlyphs": true
+}

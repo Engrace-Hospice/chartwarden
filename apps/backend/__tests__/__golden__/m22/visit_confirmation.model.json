@@ -1,0 +1,48 @@
+{
+  "title": "Visit Confirmation Reminder",
+  "createdAtIso": "2026-10-12T15:30:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Visit Confirmation Reminder"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-12 15:30 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "reminder_statement",
+      "text": "This is a reminder that a hospice visit is scheduled to begin at the time shown. If the time does not work, contact the hospice care team as soon as possible so the visit can be rescheduled."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Visit"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Scheduled start",
+          "2026-10-12 15:30 UTC"
+        ],
+        [
+          "Visit reference",
+          "11111111"
+        ],
+        [
+          "Reminder sent by",
+          "Text message"
+        ]
+      ]
+    }
+  ],
+  "runningHeader": "Visit Confirmation Reminder",
+  "discloseDegradedGlyphs": true
+}

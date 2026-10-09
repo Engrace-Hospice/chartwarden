@@ -1,0 +1,13 @@
+--- page 1 ---
+Denial Resolution Letter
+Document date
+2026-10-20 13:00 UTC
+The denial case identified below has been closed. The closure outcome and date are recorded here for the claim file.
+Resolution
+Closure outcome
+Resolved without appeal
+Resolved
+2026-10-20 13:00 UTC
+Claim reference
+cccccccc
+This document records an administrative event. It is not a determination of coverage, eligibility or payment.

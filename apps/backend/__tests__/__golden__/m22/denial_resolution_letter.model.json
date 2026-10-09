@@ -1,0 +1,53 @@
+{
+  "title": "Denial Resolution Letter",
+  "createdAtIso": "2026-10-20T13:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Denial Resolution Letter"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-20 13:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "resolution_statement",
+      "text": "The denial case identified below has been closed. The closure outcome and date are recorded here for the claim file."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Resolution"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Closure outcome",
+          "Resolved without appeal"
+        ],
+        [
+          "Resolved",
+          "2026-10-20 13:00 UTC"
+        ],
+        [
+          "Claim reference",
+          "cccccccc"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Denial Resolution Letter",
+  "discloseDegradedGlyphs": true
+}

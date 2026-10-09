@@ -100,10 +100,13 @@ function instantsIn(obj: Readonly<Record<string, unknown>>): string[] {
 export function buildGenericPayloadDoc(defaultTitle: string): (payload: unknown) => DocModel {
   return (payload) => {
     const p = isRec(payload) ? payload : {};
-    const title = str(p.title) ?? defaultTitle;
+    // The VISIBLE heading may use a payload title; the PDF /Title and the footer label on every page are the
+    // template's constant, PHI-free default (a payload title can carry a patient's name).
+    const heading = str(p.title) ?? defaultTitle;
+    const title = defaultTitle;
     const body = blocksOf(p, 0);
     const blocks: Block[] = [
-      { kind: "title", text: title, subtitle: `Reference ${shortId(p.aggregateId)}` },
+      { kind: "title", text: heading, subtitle: `Reference ${shortId(p.aggregateId)}` },
       ...body.slice(0, MAX_BLOCKS),
     ];
     if (body.length > MAX_BLOCKS)

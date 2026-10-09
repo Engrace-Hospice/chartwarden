@@ -63,6 +63,8 @@ export const GATES = [
   "arch:abac-composed",
   "arch:request-header-auth",
   "arch:error-envelope",
+  // GAP-033 - every renderer template has a bespoke form or a reasoned allow-list entry; the two registries agree.
+  "arch:pdf-templates",
   "arch:context-attributes",
   "arch:route-reachability",
   "arch:live-suites",

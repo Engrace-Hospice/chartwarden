@@ -1,0 +1,26 @@
+--- page 1 ---
+Transfer Summary
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-10-07 00:00 UTC
+Transfer
+Direction
+Transfer out to another hospice
+Effective date
+2026-10-07
+Receiving hospice
+Lakeside Hospice
+Hospice CCN
+012345
+Receiving care setting
+Home
+Benefit period at transfer
+Period 2
+Narrative
+Patient moved to another county.

@@ -526,6 +526,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
     // real decider (`m13.reconciliation-recertification-signed`) that opens the recertification
@@ -685,6 +689,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -830,6 +838,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     declaredConsumers: ["m22", "m23", "m26"],
     isOutboxOnly: true,
@@ -855,6 +867,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  `admission-route-service-db.ts`), which already resolve the admission's patient in the same
        *  transaction. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     declaredConsumers: ["m13", "m22", "m23", "m26"],
     isOutboxOnly: true,
@@ -873,6 +889,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
       source: applierSource,
     }),
     // F-129 (#248) — m14 dropped: redundant with `m6.admission.discharged`, M14's own §4.5-table
@@ -940,6 +960,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // The renderer files the document against the chart and renders the same facts `m6.discharge.created` carried.
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
       dischargeDate: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
       // F-227 (#248) — the D18 release facts for an EXTERNAL-source death's cosign (M16 spec §4.3.1
@@ -987,6 +1011,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
+      /** GAP-033 - the typed render payload M6 builds in the signing transaction (packages/types render-payloads),
+       *  which M22's form compiler validates and draws. Optional on the wire so a producer that cannot resolve a
+       *  source still emits; M22 then refuses the id-only event (DLQ) rather than draw a blank form. */
+      renderPayload: Type.Optional(Type.Unknown()),
     }),
     // F-136 (#248) — m23 REMOVED: the Notice of Rights is never mentioned anywhere in M23's own spec —
     // no dependsOn text, no §4.4 subscription, no NOE/NOTR/claim mechanism references it. M22 remains

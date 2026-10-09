@@ -73,6 +73,7 @@ import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { MEDICATION_ORDER } from "./_m22-form-fixtures";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -336,6 +337,14 @@ describe.skipIf(!DB_URL)("F-168 — document-request idempotency granularity, LI
   it("m12.medication_order.transmitted appends a NEW version onto the SAME order .document_requested genesis-rendered", async () => {
     const orderId = randomUUID();
     const patientId = randomUUID();
+    // GAP-033 - both requests carry the typed medication-order payload the form draws (the genesis one as the
+    // signing transaction builds it; the append adds the `transmission` block). An id-only request is refused.
+    const typed = {
+      ...MEDICATION_ORDER,
+      orderId,
+      patientId,
+      patient: { ...MEDICATION_ORDER.patient, patientId },
+    };
     await publish({
       eventName: "m12.medication_order.document_requested",
       organizationId: ORG_A,
@@ -345,7 +354,7 @@ describe.skipIf(!DB_URL)("F-168 — document-request idempotency granularity, LI
       payload: {
         orderId,
         formTemplate: "medication_order",
-        renderPayload: { patientId, admissionId: randomUUID(), isControlledSubstance: false },
+        renderPayload: { admissionId: randomUUID(), isControlledSubstance: false, ...typed },
       },
     });
     await dispatcher.tick();
@@ -362,6 +371,10 @@ describe.skipIf(!DB_URL)("F-168 — document-request idempotency granularity, LI
         dosespotPrescriptionId: randomUUID(),
         transmittedAt: new Date().toISOString(),
         dispensingPharmacyMdmId: null,
+        renderPayload: {
+          ...typed,
+          transmission: { transmittedAt: new Date().toISOString(), prescriptionRef: randomUUID() },
+        },
       },
     });
     await dispatcher.tick();

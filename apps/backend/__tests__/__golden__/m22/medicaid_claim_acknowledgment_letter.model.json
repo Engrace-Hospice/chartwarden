@@ -1,0 +1,53 @@
+{
+  "title": "Medicaid Claim Acknowledgment Letter",
+  "createdAtIso": "2026-10-13T08:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Medicaid Claim Acknowledgment Letter"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-13 08:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "acknowledgment_statement",
+      "text": "The Medicaid payer acknowledged the claim identified below and accepted it for adjudication on the date shown."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Claim"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Medicaid claim control number",
+          "MCLM-2026-0044"
+        ],
+        [
+          "Payer claim control number",
+          "Not yet assigned by the payer"
+        ],
+        [
+          "Acknowledged",
+          "2026-10-13 08:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "not_a_determination",
+      "text": "This document records an administrative event. It is not a determination of coverage, eligibility or payment."
+    }
+  ],
+  "runningHeader": "Medicaid Claim Acknowledgment Letter",
+  "discloseDegradedGlyphs": true
+}

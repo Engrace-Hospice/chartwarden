@@ -77,6 +77,7 @@ import {
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
+import { dbRenderSources } from "./_m6-render-sources";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -205,7 +206,7 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
       [ORG_A, ORG_B],
     );
     await admin.query(
-      `INSERT INTO "user" (id,email) VALUES ($1,'f192a@x.test'),($2,'f192md@x.test'),($3,'f192at@x.test')`,
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f192a@x.test','Una User'),($2,'f192md@x.test','Imani Okafor'),($3,'f192at@x.test','Atul Attending')`,
       [USER, MD, ATTENDING],
     );
     await admin.query(
@@ -261,6 +262,13 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
           return rows.length > 0;
         },
       },
+      // GAP-033 - the typed render payload draws the patient / physician from the real rows.
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dbRenderSources(admin),
     );
 
     const store = createDrizzleDocumentSeamStore(handle.db);

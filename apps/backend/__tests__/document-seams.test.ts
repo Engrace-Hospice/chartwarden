@@ -30,6 +30,7 @@ import {
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
 import { deriveTenantBucket, planSignedUrl } from "../src/modules/22-documents/index";
+import { CTI, F2F } from "./_m22-form-fixtures";
 
 const ORG = "org-1";
 const scope = { orgId: ORG };
@@ -58,7 +59,9 @@ function makeRenderer(seed?: Parameters<typeof createInMemoryDocumentSeamStore>[
 describe("DocumentRenderer — §7.2 W2 render handshake", () => {
   it("renders a typed payload: writes the object then upserts the genesis document", async () => {
     const { renderer, store, liveObjects } = makeRenderer();
+    // GAP-033 - `cti` is a typed form: the payload is the CTI the producer built, plus the routing identity.
     const { documentId } = await renderer.render(scope, "cti", {
+      ...CTI,
       aggregateId: "cti-1",
       patientId: "pat-1",
     });
@@ -199,6 +202,7 @@ describe("boot wiring — registerDocumentSeams closes the deny-stubs", () => {
     registerDocumentSeams({ store, objects });
     validateSeams();
     const { documentId } = await getSeam("DocumentRenderer").render(scope, "f2f", {
+      ...F2F,
       aggregateId: "f2f-1",
       patientId: "pat-2",
     });

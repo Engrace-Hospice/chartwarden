@@ -1,0 +1,132 @@
+{
+  "title": "Certification of Terminal Illness",
+  "createdAtIso": "2026-09-30T14:05:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Certification of Terminal Illness",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-30 14:05 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Certification period"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.21; 418.22(a)]"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Benefit period",
+          "Period 3 (recertification)"
+        ],
+        [
+          "Period start",
+          "2026-10-01"
+        ],
+        [
+          "Period end",
+          "2026-11-29"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Terminal illness diagnosis (ICD-10)"
+    },
+    {
+      "kind": "bullets",
+      "items": [
+        "C34.90"
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Related conditions (ICD-10)"
+    },
+    {
+      "kind": "bullets",
+      "items": [
+        "J44.9",
+        "I50.9"
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Certification statement"
+    },
+    {
+      "kind": "legalText",
+      "id": "terminal_prognosis_statement",
+      "text": "I certify that the patient named above is terminally ill, with a medical prognosis of a life expectancy of 6 months or less if the terminal illness runs its normal course, based on my clinical judgment regarding the normal course of the patient's illness.",
+      "cite": "42 CFR 418.22(b)(1)"
+    },
+    {
+      "kind": "legalText",
+      "id": "supporting_documentation_statement",
+      "text": "Specific clinical findings and other documentation supporting a life expectancy of 6 months or less are filed in the patient's medical record with this certification.",
+      "cite": "42 CFR 418.22(b)(2)"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Physician's narrative explanation of the clinical findings"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.22(b)(3)]"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Progressive decline with weight loss and a PPS of 30 percent; recurrent admissions.",
+      "keepWithNext": true
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Hospice physician or medical director",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "certification",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "credentials": "MD",
+          "npi": "1234567893"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Certification of Terminal Illness",
+  "discloseDegradedGlyphs": true
+}

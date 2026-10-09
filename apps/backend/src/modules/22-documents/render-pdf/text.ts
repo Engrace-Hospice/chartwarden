@@ -67,6 +67,23 @@ export function sanitizeText(input: string): string {
   return out;
 }
 
+/** How many code points of `input` WinAnsi cannot represent (each is drawn as "?"). A literal "?" is not counted.
+ * This is the disclosure counter for R1 (no embedded Unicode font): a legal notice must say when it lied. */
+export function countDegradedGlyphs(input: string): number {
+  let n = 0;
+  for (const ch of input.normalize("NFC")) {
+    const cp = ch.codePointAt(0) as number;
+    const drawable =
+      cp < 0x20 ||
+      cp === 0x7f ||
+      cp < 0x7f ||
+      (cp >= 0xa0 && cp <= 0xff) ||
+      WIN_ANSI_EXTRAS[cp] !== undefined;
+    if (!drawable) n += 1;
+  }
+  return n;
+}
+
 // Helvetica advance widths (AFM), code points 32..126, 1/1000 em.
 const HELV = [
   278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,

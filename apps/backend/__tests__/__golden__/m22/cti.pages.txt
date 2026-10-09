@@ -1,0 +1,42 @@
+--- page 1 ---
+Certification of Terminal Illness
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-09-30 14:05 UTC
+Certification period
+[42 CFR 418.21; 418.22(a)]
+Benefit period
+Period 3 (recertification)
+Period start
+2026-10-01
+Period end
+2026-11-29
+Terminal illness diagnosis (ICD-10)
+•
+C34.90
+Related conditions (ICD-10)
+•
+J44.9
+•
+I50.9
+Certification statement
+[42 CFR 418.22(b)(1)]
+I certify that the patient named above is terminally ill, with a medical prognosis of a life expectancy of 6 months or less if
+the terminal illness runs its normal course, based on my clinical judgment regarding the normal course of the patient's
+illness.
+[42 CFR 418.22(b)(2)]
+Specific clinical findings and other documentation supporting a life expectancy of 6 months or less are filed in the
+patient's medical record with this certification.
+Physician's narrative explanation of the clinical findings
+[42 CFR 418.22(b)(3)]
+Progressive decline with weight loss and a PPS of 30 percent; recurrent admissions.
+Hospice physician or medical director
+Electronically signed by Dr. Imani Okafor, MD (NPI 1234567893) on 2026-09-30 14:05 UTC.
+Meaning of signature: Certification.
+Signature record ref 1a2b3c4d.

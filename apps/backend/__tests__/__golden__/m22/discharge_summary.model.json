@@ -1,0 +1,134 @@
+{
+  "title": "Discharge Summary",
+  "createdAtIso": "2026-09-30T14:05:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Discharge Summary",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-30 14:05 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Discharge"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Discharge date",
+          "2026-10-06"
+        ],
+        [
+          "Status",
+          "Completed"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Reason for discharge"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Reason",
+          "For Cause"
+        ],
+        [
+          "For-cause reason",
+          "Unsafe home environment for staff"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Physician discharge order"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Order reference",
+          "ORD-17"
+        ],
+        [
+          "Order",
+          "Discharge per medical director order."
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Narrative"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Discharged for cause after repeated unsafe-environment events.",
+      "keepWithNext": true
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Discharge filed by",
+          "printedName": "Nina Filer",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "authorship",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009"
+        },
+        {
+          "kind": "signature",
+          "role": "Physician discharge order signed by",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "discharge_order",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "credentials": "MD",
+          "npi": "1234567893"
+        },
+        {
+          "kind": "signature",
+          "role": "Medical-director cosign",
+          "printedName": "Dr. Imani Okafor",
+          "signedAt": "2026-09-30T14:05:00.000Z",
+          "method": "electronic",
+          "meaning": "cosignature",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "credentials": "MD",
+          "npi": "1234567893"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Discharge Summary",
+  "discloseDegradedGlyphs": true
+}

@@ -1,0 +1,94 @@
+{
+  "title": "Revocation of Hospice Election",
+  "createdAtIso": "2026-10-04T00:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Revocation of Hospice Election",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-10-04 00:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Revocation"
+    },
+    {
+      "kind": "paragraph",
+      "muted": true,
+      "text": "[42 CFR 418.28(c)]"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Effective date of revocation",
+          "2026-10-05"
+        ],
+        [
+          "Date signed",
+          "2026-10-04"
+        ],
+        [
+          "Signed by",
+          "Patient"
+        ],
+        [
+          "Reason",
+          "Seek Curative Treatment"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "revocation_statement",
+      "text": "I revoke my election of Medicare hospice care for the remaining days in the current election period, effective on the date shown above. I understand that Medicare coverage of the benefits I waived when I elected hospice care resumes on that date, and that I may elect hospice care again at a later time."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Additional information"
+    },
+    {
+      "kind": "paragraph",
+      "text": "None recorded.",
+      "keepWithNext": true
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Patient or representative",
+          "printedName": "Zelda Quillfeather-Ramirez",
+          "signedAt": "2026-10-04",
+          "method": "electronic",
+          "meaning": "revocation",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Revocation of Hospice Election",
+  "discloseDegradedGlyphs": true
+}

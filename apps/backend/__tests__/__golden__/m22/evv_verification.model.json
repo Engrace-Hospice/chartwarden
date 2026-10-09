@@ -1,0 +1,56 @@
+{
+  "title": "Electronic Visit Verification Record",
+  "createdAtIso": "2026-10-12T17:02:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Electronic Visit Verification Record"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Document date",
+          "2026-10-12 17:02 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "legalText",
+      "id": "verification_statement",
+      "text": "This record confirms that the electronic visit verification submission identified below was accepted by the state aggregator on the date shown. It records acceptance only."
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Submission"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Submission reference",
+          "33333333"
+        ],
+        [
+          "Visit reference",
+          "11111111"
+        ],
+        [
+          "State",
+          "OR"
+        ],
+        [
+          "Aggregator transaction",
+          "TXN-88-2041"
+        ],
+        [
+          "Accepted",
+          "2026-10-12 17:02 UTC"
+        ]
+      ]
+    }
+  ],
+  "runningHeader": "Electronic Visit Verification Record",
+  "discloseDegradedGlyphs": true
+}
