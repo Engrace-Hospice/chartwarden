@@ -11,6 +11,7 @@ import { IdgSchedule } from "./idg-schedule";
 import { MeetingDetail } from "./meeting-detail";
 
 const LOC = "11111111-1111-4111-8111-111111111111";
+const LOC_OUT = "99999999-9999-4999-8999-999999999999";
 const ME = "22222222-2222-4222-8222-222222222222";
 const OTHER = "33333333-3333-4333-8333-333333333333";
 const MEETING = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -21,6 +22,8 @@ let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let scheduled: Record<string, unknown>[] = [];
 let postFailure: { status: number; body: unknown } | null = null;
+let scheduleFailure: { status: number; body: unknown } | null = null;
+let locationsFailure = false;
 
 const meetingBody = (coordinator: string) => ({
   id: MEETING,
@@ -48,8 +51,13 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     scheduled = [meetingBody(ME)];
     return json(meetingBody(ME), 201);
   }
-  if (path === "/api/v1/locations")
-    return json({ items: [{ id: LOC, name: "Main Campus", status: "active" }], nextCursor: null });
+  if (path === "/api/v1/locations") {
+    if (locationsFailure) return json({ error: { code: "UNAVAILABLE" } }, 503);
+    return json({ items: [
+      { id: LOC, name: "Main Campus", status: "active" },
+      { id: LOC_OUT, name: "Restricted Campus", status: "active" },
+    ], nextCursor: null });
+  }
   if (path === "/api/v1/orgs/org-1/members")
     return json({
       members: [
@@ -57,7 +65,8 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         { membershipId: OTHER, userId: "u2", displayName: "Omar Other", email: null },
       ],
     });
-  if (path === "/api/v1/idg/schedule") return json(scheduled);
+  if (path === "/api/v1/idg/schedule")
+    return scheduleFailure ? json(scheduleFailure.body, scheduleFailure.status) : json(scheduled);
   if (path === `/api/v1/idg/meetings/${MEETING}`) return json(meetingBody(OTHER));
   if (path.endsWith("/packets"))
     return json([
@@ -88,14 +97,16 @@ const SESSION = {
   organizationId: "org-1",
   membershipId: ME,
   roles: ["idg_coordinator"],
-  permissions: [],
+  locationIds: [LOC],
+  orgWidePatientScope: false,
+  permissions: ["idg.read", "idg.schedule"],
   isAdmin: false,
 };
 
-function mount(path: string, element: JSX.Element, route: string): void {
+function mount(path: string, element: JSX.Element, route: string, session = SESSION): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <SessionProvider session={SESSION}>
+      <SessionProvider session={session}>
         <ToastProvider>
           <MemoryRouter initialEntries={[path]}>
             <Routes>
@@ -125,6 +136,8 @@ beforeEach(() => {
   bodies = [];
   scheduled = [];
   postFailure = null;
+  scheduleFailure = null;
+  locationsFailure = false;
 });
 afterEach(cleanup);
 
@@ -183,6 +196,36 @@ describe("IDG schedule — Schedule Meeting", () => {
     expect(buttons.length).toBe(2);
     fireEvent.click(buttons[1] as HTMLElement);
     expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("offers only server-session locations and hides scheduling controls without idg.schedule", async () => {
+    mount(
+      `/idg/schedule?location=${LOC}`,
+      <IdgSchedule />,
+      "/idg/schedule",
+      { ...SESSION, permissions: ["idg.read"] },
+    );
+    const picker = await screen.findByLabelText("Location");
+    expect(picker.textContent).toContain("Main Campus");
+    expect(picker.textContent).not.toContain("Restricted Campus");
+    expect(screen.queryByRole("button", { name: /^Schedule Meeting$/ })).toBeNull();
+  });
+
+  it("renders a non-disclosing forbidden state with retry and back navigation", async () => {
+    scheduleFailure = { status: 404, body: { error: { code: "NOT_FOUND", message: "hidden" } } };
+    mountSchedule();
+    expect(await screen.findByText("Location unavailable")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to schedule" })).toBeTruthy();
+    expect(screen.queryByText("hidden")).toBeNull();
+  });
+
+  it("distinguishes a location-directory failure from having no accessible locations", async () => {
+    locationsFailure = true;
+    mountSchedule();
+    expect(await screen.findByText("Locations unavailable")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("Select a location")).toBeNull();
   });
 });
 

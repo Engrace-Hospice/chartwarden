@@ -18,6 +18,8 @@ const ORG_BOUND: ActorContextResponse = {
   membershipId: "m_1",
   displayName: "Robin Nightingale",
   roles: ["clinical_rn"],
+  locationIds: [],
+  orgWidePatientScope: false,
   isAdmin: false,
   permissions: ["patient.read", "messaging.read"],
 };
@@ -45,6 +47,8 @@ describe("FB-T15 toSession — maps the live actor context into the shell Sessio
       membershipId: null,
       displayName: null,
       roles: [],
+      locationIds: [],
+      orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
     });
@@ -64,6 +68,8 @@ describe("needsOrgSelection — shell pre-org guard", () => {
       membershipId: null,
       displayName: null,
       roles: [],
+      locationIds: [],
+      orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
     });

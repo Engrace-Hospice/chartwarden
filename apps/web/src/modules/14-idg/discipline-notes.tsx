@@ -111,7 +111,9 @@ export interface DisciplineNotesPanelProps {
   patientName: string | null;
   roster: readonly AttendanceView[];
   callerMembershipId: string | null;
-  /** Admin / coordinator: may edit others' notes (the server still decides). */
+  /** Mirrors the resolved idg.attend OR idg.coordinate gate for authoring controls only. */
+  canWrite: boolean;
+  /** Holds idg.coordinate: may edit others' notes (the server still decides). */
   canEditAny: boolean;
   who: (membershipId: string) => string;
 }
@@ -138,7 +140,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
         ? "addendum"
         : "closed"
       : "off";
-  const composerOpen = mode === "note" || mode === "addendum";
+  const composerOpen = props.canWrite && (mode === "note" || mode === "addendum");
   const supersededIds = addendumState?.supersededPatientIds ?? [];
   const client = useApiClient();
   const [scopeChoice, setScopeChoice] = useState<"patient" | "meeting">("patient");
@@ -258,6 +260,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
 
   const heading = scope === "patient" && patientName ? patientName : "Meeting-level";
   const canEdit = (n: DisciplineNoteView): boolean =>
+    props.canWrite &&
     live &&
     !n.bodyWithheld &&
     (props.canEditAny ||
@@ -477,11 +480,12 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
               </ul>
             )}
 
-            <div className="wx-idg-note-composer" data-mode={mode}>
-              <label className="wx-idg-note-label" htmlFor="idg-note-composer">
-                {mode === "addendum" ? "Add late addendum" : "Add a note"} for {heading} ·{" "}
-                {tab?.label ?? ""}
-              </label>
+            {props.canWrite ? (
+              <div className="wx-idg-note-composer" data-mode={mode}>
+                <label className="wx-idg-note-label" htmlFor="idg-note-composer">
+                  {mode === "addendum" ? "Add late addendum" : "Add a note"} for {heading} ·{" "}
+                  {tab?.label ?? ""}
+                </label>
               {mode === "addendum" ? (
                 <p className="wx-idg-alert" data-tone="info">
                   <span>
@@ -600,7 +604,8 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                   {composerBusy ? "Saving…" : mode === "addendum" ? "Save addendum" : "Save note"}
                 </Button>
               </div>
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

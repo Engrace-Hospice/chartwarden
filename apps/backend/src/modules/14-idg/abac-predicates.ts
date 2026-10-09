@@ -42,6 +42,7 @@
 import {
   type AbacContext,
   type AbacTarget,
+  hasOrgWideScope,
   isStepUpRecent,
   registerPredicateIdempotent,
   resolveActorPermissions,
@@ -129,7 +130,7 @@ export function buildIdgAbacPredicates(
       const facts = await resolver.loadMeetingScope(context.organizationId, meetingId);
       if (!facts) return false; // absent / cross-tenant (fail-closed)
       if (facts.organizationId !== context.organizationId) return false; // cross-tenant (defense in depth)
-      return context.locationIds.includes(facts.locationId);
+      return hasOrgWideScope(context.roles) || context.locationIds.includes(facts.locationId);
     },
     quorate_decision: async (context, target) => {
       const meetingId = meetingIdOf(target);

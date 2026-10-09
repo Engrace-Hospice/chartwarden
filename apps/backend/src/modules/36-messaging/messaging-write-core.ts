@@ -17,12 +17,14 @@ import {
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
 import { NotFoundError } from "@wardenx/types";
-import { and, asc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
 const MSG = schema.messages;
 const MR = schema.messageReceipts;
+const MEMBERSHIP = schema.memberships;
+const USER = schema.users;
 
 /** A Drizzle transaction handle (the structural type the DbClient hands its `transaction` callback). */
 export type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -72,8 +74,23 @@ export async function activeMemberIds(tx: Tx, orgId: string, channelId: string):
   const rows = (await tx
     .select({ userId: CM.userId })
     .from(CM)
+    .innerJoin(CH, and(eq(CH.id, CM.channelId), eq(CH.organizationId, CM.organizationId)))
+    .leftJoin(
+      MEMBERSHIP,
+      and(
+        eq(MEMBERSHIP.organizationId, CM.organizationId),
+        eq(MEMBERSHIP.userId, CM.userId),
+        eq(MEMBERSHIP.status, "active"),
+      ),
+    )
+    .innerJoin(USER, and(eq(USER.id, CM.userId), eq(USER.status, "active")))
     .where(
-      and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
+      and(
+        eq(CM.organizationId, orgId),
+        eq(CM.channelId, channelId),
+        isNull(CM.removedAt),
+        or(eq(CM.role, "portal_caregiver"), isNotNull(MEMBERSHIP.id)),
+      ),
     )) as Array<{
     userId: string;
   }>;
