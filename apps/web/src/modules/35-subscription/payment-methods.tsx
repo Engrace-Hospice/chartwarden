@@ -7,6 +7,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  humanizeIdentifier,
   useApiClient,
   useToast,
 } from "@wardenx/ui";
@@ -233,7 +234,7 @@ function MethodRow({
         </div>
       </td>
       <td style={tdStyle}>
-        <span style={softChipStyle}>{method.kind}</span>
+        <span style={softChipStyle}>{humanizeIdentifier(method.kind)}</span>
       </td>
       <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
         {formatDate(method.expiresAt)}

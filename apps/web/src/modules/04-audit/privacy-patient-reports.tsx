@@ -8,6 +8,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   StatusPill,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 import { useState } from "react";
@@ -183,7 +184,7 @@ export function AccessReport(): JSX.Element {
               <tr key={e.eventId}>
                 <td>{e.at.slice(0, 16).replace("T", " ")}</td>
                 <td>{e.actorRole ?? "system"}</td>
-                <td>{e.eventType}</td>
+                <td>{humanizeIdentifier(e.eventType)}</td>
                 <td>{e.fields.join(", ")}</td>
                 <td>
                   {e.viaBreakGlass ? <StatusPill label="Break-glass" tone="warning" /> : "Standard"}

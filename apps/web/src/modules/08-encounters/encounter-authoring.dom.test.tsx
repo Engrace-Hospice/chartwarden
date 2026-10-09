@@ -230,6 +230,7 @@ describe("#91 — the note can be composed", () => {
     // rejects if unknown, and nothing put the template or the vocabulary on the wire (F-063).
     await waitFor(() => expect(calls).toContain(`GET /api/v1/encounters/${ENCOUNTER}/template`));
     expect(await screen.findByText("Dyspnea at rest")).toBeTruthy();
+    expect(screen.queryByText("nv.resp.dyspnea_at_rest")).toBeNull();
   });
 
   it("selecting a phrase PATCHes it into its template section with the version as If-Match", async () => {

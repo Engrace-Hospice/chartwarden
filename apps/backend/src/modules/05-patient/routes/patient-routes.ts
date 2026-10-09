@@ -70,6 +70,7 @@ import {
   DenyBodySchema,
   LooseIdParamsSchema,
   MergeBodySchema,
+  MessagingPatientSearchQuerySchema,
   PatientListQuerySchema,
   parse,
 } from "./patient-typebox";
@@ -256,10 +257,10 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     { preHandler: [READ], config: { auditRead: { resourceKind: "patient", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const query = parse(PatientListQuerySchema, request.query);
+      const query = parse(MessagingPatientSearchQuerySchema, request.query);
       const result = await service.list(
         organizationId,
-        { ...query, limit: Math.min(query.limit ?? 25, 25) },
+        { q: query.q, limit: query.limit ?? 25 },
         await censusScope(request),
       );
       const response = {

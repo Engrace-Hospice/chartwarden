@@ -1535,7 +1535,7 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 
 | Method | Path | Auth | Permission key | Purpose |
 |---|---|---|---|---|
-| GET | `/api/v1/messaging/channels` | session | `messaging.read` | list channels the user is a member of |
+| GET | `/api/v1/messaging/channels` | session | `messaging.read` | list effectively authorized channels with tenant-scoped inbox summaries |
 | GET | `/api/v1/messaging/channels/:id` | session | `messaging.read` (+ ABAC) | channel detail + recent members |
 | GET | `/api/v1/messaging/channels/:id/messages` | session | `messaging.read` (+ ABAC) | paginated message history |
 | POST | `/api/v1/messaging/channels/:id/messages` | session | `messaging.send` (+ ABAC) | post a message |
@@ -1563,6 +1563,16 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | GET | `/api/v1/admin/messaging/alert-deliveries` | session | `messaging.admin.read` | platform-ops: failures and audit drill. **IMPLEMENTED (GAP-165).** Cross-tenant, so: RBAC key AND the `messaging_admin_platform_ops` ABAC conjunct (a tenant role holding the key is refused); data comes only through the `SECURITY DEFINER` reader `messaging_admin_list_alert_deliveries` (migration 0474 — delivery metadata only: no recipient, destination or payload; bounded, keyset-paginated by `before`); every call writes an org-less platform audit event before the response is released. |
 
 > All `/api/v1/admin/messaging/*` routes are platform-ops only and audited as `audit.elevated_access` per M4 §6.
+
+> **As-built inbox/history contract (PR 3, 2026-10-09).** Channel summaries are emitted only after
+> effective access is revalidated. They include an authorized display title, member-role labels,
+> unread count, last activity, and the latest non-deleted message preview/author label. The database
+> reads for these fields are tenant-scoped and batched; message text is decrypted only after the
+> channel passes access checks. Message history retains the original forward keyset behavior by
+> default and accepts `direction=backward` for the initial newest page and upward history loading.
+> Both directions use `(created_at, id)` as the deterministic cursor, and a backward page is returned
+> in chronological display order. The web client polls while visible; it does not claim presence,
+> typing, delivery, mention, or clinical-acknowledgement semantics.
 
 ### 4.2 Per-Route Specifications (representative)
 

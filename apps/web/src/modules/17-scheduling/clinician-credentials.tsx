@@ -5,6 +5,7 @@ import {
   Modal,
   PageHeader,
   StatusPill,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -269,7 +270,7 @@ export function ClinicianCredentials(): JSX.Element {
                       }}
                     >
                       <StatusPill
-                        label={row.revokedAt ? "Revoked" : row.status}
+                        label={row.revokedAt ? "Revoked" : humanizeIdentifier(row.status)}
                         tone={row.status === "active" && !row.revokedAt ? "success" : "neutral"}
                       />
                       {canRevoke && !row.revokedAt ? (

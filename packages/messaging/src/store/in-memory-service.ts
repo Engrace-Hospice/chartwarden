@@ -247,6 +247,23 @@ export function createInMemoryMessagingService(
     }
   };
 
+  const encodeMessageCursor = (message: MessageRow): string =>
+    encodeURIComponent(JSON.stringify([message.createdAt, message.messageId]));
+  const decodeMessageCursor = (cursor: string): readonly [string, string] | null => {
+    try {
+      const value = JSON.parse(decodeURIComponent(cursor)) as unknown;
+      return Array.isArray(value) &&
+        value.length === 2 &&
+        value.every((item) => typeof item === "string")
+        ? (value as [string, string])
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const messageOrder = (a: MessageRow, b: MessageRow): number =>
+    a.createdAt.localeCompare(b.createdAt) || a.messageId.localeCompare(b.messageId);
+
   const toSummary = (orgId: string, userId: string, ch: ChannelRow): ChannelSummary => {
     const pointer = readPointers.get(`${orgId}:${userId}:${ch.channelId}`) ?? "";
     let unread = 0;
@@ -255,13 +272,36 @@ export function createInMemoryMessagingService(
       if (m.authorUserId === userId) continue;
       if (m.createdAt > pointer) unread++;
     }
+    const latest = [...messages.values()]
+      .filter((message) => message.orgId === orgId && message.channelId === ch.channelId)
+      .sort(messageOrder)
+      .at(-1);
+    const peer =
+      ch.kind === "dm"
+        ? [...ch.members.keys()].find((memberUserId) => memberUserId !== userId)
+        : undefined;
+    const peerStaff = peer ? eligibleStaff.get(`${orgId}:${peer}`) : undefined;
     return {
       channelId: ch.channelId,
       kind: ch.kind,
-      title: ch.title,
+      title: ch.kind === "dm" ? (peerStaff?.displayName ?? "Direct message") : ch.title,
       subjectId: ch.subjectId,
       archivedAt: ch.archivedAt,
       unreadCount: unread,
+      participantRoles: ch.kind === "dm" ? (peerStaff?.roles ?? []) : [],
+      lastActivityAt: latest?.createdAt ?? ch.archivedAt ?? "1970-01-01T00:00:00.000Z",
+      lastMessage: latest
+        ? {
+            messageId: latest.messageId,
+            preview: latest.deletedAt
+              ? "Message deleted"
+              : latest.body.replace(/\s+/g, " ").trim().slice(0, 140),
+            createdAt: latest.createdAt,
+            authorDisplayName: latest.authorUserId
+              ? (eligibleStaff.get(`${orgId}:${latest.authorUserId}`)?.displayName ?? null)
+              : null,
+          }
+        : null,
     };
   };
 
@@ -280,7 +320,11 @@ export function createInMemoryMessagingService(
         }
         out.push(toSummary(orgId, userId, ch));
       }
-      return out;
+      return out.sort(
+        (a, b) =>
+          b.lastActivityAt.localeCompare(a.lastActivityAt) ||
+          a.channelId.localeCompare(b.channelId),
+      );
     },
 
     async getChannel(orgId, userId, channelId) {
@@ -300,13 +344,30 @@ export function createInMemoryMessagingService(
     async listMessages(orgId, input) {
       const channel = channelOr404(orgId, input.channelId);
       const limit = input.limit ?? 50;
-      const rows = [...messages.values()]
+      const backward = input.direction === "backward";
+      const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null;
+      let rows = [...messages.values()]
         .filter((m) => m.channelId === input.channelId && m.orgId === orgId)
-        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
-      const page = rows.slice(0, limit).map<ResolvedMessage>((m) => ({
+        .sort(messageOrder);
+      if (cursor) {
+        rows = rows.filter((message) => {
+          const comparison =
+            message.createdAt.localeCompare(cursor[0]) ||
+            message.messageId.localeCompare(cursor[1]);
+          return backward ? comparison < 0 : comparison > 0;
+        });
+      }
+      if (backward) rows.reverse();
+      const hasMore = rows.length > limit;
+      const pageRows = rows.slice(0, limit);
+      if (backward) pageRows.reverse();
+      const page = pageRows.map<ResolvedMessage>((m) => ({
         messageId: m.messageId,
         channelId: m.channelId,
         authorUserId: m.authorUserId,
+        authorDisplayName: m.authorUserId
+          ? (eligibleStaff.get(`${orgId}:${m.authorUserId}`)?.displayName ?? null)
+          : null,
         body: m.deletedAt ? "" : m.body,
         bodyKind: m.bodyKind,
         createdAt: m.createdAt,
@@ -314,7 +375,10 @@ export function createInMemoryMessagingService(
       }));
       return {
         messages: page,
-        nextCursor: rows.length > limit ? rows[limit]!.messageId : undefined,
+        nextCursor:
+          hasMore && pageRows.length > 0
+            ? encodeMessageCursor(backward ? pageRows[0]! : pageRows.at(-1)!)
+            : undefined,
         patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
       };
     },

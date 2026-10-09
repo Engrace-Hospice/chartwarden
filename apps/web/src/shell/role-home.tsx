@@ -1093,7 +1093,7 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
                             {nameOf(a.patientId) ?? "Patient"}
                           </Link>
                         </td>
-                        <td>{a.type}</td>
+                        <td>{stateLabel(a.type)}</td>
                         <td className="wx-nums">{usDate(a.dueAt)}</td>
                         <td>
                           <span

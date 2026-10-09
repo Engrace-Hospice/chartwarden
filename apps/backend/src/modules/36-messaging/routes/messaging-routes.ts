@@ -206,6 +206,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         userId,
         cursor: q.cursor,
         limit: q.limit,
+        direction: q.direction,
       });
     },
   );

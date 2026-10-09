@@ -1238,6 +1238,7 @@ Like Modules 3 and 4, this module ships obligations every consuming module must 
 | Method | Path | Permission | ABAC | Notes |
 |---|---|---|---|---|
 | GET | `/api/v1/patients` | `patient.read` | `caseload_or_scope` (narrows list) | search: name/MRN/MBI/DOB; cursor-paginated; returns canonical only (excludes `merged`) |
+| GET | `/api/v1/patients/messaging-search` | `patient.read` | `caseload_or_scope` (narrows list) | bounded, read-audited minimum-necessary search for the M36 patient picker; returns only patient id, display name, and MRN |
 | GET | `/api/v1/patients/:id` | `patient.read` | `caseload_or_scope` | follows `merged_into_id` and returns 301-like in body for merged |
 | POST | `/api/v1/patients` | `patient.create` | none — org-wide (GAP-120; no location exists until admission) | runs match pipeline (§2.3); 409 on hard match; 201 + `matchReviewIds` on soft |
 | PATCH | `/api/v1/patients/:id` | `patient.edit` | `caseload_or_scope` | MRN immutable; SSN write requires `phi.write_ssn` (step-up); `status` transitions per §2.4 |

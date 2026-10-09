@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/22-documents — INTAKE.BatchDetail (M22 §5.1, Track B / ADR-0030).
@@ -115,7 +116,9 @@ export function IntakeBatchDetail(): JSX.Element {
               >
                 <div>
                   <Eyebrow>Status</Eyebrow>
-                  <StatusPill tone={lifecycleTone(batch.status)}>{batch.status}</StatusPill>
+                  <StatusPill tone={lifecycleTone(batch.status)}>
+                    {humanizeIdentifier(batch.status)}
+                  </StatusPill>
                 </div>
                 <div>
                   <Eyebrow>Patient</Eyebrow>
@@ -160,7 +163,9 @@ export function IntakeBatchDetail(): JSX.Element {
                     <Mono>{j.id.slice(0, 8)}</Mono>
                   </td>
                   <td>
-                    <StatusPill tone={lifecycleTone(j.status)}>{j.status}</StatusPill>
+                    <StatusPill tone={lifecycleTone(j.status)}>
+                      {humanizeIdentifier(j.status)}
+                    </StatusPill>
                   </td>
                   <td>{ts(j.createdAt)}</td>
                 </tr>

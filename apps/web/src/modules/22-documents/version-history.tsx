@@ -4,6 +4,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/22-documents — DOC.VersionHistory (M22 §5.1, Track B / ADR-0030).
@@ -123,11 +124,13 @@ export function VersionHistory(): JSX.Element {
               >
                 <div>
                   <Eyebrow>Status</Eyebrow>
-                  <StatusPill tone={lifecycleTone(doc.status)}>{doc.status}</StatusPill>
+                  <StatusPill tone={lifecycleTone(doc.status)}>
+                    {humanizeIdentifier(doc.status)}
+                  </StatusPill>
                 </div>
                 <div>
                   <Eyebrow>Retention</Eyebrow>
-                  {doc.retentionClass}
+                  {humanizeIdentifier(doc.retentionClass)}
                 </div>
                 <div>
                   <Eyebrow>Versions</Eyebrow>

@@ -792,6 +792,7 @@ import {
   DenyBodySchema as M5EDenyBodySchema,
   MergeBodySchema as M5EMergeBodySchema,
   MergeResponseSchema as M5EMergeResponseSchema,
+  MessagingPatientSearchQuerySchema as M5EMessagingPatientSearchQuerySchema,
   MessagingPatientSearchResponseSchema as M5EMessagingPatientSearchResponseSchema,
   PatientAddressesResponseSchema as M5EPatientAddressesResponseSchema,
   PatientCareTeamResponseSchema as M5EPatientCareTeamResponseSchema,
@@ -6542,7 +6543,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/patients/messaging-search": {
     summary: "Search authorized patients for the secure-messaging picker",
-    query: M5EPatientListQuerySchema,
+    query: M5EMessagingPatientSearchQuerySchema,
     response: M5EMessagingPatientSearchResponseSchema,
   },
   "GET /api/v1/patients/census-metrics": {

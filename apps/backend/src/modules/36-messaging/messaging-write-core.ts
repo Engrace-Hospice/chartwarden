@@ -17,7 +17,7 @@ import {
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
 import { NotFoundError } from "@wardenx/types";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -174,7 +174,14 @@ export async function markMessagesRead(
         and(
           eq(MSG.organizationId, args.orgId),
           eq(MSG.channelId, msg.channelId),
-          lte(MSG.createdAt, msg.createdAt),
+          // Compare against the boundary row inside PostgreSQL. Converting timestamptz to a JS Date
+          // truncates microseconds and can otherwise leave the boundary receipt unread.
+          sql`(${MSG.createdAt}, ${MSG.id}) <= (
+            SELECT boundary.created_at, boundary.id
+            FROM message AS boundary
+            WHERE boundary.organization_id = ${args.orgId}::uuid
+              AND boundary.id = ${args.messageId}::uuid
+          )`,
         ),
       )
       .orderBy(asc(MSG.createdAt))) as Array<{ id: string }>;

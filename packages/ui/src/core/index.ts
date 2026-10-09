@@ -54,5 +54,8 @@ export { brandColors, colors, statusColors } from "./theme/colors";
 // Date-only helpers (PARAM-004 — local-calendar parsing, never a UTC-instant off-by-one)
 export { ageYears, parseLocalDateOnly } from "./dates";
 
+// Display-only fallback for internal enum/event identifiers when no product label is available.
+export { humanizeIdentifier } from "./humanize-identifier";
+
 // Native-capability ports + web adapters (ADR-0035; Capacitor adapters wired at the native entry)
 export * from "./capabilities";

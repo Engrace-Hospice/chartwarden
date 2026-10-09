@@ -4,6 +4,12 @@ Version: 1.0
 Status: Screen Specification
 Module: Internal Staff Secure Messaging (M36)
 
+> **As-built PR 3 scope (2026-10-09):** the implemented workspace uses a responsive inbox/thread
+> layout, authorized conversation summaries, newest-page-first history with upward progressive
+> loading, visibility-aware REST polling, read receipts, and a multiline composer. Presence, typing,
+> attachments, reactions, @-mentions, delivery confirmation, and clinical acknowledgement remain
+> future capabilities; the UI does not fabricate them.
+
 ---
 
 ## Purpose

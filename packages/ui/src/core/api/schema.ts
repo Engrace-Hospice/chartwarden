@@ -61086,6 +61086,14 @@ export interface operations {
                             subjectId: string | null;
                             archivedAt: string | null;
                             unreadCount: number;
+                            participantRoles: string[];
+                            lastActivityAt: string;
+                            lastMessage: {
+                                messageId: string;
+                                preview: string;
+                                createdAt: string;
+                                authorDisplayName: string | null;
+                            } | null;
                         }[];
                     };
                 };
@@ -61118,6 +61126,14 @@ export interface operations {
                         subjectId: string | null;
                         archivedAt: string | null;
                         unreadCount: number;
+                        participantRoles: string[];
+                        lastActivityAt: string;
+                        lastMessage: {
+                            messageId: string;
+                            preview: string;
+                            createdAt: string;
+                            authorDisplayName: string | null;
+                        } | null;
                         patientId: string | null;
                         members: {
                             userId: string;
@@ -61188,6 +61204,7 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                direction?: "forward" | "backward";
             };
             header?: never;
             path: {
@@ -61208,6 +61225,7 @@ export interface operations {
                             messageId: string;
                             channelId: string;
                             authorUserId: string | null;
+                            authorDisplayName: string | null;
                             body: string;
                             bodyKind: "plain" | "markdown" | "system";
                             createdAt: string;

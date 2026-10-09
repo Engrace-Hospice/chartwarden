@@ -6,6 +6,7 @@ import {
   PageHeader,
   SealedBlock,
   StatusPill,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the SURVEYOR READ VIEW (R2, §5.1 #21,
@@ -544,7 +545,7 @@ function ClaimProjection({
             <tbody>
               {projection.acknowledgments.map((a, i) => (
                 <tr key={a.acknowledgmentId} style={rowStyle(i)}>
-                  <td style={tdStyle}>{a.kind}</td>
+                  <td style={tdStyle}>{humanizeIdentifier(a.kind)}</td>
                   <td style={tdStyle}>
                     <StatusPill
                       label={statusLabel(a.outcomeStatus)}

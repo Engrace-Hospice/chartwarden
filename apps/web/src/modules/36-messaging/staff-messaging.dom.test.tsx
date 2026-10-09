@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { StaffMessaging } from "./staff-messaging";
 
@@ -16,6 +16,8 @@ const ORG_TWO: Session = {
   organizationName: "South Hospice",
 };
 
+afterEach(() => vi.useRealTimers());
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -24,13 +26,17 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const channel = (channelId: string, title: string) => ({
+const channel = (channelId: string, title: string, overrides: Record<string, unknown> = {}) => ({
   channelId,
   kind: "dm",
   title,
   subjectId: null,
   archivedAt: null,
   unreadCount: 0,
+  participantRoles: [],
+  lastActivityAt: "2026-10-09T10:00:00.000Z",
+  lastMessage: null,
+  ...overrides,
 });
 
 describe("M36 messaging organization switching", () => {
@@ -38,26 +44,27 @@ describe("M36 messaging organization switching", () => {
     const oldMessages = deferred<unknown>();
     const oldStaff = deferred<unknown>();
     let channelLoads = 0;
+    const get = vi.fn((path: string, options?: { params?: { path?: { id?: string } } }) => {
+      if (path === "/api/v1/messaging/channels") {
+        channelLoads += 1;
+        return Promise.resolve({
+          data: {
+            channels:
+              channelLoads === 1
+                ? [channel("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", "North conversation")]
+                : [channel("bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb", "South conversation")],
+          },
+          error: undefined,
+        });
+      }
+      if (path === "/api/v1/messaging/dm/staff") return oldStaff.promise;
+      if (options?.params?.path?.id === "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa") {
+        return oldMessages.promise;
+      }
+      return Promise.resolve({ data: { messages: [] }, error: undefined });
+    });
     const api = {
-      GET: vi.fn((path: string, options?: { params?: { path?: { id?: string } } }) => {
-        if (path === "/api/v1/messaging/channels") {
-          channelLoads += 1;
-          return Promise.resolve({
-            data: {
-              channels:
-                channelLoads === 1
-                  ? [channel("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", "North conversation")]
-                  : [channel("bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb", "South conversation")],
-            },
-            error: undefined,
-          });
-        }
-        if (path === "/api/v1/messaging/dm/staff") return oldStaff.promise;
-        if (options?.params?.path?.id === "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa") {
-          return oldMessages.promise;
-        }
-        return Promise.resolve({ data: { messages: [] }, error: undefined });
-      }),
+      GET: get,
       POST: vi.fn(),
     } as unknown as ApiClient;
 
@@ -103,9 +110,9 @@ describe("M36 messaging organization switching", () => {
 
     await screen.findAllByText("South conversation");
     expect(screen.queryByRole("dialog", { name: "New conversation" })).toBeNull();
-    expect((await screen.findByRole("textbox", { name: "Message" })).getAttribute("value")).toBe(
-      "",
-    );
+    expect(
+      ((await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement).value,
+    ).toBe("");
 
     oldMessages.resolve({
       data: {
@@ -202,9 +209,9 @@ describe("M36 messaging organization switching", () => {
     await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(1));
     expect(messageLoads.filter((id) => id === oldChannelId)).toHaveLength(1);
     expect(screen.queryByText("North mutation")).toBeNull();
-    expect((await screen.findByRole("textbox", { name: "Message" })).getAttribute("value")).toBe(
-      "",
-    );
+    expect(
+      ((await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement).value,
+    ).toBe("");
   });
 
   it("discards a late tenant A channel error while tenant B is loading", async () => {
@@ -425,10 +432,7 @@ describe("M36 patient care-team conversations", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New conversation" }));
     fireEvent.click(screen.getByRole("tab", { name: "Patient care team" }));
     await waitFor(() =>
-      expect(api.GET).toHaveBeenCalledWith(
-        "/api/v1/patients/messaging-search",
-        expect.anything(),
-      ),
+      expect(api.GET).toHaveBeenCalledWith("/api/v1/patients/messaging-search", expect.anything()),
     );
 
     view.rerender(
@@ -558,5 +562,357 @@ describe("M36 patient care-team conversations", () => {
     await screen.findByText("This conversation is archived. Message history remains read-only.");
     expect(screen.queryByRole("textbox", { name: "Message" })).toBeNull();
     expect(screen.getByText("Archived · read only")).toBeTruthy();
+  });
+});
+
+describe("M36 clinical messenger workspace", () => {
+  it("sorts enriched conversations by activity and applies real kind, unread, and search filters", async () => {
+    const api = {
+      GET: vi.fn((path: string) => {
+        if (path === "/api/v1/messaging/channels") {
+          return Promise.resolve({
+            data: {
+              channels: [
+                channel("care-1", "Care team", {
+                  kind: "care_team",
+                  subjectId: "patient-1",
+                  unreadCount: 0,
+                  lastActivityAt: "2026-10-09T09:00:00.000Z",
+                }),
+                channel("dm-1", "Dr Martin", {
+                  unreadCount: 2,
+                  participantRoles: ["Physician"],
+                  lastActivityAt: "2026-10-09T11:00:00.000Z",
+                  lastMessage: {
+                    messageId: "message-latest",
+                    preview: "Thanks for the update",
+                    createdAt: "2026-10-09T11:00:00.000Z",
+                    authorDisplayName: "Dr Martin",
+                  },
+                }),
+                channel("archived-1", "Old handoff", {
+                  archivedAt: "2026-10-01T00:00:00.000Z",
+                  lastActivityAt: "2026-10-01T00:00:00.000Z",
+                }),
+              ],
+            },
+            error: undefined,
+          });
+        }
+        if (path === "/api/v1/patients/{id}") {
+          return Promise.resolve({ data: undefined, error: { message: "not loaded" } });
+        }
+        return Promise.resolve({ data: { messages: [] }, error: undefined });
+      }),
+      POST: vi.fn(() => Promise.resolve({ data: undefined, error: undefined })),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    const inbox = await screen.findByRole("complementary", { name: "Conversations" });
+    await within(inbox).findByRole("button", { name: "Dr Martin, 2 unread" });
+    const rows = within(inbox)
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-channel-id"));
+    expect(rows.map((row) => row.getAttribute("data-channel-id"))).toEqual([
+      "dm-1",
+      "care-1",
+      "archived-1",
+    ]);
+    expect(within(inbox).getByText("Dr Martin: Thanks for the update")).toBeTruthy();
+
+    fireEvent.click(within(inbox).getByRole("tab", { name: "Care Teams" }));
+    expect(within(inbox).getByRole("button", { name: "Care team" })).toBeTruthy();
+    expect(within(inbox).queryByRole("button", { name: /Dr Martin/ })).toBeNull();
+
+    fireEvent.click(within(inbox).getByRole("tab", { name: "All" }));
+    fireEvent.change(within(inbox).getByRole("searchbox", { name: "Search conversations" }), {
+      target: { value: "physician" },
+    });
+    expect(within(inbox).getByRole("button", { name: "Dr Martin, 2 unread" })).toBeTruthy();
+    expect(within(inbox).queryByRole("button", { name: "Care team" })).toBeNull();
+  });
+
+  it("loads the latest page, renders author names, marks viewed incoming messages read, and loads older history", async () => {
+    const messageCalls: unknown[] = [];
+    const api = {
+      GET: vi.fn((path: string, options?: unknown) => {
+        if (path === "/api/v1/messaging/channels") {
+          return Promise.resolve({
+            data: { channels: [channel("dm-history", "Dr Martin", { unreadCount: 2 })] },
+            error: undefined,
+          });
+        }
+        if (path === "/api/v1/messaging/channels/{id}/messages") {
+          messageCalls.push(options);
+          const cursor = (options as { params?: { query?: { cursor?: string } } })?.params?.query
+            ?.cursor;
+          return Promise.resolve({
+            data: cursor
+              ? {
+                  messages: [
+                    {
+                      messageId: "m-old",
+                      channelId: "dm-history",
+                      authorUserId: "peer",
+                      authorDisplayName: "Dr Martin",
+                      body: "Oldest message",
+                      bodyKind: "plain",
+                      createdAt: "2026-10-09T08:00:00.000Z",
+                      parentMessageId: null,
+                    },
+                  ],
+                }
+              : {
+                  messages: [
+                    {
+                      messageId: "m-one",
+                      channelId: "dm-history",
+                      authorUserId: "peer",
+                      authorDisplayName: "Dr Martin",
+                      body: "Recent message",
+                      bodyKind: "plain",
+                      createdAt: "2026-10-09T10:00:00.000Z",
+                      parentMessageId: null,
+                    },
+                    {
+                      messageId: "m-two",
+                      channelId: "dm-history",
+                      authorUserId: "peer",
+                      authorDisplayName: "Dr Martin",
+                      body: "Latest message",
+                      bodyKind: "plain",
+                      createdAt: "2026-10-09T11:00:00.000Z",
+                      parentMessageId: null,
+                    },
+                  ],
+                  nextCursor: "older-cursor",
+                },
+            error: undefined,
+          });
+        }
+        return Promise.resolve({ data: undefined, error: undefined });
+      }),
+      POST: vi.fn(() => Promise.resolve({ data: undefined, error: undefined })),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Latest message");
+    expect(screen.getAllByText("Dr Martin").length).toBeGreaterThan(1);
+    expect(messageCalls[0]).toEqual(
+      expect.objectContaining({
+        params: { path: { id: "dm-history" }, query: { limit: 50, direction: "backward" } },
+      }),
+    );
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith("/api/v1/messaging/messages/{id}/read", {
+        params: { path: { id: "m-two" } },
+        body: { upTo: true },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Load older messages" }));
+    await screen.findByText("Oldest message");
+    expect(screen.getAllByText("Latest message")).toHaveLength(1);
+    expect(messageCalls[1]).toEqual(
+      expect.objectContaining({
+        params: {
+          path: { id: "dm-history" },
+          query: { limit: 50, direction: "backward", cursor: "older-cursor" },
+        },
+      }),
+    );
+  });
+
+  it("preserves failed drafts, clears only a confirmed send, and handles Enter, Shift+Enter, and IME", async () => {
+    let sendAttempt = 0;
+    const api = {
+      GET: vi.fn((path: string) => {
+        if (path === "/api/v1/messaging/channels") {
+          return Promise.resolve({
+            data: { channels: [channel("dm-send", "Nurse Two")] },
+            error: undefined,
+          });
+        }
+        return Promise.resolve({ data: { messages: [] }, error: undefined });
+      }),
+      POST: vi.fn((path: string) => {
+        if (path !== "/api/v1/messaging/channels/{id}/messages") {
+          return Promise.resolve({ data: undefined, error: undefined });
+        }
+        sendAttempt += 1;
+        return sendAttempt === 1
+          ? Promise.resolve({ data: undefined, error: { message: "Network unavailable" } })
+          : Promise.resolve({
+              data: {
+                messageId: "sent-message",
+                channelId: "dm-send",
+                createdAt: "2026-10-09T12:00:00.000Z",
+              },
+              error: undefined,
+            });
+      }),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const composer = (await screen.findByRole("textbox", {
+      name: "Message",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: "Clinical update" } });
+    fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
+    expect(sendAttempt).toBe(0);
+    fireEvent.compositionStart(composer);
+    fireEvent.keyDown(composer, { key: "Enter", isComposing: true });
+    expect(sendAttempt).toBe(0);
+    fireEvent.compositionEnd(composer);
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await screen.findByText("Network unavailable");
+    expect(composer.value).toBe("Clinical update");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(composer.value).toBe(""));
+    expect(screen.getByText("Clinical update")).toBeTruthy();
+    expect(sendAttempt).toBe(2);
+  });
+
+  it("polls without duplicating messages and stops polling after unmount", async () => {
+    vi.useFakeTimers();
+    let messageLoads = 0;
+    const get = vi.fn((path: string) => {
+      if (path === "/api/v1/messaging/channels") {
+        return Promise.resolve({
+          data: { channels: [channel("dm-poll", "Nurse Two")] },
+          error: undefined,
+        });
+      }
+      if (path === "/api/v1/messaging/channels/{id}/messages") {
+        messageLoads += 1;
+        return Promise.resolve({
+          data: {
+            messages: [
+              {
+                messageId: "stable-message",
+                channelId: "dm-poll",
+                authorUserId: ORG_ONE.userId,
+                authorDisplayName: "You",
+                body: "Stable message",
+                bodyKind: "plain",
+                createdAt: "2026-10-09T10:00:00.000Z",
+                parentMessageId: null,
+              },
+              ...(messageLoads > 1
+                ? [
+                    {
+                      messageId: "polled-message",
+                      channelId: "dm-poll",
+                      authorUserId: "peer",
+                      authorDisplayName: "Nurse Two",
+                      body: "Polled message",
+                      bodyKind: "plain",
+                      createdAt: "2026-10-09T10:01:00.000Z",
+                      parentMessageId: null,
+                    },
+                  ]
+                : []),
+            ],
+          },
+          error: undefined,
+        });
+      }
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    const api = {
+      GET: get,
+      POST: vi.fn(() => Promise.resolve({ data: undefined, error: undefined })),
+    } as unknown as ApiClient;
+    const view = render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getAllByText("Stable message")).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getAllByText("Stable message")).toHaveLength(1);
+    expect(screen.getByText("Polled message")).toBeTruthy();
+    const callsBeforeUnmount = get.mock.calls.length;
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(get).toHaveBeenCalledTimes(callsBeforeUnmount);
+    vi.useRealTimers();
+  });
+
+  it("starts with the inbox on mobile and supports thread-to-inbox navigation", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      matches: true,
+      media: "(max-width: 760px)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const api = {
+      GET: vi.fn((path: string) =>
+        path === "/api/v1/messaging/channels"
+          ? Promise.resolve({
+              data: { channels: [channel("dm-mobile", "Mobile colleague")] },
+              error: undefined,
+            })
+          : Promise.resolve({ data: { messages: [] }, error: undefined }),
+      ),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const conversation = await screen.findByRole("button", { name: "Mobile colleague" });
+    expect(screen.queryByRole("region", { name: "Conversation with Mobile colleague" })).toBeNull();
+    fireEvent.click(conversation);
+    expect(
+      await screen.findByRole("region", { name: "Conversation with Mobile colleague" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to conversations" }));
+    expect(screen.queryByRole("region", { name: "Conversation with Mobile colleague" })).toBeNull();
+    window.matchMedia = originalMatchMedia;
   });
 });

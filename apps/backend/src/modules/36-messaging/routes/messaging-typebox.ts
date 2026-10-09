@@ -62,6 +62,7 @@ export const PatientConversationParamsSchema = Type.Object({ patientId: Id });
 export const ListMessagesQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  direction: Type.Optional(Type.Union([Type.Literal("forward"), Type.Literal("backward")])),
 });
 
 const AttachmentSchema = Type.Object({
@@ -201,6 +202,17 @@ export const ChannelSummaryResponseSchema = Type.Object({
   subjectId: NullableString(),
   archivedAt: NullableString(),
   unreadCount: Type.Integer(),
+  participantRoles: Type.Array(Type.String()),
+  lastActivityAt: Type.String(),
+  lastMessage: Type.Union([
+    Type.Object({
+      messageId: Type.String(),
+      preview: Type.String(),
+      createdAt: Type.String(),
+      authorDisplayName: NullableString(),
+    }),
+    Type.Null(),
+  ]),
 });
 export const ChannelListResponseSchema = Type.Object({
   channels: Type.Array(ChannelSummaryResponseSchema),
@@ -217,6 +229,17 @@ export const ChannelDetailResponseSchema = Type.Object({
   subjectId: NullableString(),
   archivedAt: NullableString(),
   unreadCount: Type.Integer(),
+  participantRoles: Type.Array(Type.String()),
+  lastActivityAt: Type.String(),
+  lastMessage: Type.Union([
+    Type.Object({
+      messageId: Type.String(),
+      preview: Type.String(),
+      createdAt: Type.String(),
+      authorDisplayName: NullableString(),
+    }),
+    Type.Null(),
+  ]),
   patientId: NullableString(),
   members: Type.Array(ChannelMemberViewSchema),
 });
@@ -224,6 +247,7 @@ const ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
   authorUserId: NullableString(),
+  authorDisplayName: NullableString(),
   body: Type.String(),
   bodyKind: MessageBodyKindSchema,
   createdAt: Type.String(),

@@ -4,6 +4,7 @@ import {
   Glyph,
   LoadingSpinner,
   PageHeader,
+  humanizeIdentifier,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Summary (M7 §5.2, Track B / ADR-0030).
@@ -87,7 +88,7 @@ export function CarePlanSummary(): JSX.Element {
               {summary.activeProblems.map((p, idx) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: static read-only list, never reordered.
                 <li key={idx}>
-                  {p.description} <span style={meta}>({p.kind})</span>
+                  {p.description} <span style={meta}>({humanizeIdentifier(p.kind)})</span>
                 </li>
               ))}
             </ul>

@@ -1,4 +1,4 @@
-import { EntityLookupField, useApiClient } from "@wardenx/ui";
+import { EntityLookupField, humanizeIdentifier, useApiClient } from "@wardenx/ui";
 import type {
   ApiClient,
   EntityLookupFieldProps,
@@ -56,7 +56,7 @@ async function loadPatients(
         id: p.id,
         label: optionLabel(name, p.mrn || shortId(p.id)),
         searchLabel: name,
-        description: `${p.status} · DOB ${p.dob}`,
+        description: `${humanizeIdentifier(p.status)} · DOB ${p.dob}`,
       };
     }),
     nextCursor: data?.nextCursor ?? null,
@@ -84,7 +84,7 @@ async function loadReferrals(
         label: optionLabel(name, received),
         searchLabel: name,
         description: [
-          r.state.replace(/_/g, " "),
+          humanizeIdentifier(r.state),
           r.patientDobAtReceipt ? `DOB ${r.patientDobAtReceipt}` : null,
           r.referrerOrganization ?? null,
         ]
@@ -112,7 +112,7 @@ async function loadMdm(
       id: r.id,
       label: optionLabel(r.canonical.displayName, r.canonical.identifierValue ?? shortId(r.id)),
       searchLabel: r.canonical.displayName,
-      description: `${r.status} · ${r.canonical.identifierType}`,
+      description: `${humanizeIdentifier(r.status)} · ${humanizeIdentifier(r.canonical.identifierType)}`,
     })),
     nextCursor: null,
   };
@@ -226,7 +226,9 @@ async function loadProviderEntities(
       id: p.id,
       label: optionLabel(p.legalName, p.ccn),
       searchLabel: p.legalName,
-      description: p.npi ? `${p.status} · NPI ${p.npi}` : p.status,
+      description: p.npi
+        ? `${humanizeIdentifier(p.status)} · NPI ${p.npi}`
+        : humanizeIdentifier(p.status),
     })),
     nextCursor: data.nextCursor ?? null,
   };
