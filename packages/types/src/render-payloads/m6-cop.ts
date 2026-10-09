@@ -9,6 +9,7 @@ import {
   RenderDiagnosis,
   RenderPatientIdentity,
   SignatureRecord,
+  UndatedSignatureRecord,
   assertRenderPayload,
 } from "./common";
 
@@ -99,7 +100,7 @@ export const NorRenderPayload = Type.Object({
   /** The acknowledgment as a signature record: the beneficiary (or representative) acknowledging. */
   acknowledgment: SignatureRecord,
   /** The witness, when the method required one and a user is on record. */
-  witness: Type.Union([SignatureRecord, Type.Null()]),
+  witness: Type.Union([UndatedSignatureRecord, Type.Null()]),
 });
 export type NorRenderPayload = Static<typeof NorRenderPayload>;
 export const assertNorRenderPayload = (p: unknown): NorRenderPayload =>

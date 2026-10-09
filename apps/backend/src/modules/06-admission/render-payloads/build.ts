@@ -28,6 +28,7 @@ import {
   partitionPart2Diagnoses,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
+import { representativePrintedName } from "./representative";
 import { RenderPayloadBuildError, type RenderSourcesPort } from "./sources";
 
 const ADM = schema.admissions;
@@ -217,6 +218,35 @@ export async function buildF2fRenderPayload(
   });
 }
 
+/**
+ * Who the printed name on an acknowledgment / revocation is. A patient signs as themself; a representative's name
+ * comes from the M39 consent that authorised them. The row carries no name, so when it does not resolve the build
+ * THROWS: attributing a legal document to the patient when someone else signed is worse than no document.
+ */
+async function signerPrintedName(
+  ctx: RenderBuildCtx,
+  artifact: string,
+  signer: {
+    readonly kind: string;
+    readonly representativeConsentId: string | null;
+    readonly patient: RenderPatientIdentity;
+  },
+): Promise<string> {
+  if (signer.kind !== "representative") return signer.patient.name;
+  const name = signer.representativeConsentId
+    ? await representativePrintedName(
+        ctx.tx,
+        ctx.sources,
+        ctx.organizationId,
+        signer.patient.patientId,
+        signer.representativeConsentId,
+      )
+    : null;
+  if (!name)
+    throw new RenderPayloadBuildError(artifact, "the representative signer did not resolve");
+  return name;
+}
+
 // ── Notice of rights acknowledgment ─────────────────────────────────────────────────────────────────
 export async function buildNorRenderPayload(
   ctx: RenderBuildCtx,
@@ -229,6 +259,11 @@ export async function buildNorRenderPayload(
     admissionFacts(ctx, "nor", nor.admissionId),
     userName(ctx, nor.witnessUserId),
   ]);
+  const signerName = await signerPrintedName(ctx, "nor", {
+    kind: nor.signerKind,
+    representativeConsentId: nor.representativeConsentId,
+    patient,
+  });
   return assertNorRenderPayload({
     schemaVersion: RENDER_PAYLOAD_VERSION,
     norAcknowledgmentId: nor.id,
@@ -240,7 +275,7 @@ export async function buildNorRenderPayload(
     acknowledgmentMethod: nor.acknowledgmentMethod,
     acknowledgment: {
       role: "Acknowledgment of the notice of patient rights",
-      printedName: patient.name,
+      printedName: signerName,
       credentials: null,
       npi: null,
       capacity:
@@ -257,7 +292,7 @@ export async function buildNorRenderPayload(
           credentials: null,
           npi: null,
           capacity: null,
-          signedAt: nor.acknowledgedAt,
+          // The row records the acknowledgment date only; the witness's own time is not captured, so none is printed.
           method: "electronic",
           meaning: "witness",
           recordId: nor.id,
@@ -275,6 +310,11 @@ export async function buildRevocationRenderPayload(
   if (!rev) throw new RenderPayloadBuildError("revocation", "the revocation row was not found");
   const adm = await admissionFacts(ctx, "revocation", rev.admissionId);
   const patient = await identity(ctx, "revocation", adm.patientId);
+  const signerName = await signerPrintedName(ctx, "revocation", {
+    kind: rev.signerKind,
+    representativeConsentId: rev.representativeConsentId,
+    patient,
+  });
   return assertRevocationRenderPayload({
     schemaVersion: RENDER_PAYLOAD_VERSION,
     revocationEventId: rev.id,
@@ -289,7 +329,7 @@ export async function buildRevocationRenderPayload(
     narrative: orNull(rev.narrative),
     revocation: {
       role: "Revocation of the hospice election",
-      printedName: patient.name,
+      printedName: signerName,
       credentials: null,
       npi: null,
       capacity:

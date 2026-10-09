@@ -26,6 +26,12 @@ export interface RenderPhysicianFacts {
 export interface RenderSourcesPort {
   patient(organizationId: string, patientId: string): Promise<RenderPatientFacts | null>;
   physician(organizationId: string, physicianId: string): Promise<RenderPhysicianFacts | null>;
+  /** A caregiver's display name from the patient's M5 roster (a representative signer); optional so older fakes stand. */
+  caregiverName?(
+    organizationId: string,
+    patientId: string,
+    caregiverId: string,
+  ): Promise<string | null>;
 }
 
 /** The slice of M40's `MdmEntityProvider.resolvePhysician` the producers read (structural; no M40 import). */
@@ -67,6 +73,18 @@ export function createSeamRenderSources(): RenderSourcesPort {
           mrn: p.mrn,
           dateOfBirth: p.dateOfBirth ?? null,
         };
+      } catch {
+        return null;
+      }
+    },
+    async caregiverName(organizationId, patientId, caregiverId) {
+      try {
+        const roster = await getSeam("PatientCaregiverRosterReader").caregiversForPatient(
+          organizationId,
+          patientId,
+        );
+        const entry = roster.find((c) => c.caregiverId === caregiverId);
+        return entry?.displayName.trim() || null;
       } catch {
         return null;
       }

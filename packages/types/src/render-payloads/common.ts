@@ -47,6 +47,17 @@ export const SignatureRecord = Type.Object({
 });
 export type SignatureRecord = Static<typeof SignatureRecord>;
 
+/**
+ * A signature manifestation for a signer whose signing time the source row does not record (a notice-of-rights
+ * witness: the acknowledgment row carries one date, the witness's own time is not captured). `signedAt` is
+ * omitted rather than invented - the form prints the name and meaning, no time.
+ */
+export const UndatedSignatureRecord = Type.Composite([
+  Type.Omit(SignatureRecord, ["signedAt"]),
+  Type.Object({ signedAt: Type.Optional(nonEmpty) }),
+]);
+export type UndatedSignatureRecord = Static<typeof UndatedSignatureRecord>;
+
 /** The patient identity every clinical/legal document carries on every page. */
 export const RenderPatientIdentity = Type.Object({
   patientId: nonEmpty,

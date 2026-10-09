@@ -29,6 +29,8 @@ const SOURCES: RenderSourcesPort = {
     id === PATIENT ? { name: "Zelda Quillfeather", mrn: "MRN-9", dateOfBirth: "1941-03-07" } : null,
   physician: async (_org, id) =>
     id === MD ? { name: "Dr. Imani Okafor", credentials: "MD", npi: "1234567893" } : null,
+  caregiverName: async (_org, patientId, id) =>
+    patientId === PATIENT && id === "cg-1" ? "Rhea Quillfeather" : null,
 };
 
 function ctx(
@@ -228,26 +230,72 @@ describe("buildNorRenderPayload", () => {
     admissionId: "adm-1",
     patientId: PATIENT,
     signerKind: "representative",
+    representativeConsentId: "consent-1",
     acknowledgedAt: "2026-09-02",
     acknowledgmentMethod: "wet_ink_scanned",
     witnessUserId: "u-w",
   };
+  const CONSENT = { patientId: PATIENT, grantorUserId: null, grantorCaregiverId: "cg-1" };
   const rows = {
     notice_of_rights_acknowledgment: [NOR_ROW],
     admission: [ADMISSION],
     user: USERS("Pat Witness"),
+    consent_record: [CONSENT],
   };
 
-  it("records the representative capacity, the paper method and the witness", async () => {
+  it("prints the REPRESENTATIVE as the signer (never the patient), the paper method and the witness", async () => {
     const p = await buildNorRenderPayload(ctx(rows), "nor-1");
     expect(p.acknowledgment).toMatchObject({
-      printedName: "Zelda Quillfeather",
+      printedName: "Rhea Quillfeather",
       capacity: "Authorized representative of the patient",
       method: "wet_ink_scanned",
       signedAt: "2026-09-02",
     });
+    expect(p.acknowledgment.printedName).not.toBe("Zelda Quillfeather");
     expect(p.witness?.printedName).toBe("Pat Witness");
     expect(drawn(COMPILED_FORMS.nor(p))).toContain("Record of scan");
+  });
+
+  it("does not invent a witness signing time: the acknowledgment row records none", async () => {
+    const p = await buildNorRenderPayload(ctx(rows), "nor-1");
+    expect(p.witness).not.toBeNull();
+    expect(p.witness?.signedAt).toBeUndefined();
+    expect(drawn(COMPILED_FORMS.nor(p))).toContain("Pat Witness");
+  });
+
+  it("refuses to build when the signer is a representative and no name resolves", async () => {
+    await expect(
+      buildNorRenderPayload(
+        ctx({
+          ...rows,
+          notice_of_rights_acknowledgment: [{ ...NOR_ROW, representativeConsentId: null }],
+        }),
+        "nor-1",
+      ),
+    ).rejects.toThrow(RenderPayloadBuildError);
+    await expect(
+      buildNorRenderPayload(ctx({ ...rows, consent_record: [] }), "nor-1"),
+    ).rejects.toThrow(/representative/);
+    await expect(
+      buildNorRenderPayload(
+        ctx({ ...rows, consent_record: [{ ...CONSENT, patientId: "someone-else" }] }),
+        "nor-1",
+      ),
+    ).rejects.toThrow(/representative/);
+  });
+
+  it("a patient-signed acknowledgment still prints the patient and needs no consent", async () => {
+    const p = await buildNorRenderPayload(
+      ctx({
+        ...rows,
+        consent_record: [],
+        notice_of_rights_acknowledgment: [
+          { ...NOR_ROW, signerKind: "patient", representativeConsentId: null },
+        ],
+      }),
+      "nor-1",
+    );
+    expect(p.acknowledgment).toMatchObject({ printedName: "Zelda Quillfeather", capacity: null });
   });
 
   it("has no witness block when no witness user is on record", async () => {
@@ -285,6 +333,39 @@ describe("buildRevocationRenderPayload", () => {
       signedAt: "2026-10-04",
     });
     expect(drawn(COMPILED_FORMS.revocation(p))).toContain("Seek Curative Treatment");
+  });
+});
+
+describe("buildRevocationRenderPayload representative", () => {
+  const REV = {
+    id: "rev-2",
+    admissionId: "adm-1",
+    electionPeriodId: "ep-1",
+    signerKind: "representative",
+    representativeConsentId: "consent-1",
+    effectiveAt: "2026-10-05",
+    signedAt: "2026-10-04",
+    revocationReason: "seek_curative_treatment",
+    narrative: null,
+  };
+  const rows = {
+    revocation_event: [REV],
+    admission: [ADMISSION],
+    consent_record: [{ patientId: PATIENT, grantorUserId: null, grantorCaregiverId: "cg-1" }],
+  };
+
+  it("attributes a representative-signed revocation to the representative, not the patient", async () => {
+    const p = await buildRevocationRenderPayload(ctx(rows), "rev-2");
+    expect(p.revocation).toMatchObject({
+      printedName: "Rhea Quillfeather",
+      capacity: "Authorized representative of the patient",
+    });
+  });
+
+  it("refuses to build when the representative's name does not resolve", async () => {
+    await expect(
+      buildRevocationRenderPayload(ctx({ ...rows, consent_record: [] }), "rev-2"),
+    ).rejects.toThrow(RenderPayloadBuildError);
   });
 });
 

@@ -3,7 +3,11 @@
 // blocks. `defineForm` (./compile.ts) compiles one to a pure `payload -> DocModel` builder, so registering a form
 // is still one row in registry.ts and the layout/PDF pipeline is unchanged. Hand-written builders remain the
 // escape hatch for documents that are not form-shaped (IDG packet, lab results, tabular reports).
-import type { RenderPatientIdentity, SignatureRecord } from "@wardenx/types";
+import type {
+  RenderPatientIdentity,
+  SignatureRecord,
+  UndatedSignatureRecord,
+} from "@wardenx/types";
 import type { Block } from "../doc-model";
 
 /** Context derived once per render, never from the payload's own claims about safety. */
@@ -59,7 +63,7 @@ export interface SignatureSpec<P> {
   readonly id: string;
   readonly heading?: string;
   /** The signature record, or null when this signer legitimately did not sign (optional signers only). */
-  readonly from: (p: P) => SignatureRecord | null;
+  readonly from: (p: P) => SignatureRecord | UndatedSignatureRecord | null;
   /**
    * True for the signer whose absence makes the document meaningless. A required signature that is missing or
    * blank THROWS (retry -> DLQ): an unsigned document is never drawn under a "signed" event.

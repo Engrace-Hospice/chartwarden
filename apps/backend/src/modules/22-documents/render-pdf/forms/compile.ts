@@ -9,7 +9,11 @@
 //     drawn under a "signed" event. Patient identity is validated by the payload schema (non-empty);
 //   * the 42 CFR 2.32 redisclosure notice appears when Part 2 content is present;
 //   * glyphs WinAnsi cannot draw are disclosed on the page (never silently replaced).
-import { RenderPayloadError, type SignatureRecord } from "@wardenx/types";
+import {
+  RenderPayloadError,
+  type SignatureRecord,
+  type UndatedSignatureRecord,
+} from "@wardenx/types";
 import type { Block, DocModel, SignatureBlock } from "../doc-model";
 import { latestInstant } from "../doc-model";
 import { PART2_REDISCLOSURE_NOTICE, PART2_WITHHELD, fmtInstant, rec } from "../shared";
@@ -17,18 +21,22 @@ import type { FormContext, FormSection, FormSpec, SignatureSpec } from "./spec";
 
 const BLANK = "______________________________";
 
-function signatureViolation(sig: SignatureRecord | null | undefined): string | undefined {
+type AnySignature = SignatureRecord | UndatedSignatureRecord;
+
+function signatureViolation(sig: AnySignature | null | undefined): string | undefined {
   if (sig === null || sig === undefined) return "no signature record";
   if (sig.printedName.trim() === "") return "signature has no printed name";
-  if (!Number.isFinite(Date.parse(sig.signedAt))) return "signature has no valid date";
+  // An undated record (a witness whose time the source does not capture) is legitimate; a dated one must parse.
+  if (sig.signedAt !== undefined && !Number.isFinite(Date.parse(sig.signedAt)))
+    return "signature has no valid date";
   return undefined;
 }
 
-function toSignatureBlock(sig: SignatureRecord, role: string): Block {
+function toSignatureBlock(sig: AnySignature, role: string): Block {
   const block: SignatureBlock = {
     role,
     printedName: sig.printedName,
-    signedAt: sig.signedAt,
+    ...(sig.signedAt !== undefined ? { signedAt: sig.signedAt } : {}),
     method: sig.method,
     meaning: sig.meaning,
     ref: sig.recordId,
@@ -96,7 +104,7 @@ function signatureBlocks<P>(spec: FormSpec<P>, p: P): Block[] {
       }
       continue;
     }
-    out.push(toSignatureBlock(record as SignatureRecord, sigSpec.role));
+    out.push(toSignatureBlock(record as AnySignature, sigSpec.role));
   }
   return out;
 }
