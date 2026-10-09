@@ -583,3 +583,50 @@ describe("the shared MBI vectors (web mirror)", () => {
     expect(isRealDate("0000-01-01")).toBe(false);
   });
 });
+
+describe("re-queued items and closing", () => {
+  const requeued = () =>
+    item({
+      respawnedFromId: "c3d4e5f6-0000-4000-8000-0000000000aa",
+      state: "returned",
+      allowedActions: ["retry", "close"],
+    });
+
+  it("marks a re-queued item in the list and in the drawer", async () => {
+    const { api } = setup({
+      pages: [
+        { items: [requeued(), item({ ddeWorkItemId: ITEM2 })], hasMore: false, nextCursor: null },
+      ],
+    });
+    mount(api);
+    const r = await rail();
+    expect(r.getByText("Re-queued after closure")).toBeTruthy();
+    // exactly one row carries the badge in the list (the other item was never re-queued)
+    expect(within(screen.getByRole("table")).getAllByText("Re-queued after closure").length).toBe(
+      1,
+    );
+  });
+
+  it("does not mark an ordinary item", async () => {
+    const { api } = setup();
+    mount(api);
+    await rail();
+    expect(screen.queryByText("Re-queued after closure")).toBeNull();
+  });
+
+  it("says beside Close that a closed item is re-queued while the notice is unaccepted, and that cancelling stops it", async () => {
+    const { api } = setup({ pages: [{ items: [requeued()], hasMore: false, nextCursor: null }] });
+    mount(api);
+    const r = await rail();
+    expect(r.getByText(/re-queues a closed item/)).toBeTruthy();
+    expect(r.getByText(/Cancel an item before it is submitted to stop that/)).toBeTruthy();
+    expect(r.getByRole("button", { name: "Close" })).toBeTruthy();
+  });
+
+  it("does not show the re-queue note when Close is not offered", async () => {
+    const { api } = setup();
+    mount(api);
+    const r = await rail();
+    expect(r.queryByText(/re-queues a closed item/)).toBeNull();
+  });
+});

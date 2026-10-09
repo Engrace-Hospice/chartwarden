@@ -148,7 +148,9 @@ export class DdeWorkItemRepository {
     const [row] = await this.db
       .insert(I)
       .values(input)
-      // Any unique violation: an open item for the subject, or a closure that was already respawned.
+      // DELIBERATELY target-less: it covers exactly the unique indexes on this table besides the primary key,
+      // `dde_work_item_open_subject_uq` (one open item per subject and type) and `dde_work_item_respawn_once_uq` (one
+      // respawn per closed item). A pinned live test lists them; adding a unique index means revisiting this call.
       .onConflictDoNothing()
       .returning();
     return row ?? null;

@@ -77,7 +77,9 @@ with no open item and whose closure has not been respawned, gets a new item link
 respawned item earns one more respawn, each only after a human closed the previous item. A `cancelled` latest item
 **never** respawns (cancelling is an explicit human decision), an open item blocks it, and a closure that followed an
 accepted outcome never respawns (its notice is accepted, and the candidate query also requires no MAC acceptance on
-the closed item, so the query and the rule agree). Decided 2026-10 (closes the respawn open question).
+the closed item, so the query and the rule agree). Respawn chains are human-gated (each link needs a person to close the previous item) and have **no code cap**; a
+`cancel` stops the chain, because a cancelled latest item never respawns. The UI says so beside Close and marks a
+respawned item "Re-queued after closure". Decided 2026-10 (closes the respawn open question).
 
 ### D5 — Deadline rule: acceptance, not submission
 

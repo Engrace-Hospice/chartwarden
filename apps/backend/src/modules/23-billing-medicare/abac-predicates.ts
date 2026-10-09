@@ -265,6 +265,8 @@ function inProviderScope(context: AbacContext, providerEntityId: string): boolea
  * no reach has an EMPTY list, which means nothing, never everything. List routes apply this in their query, so a
  * list agrees with the object-level `provider_entity_billing_scope` check on the detail route.
  */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function billingScopeReach(context: {
   readonly roles: readonly string[];
   readonly providerEntityIds: readonly string[];
@@ -274,7 +276,11 @@ export function billingScopeReach(context: {
   if (ORG_WIDE_BILLING_SCOPE_ROLES.some((r) => context.roles.includes(r))) {
     return { all: true, providerEntityIds: [] };
   }
-  return { all: false, providerEntityIds: context.providerEntityIds };
+  // Only well-formed ids: an entry that is not a uuid can never match a row, and must not reach a uuid-typed query.
+  return {
+    all: false,
+    providerEntityIds: context.providerEntityIds.filter((id) => UUID_SHAPE.test(id)),
+  };
 }
 
 /** The override role a rule demands, or `undefined` if the rule is unknown / requires none. */

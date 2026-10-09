@@ -12,6 +12,7 @@
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-scope:live
  */
+import { randomUUID } from "node:crypto";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyInstance } from "fastify";
 import type { Client } from "pg";
@@ -19,18 +20,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   type M23WorkerDeps,
   runNoeWindowWatch,
+  runNotrWindowWatch,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { buildDdeWatchdog } from "../src/modules/23-billing-medicare/services/dde-watchdog";
 import {
   BASE,
   type DdeLiveDb,
   ORG_A,
+  ORG_B,
   PE_A,
   PE_B,
   USER_A,
   buildDdeApp,
   connectDdeLiveDb,
   seedNoe,
+  seedNotr,
 } from "./_dde-live-harness";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -295,6 +299,27 @@ describe.skipIf(!DB_URL)(
         expect((await itemsFor(noe)).length).toBe(1);
       });
 
+      it("the NOTR path respawns a closed unaccepted item once, and never a cancelled one", async () => {
+        const notr = await seedNotr(admin, { windowTarget: "2026-05-02" });
+        const tickNotr = () => runNotrWindowWatch(depsAt(NOW));
+        await tickNotr();
+        const [first] = await itemsFor(notr);
+        expect(first).toMatchObject({ source: "watchdog", respawned_from_id: null });
+        await closeUnaccepted((first as { id: string }).id);
+        await tickNotr();
+        await tickNotr();
+        const items = await itemsFor(notr);
+        expect(items.length).toBe(2);
+        expect(items[1]?.respawned_from_id).toBe((first as { id: string }).id);
+
+        const cancelled = await seedNotr(admin, { windowTarget: "2026-05-02" });
+        await tickNotr();
+        const id = (await itemsFor(cancelled))[0]?.id as string;
+        expect((await post(`/${id}/cancel`, hdr(), { expectedVersion: 0 })).statusCode).toBe(200);
+        await tickNotr();
+        expect((await itemsFor(cancelled)).length).toBe(1);
+      });
+
       it("two concurrent ticks create one respawn", async () => {
         const noe = await seedNoe(admin, { windowTarget: "2026-05-02" });
         await tick();
@@ -312,15 +337,125 @@ describe.skipIf(!DB_URL)(
         const results = await Promise.all(
           [0, 1].map(() =>
             withOrgContext(live.handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-              watchdog.ensureNoticeItem(tx as never, notice).then(
-                (r) => r.created,
-                () => false,
-              ),
+              // no catch: an unrelated rejection must FAIL the test, not count as "did not create"
+              watchdog
+                .ensureNoticeItem(tx as never, notice)
+                .then((r) => r.created),
             ),
           ),
         );
         expect(results.filter(Boolean).length).toBe(1);
         expect((await itemsFor(noe)).length).toBe(2);
+      });
+    });
+
+    describe("schema guards on dde_work_item", () => {
+      const insert = (over: Record<string, unknown>) => {
+        const row = {
+          organization_id: ORG_A,
+          provider_entity_id: PE_A,
+          patient_id: randomUUID(),
+          item_type: "noe",
+          subject_kind: "noe_record",
+          subject_id: randomUUID(),
+          state: "queued",
+          source: "watchdog",
+          respawned_from_id: null,
+          ...over,
+        };
+        const cols = Object.keys(row);
+        return admin.query(
+          `INSERT INTO dde_work_item (${cols.join(",")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(",")}) RETURNING id`,
+          Object.values(row),
+        );
+      };
+
+      it("pins the unique indexes, so the target-less ON CONFLICT DO NOTHING in insertIfNoOpen covers exactly these", async () => {
+        const { rows } = await admin.query(
+          `SELECT i.relname FROM pg_index x
+             JOIN pg_class i ON i.oid = x.indexrelid
+             JOIN pg_class t ON t.oid = x.indrelid
+            WHERE t.relname = 'dde_work_item' AND x.indisunique ORDER BY i.relname`,
+        );
+        expect(rows.map((r) => r.relname)).toEqual([
+          "dde_work_item_open_subject_uq",
+          "dde_work_item_pkey",
+          "dde_work_item_respawn_once_uq",
+        ]);
+      });
+
+      it("refuses a respawn link across organizations, subjects or types, or to a parent that is not closed", async () => {
+        const subject = randomUUID();
+        const parent = (await insert({ subject_id: subject, state: "closed", source: "manual" }))
+          .rows[0].id;
+        const open = (await insert({ subject_id: randomUUID(), state: "queued", source: "manual" }))
+          .rows[0].id;
+        // sanity: a proper follow-up of the closed parent is accepted
+        await expect(
+          insert({ subject_id: subject, respawned_from_id: parent }),
+        ).resolves.toBeTruthy();
+        const guard = /respawn must follow a closed item/;
+        // cross-organization (org B points at org A's closed item)
+        await expect(
+          insert({ organization_id: ORG_B, subject_id: subject, respawned_from_id: parent }),
+        ).rejects.toThrow(guard);
+        // cross-subject
+        await expect(
+          insert({ subject_id: randomUUID(), respawned_from_id: parent }),
+        ).rejects.toThrow(guard);
+        // cross-type
+        await expect(
+          insert({
+            item_type: "notr",
+            subject_kind: "notr_record",
+            subject_id: subject,
+            respawned_from_id: parent,
+          }),
+        ).rejects.toThrow(guard);
+        // parent still open
+        await expect(insert({ subject_id: randomUUID(), respawned_from_id: open })).rejects.toThrow(
+          guard,
+        );
+      });
+
+      it("lets each closed item be respawned once (respawn_once_uq on its own, with no open item involved)", async () => {
+        const subject = randomUUID();
+        const parent = (await insert({ subject_id: subject, state: "closed", source: "manual" }))
+          .rows[0].id;
+        const first = (await insert({ subject_id: subject, respawned_from_id: parent })).rows[0].id;
+        // the first respawn is no longer open, so only the once-per-closure index can object to a second one
+        await admin.query("UPDATE dde_work_item SET state='cancelled' WHERE id=$1", [first]);
+        await expect(insert({ subject_id: subject, respawned_from_id: parent })).rejects.toThrow(
+          /dde_work_item_respawn_once_uq/,
+        );
+      });
+    });
+
+    describe("list inputs that must not become a 500", () => {
+      it("answers a forged but well-formed cursor with a 400", async () => {
+        const forge = (o: unknown) => Buffer.from(JSON.stringify(o), "utf8").toString("base64url");
+        for (const cursor of [
+          forge({ createdAt: "not-a-date", id: randomUUID() }),
+          forge({ createdAt: "2026-05-01T00:00:00.000Z", id: "not-a-uuid" }),
+          forge({ createdAt: "2026-13-99T00:00:00.000Z", id: randomUUID() }),
+        ]) {
+          const res = await app.inject({
+            method: "GET",
+            url: `${BASE}?cursor=${cursor}`,
+            headers: hdr(),
+          });
+          expect(res.statusCode, cursor).toBe(400);
+        }
+      });
+
+      it("treats a malformed provider-entity id in the actor's reach as no reach, not an error", async () => {
+        const res = await app.inject({
+          method: "GET",
+          url: BASE,
+          headers: hdr({ "x-test-roles": "billing_manager", "x-test-pe": "not-a-uuid,'; --" }),
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().items).toEqual([]);
       });
     });
   },

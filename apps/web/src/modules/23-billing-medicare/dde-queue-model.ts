@@ -108,6 +108,13 @@ export const STATE_TONE: Record<DdeState, StatusTone> = {
   cancelled: "neutral",
 };
 
+/** The badge on an item the filing-window watch re-queued after an earlier item was closed. */
+export const REQUEUED_LABEL = "Re-queued after closure";
+
+/** Said beside Close: closing is not the end while the notice is still unaccepted. */
+export const CLOSE_REQUEUE_NOTE =
+  "While the notice is still unaccepted, the filing-window watch re-queues a closed item (within about 30 minutes). Cancel an item before it is submitted to stop that.";
+
 export const EVENT_LABEL: Record<string, string> = {
   create: "Queued",
   assign: "Assigned",

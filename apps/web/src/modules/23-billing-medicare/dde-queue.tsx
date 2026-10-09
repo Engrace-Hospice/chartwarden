@@ -27,6 +27,7 @@ import {
   type DdeItemDetail,
   type DdeItemType,
   type DdeState,
+  REQUEUED_LABEL,
   STATE_LABEL,
   STATE_TONE,
   TYPE_LABEL,
@@ -344,6 +345,9 @@ export function DdeQueue(): JSX.Element {
                         </td>
                         <td>
                           <StatusPill label={STATE_LABEL[n.state]} tone={STATE_TONE[n.state]} />
+                          {n.respawnedFromId ? (
+                            <StatusPill label={REQUEUED_LABEL} tone="warning" />
+                          ) : null}
                         </td>
                       </tr>
                     );

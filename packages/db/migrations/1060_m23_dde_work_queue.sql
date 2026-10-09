@@ -138,6 +138,29 @@ DROP TRIGGER IF EXISTS "trg_audit_dde_work_item" ON dde_work_item;--> statement-
 CREATE TRIGGER "trg_audit_dde_work_item" AFTER INSERT OR UPDATE OR DELETE ON dde_work_item
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_dde_work_item();--> statement-breakpoint
 
+-- A respawn must really be the follow-up of a CLOSED item of the SAME organization, subject and type: the self-FK alone
+-- would accept a link to any row. (Defence in depth: the watchdog only ever links a closed predecessor.)
+CREATE OR REPLACE FUNCTION dde_work_item_respawn_guard() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE parent dde_work_item%ROWTYPE;
+BEGIN
+  IF NEW.respawned_from_id IS NULL THEN RETURN NEW; END IF;
+  SELECT * INTO parent FROM dde_work_item WHERE id = NEW.respawned_from_id AND organization_id = NEW.organization_id;
+  IF NOT FOUND
+     OR parent.subject_kind <> NEW.subject_kind
+     OR parent.subject_id <> NEW.subject_id
+     OR parent.item_type <> NEW.item_type
+     OR parent.state <> 'closed' THEN
+    RAISE EXCEPTION 'dde_work_item respawn must follow a closed item of the same organization, subject and type'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_dde_work_item_respawn_guard" ON dde_work_item;--> statement-breakpoint
+CREATE TRIGGER "trg_dde_work_item_respawn_guard" BEFORE INSERT OR UPDATE OF respawned_from_id ON dde_work_item
+  FOR EACH ROW EXECUTE FUNCTION dde_work_item_respawn_guard();--> statement-breakpoint
+
 -- ── 2. dde_work_event (append-only) ────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "dde_work_event" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

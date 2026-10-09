@@ -9,12 +9,14 @@ import type { JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { OutcomeForm, SubmissionForm } from "./dde-forms";
 import {
+  CLOSE_REQUEUE_NOTE,
   DEADLINE_LABEL,
   DEADLINE_TONE,
   type DdeItem,
   type DdeItemDetail,
   EVENT_LABEL,
   type OutcomeDraft,
+  REQUEUED_LABEL,
   STATE_LABEL,
   STATE_TONE,
   type SubmissionDraft,
@@ -202,6 +204,7 @@ export function ItemRail({
           <div className="wx-drawer-title-row">
             <h2>{patientName}</h2>
             <StatusPill label={STATE_LABEL[n.state]} tone={STATE_TONE[n.state]} />
+            {n.respawnedFromId ? <StatusPill label={REQUEUED_LABEL} tone="warning" /> : null}
           </div>
           <div className="wx-row-sub">
             {TYPE_LABEL[n.itemType]} · attempt {n.attemptNumber}
@@ -312,6 +315,9 @@ export function ItemRail({
               />
             ) : (
               <div className="wx-action-row">
+                {can("close") && isNoticeType(n.itemType) ? (
+                  <p className="wx-row-sub">{CLOSE_REQUEUE_NOTE}</p>
+                ) : null}
                 {can("claim") ? (
                   <Button
                     disabled={busy}
