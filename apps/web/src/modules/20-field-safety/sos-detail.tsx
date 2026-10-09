@@ -84,6 +84,7 @@ import {
   th,
   thNum,
 } from "./safety-ui";
+import { TerminusPanel } from "./terminus-panel";
 
 type Ceremony = "none" | "acknowledge" | "resolve" | "coordinates";
 
@@ -261,6 +262,10 @@ export function SosDetailScreen(): JSX.Element {
           record below is what a review reads.
         </Notice>
       )}
+
+      {alert.lifecycleState === "emergency_terminus" ? (
+        <TerminusPanel sosAlertId={alert.id} />
+      ) : null}
 
       <Card
         title="Alert"

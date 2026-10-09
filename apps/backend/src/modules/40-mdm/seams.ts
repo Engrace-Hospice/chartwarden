@@ -30,6 +30,7 @@ import {
 } from "@wardenx/mdm";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 import { buildGriefResourceReader } from "./grief-resources";
+import { buildEmergencyServiceJurisdictionReader } from "./psap-jurisdictions";
 
 /** Injected production adapters for M40's published seams (slice defaults to in-memory). */
 export interface MdmSeamDeps {
@@ -56,6 +57,14 @@ export function registerMdmSeams(deps: MdmSeamDeps = {}): void {
   registerSeam("BaaStatusProvider", createBaaStatusProvider(baaStore));
 
   if (deps.db) registerSeam("ExternalGriefResourceReader", buildGriefResourceReader(deps.db));
+  // GAP-032 - M20's SOS terminus resolves the tenant-curated PSAP through this seam; unbound it stays the
+  // deny-stub, which the terminus reads as `unavailable` (never `none`).
+  if (deps.db) {
+    registerSeam(
+      "EmergencyServiceJurisdictionReader",
+      buildEmergencyServiceJurisdictionReader(deps.db),
+    );
+  }
 }
 
 /**

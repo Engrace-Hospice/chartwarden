@@ -158,6 +158,7 @@ export * from "./mdm/mdm-provisional";
 export * from "./mdm/mdm-baa-records";
 export * from "./mdm/mdm-license-records";
 export * from "./mdm/external-grief-resources";
+export * from "./mdm/emergency-service-jurisdictions";
 export * from "./mdm/mdm-baa-required";
 
 // ── Module 5 (Patient & Demographics) — the patient spine + demographics (§3.3–3.5) ──────────

@@ -383,6 +383,9 @@ jobs:
           # SOS spine, incidents + OSHA sign-off, policy/subscriptions/areas, board, consent) as the
           # NOBYPASSRLS wardenx_app role with the real catalog-validating publisher.
           - { name: "M20 routes", scripts: "test:m20:routes:live" }
+          # GAP-032: the M40 tenant-curated PSAP catalog the SOS terminus resolves (RLS as wardenx_app, the
+          # partial-unique defaults, the CHECKs and the seam reader over a real polygon are Postgres).
+          - { name: "M40 PSAP jurisdiction", scripts: "test:m40:psap-jurisdiction:live" }
           - {
               name: "M22 Documents",
               scripts:

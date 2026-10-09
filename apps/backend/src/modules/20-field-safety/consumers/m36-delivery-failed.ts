@@ -20,18 +20,14 @@
 //
 // ── WHY `escalation_tier_3` IS DELIBERATELY REFUSED, NOT ESCALATED ───────────────────────────────────────
 //
-// `escalate` from `escalation_tier_3` reaches `emergency_terminus`, whose entry effects are
-// `dial_emergency_contact` / `surface_psap_number` / `page_wardenx_ops` — all three are
-// `CALLER_OWNED_EFFECT_KINDS` (../routes/effects-runner.ts), meaning `runEffects` deliberately does not
-// execute them and expects the CALLER to: a real telephony dial, an M40 jurisdiction lookup, and a
-// platform page. **No caller implements any of the three anywhere in this codebase** — `escalateSos` has
-// had no production caller at all until this file (the SLA watchdog itself, `sos-escalator.ts`, is
-// unwired — a separate, larger, pre-existing finding reported alongside this one, not fixed here). Writing
-// a `sos_alert_escalated`/`sos_terminus_reached` row while silently skipping the actual dial-and-page
-// response would be worse than not escalating: the record would say the life-safety chain reached its
-// mandated end when nothing dialed anyone. `terminus_unsupported` therefore DEAD-LETTERS — OPS-035's own
-// posture, a DLQ entry is a signal ops reviews, not noise — rather than completing a transition this
-// consumer cannot make true.
+// `escalate` from `escalation_tier_3` reaches `emergency_terminus`, whose entry auto-dials the clinician's
+// consented emergency contact (a spouse), surfaces the PSAP line and pages WardenX ops (GAP-032 made those
+// effects real, via the durable ledger in `../terminus/`). That is the mandated end of the life-safety chain
+// for an alert that has been UNANSWERED past its tier-3 SLA - it must never be reachable because ONE
+// notification to ONE recipient failed to deliver. A single bounced SMS or expired push would otherwise jump
+// an alert straight into the terminus with no SLA breach and call a spouse. The SLA watchdog
+// (`../jobs/cron-workers.ts`) is the only edge that enters the terminus. `terminus_unsupported` therefore
+// still DEAD-LETTERS (OPS-035's posture: a DLQ entry is a signal ops reviews, not noise).
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";

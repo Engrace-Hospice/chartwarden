@@ -54,6 +54,7 @@
 export * from "./safety-policy"; // safety_policy, safety_policy_version
 export * from "./safety-check-ins"; // safety_check_in_schedule, safety_check_in
 export * from "./safety-sos-alerts"; // safety_sos_alert (+ location_stream, alert_state_history)
+export * from "./safety-sos-terminus-actions"; // safety_sos_terminus_action (GAP-032)
 export * from "./safety-incidents"; // safety_incident, safety_incident_state_history
 export * from "./safety-acknowledgments"; // safety_acknowledgment
 export * from "./safety-supervisor-subscriptions"; // safety_supervisor_subscription

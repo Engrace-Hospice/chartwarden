@@ -487,17 +487,28 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
         acknowledgmentTextSnapshot: "Call my spouse if I do not answer.",
       });
       expect(missing.statusCode).toBe(422);
+      // GAP-032: an undialable number is refused at GRANT time (422), without echoing it.
+      for (const phone of ["(555) 123", "911", "503-555-1234 ext 9"]) {
+        const bad = await call("POST", "/api/v1/safety/consent/grant", "rn2", {
+          purpose: "emergency_contact_call",
+          acknowledgmentTextSnapshot: "Call my spouse if I do not answer.",
+          contact: { name: "Sam", phone, relationship: "spouse" },
+        });
+        expect(bad.statusCode).toBe(422);
+        expect(JSON.stringify(bad.json())).toContain("EMERGENCY_CONTACT_NUMBER_INVALID");
+        expect(bad.body).not.toContain("555");
+      }
       const ok = await call("POST", "/api/v1/safety/consent/grant", "rn2", {
         purpose: "emergency_contact_call",
         acknowledgmentTextSnapshot: "Call my spouse if I do not answer.",
-        contact: { name: "Sam", phone: "+15035550100", relationship: "spouse" },
+        contact: { name: "Sam", phone: "(415) 555-2671", relationship: "spouse" },
       });
       expect(ok.statusCode).toBe(201);
       expect(ok.json().contactOnFile).toBe(true);
       const { rows } = await admin.query(
         "SELECT consent_scope_detail::text AS d FROM safety_emergency_contact_consent WHERE consent_purpose='emergency_contact_call' AND status='granted'",
       );
-      expect(rows[0].d).not.toContain("5550100");
+      expect(rows[0].d).not.toContain("5552671");
     });
   });
 

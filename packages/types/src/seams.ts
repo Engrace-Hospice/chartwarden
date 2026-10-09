@@ -111,6 +111,7 @@ import type {
 // each producer module's published seam contract; Phase 0 ships the minimal shape the
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
+import type { EmergencyServiceJurisdictionReader } from "./safety";
 import type {
   SafetyCheckInProvider,
   SafetyContextReader,
@@ -174,6 +175,7 @@ export type SeamName =
   | "PatientWristbandVerifier" // M5 — is the scanned wristband this patient's? verdict only (M13 BCMA wrong_patient arm, GAP-020)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
+  | "EmergencyServiceJurisdictionReader" // M40 — GAP-032: tenant-curated PSAP jurisdiction for an SOS (M20 terminus); deny-stub = unavailable
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
   | "DocumentStorageProvider" // M22 — per-tenant object storage (presign + version-aware destroy; §4.3/D1)
@@ -1072,6 +1074,7 @@ export interface SeamContracts {
   NonCoveredDmeSuppliesReader: NonCoveredItemsReader;
   PatientPrivacyFlagReader: PatientPrivacyFlagReader;
   ExternalGriefResourceReader: ExternalGriefResourceReader;
+  EmergencyServiceJurisdictionReader: EmergencyServiceJurisdictionReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
   // M22's `DocumentStorageProvider` (§4.3 / §11 D1) is LEAF-TYPED — its interface lives in ./documents

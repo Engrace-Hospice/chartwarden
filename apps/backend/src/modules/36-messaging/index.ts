@@ -208,6 +208,7 @@ export {
   type OutOfBandBinding,
   bindOutOfBandTransports,
 } from "./delivery/transport-binding";
+export { createSosContactCaller } from "./delivery/sos-contact-caller";
 export { createDbMessagingWebhookService } from "./delivery/webhook-service-db";
 export {
   type MessagingWebhookConfig,
