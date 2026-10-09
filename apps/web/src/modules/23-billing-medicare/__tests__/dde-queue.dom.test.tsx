@@ -1,23 +1,28 @@
-// The DDE work queue (ADR-0052): at-risk / overdue indicators first, the rail offers only what the server allows,
-// recording a submission posts the right body with an Idempotency-Key and the expected version, a step-up demand
-// routes to /step-up, and the screen never shows an MBI.
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+// The DDE work queue (ADR-0052): paging, deep links, filters, the action dispatch (expected version + idempotency
+// key), the 412 notice held by the screen, double-submit protection, the step-up round trip (returnTo, exactly one
+// post, the form restored), and the absence of any MBI field.
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DdeQueue } from "../dde-queue";
 import {
   type DdeItem,
   deadlineNote,
   isNoticeType,
+  looksLikeMbi,
+  plural,
   validateOutcome,
   validateSubmission,
 } from "../dde-queue-model";
+import { clearDraft } from "../write-workflow";
 
 const ITEM = "c3d4e5f6-0000-4000-8000-000000000001";
+const ITEM2 = "c3d4e5f6-0000-4000-8000-000000000002";
 const PATIENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const DCN = "2212345678901";
 
 const ok = (data: unknown) => ({
   data,
@@ -57,32 +62,50 @@ function item(over: Partial<DdeItem> = {}): DdeItem {
     ...over,
   };
 }
+const EVENTS = [
+  {
+    eventId: "e1",
+    event: "create",
+    fromState: null,
+    toState: "queued",
+    attemptNumber: 1,
+    occurredAt: "2026-10-01T12:00:00.000Z",
+  },
+];
 
-function client(items: DdeItem[], post: ReturnType<typeof vi.fn> = vi.fn(async () => ok({}))) {
-  const get = vi.fn(async (path: string) => {
-    if (path === "/api/v1/billing/dde-items")
-      return ok({ items, nextCursor: null, hasMore: false });
-    if (path === "/api/v1/billing/dde-items/{id}")
-      return ok({
-        ...items[0],
-        events: [
-          {
-            eventId: "e1",
-            event: "create",
-            fromState: null,
-            toState: "queued",
-            attemptNumber: 1,
-            occurredAt: "2026-10-01T00:00:00.000Z",
-          },
-        ],
-      });
+interface Setup {
+  pages?: { items: DdeItem[]; hasMore: boolean; nextCursor: string | null }[];
+  detail?: DdeItem | "missing";
+  post?: ReturnType<typeof vi.fn>;
+  listError?: boolean;
+}
+
+function setup(o: Setup = {}) {
+  const pages = o.pages ?? [{ items: [item()], hasMore: false, nextCursor: null }];
+  const post = o.post ?? vi.fn(async () => ok({}));
+  const get = vi.fn(async (path: string, args?: { params?: { query?: { cursor?: string } } }) => {
+    if (path === "/api/v1/billing/dde-items") {
+      if (o.listError) return fail(500, "INTERNAL");
+      const cursor = args?.params?.query?.cursor;
+      const page = cursor ? (pages[1] ?? pages[0]) : pages[0];
+      return ok(page);
+    }
+    if (path === "/api/v1/billing/dde-items/{id}") {
+      if (o.detail === "missing") return fail(404, "NOT_FOUND");
+      return ok({ ...(o.detail ?? pages[0]?.items[0] ?? item()), events: EVENTS });
+    }
     return ok({ firstName: "Pat", lastName: "Patient" });
   });
   return { api: { GET: get, POST: post } as unknown as ApiClient, get, post };
 }
 
 function Where(): JSX.Element {
-  return <output data-testid="where">{useLocation().pathname}</output>;
+  return (
+    <output data-testid="where">
+      {useLocation().pathname}
+      {useLocation().search}
+    </output>
+  );
 }
 
 function mount(api: ApiClient, entry = `/billing/dde?item=${ITEM}`) {
@@ -97,94 +120,304 @@ function mount(api: ApiClient, entry = `/billing/dde?item=${ITEM}`) {
     </ApiClientProvider>,
   );
 }
+const rail = async () => within(await screen.findByRole("complementary"));
+const postCall = (post: ReturnType<typeof vi.fn>, i = 0) =>
+  post.mock.calls[i] as unknown as [
+    string,
+    { params: { header: Record<string, string> }; body: Record<string, unknown> },
+  ];
 
-describe("DdeQueue", () => {
-  it("lists the work with its deadline indicator and counts what is overdue or at risk", async () => {
-    const { api } = client([
-      item(),
-      item({
-        ddeWorkItemId: "c3d4e5f6-0000-4000-8000-000000000002",
-        deadlineStatus: "overdue",
-        itemType: "adjustment",
-      }),
-    ]);
+beforeEach(() => clearDraft(`dde:${ITEM}`));
+
+describe("DdeQueue list", () => {
+  it("shows the deadline indicators and labels the counts as being of what is loaded", async () => {
+    const second = item({
+      ddeWorkItemId: ITEM2,
+      deadlineStatus: "overdue",
+      itemType: "adjustment",
+    });
+    const { api } = setup({
+      pages: [{ items: [item(), second], hasMore: false, nextCursor: null }],
+    });
     mount(api, "/billing/dde");
-    expect(await screen.findByText("2 items · 1 overdue · 1 at risk")).toBeTruthy();
-    expect(screen.getAllByText("At risk").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Overdue").length).toBeGreaterThan(0);
-    expect(within(screen.getByRole("table")).getAllByText("Adjustment").length).toBe(1);
+    expect(
+      await screen.findByText("2 items loaded · 1 overdue · 1 at risk (of those loaded)"),
+    ).toBeTruthy();
+    expect(within(screen.getByRole("table")).getAllByText("Overdue").length).toBe(1);
   });
 
-  it("filters server-side by overdue", async () => {
-    const { api, get } = client([item()]);
+  it("says '1 item' for one item", async () => {
+    const { api } = setup();
     mount(api, "/billing/dde");
-    await screen.findByText("1 items · 0 overdue · 1 at risk");
-    fireEvent.click(screen.getByLabelText("Overdue only"));
+    expect(await screen.findByText(/^1 item loaded/)).toBeTruthy();
+    expect(plural(1, "item")).toBe("1 item");
+  });
+
+  it("pages with Load more by cursor, de-duplicates, and starts over when a filter changes", async () => {
+    const a = item();
+    const b = item({ ddeWorkItemId: ITEM2, itemType: "adjustment" });
+    const { api, get } = setup({
+      pages: [
+        { items: [a], hasMore: true, nextCursor: "CUR1" },
+        { items: [a, b], hasMore: false, nextCursor: null },
+      ],
+    });
+    mount(api, "/billing/dde");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
     await waitFor(() =>
-      expect(get).toHaveBeenCalledWith(
+      expect(within(screen.getByRole("table")).getAllByRole("row").length).toBe(3),
+    );
+    expect(get).toHaveBeenCalledWith(
+      "/api/v1/billing/dde-items",
+      expect.objectContaining({ params: { query: expect.objectContaining({ cursor: "CUR1" }) } }),
+    );
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "noe" } });
+    await waitFor(() =>
+      expect(get).toHaveBeenLastCalledWith(
         "/api/v1/billing/dde-items",
-        expect.objectContaining({ params: { query: expect.objectContaining({ overdue: true }) } }),
+        expect.objectContaining({
+          params: { query: expect.not.objectContaining({ cursor: expect.anything() }) },
+        }),
       ),
     );
   });
 
-  it("records a submission with the expected version and an idempotency key", async () => {
-    const post = vi.fn(async () => ok({}));
-    const { api } = client([item()], post);
-    mount(api);
-    const rail = await screen.findByRole("complementary");
-    fireEvent.click(within(rail).getByRole("button", { name: "Record as keyed in DDE" }));
-    fireEvent.change(within(rail).getByLabelText(/DCN/), {
-      target: { value: "22123456789012345" },
-    });
-    fireEvent.click(within(rail).getByRole("button", { name: "Record as keyed" }));
-    await waitFor(() => expect(post).toHaveBeenCalled());
-    const [path, args] = post.mock.calls[0] as unknown as [
-      string,
-      { params: { path: { id: string }; header: Record<string, string> }; body: unknown },
-    ];
-    expect(path).toBe("/api/v1/billing/dde-items/{id}/record-submission");
-    expect(args.body).toEqual({ expectedVersion: 3, dcn: "22123456789012345" });
-    expect(args.params.header["Idempotency-Key"]).toBeTruthy();
-  });
-
-  it("sends the person to /step-up when the server demands a fresh re-authentication", async () => {
-    const post = vi.fn(async () => fail(403, "STEP_UP_REQUIRED"));
-    const { api } = client([item()], post);
-    mount(api);
-    const rail = await screen.findByRole("complementary");
-    fireEvent.click(within(rail).getByRole("button", { name: "Record as keyed in DDE" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Record as keyed" }));
-    expect(await screen.findByTestId("where")).toHaveProperty("textContent", "/step-up");
-  });
-
-  it("asks for the MAC acceptance date when an NOE is recorded as accepted, and never shows an MBI field", async () => {
-    const post = vi.fn(async () => ok({}));
-    const { api } = client(
-      [item({ state: "submitted", allowedActions: ["record_outcome"] })],
-      post,
+  it.each([
+    ["Status", "submitted", { state: "submitted" }],
+    ["Type", "adjustment", { itemType: "adjustment" }],
+    ["Overdue only", true, { overdue: true }],
+    ["At risk only", true, { atRisk: true }],
+  ])("wires the %s filter to the query", async (label, value, query) => {
+    const { api, get } = setup();
+    mount(api, "/billing/dde");
+    const control = await screen.findByLabelText(label);
+    if (typeof value === "boolean") fireEvent.click(control);
+    else fireEvent.change(control, { target: { value } });
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(
+        "/api/v1/billing/dde-items",
+        expect.objectContaining({ params: { query: expect.objectContaining(query) } }),
+      ),
     );
+  });
+
+  it("shows the empty, error and loading states", async () => {
+    const empty = setup({ pages: [{ items: [], hasMore: false, nextCursor: null }] });
+    const first = mount(empty.api, "/billing/dde");
+    expect(await screen.findByText("No DDE work")).toBeTruthy();
+    first.unmount();
+    const broken = setup({ listError: true });
+    mount(broken.api, "/billing/dde");
+    expect((await screen.findByText("DDE queue unavailable")).closest("[role=alert]")).toBeTruthy();
+  });
+});
+
+describe("DdeQueue deep links", () => {
+  it("opens an item beyond the loaded page (fetched by id) and says it is not in the list", async () => {
+    const other = item({ ddeWorkItemId: ITEM2 });
+    const { api } = setup({
+      pages: [{ items: [other], hasMore: true, nextCursor: "C" }],
+      detail: item(),
+    });
     mount(api);
-    const rail = await screen.findByRole("complementary");
-    fireEvent.click(within(rail).getByRole("button", { name: "Record what came back" }));
-    fireEvent.change(within(rail).getByLabelText(/What came back/), {
-      target: { value: "accepted" },
+    const r = await rail();
+    expect(await r.findByText("This item is no longer in the list.")).toBeTruthy();
+  });
+
+  it("explains an item that cannot be found", async () => {
+    const { api } = setup({ detail: "missing" });
+    mount(api);
+    expect((await screen.findByText(/could not be found/)).closest("[role=alert]")).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+});
+
+describe("DdeQueue actions", () => {
+  it.each([
+    ["claim", "Take it", ["claim", "cancel"]],
+    ["start", "Start work", ["start", "cancel"]],
+    ["retry", "Reopen as a new attempt", ["retry", "close"]],
+    ["cancel", "Cancel item", ["cancel"]],
+    ["close", "Close", ["close"]],
+  ] as const)(
+    "dispatches %s with the expected version and an idempotency key",
+    async (path, label, actions) => {
+      const { api, post } = setup({
+        pages: [
+          { items: [item({ allowedActions: [...actions] })], hasMore: false, nextCursor: null },
+        ],
+      });
+      mount(api);
+      fireEvent.click((await rail()).getByRole("button", { name: label }));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      const [url, args] = postCall(post);
+      expect(url).toBe(`/api/v1/billing/dde-items/{id}/${path}`);
+      expect(args.body).toEqual({ expectedVersion: 3 });
+      expect(args.params.header["Idempotency-Key"]).toBeTruthy();
+    },
+  );
+
+  it("offers only the actions the server allows", async () => {
+    const { api } = setup();
+    mount(api);
+    const r = await rail();
+    await r.findByRole("button", { name: "Record as keyed in DDE" });
+    for (const name of [
+      "Take it",
+      "Start work",
+      "Record what came back",
+      "Close",
+      "Reopen as a new attempt",
+    ])
+      expect(r.queryByRole("button", { name })).toBeNull();
+  });
+
+  it("records a submission, and a double submit sends one request", async () => {
+    let release: (v: unknown) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((res) => {
+          release = res;
+        }),
+    );
+    const { api } = setup({ post });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
+    const form = r.getByRole("form", { name: "Record as keyed in DDE" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(post).toHaveBeenCalledTimes(1);
+    const [path, args] = postCall(post);
+    expect(path).toBe("/api/v1/billing/dde-items/{id}/record-submission");
+    expect(args.body).toEqual({ expectedVersion: 3, dcn: DCN });
+    await act(async () => release(ok({})));
+  });
+
+  it("sends an acceptance to record-acceptance (date required for an NOE) and a return to record-outcome", async () => {
+    const post = vi.fn(async () => ok({}));
+    const { api } = setup({
+      post,
+      pages: [
+        {
+          items: [
+            item({ state: "submitted", allowedActions: ["record_outcome", "record_acceptance"] }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        },
+      ],
     });
-    fireEvent.click(within(rail).getByRole("button", { name: "Record outcome" }));
-    expect(await within(rail).findByText(/Enter the date the MAC accepted it/)).toBeTruthy();
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record what came back" }));
+    fireEvent.change(r.getByLabelText(/What came back/), { target: { value: "accepted" } });
+    fireEvent.submit(r.getByRole("form", { name: "Record what came back" }));
+    expect(await r.findByText(/Enter the date the MAC accepted it/)).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
-    expect(within(rail).queryByRole("textbox", { name: /^(MBI|Medicare)/i })).toBeNull();
-    fireEvent.change(within(rail).getByLabelText(/MAC acceptance date/), {
-      target: { value: "2026-10-08" },
+    fireEvent.change(r.getByLabelText(/MAC acceptance date/), { target: { value: "2026-10-08" } });
+    fireEvent.submit(r.getByRole("form", { name: "Record what came back" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(postCall(post)[0]).toBe("/api/v1/billing/dde-items/{id}/record-acceptance");
+    expect(postCall(post)[1].body).toEqual({ expectedVersion: 3, macAcceptedOn: "2026-10-08" });
+  });
+
+  it("returns an item through record-outcome with its RTP code", async () => {
+    const post = vi.fn(async () => ok({}));
+    const { api } = setup({
+      post,
+      pages: [
+        {
+          items: [
+            item({ state: "submitted", allowedActions: ["record_outcome", "record_acceptance"] }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        },
+      ],
     });
-    fireEvent.click(within(rail).getByRole("button", { name: "Record outcome" }));
-    await waitFor(() => expect(post).toHaveBeenCalled());
-    const [, args] = post.mock.calls[0] as unknown as [string, { body: unknown }];
-    expect(args.body).toEqual({
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record what came back" }));
+    fireEvent.change(r.getByLabelText(/What came back/), { target: { value: "returned" } });
+    fireEvent.change(r.getByLabelText(/RTP reason code/), { target: { value: "37001" } });
+    fireEvent.submit(r.getByRole("form", { name: "Record what came back" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(postCall(post)[0]).toBe("/api/v1/billing/dde-items/{id}/record-outcome");
+    expect(postCall(post)[1].body).toEqual({
       expectedVersion: 3,
-      outcome: "accepted",
-      macAcceptedOn: "2026-10-08",
+      outcome: "returned",
+      rtpReasonCode: "37001",
     });
+  });
+
+  it("holds a 412 notice on the screen (role=alert) and reloads, without remounting the rail", async () => {
+    const post = vi.fn(async () => fail(412, "VERSION_CONFLICT"));
+    const { api, get } = setup({
+      post,
+      pages: [
+        {
+          items: [item({ allowedActions: ["start", "cancel"] })],
+          hasMore: false,
+          nextCursor: null,
+        },
+      ],
+    });
+    mount(api);
+    fireEvent.click((await rail()).getByRole("button", { name: "Start work" }));
+    const alert = await screen.findByText(/changed since you opened it/);
+    expect(alert.closest("[role=alert]")).toBeTruthy();
+    const detailLoads = get.mock.calls.filter(
+      (c) => c[0] === "/api/v1/billing/dde-items/{id}",
+    ).length;
+    expect(detailLoads).toBeGreaterThan(1);
+    expect(screen.getByRole("complementary")).toBeTruthy();
+  });
+
+  it("goes to /step-up with returnTo, posts exactly once, and restores the open form on return", async () => {
+    const post = vi.fn(async () => fail(403, "STEP_UP_REQUIRED"));
+    const { api } = setup({ post });
+    const view = mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
+    fireEvent.submit(r.getByRole("form", { name: "Record as keyed in DDE" }));
+    const where = await screen.findByTestId("where");
+    expect(where.textContent).toContain("/step-up");
+    expect(decodeURIComponent(where.textContent ?? "")).toContain(
+      `returnTo=/billing/dde?item=${ITEM}`,
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+    view.unmount();
+    mount(setup().api);
+    const back = await rail();
+    expect(await back.findByRole("form", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect((back.getByLabelText(/DCN/) as HTMLInputElement).value).toBe(DCN);
+  });
+
+  it("has no MBI field: no input is named or labelled for a Medicare number", async () => {
+    const { api } = setup({
+      pages: [
+        {
+          items: [
+            item({ state: "submitted", allowedActions: ["record_outcome", "record_acceptance"] }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        },
+      ],
+    });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record what came back" }));
+    fireEvent.change(r.getByLabelText(/What came back/), { target: { value: "accepted" } });
+    for (const field of document.querySelectorAll("input, textarea, select")) {
+      const name = field.getAttribute("name") ?? "";
+      const label = field.closest("label")?.querySelector("span")?.textContent ?? "";
+      expect(`${name} ${label}`).not.toMatch(/mbi|medicare/i);
+    }
   });
 });
 
@@ -200,26 +433,34 @@ describe("dde-queue-model", () => {
     expect(isNoticeType("claim_entry")).toBe(false);
   });
 
+  it("refuses MBI-shaped notes and DCNs, however they are spaced", () => {
+    for (const note of [
+      "1EG4-TE5-MK73",
+      "1EG4 TE5 MK73",
+      "x1EG4TE5MK73y",
+      "1.E.G.4.T.E.5.M.K.7.3",
+    ]) {
+      expect(looksLikeMbi(note)).toBe(true);
+      expect(validateSubmission({ dcn: "", notes: note }).notes).toMatch(/Medicare number/);
+    }
+    expect(validateSubmission({ dcn: "1EG4TE5MK73", notes: "" }).dcn).toBeTruthy();
+    expect(validateSubmission({ dcn: DCN, notes: "called MAC, ref 4471" })).toEqual({});
+  });
+
   it("validates the forms", () => {
     expect(validateSubmission({ dcn: "bad dcn!", notes: "" }).dcn).toBeTruthy();
     expect(validateSubmission({ dcn: "", notes: "x".repeat(501) }).notes).toBeTruthy();
+    const empty = {
+      outcome: "",
+      macAcceptedOn: "",
+      rtpReasonCode: "",
+      dcn: "",
+      notes: "",
+    } as const;
+    expect(validateOutcome({ ...empty }, base).outcome).toBeTruthy();
+    expect(validateOutcome({ ...empty, outcome: "returned" }, base).rtpReasonCode).toBeTruthy();
     expect(
-      validateOutcome(
-        { outcome: "", macAcceptedOn: "", rtpReasonCode: "", dcn: "", notes: "" },
-        base,
-      ).outcome,
-    ).toBeTruthy();
-    expect(
-      validateOutcome(
-        { outcome: "returned", macAcceptedOn: "", rtpReasonCode: "", dcn: "", notes: "" },
-        base,
-      ).rtpReasonCode,
-    ).toBeTruthy();
-    expect(
-      validateOutcome(
-        { outcome: "accepted", macAcceptedOn: "", rtpReasonCode: "", dcn: "", notes: "" },
-        { ...base, itemType: "adjustment" },
-      ),
+      validateOutcome({ ...empty, outcome: "accepted" }, { ...base, itemType: "adjustment" }),
     ).toEqual({});
   });
 });

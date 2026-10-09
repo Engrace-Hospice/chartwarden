@@ -32,6 +32,7 @@ export type DdeAction =
   | "start"
   | "record_submission"
   | "record_outcome"
+  | "record_acceptance"
   | "retry"
   | "cancel"
   | "close";
@@ -69,6 +70,9 @@ export interface DdeEvent {
   attemptNumber: number;
   occurredAt: string;
 }
+
+/** The detail response: the item plus its append-only history. */
+export type DdeItemDetail = DdeItem & { events: DdeEvent[] };
 
 export const TYPE_LABEL: Record<DdeItemType, string> = {
   noe: "Notice of Election",
@@ -159,15 +163,48 @@ export interface OutcomeDraft {
 }
 
 export const NOTES_MAX = 500;
-const DCN_RE = /^[A-Za-z0-9]{1,23}$/;
+const DCN_RE = /^[A-Za-z0-9]{13,23}$/;
 const RTP_RE = /^[A-Z0-9]{1,8}$/;
+
+const MBI_ALPHA = "[AC-HJKMNP-RT-Y]";
+const MBI_ALNUM = "[AC-HJKMNP-RT-Y0-9]";
+const MBI_WINDOW = new RegExp(
+  `[1-9]${MBI_ALPHA}${MBI_ALNUM}[0-9]${MBI_ALPHA}${MBI_ALNUM}[0-9]${MBI_ALPHA}${MBI_ALPHA}[0-9][0-9]`,
+  "i",
+);
+
+/**
+ * Best-effort mirror of the server's note screen (`looksLikeMbi` in @wardenx/billing): NFKC-normalise, drop
+ * everything that is not a letter or digit, and look for any MBI-shaped 11-character window. The server is the
+ * authority; this only stops the obvious case before a request is sent.
+ */
+export function looksLikeMbi(text: string): boolean {
+  return MBI_WINDOW.test(text.normalize("NFKC").replace(/[^A-Za-z0-9]/g, ""));
+}
+
+const NOTES_MBI_MESSAGE = "Notes cannot contain a Medicare number (MBI). Remove it.";
+
+function notesError(notes: string): string | undefined {
+  if (notes.length > NOTES_MAX) return `Keep notes under ${NOTES_MAX} characters.`;
+  if (looksLikeMbi(notes)) return NOTES_MBI_MESSAGE;
+  return undefined;
+}
+
+function dcnError(dcn: string): string | undefined {
+  if (!dcn) return undefined;
+  if (!DCN_RE.test(dcn)) return "A DCN / ICN is 13 to 23 letters and digits.";
+  if (looksLikeMbi(dcn)) return "That looks like a Medicare number. Enter the DCN / ICN instead.";
+  return undefined;
+}
 
 export function validateSubmission(
   d: SubmissionDraft,
 ): Partial<Record<keyof SubmissionDraft, string>> {
   const e: Partial<Record<keyof SubmissionDraft, string>> = {};
-  if (d.dcn && !DCN_RE.test(d.dcn)) e.dcn = "Letters and digits only, up to 23 characters.";
-  if (d.notes.length > NOTES_MAX) e.notes = `Keep notes under ${NOTES_MAX} characters.`;
+  const dcn = dcnError(d.dcn);
+  if (dcn) e.dcn = dcn;
+  const notes = notesError(d.notes);
+  if (notes) e.notes = notes;
   return e;
 }
 
@@ -182,9 +219,23 @@ export function validateOutcome(
   if (d.outcome === "returned" && !d.rtpReasonCode) e.rtpReasonCode = "Enter the RTP reason code.";
   if (d.rtpReasonCode && !RTP_RE.test(d.rtpReasonCode))
     e.rtpReasonCode = "Capital letters and digits only, up to 8 characters.";
-  if (d.dcn && !DCN_RE.test(d.dcn)) e.dcn = "Letters and digits only, up to 23 characters.";
-  if (d.notes.length > NOTES_MAX) e.notes = `Keep notes under ${NOTES_MAX} characters.`;
+  const dcn = dcnError(d.dcn);
+  if (dcn) e.dcn = dcn;
+  const notes = notesError(d.notes);
+  if (notes) e.notes = notes;
   return e;
+}
+
+/** "1 item" / "2 items". */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** A local date-time for a timestamp (the browser's zone); date-only fields use {@link fmtDay}. */
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
 /** A short, human date (UTC calendar date — these are date-only fields). */
