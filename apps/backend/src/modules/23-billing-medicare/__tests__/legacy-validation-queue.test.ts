@@ -36,7 +36,7 @@ describe("migrateLegacyValidationRunJobs", () => {
     );
     expect(mine.removed).toBe(true);
     expect(theirs.removed).toBe(false);
-    expect(result).toEqual({ moved: 1, skippedActive: 0, leftForOtherModules: 1 });
+    expect(result).toEqual({ moved: 1, failed: 0, skippedActive: 0, leftForOtherModules: 1 });
   });
 
   it("carries the remaining delay of a delayed job and never moves a delay into the past", async () => {
@@ -55,12 +55,11 @@ describe("migrateLegacyValidationRunJobs", () => {
     const add = vi.fn(async () => {
       throw new Error("redis down");
     });
-    await expect(
-      migrateLegacyValidationRunJobs(
-        { getJobs: async (t) => (t.includes("active") ? [] : [job]) },
-        { add },
-      ),
-    ).rejects.toThrow("redis down");
+    const result = await migrateLegacyValidationRunJobs(
+      { getJobs: async (t) => (t.includes("active") ? [] : [job]) },
+      { add },
+    );
+    expect(result).toMatchObject({ moved: 0, failed: 1 });
     expect(job.removed).toBe(false);
   });
 
@@ -72,7 +71,22 @@ describe("migrateLegacyValidationRunJobs", () => {
     );
     const add = vi.fn(async () => undefined);
     const result = await migrateLegacyValidationRunJobs({ getJobs }, { add });
-    expect(result).toEqual({ moved: 250, skippedActive: 1, leftForOtherModules: 0 });
+    expect(result).toEqual({ moved: 250, failed: 0, skippedActive: 1, leftForOtherModules: 0 });
     expect(all.every((j) => j.removed)).toBe(true);
+  });
+
+  it("keeps sweeping when one job cannot be removed, counting it as failed", async () => {
+    const locked = fakeJob("m23:validation-run:locked", {});
+    locked.remove = async () => {
+      throw new Error("Job is locked");
+    };
+    const ok = fakeJob("m23:validation-run:ok", {});
+    const add = vi.fn(async () => undefined);
+    const result = await migrateLegacyValidationRunJobs(
+      { getJobs: async (t) => (t.includes("active") ? [] : [locked, ok]) },
+      { add },
+    );
+    expect(result).toMatchObject({ moved: 1, failed: 1 });
+    expect(ok.removed).toBe(true);
   });
 });

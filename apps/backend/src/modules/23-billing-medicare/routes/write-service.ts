@@ -73,6 +73,12 @@ export interface ProviderCcnPort {
   ): Promise<string>;
 }
 
+/** The row a MAC secret belongs to; bound into the cipher's AAD so a ciphertext cannot be moved to another row. */
+export interface MacSecretContext {
+  readonly providerEntityId: string;
+  readonly macJurisdiction: string;
+}
+
 /**
  * Encrypts a MAC-portal client secret under the per-tenant DEK (the M1 envelope-encryption helper) before it
  * is persisted to `mac_submitter_credential.client_secret_cipher`. The PLAINTEXT secret never enters the
@@ -82,6 +88,7 @@ export interface SecretCipherPort {
   encrypt(
     organizationId: string,
     plaintext: string,
+    context: MacSecretContext,
   ): Promise<{ readonly cipher: string; readonly dekVersion: number }>;
 }
 

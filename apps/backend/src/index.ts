@@ -3692,7 +3692,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
-  const m24CredentialCipher = process.env.M24_CREDENTIAL_ENCRYPTION_KEY
+  // ONE trimmed "is the key set" test for M24 and M23, so a whitespace-only value is "unset" for both.
+  const billingCredentialKeyConfigured =
+    (process.env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim() ?? "") !== "";
+  const m24CredentialCipher = billingCredentialKeyConfigured
     ? buildCredentialCipherPort()
     : undefined;
   // M23 — the MAC-portal client-secret cipher (`POST /billing/mac-credentials`). Same custody model and KEK as the M24

@@ -288,6 +288,29 @@ async function deleteDraftClaimSubtree(
     .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId)));
 }
 
+const PG_UNIQUE_VIOLATION = "23505";
+
+/** True when `err` (or its driver cause) is a Postgres unique-index violation. */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
+  return (
+    code(err) === PG_UNIQUE_VIOLATION ||
+    code((err as { cause?: unknown } | null)?.cause) === PG_UNIQUE_VIOLATION
+  );
+}
+
+/** Run `fn`; a lost first-create race (unique violation) becomes a typed 409, never a 500. */
+const mapUniqueViolation =
+  (message: string) =>
+  async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictError(message);
+      throw err;
+    }
+  };
+
 // ── the factory ────────────────────────────────────────────────────────────────────────────────────
 
 const denyCcn: ProviderCcnPort = {
@@ -643,6 +666,24 @@ export function buildDrizzleM23WriteService(
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be deleted");
+        }
+        // L1: M23 never writes `replaced_by_claim_id` on the original (it moves to REPLACED only when the 277CA accepts the
+        // replacement, in the ack consumer), so deleting a DRAFT replacement leaves no dangling pointer to clear.
+        // Defence in depth with the database guard: a claim that was ever transmitted or acknowledged is never deletable.
+        const transmitted = await tx
+          .select({ id: schema.claimSubmission.id })
+          .from(schema.claimSubmission)
+          .where(eq(schema.claimSubmission.claimId, claimId))
+          .limit(1);
+        const acknowledged = await tx
+          .select({ id: schema.claimAcknowledgment.id })
+          .from(schema.claimAcknowledgment)
+          .where(eq(schema.claimAcknowledgment.claimId, claimId))
+          .limit(1);
+        if (transmitted.length > 0 || acknowledged.length > 0) {
+          throw new ConflictError(
+            "a claim that has been transmitted or acknowledged cannot be deleted",
+          );
         }
         await deleteDraftClaimSubtree(tx, actor.organizationId, claimId);
       });
@@ -1123,69 +1164,84 @@ export function buildDrizzleM23WriteService(
     // ── MAC credentials (step-up; secret encrypted at the boundary) ──
     async upsertMacCredential(actor, args: UpsertMacCredentialArgs): Promise<MacCredentialView> {
       requireStepUp(actor);
-      return inOrgCtx(actor, async (tx) => {
-        const { cipher, dekVersion } = await secretCipher.encrypt(
-          actor.organizationId,
-          args.clientSecret,
-        );
-        const repo = new repositories.MacSubmitterCredentialRepository(tx);
-        const existing = await repo.findByProviderEntity(args.providerEntityId);
-        let row: repositories.MacSubmitterCredentialSafeRecord;
-        if (existing) {
-          if (existing.organizationId !== actor.organizationId) {
+      return mapUniqueViolation(
+        "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
+      )(() =>
+        inOrgCtx(actor, async (tx) => {
+          const repo = new repositories.MacSubmitterCredentialRepository(tx);
+          const existing = await repo.findByProviderEntity(args.providerEntityId);
+          if (existing && existing.organizationId !== actor.organizationId) {
             throw new NotFoundError("mac credential");
           }
-          if (args.expectedVersion === undefined) {
-            throw new WardenXError(
-              "IF_MATCH_REQUIRED",
-              "an If-Match version is required to update an existing MAC credential",
-              428,
+          // A credential row is bound to one provider entity AND one MAC jurisdiction (both are in the cipher's AAD);
+          // changing the jurisdiction is a new credential, not an update of this one.
+          if (existing && existing.macJurisdiction !== args.macJurisdiction) {
+            throw new ConflictError(
+              "this provider entity's MAC credential is for a different MAC jurisdiction",
             );
           }
-          const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
-            submitterId: args.submitterId,
-            tradingPartnerId: args.tradingPartnerId,
-            clientId: args.clientId,
-            clientSecretCipher: cipher,
-            clientSecretDekVersion: dekVersion,
-            ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-            ...(args.credentialExpiresAt !== undefined
-              ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-              : {}),
-          });
-          if (!res.ok) throw conflict412(res.currentVersion);
-          row = res.row;
-        } else {
-          row = await repo.create({
+          const { cipher, dekVersion } = await secretCipher.encrypt(
+            actor.organizationId,
+            args.clientSecret,
+            { providerEntityId: args.providerEntityId, macJurisdiction: args.macJurisdiction },
+          );
+          let row: repositories.MacSubmitterCredentialSafeRecord;
+          if (existing) {
+            if (existing.organizationId !== actor.organizationId) {
+              throw new NotFoundError("mac credential");
+            }
+            if (args.expectedVersion === undefined) {
+              throw new WardenXError(
+                "IF_MATCH_REQUIRED",
+                "an If-Match version is required to update an existing MAC credential",
+                428,
+              );
+            }
+            const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
+              submitterId: args.submitterId,
+              tradingPartnerId: args.tradingPartnerId,
+              clientId: args.clientId,
+              clientSecretCipher: cipher,
+              clientSecretDekVersion: dekVersion,
+              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+              ...(args.credentialExpiresAt !== undefined
+                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+                : {}),
+            });
+            if (!res.ok) throw conflict412(res.currentVersion);
+            row = res.row;
+          } else {
+            row = await repo.create({
+              organizationId: actor.organizationId,
+              providerEntityId: args.providerEntityId,
+              macJurisdiction:
+                args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
+              submitterId: args.submitterId,
+              tradingPartnerId: args.tradingPartnerId,
+              clientId: args.clientId,
+              clientSecretCipher: cipher,
+              clientSecretDekVersion: dekVersion,
+              setByMembershipId: actor.membershipId,
+              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+              ...(args.credentialExpiresAt !== undefined
+                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+                : {}),
+            });
+          }
+          await emit(tx, {
+            eventName: "m23.mac_credential.updated",
             organizationId: actor.organizationId,
-            providerEntityId: args.providerEntityId,
-            macJurisdiction:
-              args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
-            submitterId: args.submitterId,
-            tradingPartnerId: args.tradingPartnerId,
-            clientId: args.clientId,
-            clientSecretCipher: cipher,
-            clientSecretDekVersion: dekVersion,
-            setByMembershipId: actor.membershipId,
-            ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-            ...(args.credentialExpiresAt !== undefined
-              ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-              : {}),
+            aggregateKind: "mac_submitter_credential",
+            aggregateId: row.id,
+            payload: {
+              providerEntityId: args.providerEntityId,
+              macJurisdiction: args.macJurisdiction,
+              version: row.version,
+            },
           });
-        }
-        await emit(tx, {
-          eventName: "m23.mac_credential.updated",
-          organizationId: actor.organizationId,
-          aggregateKind: "mac_submitter_credential",
-          aggregateId: row.id,
-          payload: {
-            providerEntityId: args.providerEntityId,
-            macJurisdiction: args.macJurisdiction,
-            version: row.version,
-          },
-        });
-        return mapMacCredential(row);
-      });
+          return mapMacCredential(row);
+        }),
+      );
     },
 
     async testMacCredential(actor, providerEntityId): Promise<MacCredentialTestView> {

@@ -42,6 +42,8 @@ export interface LegacyValidationMigrationResult {
   readonly moved: number;
   /** M23 jobs left in place because a live worker holds them (active). */
   readonly skippedActive: number;
+  /** M23 jobs whose move failed (e.g. locked by a worker); left in place, retried on the next sweep. */
+  readonly failed: number;
   /** Jobs that are not M23's and were deliberately left alone. */
   readonly leftForOtherModules: number;
 }
@@ -69,22 +71,32 @@ export async function migrateLegacyValidationRunJobs(
   const params = M23_QUEUE_PARAMS.validationRun;
   const jobs = await listMovableJobs(legacy);
   const mine = jobs.filter((j) => j.id?.startsWith(M23_JOB_ID_PREFIX));
+  let moved = 0;
+  let failed = 0;
   for (const job of mine) {
     const remainingDelay = Math.max(0, job.timestamp + (job.opts.delay ?? 0) - now());
-    // Add first, remove second: a crash in between leaves a duplicate id, which BullMQ dedupes on the next sweep.
-    await target.add(M23_QUEUES.validationRun, job.data, {
-      jobId: job.id as string,
-      ...(remainingDelay > 0 ? { delay: remainingDelay } : {}),
-      attempts: params.attempts,
-      backoff: params.backoff,
-      removeOnComplete: { count: 500 },
-      removeOnFail: false,
-    });
-    await job.remove();
+    try {
+      // Add first, remove second: a crash in between leaves a duplicate id, which BullMQ dedupes on the next sweep.
+      await target.add(M23_QUEUES.validationRun, job.data, {
+        jobId: job.id as string,
+        ...(remainingDelay > 0 ? { delay: remainingDelay } : {}),
+        attempts: params.attempts,
+        backoff: params.backoff,
+        removeOnComplete: { count: 500 },
+        removeOnFail: false,
+      });
+      await job.remove();
+      moved += 1;
+    } catch {
+      // One locked or racing job must not abort the sweep; it stays where it is and the next boot retries it. The
+      // caller logs counts only (a job's payload and error text are not logged).
+      failed += 1;
+    }
   }
   const active = await legacy.getJobs(["active"]);
   return {
-    moved: mine.length,
+    moved,
+    failed,
     skippedActive: active.filter((j) => j.id?.startsWith(M23_JOB_ID_PREFIX)).length,
     leftForOtherModules: jobs.length - mine.length,
   };

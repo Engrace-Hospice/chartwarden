@@ -128,28 +128,46 @@ describe.skipIf(!REDIS_URL)("M23 / M27 validation-run queue isolation — LIVE V
           delay: 60_000,
         },
       );
-      // A failed M23 job (what the wrong worker left behind): add, then fail it by hand.
-      const failedJob = await legacy.add(
+      // A genuinely FAILED M23 job, as the wrong module's worker leaves it: a real worker on the legacy name that
+      // always throws (attempts 1). Fail loudly if it does not end up in the failed state.
+      // The M27 recorder also listens on the legacy name: pause it so only the failing worker can take the job.
+      await workers[1]?.pause();
+      const failer = new Worker(
+        M23_LEGACY_VALIDATION_RUN_QUEUE,
+        async () => {
+          throw new Error("cost_report_validation undefined not found");
+        },
+        { connection },
+      );
+      await failer.waitUntilReady();
+      await legacy.add(
         "validation-run",
         { ...payload, validationRunId: "run-11" },
         {
           jobId: "m23:validation-run:failed-1",
-          delay: 60_000,
+          attempts: 1,
         },
       );
-      await failedJob
-        .moveToFailed(new Error("cost_report_validation undefined not found"), "0", true)
-        .catch(() => {
-          // Without a lock token a manual fail can be refused; the delayed copy still proves the move path.
-        });
+      const deadline = Date.now() + 10_000;
+      while (
+        (await (await legacy.getJob("m23:validation-run:failed-1"))?.getState()) !== "failed"
+      ) {
+        if (Date.now() > deadline) throw new Error("the legacy job never reached the failed state");
+        await sleep(100);
+      }
+      await failer.close();
+      workers[1]?.resume();
       received.m23.length = 0;
 
       const result = await sweepLegacyValidationRunQueue(connection);
-      expect(result.moved).toBeGreaterThanOrEqual(3);
+      expect(result.moved).toBe(3);
+      expect(result.failed).toBe(0);
       expect(result.leftForOtherModules).toBe(1);
 
       const target = new Queue(M23_QUEUES.validationRun, { connection });
       closers.push(() => target.close());
+      expect(await target.getJob("m23:validation-run:failed-1")).toBeDefined();
+      expect(await legacy.getJob("m23:validation-run:failed-1")).toBeUndefined();
       for (const id of ["m23:validation-run:delayed-1", "m23:validation-run:delayed-2"]) {
         const moved = await target.getJob(id);
         expect(moved?.data).toMatchObject({ claimId: "claim-9" });

@@ -76,6 +76,7 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
   const servers: FastifyInstance[] = [];
+  const emitted: unknown[] = [];
 
   function serverWith(env: Record<string, string | undefined>): FastifyInstance {
     registerEffectivePermissionResolver(
@@ -102,7 +103,10 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     registerMacCredentialRoutes(app, {
       readService: buildDrizzleM23ReadService(handle.db),
-      writeService: buildDrizzleM23WriteService(handle.db, secretCipher ? { secretCipher } : {}),
+      writeService: buildDrizzleM23WriteService(handle.db, {
+        outbox: { publish: async (_tx, input) => void emitted.push(input) },
+        ...(secretCipher ? { secretCipher } : {}),
+      }),
     });
     servers.push(app);
     return app;
@@ -196,18 +200,22 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     const rows = await stored();
     expect(rows).toHaveLength(1);
     const { client_secret_cipher: sealed, client_secret_dek_version: dekVersion } = rows[0];
-    expect(dekVersion).toBe(1);
+    expect(dekVersion).toBe(2);
     expect(sealed).not.toContain(SECRET);
     expect(Buffer.from(sealed, "base64").toString("latin1")).not.toContain(SECRET);
 
     // The read-back that a worker will perform: openable by the same key for the owning org only.
     const cipher = buildMacSecretCipherFromEnv(env);
-    expect(await cipher?.decrypt(ORG, sealed)).toBe(SECRET);
-    await expect(cipher?.decrypt(OTHER_ORG, sealed)).rejects.toThrow();
+    expect(
+      await cipher?.decrypt(ORG, { providerEntityId: PE, macJurisdiction: "cgs_j15" }, sealed),
+    ).toBe(SECRET);
+    await expect(
+      cipher?.decrypt(OTHER_ORG, { providerEntityId: PE, macJurisdiction: "cgs_j15" }, sealed),
+    ).rejects.toThrow();
     await expect(
       buildMacSecretCipherFromEnv({
         M24_CREDENTIAL_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
-      })?.decrypt(ORG, sealed),
+      })?.decrypt(ORG, { providerEntityId: PE, macJurisdiction: "cgs_j15" }, sealed),
     ).rejects.toThrow();
 
     const get = await app.inject({
@@ -224,6 +232,20 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
       [`%${SECRET}%`],
     );
     expect(audit.rows[0].n).toBe(0);
+    // The events the service itself emitted carry neither the plaintext nor the ciphertext, and the audit row exists
+    // with the cipher column scrubbed (M4 denylist).
+    const emittedJson = JSON.stringify(emitted);
+    expect(emittedJson).toContain("m23.mac_credential.updated");
+    expect(emittedJson).not.toContain(SECRET);
+    expect(emittedJson).not.toContain(sealed);
+    const auditRows = await admin.query(
+      "SELECT before::text AS b, after::text AS a FROM audit_event WHERE event_type='mac_submitter_credential.insert'",
+    );
+    expect(auditRows.rows.length).toBeGreaterThanOrEqual(1);
+    for (const r of auditRows.rows) {
+      expect(`${r.b}${r.a}`).not.toContain(SECRET);
+      expect(`${r.b}${r.a}`).not.toContain(sealed);
+    }
     const outbox = await admin.query(
       "SELECT count(*)::int AS n FROM outbox_event WHERE payload::text LIKE $1",
       [`%${SECRET}%`],
@@ -252,8 +274,46 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     expect(ok.statusCode).toBeLessThan(300);
     const after = (await stored())[0];
     expect(after.client_secret_cipher).not.toBe(before.client_secret_cipher);
-    expect(await buildMacSecretCipherFromEnv(env)?.decrypt(ORG, after.client_secret_cipher)).toBe(
-      rotated,
+    expect(
+      await buildMacSecretCipherFromEnv(env)?.decrypt(
+        ORG,
+        { providerEntityId: PE, macJurisdiction: "cgs_j15" },
+        after.client_secret_cipher,
+      ),
+    ).toBe(rotated);
+  });
+
+  it("409s when an update names a different MAC jurisdiction than the stored credential", async () => {
+    const app = serverWith({ M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 });
+    const before = (await stored())[0];
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/billing/mac-credentials",
+      headers: headers({ "if-match": String(before.version) }),
+      payload: { ...BODY, macJurisdiction: "ngs_j6" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect((await stored())[0].client_secret_cipher).toBe((await stored())[0].client_secret_cipher);
+    expect((await stored())[0].version).toBe(before.version);
+  });
+
+  it("never 500s when several first-creates race for one provider entity: exactly one wins, the rest are 4xx", async () => {
+    const app = serverWith({ M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 });
+    const pe2 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        app.inject({
+          method: "POST",
+          url: "/api/v1/billing/mac-credentials",
+          headers: headers(),
+          payload: { ...BODY, providerEntityId: pe2 },
+        }),
+      ),
     );
+    const codes = results.map((r) => r.statusCode);
+    expect(codes.filter((c) => c === 201)).toHaveLength(1);
+    expect(codes.every((c) => c < 500)).toBe(true);
+    expect(codes.filter((c) => c !== 201).every((c) => c === 409 || c === 428)).toBe(true);
+    for (const r of results) expect(r.body).not.toContain(SECRET);
   });
 });
