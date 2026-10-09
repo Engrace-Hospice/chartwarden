@@ -1023,6 +1023,9 @@ jobs:
           # Migration 1061 - DELETE /billing/claims/:id (and the re-assembly line rewrite) on a DRAFT claim: DELETE grants, the
           # draft-only guards, org-scoped RLS, the destruction role unchanged.
           - { name: "M23 draft claim delete", scripts: "test:m23:draft-claim-delete:live" }
+          # POST .../results/:resultId/override over the real audit port: 201 + one prominent audit_event (ids/rule/role, no
+          # reason text) linked as m4_audit_event_id; 403/404/409 write nothing; the claim stays non-draft and undeletable.
+          - { name: "M23 validation override", scripts: "test:m23:validation-override:live" }
           # POST /billing/mac-credentials over the real secret cipher: 201, ciphertext at rest, no plaintext out, round-trip.
           - { name: "M23 MAC credential cipher", scripts: "test:m23:mac-credential-cipher:live" }
           # Migrations 1058/1059 — the CMS hospice wage-index geography (ZIP -> county -> CBSA) behind value codes 61 / G8:

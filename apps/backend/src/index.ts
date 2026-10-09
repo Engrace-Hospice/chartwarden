@@ -176,6 +176,7 @@ import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+import { buildM23OverrideAuditPort } from "./m23-override-audit";
 import {
   type AuthAuditDb,
   createAuthAuditSink,
@@ -4778,6 +4779,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               }),
               providerCcn: m23ProviderCcn,
               ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
+              // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
+              audit: buildM23OverrideAuditPort(),
               // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
               ...(m23LaunchGateway
                 ? {

@@ -12,6 +12,7 @@
 //
 // packages/audit is a FOUNDATION_HELPER_PACKAGE and may import the @wardenx/db schema TYPES
 // (ADR-0005 D4); table ownership for audit_event is satisfied by the helper-package rule.
+import { randomUUID } from "node:crypto";
 import { schema } from "@wardenx/db";
 import { type SQL, sql } from "drizzle-orm";
 import { redactSnapshot } from "./denylist";
@@ -111,6 +112,21 @@ export async function audit(
   input: AuditEventInput,
 ): Promise<void> {
   await tx.insert(schema.auditEvents).values(buildRow(ctx, input));
+}
+
+/**
+ * Like {@link audit}, but returns the new row's id so the caller can store it as a back-reference (e.g. M23's
+ * `validation_override.m4_audit_event_id`). The id is generated here and inserted explicitly; everything else, including
+ * redaction and retention resolution, is exactly `audit()`.
+ */
+export async function auditReturningId(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: AuditEventInput,
+): Promise<string> {
+  const id = randomUUID();
+  await tx.insert(schema.auditEvents).values({ ...buildRow(ctx, input), id });
+  return id;
 }
 
 /**

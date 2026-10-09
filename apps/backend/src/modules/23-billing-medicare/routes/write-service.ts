@@ -110,6 +110,12 @@ export interface AuditEventPort {
       readonly resultId: string;
       readonly ruleKey: string;
       readonly overrideRole: string;
+      /** The acting user (the audit actor); the membership above is the billing-side identity. */
+      readonly actorUserId: string;
+      /**
+       * The compliance rationale (40-2000 chars, free text). It is persisted ONLY on `validation_override.reason`;
+       * an implementation must NOT copy it into the audit event, an outbox payload or a log (record its length at most).
+       */
       readonly reason: string;
     },
   ): Promise<{ readonly auditEventId: string }>;

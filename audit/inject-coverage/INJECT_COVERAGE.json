@@ -341,6 +341,7 @@
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
+        "apps/backend/__tests__/m23-validation-override.live.test.ts",
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"

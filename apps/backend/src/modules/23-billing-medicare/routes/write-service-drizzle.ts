@@ -909,6 +909,7 @@ export function buildDrizzleM23WriteService(
           resultId: result.id,
           ruleKey: result.ruleKey,
           overrideRole: args.overrideRole,
+          actorUserId: actor.userId,
           reason: args.reason,
         });
         const override = await overrideRepo.append({
