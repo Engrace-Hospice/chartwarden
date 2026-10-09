@@ -1,3 +1,4 @@
+import { parseWristbandPayload } from "@wardenx/types";
 import {
   Button,
   Modal,
@@ -31,9 +32,12 @@ import {
 //     a client-side "significant late" that disagreed with the stored tier would be a second opinion
 //     about a regulated field.
 //   • §2.9 BCMA. The scan payloads are sent as OBSERVED; the server re-derives `barcodeMatchResult` and
-//     hard-blocks a wrong-drug/expired scan. Nothing here pre-judges a scan.
+//     hard-blocks a wrong-drug/expired/wrong-patient scan. The one thing checked here is that the wristband
+//     field holds a well-formed, checksum-valid code - so a misread is a "rescan", never a false wrong-patient
+//     alarm. WHOSE band it is, and whether it is the current one, is M5's answer, not this form's.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { Link } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import {
   type ActiveMedicationOrder,
@@ -45,6 +49,7 @@ import {
   isWitnessRequired,
   recordAdministration,
   recordRefusal,
+  wristbandRefusalOf,
 } from "./emar-api";
 
 /** The two acts this modal commits. A refusal is a RECORDED row, not an omission. */
@@ -129,6 +134,8 @@ export function AdministerModal({
   const [scanWristband, setScanWristband] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // GAP-020 - the wristband reason behind a refusal, so the form can offer the right next step.
+  const [wristbandCode, setWristbandCode] = useState<string | null>(null);
 
   const order = orders.find((o) => o.id === orderId) ?? null;
   // The class the SERVER will gate on is the ORDER's, not a picker the clinician can change. When M12 is
@@ -151,6 +158,7 @@ export function AdministerModal({
     setScanNdc("");
     setScanWristband("");
     setError(null);
+    setWristbandCode(null);
     setBusy(false);
   }, [open, initialOrderId, orders]);
 
@@ -178,8 +186,14 @@ export function AdministerModal({
     (!administering || !isPrn || prnReason.trim().length >= PRN_REASON_MIN);
 
   async function commit(): Promise<void> {
-    setBusy(true);
     setError(null);
+    setWristbandCode(null);
+    // A damaged / misread wristband code is caught HERE so it reads "rescan", not "wrong patient".
+    if (administering && scanWristband.trim() && !parseWristbandPayload(scanWristband).ok) {
+      setError("The wristband could not be read. Rescan it, or type the code printed under it.");
+      return;
+    }
+    setBusy(true);
     const iso = new Date(at).toISOString();
     if (!administering) {
       const { error: err } = await recordRefusal(client, {
@@ -203,9 +217,7 @@ export function AdministerModal({
       scanNdc.trim() || scanWristband.trim()
         ? {
             ...(scanNdc.trim() ? { scannedNdc: scanNdc.trim() } : {}),
-            ...(scanWristband.trim()
-              ? { patientWristbandPayloadDigest: scanWristband.trim() }
-              : {}),
+            ...(scanWristband.trim() ? { patientWristbandPayload: scanWristband.trim() } : {}),
           }
         : undefined;
     const body: RecordAdministrationBody = {
@@ -235,6 +247,12 @@ export function AdministerModal({
     );
     setBusy(false);
     if (err) {
+      const wristband = wristbandRefusalOf(err);
+      if (wristband) {
+        setWristbandCode(wristband.code);
+        setError(wristband.message);
+        return;
+      }
       setError(
         isWitnessRequired(err)
           ? "This controlled substance needs a live witness attestation. Ask the witnessing clinician to mint a token on their own device and paste it here within 60 seconds."
@@ -395,13 +413,15 @@ export function AdministerModal({
                   onChange={(e) => setScanNdc(e.target.value)}
                 />
                 <TextField
-                  label="Patient wristband payload"
+                  label="Scan patient wristband"
                   value={scanWristband}
+                  autoComplete="off"
+                  hint="Click here and scan with the handheld scanner, or type the code printed under the barcode."
                   onChange={(e) => setScanWristband(e.target.value)}
                 />
                 <p style={meta}>
-                  Sent as scanned. The server derives the match result and blocks a wrong-drug or
-                  expired scan.
+                  Sent as scanned. The server verifies the wristband against the patient and derives
+                  the match result; it blocks a wrong-patient, wrong-drug or expired scan.
                 </p>
               </div>
             </details>
@@ -417,6 +437,12 @@ export function AdministerModal({
         {error ? (
           <p role="alert" style={alert}>
             {error}
+            {wristbandCode === "WRISTBAND_NOT_ON_FILE" || wristbandCode === "WRISTBAND_VOIDED" ? (
+              <>
+                {" "}
+                <Link to={`/patients/${patientId}`}>Open the chart to print a wristband</Link>
+              </>
+            ) : null}
           </p>
         ) : null}
 
