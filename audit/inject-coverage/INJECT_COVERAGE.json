@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1471,
-    "coveredRoutes": 1471,
-    "directRoutesReferenced": 1409
+    "routes": 1474,
+    "coveredRoutes": 1474,
+    "directRoutesReferenced": 1412
   },
   "modules": [
     {
@@ -71,7 +71,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 40,
+      "routes": 43,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -84,11 +84,12 @@
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
+        "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 40
+      "directRoutesReferenced": 43
     },
     {
       "module": "06-admission",
