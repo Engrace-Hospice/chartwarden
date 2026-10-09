@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { useSession } from "../../shell/session";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
@@ -167,6 +168,7 @@ const openItems = (m: MeetingRow): number =>
 
 export function PatientIdgHistory(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
   const identity = useChartIdentity(patientId);
   const orgId = identity?.patient.organizationId;
@@ -177,6 +179,7 @@ export function PatientIdgHistory(): JSX.Element {
   const [members, setMembers] = useState<Map<string, Member>>(new Map());
   const [plan, setPlan] = useState<PlanSummary | null | undefined>(undefined);
   const [scheduled, setScheduled] = useState<NextMeeting | null | undefined>(undefined);
+  const [schedulePartial, setSchedulePartial] = useState(false);
   const [locations, setLocations] = useState<Map<string, string>>(new Map());
   const [ownDetail, setOwnDetail] = useState<{
     id: string;
@@ -260,23 +263,33 @@ export function PatientIdgHistory(): JSX.Element {
   // The org's next IDG meeting across its sites, for a patient with no packet on an upcoming one yet.
   useEffect(() => {
     let active = true;
+    setSchedulePartial(false);
     void (async () => {
       try {
         const locs = await client.GET("/api/v1/locations", { params: { query: {} } });
-        const items = (locs.data?.items ?? []).filter((l) => l.status !== "inactive").slice(0, 5);
+        if (locs.error) throw new Error("locations read failed");
+        const activeLocations = (locs.data?.items ?? []).filter((l) => l.status !== "inactive");
+        const items = (session?.orgWidePatientScope
+          ? activeLocations
+          : activeLocations.filter((location) => (session?.locationIds ?? []).includes(location.id))
+        ).slice(0, 5);
         if (!active) return;
         setLocations(new Map(items.map((l) => [l.id, l.name])));
         const from = new Date().toISOString();
         const to = new Date(Date.now() + 30 * DAY).toISOString();
-        const lists = await Promise.all(
+        const results = await Promise.all(
           items.map((l) =>
             client
               .GET("/api/v1/idg/schedule", { params: { query: { location: l.id, from, to } } })
-              .then((r) => (r.data ?? []) as ScheduledMeeting[])
-              .catch(() => [] as ScheduledMeeting[]),
+              .catch(() => null),
           ),
         );
         if (!active) return;
+        const partial = results.some((result) => result === null || result.error);
+        setSchedulePartial(partial);
+        const lists = results.map((result) =>
+          result && !result.error ? ((result.data ?? []) as ScheduledMeeting[]) : [],
+        );
         const next = lists
           .flat()
           .filter((m) => !CLOSED_MEETING.includes(m.status))
@@ -294,13 +307,16 @@ export function PatientIdgHistory(): JSX.Element {
             : null,
         );
       } catch {
-        if (active) setScheduled(null);
+        if (active) {
+          setSchedulePartial(true);
+          setScheduled(null);
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, session?.locationIds, session?.orgWidePatientScope]);
 
   const history = meetings ?? [];
   const now = Date.now();
@@ -582,6 +598,12 @@ export function PatientIdgHistory(): JSX.Element {
                   ) : null
                 }
               >
+                {schedulePartial ? (
+                  <p className="wx-row-sub" role="status">
+                    Upcoming meetings are partially unavailable. Your IDG history remains visible;
+                    retry the page to refresh scheduling context.
+                  </p>
+                ) : null}
                 {next === undefined ? (
                   <LoadingSpinner />
                 ) : next === null ? (

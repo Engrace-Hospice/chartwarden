@@ -90,6 +90,46 @@ const AR = schema.alertRules;
 const AL = schema.alerts;
 const ND = schema.notificationDeliveries;
 const ARCP = schema.alertReceipts;
+const MEMBERSHIP = schema.memberships;
+const USER = schema.users;
+const MEMBERSHIP_ROLE = schema.membershipRoles;
+const ROLE = schema.roles;
+
+function dmParticipantKey(userId: string, peerUserId: string): string {
+  return [userId, peerUserId].sort().join(":");
+}
+
+async function isActiveMessagingUser(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: MEMBERSHIP.id })
+    .from(MEMBERSHIP)
+    .innerJoin(USER, eq(USER.id, MEMBERSHIP.userId))
+    .where(
+      and(
+        eq(MEMBERSHIP.organizationId, orgId),
+        eq(MEMBERSHIP.userId, userId),
+        eq(MEMBERSHIP.status, "active"),
+        eq(USER.status, "active"),
+      ),
+    )
+    .limit(1);
+  return !!rows[0];
+}
+
+async function assertActiveMessagingUser(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  if (!(await isActiveMessagingUser(tx, orgId, userId))) {
+    // One indistinguishable response for absent, suspended, revoked, deactivated, and foreign users.
+    throw new NotFoundError("eligible staff member", userId);
+  }
+}
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map / resolver validation) ──────
 const ALERT_CATEGORIES: readonly AlertCategory[] = [
@@ -220,6 +260,9 @@ async function assertMayManageMembers(
 ): Promise<void> {
   const ch = await memberAdminChannel(tx, orgId, channelId);
   if (!ch) throw new NotFoundError("channel", channelId);
+  if (ch.kind === "dm") {
+    throw new ForbiddenError("direct-message membership cannot be changed");
+  }
   if (
     !(await mayManageChannelMembersResolved(actor, ch, (patientId) =>
       resolveSiting(orgId, patientId),
@@ -227,6 +270,33 @@ async function assertMayManageMembers(
   ) {
     throw new ForbiddenError("not permitted to manage members of this channel");
   }
+}
+
+async function ensureDmMember(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  channelId: string,
+  userId: string,
+  role: "owner" | "member",
+): Promise<void> {
+  const rows = await tx
+    .select({ id: CM.id, removedAt: CM.removedAt })
+    .from(CM)
+    .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), eq(CM.userId, userId)))
+    .orderBy(desc(CM.joinedAt));
+  if (rows.some((row) => row.removedAt === null)) return;
+  const reusable = rows[0];
+  if (reusable) {
+    await tx
+      .update(CM)
+      .set({ removedAt: null, role, source: "manual", joinedAt: new Date() })
+      .where(and(eq(CM.organizationId, orgId), eq(CM.id, reusable.id)));
+    return;
+  }
+  await tx
+    .insert(CM)
+    .values({ organizationId: orgId, channelId, userId, role, source: "manual" })
+    .onConflictDoNothing();
 }
 
 /** Default siting resolver: M6's siting seam via `getSeam` (an unbound deny-stub throws ⇒ deny). */
@@ -434,6 +504,7 @@ export function createDbMessagingRouteService(
 
     async canViewChannel(orgId, userId, channelId): Promise<boolean> {
       const access = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
         const c = await tx
           .select({ kind: CH.channelKind, subjectId: CH.subjectId })
           .from(CH)
@@ -578,57 +649,100 @@ export function createDbMessagingRouteService(
       );
     },
 
-    // --- open/find a 1:1 DM channel (idempotent; CONFLICT on self) ------------------------------
+    async searchDmEligibleStaff(orgId, userId, query) {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        await assertActiveMessagingUser(tx, orgId, userId);
+        const needle = query.trim().slice(0, 100);
+        const memberships = await tx
+          .select({
+            membershipId: MEMBERSHIP.id,
+            userId: MEMBERSHIP.userId,
+            displayName: USER.name,
+          })
+          .from(MEMBERSHIP)
+          .innerJoin(USER, eq(USER.id, MEMBERSHIP.userId))
+          .where(
+            and(
+              eq(MEMBERSHIP.organizationId, orgId),
+              eq(MEMBERSHIP.status, "active"),
+              eq(USER.status, "active"),
+              sql`${MEMBERSHIP.userId} <> ${userId}::uuid`,
+              needle
+                ? sql`(${USER.name} ILIKE ${`%${needle}%`} OR ${USER.email} ILIKE ${`%${needle}%`})`
+                : undefined,
+            ),
+          )
+          .orderBy(asc(USER.name), asc(MEMBERSHIP.userId))
+          .limit(25);
+        if (memberships.length === 0) return [];
+        const roleRows = await tx
+          .select({ membershipId: MEMBERSHIP_ROLE.membershipId, roleName: ROLE.name })
+          .from(MEMBERSHIP_ROLE)
+          .innerJoin(ROLE, eq(ROLE.id, MEMBERSHIP_ROLE.roleId))
+          .where(
+            and(
+              eq(MEMBERSHIP_ROLE.organizationId, orgId),
+              inArray(
+                MEMBERSHIP_ROLE.membershipId,
+                memberships.map((membership) => membership.membershipId),
+              ),
+              eq(ROLE.enabled, true),
+              or(isNull(MEMBERSHIP_ROLE.expiresAt), sql`${MEMBERSHIP_ROLE.expiresAt} > now()`),
+            ),
+          );
+        const roles = new Map<string, string[]>();
+        for (const row of roleRows) {
+          const values = roles.get(row.membershipId) ?? [];
+          values.push(row.roleName);
+          roles.set(row.membershipId, values);
+        }
+        return memberships.map((membership) => ({
+          userId: membership.userId,
+          displayName: membership.displayName?.trim() || "Staff member",
+          roles: roles.get(membership.membershipId)?.sort() ?? [],
+        }));
+      });
+    },
+
+    // --- open/find a 1:1 DM channel (membership-validated + concurrency-safe) -------------------
     async openDm(orgId, userId, peerUserId) {
       if (peerUserId === userId) throw new ConflictError("cannot open a DM with yourself");
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
-        // Find an existing 1:1 dm both are active members of (the unique-subject index does not cover
-        // dm, so match on membership): a dm with exactly this {userId, peerUserId} active member pair.
-        const existing = (await tx
-          .select({ channelId: CM.channelId })
-          .from(CM)
-          .innerJoin(CH, eq(CH.id, CM.channelId))
-          .where(
-            and(
-              eq(CM.organizationId, orgId),
-              eq(CH.channelKind, "dm"),
-              isNull(CM.removedAt),
-              inArray(CM.userId, [userId, peerUserId]),
-            ),
-          )) as Array<{ channelId: string }>;
-        const counts = new Map<string, number>();
-        for (const r of existing) counts.set(r.channelId, (counts.get(r.channelId) ?? 0) + 1);
-        for (const [channelId, n] of counts) {
-          if (n === 2) return { channelId, created: false };
-        }
+        await assertActiveMessagingUser(tx, orgId, userId);
+        await assertActiveMessagingUser(tx, orgId, peerUserId);
+        const participantKey = dmParticipantKey(userId, peerUserId);
         const inserted = (await tx
           .insert(CH)
           .values({
             organizationId: orgId,
             channelKind: "dm",
             subjectId: null,
+            dmParticipantKey: participantKey,
             title: "Direct message",
             retentionClass: "care_related",
           })
+          .onConflictDoNothing()
           .returning({ id: CH.id })) as Array<{ id: string }>;
-        const channelId = inserted[0]!.id;
-        await tx.insert(CM).values([
-          {
-            organizationId: orgId,
-            channelId,
-            userId,
-            role: "owner",
-            source: "manual",
-          },
-          {
-            organizationId: orgId,
-            channelId,
-            userId: peerUserId,
-            role: "member",
-            source: "manual",
-          },
-        ]);
-        return { channelId, created: true };
+        const created = inserted.length > 0;
+        const existing = created
+          ? inserted
+          : ((await tx
+              .select({ id: CH.id })
+              .from(CH)
+              .where(
+                and(
+                  eq(CH.organizationId, orgId),
+                  eq(CH.channelKind, "dm"),
+                  eq(CH.dmParticipantKey, participantKey),
+                ),
+              )
+              .limit(1)) as Array<{ id: string }>);
+        const channelId = existing[0]?.id;
+        if (!channelId)
+          throw new WardenXError("DM_CREATE_FAILED", "could not open conversation", 503);
+        await ensureDmMember(tx, orgId, channelId, userId, "owner");
+        await ensureDmMember(tx, orgId, channelId, peerUserId, "member");
+        return { channelId, created };
       });
     },
 
@@ -653,6 +767,7 @@ export function createDbMessagingRouteService(
     async addMember(orgId, input) {
       return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
         await assertMayManageMembers(tx, orgId, input.channelId, input.actor, resolveSiting);
+        await assertActiveMessagingUser(tx, orgId, input.userId);
         const active = (await tx
           .select({ id: CM.id })
           .from(CM)
@@ -773,6 +888,7 @@ export function createDbMessagingRouteService(
       }
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         if (input.vacationForwardToUserId) {
+          await assertActiveMessagingUser(tx, orgId, input.vacationForwardToUserId);
           const target = (await tx
             .select({ fwd: UNP.vacationForwardToUserId })
             .from(UNP)

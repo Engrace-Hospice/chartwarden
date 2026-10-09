@@ -1226,6 +1226,8 @@ import {
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
+  DmStaffSearchQuerySchema as M36DmStaffSearchQuerySchema,
+  DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
@@ -8786,6 +8788,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",
     body: M36OpenDmBodySchema,
     response: M36OpenDmResponseSchema,
+  },
+  "GET /api/v1/messaging/dm/staff": {
+    summary: "Search active staff eligible for a direct conversation",
+    query: M36DmStaffSearchQuerySchema,
+    response: M36DmStaffSearchResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/members": {
     summary: "Add a manual member (admin override on auto channels; 204)",

@@ -137,7 +137,11 @@ async function loadMembers(
     options: (data?.members ?? [])
       .filter((m) => m.status === "active")
       .map((m) => ({
-        id: idKind === "user" ? m.userId : m.membershipId,
+        id: m.membershipId,
+        // Keep the lookup value in membership-id space for its existing consumers, while allowing
+        // workflows whose public contract names the M2 user (such as patient assignments) to resolve
+        // the corresponding user id without a second roster request.
+        metadata: { userId: m.userId },
         label: optionLabel(m.displayName ?? m.email ?? "Unnamed member", shortId(m.membershipId)),
         searchLabel: m.displayName ?? m.email ?? m.membershipId,
         description: m.email ?? m.status,

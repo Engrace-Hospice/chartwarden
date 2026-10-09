@@ -86,7 +86,7 @@ describe.skipIf(!DB_URL)("F-104 — M14 D8 action-item auto-close, LIVE Postgres
       await admin.query(
         `INSERT INTO idg_meeting (organization_id, location_id, scheduled_start, scheduled_end, status,
            coordinator_membership_id, tenant_quorum_snapshot)
-         VALUES ($1,$2, now(), now() + interval '2 hours', 'scheduled', $3, '{}'::jsonb) RETURNING id`,
+         VALUES ($1,$2, now(), now() + interval '2 hours', 'live', $3, '{}'::jsonb) RETURNING id`,
         [org, locationOf[org], MEMBER],
       )
     ).rows[0].id as string;

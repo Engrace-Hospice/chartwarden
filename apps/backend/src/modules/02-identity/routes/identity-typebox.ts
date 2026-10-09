@@ -135,6 +135,8 @@ export const AuthContextResponseSchema = Type.Object({
   membershipId: Type.Union([Type.String(), Type.Null()]),
   displayName: Type.Union([Type.String(), Type.Null()]),
   roles: Type.Array(Type.String()),
+  locationIds: Type.Array(Type.String()),
+  orgWidePatientScope: Type.Boolean(),
   isAdmin: Type.Boolean(),
   permissions: Type.Array(Type.String()),
 });
