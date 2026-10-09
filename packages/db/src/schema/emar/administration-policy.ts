@@ -45,6 +45,10 @@ export const administrationPolicy = pgTable("administration_policy", {
     .notNull()
     .default(false),
 
+  // GAP-020 -- a BCMA scan must carry a wristband M5 verifies (default TRUE: fail closed). A wristband that WAS
+  // scanned and is wrong is refused regardless. This does NOT make a scan mandatory.
+  bcmaWristbandRequired: boolean("bcma_wristband_required").notNull().default(true),
+
   // Caregiver-attested capture.
   caregiverAttestedCaptureEnabled: boolean("caregiver_attested_capture_enabled")
     .notNull()

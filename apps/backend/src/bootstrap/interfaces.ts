@@ -108,6 +108,7 @@ export type {
   MbiUnlockReader,
   PatientHopeAdmissionPrefillReader,
   PatientAllergyReader,
+  PatientWristbandVerifier,
   PatientPrivacyFlagReader,
   PatientReader,
   PortalDocumentReader,

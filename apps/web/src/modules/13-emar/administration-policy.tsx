@@ -31,7 +31,9 @@ export function AdministrationPolicy(): JSX.Element {
   const location = useLocation();
   // Returning from /step-up: reopen the editor with the values the user had entered.
   const [restored] = useState(() =>
-    takeStepUpDraft<{ grace: string; prn: string; pdf: boolean }>(POLICY_DRAFT_KEY),
+    takeStepUpDraft<{ grace: string; prn: string; pdf: boolean; wristband?: boolean }>(
+      POLICY_DRAFT_KEY,
+    ),
   );
   const [policy, setPolicy] = useState<AdministrationPolicyView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +42,7 @@ export function AdministrationPolicy(): JSX.Element {
   const [grace, setGrace] = useState(restored?.grace ?? "");
   const [prn, setPrn] = useState(restored?.prn ?? "");
   const [pdf, setPdf] = useState(restored?.pdf ?? false);
+  const [wristband, setWristband] = useState(restored?.wristband ?? true);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -65,6 +68,7 @@ export function AdministrationPolicy(): JSX.Element {
     setGrace(String(policy.graceWindowMinutes));
     setPrn(String(policy.prnMinimumIntervalMinutes));
     setPdf(policy.emarPdfOnCommit);
+    setWristband(policy.bcmaWristbandRequired);
     setActionError(null);
     setEditing(true);
   }, [policy]);
@@ -76,12 +80,13 @@ export function AdministrationPolicy(): JSX.Element {
       graceWindowMinutes: Number(grace),
       prnMinimumIntervalMinutes: Number(prn),
       emarPdfOnCommit: pdf,
+      bcmaWristbandRequired: wristband,
     });
     setBusy(false);
     if (err) {
       const stepUp = stepUpRedirectFor(err, `${location.pathname}${location.search}`);
       if (stepUp) {
-        stashStepUpDraft(POLICY_DRAFT_KEY, { grace, prn, pdf });
+        stashStepUpDraft(POLICY_DRAFT_KEY, { grace, prn, pdf, wristband });
         navigate(stepUp);
         return;
       }
@@ -90,7 +95,7 @@ export function AdministrationPolicy(): JSX.Element {
     }
     setEditing(false);
     void load();
-  }, [client, grace, prn, pdf, load, navigate, location]);
+  }, [client, grace, prn, pdf, wristband, load, navigate, location]);
 
   const savable =
     !busy &&
@@ -172,17 +177,40 @@ export function AdministrationPolicy(): JSX.Element {
               </div>
             </PolicySection>
 
+            <PolicySection
+              icon="shield"
+              title="Bedside Barcode Scan"
+              subtitle="Patient identification when a barcode scan is submitted with an administration"
+              statusLabel={
+                policy.bcmaWristbandRequired ? "Wristband required" : "Wristband optional"
+              }
+            >
+              <div style={factsGridStyle}>
+                <Fact
+                  label="Verified wristband"
+                  value={policy.bcmaWristbandRequired ? "Required" : "Optional"}
+                  detail={
+                    policy.bcmaWristbandRequired
+                      ? "A scan without the patient's current wristband is refused"
+                      : "A wristband that is scanned and wrong is still refused"
+                  }
+                />
+              </div>
+            </PolicySection>
+
             <PolicyEditor
               open={editing}
               grace={grace}
               prn={prn}
               pdf={pdf}
+              wristband={wristband}
               busy={busy}
               savable={savable}
               error={actionError}
               onGrace={setGrace}
               onPrn={setPrn}
               onPdf={setPdf}
+              onWristband={setWristband}
               onSave={() => void save()}
               onCancel={() => setEditing(false)}
             />
@@ -201,12 +229,14 @@ function PolicyEditor({
   grace,
   prn,
   pdf,
+  wristband,
   busy,
   savable,
   error,
   onGrace,
   onPrn,
   onPdf,
+  onWristband,
   onSave,
   onCancel,
 }: {
@@ -214,12 +244,14 @@ function PolicyEditor({
   grace: string;
   prn: string;
   pdf: boolean;
+  wristband: boolean;
   busy: boolean;
   savable: boolean;
   error: string | null;
   onGrace: (v: string) => void;
   onPrn: (v: string) => void;
   onPdf: (v: boolean) => void;
+  onWristband: (v: boolean) => void;
   onSave: () => void;
   onCancel: () => void;
 }): JSX.Element {
@@ -251,6 +283,14 @@ function PolicyEditor({
           <input type="checkbox" checked={pdf} onChange={(e) => onPdf(e.target.checked)} />
           <span>Render an eMAR PDF when an administration commits</span>
         </label>
+        <label style={checkRowStyle}>
+          <input
+            type="checkbox"
+            checked={wristband}
+            onChange={(e) => onWristband(e.target.checked)}
+          />
+          <span>Require a verified patient wristband when a barcode scan is submitted</span>
+        </label>
         {error ? (
           <p role="alert" style={{ ...editorMetaStyle, color: "var(--color-error)" }}>
             {error}
@@ -276,7 +316,7 @@ function PolicySection({
   statusLabel,
   children,
 }: {
-  icon: "clock" | "file-text";
+  icon: "clock" | "file-text" | "shield";
   title: string;
   subtitle: string;
   statusLabel: string;

@@ -22,6 +22,7 @@
     "@wardenx/auth": "workspace:*",
     "@wardenx/types": "workspace:*",
     "@wardenx/ui": "workspace:*",
+    "bwip-js": "^4.11.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.2"

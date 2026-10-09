@@ -36,6 +36,7 @@ import {
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
 import { useSession } from "../../shell/session";
+import { WristbandAction } from "./wristband-action";
 
 // The shared identity helpers now live in the shell (chart tabs span modules); re-exported so this
 
@@ -642,7 +643,12 @@ export function PatientChartHeader({
 
         medicare: medicareTail(data.identifiers),
       }}
-      actions={<ChartActions patientId={patient.id} admission={data.election?.admission ?? null} />}
+      actions={
+        <>
+          <WristbandAction patientId={patient.id} />
+          <ChartActions patientId={patient.id} admission={data.election?.admission ?? null} />
+        </>
+      }
     />
   );
 }

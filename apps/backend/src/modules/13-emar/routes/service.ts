@@ -47,12 +47,19 @@ import type {
   ScheduledDoseStatus,
   SignedEncountersReader,
 } from "@wardenx/types";
-import { type MedClass, NotFoundError, ValidationError } from "@wardenx/types";
+import {
+  type MedClass,
+  NotFoundError,
+  ValidationError,
+  type WristbandVerdictStatus,
+  parseWristbandPayload,
+} from "@wardenx/types";
 import type {
   CaregiverReviewAbacFacts,
   EmarAbacResolver,
   WitnessAbacFacts,
 } from "../abac-predicates";
+import { wristbandRefusalDetails } from "../administration-safety-gates";
 import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "../order-consistency";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
@@ -135,6 +142,8 @@ export interface AdministrationPolicyView {
   readonly graceWindowMinutes: number;
   readonly prnMinimumIntervalMinutes: number;
   readonly emarPdfOnCommit: boolean;
+  /** GAP-020 -- a BCMA scan must carry a wristband M5 verifies (default true). A scanned-and-wrong band refuses either way. */
+  readonly bcmaWristbandRequired: boolean;
 }
 
 export interface IvSessionView {
@@ -189,6 +198,11 @@ export interface RecordAdministrationArgs {
   };
   readonly lateEntryReason?: string;
   readonly offlineCapture?: { deviceId: string; localId: string; capturedAt: string };
+  /**
+   * GAP-020 -- set ONLY by `offlineSync` (never mapped from a request body): this write is the replay of a queued
+   * offline row, so the wristband is verified against the device's scan time (bounded grace) instead of now.
+   */
+  readonly viaOfflineSync?: boolean;
   readonly witnessToken?: string;
   /** §2.9 BCMA — the bedside scan re-verified against the M12 order + patient wristband at write time. */
   readonly barcodeScan?: BarcodeScanInput;
@@ -404,10 +418,13 @@ export interface EmarOrderSeed {
    *  a `rate_change` against it is refused (`IV_RATE_OUT_OF_RANGE`) rather than treated as unbounded. */
   readonly ivContinuousPolicy?: { readonly minRate: number; readonly maxRate: number } | null;
 }
-/** A seeded patient identity for the §2.9 BCMA wristband match. */
+/**
+ * A seeded patient for the §2.9 BCMA wristband match. `wristbandPayload` is the patient's ACTIVE printed band
+ * (the slice's stand-in for M5's `patient_wristband`); absent = no band on file.
+ */
 export interface EmarPatientSeed {
   readonly patientId: string;
-  readonly wristbandPayloadDigest?: string | null;
+  readonly wristbandPayload?: string | null;
 }
 export interface EmarRouteSeed {
   readonly now?: () => string;
@@ -561,6 +578,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     graceWindowMinutes: 30,
     prnMinimumIntervalMinutes: 60,
     emarPdfOnCommit: false,
+    bcmaWristbandRequired: true,
   };
   const witnessTokens = new Map<
     string,
@@ -685,6 +703,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     patientId: string,
     scan: BarcodeScanInput | undefined,
     administeredAt: string,
+    caregiver = false,
   ): BarcodeMatchResult | null {
     if (!scan) return null;
     const o = orders.get(medicationOrderId);
@@ -695,17 +714,30 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
           ndc: o.ndc ?? null,
         }
       : null;
-    const p = patients.get(patientId);
+    // The slice's stand-in for M5's verifier: same statuses, same fail-closed policy, same refusal details.
+    const required = caregiver ? false : policy.bcmaWristbandRequired;
+    const onFile = patients.get(patientId)?.wristbandPayload ?? null;
+    const presented = (scan.patientWristbandPayload?.trim() ?? "").length > 0;
+    let status: WristbandVerdictStatus;
+    if (!presented) status = onFile !== null && required ? "not_presented" : "not_on_file";
+    else {
+      const parsed = parseWristbandPayload(scan.patientWristbandPayload ?? "");
+      const own = onFile === null ? null : parseWristbandPayload(onFile);
+      if (!parsed.ok) status = "malformed";
+      else if (own?.ok && own.token === parsed.token) status = "verified";
+      else status = onFile === null ? "not_on_file" : "mismatch";
+    }
     const result = evaluateBarcodeScan(
       scan,
       orderContext,
-      { wristbandPayloadDigest: p?.wristbandPayloadDigest ?? null },
+      { wristband: { required, status } },
       administeredAt.slice(0, 10),
     );
     if (barcodeScanBlocks(result))
       throw new AdministrationStateError(
         "BARCODE_VERIFICATION_FAILED",
         `barcode verification failed: ${result}`,
+        result === "wrong_patient" ? wristbandRefusalDetails(status) : undefined,
       );
     return result;
   }
@@ -1009,6 +1041,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         args.patientId,
         args.barcodeScan,
         args.administeredAt,
+        true,
       );
       const id = nextId("adm");
       const row: AdminRow = {
@@ -1409,7 +1442,10 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       return { ...policy };
     },
     async putPolicy(orgId, patch): Promise<AdministrationPolicyView> {
-      Object.assign(policy, patch);
+      Object.assign(
+        policy,
+        Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)),
+      );
       emit("m13.policy.changed", { policyDeltaSummary: patch });
       return { ...policy };
     },

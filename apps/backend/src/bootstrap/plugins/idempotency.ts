@@ -20,6 +20,16 @@ import {
 import { ConflictError, IdempotencyConflictError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
+declare module "fastify" {
+  interface FastifyContextConfig {
+    /**
+     * Opt this route out of `Idempotency-Key` capture. For a response that carries a one-time secret
+     * (GAP-020: the wristband token): it must never reach `idempotency_key.response_body`.
+     */
+    noIdempotencyCapture?: boolean;
+  }
+}
+
 /** Per-request marker: a `pending` lock this request opened and must `complete` on send. */
 const pendingCaptures = new WeakMap<FastifyRequest, { orgId: string; key: string }>();
 
@@ -35,6 +45,10 @@ function parsePayload(payload: unknown): unknown {
 export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore): void {
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD") return;
+    // A route that returns a ONE-TIME SECRET (GAP-020: the wristband token) opts out: its response must never be
+    // copied into `idempotency_key.response_body`, even though the shared web client sends a key on every mutation.
+    // It has no pending claim, so `onSend` below captures nothing. Its double-submit safety is its own precondition.
+    if (request.routeOptions?.config?.noIdempotencyCapture === true) return;
     const key = request.headers["idempotency-key"];
     if (typeof key !== "string" || key.length === 0) return;
     const orgId = request.context?.organizationId;

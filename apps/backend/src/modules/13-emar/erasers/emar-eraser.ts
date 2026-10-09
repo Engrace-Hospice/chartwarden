@@ -234,9 +234,10 @@ export function createDrizzleEmarEraseStore(db: DbClient): EmarEraseStore {
                   .where(inArray(WIT.administrationRecordId, adminIds))
                   .returning({ id: WIT.id }),
               );
-        // A pre-commit scan carries a NULL administration_record_id and only a wristband-payload DIGEST
-        // (never the raw payload), so the patient-attributable scans are exactly the linked ones.
-        const barcodeScans =
+        // A scan carries only a wristband-payload DIGEST (never the raw payload). Scans linked to a deleted
+        // administration go with it; GAP-020 near-miss rows (a REFUSED scan, NULL administration_record_id) carry the
+        // patient id directly and are removed by it, inside the same retention boundary as the administrations.
+        const linkedScans =
           adminIds.length === 0
             ? 0
             : await del(() =>
@@ -245,6 +246,13 @@ export function createDrizzleEmarEraseStore(db: DbClient): EmarEraseStore {
                   .where(inArray(SCAN.administrationRecordId, adminIds))
                   .returning({ id: SCAN.id }),
               );
+        const nearMissScans = await del(() =>
+          tx
+            .delete(SCAN)
+            .where(and(eq(SCAN.patientId, patientId), lt(SCAN.createdAt, boundary)))
+            .returning({ id: SCAN.id }),
+        );
+        const barcodeScans = linkedScans + nearMissScans;
         // `administration_offline_queue` carries no patient column (§3.3 — digest-only idempotency
         // rows on a 30-day purge path); the patient-attributable rows are the ones whose sync landed on
         // a deleted administration.

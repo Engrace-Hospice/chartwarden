@@ -95,7 +95,9 @@ describe("toAdministrationIdentity — order facts for the safety gates (GAP-020
     expect(identity.prnMinimumIntervalMinutes).toBeNull();
   });
 
-  it("carries no wristband digest (none is on file anywhere): the wrong-patient arm is honestly not armed", () => {
-    expect(withSig({ doseQuantity: 5, doseUnit: "mg" }).patientWristbandPayloadDigest).toBeNull();
+  it("carries no wristband material: the order identity holds no patient-identity secrets (GAP-020)", () => {
+    expect(Object.keys(withSig({ doseQuantity: 5, doseUnit: "mg" })).join(" ")).not.toMatch(
+      /wristband/i,
+    );
   });
 });

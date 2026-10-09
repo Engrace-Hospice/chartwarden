@@ -7,7 +7,7 @@
 // M11/M12 lifecycle convention). Nothing transitions on a string match — each code is an enumerated
 // constant; the §3 DB triggers (M13-T02) repeat the strongest of these at the schema layer as defense in
 // depth. The route layer (M13-T08) reuses these codes verbatim.
-import { WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, WardenXError } from "@wardenx/types";
 
 /** The M13 administration-lifecycle failure-code catalog → canonical HTTP status. */
 export const M13_ERROR_STATUS = {
@@ -90,8 +90,8 @@ export type M13ErrorCode = keyof typeof M13_ERROR_STATUS;
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
 export class AdministrationStateError extends WardenXError {
-  constructor(code: M13ErrorCode, message: string) {
-    super(code, message, M13_ERROR_STATUS[code]);
+  constructor(code: M13ErrorCode, message: string, details?: ErrorDetailType[]) {
+    super(code, message, M13_ERROR_STATUS[code], details);
     this.name = "AdministrationStateError";
   }
 }

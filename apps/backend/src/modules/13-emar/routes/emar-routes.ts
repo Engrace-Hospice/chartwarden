@@ -780,6 +780,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         graceWindowMinutes: b.graceWindowMinutes,
         prnMinimumIntervalMinutes: b.prnMinimumIntervalMinutes,
         emarPdfOnCommit: b.emarPdfOnCommit,
+        bcmaWristbandRequired: b.bcmaWristbandRequired,
       });
     },
   );
