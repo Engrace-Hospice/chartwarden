@@ -1,9 +1,14 @@
 // @wardenx/billing — which wage index prices which level of care (pure).
 //
-// The hospice wage index is applied to the labor share of the per-diem by the GEOGRAPHIC AREA WHERE THE CARE IS
-// FURNISHED, not by where the hospice is headquartered (SSA §1814(i)(2)(D); 42 CFR 418.306(c); CMS Pub. 100-04 ch. 11
-// §30.3 — which is why the claim reports value code 61 = the CBSA of the beneficiary's residence for home care and
-// G8 = the CBSA of the inpatient facility for inpatient care). So:
+// The Medicare Pricer wage-adjusts a hospice claim with the CBSA the claim REPORTS, not the hospice's own location:
+// CMS Pub. 100-04 ch. 11 §30.3 ("Value Codes and Amounts") defines value code 61 as the MSA/CBSA (or rural State
+// code) "of the location where the hospice service is delivered" for routine and continuous home care, and G8 as the
+// CBSA "of the facility where inpatient hospice services are delivered" for general inpatient and inpatient respite
+// care; the hospice reports the CBSA of the residence at the END of the billing period (61) and of the LATEST facility
+// that served the beneficiary (G8). The same section's Pricer input record names them: BENE-CBSA ("used to wage-adjust
+// home levels of care", copied from value code 61) and PROV-CBSA ("used to wage-adjust inpatient levels of care",
+// copied from value code G8). (42 CFR 418.306(c) itself only says the labor market is defined by OMB CBSAs, that the
+// contractor adjusts the rates for local wage differences, and the 5% cap on year-over-year decreases.) So:
 //   routine home care + continuous home care     → the BENEFICIARY's residence area   (value code 61)
 //   general inpatient + inpatient respite care   → the area of the FACILITY delivering the care (value code G8)
 // When the caller supplies no area factors (the CBSA geography is not bound) the provider factor is used unchanged;

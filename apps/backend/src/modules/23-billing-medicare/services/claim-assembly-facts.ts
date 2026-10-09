@@ -370,8 +370,8 @@ export function computeClaimHipps(
         })),
         wageIndexCcn: pe.ccn,
       },
-      // Each day is priced with its own fiscal year's rates and wage indexes (home care by the beneficiary's area,
-      // inpatient care by the facility's - 42 CFR 418.306(c); Pub. 100-04 ch. 11 s30.3; see `wage-index-area.ts`).
+      // Each day is priced with its own fiscal year's rates and wage indexes, using the CBSAs the claim reports (home
+      // care by the residence CBSA, inpatient care by the facility CBSA - Pub. 100-04 ch. 11 s30.3; see `wage-index-area.ts`).
       (fiscalYearStarting) => {
         const pricing = fiscalYearPricing.get(fiscalYearStarting);
         if (!pricing) {

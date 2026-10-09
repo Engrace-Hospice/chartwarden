@@ -16,9 +16,13 @@ Paste-ready notes for the PR body. Branch `feat/claim-assembly-hospice-lines`; M
   Connecticut resolves through its 2022 planning regions; a PO-box ZIP is placed by its ZIP3 only when every ZIP sharing the
   prefix agrees; anything else is unresolved and blocks (nothing defaults to rural).
 - **Pricing.** Home levels of care use the beneficiary's residence-area wage index; GIP / inpatient respite use the facility's.
-  Each day of a claim crossing Oct 1 is priced with its own fiscal year's rate table and wage index.
-- **G8 facility.** The facility whose residence span overlaps the inpatient (0655/0656) level-of-care dates; two overlapping
-  facilities with different ZIPs, or none, block.
+  Each day of a claim crossing Oct 1 is priced with its own fiscal year's rate table and wage index. The claim keeps one set of
+  end-of-period CBSA codes (as the Pricer does: BENE-CBSA from value code 61, PROV-CBSA from G8) and takes each fiscal year's
+  published index for those codes, so a patient who moves mid-claim does not change the codes.
+- **G8 facility.** The LATEST facility that served the inpatient (0655/0656) level-of-care periods (CMS Pub. 100-04 ch. 11
+  §30.3). Taken from M37 `ipu_admission` (keyed by the M6 level-of-care period; owned unit or arranged facility) so a nursing-home
+  resident's GIP stay at a hospital is priced at the hospital; M5 facility residence spans stand in only for stays M37 does not know.
+  A tie on the last inpatient day between different (or missing) ZIPs, or no facility at all, blocks.
 - **Tooling.** `bun run db:seed:wage-index -- --ccn <CCN> --zip <ZIP>` derives `tenant_wage_index` from the geography.
   Demo fixture: CCN 381588 = Engrace Hospice, Pendleton OR, ZIP 97801 (confirmed against CMS Provider Data).
   There is no production default.
@@ -45,10 +49,9 @@ the demo seed produces records that pass the new rules.**
 
 - A ZCTA approximates a USPS ZIP; the ZIP3 fallback is exact only where the prefix is unanimous.
 - The facility address key is `facility.primary_address.postalCode` (the seed and repo convention).
-- G8 relies on M5 facility residence spans; a GIP stay recorded only in M37 (no residence span) leaves G8 unresolved and blocks.
-- Value code 61 stays on the period-end residence CBSA; pricing uses the residence area of each fiscal-year part.
-- The regulatory citations in code comments (SSA §1814(i)(2)(D), 42 CFR 418.306(c), Pub. 100-04 ch. 11 §30.3) are from memory
-  and were not re-checked against the primary text.
+- The ch. 11 §30.3 rules (value codes 61 / G8: end-of-period residence, latest facility; Pricer BENE-CBSA / PROV-CBSA) were verified
+  against the manual text (clm104c11.pdf). 42 CFR 418.306(c) was verified too, but it only defines the labor market by OMB CBSAs, the
+  wage adjustment and the 5% cap; the SSA §1814(i)(2)(D) citation was dropped because it could not be verified here.
 - Deferred by decision: PM modifier, Q5006 inpatient-facility summary reporting, diagnoses (Phase 4). No web screen yet for the
   visit-charge schedule (API only).
 
