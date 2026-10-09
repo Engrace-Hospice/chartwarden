@@ -5322,7 +5322,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     registerModuleSeams: () =>
       wireModuleSeams({
         sessionContextStore: dbHandle
-          ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
+          ? createDbSessionContextStore(
+              dbHandle.db,
+              createDbActorEnrichmentReader(dbHandle.db, {
+                // GAP-007 - ids and counts only, never the scope body.
+                onMalformedGrantScope: (report) =>
+                  app.log.warn(report, "auth.grant_scope_malformed"),
+              }),
+            )
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,

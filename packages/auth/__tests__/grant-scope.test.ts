@@ -3,7 +3,15 @@
  * reduced from live grants. The route (422) and the DB actor-enrichment reader are proven separately.
  */
 import { describe, expect, it } from "vitest";
-import { effectiveReach, parseRoleGrantScope, validateRoleGrant } from "../src";
+import {
+  NO_REACH_ID,
+  effectiveReach,
+  effectiveReachWithDiagnostics,
+  locationScope,
+  parseRoleGrantScope,
+  providerEntityScope,
+  validateRoleGrant,
+} from "../src";
 
 const LOC_X = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const LOC_Y = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
@@ -102,10 +110,56 @@ describe("effectiveReach", () => {
     ]);
     expect([...reach.locationIds].sort()).toEqual([LOC_X, LOC_Y]);
   });
-  it("a malformed stored scope reads as no narrowing, never as wider reach", () => {
-    expect(effectiveReach(defaults, [{ scope: { locationIds: "bad" } }]).locationIds).toEqual([
-      LOC_X,
-      LOC_Y,
+  it("a malformed grant contributes nothing: it neither narrows nor widens the other grants", () => {
+    const { reach, malformedGrantCount } = effectiveReachWithDiagnostics(defaults, [
+      { scope: { locationIds: [LOC_X] } },
+      { scope: { locationIds: "bad" } },
     ]);
+    expect(reach.locationIds).toEqual([LOC_X]);
+    expect(malformedGrantCount).toBe(1);
+  });
+  it("reaches NOTHING (the sentinel, never an empty list) when every live grant is unreadable", () => {
+    const { reach, malformedGrantCount } = effectiveReachWithDiagnostics(defaults, [
+      { scope: { locationIds: "bad" } },
+      { scope: [] },
+      { scope: { floor: 3 } },
+    ]);
+    expect(malformedGrantCount).toBe(3);
+    expect(reach).toEqual({ providerEntityIds: [NO_REACH_ID], locationIds: [NO_REACH_ID] });
+    // also when the membership has no defaults (an empty default list reads as org-wide downstream)
+    expect(effectiveReach(NONE, [{ scope: "x" }]).locationIds).toEqual([NO_REACH_ID]);
+  });
+  it("the sentinel is denied by the real scope evaluators, for any real target", () => {
+    const { reach } = effectiveReachWithDiagnostics(NONE, [{ scope: "x" }]);
+    const ctx = { providerEntityIds: reach.providerEntityIds, locationIds: reach.locationIds };
+    expect(locationScope(ctx as never, { locationId: LOC_X })).toBe(false);
+    expect(providerEntityScope(ctx as never, { providerEntityId: PE_1 })).toBe(false);
+  });
+  it("tolerates the auditor grant's provenance engagementId on a stored scope, ignoring it", () => {
+    const stored = { engagementId: LOC_Z };
+    expect(parseRoleGrantScope(stored, "stored")).toEqual({ ok: true, scope: {} });
+    expect(parseRoleGrantScope(stored).ok).toBe(false);
+    expect(effectiveReach(defaults, [{ scope: stored }])).toEqual(defaults);
+  });
+});
+
+describe("patient-level scope", () => {
+  it("is refused with a dedicated, stable code that points at caseload assignment", () => {
+    const parsed = parseRoleGrantScope({ patientIds: [LOC_X] });
+    expect(parsed).toMatchObject({ ok: false, code: "PATIENT_SCOPE_UNSUPPORTED" });
+    const violations = validateRoleGrant({
+      role: { scopeLevel: "organization", category: "operations" },
+      scope: { patientIds: [LOC_X], locationIds: [LOC_X] },
+      membership: NONE,
+      expiresAt: null,
+      now: NOW,
+    });
+    expect(violations.map((v) => v.code)).toEqual(["PATIENT_SCOPE_UNSUPPORTED"]);
+    expect(violations[0]?.message).toContain("caseload");
+  });
+  it("is also unreadable when stored, so a stored patientIds blob grants no reach", () => {
+    expect(effectiveReachWithDiagnostics(NONE, [{ scope: { patientIds: [LOC_X] } }])).toMatchObject({
+      malformedGrantCount: 1,
+    });
   });
 });

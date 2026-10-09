@@ -56,9 +56,12 @@ export {
   type GrantScopeParse,
   type GrantViolation,
   type MembershipReach,
+  NO_REACH_ID,
+  type ReachWithDiagnostics,
   type RoleGrantScope,
   TIME_BOUND_ROLE_CATEGORY,
   effectiveReach,
+  effectiveReachWithDiagnostics,
   parseRoleGrantScope,
   validateRoleGrant,
 } from "./grant-scope";
